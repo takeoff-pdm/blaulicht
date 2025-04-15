@@ -1,0 +1,29 @@
+{
+  "name": "caltrack-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^2.4.2",
+    "@tsconfig/svelte": "^5.0.0",
+    "svelte": "^4.0.3",
+    "svelte-check": "^3.4.4",
+    "tslib": "^2.6.0",
+    "typescript": "^5.0.2",
+    "vite": "^4.4.0"
+  },
+  "dependencies": {
+    "@types/chart.js": "^2.9.37",
+    "chart.js": "^4.3.0",
+    "material-icons": "^1.13.8",
+    "sass": "^1.63.6",
+    "svelte-tweakpane-ui": "^1.5.1",
+    "tweakpane": "^4.0.5"
+  }
+}

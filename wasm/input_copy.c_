@@ -1,0 +1,164 @@
+#include "blaulicht.h"
+
+// NOTE: this file is completely overwritten by the reef compiler.
+// It only exists so that we don't get errors during development.
+
+#define IS_WHITE_VALUE_INDEX 7
+#define WHITE_VALUE_INDEX 8 
+
+#define BPM_STROBE_LAST_TICK_INDEX 9
+#define BPM_STROBE_LAST_TICK_HIGH_INDEX 10
+#define BPM_STROBE_MODE_INDEX 11
+
+int elapsed(int time, int * data, int index) {
+    int elapsed = time - data[index];
+    return elapsed;
+}
+
+void write_last_bpm_flash(int *data, int time) {
+    data[BPM_STROBE_LAST_TICK_INDEX] = time;
+}
+
+void write_last_bpm_flash_high(int *data, int time) {
+    data[BPM_STROBE_LAST_TICK_HIGH_INDEX] = time;
+}
+
+int since_last_bpm_flash(int *data, int time) {
+    return elapsed(time, data, BPM_STROBE_LAST_TICK_INDEX);
+}
+
+int since_last_bpm_flash_high(int *data, int time) {
+    return elapsed(time, data, BPM_STROBE_LAST_TICK_HIGH_INDEX);
+}
+
+void set_white(int v, int * dmx) {
+    dmx[1] = v;
+    dmx[2] = v;
+    dmx[3] = v;
+    dmx[4] = v;
+
+    dmx[100] = v;
+    dmx[101] = v;
+    dmx[102] = v;
+}
+
+#define BPM_STROBE_DURATION_MILLIS 10
+#define STROBE_TIME 60
+
+#define STROBE_START_INDEX 200
+#define IS_STROBE_INDEX 201
+
+int pow(int base, int exp) {
+    int acc = base;
+
+    for (int i = 1; i < exp; i++) {
+        acc *= base;
+    }
+
+    return acc;
+}
+
+long map(long x, long in_min, long in_max, long out_min, long out_max) {
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+#define MAX_BRIGHTNESS_NON_STROBE 50
+
+void tick(
+    TickInput input,
+    int *dmx, int dmx_len,
+    int *data, int data_len
+) {
+    // Red flashing.
+    if (since_last_bpm_flash(data, input.time) > 500) {
+        dmx[1] = map(input.volume, 0, 255, 0, MAX_BRIGHTNESS_NON_STROBE);
+
+        if (input.volume > 0) {
+            data[125 + 2] += data[140];
+            if (data[140] == 0) {
+                data[140] = 1;
+                data[125 + 2] = 0;
+            } else if (data[125 + 2] >= 255) {
+                data[140] = -1;
+            } else if (data[125 + 2] <= 0) {
+                data[140] = 1;
+            }
+            dmx[2] = data[125 + 2];
+
+
+            data[125 + 3] += data[141];
+            if (data[141] == 0) {
+                data[141] = 1;
+                data[125 + 3] = 255 / 3 * 1;
+            } else if (data[125 + 3] >= 255) {
+                data[141] = -1;
+            } else if (data[125 + 3] <= 0) {
+                data[141] = 1;
+            }
+            dmx[3] = data[125 + 3];
+
+            data[125 + 4] += data[142];
+            if (data[142] == 0) {
+                data[142] = -1;
+                data[125 + 4] = 255 / 3 * 3;
+            } else if (data[125 + 4] >= 255) {
+                data[142] = -1;
+            } else if (data[125 + 4] <= 0) {
+                data[142] = 1;
+            }
+            dmx[4] = data[125 + 4];
+        }
+    }
+
+    int time_since_strobe_start = elapsed(input.time, data, STROBE_START_INDEX);
+
+    if ((input.bass_avg < 50 && input.bass > 100 && !data[IS_STROBE_INDEX]) || (time_since_strobe_start < STROBE_TIME && data[IS_STROBE_INDEX])) {
+        if (!data[IS_STROBE_INDEX]) {
+            data[STROBE_START_INDEX] = input.time;
+        }
+
+        if (data[IS_WHITE_VALUE_INDEX]) {
+            data[WHITE_VALUE_INDEX] = 255;
+        } else {
+            data[WHITE_VALUE_INDEX] = 0;
+        }
+        data[IS_WHITE_VALUE_INDEX] = !data[IS_WHITE_VALUE_INDEX];
+        set_white(data[WHITE_VALUE_INDEX], dmx);
+        bl_puts("Entered strobe branch.");
+        return;
+    } else if (data[IS_WHITE_VALUE_INDEX]) {
+        set_white(0, dmx);
+        data[IS_WHITE_VALUE_INDEX] = 0;
+        data[IS_STROBE_INDEX] = 0;
+    }
+
+    ///
+    /// BPM STROBE
+    ///
+
+    int elapsed = since_last_bpm_flash(data, input.time);
+    int bass_acc = input.bass_avg;
+    int bass = input.bass;
+
+    int bpm = input.bpm;
+    int target_elapsed_bpm = (int) ( (float) 1 / (float) bpm * 60.0 * 1000.0);
+
+    if (bass_acc < 100 && bass < 100) {
+        if (data[IS_WHITE_VALUE_INDEX]) {
+            bl_puts("Entered set-dark branch.");
+            data[WHITE_VALUE_INDEX] = 0;
+            data[IS_WHITE_VALUE_INDEX] = 0;
+            set_white(data[WHITE_VALUE_INDEX], dmx);
+        }
+    } else if (elapsed > target_elapsed_bpm && !data[IS_WHITE_VALUE_INDEX]) {
+        write_last_bpm_flash(data, input.time);
+        data[IS_WHITE_VALUE_INDEX] = 1;
+        data[WHITE_VALUE_INDEX] = 255;
+        set_white(data[WHITE_VALUE_INDEX], dmx);
+    } else if (data[IS_WHITE_VALUE_INDEX]) {
+        write_last_bpm_flash_high(data, input.time);
+        data[WHITE_VALUE_INDEX] = 0;
+        data[IS_WHITE_VALUE_INDEX] = 0;
+        set_white(data[WHITE_VALUE_INDEX], dmx);
+    }
+}

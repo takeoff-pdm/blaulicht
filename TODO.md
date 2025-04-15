@@ -1,0 +1,4 @@
+- add UDP sink(s) to which a DMX frame can be sent
+- make dmx channel writes explicit so that only the updates are sent via UDP (more efficient)
+- make audio signal source persistant
+- add audio normalization (don't care what the input signal is)

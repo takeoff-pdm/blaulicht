@@ -1,0 +1,4 @@
+:1235 {
+    reverse_proxy /api/* localhost:1234
+    reverse_proxy localhost:5173
+}

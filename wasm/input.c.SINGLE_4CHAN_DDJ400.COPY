@@ -1,0 +1,720 @@
+#include "blaulicht.h"
+
+#define IS_WHITE_VALUE_INDEX 7
+#define WHITE_VALUE_INDEX 8
+
+#define BPM_STROBE_LAST_TICK_INDEX 9
+#define BPM_STROBE_LAST_TICK_HIGH_INDEX 10
+#define BPM_STROBE_MODE_INDEX 11
+
+#define BPM_STROBE_DURATION_MILLIS 10
+
+// TODO: also add a modifier for this, best would be the weel above the speed modifier
+// Then, each touch of a dial will use the dial's data source for the left indicator.
+// therefore, the VJ must touch the wheel to peak.
+#define STROBE_TIME 60
+
+#define STROBE_START_INDEX 200
+#define IS_STROBE_INDEX 201
+
+#define MAX_BRIGHTNESS_NON_STROBE 50
+
+#define CROSSFADER_STATUS 182
+#define CROSSFADER_KIND 31
+#define CROSSFADER_KEY 199
+
+#define LEFT_FADER_STATUS 176
+#define LEFT_FADER_KIND 19
+#define FLASH_BRIGHTNESS_KEY 198
+
+#define RIGHT_FADER_STATUS 177
+#define RIGHT_FADER_KIND 19
+#define NORMAL_BRIGHTNESS_KEY 197
+
+#define CUE_LEFT_STATUS 144
+#define CUE_LEFT_KIND 84
+#define STROBE_ACTIVE_INDEX 195
+
+#define CUE_RIGHT_STATUS 145
+#define CUE_RIGHT_KIND 84
+#define COLOR_ACTIVE_INDEX 196
+
+#define RELEASE_FX_STATUS 148
+#define RELEASE_FX_KIND 71
+
+#define LEFT_FILTER_STATUS 182
+#define LEFT_FILTER_KIND 23
+#define STROBE_SPEED_MULTIPLIER_KEY 193
+
+#define COLOR_TO_MUSIC_INDEX 192
+#define PERFORMANCE_RIGHT_0_0_STATUS 153
+#define PERFORMANCE_RIGHT_0_0_KIND 0
+
+#define STROBE_TO_MUSIC_INDEX 191
+
+#define STROBE_BEGIN_TIME 151
+#define STROBE_WAS_OFF 150
+
+#define STROBE_ON 161
+#define STROBE_WAS_ON 159
+#define STROBE_ON_ACTIVE_BRI 160
+
+#define PERFORMANCE_LEFT_0_0_STATUS 151
+#define PERFORMANCE_LEFT_0_0_KIND 0
+
+#define PERFORMANCE_LEFT_1_0_STATUS 151
+#define PERFORMANCE_LEFT_1_0_KIND 1
+
+#define RELOOP_LEFT_STATUS 144
+#define RELOOP_LEFT_KIND 77
+// #define BPM_INDICATOR_ACTIVE_INDEX 191
+
+#define COLOR_MODE_INDEX 189
+#define PERFORMANCE_RIGHT_1_0_STATUS 153
+#define PERFORMANCE_RIGHT_1_0_KIND 1
+
+#define PERFORMANCE_RIGHT_2_0_STATUS 153
+#define PERFORMANCE_RIGHT_2_0_KIND 2
+
+#define PERFORMANCE_RIGHT_0_1_STATUS 153
+#define PERFORMANCE_RIGHT_0_1_KIND 4
+
+#define PERFORMANCE_RIGHT_0_2_STATUS 153
+#define PERFORMANCE_RIGHT_0_2_KIND 5
+
+#define HUE_ANIMATE_MODE_INDEX 186
+#define HUE_ANIMATE_SPEED_INDEX 185
+#define LAST_HUE_ANIMATE_TICK_INDEX 184
+
+#define BEAT_HUE_ANIMATE_SPEED_INDEX 177
+#define BEAT_HUE_ANIMATE_STEP_INDEX 176
+
+#define ROUND_CUE_RIGHT_STATUS 145
+#define ROUND_CUE_RIGHT_KIND 12
+#define ANIMATE_TO_BEAT_ON_INDEX 181
+#define BEAT_ANIMATE_LAST_TICK_INDEX 180
+
+#define RIGHT_FILTER_STATUS 182
+#define RIGHT_FILTER_KIND 24
+
+#define RIGHT_LOW_FILTER_STATUS 177
+#define RIGHT_LOW_FILTER_KIND 15
+
+#define RIGHT_MID_FILTER_STATUS 177
+#define RIGHT_MID_FILTER_KIND 11
+
+#define INIT_TIME_INDEX 191
+
+#define CURRENT_TIME_INDEX 761
+
+int elapsed(int32_t time, int32_t *data, int32_t index) { return time - data[index]; }
+
+void write_last_bpm_flash(int32_t *data, int32_t time) { data[BPM_STROBE_LAST_TICK_INDEX] = time; }
+
+void write_last_bpm_flash_high(int32_t *data, int32_t time) { data[BPM_STROBE_LAST_TICK_HIGH_INDEX] = time; }
+
+int since_last_bpm_flash(int32_t *data, int32_t time) { return elapsed(time, data, BPM_STROBE_LAST_TICK_INDEX); }
+
+int since_last_bpm_flash_high(int32_t *data, int32_t time) {
+    return elapsed(time, data, BPM_STROBE_LAST_TICK_HIGH_INDEX);
+}
+
+#define SLOW_STROBE_TIME_INDEX 812
+#define SLOW_STROBE_MODE_INDEX 813
+#define SLOW_STROBE_SPEED 100
+
+#define SLOW_STROBE_INDEX 761
+
+#define SLOW_STROBE_CYCLE 654
+
+void set_white(bool v, uint8_t *dmx, int32_t *data) {
+    int32_t brightness = data[FLASH_BRIGHTNESS_KEY];
+
+    // for (int i = 1; i < 20; i+=2) {
+    //     dmx[i + 1] = 255;
+    //     dmx[i] = brightness;
+    // }
+
+    if (!data[STROBE_ON]) {
+        if (data[CURRENT_TIME_INDEX] - data[SLOW_STROBE_TIME_INDEX] > SLOW_STROBE_SPEED) {
+            data[SLOW_STROBE_TIME_INDEX] = data[CURRENT_TIME_INDEX];
+            data[SLOW_STROBE_MODE_INDEX] = !data[SLOW_STROBE_MODE_INDEX];
+        } else if (data[SLOW_STROBE_MODE_INDEX]) {
+            data[SLOW_STROBE_MODE_INDEX] = !data[SLOW_STROBE_MODE_INDEX];
+        }
+    } else {
+        data[SLOW_STROBE_MODE_INDEX] = 1;
+    }
+
+#define SLOW_STROBE_COUNT 8
+#define SI data[SLOW_STROBE_CYCLE]
+    bl_log_int(data[SLOW_STROBE_CYCLE]);
+
+    int panel_bri = brightness;
+
+    if (data[STROBE_ON] || data[STROBE_WAS_ON]) {
+        dmx[1] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[2] = 255;
+        dmx[17] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[18] = 255;
+        dmx[33] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[34] = 255;
+        dmx[49] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[50] = 255;
+        dmx[81] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[82] = 255;
+        dmx[129] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[130] = 255;
+        dmx[65] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[66] = 255;
+        dmx[161] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[162] = 255;
+
+        if (data[STROBE_ON]) {
+            data[STROBE_WAS_ON] = 1;
+        } else {
+            data[STROBE_WAS_ON] = 0;
+        }
+    }
+
+    if (data[SLOW_STROBE_MODE_INDEX]) {
+        SI = (SI + 1) % SLOW_STROBE_COUNT;
+        // SI = 0;
+        if (SI == 0) {
+            dmx[1] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[2] = 255;
+        }
+        if (SI == 1) {
+            dmx[17] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[18] = 255;
+        }
+        if (SI == 2) {
+            dmx[33] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[34] = 255;
+        }
+        if (SI == 3) {
+            dmx[49] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[50] = 255;
+        }
+        if (SI == 4) {
+            dmx[81] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[82] = 255;
+        }
+        if (SI == 5) {
+            dmx[129] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[130] = 255;
+        }
+        if (SI == 6) {
+            dmx[65] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[66] = 255;
+        }
+        if (SI == 7) {
+            dmx[161] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+            dmx[162] = 255;
+        }
+    } else {
+        dmx[1] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[2] = 255;
+        dmx[17] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[18] = 255;
+        dmx[33] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[34] = 255;
+        dmx[49] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[50] = 255;
+        dmx[81] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[82] = 255;
+        dmx[129] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[130] = 255;
+        dmx[65] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[66] = 255;
+        dmx[161] = data[SLOW_STROBE_MODE_INDEX] * panel_bri;
+        dmx[162] = 255;
+    }
+
+    // dmx[3] = v * 255;
+    // dmx[4] = v * 255;
+
+    dmx[100] = brightness * v;
+    dmx[101] = brightness * v;
+    dmx[102] = brightness * v;
+
+    dmx[177] = 255;
+    dmx[178] = 255;
+    dmx[179] = 255;
+    dmx[180] = brightness * v;
+}
+
+// int pow(int base, int exp) {
+//     int acc = base;
+//     for (int i = 1; i < exp; i++) {
+//         acc *= base;
+//     }
+//     return acc;
+// }
+
+void set_left_cue(int32_t *data, bool enabled) {
+    data[STROBE_ACTIVE_INDEX] = enabled;
+    int toggled = 0x7F * enabled;
+    bl_midi(CUE_LEFT_STATUS, CUE_LEFT_KIND, toggled);
+
+    // TODO: hacky!!
+    // data[STROBE_BEGIN_TIME] = data[CURRENT_TIME_INDEX];
+}
+
+void toggle_left_cue(int32_t *data) { set_left_cue(data, !data[STROBE_ACTIVE_INDEX]); }
+
+void set_right_cue(int32_t *data, bool enabled) {
+    // dmx[1] = 255;
+    // dmx[2] = 255;
+    data[COLOR_ACTIVE_INDEX] = enabled;
+    int toggled = 0x7F * enabled;
+    bl_midi(CUE_RIGHT_STATUS, CUE_RIGHT_KIND, toggled);
+}
+
+void toggle_right_cue(int32_t *data) { set_right_cue(data, !data[COLOR_ACTIVE_INDEX]); }
+
+void set_right_performace_0_0(int32_t *data, bool enabled) {
+    data[COLOR_TO_MUSIC_INDEX] = enabled;
+    int color = 0x7F * enabled;
+    bl_midi(PERFORMANCE_RIGHT_0_0_STATUS, PERFORMANCE_RIGHT_0_0_KIND, color);
+}
+
+void update_left_perf_indicators(int32_t *data) {
+    bl_midi(PERFORMANCE_LEFT_0_0_STATUS, PERFORMANCE_LEFT_0_0_KIND, 0x7F * data[STROBE_TO_MUSIC_INDEX]);
+    bl_midi(PERFORMANCE_LEFT_1_0_STATUS, PERFORMANCE_LEFT_1_0_KIND, 0x7F * data[STROBE_ON]);
+}
+
+void set_left_performace_0_0(int32_t *data, bool enabled) {
+    data[STROBE_TO_MUSIC_INDEX] = enabled;
+    update_left_perf_indicators(data);
+}
+
+void set_left_performace_1_0(int32_t *data, bool enabled) {
+    data[STROBE_ON] = enabled;
+    update_left_perf_indicators(data);
+}
+
+void toggle_left_performance_0_0(int32_t *data) { set_left_performace_0_0(data, !data[STROBE_TO_MUSIC_INDEX]); }
+void toggle_left_performance_1_0(int32_t *data) { set_left_performace_1_0(data, !data[STROBE_ON]); }
+
+void toggle_right_performance_0_0(int32_t *data) { set_right_performace_0_0(data, !data[COLOR_TO_MUSIC_INDEX]); }
+
+void update_right_perf_indicators(int32_t *data) {
+    bl_midi(PERFORMANCE_RIGHT_0_1_STATUS, PERFORMANCE_RIGHT_0_1_KIND, (data[HUE_ANIMATE_MODE_INDEX] == 1) * 127);
+    bl_midi(PERFORMANCE_RIGHT_0_2_STATUS, PERFORMANCE_RIGHT_0_2_KIND, (data[HUE_ANIMATE_MODE_INDEX] == 2) * 127);
+}
+
+void set_right_performace_0_1(int32_t *data) {
+    if (data[HUE_ANIMATE_MODE_INDEX] == 1) {
+        data[HUE_ANIMATE_MODE_INDEX] = 0;
+    } else {
+        data[HUE_ANIMATE_MODE_INDEX] = 1;
+    }
+
+    update_right_perf_indicators(data);
+}
+
+void set_right_performace_1_1(int32_t *data) {
+    if (data[HUE_ANIMATE_MODE_INDEX] == 2) {
+        data[HUE_ANIMATE_MODE_INDEX] = 0;
+    } else {
+        data[HUE_ANIMATE_MODE_INDEX] = 2;
+    }
+
+    update_right_perf_indicators(data);
+}
+
+void toggle_right_performance_0_1(int32_t *data) { set_right_performace_0_1(data); }
+void toggle_right_performance_1_1(int32_t *data) { set_right_performace_1_1(data); }
+
+void set_right_cue_round(int32_t *data, bool enabled) {
+    data[ANIMATE_TO_BEAT_ON_INDEX] = enabled;
+    int color = 0x7F * enabled;
+    bl_midi(ROUND_CUE_RIGHT_STATUS, ROUND_CUE_RIGHT_KIND, color);
+}
+void toggle_right_cue_round(int32_t *data) { set_right_cue_round(data, !data[ANIMATE_TO_BEAT_ON_INDEX]); }
+
+// void midi(uint8_t status, uint8_t data0, uint8_t data1, int32_t data_array, int32_t data_len) {
+//     bl_puts("MIDI: ");
+//     bl_log_int(status);
+//     bl_log_int(data0);
+//     bl_log_int(data1);
+// }
+
+void set_left_vol_slider(int32_t *data, uint8_t midi_value) {
+    data[FLASH_BRIGHTNESS_KEY] = map(midi_value, 0, 127, 0, 255);
+}
+
+void set_right_vol_slider(int32_t *data, uint8_t midi_value) {
+    data[NORMAL_BRIGHTNESS_KEY] = map(midi_value, 0, 127, 0, 255);
+}
+
+void set_left_filter(int32_t *data, uint8_t midi_value) {
+    int mapped = map(midi_value, 0, 127, -4, 2);
+    if (mapped == -3) {
+        mapped = -2;
+    }
+    data[STROBE_SPEED_MULTIPLIER_KEY] = mapped;
+    // bl_log_int(data[STROBE_SPEED_MULTIPLIER_KEY]);
+}
+
+void set_right_filter(int32_t *data, uint8_t midi_value) {
+    int mapped = map(midi_value, 0, 127, 1, 255);
+    data[HUE_ANIMATE_SPEED_INDEX] = mapped;
+    // bl_log_int(data[HUE_ANIMATE_SPEED_INDEX]);
+}
+
+void set_right_low_filter(int32_t *data, uint8_t midi_value) {
+    int mapped = map(midi_value, 0, 127, 1, 127);
+    // bl_log_int(mapped);
+    data[BEAT_HUE_ANIMATE_STEP_INDEX] = midi_value;
+}
+
+void set_right_mid_filter(int32_t *data, uint8_t midi_value) {
+    int mapped = map(midi_value, 0, 127, -4, 4);
+    if (mapped == -3) {
+        mapped = -2;
+    }
+    data[BEAT_HUE_ANIMATE_SPEED_INDEX] = mapped;
+}
+
+void initialize(TickInput input, uint8_t *dmx_array, int32_t dmx_len, int32_t *data, int32_t data_len) {
+    bl_puts("WASM: Initialized was called.");
+    dmx_array[1] = 50;
+    dmx_array[2] = 255;
+
+    data[FLASH_BRIGHTNESS_KEY] = 255;
+    data[NORMAL_BRIGHTNESS_KEY] = 255;
+
+    set_left_cue(data, 1);
+    set_left_vol_slider(data, 127);
+
+    set_right_cue(data, 1);
+    set_right_vol_slider(data, 127);
+
+    set_left_filter(data, 64); // Maps to 0.
+    set_right_performace_0_0(data, 1);
+
+    set_left_performace_0_0(data, 1);
+
+    bl_midi(RELOOP_LEFT_STATUS, RELOOP_LEFT_KIND, 127);
+
+    data[INIT_TIME_INDEX] = input.time;
+    data[HUE_ANIMATE_SPEED_INDEX] = 1;
+    data[BEAT_HUE_ANIMATE_STEP_INDEX] = 1;
+
+    data[HUE_ANIMATE_MODE_INDEX] = 0;
+    update_right_perf_indicators(data);
+
+    set_right_cue_round(data, 1);
+    set_right_low_filter(data, 64);
+}
+
+void hue_advance_1(int32_t *data, int32_t progress_between_0_and_127) {
+    data[CROSSFADER_KEY] = (data[CROSSFADER_KEY] + progress_between_0_and_127) % 127;
+    // bl_log_int(progress_between_0_and_127);
+}
+
+void hue_advance_2(int32_t *data) {
+    if (data[CROSSFADER_KEY] == 127) {
+        data[CROSSFADER_KEY] = 0;
+    } else {
+        data[CROSSFADER_KEY] = 127;
+    }
+}
+
+void tick(TickInput input, uint8_t *dmx, int32_t dmx_len, int32_t *data, int32_t data_len, MidiEvent *midi,
+          int32_t midi_len) {
+
+    data[CURRENT_TIME_INDEX] = input.time;
+
+    // dmx[1] = 255;
+    // dmx[2] = 255;
+
+    // for (int i = 0; i < 20; i++) {
+    //     dmx[i] = 255;
+    // }
+
+    int init_delta = input.time - data[INIT_TIME_INDEX];
+    if (init_delta > 1000 && init_delta < 2000) {
+        bl_midi(RELOOP_LEFT_STATUS, RELOOP_LEFT_KIND, 0);
+    }
+
+    // BPM modifier indicators.
+    int bpm_modifier = 0;
+    if (data[STROBE_SPEED_MULTIPLIER_KEY] < 0) {
+        bpm_modifier = map(abs(data[STROBE_SPEED_MULTIPLIER_KEY]), 1, 4, 60, 110);
+    } else if (data[STROBE_SPEED_MULTIPLIER_KEY] > 0) {
+        bpm_modifier = map(abs(data[STROBE_SPEED_MULTIPLIER_KEY]), 1, 2, 60, 70);
+    } else if (data[STROBE_SPEED_MULTIPLIER_KEY] == 0) {
+        bpm_modifier = map(1, 1, 2, 60, 70);
+    }
+    bl_midi(0xb0, 02, bpm_modifier);
+
+    // Volume indicators.
+    if (data[ANIMATE_TO_BEAT_ON_INDEX]) {
+        int bpm_modifier = 0;
+        if (data[BEAT_HUE_ANIMATE_SPEED_INDEX] < 0) {
+            bpm_modifier = map(abs(data[BEAT_HUE_ANIMATE_SPEED_INDEX]), 1, 4, 60, 110);
+        } else if (data[BEAT_HUE_ANIMATE_SPEED_INDEX] > 0) {
+            bpm_modifier = map(abs(data[BEAT_HUE_ANIMATE_SPEED_INDEX]), 1, 4, 60, 110);
+        } else if (data[BEAT_HUE_ANIMATE_SPEED_INDEX] == 0) {
+            bpm_modifier = map(1, 1, 2, 60, 70);
+        }
+        bl_midi(0xb1, 02, bpm_modifier);
+    } else {
+        int volume_value = map(input.volume, 0, 150, 0, 127);
+        bl_midi(0xb1, 02, volume_value);
+    }
+
+    for (int i = 0; i < midi_len; i++) {
+        if (midi[i].status == CROSSFADER_STATUS && midi[i].kind == CROSSFADER_KIND) {
+            data[CROSSFADER_KEY] = midi[i].value;
+        } else if (midi[i].status == LEFT_FADER_STATUS && midi[i].kind == LEFT_FADER_KIND) {
+            set_left_vol_slider(data, midi[i].value);
+        } else if (midi[i].status == RIGHT_FADER_STATUS && midi[i].kind == RIGHT_FADER_KIND) {
+            set_right_vol_slider(data, midi[i].value);
+            // bl_log_int(data[NORMAL_BRIGHTNESS_KEY]);
+        } else if (midi[i].status == CUE_RIGHT_STATUS && midi[i].kind == CUE_RIGHT_KIND) {
+            if (midi[i].value == 127) {
+                toggle_right_cue(data);
+            }
+        } else if (midi[i].status == CUE_LEFT_STATUS && midi[i].kind == CUE_LEFT_KIND) {
+            if (midi[i].value == 127) {
+                toggle_left_cue(data);
+            }
+        } else if (midi[i].status == RELEASE_FX_STATUS && midi[i].kind == RELEASE_FX_KIND) {
+            if (midi[i].value == 127) {
+                toggle_left_cue(data);
+                toggle_right_cue(data);
+            }
+        } else if (midi[i].status == LEFT_FILTER_STATUS && midi[i].kind == LEFT_FILTER_KIND) {
+            set_left_filter(data, midi[i].value);
+        } else if (midi[i].status == RIGHT_FILTER_STATUS && midi[i].kind == RIGHT_FILTER_KIND) {
+            set_right_filter(data, midi[i].value);
+        } else if (midi[i].status == RIGHT_LOW_FILTER_STATUS && midi[i].kind == RIGHT_LOW_FILTER_KIND) {
+            set_right_low_filter(data, midi[i].value);
+        } else if (midi[i].status == RIGHT_MID_FILTER_STATUS && midi[i].kind == RIGHT_MID_FILTER_KIND) {
+            set_right_mid_filter(data, midi[i].value);
+        } else if (midi[i].status == PERFORMANCE_RIGHT_0_0_STATUS && midi[i].kind == PERFORMANCE_RIGHT_0_0_KIND) {
+            if (midi[i].value == 127) {
+                toggle_right_performance_0_0(data);
+            }
+        } else if (midi[i].status == PERFORMANCE_LEFT_0_0_STATUS && midi[i].kind == PERFORMANCE_LEFT_0_0_KIND) {
+            if (midi[i].value == 127) {
+                toggle_left_performance_0_0(data);
+            }
+        } else if (midi[i].status == PERFORMANCE_LEFT_1_0_STATUS && midi[i].kind == PERFORMANCE_LEFT_1_0_KIND) {
+            if (midi[i].value == 127) {
+                toggle_left_performance_1_0(data);
+            }
+        } else if (midi[i].status == ROUND_CUE_RIGHT_STATUS && midi[i].kind == ROUND_CUE_RIGHT_KIND) {
+            if (midi[i].value == 127) {
+                toggle_right_cue_round(data);
+            }
+        } else if (midi[i].status == PERFORMANCE_RIGHT_0_1_STATUS && midi[i].kind == PERFORMANCE_RIGHT_0_1_KIND) {
+            if (midi[i].value == 127) {
+                toggle_right_performance_0_1(data);
+            }
+        } else if (midi[i].status == PERFORMANCE_RIGHT_0_2_STATUS && midi[i].kind == PERFORMANCE_RIGHT_0_2_KIND) {
+            if (midi[i].value == 127) {
+                toggle_right_performance_1_1(data);
+            }
+        } else if (midi[i].status == PERFORMANCE_RIGHT_1_0_STATUS && midi[i].kind == PERFORMANCE_RIGHT_1_0_KIND) {
+            if (midi[i].value == 127) {
+                if (data[COLOR_MODE_INDEX] == 1) {
+                    bl_puts("RESET");
+                    data[COLOR_MODE_INDEX] = 0;
+                } else {
+                    data[COLOR_MODE_INDEX] = 1;
+                }
+
+                // bl_log_int(data[COLOR_ACTIVE_INDEX]);
+
+                bl_midi(PERFORMANCE_RIGHT_1_0_STATUS, PERFORMANCE_RIGHT_1_0_KIND, (data[COLOR_MODE_INDEX] == 1) * 127);
+                bl_midi(PERFORMANCE_RIGHT_2_0_STATUS, PERFORMANCE_RIGHT_2_0_KIND, (data[COLOR_MODE_INDEX] == 2) * 127);
+            }
+        } else if (midi[i].status == PERFORMANCE_RIGHT_2_0_STATUS && midi[i].kind == PERFORMANCE_RIGHT_2_0_KIND) {
+            if (midi[i].value == 127) {
+                if (data[COLOR_MODE_INDEX] == 2) {
+                    data[COLOR_MODE_INDEX] = 0;
+                } else {
+                    data[COLOR_MODE_INDEX] = 2;
+                }
+
+                bl_midi(PERFORMANCE_RIGHT_1_0_STATUS, PERFORMANCE_RIGHT_1_0_KIND, (data[COLOR_MODE_INDEX] == 1) * 127);
+                bl_midi(PERFORMANCE_RIGHT_2_0_STATUS, PERFORMANCE_RIGHT_2_0_KIND, (data[COLOR_MODE_INDEX] == 2) * 127);
+            }
+        } else {
+            bl_puts("==========");
+            bl_log_int(midi[i].status);
+            bl_log_int(midi[i].kind);
+            bl_log_int(midi[i].value);
+        }
+    }
+
+    // Crossfader code.
+    if (data[COLOR_MODE_INDEX] == 0) {
+        int hue = map(data[CROSSFADER_KEY], 0, 127, 0, 360);
+        data[150] = hue;
+    } else if (data[COLOR_MODE_INDEX] == 1) {
+        int mapped = (data[CROSSFADER_KEY] > (127 / 2));
+
+        if (mapped) {
+            // CYAN
+            data[150] = 180;
+        } else {
+            // MAGENTA
+            data[150] = 300;
+        }
+    }
+
+    // --- Rainbow RGB effect ---
+    int hue = data[150]; // persistent hue
+    int r, g, b;
+    hsv_to_rgb(hue, &r, &g, &b);
+
+    // scale brightness with volume
+    // r = r;
+    // g = g;
+    // b = b;
+
+    int volume_to_brightness = 0;
+    if (since_last_bpm_flash(data, input.time) > 1000 || data[COLOR_ACTIVE_INDEX]) {
+        int input_volume = input.volume;
+        if (!data[COLOR_TO_MUSIC_INDEX]) {
+            input_volume = 150;
+        }
+        volume_to_brightness = map(input_volume, 0, 150, 0, data[NORMAL_BRIGHTNESS_KEY]);
+    }
+
+    dmx[21] = volume_to_brightness;
+    dmx[22] = r;
+    dmx[23] = g;
+    dmx[24] = b;
+
+    // --- Audio-reactive white strobe ---
+    int time_since_strobe_start = elapsed(input.time, data, STROBE_START_INDEX);
+
+    if (!data[STROBE_ON] && data[STROBE_ACTIVE_INDEX] &&
+        ((input.bass_avg < 50 && input.bass > 100 && !data[IS_STROBE_INDEX]) ||
+         (time_since_strobe_start < STROBE_TIME && data[IS_STROBE_INDEX]) && input.volume > 150)) {
+        if (!data[IS_STROBE_INDEX]) {
+            data[STROBE_START_INDEX] = input.time;
+        }
+
+        data[WHITE_VALUE_INDEX] = data[IS_WHITE_VALUE_INDEX] ? 0 : 255;
+        data[IS_WHITE_VALUE_INDEX] = !data[IS_WHITE_VALUE_INDEX];
+
+        set_white(data[IS_WHITE_VALUE_INDEX], dmx, data);
+        bl_puts("Entered strobe branch.");
+        write_last_bpm_flash(data, input.time);
+
+        data[STROBE_BEGIN_TIME] = input.time;
+        data[STROBE_WAS_OFF] = 0;
+
+        return;
+    } else if (!data[STROBE_ON] && data[IS_WHITE_VALUE_INDEX]) {
+        set_white(0, dmx, data);
+        data[IS_WHITE_VALUE_INDEX] = 0;
+        data[IS_STROBE_INDEX] = 0;
+    }
+
+    // --- BPM-based strobe ---
+    int elapsed = since_last_bpm_flash(data, input.time);
+    int bpm = input.bpm;
+
+    float multiplier = 1.0;
+    if (data[STROBE_SPEED_MULTIPLIER_KEY] < 0) {
+        multiplier = (float)(-data[STROBE_SPEED_MULTIPLIER_KEY]);
+    } else if (data[STROBE_SPEED_MULTIPLIER_KEY] > 0) {
+        multiplier = 1.0 / ((float)data[STROBE_SPEED_MULTIPLIER_KEY]);
+    }
+
+    if (!data[STROBE_TO_MUSIC_INDEX] && bpm == 0) {
+        bpm = 160;
+    }
+
+    int target_elapsed_bpm = (int)((1.0 / (float)bpm) * 60.0 * 1000.0 * multiplier);
+
+    if (data[STROBE_ON]) {
+        if (!data[IS_WHITE_VALUE_INDEX] || data[STROBE_ON_ACTIVE_BRI] != data[FLASH_BRIGHTNESS_KEY]) {
+            bl_puts("STROBE_CONSTANT_ON");
+            data[IS_WHITE_VALUE_INDEX] = 1;
+            data[WHITE_VALUE_INDEX] = 255;
+            set_white(data[IS_WHITE_VALUE_INDEX], dmx, data);
+            data[STROBE_ON_ACTIVE_BRI] = data[FLASH_BRIGHTNESS_KEY];
+        }
+    } else {
+        if (input.bass_avg < 100 && input.bass < 100 && data[STROBE_TO_MUSIC_INDEX]) {
+            if (data[IS_WHITE_VALUE_INDEX]) {
+                bl_puts("Entered set-dark branch.");
+                data[WHITE_VALUE_INDEX] = 0;
+                data[IS_WHITE_VALUE_INDEX] = 0;
+                set_white(data[IS_WHITE_VALUE_INDEX], dmx, data);
+            }
+        } else if (data[STROBE_ACTIVE_INDEX]) {
+            // TODO: dont hardcode!!!
+            // also only do this when the strobe is active!
+            if (input.time - data[STROBE_BEGIN_TIME] > 5000 && !data[STROBE_WAS_OFF]) {
+                set_left_cue(data, 0);
+                data[STROBE_WAS_OFF] = 1;
+            }
+
+            if (elapsed > target_elapsed_bpm && !data[IS_WHITE_VALUE_INDEX]) {
+                write_last_bpm_flash(data, input.time);
+                data[IS_WHITE_VALUE_INDEX] = 1;
+                data[WHITE_VALUE_INDEX] = 255;
+                set_white(data[IS_WHITE_VALUE_INDEX], dmx, data);
+            } else if (data[IS_WHITE_VALUE_INDEX]) {
+                write_last_bpm_flash_high(data, input.time);
+                data[WHITE_VALUE_INDEX] = 0;
+                data[IS_WHITE_VALUE_INDEX] = 0;
+                set_white(data[IS_WHITE_VALUE_INDEX], dmx, data);
+            }
+        }
+    }
+
+    // BPM-based animations.
+    int bpm_animate_elapsed = input.time - data[LAST_HUE_ANIMATE_TICK_INDEX];
+
+    // Advance HUE (slider pos) when using animation.
+    // TODO: animation speed as a dial.
+    int base_factor_animate = 10000;
+    if (data[HUE_ANIMATE_MODE_INDEX] != 0) {
+        if (data[ANIMATE_TO_BEAT_ON_INDEX]) {
+            float multiplier = 1.0;
+            if (data[BEAT_HUE_ANIMATE_SPEED_INDEX] < 0) {
+                multiplier = (float)(-data[BEAT_HUE_ANIMATE_SPEED_INDEX]);
+            } else if (data[BEAT_HUE_ANIMATE_SPEED_INDEX] > 0) {
+                multiplier = 1.0 / ((float)data[BEAT_HUE_ANIMATE_SPEED_INDEX]);
+            }
+
+            int animate_target_elapsed_bpm = (int)((1.0 / (float)bpm) * 60.0 * 1000.0 * multiplier);
+
+            // bl_log_int(data[BEAT_HUE_ANIMATE_SPEED_INDEX]);
+
+            if (data[ANIMATE_TO_BEAT_ON_INDEX] && bpm_animate_elapsed > animate_target_elapsed_bpm && bpm > 0) {
+                data[LAST_HUE_ANIMATE_TICK_INDEX] = input.time;
+
+                if (data[HUE_ANIMATE_MODE_INDEX] == 1) {
+                    int advance_step = map(data[BEAT_HUE_ANIMATE_STEP_INDEX], 1, 127, 1, 50);
+                    hue_advance_1(data, advance_step);
+                } else if (data[HUE_ANIMATE_MODE_INDEX] == 2) {
+                    hue_advance_2(data);
+                }
+            }
+        } else if (data[CURRENT_TIME_INDEX] - data[LAST_HUE_ANIMATE_TICK_INDEX] >
+                   ((int)(base_factor_animate / data[HUE_ANIMATE_SPEED_INDEX]))) {
+            if (data[HUE_ANIMATE_MODE_INDEX] == 1) {
+                int advance_step = map(data[BEAT_HUE_ANIMATE_STEP_INDEX], 1, 127, 1, 50);
+                hue_advance_1(data, advance_step);
+                hue_advance_1(data, advance_step);
+            } else if (data[HUE_ANIMATE_MODE_INDEX] == 2) {
+                hue_advance_2(data);
+            }
+
+            data[LAST_HUE_ANIMATE_TICK_INDEX] = data[CURRENT_TIME_INDEX];
+        }
+    }
+}
