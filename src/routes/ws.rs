@@ -1,6 +1,7 @@
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
-    // time::Duration,
+    time::Duration, // time::Duration,
 };
 
 // use actix::{Actor, StreamHandler};
@@ -14,10 +15,11 @@ use actix_ws::AggregatedMessage;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
-    app::FromFrontend,
-    audio::{Signal, SystemMessage},
+    app::{FromFrontend, WSMatrixControlBody},
+    audio::{Signal, SystemMessage, UnifiedMessage, SIGNAL_SPEED},
     utils::device_from_name,
 };
 
@@ -36,6 +38,7 @@ pub enum WSFromFrontendKind {
     SelectAudioDevice,
     SelectSerialDevice,
     Reload,
+    MatrixControl,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -49,6 +52,10 @@ impl From<WSFromFrontend> for FromFrontend {
     fn from(value: WSFromFrontend) -> Self {
         match value.kind {
             WSFromFrontendKind::Reload => Self::Reload,
+            WSFromFrontendKind::MatrixControl => {
+                let control: WSMatrixControlBody = serde_json::from_value(value.value).unwrap();
+                Self::MatrixControl(control)
+            }
             WSFromFrontendKind::SelectAudioDevice => {
                 if value.value == serde_json::Value::Null {
                     Self::SelectInputDevice(None)
@@ -79,7 +86,7 @@ impl From<WSFromFrontend> for FromFrontend {
 // To frontend signal.
 //
 
-#[derive(Serialize)]
+#[derive(Serialize, Hash, Eq, PartialEq, Clone, Copy)]
 pub enum WSSignalKind {
     Bpm,
     BeatVolume,
@@ -100,7 +107,7 @@ impl From<Signal> for WSSignal {
         match value {
             Signal::Bpm(value) => Self {
                 kind: WSSignalKind::Bpm,
-                value,
+                value: value.bpm,
             },
             Signal::BeatVolume(value) => Self {
                 kind: WSSignalKind::BeatVolume,
@@ -130,6 +137,10 @@ impl From<Signal> for WSSignal {
 pub enum WSSystemMessageKind {
     Heartbeat,
     Log,
+    WasmLog,
+    WasmControlsLog,
+    WasmControlsSet,
+    WasmControlsConfig,
     TickSpeed,
     LoopSpeed,
     AudioSelected,
@@ -154,6 +165,22 @@ impl From<SystemMessage> for WSSystemMessage {
             },
             SystemMessage::Log(msg) => Self {
                 kind: WSSystemMessageKind::Log,
+                value: serde_json::to_value(msg).unwrap(),
+            },
+            SystemMessage::WasmLog(msg) => Self {
+                kind: WSSystemMessageKind::WasmLog,
+                value: serde_json::to_value(msg).unwrap(),
+            },
+            SystemMessage::WasmControlsLog(msg) => Self {
+                kind: WSSystemMessageKind::WasmControlsLog,
+                value: serde_json::to_value(msg).unwrap(),
+            },
+            SystemMessage::WasmControlsSet(msg) => Self {
+                kind: WSSystemMessageKind::WasmControlsSet,
+                value: serde_json::to_value(msg).unwrap(),
+            },
+            SystemMessage::WasmControlsConfig(msg) => Self {
+                kind: WSSystemMessageKind::WasmControlsConfig,
                 value: serde_json::to_value(msg).unwrap(),
             },
             SystemMessage::TickSpeed(duration) => Self {
@@ -214,12 +241,21 @@ pub async fn ws_handler(
 
     println!("Open websocket");
 
+    // add consumer:
+    let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
+    let ip = req.connection_info().peer_addr().unwrap().to_string();
+    let id = Uuid::new_v4().to_string();
+    println!("[ws] new ip connected: {ip}: {id}");
+    {
+        let mut consumers = data.to_frontend_consumers.lock().unwrap();
+        consumers.insert(id.clone(), unified_sender);
+    }
+
     let mut stream = stream
         .aggregate_continuations()
         // aggregate continuation frames up to 1MiB
         .max_continuation_size(2_usize.pow(20));
 
-    let data2 = data.clone();
     let mut session2 = session.clone();
 
     let b = Arc::new(Mutex::new(true));
@@ -227,6 +263,8 @@ pub async fn ws_handler(
     let a = b.clone();
 
     rt::spawn(async move {
+        // let mut last_sent_value: HashMap<WSSignalKind, u8> = HashMap::new();
+
         loop {
             {
                 if !*a.lock().unwrap() {
@@ -235,26 +273,32 @@ pub async fn ws_handler(
                 }
             }
 
-            match data2.app_signal_receiver.try_recv() {
-                Ok(signal) => {
-                    // println!("app signal: ${signal:?}");
-                    let ws_signal = WSSignal::from(signal);
-                    session2
-                        .text(serde_json::to_string(&ws_signal).unwrap())
-                        .await
-                        .unwrap();
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => unreachable!(),
-            }
+            match unified_receiver.try_recv() {
+                Ok(sys) => match sys {
+                    UnifiedMessage::Signal(signal) => {
+                        let ws_signal = WSSignal::from(signal);
 
-            match data2.app_system_receiver.try_recv() {
-                Ok(sys) => {
-                    session2
-                        .text(serde_json::to_string(&WSSystemMessage::from(sys)).unwrap())
-                        .await
-                        .unwrap();
-                }
+                        // if let Some(prev) = last_sent_value.get(&ws_signal.kind) {
+                        // // Bigger change.
+                        // if (*prev as i16 - ws_signal.value as i16).abs() > 5 {
+                        //     last_sent_value.insert(ws_signal.kind, ws_signal.value);
+
+                        session2
+                            .text(serde_json::to_string(&ws_signal).unwrap())
+                            .await
+                            .unwrap();
+                        // }
+                        // }
+                    }
+                    UnifiedMessage::System(SystemMessage::DMX(_)) => {}
+                    UnifiedMessage::System(system_message) => {
+                        let ws_system = WSSystemMessage::from(system_message);
+                        session2
+                            .text(serde_json::to_string(&ws_system).unwrap())
+                            .await
+                            .unwrap();
+                    }
+                },
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => unreachable!(),
             }
@@ -264,6 +308,7 @@ pub async fn ws_handler(
     });
 
     // start task but don't wait for it
+    let from_frontend_sender = data.from_frontend_sender.clone();
     rt::spawn(async move {
         // receive messages from websocket
         println!("waiting for message...");
@@ -276,7 +321,7 @@ pub async fn ws_handler(
                     let msg: WSFromFrontend =
                         serde_json::from_str(text.to_string().as_str()).unwrap();
 
-                    data.from_frontend_sender.send(msg.clone().into()).unwrap();
+                    from_frontend_sender.send(msg.clone().into()).unwrap();
                     println!("recv ws: {msg:?}");
                 }
 
@@ -304,6 +349,11 @@ pub async fn ws_handler(
         println!("Websocket was killed.");
         let mut a = b.lock().unwrap();
         *a = false;
+
+        {
+            let mut consumers = data.to_frontend_consumers.lock().unwrap();
+            consumers.remove(&id);
+        }
     });
 
     Ok(res)
@@ -314,38 +364,90 @@ pub async fn binary_ws_handler(
     data: Data<AppState>,
     stream: web::Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let (res, mut session, _) = actix_ws::handle(&req, stream)?;
+    let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
 
     println!("Open websocket");
 
-    // let mut stream = stream
-    //     .aggregate_continuations()
-    //     // aggregate continuation frames up to 1MiB
-    //     .max_continuation_size(2_usize.pow(20));
+    // add consumer:
+    let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
+    let ip = req.connection_info().peer_addr().unwrap().to_string();
+    let id = Uuid::new_v4().to_string();
+    println!("[ws] new ip connected: {ip}: {id}");
+    {
+        let mut consumers = data.to_frontend_consumers.lock().unwrap();
+        consumers.insert(id.clone(), unified_sender);
+    }
+
+    let mut stream = stream
+        .aggregate_continuations()
+        // aggregate continuation frames up to 1MiB
+        .max_continuation_size(2_usize.pow(20));
+
+    let mut session2 = session.clone();
+
+    let b = Arc::new(Mutex::new(true));
+
+    let a = b.clone();
 
     rt::spawn(async move {
         loop {
-            match data.app_system_receiver.try_recv() {
+            {
+                if !*a.lock().unwrap() {
+                    println!("DMX ws loop killed");
+                    break;
+                }
+            }
+
+            match unified_receiver.try_recv() {
                 Ok(sys) => match sys {
-                    SystemMessage::DMX(data) => {
-                        let mut vec = data.to_vec();
+                    UnifiedMessage::System(SystemMessage::DMX(dat)) => {
+                        let mut vec = dat.to_vec();
                         vec.remove(0);
-                        match session.binary(vec).await {
-                            Ok(_) => {},
+                        match session2.binary(vec).await {
+                            Ok(_) => {}
                             Err(_) => break,
                         }
                     }
                     _ => {}
                 },
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Disconnected) => unreachable!(),
             }
 
             yield_now().await;
         }
     });
 
-    println!("Websocket was killed.");
+    rt::spawn(async move {
+        // receive messages from websocket
+        println!("waiting for message...");
+        while let Some(msg) = stream.recv().await {
+            match msg {
+                Ok(AggregatedMessage::Ping(msg)) => {
+                    // respond to PING frame with PONG frame
+                    session.pong(&msg).await.unwrap();
+                }
+                Ok(AggregatedMessage::Close(e)) => {
+                    println!("close: {e:?}");
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    println!("error: {e:?}");
+                    break;
+                }
+            }
+        }
+
+        println!("Websocket was killed.");
+        let mut a = b.lock().unwrap();
+        *a = false;
+
+        {
+            let mut consumers = data.to_frontend_consumers.lock().unwrap();
+            consumers.remove(&id);
+        }
+    });
 
     Ok(res)
 }

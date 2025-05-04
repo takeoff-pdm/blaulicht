@@ -10,7 +10,7 @@ use std::{
     u8,
 };
 
-use crossbeam_channel::{Sender, TryRecvError};
+use crossbeam_channel::{Sender, Receiver, TryRecvError};
 
 use actix::System;
 use anyhow::anyhow;
@@ -163,18 +163,50 @@ impl Converter {
 }
 
 #[derive(Clone, Serialize, Debug)]
+pub struct BpmInfo {
+    pub bpm: u8,
+    pub time_between_beats_millis: u16,
+}
+
+#[derive(Clone, Serialize, Debug)]
 pub enum Signal {
-    Bpm(u8),
+    Bpm(BpmInfo),
     BeatVolume(u8),
     Bass(u8),
     BassAvg(u8),
     Volume(u8),
 }
 
+#[derive(Clone, Serialize)]
+pub struct WasmControlsLog {
+    pub x: u8,
+    pub y: u8,
+    pub value: String,
+}
+
+
+#[derive(Clone, Serialize)]
+pub struct WasmControlsSet {
+    pub x: u8,
+    pub y: u8,
+    pub value: bool,
+}
+
+
+#[derive(Clone, Serialize)]
+pub struct WasmControlsConfig {
+    pub x: u8,
+    pub y: u8,
+}
+
 #[derive(Clone)]
 pub enum SystemMessage {
     Heartbeat(usize),
     Log(String),
+    WasmLog(String),
+    WasmControlsLog(WasmControlsLog),
+    WasmControlsSet(WasmControlsSet),
+    WasmControlsConfig(WasmControlsConfig),
     LoopSpeed(Duration),
     TickSpeed(Duration),
     // Audio.
@@ -187,11 +219,17 @@ pub enum SystemMessage {
     DMX([u8; 513]),
 }
 
+#[derive(Clone)]
+pub enum UnifiedMessage {
+    Signal(Signal),
+    System(SystemMessage),
+}
+
 const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
 
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
-const SIGNAL_SPEED: Duration = Duration::from_millis(50);
+pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
 const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
@@ -253,6 +291,8 @@ pub fn run(
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     // to_frontend_sender: Sender<ToFrontent>,
+    midi_in_receiver: Receiver<(u8, u8, u8)>,
+    midi_out_sender: Sender<(u8, u8, u8)>,
 ) -> anyhow::Result<()> {
     let config = Config::default();
 
@@ -317,31 +357,6 @@ pub fn run(
         warn!("No default DMX serial output available");
     }
 
-    println!("Creating midi...");
-    let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
-    let (midi_out_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
-
-    thread::spawn(move || {
-        loop {
-            match midi::midi(midi_in_sender.clone(), midi_out_receiver.clone()) {
-                Ok(_) => panic!("Unreachable."),
-                Err(err) => { 
-                    eprintln!("MIDI thread chrashed! {err:?}");
-                    break;
-                },
-            }
-        }
-
-        loop {
-            thread::sleep(Duration::from_millis(50));
-            match midi_out_receiver.try_recv() {
-                Ok(midi) => { println!("MIDI recv: {midi:?}") },
-                Err(TryRecvError::Empty) => {},
-                Err(TryRecvError::Disconnected) => panic!("MIDI dender gone."),
-            }
-        }
-    });
-
     let mut dmx_universe = match serial_port {
         Some(port) => {
             let serial_port_name = port.port_name.clone();
@@ -349,12 +364,14 @@ pub fn run(
             system_out
                 .send(SystemMessage::SerialSelected(Some(port.clone())))
                 .unwrap();
-            DmxUniverse::new(serial_port_name, signal_out_0.clone(), midi_out_sender, system_out.clone())
+            DmxUniverse::new(
+                serial_port_name,
+                signal_out_0.clone(),
+                midi_out_sender,
+                system_out.clone(),
+            )
         }
-        None => DmxUniverse::new_dummy(
-            midi_out_sender,
-            system_out.clone(),
-        ),
+        None => DmxUniverse::new_dummy(midi_out_sender, system_out.clone()),
     };
 
     // Energy saving.
@@ -431,7 +448,9 @@ pub fn run(
             let mut midi = vec![];
             loop {
                 match midi_in_receiver.try_recv() {
-                    Ok(data) => midi.push(data),
+                    Ok(data) => {
+                        midi.push(data)
+                    },
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => break,
                 }
@@ -504,7 +523,6 @@ pub fn run(
             {
                 let v = values
                     .iter()
-                    .filter(|f| f.freq <= 150.0)
                     .map(|f| f.volume as usize)
                     .collect::<Vec<usize>>();
 
@@ -597,7 +615,10 @@ pub fn run(
 
                 &[
                     Signal::Bass(sig),
-                    Signal::Bpm(bpm as u8),
+                    Signal::Bpm(BpmInfo {
+                        bpm: bpm as u8,
+                        time_between_beats_millis: (avg_bass_peak_durations * 1000.0) as u16,
+                    }),
                     Signal::BassAvg(bass_moving_average as u8),
                 ]
             }

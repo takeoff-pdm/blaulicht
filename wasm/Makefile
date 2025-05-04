@@ -1,21 +1,29 @@
-CLANG:=clang
-CLANG_ARGS:=-Ofast -flto -static -Wno-incompatible-library-redeclaration
-LINKER_ARGS:=-Wl,--no-entry -Wl,--export-all -Wl,--lto-O3
-TARGET=wasm32
+SED:=sed
+SED_PACKAGE_PLACEHOLDER:=placeholder
 
-IN_FILES:=$(wildcard *.c)
-# IN_FILES := $(filter-out input.c, $(IN_FILES))
-OUT_FILE:=./output.wasm
+CARGO:=cargo
+TARGET_TRIPLE:=wasm32-unknown-unknown
 
-.PHONY: build
+COMPILATION_MODE:=release
 
-build:
-	echo "$(IN_FILES)" 1>&2
+IN_FILE:=input.rs
+OUT_FILE:=output.wasm
 
-	$(CLANG) --target=$(TARGET) \
-		--no-standard-libraries \
-		$(CLANG_ARGS) $(LINKER_ARGS)\
-		$(IN_FILES) \
-		-o $(OUT_FILE)
-	wasm-opt -o $(OUT_FILE) -O4 --strip-debug $(OUT_FILE)
+# Provided externally
+# HASH:=placeholder
+CRATE:=blaulicht
 
+.PHONY: target
+
+# prepare:
+# 	$(SED) -e "s/$(SED_PACKAGE_PLACEHOLDER)/$(CRATE)/g" Cargo.toml > Cargo.toml
+
+target:
+	# Add to file with prelude
+	# cat input.rs >> src/input.rs
+
+	$(CARGO) build --target=$(TARGET_TRIPLE) --$(COMPILATION_MODE) --target-dir=target
+	cp ./target/$(TARGET_TRIPLE)/$(COMPILATION_MODE)/$(CRATE).wasm $(OUT_FILE)
+	# wasm-opt -o $(OUT_FILE) -O4 --strip-debug $(OUT_FILE)
+
+build: target

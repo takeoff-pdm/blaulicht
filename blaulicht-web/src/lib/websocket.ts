@@ -2,23 +2,27 @@
 // Topics.
 //
 
-const WS_PATH = "api/ws"
+const WS_PATH = "api/ws";
 
 import type { DMXData } from "./types";
 
 export enum TopicKind {
-  BPM = 'Bpm',
-  DMX = 'Dmx',
-  Heartbeat = 'Heartbeat',
-  AudioDevicesView = 'AudioDevicesView',
-  AudioDeviceSelected  = 'SelectAudioDevice',
-  Log  = 'Log',
-  Volume  = 'Volume',
-  Bass  = 'Bass',
-  BassAvg  = 'BassAvg',
-  BeatVolume = 'BeatVolume',
-  LoopSpeed = 'LoopSpeed',
-  TickSpeed = 'TickSpeed'
+  BPM = "Bpm",
+  DMX = "Dmx",
+  Heartbeat = "Heartbeat",
+  AudioDevicesView = "AudioDevicesView",
+  AudioDeviceSelected = "SelectAudioDevice",
+  Log = "Log",
+  WasmLog = "WasmLog",
+  WasmControlsLog = "WasmControlsLog",
+  WasmControlsSet = "WasmControlsSet",
+  WasmControlsConfig = "WasmControlsConfig",
+  Volume = "Volume",
+  Bass = "Bass",
+  BassAvg = "BassAvg",
+  BeatVolume = "BeatVolume",
+  LoopSpeed = "LoopSpeed",
+  TickSpeed = "TickSpeed",
 }
 
 //
@@ -26,20 +30,17 @@ export enum TopicKind {
 //
 
 export interface SendEvent {
-    kind: "SelectAudioDevice" | "SelectSerialDevice" | "Reload",
-    value: any
+  kind: "SelectAudioDevice" | "SelectSerialDevice" | "Reload" | "MatrixControl"
+  value: any;
 }
 
 //
 // End send events.
 //
 
-
-
 export interface Topic<T extends TopicKind = TopicKind> {
   kind: T;
 }
-
 
 export function topicHeartbeat(): Topic<TopicKind.Heartbeat> {
   return { kind: TopicKind.Heartbeat };
@@ -65,6 +66,22 @@ export function topicLog(): Topic<TopicKind.Log> {
   return { kind: TopicKind.Log };
 }
 
+export function topicWasmLog(): Topic<TopicKind.WasmLog> {
+  return { kind: TopicKind.WasmLog };
+}
+
+export function topicWasmControlsLog(): Topic<TopicKind.WasmControlsLog> {
+  return { kind: TopicKind.WasmControlsLog };
+}
+
+export function topicWasmControlsSet(): Topic<TopicKind.WasmControlsSet> {
+  return { kind: TopicKind.WasmControlsSet };
+}
+
+export function topicWasmControlsConfig(): Topic<TopicKind.WasmControlsConfig> {
+  return { kind: TopicKind.WasmControlsConfig };
+}
+
 export function topicVolume(): Topic<TopicKind.Volume> {
   return { kind: TopicKind.Volume };
 }
@@ -77,43 +94,51 @@ export function topicBassAvg(): Topic<TopicKind.BassAvg> {
   return { kind: TopicKind.BassAvg };
 }
 
-export function topicBeatVolume(): Topic<TopicKind.BeatVolume > {
+export function topicBeatVolume(): Topic<TopicKind.BeatVolume> {
   return { kind: TopicKind.BeatVolume };
 }
 
-export function topicLoopSpeed(): Topic<TopicKind.LoopSpeed > {
+export function topicLoopSpeed(): Topic<TopicKind.LoopSpeed> {
   return { kind: TopicKind.LoopSpeed };
 }
 
-export function topicTickSpeed(): Topic<TopicKind.TickSpeed > {
+export function topicTickSpeed(): Topic<TopicKind.TickSpeed> {
   return { kind: TopicKind.TickSpeed };
 }
 
 export type UpdateMessage<T> = T extends TopicKind.DMX
-    ? { kind: Topic<T>; value: number[] }
+  ? { kind: Topic<T>; value: number[] }
   : T extends TopicKind.Heartbeat
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.AudioDevicesView
-    ? { kind: Topic<T>; value: string[] }
+  ? { kind: Topic<T>; value: string[] }
   : T extends TopicKind.AudioDeviceSelected
-    ? { kind: Topic<T>; value: string }
+  ? { kind: Topic<T>; value: string }
   : T extends TopicKind.Log
-    ? { kind: Topic<T>; value: string }
+  ? { kind: Topic<T>; value: string }
+  : T extends TopicKind.WasmLog
+  ? { kind: Topic<T>; value: string }
+  : T extends TopicKind.WasmControlsLog
+  ? { kind: Topic<T>; value: { x: number; y: number; value: string } }
+  : T extends TopicKind.WasmControlsSet
+  ? { kind: Topic<T>; value: { x: number; y: number; value: boolean } }
+  : T extends TopicKind.WasmControlsConfig
+  ? { kind: Topic<T>; value: { x: number; y: number } }
   : T extends TopicKind.Volume
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.Bass
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.BassAvg
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.BeatVolume
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.BPM
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.LoopSpeed
-    ? { kind: Topic<T>; value: number }
+  ? { kind: Topic<T>; value: number }
   : T extends TopicKind.TickSpeed
-    ? { kind: Topic<T>; value: number }
-      : never;
+  ? { kind: Topic<T>; value: number }
+  : never;
 
 type OnMessageCallBack<T extends TopicKind> = (data: UpdateMessage<T>) => void;
 
@@ -136,7 +161,7 @@ export class BlaulichtWebsocketCallbacks {
     // console.dir(data)
     const callback = this.callbacks.get(topic);
     if (!callback) {
-      throw(`Required callback does not exist for topic ${data.kind}`)
+      throw `Required callback does not exist for topic ${data.kind}`;
     }
 
     callback(data);
@@ -146,11 +171,11 @@ export class BlaulichtWebsocketCallbacks {
     topic: Topic<K>,
     callback: OnMessageCallBack<K>
   ) {
-    const topicStr = JSON.stringify(topic)
+    const topicStr = JSON.stringify(topic);
     this.callbacks.set(topicStr, callback);
-    console.log(`after sub (topic=${topicStr}, callback=${callback})`)
+    console.log(`after sub (topic=${topicStr}, callback=${callback})`);
     for (let key of this.callbacks.keys()) {
-        console.log(`key=${key}`)
+      console.log(`key=${key}`);
     }
     // this.sync();
   }
@@ -164,19 +189,19 @@ export class BlaulichtWebsocketCallbacks {
 export class BlaulichtWebsocket {
   socket: WebSocket;
   isReady: boolean = false;
-  callbacks: BlaulichtWebsocketCallbacks
+  callbacks: BlaulichtWebsocketCallbacks;
 
   constructor(callbacksP: BlaulichtWebsocketCallbacks) {
-    this.callbacks = callbacksP
+    this.callbacks = callbacksP;
     let protocol = undefined;
     const host = document.location.host;
 
     switch (document.location.protocol) {
-      case 'http:':
-        protocol = 'ws:';
+      case "http:":
+        protocol = "ws:";
         break;
-      case 'https:':
-        protocol = 'wss:';
+      case "https:":
+        protocol = "wss:";
         break;
       default:
         throw `Unsupported protocol '${document.location.protocol}':
@@ -193,7 +218,7 @@ export class BlaulichtWebsocket {
     };
 
     this.socket.onclose = () => {
-      throw 'Websocket closed prematurely';
+      throw "Websocket closed prematurely";
     };
 
     this.socket.onmessage = (evt) => {
@@ -208,13 +233,13 @@ export class BlaulichtWebsocket {
   }
 
   private onMessage(data: UpdateMessage<TopicKind>) {
-      const topicStr = JSON.stringify({kind: data.kind})
-      this.callbacks.trigger(topicStr, data)
+    const topicStr = JSON.stringify({ kind: data.kind });
+    this.callbacks.trigger(topicStr, data);
   }
 
   private sync() {
-      console.log("WS: SYNC")
-      return;
+    console.log("WS: SYNC");
+    return;
 
     if (!this.isReady) {
       return;
@@ -231,9 +256,7 @@ export class BlaulichtWebsocket {
     // );
   }
 
-  send(
-      event: SendEvent,
-  ) {
-      this.socket.send(JSON.stringify(event))
+  send(event: SendEvent) {
+    this.socket.send(JSON.stringify(event));
   }
 }

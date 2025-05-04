@@ -38,7 +38,7 @@ struct DmxUniverseBasic {
 
 impl DmxUniverseBasic {
     fn new(midi_out: Sender<(u8, u8, u8)>, system_out: Sender<SystemMessage>) -> Self {
-        let tick_engine = wasm::TickEngine::create(midi_out).unwrap();
+        let tick_engine = wasm::TickEngine::create(midi_out, system_out.clone()).unwrap();
 
         Self {
             tick_engine,
@@ -63,7 +63,8 @@ impl DmxUniverseBasic {
                 self.tickinput.bass_avg = v;
             }
             Signal::Bpm(v) => {
-                self.tickinput.bpm = v;
+                self.tickinput.bpm = v.bpm;
+                self.tickinput.time_between_beats_millis = v.time_between_beats_millis;
             }
         }
     }
@@ -125,19 +126,20 @@ impl DmxUniverse {
 
     pub fn tick(&mut self, midi: &[(u8, u8, u8)]) -> anyhow::Result<Duration> {
         match self {
-            DmxUniverse::Dummy(ref mut dummy)=> {
+            DmxUniverse::Dummy(ref mut dummy) => {
                 let dur = dummy.basic.tick(midi)?;
 
                 let mut modified = false;
                 for (a, b) in dummy.basic.channels.iter().zip(dummy.last_state.iter()) {
-                    if (a != b) {
+                    if a != b {
                         modified = true;
                         break;
                     }
                 }
 
                 if modified {
-                    dummy.basic
+                    dummy
+                        .basic
                         .system_out
                         .send(SystemMessage::DMX(dummy.basic.channels))
                         .unwrap();
@@ -371,7 +373,9 @@ pub fn audio_thread(
     audio_thread_control_signal: Arc<AtomicU8>,
     signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
-    // to_frontend_sender: Sender<ToFrontent>,
+    midi_in_receiver: Receiver<(u8, u8, u8)>,
+    midi_in_sender: Sender<(u8, u8, u8)>,
+    midi_out_sender: Sender<(u8, u8, u8)>,
 ) {
     // let begin_msg = from_frontend.recv().unwrap();
     println!("[audio] Thread started!");
@@ -431,6 +435,10 @@ pub fn audio_thread(
                 audio_device = dev;
                 device_changed = true;
             }
+            Ok(FromFrontend::MatrixControl(control)) => {
+                println!("matrix control: {control:?}");
+                midi_in_sender.send((control.y, control.x, control.value as u8)).unwrap();
+            }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 unreachable!("broken")
@@ -479,12 +487,18 @@ pub fn audio_thread(
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
 
                 let sys = sys.clone();
+
+                let midi_recv = midi_in_receiver.clone();
+                let midi_send = midi_out_sender.clone();
+
                 thread::spawn(move || {
                     if let Err(err) = audio::run(
                         audio_input_device,
                         sig_0,
                         sys.clone(),
                         audio_thread_control_signal.clone(),
+                        midi_recv,
+                        midi_send,
                         // to_frontend_sender,
                     ) {
                         // TODO: handle the audio backend error.

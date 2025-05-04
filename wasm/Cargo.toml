@@ -1,0 +1,15 @@
+[package]
+name = "blaulicht"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+interpolate = "0.2.3"
+map-range = "0.1.2"
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"

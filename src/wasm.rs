@@ -1,16 +1,9 @@
 use crossbeam_channel::Sender;
-use std::time::{Instant, UNIX_EPOCH};
+use std::time::Instant;
 
-use actix_web::rt::net::UdpSocket;
-use itertools::Itertools;
 use wasmtime::*;
 
-use crate::midi;
-
-struct MyState {
-    name: String,
-    count: usize,
-}
+use crate::audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet};
 
 #[derive(Clone, Copy)]
 pub struct TickInput {
@@ -19,10 +12,11 @@ pub struct TickInput {
     pub bass: u8,
     pub bass_avg: u8,
     pub bpm: u8,
+    pub time_between_beats_millis: u16,
 }
 
 impl TickInput {
-    fn serialize(&self, timer_start: Instant, initial: bool) -> [i32; 7] {
+    fn serialize(&self, timer_start: Instant, initial: bool) -> [i32; 8] {
         [
             Instant::now().duration_since(timer_start).as_millis() as i32,
             self.volume.into(),
@@ -30,6 +24,7 @@ impl TickInput {
             self.bass.into(),
             self.bass_avg.into(),
             self.bpm.into(),
+            self.time_between_beats_millis.into(),
             initial as i32,
         ]
     }
@@ -43,6 +38,7 @@ impl Default for TickInput {
             bass: 0,
             bass_avg: 0,
             bpm: 0,
+            time_between_beats_millis: 0,
         }
     }
 }
@@ -53,22 +49,27 @@ pub struct TickEngine {
     dmx: Vec<u8>,
     wasm: Option<WasmEngine>,
     midi_out: Sender<(u8, u8, u8)>,
+    system_out: Sender<SystemMessage>,
 }
 
 pub struct WasmEngine {
-    store: Store<MyState>,
+    store: Store<()>,
     instance: Instance,
     memory: Memory,
 }
 
 impl TickEngine {
-    pub fn create(midi_out: Sender<(u8, u8, u8)>) -> Result<Self> {
+    pub fn create(
+        midi_out: Sender<(u8, u8, u8)>,
+        system_out: Sender<SystemMessage>,
+    ) -> Result<Self> {
         let mut engine = TickEngine {
             timer_start: Instant::now(),
             data: vec![0; 1000],
             dmx: vec![0; 513],
             wasm: None,
             midi_out,
+            system_out,
         };
 
         engine.init_wasm()?;
@@ -89,20 +90,15 @@ impl TickEngine {
         let engine = Engine::new(&config)?;
         let module = Module::from_file(&engine, "./wasm/output.wasm")?;
 
-        let mut store = Store::new(
-            &engine,
-            MyState {
-                name: "hello, world!".to_string(),
-                count: 0,
-            },
-        );
+        let mut store = Store::new(&engine, ());
 
         let mut linker = Linker::new(&engine);
 
+        let so = self.system_out.clone();
         linker.func_wrap(
             "blaulicht",
             "log",
-            |mut caller: Caller<'_, MyState>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -114,14 +110,74 @@ impl TickEngine {
                     .expect("Failed to read memory");
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
+
                 println!("[WASM] {received_string}");
+
+                so.send(SystemMessage::WasmLog(received_string))
+                    .expect("Failed to send log message");
+            },
+        )?;
+
+        let so = self.system_out.clone();
+        linker.func_wrap(
+            "blaulicht",
+            "controls_log",
+            move |mut caller: Caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("Failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("Failed to read memory");
+
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
+
+                // println!("[WASM] {received_string}");
+
+                so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
+                    x: x as u8,
+                    y: y as u8,
+                    value: received_string,
+                }))
+                .expect("Failed to send controls log message");
+            },
+        )?;
+
+        let so = self.system_out.clone();
+        linker.func_wrap(
+            "blaulicht",
+            "controls_set",
+            move |mut _caller: Caller<'_, ()>, x: i32, y: i32, value: i32| {
+                so.send(SystemMessage::WasmControlsSet(WasmControlsSet {
+                    x: x as u8,
+                    y: y as u8,
+                    value: value != 0,
+                }))
+                .expect("Failed to send controls set message");
+            },
+        )?;
+
+        let so = self.system_out.clone();
+        linker.func_wrap(
+            "blaulicht",
+            "controls_config",
+            move |mut _caller: Caller<'_, ()>, x: i32, y: i32| {
+                so.send(SystemMessage::WasmControlsConfig(WasmControlsConfig {
+                    x: x as u8,
+                    y: y as u8,
+                }))
+                .expect("Failed to send controls config message");
+                println!("[WASM] controls_config: {x} {y}");
             },
         )?;
 
         let mo = self.midi_out.clone();
         linker.func_wrap(
             "blaulicht",
-            "midi",
+            "bl_midi",
             move |status: i32, kind: i32, value: i32| {
                 mo.send((status as u8, kind as u8, value as u8)).unwrap();
             },
@@ -158,6 +214,7 @@ impl TickEngine {
                 bass: 0,
                 bass_avg: 0,
                 bpm: 0,
+                time_between_beats_millis: 0,
             },
             &[],
             true,
@@ -185,7 +242,7 @@ impl TickEngine {
         //
         // Tick input array.
         //
-        let tick_array_offset = 0x1000; // Arbitrary offset
+        let tick_array_offset = 0x10000; // Arbitrary offset
         let tick_array_data = input.serialize(self.timer_start, initial);
         let tick_array_len = tick_array_data.len() as i32;
         let mut tick_array_bytes = Vec::new();
@@ -200,7 +257,7 @@ impl TickEngine {
         //
         // MIDI array.
         //
-        let midi_array_offset = 0x8000; // TODO: make this offset a const.
+        let midi_array_offset = 0x80000; // TODO: make this offset a const.
         let midi_array_len = midi_events.len() as i32;
 
         if (midi_array_len > 100) {
@@ -223,7 +280,7 @@ impl TickEngine {
         //
         // DMX array.
         //
-        let dmx_array_offset = 0x2000; // TODO: make this offset a const.
+        let dmx_array_offset = 0x20000; // TODO: make this offset a const.
         let dmx_array_len = self.dmx.len() as i32;
         let mut dmx_array_bytes = Vec::new();
         for &num in &self.dmx {
@@ -235,7 +292,7 @@ impl TickEngine {
         //
         // Data array.
         //
-        let data_array_offset = 0x9000; // Arbitrary offset
+        let data_array_offset = 0x90000; // Arbitrary offset
         let data_array_len = self.data.len();
         let mut data_array_bytes = Vec::new();
         for &num in &self.data {

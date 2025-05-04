@@ -1,16 +1,19 @@
+use std::collections::HashMap;
 use std::sync::atomic::AtomicU8;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use actix_files::Files;
+use actix_web::rt::task;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
 use anyhow::{anyhow, Context};
-use blaulicht::audio::AudioThreadControlSignal;
+use blaulicht::audio::{AudioThreadControlSignal, SystemMessage, UnifiedMessage};
 use blaulicht::routes::AppState;
 use blaulicht::wasm::TickInput;
 use blaulicht::{config, dmx, midi, routes, wasm};
+use crossbeam_channel::{Sender, TryRecvError};
 use env_logger::Env;
 use log::info;
 
@@ -94,16 +97,50 @@ async fn main() -> anyhow::Result<()> {
     let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
     let audio_thread_control_signal = Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE));
 
+    println!("Creating midi...");
+    let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
+    let (midi_out_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
+
+    let send = midi_in_sender.clone();
+    thread::spawn(move || {
+        loop {
+            match midi::midi(send, midi_out_receiver.clone()) {
+                Ok(_) => panic!("Unreachable."),
+                Err(err) => {
+                    eprintln!("MIDI thread chrashed! {err:?}");
+                    break;
+                }
+            }
+        }
+
+        // Debug midi thread.
+        // Allows the dev to se what MIDI messages are sent to the device.
+        loop {
+            thread::sleep(Duration::from_millis(50));
+            match midi_out_receiver.try_recv() {
+                Ok(midi) => {
+                    println!("MIDI recv: {midi:?}")
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => panic!("MIDI sender gone."),
+            }
+        }
+    });
+
     {
         // Audio recording and analysis thread.
         let system_out = system_out.clone();
         let audio_thread_control_signal = audio_thread_control_signal.clone();
-        thread::spawn(|| {
+        let send = midi_in_sender.clone();
+        thread::spawn(move || {
             dmx::audio_thread(
                 from_frontend_receiver,
                 audio_thread_control_signal,
                 app_signal_out,
                 system_out,
+                midi_in_receiver,
+                send,
+                midi_out_sender,
                 // to_frontend_sender,
             )
         });
@@ -113,10 +150,49 @@ async fn main() -> anyhow::Result<()> {
     // End audio.
     //
 
+    let consumers: Arc<Mutex<HashMap<String, Sender<UnifiedMessage>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+
+    // app_system_receiver,
+    // Spawn broadcast thread.
+
+    let consumers2 = consumers.clone();
+    thread::spawn(move || loop {
+        //
+        // System messages.
+        //
+        let system_res = app_system_receiver.try_recv();
+        match system_res {
+            Ok(res) => {
+                let consumers = consumers2.lock().unwrap();
+                for c in consumers.values() {
+                    c.send(UnifiedMessage::System(res.clone())).unwrap();
+                }
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => {}
+            Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
+        }
+
+        //
+        // Signal messages.
+        //
+        let signal_res = app_signal_receiver.try_recv();
+        match signal_res {
+            Ok(res) => {
+                let consumers = consumers2.lock().unwrap();
+                for c in consumers.values() {
+                    c.send(UnifiedMessage::Signal(res.clone())).unwrap();
+                }
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => {}
+            Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
+        }
+    });
+
     let data = Data::new(AppState {
         from_frontend_sender,
-        app_signal_receiver,
-        app_system_receiver,
+        // app_signal_receiver,
+        to_frontend_consumers: consumers,
     });
 
     let server = HttpServer::new(move || {

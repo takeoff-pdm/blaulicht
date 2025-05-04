@@ -589,11 +589,12 @@ void initialize(TickInput input, uint8_t *dmx_array, int32_t dmx_len, int32_t *d
     data[STROBE_BEGIN_TIME] = input.time;
     data[STROBE_WAS_OFF] = 1;
 
-    set_left_performace_0_0(data, dmx_array, 0);
+    //set_left_performace_0_0(data, dmx_array, 0);
     dmx_array[109] = 255;
     dmx_array[110] = 255;
     dmx_array[111] = 255;
     dmx_array[112] = 255;
+    set_left_speed(data, 50);
 }
 
 void hue_advance_1(int32_t *data, int32_t progress_between_0_and_127) {
