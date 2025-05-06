@@ -59,6 +59,9 @@ impl DmxUniverseBasic {
             Signal::Bass(v) => {
                 self.tickinput.bass = v;
             }
+            Signal::BassAvgShort(v) => {
+                self.tickinput.bass_avg_short = v;
+            }
             Signal::BassAvg(v) => {
                 self.tickinput.bass_avg = v;
             }

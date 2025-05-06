@@ -8,6 +8,10 @@ extern "C" {
     fn controls_config(x: u8, y: u8);
 }
 
+pub fn bl_midi_safe(status: u8, data0: u8, data1: u8) {
+    unsafe { bl_midi(status, data0, data1) }
+}
+
 /// Log a string to the BL output
 pub fn bl_log(msg: &str) {
     unsafe { log(msg.as_ptr(), msg.len()) }
@@ -58,6 +62,7 @@ pub struct TickInput {
     pub volume: u8,
     pub beat_volume: u8,
     pub bass: u8,
+    pub bass_avg_short: u8,
     pub bass_avg: u8,
     pub bpm: u8,
     pub time_between_beats_millis: u16,
@@ -150,6 +155,15 @@ pub mod prelude {
         };
     }
     pub use dbg;
+
+#[macro_export]
+macro_rules! smidi {
+    ($tuple: expr, $value: expr) => {
+        blaulicht::bl_midi_safe($tuple.0, $tuple.1, $value)
+    };
+}
+
+pub use smidi;
 }
 
 // pub fn fmod(a: f64, b: f64) -> f64 {

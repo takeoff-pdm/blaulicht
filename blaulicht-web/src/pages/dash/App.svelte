@@ -18,6 +18,7 @@
     topicAudioDevicesView,
     topicBass,
     topicBassAvg,
+    topicBassAvgShort,
     topicBeatVolume,
     topicBPM,
     topicDMX,
@@ -75,6 +76,7 @@
   audioPortListOptions["None"] = "None";
 
   let bass = 0;
+  let bassAvgShort = 0;
   let bassAvg = 0;
   let beatVolume = 0;
 
@@ -200,6 +202,11 @@
       bass = event.value;
     });
 
+    callbacks.subscribe(topicBassAvgShort(), (event) => {
+      // console.log(`Bass: ${event.value}`)
+      bassAvgShort = event.value;
+    });
+
     callbacks.subscribe(topicBassAvg(), (event) => {
       // console.log(`Bass: ${event.value}`)
       bassAvg = event.value;
@@ -293,85 +300,108 @@
 <Page pageId="dash">
   <div class="page">
     <div style="width: 100%; display: flex;">
-      <div style="width: 60%;">
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={loopSpeed}
-              graph={true}
-              max={100}
-              theme={ThemeUtils.presets.retro}
-              format={(v) => `${v} micro s`}
-            />
+      <div style="width: 60%; display: flex; flex-direction: column; gap: 3rem;">
+        <div
+          style="display: flex; flex-direction: column; background-color: red; gap: 1rem;"
+        >
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={loopSpeed}
+                graph={true}
+                max={100}
+                theme={ThemeUtils.presets.retro}
+                format={(v) => `${v} micro s`}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>LOOP SPEED</span>
+              <Monitor value={loopSpeed} graph={false} />
+            </div>
           </div>
-          <div style="width: 10%">
-            <span>LOOP SPEED</span>
-            <Monitor value={loopSpeed} graph={false} />
+
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={tickSpeed}
+                graph={true}
+                max={50}
+                theme={ThemeUtils.presets.retro}
+                format={(v) => `${v} micro s`}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>WASM SPEED</span>
+              <Monitor value={tickSpeed} graph={false} />
+            </div>
           </div>
         </div>
 
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={tickSpeed}
-              graph={true}
-              max={50}
-              theme={ThemeUtils.presets.retro}
-              format={(v) => `${v} micro s`}
-            />
+        <div
+          style="display: flex; flex-direction: column; background-color: blue; gap: 1rem;"
+        >
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={volume}
+                graph={true}
+                max={300}
+                theme={ThemeUtils.presets.retro}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>VOLUME</span>
+              <Monitor value={volume} graph={false} />
+            </div>
           </div>
-          <div style="width: 10%">
-            <span>WASM SPEED</span>
-            <Monitor value={tickSpeed} graph={false} />
+
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={bass}
+                graph={true}
+                max={300}
+                theme={ThemeUtils.presets.retro}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>BASS</span>
+              <Monitor value={bass} graph={false} />
+            </div>
+          </div>
+
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={bassAvgShort}
+                graph={true}
+                max={300}
+                theme={ThemeUtils.presets.retro}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>BASS PEAK</span>
+              <Monitor value={bassAvgShort} graph={false} />
+            </div>
+          </div>
+
+          <div style="display: flex;">
+            <div style="width: 90%">
+              <Monitor
+                value={bassAvg}
+                graph={true}
+                max={300}
+                theme={ThemeUtils.presets.retro}
+              />
+            </div>
+            <div style="width: 10%">
+              <span>BASS AVG.</span>
+              <Monitor value={bassAvg} graph={false} />
+            </div>
           </div>
         </div>
 
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={volume}
-              graph={true}
-              max={300}
-              theme={ThemeUtils.presets.retro}
-            />
-          </div>
-          <div style="width: 10%">
-            <span>VOLUME</span>
-            <Monitor value={volume} graph={false} />
-          </div>
-        </div>
-
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={bass}
-              graph={true}
-              max={300}
-              theme={ThemeUtils.presets.retro}
-            />
-          </div>
-          <div style="width: 10%">
-            <span>BASS</span>
-            <Monitor value={bass} graph={false} />
-          </div>
-        </div>
-
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={bassAvg}
-              graph={true}
-              max={300}
-              theme={ThemeUtils.presets.retro}
-            />
-          </div>
-          <div style="width: 10%">
-            <span>BASS AVG.</span>
-            <Monitor value={bassAvg} graph={false} />
-          </div>
-        </div>
-
-        <div style="display: flex;">
+        <!-- <div style="display: flex;">
           <div style="width: 90%">
             <Monitor
               value={beatVolume}
@@ -384,7 +414,7 @@
             <span>BEAT VOL.</span>
             <Monitor value={beatVolume} graph={false} />
           </div>
-        </div>
+        </div> -->
 
         <div style="display: flex;">
           <div style="width: 90%">
@@ -419,9 +449,7 @@
               const x = Math.floor(e.detail.index / controlMatrixConfig.cols);
               const y = e.detail.index % controlMatrixConfig.cols;
 
-              console.log(
-                `Button ${x} ${y} toggled to ${e.detail.state}`
-              );
+              console.log(`Button ${x} ${y} toggled to ${e.detail.state}`);
 
               socket.send({
                 kind: "MatrixControl",

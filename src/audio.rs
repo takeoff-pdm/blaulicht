@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     net::UdpSocket,
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -10,7 +10,7 @@ use std::{
     u8,
 };
 
-use crossbeam_channel::{Sender, Receiver, TryRecvError};
+use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use actix::System;
 use anyhow::anyhow;
@@ -173,6 +173,7 @@ pub enum Signal {
     Bpm(BpmInfo),
     BeatVolume(u8),
     Bass(u8),
+    BassAvgShort(u8),
     BassAvg(u8),
     Volume(u8),
 }
@@ -184,14 +185,12 @@ pub struct WasmControlsLog {
     pub value: String,
 }
 
-
 #[derive(Clone, Serialize)]
 pub struct WasmControlsSet {
     pub x: u8,
     pub y: u8,
     pub value: bool,
 }
-
 
 #[derive(Clone, Serialize)]
 pub struct WasmControlsConfig {
@@ -246,14 +245,16 @@ macro_rules! system_message {
 
 macro_rules! signal {
     ($now:ident,$last_publish:ident,$out0:ident,$dmx:ident,$tx_signal:expr) => {
+        let signal_res = $tx_signal;
+
         if $now - $last_publish > SIGNAL_SPEED {
-            for signal in $tx_signal {
+            for signal in signal_res {
                 $out0.send(signal.clone()).unwrap();
             }
             $last_publish = $now;
         }
 
-        for signal in $tx_signal {
+        for signal in signal_res {
             $dmx.signal(signal.clone());
         }
     };
@@ -394,12 +395,12 @@ pub fn run(
     let mut long_historic = VecDeque::with_capacity(long_historic_frames);
     let mut historic = VecDeque::with_capacity(rolling_average_frames);
 
-    const BASS_FRAMES: usize = 8000; // 800
+    const BASS_FRAMES: usize = 10000; // 800
     let mut bass_samples = VecDeque::with_capacity(BASS_FRAMES);
-    let mut last_bass_udp_update = Instant::now();
 
-    const PEAK_FRAMES: usize = 300;
-    let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(PEAK_FRAMES);
+    // let mut last_bass_udp_update = Instant::now();
+
+    const PEAK_FRAMES: usize = 800;
 
     //
     // DMX
@@ -414,6 +415,9 @@ pub fn run(
     //
     //
     // let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+
+    let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(PEAK_FRAMES);
+    let bass_modifier = 65;
 
     loop {
         //
@@ -448,9 +452,7 @@ pub fn run(
             let mut midi = vec![];
             loop {
                 match midi_in_receiver.try_recv() {
-                    Ok(data) => {
-                        midi.push(data)
-                    },
+                    Ok(data) => midi.push(data),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => break,
                 }
@@ -527,45 +529,57 @@ pub fn run(
                     .collect::<Vec<usize>>();
 
                 let avg = v.iter().sum::<usize>() as f32 / v.len() as f32;
-                let sig = (avg * 100.0) as u8;
+                let bass_sig = (avg * 100.0) as u8;
 
-                bass_samples.push_back(sig);
+                // Bass samples.
+                bass_samples.push_back(bass_sig);
 
                 if bass_samples.len() >= BASS_FRAMES {
                     bass_samples.pop_front();
                 }
 
-                // Drop detection.
-                // let len = bass_samples.len();
-                // let drop = bass_samples.iter().filter(|b| **b > 20).count() >= len / 3;
+                let bass_moving_average =
+                    bass_samples.iter().map(|v| *v as f64).sum::<f64>() / BASS_FRAMES as f64;
 
-                // if last_bass_udp_update.elapsed().as_millis() >= 1000 {
-                //     last_bass_udp_update = Instant::now();
-                //     println!("drop={drop}");
-                //     socket
-                //         .send_to(
-                //             &[b'D', if drop { b'1' } else { b'0' }],
-                //             "192.168.0.100:33333",
-                //         )
-                //         .unwrap_or_else(|err| {
-                //             println!("error UDP: {:?}", err);
-                //             0
-                //         });
-                // }
+                struct BPMRes {
+                    param: usize,
+                    bpm: u8,
+                    time_between_beats_millis: u16,
+                    elapsed_since_last_peak: u32,
+                    peaked: bool,
+                }
 
-                let elapsed = match bass_peaks.iter().last() {
+                // let mut bpm_res = BPMRes {
+                //     param: 0,
+                //     bpm: 0,
+                //     time_between_beats_millis: 0,
+                //     elapsed_since_last_peak: 0,
+                //     peaked: false,
+                // };
+                // let mut max_bpm = 190;
+
+                // let mut bpms = vec![];
+
+                let elapsed_since_last_peak = match bass_peaks.iter().last() {
                     Some(last) => last.elapsed().as_millis(),
                     None => 10000,
                 };
 
-                // let hypothetical_bpm = 60.0 / (elapsed as f64);
+                // Must be in the upper 90% to be a peak.
+                // Do not consider values under bass 10.
+                let mut peaked = false;
 
-                if sig == 255 {
-                    if elapsed > 300 {
-                        // println!("bass peak.");
-                        bass_peaks.push_back(Instant::now());
-                    } else {
-                        // println!("bass peak stop");
+                if bass_moving_average >= 30.0 {
+                    let bass_moving_average_theoretical_max =
+                        (bass_moving_average * 2.0) * (bass_modifier as f64 / 100.0);
+
+                    if bass_sig >= bass_moving_average_theoretical_max as u8 {
+                        if elapsed_since_last_peak > 300 {
+                            bass_peaks.push_back(Instant::now());
+                            peaked = true;
+                        } else {
+                            // println!("bass peak stop");
+                        }
                     }
                 }
 
@@ -596,29 +610,57 @@ pub fn run(
                     .count();
                 // let bass_len = bass_peak_durations.len();
 
-                let avg_bass_peak_durations =
-                    (bass_peak_durations.sum::<f64>() / (bass_len as f64));
+                let bass_peak_sum = bass_peak_durations.sum::<f64>();
+                let avg_bass_peak_durations = bass_peak_sum / (bass_len as f64);
 
-                let bass_moving_average =
-                    bass_samples.iter().map(|v| *v as f64).sum::<f64>() / BASS_FRAMES as f64;
-
-                let bpm = if bass_moving_average <= 10.0 {
+                let bpm = if bass_moving_average <= 30.0 {
                     0.0
                 } else {
                     SECONDS_IN_A_MINUTE / avg_bass_peak_durations
                 };
 
+                let bpm = bpm as u8;
+                // if (bpm == 0 || bpm >= 180)
+                //     && bass_upper_percent_multiplier_changed.elapsed().as_millis() > 1000
+                // {
+                //     current_bass_muliplier -= 10;
+                //     if current_bass_muliplier <= 50 {
+                //         current_bass_muliplier = 90;
+                //     }
+                //     println!(
+                //         "adjusted upper percent multiplier: {}",
+                //         current_bass_muliplier
+                //     );
+                //     bass_upper_percent_multiplier_changed = Instant::now();
+                // }
+
+                // let (bpm_sum, millis_sum): (usize, usize) = bpms
+                //     .iter()
+                //     .map(|b| (b.bpm as usize, b.time_between_beats_millis as usize))
+                //     .fold((0, 0), |(acc1, acc2), (x, y)| (acc1 + x, acc2 + y));
+
+                // let bpm_avg = bpm_sum / bpms.len();
+                // let millis_avg = millis_sum / bpms.len();
+                // println!("avg: {bpm_avg} | {millis_avg}");
+
                 // println!("bpm={bpm}, avg_bass_dur={avg_bass_peak_durations} seconds, bass_moving_avg={bass_moving_average}");
-                // if !bass_peak_durations.is_empty() {
-                //     println!("bpm={:?}", bass_peak_durations);
+                // if peaked {
+                //     println!("peaked");
                 // }
 
                 &[
-                    Signal::Bass(sig),
+                    Signal::Bass(bass_sig),
                     Signal::Bpm(BpmInfo {
-                        bpm: bpm as u8,
-                        time_between_beats_millis: (avg_bass_peak_durations * 1000.0) as u16,
+                        bpm: bpm,
+                        time_between_beats_millis: avg_bass_peak_durations as u16,
                     }),
+                    if peaked || elapsed_since_last_peak < 100 {
+                        Signal::BassAvgShort(255)
+                    } else if bass_moving_average > 40.0 {
+                        Signal::BassAvgShort((elapsed_since_last_peak / 10) as u8)
+                    } else {
+                        Signal::BassAvgShort(0)
+                    },
                     Signal::BassAvg(bass_moving_average as u8),
                 ]
             }

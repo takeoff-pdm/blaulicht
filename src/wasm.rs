@@ -10,18 +10,20 @@ pub struct TickInput {
     pub volume: u8,
     pub beat_volume: u8,
     pub bass: u8,
+    pub bass_avg_short: u8,
     pub bass_avg: u8,
     pub bpm: u8,
     pub time_between_beats_millis: u16,
 }
 
 impl TickInput {
-    fn serialize(&self, timer_start: Instant, initial: bool) -> [i32; 8] {
+    fn serialize(&self, timer_start: Instant, initial: bool) -> [i32; 9] {
         [
             Instant::now().duration_since(timer_start).as_millis() as i32,
             self.volume.into(),
             self.beat_volume.into(),
             self.bass.into(),
+            self.bass_avg_short.into(),
             self.bass_avg.into(),
             self.bpm.into(),
             self.time_between_beats_millis.into(),
@@ -36,6 +38,7 @@ impl Default for TickInput {
             volume: 0,
             beat_volume: 0,
             bass: 0,
+            bass_avg_short: 0,
             bass_avg: 0,
             bpm: 0,
             time_between_beats_millis: 0,
@@ -212,6 +215,7 @@ impl TickEngine {
                 volume: 0,
                 beat_volume: 0,
                 bass: 0,
+                bass_avg_short: 0,
                 bass_avg: 0,
                 bpm: 0,
                 time_between_beats_millis: 0,

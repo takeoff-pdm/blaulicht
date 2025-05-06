@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub struct State {
     pub was_initial: bool,
@@ -34,6 +36,24 @@ pub struct MoodControls {
     pub on_beat: bool,
     pub force: bool,
     pub brightness: u8,
+    pub animation: MoodAnimation,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum MoodAnimation {
+    Synced,
+    Alternating(AnimationAlternating),
+    LeftRightSnake(AnimationAlternating),
+}
+
+impl MoodAnimation {
+    pub fn alternating() -> Self {
+        Self::Alternating(AnimationAlternating::default())
+    }
+
+    pub fn snake() -> Self {
+        Self::LeftRightSnake(AnimationAlternating::default())
+    }
 }
 
 #[derive(Debug)]
@@ -41,6 +61,73 @@ pub struct StrobeControls {
     pub on_beat: bool,
     pub strobe_enabled: bool,
     pub strobe_auto_enable: bool,
+    pub brightness: u8,
+    pub strobe_animation: StrobeAnimation,
+
+    pub strobe_drop_duration_secs: u32,
+
+    // Speed controls.
+    pub time_on_millis: u32,
+    pub time_off_millis: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum StrobeAnimation {
+    Synced,
+    Alternating(AnimationAlternating),
+}
+
+impl Default for StrobeAnimation {
+    fn default() -> Self {
+        Self::Synced
+    }
+}
+
+impl StrobeAnimation {
+    pub fn alternating() -> Self {
+        Self::Alternating(AnimationAlternating::default())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AnimationAlternating {
+    // Maps a light index to whether its enabled and the time of its state change.
+    // Activation / Deactivation time.
+    pub times: HashMap<usize, StrobeAnimationAlternatingState>,
+    pub current_index: usize,
+    pub last_change_time: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrobeAnimationAlternatingState {
+    pub enabled: bool,
+    pub change_time: u32,
+}
+
+impl StrobeAnimationAlternatingState {
+    pub fn enabled(time: u32) -> Self {
+        Self {
+            enabled: true,
+            change_time: time,
+        }
+    }
+
+    pub fn disabled(time: u32) -> Self {
+        Self {
+            enabled: false,
+            change_time: time,
+        }
+    }
+}
+
+impl Default for AnimationAlternating {
+    fn default() -> Self {
+        Self {
+            times: Default::default(),
+            current_index: Default::default(),
+            last_change_time: 0,
+        }
+    }
 }
 
 impl Default for State {
@@ -60,6 +147,11 @@ impl Default for State {
                         on_beat: true,
                         strobe_enabled: false,
                         strobe_auto_enable: true,
+                        brightness: 255,
+                        strobe_drop_duration_secs: 5,
+                        strobe_animation: StrobeAnimation::Synced,
+                        time_on_millis: 50,
+                        time_off_millis: 50,
                     },
                 },
                 mood: Mood {
@@ -68,6 +160,7 @@ impl Default for State {
                         on_beat: true,
                         force: false,
                         brightness: 255,
+                        animation: MoodAnimation::Synced,
                     },
                 },
             },

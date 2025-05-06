@@ -91,6 +91,7 @@ pub enum WSSignalKind {
     Bpm,
     BeatVolume,
     Bass,
+    BassAvgShort,
     BassAvg,
     Volume,
     DMX,
@@ -115,6 +116,10 @@ impl From<Signal> for WSSignal {
             },
             Signal::Bass(value) => Self {
                 kind: WSSignalKind::Bass,
+                value,
+            },
+            Signal::BassAvgShort(value) => Self {
+                kind: WSSignalKind::BassAvgShort,
                 value,
             },
             Signal::BassAvg(value) => Self {

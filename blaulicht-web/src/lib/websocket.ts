@@ -19,6 +19,7 @@ export enum TopicKind {
   WasmControlsConfig = "WasmControlsConfig",
   Volume = "Volume",
   Bass = "Bass",
+  BassAvgShort = "BassAvgShort",
   BassAvg = "BassAvg",
   BeatVolume = "BeatVolume",
   LoopSpeed = "LoopSpeed",
@@ -90,6 +91,10 @@ export function topicBass(): Topic<TopicKind.Bass> {
   return { kind: TopicKind.Bass };
 }
 
+export function topicBassAvgShort(): Topic<TopicKind.BassAvgShort> {
+  return { kind: TopicKind.BassAvgShort };
+}
+
 export function topicBassAvg(): Topic<TopicKind.BassAvg> {
   return { kind: TopicKind.BassAvg };
 }
@@ -127,6 +132,8 @@ export type UpdateMessage<T> = T extends TopicKind.DMX
   : T extends TopicKind.Volume
   ? { kind: Topic<T>; value: number }
   : T extends TopicKind.Bass
+  ? { kind: Topic<T>; value: number }
+  : T extends TopicKind.BassAvgShort
   ? { kind: Topic<T>; value: number }
   : T extends TopicKind.BassAvg
   ? { kind: Topic<T>; value: number }

@@ -25,7 +25,7 @@ fn decode_midi(midi: &[u32]) -> Vec<blaulicht::MidiEvent> {
 }
 
 fn tickinput_from_array(arr: &[u32]) -> blaulicht::TickInput {
-    const ARRAY_LEN: usize = 8;
+    const ARRAY_LEN: usize = 9;
     if arr.len() != ARRAY_LEN {
         panic!(
             "tick array len in 'tickinput_from_array' is not expected length: {}",
@@ -38,10 +38,11 @@ fn tickinput_from_array(arr: &[u32]) -> blaulicht::TickInput {
         volume: arr[1] as u8,
         beat_volume: arr[2] as u8,
         bass: arr[3] as u8,
-        bass_avg: arr[4] as u8,
-        bpm: arr[5] as u8,
-        time_between_beats_millis: arr[6] as u16,
-        initial: arr[7] != 0,
+        bass_avg_short: arr[4] as u8,
+        bass_avg: arr[5] as u8,
+        bpm: arr[6] as u8,
+        time_between_beats_millis: arr[7] as u16,
+        initial: arr[8] != 0,
     }
 }
 
