@@ -1,3 +1,4 @@
+use map_range::MapRange;
 use serde::de::value;
 
 use crate::{
@@ -5,10 +6,12 @@ use crate::{
     elapsed, printc, smidi,
     user::{
         midi::{
-            self, DDJ_LEFT_BEAT_LOOP, DDJ_LEFT_CUE, DDJ_LEFT_HOT_CUE_0_1, DDJ_LEFT_HOT_CUE_1_1,
-            STROBE_ALTERNATING, STROBE_BRIGHTNESS, STROBE_REMAINING_TIME, STROBE_SYNCED,
+            self, DDJ_LEFT_BEAT_JMP_0_0, DDJ_LEFT_BEAT_JMP_1_0, DDJ_LEFT_BEAT_SYNC, DDJ_LEFT_CUE,
+            DDJ_LEFT_HOT_CUE_0_1, DDJ_LEFT_HOT_CUE_1_1, DDJ_LEFT_RELOOP, STROBE_ALTERNATING,
+            STROBE_BRIGHTNESS, STROBE_ON_OFF_TIME, STROBE_REMAINING_TIME, STROBE_SPEED,
+            STROBE_SYNCED,
         },
-        state::{StrobeAnimation, StrobeAnimationAlternatingState},
+        state::{StrobeAnimation, StrobeAnimationAlternatingState, StrobeControls},
     },
 };
 
@@ -38,21 +41,22 @@ pub fn set_strobe_automation_on(state: &mut State, value: bool) {
         STROBE_AUTOMATION_TOGGLE.1,
         value,
     );
+    smidi!(DDJ_LEFT_RELOOP, value as u8 * 127);
 }
 
 pub fn set_on_beat(state: &mut State, value: bool) {
     state.animation.strobe.controls.on_beat = value;
     blaulicht::bl_controls_set(STROBE_ON_BEAT.0, STROBE_ON_BEAT.1, value);
-    smidi!(DDJ_LEFT_BEAT_LOOP, value as u8 * 127);
+    smidi!(DDJ_LEFT_BEAT_SYNC, value as u8 * 127);
 }
 
-pub fn set_animation(state: &mut State, value: StrobeAnimation) {
+pub fn set_animation(state: &mut State, dmx: &mut [u8], value: StrobeAnimation) {
     let (x0_y1_value, x1_y1_value) = match &value {
         StrobeAnimation::Synced => (127, 0),
         StrobeAnimation::Alternating { .. } => (0, 127),
     };
-    smidi!(DDJ_LEFT_HOT_CUE_0_1, x0_y1_value);
-    smidi!(DDJ_LEFT_HOT_CUE_1_1, x1_y1_value);
+    smidi!(DDJ_LEFT_BEAT_JMP_0_0, x0_y1_value);
+    smidi!(DDJ_LEFT_BEAT_JMP_1_0, x1_y1_value);
 
     bl_controls_set(STROBE_SYNCED.0, STROBE_SYNCED.1, x0_y1_value == 127);
     bl_controls_set(
@@ -62,16 +66,75 @@ pub fn set_animation(state: &mut State, value: StrobeAnimation) {
     );
 
     state.animation.strobe.controls.strobe_animation = value;
+
+    blackout(dmx);
 }
 
 pub fn set_brightness(state: &mut State, value: u8) {
     state.animation.strobe.controls.brightness = value;
-    printc!(STROBE_BRIGHTNESS.0, STROBE_BRIGHTNESS.1, "BRI {value}",);
+    printc!(STROBE_BRIGHTNESS.0, STROBE_BRIGHTNESS.1, "BRI {value:03}",);
+}
+
+// TODO: add a util module
+pub fn parse_speed_multiplier(value: u8) -> (f32, String) {
+    let parsed_value = match (value as i16).map_range(0..127, -4..6) {
+        6 => 1.0 / 6.0,
+        4 | 5 => 1.0 / 4.0,
+        3 | 2 => 1.0 / 2.0,
+        -1 | 0 | 1 => 1.0,
+        -2 | -3 => 2.0,
+        -4 => 4.0,
+        _ => unreachable!("illegal value produced by map"),
+    };
+    let value_str = if parsed_value > 1.0 {
+        format!("1/{}", (parsed_value) as u8)
+    } else {
+        format!("{}x", (1.0 / parsed_value) as u8)
+    };
+
+    (parsed_value, value_str)
+}
+
+// From raw MIDI.
+pub fn set_speed_multiplier(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.strobe.controls.speed_multiplier = parsed_value;
+    printc!(STROBE_SPEED.0, STROBE_SPEED.1, "SPEED {value_str}",);
+}
+
+pub fn set_off_multiplier(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.strobe.controls.time_off_millis =
+        (StrobeControls::default_time_on_off() as f32 * parsed_value) as u32;
+    printc!(
+        STROBE_ON_OFF_TIME.0,
+        STROBE_ON_OFF_TIME.1,
+        "ON {} <br> OFF {}",
+        state.animation.strobe.controls.time_on_millis,
+        state.animation.strobe.controls.time_off_millis,
+    );
+}
+
+pub fn set_on_multiplier(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.strobe.controls.time_on_millis =
+        (StrobeControls::default_time_on_off() as f32 * parsed_value) as u32;
+    printc!(
+        STROBE_ON_OFF_TIME.0,
+        STROBE_ON_OFF_TIME.1,
+        "ON {} <br> OFF {}",
+        state.animation.strobe.controls.time_on_millis,
+        state.animation.strobe.controls.time_off_millis,
+    );
 }
 
 pub fn set_drop_duration(state: &mut State, value_secs: u32) {
     state.animation.strobe.controls.strobe_drop_duration_secs = value_secs;
-    printc!(STROBE_REMAINING_TIME.0, STROBE_REMAINING_TIME.1, "/ ({value_secs}s)",);
+    printc!(
+        STROBE_REMAINING_TIME.0,
+        STROBE_REMAINING_TIME.1,
+        "/ ({value_secs}s)",
+    );
 }
 
 //
@@ -101,6 +164,7 @@ const GENERIC_3_CHAN_START_ADDRS: [usize; 1] = [300];
 
 pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
     if !state.animation.strobe.controls.strobe_enabled {
+        println!("offline");
         return;
     }
 
@@ -144,21 +208,26 @@ pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
     }
 }
 
+pub fn blackout(dmx: &mut [u8]) {
+    for s in MAC_AURA_START_ADDRS {
+        mac_aura_set_white(dmx, s, 0);
+    }
+    for s in GENERIC_3_CHAN_START_ADDRS {
+        generic_3_chan_set_white(dmx, s, 0);
+    }
+}
+
 pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
     if !state.animation.strobe.controls.strobe_enabled {
-        for s in MAC_AURA_START_ADDRS {
-            mac_aura_set_white(dmx, s, 0);
-        }
-        for s in GENERIC_3_CHAN_START_ADDRS {
-            generic_3_chan_set_white(dmx, s, 0);
-        }
+        blackout(dmx);
         return;
     }
 
     match state.animation.strobe.strobe_activate_time {
         Some(time)
             if elapsed!(input, time) < STROBE_BURST_TIME_MILLIS
-                && state.animation.strobe.controls.on_beat =>
+                && state.animation.strobe.controls.on_beat
+                && state.animation.strobe.controls.strobe_animation == StrobeAnimation::Synced =>
         {
             // Burst strobe for the first X ms.
             {
@@ -285,7 +354,7 @@ pub fn auto_enable_tick(state: &mut State, input: TickInput) {
     }
 
     const DISABLE_STROBE_THIS_AMOUNT_OF_MILLIS_AFTER_LAST_BEAT: u32 = 1000;
-    const ENABLE_STROBE_BELOW_AVG_BASS_THRESHOLD: u8 = 50;
+    const ENABLE_STROBE_BELOW_AVG_BASS_THRESHOLD: u8 = 40;
 
     // Update strobe activation status.
     let strobe_was_inactive_long_enough = elapsed!(input, state.last_beat_time)

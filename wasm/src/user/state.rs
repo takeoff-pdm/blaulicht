@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 #[derive(Debug)]
 pub struct State {
@@ -31,15 +31,33 @@ pub struct Mood {
     pub controls: MoodControls,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MoodControls {
     pub on_beat: bool,
     pub force: bool,
     pub brightness: u8,
     pub animation: MoodAnimation,
+    pub color_palette: MoodColorPalette,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
+pub enum MoodColorPalette {
+    All,
+    CyanMagenta,
+    OrangeBlue,
+}
+
+impl MoodColorPalette {
+    pub fn to_hsv_ranges(&self) -> Vec<Range<usize>> {
+        match self {
+            Self::All => vec![0..361],
+            Self::CyanMagenta => vec![180..345],
+            Self::OrangeBlue => vec![240..241, 40..41],
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum MoodAnimation {
     Synced,
     Alternating(AnimationAlternating),
@@ -62,6 +80,7 @@ pub struct StrobeControls {
     pub strobe_enabled: bool,
     pub strobe_auto_enable: bool,
     pub brightness: u8,
+    pub speed_multiplier: f32,
     pub strobe_animation: StrobeAnimation,
 
     pub strobe_drop_duration_secs: u32,
@@ -69,6 +88,12 @@ pub struct StrobeControls {
     // Speed controls.
     pub time_on_millis: u32,
     pub time_off_millis: u32,
+}
+
+impl StrobeControls {
+    pub fn default_time_on_off() -> u32 {
+        200
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -89,7 +114,7 @@ impl StrobeAnimation {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AnimationAlternating {
     // Maps a light index to whether its enabled and the time of its state change.
     // Activation / Deactivation time.
@@ -148,6 +173,7 @@ impl Default for State {
                         strobe_enabled: false,
                         strobe_auto_enable: true,
                         brightness: 255,
+                        speed_multiplier: 1.0,
                         strobe_drop_duration_secs: 5,
                         strobe_animation: StrobeAnimation::Synced,
                         time_on_millis: 50,
@@ -161,6 +187,7 @@ impl Default for State {
                         force: false,
                         brightness: 255,
                         animation: MoodAnimation::Synced,
+                        color_palette: MoodColorPalette::All,
                     },
                 },
             },

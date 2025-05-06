@@ -652,7 +652,7 @@ pub fn run(
                     Signal::Bass(bass_sig),
                     Signal::Bpm(BpmInfo {
                         bpm: bpm,
-                        time_between_beats_millis: avg_bass_peak_durations as u16,
+                        time_between_beats_millis: (avg_bass_peak_durations * 1000.0) as u16,
                     }),
                     if peaked || elapsed_since_last_peak < 100 {
                         Signal::BassAvgShort(255)

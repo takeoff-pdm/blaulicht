@@ -39,7 +39,7 @@
         class="button {states[index] ? 'on' : ''}"
         on:click={() => toggleButton(index)}
       >
-        {config.labels[index]}
+        {@html config.labels[index]}
       </button>
     {/each}
   </div>

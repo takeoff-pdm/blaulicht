@@ -30,7 +30,7 @@ pub fn run(input: TickInput, dmx: &mut [u8], data: *mut u8, midi: &[MidiEvent]) 
     let state = unsafe { &mut *state_ptr };
     // STATE
 
-    midi::tick(state, midi);
+    midi::tick(state, dmx, midi);
 
     // Main on-beat logic.
     crate::if_beat!(
