@@ -23,11 +23,24 @@ fn animation_step(state: &mut State) {
     state.animation.mood.counter %= UPPER_LIMIT;
 }
 
-const MOOD_LIGHT_START_ADDRS_LEFT: [usize; 5] = [225, 230, 235, 240, 245];
+const MOOD_LIGHT_START_ADDRS_LEFT: [usize; 0] = [];
 
-const MOOD_LIGHT_START_ADDRS_RIGHT: [usize; 5] = [200, 205, 210, 215, 220];
+const MOOD_LIGHT_START_ADDRS_RIGHT: [usize; 0] = [];
 
-const MOOD_LIGHT_START_ADDRS: [usize; 1] = [250];
+const ADJ_MEGA_HEX: [usize; 26] = [
+    25, 32, 39, 46, 53, 60, 67, 74, 81, 88, 95, 102, 109, 116, 123, 130, 137, 144, 151, 158, 165,
+    172, 186, 193, 200, 207,
+];
+
+// TODO: add second strobe group
+// TODO: add third strobe group (panels)
+// TODO: group mood into left and right and always
+// add other mood stuff and more strobes
+// add fogger
+// TODO: group secondary into left and right
+pub const LITECRAFT_AT10: [usize; 16] = [
+    240, 248, 256, 264, 272, 280, 288, 296, 304, 312, 320, 328, 336, 344, 352, 360,
+];
 
 pub fn tick_on_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
     if state.animation.mood.controls.animation == MoodAnimation::Synced {
@@ -63,20 +76,20 @@ pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
     let counter = state.animation.mood.counter;
     let color = blaulicht::hsv_to_rgb(counter);
 
-    for start in MOOD_LIGHT_START_ADDRS {
+    for start in ADJ_MEGA_HEX {
         colorize!(color, dmx, start);
-        dmx[start + 3] = brightness as u8;
+        dmx[start + 6] = brightness as u8;
     }
 
-    for start in MOOD_LIGHT_START_ADDRS_LEFT {
-        colorize!(color, dmx, start);
-        dmx[start + 3] = brightness as u8;
-    }
+    // for start in LITECRAFT_AT10 {
+    //     colorize!(color, dmx, start);
+    //     dmx[start + 7] = brightness as u8;
+    // }
 
-    for start in MOOD_LIGHT_START_ADDRS_RIGHT {
-        colorize!(color, dmx, start);
-        dmx[start + 3] = brightness as u8;
-    }
+    // for start in MOOD_LIGHT_START_ADDRS_RIGHT {
+    //     colorize!(color, dmx, start);
+    //     dmx[start + 3] = brightness as u8;
+    // }
 }
 
 //

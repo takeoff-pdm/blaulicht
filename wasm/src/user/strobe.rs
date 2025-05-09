@@ -3,21 +3,26 @@ use serde::de::value;
 
 use crate::{
     blaulicht::{self, bl_controls_set, nelapsed, TickInput},
-    elapsed, printc, smidi,
+    colorize, elapsed, printc, smidi,
     user::{
         midi::{
-            self, DDJ_LEFT_BEAT_JMP_0_0, DDJ_LEFT_BEAT_JMP_1_0, DDJ_LEFT_BEAT_SYNC, DDJ_LEFT_CUE,
-            DDJ_LEFT_HOT_CUE_0_1, DDJ_LEFT_HOT_CUE_1_1, DDJ_LEFT_RELOOP, STROBE_ALTERNATING,
+            self, DDJ_HIGH_FILTER_LEFT, DDJ_LEFT_BEAT_JMP_0_0, DDJ_LEFT_BEAT_JMP_1_0,
+            DDJ_LEFT_BEAT_SYNC, DDJ_LEFT_CUE, DDJ_LEFT_CUE_ROUND, DDJ_LEFT_HOT_CUE_0_1,
+            DDJ_LEFT_HOT_CUE_1_1, DDJ_LEFT_RELOOP, MOVING_HEAD_TILT_ANIM_SPEED, STROBE_ALTERNATING,
             STROBE_BRIGHTNESS, STROBE_ON_OFF_TIME, STROBE_REMAINING_TIME, STROBE_SPEED,
             STROBE_SYNCED,
         },
         state::{StrobeAnimation, StrobeAnimationAlternatingState, StrobeControls},
+        video,
     },
 };
 
 use super::{
     midi::{STROBE_AUTOMATION_TOGGLE, STROBE_ON_BEAT, STROBE_TOGGLE},
-    println, State,
+    mood::LITECRAFT_AT10,
+    println,
+    video::{set_brightness_internal, set_fry},
+    State,
 };
 
 const STROBE_RESET_TIME_MILLIS: u32 = 1000;
@@ -67,7 +72,7 @@ pub fn set_animation(state: &mut State, dmx: &mut [u8], value: StrobeAnimation) 
 
     state.animation.strobe.controls.strobe_animation = value;
 
-    blackout(dmx);
+    blackout(state.animation.strobe.controls.brightness, dmx);
 }
 
 pub fn set_brightness(state: &mut State, value: u8) {
@@ -96,6 +101,30 @@ pub fn parse_speed_multiplier(value: u8) -> (f32, String) {
 }
 
 // From raw MIDI.
+
+pub fn set_tilt_speed(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.strobe.controls.tilt_animation_speed = parsed_value;
+    printc!(
+        MOVING_HEAD_TILT_ANIM_SPEED.0,
+        MOVING_HEAD_TILT_ANIM_SPEED.1,
+        "TILT SPEED {value_str}",
+    );
+}
+
+pub fn set_tilt_anim(state: &mut State, value: bool) {
+    state.animation.strobe.controls.tilt_animation_enabled = value;
+    bl_controls_set(
+        MOVING_HEAD_TILT_ANIM_SPEED.0,
+        MOVING_HEAD_TILT_ANIM_SPEED.1,
+        value,
+    );
+    smidi!(DDJ_LEFT_CUE_ROUND, (value as u8) * 127);
+    if !value {
+        home_moving_heads(state);
+    }
+}
+
 pub fn set_speed_multiplier(state: &mut State, value: u8) {
     let (parsed_value, value_str) = parse_speed_multiplier(value);
     state.animation.strobe.controls.speed_multiplier = parsed_value;
@@ -141,12 +170,55 @@ pub fn set_drop_duration(state: &mut State, value_secs: u32) {
 // Fixtures.
 //
 
-fn mac_aura_set_white(dmx: &mut [u8], start_addr: usize, value: u8) {
-    dmx[start_addr + 1] = value;
-    dmx[start_addr + 9] = 255;
-    dmx[start_addr + 10] = 255;
-    dmx[start_addr + 11] = 255;
-    dmx[start_addr + 12] = 255;
+fn mac_aura_set_white(normal_bri: u8, dmx: &mut [u8], start_addr: usize, value: bool) {
+    // shutter
+    if !value {
+        dmx[start_addr + 0] = 0;
+    } else {
+        dmx[start_addr + 0] = 50;
+    }
+
+    dmx[start_addr + 1] = normal_bri;
+    dmx[start_addr + 2] = 0;
+
+    // dmx[start_addr + 0] = 49;
+
+    // // set dimmer.
+    // dmx[start_addr + 1] = value;
+
+    // dmx[start_addr + 2] = 0;
+
+    // dmx[start_addr + 5] = 0;
+    // dmx[start_addr + 6] = 0;
+    // dmx[start_addr + 8] = 0;
+}
+
+pub fn mac_aura_pos(dmx: &mut [u8], start_addr: usize, pan: u8, tilt: u8) {
+    // dmx[start_addr + 8] = 128;
+    // dmx[start_addr + 9] = 128;
+
+    // Pan
+    dmx[start_addr + 12] = pan;
+    dmx[start_addr + 13] = 0;
+
+    // tilt
+    dmx[start_addr + 14] = tilt;
+    dmx[start_addr + 15] = 0;
+    // dmx[start_addr + 11] = 128;
+}
+
+pub fn mac_aura_setup(input: TickInput, state: &mut State, dmx: &mut [u8], start_addr: usize) {
+    match elapsed!(input, state.init_time) {
+        v if v <= 5000 => {
+            // Enable lamp.
+            dmx[start_addr + 0] = 237;
+        }
+        v => {
+            dmx[start_addr + 0] = 20;
+        }
+    }
+    // Open shutter.
+    // dmx[start_addr + 0] = 20;
 }
 
 fn generic_3_chan_set_white(dmx: &mut [u8], start_addr: usize, value: u8) {
@@ -159,13 +231,19 @@ fn generic_3_chan_set_white(dmx: &mut [u8], start_addr: usize, value: u8) {
 // Ticks
 //
 
-const MAC_AURA_START_ADDRS: [usize; 6] = [100, 115, 130, 145, 160, 175];
-const GENERIC_3_CHAN_START_ADDRS: [usize; 1] = [300];
+pub const MAC_AURA_START_ADDRS: [usize; 6] = [400, 418, 436, 454, 472, 490];
+const GENERIC_3_CHAN_START_ADDRS: [usize; 0] = [];
 
 pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
+    video::tick(state, input, true);
+
     if !state.animation.strobe.controls.strobe_enabled {
-        println!("offline");
         return;
+    }
+
+    if state.animation.video.brightness_strobe_synced {
+        video::set_fry(state, (state.animation.strobe.white_value as u8) * 127);
+        // state.animation.strobe.white_value = !state.animation.strobe.white_value;
     }
 
     match state.animation.strobe.strobe_activate_time {
@@ -191,11 +269,19 @@ pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
         Some(_) => match state.animation.strobe.controls.strobe_animation {
             StrobeAnimation::Synced => {
                 for s in MAC_AURA_START_ADDRS {
-                    mac_aura_set_white(dmx, s, state.animation.strobe.controls.brightness);
+                    mac_aura_set_white(state.animation.strobe.controls.brightness, dmx, s, true);
                 }
                 for s in GENERIC_3_CHAN_START_ADDRS {
                     generic_3_chan_set_white(dmx, s, state.animation.strobe.controls.brightness);
                 }
+
+                for start in LITECRAFT_AT10 {
+                    colorize!((255, 255, 255), dmx, start);
+                    dmx[start + 7] = state.animation.strobe.controls.brightness as u8;
+                }
+
+                state.animation.strobe.white_value = true;
+                state.animation.strobe.white_value_enabled_time = input.time;
             }
             StrobeAnimation::Alternating(_) => {
                 alternating_on_beat_tick(state, dmx, input);
@@ -203,23 +289,41 @@ pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
         },
         None => {
             state.animation.strobe.strobe_activate_time = Some(input.time);
+
+            if state.animation.video.brightness_strobe_synced {
+                video::set_brightness_internal(state, 100);
+            }
+
+            video::send_sync();
+
+            home_moving_heads(state);
+
             println!("[STROBE] Strobe ENABLED.");
         }
     }
 }
 
-pub fn blackout(dmx: &mut [u8]) {
+fn home_moving_heads(state: &mut State) {
+    state.animation.strobe.controls.pan = 220;
+    state.animation.strobe.controls.tilt = 74;
+}
+
+pub fn blackout(normal_bri: u8, dmx: &mut [u8]) {
+    println!("BLACKOUT");
     for s in MAC_AURA_START_ADDRS {
-        mac_aura_set_white(dmx, s, 0);
+        mac_aura_set_white(normal_bri, dmx, s, false);
     }
     for s in GENERIC_3_CHAN_START_ADDRS {
         generic_3_chan_set_white(dmx, s, 0);
+    }
+    for start in LITECRAFT_AT10 {
+        dmx[start + 7] = 0;
     }
 }
 
 pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
     if !state.animation.strobe.controls.strobe_enabled {
-        blackout(dmx);
+        blackout(state.animation.strobe.controls.brightness, dmx);
         return;
     }
 
@@ -227,16 +331,16 @@ pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
         Some(time)
             if elapsed!(input, time) < STROBE_BURST_TIME_MILLIS
                 && state.animation.strobe.controls.on_beat
-                && state.animation.strobe.controls.strobe_animation == StrobeAnimation::Synced =>
+                /* && state.animation.strobe.controls.strobe_animation == StrobeAnimation::Synced */ =>
         {
             // Burst strobe for the first X ms.
             {
                 for s in MAC_AURA_START_ADDRS {
                     mac_aura_set_white(
+                        state.animation.strobe.controls.brightness,
                         dmx,
                         s,
-                        state.animation.strobe.strobe_burst_state as u8
-                            * state.animation.strobe.controls.brightness,
+                        true,
                     );
                 }
                 for s in GENERIC_3_CHAN_START_ADDRS {
@@ -262,13 +366,34 @@ pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
                 //     );
                 // }
             } else {
+                // if state.animation.video.brightness_strobe_synced && state.animation.strobe.white_value {
+                //     video::set_fry(state, 0);
+                //     state.animation.strobe.white_value = false;
+                // }
+
                 match &mut state.animation.strobe.controls.strobe_animation {
                     StrobeAnimation::Synced => {
-                        for s in MAC_AURA_START_ADDRS {
-                            mac_aura_set_white(dmx, s, 0);
-                        }
-                        for s in GENERIC_3_CHAN_START_ADDRS {
-                            generic_3_chan_set_white(dmx, s, 0);
+                        if state.animation.strobe.white_value
+                            && elapsed!(input, state.animation.strobe.white_value_enabled_time)
+                                > 100
+                        // hardcoded value matching the strobes.
+                        {
+                            for s in MAC_AURA_START_ADDRS {
+                                mac_aura_set_white(
+                                    state.animation.strobe.controls.brightness,
+                                    dmx,
+                                    s,
+                                    false,
+                                );
+                            }
+                            for s in GENERIC_3_CHAN_START_ADDRS {
+                                generic_3_chan_set_white(dmx, s, 0);
+                            }
+
+                            for start in LITECRAFT_AT10 {
+                                dmx[start + 7] = 0;
+                            }
+                            state.animation.strobe.white_value = false;
                         }
                     }
                     StrobeAnimation::Alternating(ref mut a) => {
@@ -278,7 +403,12 @@ pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
                                     > state.animation.strobe.controls.time_on_millis
                             {
                                 let start_addr = MAC_AURA_START_ADDRS[k];
-                                mac_aura_set_white(dmx, start_addr, 0);
+                                mac_aura_set_white(
+                                    state.animation.strobe.controls.brightness,
+                                    dmx,
+                                    start_addr,
+                                    false,
+                                );
 
                                 a.times.insert(
                                     k,
@@ -337,9 +467,10 @@ fn alternating_on_beat_tick(state: &mut State, dmx: &mut [u8], input: TickInput)
 
     let start_dmx_addr = MAC_AURA_START_ADDRS[a.current_index];
     mac_aura_set_white(
+        state.animation.strobe.controls.brightness,
         dmx,
         start_dmx_addr,
-        shall_enable as u8 * state.animation.strobe.controls.brightness,
+        shall_enable,
     );
 
     if shall_enable {
@@ -434,5 +565,47 @@ fn show_remaining_strobe_time(state: &mut State, remaining_strobe_time: Option<i
         None => {
             printc!(STROBE_REMAINING_TIME.0, STROBE_REMAINING_TIME.1, "/",);
         }
+    }
+}
+
+pub fn moving_head_tick(state: &mut State, dmx: &mut [u8], input: TickInput) {
+    for addr in MAC_AURA_START_ADDRS {
+        mac_aura_pos(
+            dmx,
+            addr,
+            state.animation.strobe.controls.pan,
+            state.animation.strobe.controls.tilt,
+        );
+    }
+
+    if !state.animation.strobe.controls.tilt_animation_enabled {
+        return;
+    }
+
+    const BASE_SPEED: u32 = 200;
+    const MIN_TILT: u8 = 50;
+    const MAX_TILT: u8 = 90;
+
+    let multiplied_speed = BASE_SPEED as f32 * state.animation.strobe.controls.tilt_animation_speed;
+
+    if elapsed!(
+        input,
+        state.animation.strobe.controls.tilt_animation_last_tick
+    ) > multiplied_speed as u32
+    {
+        state.animation.strobe.controls.tilt +=
+            (if state.animation.strobe.controls.tilt_animation_incr {
+                5
+            } else {
+                -5
+            }) as u8;
+        if state.animation.strobe.controls.tilt > MAX_TILT
+            || state.animation.strobe.controls.tilt < MIN_TILT
+        {
+            state.animation.strobe.controls.tilt_animation_incr =
+                !state.animation.strobe.controls.tilt_animation_incr;
+        }
+
+        state.animation.strobe.controls.tilt_animation_last_tick = input.time;
     }
 }

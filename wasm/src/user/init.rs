@@ -1,16 +1,17 @@
 use crate::{
-    blaulicht::{self, TickInput},
-    printc,
+    blaulicht::{self, bl_udp, TickInput},
+    printc, println,
     user::{
         midi::{
-            MOOD_ALTERNATING, MOOD_FORCE_TOGGLE, MOOD_ON_BEAT, MOOD_PALETTE_ALL,
+            self, MOOD_ALTERNATING, MOOD_FORCE_TOGGLE, MOOD_ON_BEAT, MOOD_PALETTE_ALL,
             MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_SNAKE, MOOD_SYNCED,
             STROBE_ALTERNATING, STROBE_AUTOMATION_TOGGLE, STROBE_ON_BEAT, STROBE_REMAINING_TIME,
             STROBE_SYNCED, STROBE_TOGGLE,
         },
         mood::{self, set_color_palette},
         state::{MoodAnimation, MoodColorPalette, StrobeAnimation},
-        strobe,
+        strobe::{self, mac_aura_setup, MAC_AURA_START_ADDRS},
+        video,
     },
 };
 
@@ -19,6 +20,7 @@ use super::state::State;
 pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     state.reset();
     state.last_beat_time = input.time;
+    state.init_time = input.time;
 
     // Turn off all channels.
     for i in 0..513 {
@@ -26,7 +28,7 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     }
 
     // Initialize the control surface.
-    blaulicht::bl_controls_config(5, 7);
+    blaulicht::bl_controls_config(8, 7);
     printc!(STROBE_TOGGLE.0, STROBE_TOGGLE.1, "STROBE ENABLE");
 
     printc!(
@@ -45,6 +47,12 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
         STROBE_ALTERNATING.1,
         "STROBE ALTERNATING"
     );
+
+    strobe::set_tilt_anim(
+        state,
+        state.animation.strobe.controls.tilt_animation_enabled,
+    );
+    strobe::set_tilt_speed(state, 127 / 2);
 
     strobe::set_drop_duration(
         state,
@@ -83,5 +91,39 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     );
     mood::set_color_palette(state, state.animation.mood.controls.color_palette.clone());
 
-    println!("Initialized finished.");
+    // AAAA
+
+    midi::set_left_fader_target_alt(state, false);
+    midi::set_right_fader_target_alt(state, false);
+
+    //
+    // Video
+    //
+
+    //
+    // Send initialization UDP.
+    //
+
+    // let body_str = b"Hello World!";
+    // let mut body = Vec::with_capacity(body_str.len() + 1);
+    // body.push(42);
+    // body.extend_from_slice(body_str);
+    // bl_udp("127.0.0.1:9000", &body);
+    // println!("Sent init UDP.");
+
+    // bl_udp("127.0.0.1:9000", &[200, 1, 1]);
+    // println!("Sent speed UDP.");
+
+    video::set_video_file(state, state.animation.video.file);
+    video::set_speed_multiplier(state, 127 / 2);
+    video::set_video_bpm_speed_synced(state, state.animation.video.speed_bpm_sync);
+    video::set_video_brightness_strobe_synced(
+        state,
+        state.animation.video.brightness_strobe_synced,
+    );
+    video::set_fry(state, state.animation.video.fry);
+    video::set_rotate(0);
+    video::set_brightness_internal(state, state.animation.video.brightness);
+
+    println!("RUNNING SETUP...");
 }

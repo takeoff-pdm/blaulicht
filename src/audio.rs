@@ -541,25 +541,6 @@ pub fn run(
                 let bass_moving_average =
                     bass_samples.iter().map(|v| *v as f64).sum::<f64>() / BASS_FRAMES as f64;
 
-                struct BPMRes {
-                    param: usize,
-                    bpm: u8,
-                    time_between_beats_millis: u16,
-                    elapsed_since_last_peak: u32,
-                    peaked: bool,
-                }
-
-                // let mut bpm_res = BPMRes {
-                //     param: 0,
-                //     bpm: 0,
-                //     time_between_beats_millis: 0,
-                //     elapsed_since_last_peak: 0,
-                //     peaked: false,
-                // };
-                // let mut max_bpm = 190;
-
-                // let mut bpms = vec![];
-
                 let elapsed_since_last_peak = match bass_peaks.iter().last() {
                     Some(last) => last.elapsed().as_millis(),
                     None => 10000,
@@ -587,8 +568,6 @@ pub fn run(
                     bass_peaks.pop_front();
                 }
 
-                // TODO: Macro for filter logic
-
                 const SECONDS_IN_A_MINUTE: f64 = 60.0;
                 const MINIMUM_BPM: f64 = 90.0;
                 const MAXIMUM_BPM: f64 = 200.0;
@@ -608,7 +587,6 @@ pub fn run(
                     .clone()
                     .filter(|v| *v > MIN_BPM_TIME_BETWEEN_SECS && *v < MAX_BPM_TIME_BETWEEN_SECS)
                     .count();
-                // let bass_len = bass_peak_durations.len();
 
                 let bass_peak_sum = bass_peak_durations.sum::<f64>();
                 let avg_bass_peak_durations = bass_peak_sum / (bass_len as f64);
@@ -620,33 +598,6 @@ pub fn run(
                 };
 
                 let bpm = bpm as u8;
-                // if (bpm == 0 || bpm >= 180)
-                //     && bass_upper_percent_multiplier_changed.elapsed().as_millis() > 1000
-                // {
-                //     current_bass_muliplier -= 10;
-                //     if current_bass_muliplier <= 50 {
-                //         current_bass_muliplier = 90;
-                //     }
-                //     println!(
-                //         "adjusted upper percent multiplier: {}",
-                //         current_bass_muliplier
-                //     );
-                //     bass_upper_percent_multiplier_changed = Instant::now();
-                // }
-
-                // let (bpm_sum, millis_sum): (usize, usize) = bpms
-                //     .iter()
-                //     .map(|b| (b.bpm as usize, b.time_between_beats_millis as usize))
-                //     .fold((0, 0), |(acc1, acc2), (x, y)| (acc1 + x, acc2 + y));
-
-                // let bpm_avg = bpm_sum / bpms.len();
-                // let millis_avg = millis_sum / bpms.len();
-                // println!("avg: {bpm_avg} | {millis_avg}");
-
-                // println!("bpm={bpm}, avg_bass_dur={avg_bass_peak_durations} seconds, bass_moving_avg={bass_moving_average}");
-                // if peaked {
-                //     println!("peaked");
-                // }
 
                 &[
                     Signal::Bass(bass_sig),
@@ -693,38 +644,8 @@ pub fn run(
             }
 
             let sum = historic.iter().sum::<usize>();
-            let avg = sum / rolling_average_frames;
             let max = historic.iter().max().unwrap_or(&usize::MAX);
             let min = historic.iter().min().unwrap_or(&usize::MIN);
-
-            // let long_sum = long_historic.iter().sum::<usize>();
-            // if long_sum == 0 {
-            //     if !loop_inactive {
-            //         eprintln!("long historic is 0: sleeping");
-            //     }
-
-            //     debug!("[AUDIO] Entering sleep mode...");
-            //     thread::sleep(DMX_TICK_TIME);
-            //     loop_inactive = true;
-
-            //     let mut midi = vec![];
-            //     loop {
-            //         match midi_in_receiver.try_recv() {
-            //             Ok(data) => midi.push(data),
-            //             Err(TryRecvError::Empty) => break,
-            //             Err(TryRecvError::Disconnected) => panic!("error"),
-            //         }
-            //     }
-
-            //     // if !midi.is_empty() {
-            //     //     println!("MIDI MSGS: {}", midi.len());
-            //     // }
-
-            //     dmx_universe.tick(&midi);
-            // } else if loop_inactive {
-            //     eprintln!("long = {long_sum}");
-            //     loop_inactive = false
-            // }
 
             const MAX_BEAT_VOLUME: u8 = 255;
             let index_mapped = map(
@@ -743,12 +664,7 @@ pub fn run(
                     signal_out_0,
                     dmx_universe,
                     {
-                        //         eprintln!(
-                        //     "index = {index_mapped:02} | curr = {curr:03} | min = {min:03} | avg = {avg:03} | max = {max:03}",
-                        // );
-
                         last_index = index_mapped;
-
                         &[Signal::BeatVolume(index_mapped as u8)]
                     }
                 );

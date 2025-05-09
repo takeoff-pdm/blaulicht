@@ -1,5 +1,5 @@
 use crossbeam_channel::Sender;
-use std::time::Instant;
+use std::{net::UdpSocket, time::Instant};
 
 use wasmtime::*;
 
@@ -96,6 +96,47 @@ impl TickEngine {
         let mut store = Store::new(&engine, ());
 
         let mut linker = Linker::new(&engine);
+
+        // UDP support.
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+
+        let so = self.system_out.clone();
+        linker.func_wrap(
+            "blaulicht",
+            "udp",
+            move |mut caller: Caller<'_, ()>,
+                  target_addr_pointer: i32,
+                  target_addr_len: i32,
+                  byte_arr_pointer: i32,
+                  byte_arr_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("Failed to find memory");
+
+                let mut body_buffer = vec![0u8; byte_arr_len as usize];
+                memory
+                    .read(&caller, byte_arr_pointer as usize, &mut body_buffer)
+                    .expect("Failed to read memory");
+
+                let mut addr_buffer = vec![0u8; target_addr_len as usize];
+                memory
+                    .read(&caller, target_addr_pointer as usize, &mut addr_buffer)
+                    .expect("Failed to read memory");
+
+                let target_addr = String::from_utf8_lossy(&addr_buffer).to_string();
+
+                socket
+                    .send_to(&body_buffer, target_addr.clone())
+                    .unwrap_or_else(|e| {
+                        so.send(SystemMessage::Log(format!(
+                            "UDP error: SEND to {target_addr}: {e}"
+                        )))
+                        .expect("Failed to send log message");
+                        0
+                    });
+            },
+        )?;
 
         let so = self.system_out.clone();
         linker.func_wrap(

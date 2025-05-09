@@ -66,7 +66,7 @@
     cursor: pointer;
     user-select: none;
     font-family: monospace;
-    font-size: .7rem;
+    font-size: 0.7rem;
   }
   .button.on {
     border: solid 1px limegreen;

@@ -2,6 +2,12 @@
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
     fn log(ptr: *const u8, len: usize);
+    fn udp(
+        target_addr_ptr: *const u8,
+        target_addr_len: usize,
+        body_ptr: *const u8,
+        body_len: usize,
+    );
     fn bl_midi(status: u8, data0: u8, data1: u8);
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
@@ -15,6 +21,10 @@ pub fn bl_midi_safe(status: u8, data0: u8, data1: u8) {
 /// Log a string to the BL output
 pub fn bl_log(msg: &str) {
     unsafe { log(msg.as_ptr(), msg.len()) }
+}
+
+pub fn bl_udp(addr: &str, body: &[u8]) {
+    unsafe { udp(addr.as_ptr(), addr.len(), body.as_ptr(), body.len()) }
 }
 
 pub fn bl_controls_log(x: u8, y: u8, msg: &str) {
@@ -156,14 +166,14 @@ pub mod prelude {
     }
     pub use dbg;
 
-#[macro_export]
-macro_rules! smidi {
-    ($tuple: expr, $value: expr) => {
-        blaulicht::bl_midi_safe($tuple.0, $tuple.1, $value)
-    };
-}
+    #[macro_export]
+    macro_rules! smidi {
+        ($tuple: expr, $value: expr) => {
+            blaulicht::bl_midi_safe($tuple.0, $tuple.1, $value)
+        };
+    }
 
-pub use smidi;
+    pub use smidi;
 }
 
 // pub fn fmod(a: f64, b: f64) -> f64 {
