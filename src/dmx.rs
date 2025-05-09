@@ -288,89 +288,6 @@ pub enum DMXControl {
     ChangePort(Option<SerialPortInfo>),
 }
 
-// pub fn _dmx_thread(
-//     control_receiver: Receiver<DMXControl>,
-//     signal_receiver: Receiver<Signal>,
-//     system_out: Sender<SystemMessage>,
-// ) {
-//     let ports = serialport::available_ports().unwrap();
-//
-//     // Update available ports to frontend.
-//     system_out
-//         .send(SystemMessage::SerialDevicesView(ports.clone()))
-//         .unwrap();
-//
-//     println!("{ports:?}");
-//
-//     let mut port = ports.into_iter().find(|p| {
-//         let SerialPortType::UsbPort(usb) = p.port_type.clone() else {
-//             return false;
-//         };
-//
-//         USB_DEVICES
-//             .iter()
-//             .any(|d| d.pid == usb.pid && d.vid == usb.vid)
-//     });
-//
-//     if port.is_none() {
-//         warn!("No default DMX serial output available");
-//     }
-//
-//     // let Some(port) = port.cloned() else {
-//     //     warn!("[DMX] No default serial device available...");
-//     //     system_out
-//     //         .send(SystemMessage::SerialSelected(None))
-//     //         .unwrap();
-//     // };
-//
-//     // let mut port = Some(port);
-//
-//     loop {
-//         let mut universe = None;
-//
-//         if let Some(port) = port {
-//             let name = port.port_name.clone();
-//             info!("[DMX] Using serial device: {name}");
-//             system_out
-//                 .send(SystemMessage::SerialSelected(Some(port.clone())))
-//                 .unwrap();
-//             universe = Some(DmxUniverse::new(name));
-//         }
-//
-//         'inner: loop {
-//             // Dispatch signals to frontend and to DMX engine.
-//             match signal_receiver.try_recv() {
-//                 Ok(signal) => {
-//                     if let Some(ref mut universe) = universe {
-//                         universe.signal(signal);
-//                     }
-//                 }
-//                 Err(TryRecvError::Empty) => {}
-//                 Err(err) => panic!("{err:?}"),
-//             }
-//
-//             match control_receiver.try_recv() {
-//                 Ok(DMXControl::ChangePort(new_port)) => {
-//                     println!("select port: {new_port:?}");
-//                     port = new_port;
-//                     break 'inner;
-//                 }
-//                 Err(TryRecvError::Empty) => {}
-//                 Err(err) => panic!("{err:?}"),
-//             }
-//
-//             // match system_receiver.try_recv() {
-//             //     Ok(SystemMessage::LoopSpeed(speed)) => todo!(""),
-//             //     // .emit("msg", ToFrontend::Speed(speed.as_micros() as usize)),
-//             //     // .unwrap(),
-//             //     Err(TryRecvError::Empty) => {}
-//             //     Err(err) => panic!("{err:?}"),
-//             // }
-//         }
-//     }
-// }
-//
-
 pub fn audio_thread(
     from_frontend: Receiver<FromFrontend>,
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -380,26 +297,12 @@ pub fn audio_thread(
     midi_in_sender: Sender<(u8, u8, u8)>,
     midi_out_sender: Sender<(u8, u8, u8)>,
 ) {
-    // let begin_msg = from_frontend.recv().unwrap();
-    println!("[audio] Thread started!");
+    log::info!("[SUPERVISOR] Thread started!");
 
-    // let FromFrontend::NewWindow(window) = begin_msg else {
-    //     panic!("Illegal behaviour");
-    // };
-
-    // let mut count = 0;
-    // let mut increment = true;
-    // let step = 25;
     let heartbeat_delay = Duration::from_millis(1000);
 
     let mut audio_device: Option<Device> = None;
     let mut device_changed = false;
-
-    // From audio to frontend.
-    // let (signal_out, signal_receiver) = mpsc::channel();
-    // let (system_out, system_receiver) = mpsc::channel();
-
-    // let w = window.clone();
 
     // TODO: put the DMX thread under main!
 
@@ -407,44 +310,36 @@ pub fn audio_thread(
 
     loop {
         thread::sleep(heartbeat_delay);
-        // TODO
-        // window.emit("msg", ToFrontend::Heartbeat).unwrap();
 
-        system_out.send(SystemMessage::Heartbeat(seq)).unwrap();
+        if let Err(_) = system_out.send(SystemMessage::Heartbeat(seq)) {
+            warn!("[SUPERVISOR] Shutting down...");
+            break;
+        };
         seq += 1;
 
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
                 audio_thread_control_signal
                     .store(AudioThreadControlSignal::RELOAD, Ordering::Relaxed);
-                // while (audio_thread_control_signal.load(Ordering::Relaxed) != AudioThreadControlSignal::DEAD) {
-                //     println!("waiting for audio thread to die...");
-                //     thread::sleep(Duration::from_millis(500));
-                // }
-
-                // println!("Audio thread died.");
-                // device_changed = true;
             }
-            // Ok(FromFrontend::NewWindow(_)) => unreachable!(),
             Ok(FromFrontend::SelectSerialDevice(dev)) => {
-                // TODO: dont do this
-
-                println!("selected frontend serial device");
+                // TODO: maybe implement this
                 // Get device by name.
             }
             Ok(FromFrontend::SelectInputDevice(dev)) => {
-                println!("selected frontend input device");
                 // Get device by name.
                 audio_device = dev;
                 device_changed = true;
             }
             Ok(FromFrontend::MatrixControl(control)) => {
-                println!("matrix control: {control:?}");
-                midi_in_sender.send((control.y, control.x, control.value as u8)).unwrap();
+                midi_in_sender
+                    .send((control.y, control.x, control.value as u8))
+                    .unwrap();
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
-                unreachable!("broken")
+                log::warn!("[SUPERVISOR] Shutting down.");
+                break;
             }
         };
 
@@ -456,28 +351,6 @@ pub fn audio_thread(
 
             device_changed = false;
 
-            // let selected_device = devices
-            //     .iter()
-            //     .find(|dev| dev.1.name().unwrap().contains("CABLE Output"))
-            //     .unwrap_or_else(|| &devices[0]);
-            //
-            // let host = selected_device.0.name().to_string();
-            // let device_name = selected_device.1.name().unwrap();
-
-            // println!(
-            //     "{}",
-            //     devices
-            //         .iter()
-            //         .map(|d| d.1.name().unwrap())
-            //         .collect::<Vec<String>>()
-            //         .join("|")
-            // );
-            // println!("Selected default audio device: {host} | {device_name}");
-
-            // device = Some(utils::device_from_names(host, device_name).unwrap());
-            // system_out
-            //     .send(SystemMessage::AudioSelected(device.clone()))
-            //     .unwrap();
         } else if device_changed {
             system_out
                 .send(SystemMessage::AudioSelected(audio_device.clone()))
@@ -485,7 +358,6 @@ pub fn audio_thread(
 
             let (sig_0, sys) = (signal_out_0.clone(), system_out.clone());
             {
-                // let to_frontend_sender = to_frontend_sender.clone();
                 let audio_input_device = audio_device.clone().unwrap();
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
 
@@ -502,7 +374,6 @@ pub fn audio_thread(
                         audio_thread_control_signal.clone(),
                         midi_recv,
                         midi_send,
-                        // to_frontend_sender,
                     ) {
                         // TODO: handle the audio backend error.
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))
@@ -518,8 +389,8 @@ pub fn audio_thread(
             }
 
             device_changed = false;
-            println!(
-                "Started audio detector thread: {}...",
+            log::info!(
+                "[AUDIO] Main thread started: <{}>",
                 audio_device.clone().unwrap().name().unwrap()
             );
 

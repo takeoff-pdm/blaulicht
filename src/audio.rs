@@ -30,7 +30,7 @@ use serialport::{SerialPortInfo, SerialPortType};
 
 use crate::{
     dmx::{DmxUniverse, USB_DEVICES},
-    midi, DmxData, ToFrontent,
+    midi, performance, DmxData, ToFrontent,
 };
 
 fn map(x: isize, in_min: isize, in_max: isize, out_min: isize, out_max: isize) -> usize {
@@ -249,7 +249,11 @@ macro_rules! signal {
 
         if $now - $last_publish > SIGNAL_SPEED {
             for signal in signal_res {
-                $out0.send(signal.clone()).unwrap();
+                if let Err(e) = $out0.send(signal.clone()) {
+                    log::warn!("[AUDIO] Shutting down thread.");
+                    anyhow::bail!(e.to_string());
+                    // return Err(e.to_string());
+                }
             }
             $last_publish = $now;
         }
@@ -345,7 +349,7 @@ pub fn run(
         .send(SystemMessage::SerialDevicesView(ports.clone()))
         .unwrap();
 
-    println!("{ports:?}");
+    log::debug!("[DMX] {} Serial ports found.", ports.len());
 
     let serial_port = ports.into_iter().find(|p| match p.port_type.clone() {
         SerialPortType::UsbPort(usb) => USB_DEVICES
@@ -355,7 +359,7 @@ pub fn run(
     });
 
     if serial_port.is_none() {
-        warn!("No default DMX serial output available");
+        warn!("[DMX] No default serial output available");
     }
 
     let mut dmx_universe = match serial_port {
@@ -375,8 +379,8 @@ pub fn run(
         None => DmxUniverse::new_dummy(midi_out_sender, system_out.clone()),
     };
 
-    // Energy saving.
-    let mut loop_inactive = true;
+    // Boost thread.
+    performance::increase_thread_priority();
 
     // Loop speed.
     let mut time_of_last_system_publish = time::Instant::now();
@@ -426,13 +430,13 @@ pub fn run(
         let control = thread_control_signal.load(Ordering::Relaxed);
         match control {
             AudioThreadControlSignal::ABORT => {
-                println!("Received kill, giving up...");
+                log::debug!("[AUDIO] Received kill, terminating...");
                 break Ok(());
             }
             AudioThreadControlSignal::RELOAD => {
                 dmx_universe.reload().unwrap();
                 system_out
-                    .send(SystemMessage::Log("Reloaded DMX engine".into()))
+                    .send(SystemMessage::Log("[DMX] Reload engine".into()))
                     .unwrap();
                 thread_control_signal.store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
             }
@@ -461,7 +465,7 @@ pub fn run(
             let dmx_tick_duration = match dmx_universe.tick(&midi) {
                 Ok(dur) => dur,
                 Err(err) => {
-                    eprintln!("[WASM] Engine crash: {err}");
+                    log::error!("[WASM] Engine crash: {err}");
                     Duration::from_micros(0)
                 }
             };
@@ -493,7 +497,7 @@ pub fn run(
                         / (volume_samples.len() as f32)
                         * 10.0) as usize;
 
-                    let volume = (volume_mean as u8);
+                    let volume = volume_mean as u8;
                     &[Signal::Volume(volume)]
                 }
             );
@@ -558,8 +562,6 @@ pub fn run(
                         if elapsed_since_last_peak > 300 {
                             bass_peaks.push_back(Instant::now());
                             peaked = true;
-                        } else {
-                            // println!("bass peak stop");
                         }
                     }
                 }

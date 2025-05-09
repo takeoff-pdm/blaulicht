@@ -36,7 +36,7 @@ pub fn bl_controls_set(x: u8, y: u8, value: bool) {
 }
 
 pub fn bl_controls_config(x: u8, y: u8) {
-    println!("Configuring controls to ({}, {})...", x, y);
+    println!("[MATRIX] Configuring controls to ({}, {})...", x, y);
     unsafe {
         controls_config(x, y);
     }

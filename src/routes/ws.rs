@@ -64,9 +64,8 @@ impl From<WSFromFrontend> for FromFrontend {
                         panic!("not a string");
                     };
 
-                    println!("select device convert: {}", &device_name);
+                    log::info!("[WS] Selected INPUT: <{}>", &device_name);
                     let device = device_from_name(device_name);
-                    println!("device is some: {}", device.is_some());
                     Self::SelectInputDevice(device)
                 }
             }
@@ -244,13 +243,11 @@ pub async fn ws_handler(
 ) -> Result<HttpResponse, actix_web::Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
 
-    println!("Open websocket");
-
     // add consumer:
     let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
     let ip = req.connection_info().peer_addr().unwrap().to_string();
     let id = Uuid::new_v4().to_string();
-    println!("[ws] new ip connected: {ip}: {id}");
+    log::trace!("[WS] new IP connected: {ip}: {id}");
     {
         let mut consumers = data.to_frontend_consumers.lock().unwrap();
         consumers.insert(id.clone(), unified_sender);
@@ -273,7 +270,6 @@ pub async fn ws_handler(
         loop {
             {
                 if !*a.lock().unwrap() {
-                    println!("signal loop killed");
                     break;
                 }
             }
@@ -316,7 +312,6 @@ pub async fn ws_handler(
     let from_frontend_sender = data.from_frontend_sender.clone();
     rt::spawn(async move {
         // receive messages from websocket
-        println!("waiting for message...");
         while let Some(msg) = stream.recv().await {
             match msg {
                 Ok(AggregatedMessage::Text(text)) => {
@@ -327,7 +322,6 @@ pub async fn ws_handler(
                         serde_json::from_str(text.to_string().as_str()).unwrap();
 
                     from_frontend_sender.send(msg.clone().into()).unwrap();
-                    println!("recv ws: {msg:?}");
                 }
 
                 Ok(AggregatedMessage::Binary(bin)) => {
@@ -340,18 +334,16 @@ pub async fn ws_handler(
                     session.pong(&msg).await.unwrap();
                 }
                 Ok(AggregatedMessage::Close(e)) => {
-                    println!("close: {e:?}");
                     break;
                 }
                 Ok(AggregatedMessage::Pong(_)) => {}
                 Err(e) => {
-                    println!("error: {e:?}");
                     break;
                 }
             }
         }
 
-        println!("Websocket was killed.");
+        log::trace!("[WS] disconnected IP: {ip}");
         let mut a = b.lock().unwrap();
         *a = false;
 
@@ -371,13 +363,11 @@ pub async fn binary_ws_handler(
 ) -> Result<HttpResponse, actix_web::Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
 
-    println!("Open websocket");
-
     // add consumer:
     let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
     let ip = req.connection_info().peer_addr().unwrap().to_string();
     let id = Uuid::new_v4().to_string();
-    println!("[ws] new ip connected: {ip}: {id}");
+    log::trace!("[DMX-WS] new IP connected: {ip}: {id}");
     {
         let mut consumers = data.to_frontend_consumers.lock().unwrap();
         consumers.insert(id.clone(), unified_sender);
@@ -398,7 +388,6 @@ pub async fn binary_ws_handler(
         loop {
             {
                 if !*a.lock().unwrap() {
-                    println!("DMX ws loop killed");
                     break;
                 }
             }
@@ -425,7 +414,6 @@ pub async fn binary_ws_handler(
 
     rt::spawn(async move {
         // receive messages from websocket
-        println!("waiting for message...");
         while let Some(msg) = stream.recv().await {
             match msg {
                 Ok(AggregatedMessage::Ping(msg)) => {
@@ -433,20 +421,19 @@ pub async fn binary_ws_handler(
                     session.pong(&msg).await.unwrap();
                 }
                 Ok(AggregatedMessage::Close(e)) => {
-                    println!("close: {e:?}");
                     break;
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    println!("error: {e:?}");
                     break;
                 }
             }
         }
 
-        println!("Websocket was killed.");
         let mut a = b.lock().unwrap();
         *a = false;
+
+        log::trace!("[DMX-WS] disconnected IP: {ip}");
 
         {
             let mut consumers = data.to_frontend_consumers.lock().unwrap();

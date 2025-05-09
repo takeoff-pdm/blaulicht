@@ -18,11 +18,9 @@ pub fn init_logger() {
 pub fn device_from_name(dev_id: String) -> Option<Device> {
     let devices = get_input_devices_flat();
 
-    let selected_device: Option<(HostId, Device)> = devices
-        .into_iter()
-        .find(|(this_host, this_dev)| {
+    let selected_device: Option<(HostId, Device)> =
+        devices.into_iter().find(|(this_host, this_dev)| {
             let this_id = this_dev.name().unwrap();
-            println!("check: {} vs {}", &this_id, &dev_id);
             this_id == dev_id
         });
 
@@ -85,40 +83,3 @@ pub fn get_input_devices_flat() -> Vec<(cpal::HostId, cpal::Device)> {
         })
         .collect::<Vec<_>>()
 }
-
-// pub fn select_audio_device() -> cpal::Device {
-//     let mut devices = get_input_devices_flat();
-//
-//     if devices.is_empty() {
-//         println!("No audio input device available");
-//         exit(0);
-//     }
-//
-//     if devices.len() == 1 {
-//         return devices.swap_remove(0).1;
-//     }
-//
-//     println!("Available input devices:");
-//     for (device_i, (host_id, device)) in devices.iter().enumerate() {
-//         println!(
-//             "[{}]: {:?} - {}",
-//             device_i,
-//             host_id,
-//             device
-//                 .name()
-//                 .expect("should be existent at that point due to the filtering")
-//         );
-//     }
-//
-//     print!("Type a number: ");
-//     std::io::stdout().flush().unwrap();
-//
-//     let mut buf = [0];
-//     std::io::stdin().read_exact(&mut buf).unwrap();
-//     println!(); // newline
-//     let buf = std::str::from_utf8(&buf).unwrap();
-//     let choice = str::parse::<usize>(buf).unwrap();
-//
-//     // Remove element and take ownership.
-//     devices.swap_remove(choice).1
-// }

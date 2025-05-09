@@ -155,7 +155,7 @@ impl TickEngine {
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                println!("[WASM] {received_string}");
+                log::debug!("[WASM] {received_string}");
 
                 so.send(SystemMessage::WasmLog(received_string))
                     .expect("Failed to send log message");
@@ -178,8 +178,6 @@ impl TickEngine {
                     .expect("Failed to read memory");
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
-
-                // println!("[WASM] {received_string}");
 
                 so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
                     x: x as u8,
@@ -214,7 +212,7 @@ impl TickEngine {
                     y: y as u8,
                 }))
                 .expect("Failed to send controls config message");
-                println!("[WASM] controls_config: {x} {y}");
+                log::debug!("[WASM] controls_config: {x} {y}");
             },
         )?;
 
@@ -239,7 +237,7 @@ impl TickEngine {
             memory,
         });
 
-        println!("[WASM] initialized.");
+        log::info!("[WASM] initialized.");
 
         Ok(())
     }

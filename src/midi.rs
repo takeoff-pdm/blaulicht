@@ -16,8 +16,9 @@ pub fn midi(
     signal_from_controller_sender: Sender<(u8, u8, u8)>,
     signal_to_controller_receiver: Receiver<(u8, u8, u8)>,
 ) -> Result<(), MidiError> {
-    println!("Started midi thread");
-    let mut midi_in = MidiInput::new("ddj-listener").map_err(|e| MidiError::Other(e.to_string()))?;
+    log::trace!("[MIDI] Started thread");
+    let mut midi_in =
+        MidiInput::new("ddj-listener").map_err(|e| MidiError::Other(e.to_string()))?;
     midi_in.ignore(Ignore::None);
 
     let in_ports = midi_in.ports();
@@ -26,8 +27,8 @@ pub fn midi(
         .find(|p| midi_in.port_name(p).unwrap().contains("DDJ-400"))
         .ok_or(MidiError::DeviceNotFound)?;
 
-    println!(
-        "[IN] Connecting to: {}",
+    log::debug!(
+        "[MIDI-IN] Connecting to: {}",
         midi_in
             .port_name(in_port)
             .map_err(|e| MidiError::Other(e.to_string()))?
@@ -60,8 +61,8 @@ pub fn midi(
         .ok_or("DDJ-400 not found")
         .map_err(|e| MidiError::DeviceNotFound)?;
 
-    println!(
-        "[OUT] Connecting to: {}",
+    log::trace!(
+        "[MIDI-OUT] Connecting to: {}",
         midi_out
             .port_name(out_port)
             .map_err(|e| MidiError::Other(e.to_string()))?

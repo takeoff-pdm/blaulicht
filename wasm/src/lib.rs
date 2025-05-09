@@ -2,10 +2,6 @@ mod blaulicht;
 mod user;
 
 fn decode_midi(midi: &[u32]) -> Vec<blaulicht::MidiEvent> {
-    // if midi.len() > 0 {
-    //     println!("MIDI len: {}", midi.len());
-    // }
-
     let res: Vec<blaulicht::MidiEvent> = midi
         .iter()
         .map(|word| {

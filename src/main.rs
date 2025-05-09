@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU8;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -97,7 +97,6 @@ async fn main() -> anyhow::Result<()> {
     let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
     let audio_thread_control_signal = Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE));
 
-    println!("Creating midi...");
     let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
     let (midi_out_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
 
@@ -107,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
             match midi::midi(send, midi_out_receiver.clone()) {
                 Ok(_) => panic!("Unreachable."),
                 Err(err) => {
-                    eprintln!("MIDI thread chrashed! {err:?}");
+                    log::error!("MIDI thread chrashed! {err:?}");
                     break;
                 }
             }
@@ -118,11 +117,15 @@ async fn main() -> anyhow::Result<()> {
         loop {
             thread::sleep(Duration::from_millis(50));
             match midi_out_receiver.try_recv() {
-                Ok(midi) => {
-                    println!("MIDI recv: {midi:?}")
+                Ok(_midi) => {
+                    // TODO: include if required
+                    // println!("MIDI to dev: {_midi:?}")
                 }
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => panic!("MIDI sender gone."),
+                Err(TryRecvError::Disconnected) => {
+                    log::warn!("[MIDI] Shutting down.");
+                    break;
+                }
             }
         }
     });
@@ -166,7 +169,9 @@ async fn main() -> anyhow::Result<()> {
             Ok(res) => {
                 let consumers = consumers2.lock().unwrap();
                 for c in consumers.values() {
-                    c.send(UnifiedMessage::System(res.clone())).unwrap();
+                    if let Err(e) = c.send(UnifiedMessage::System(res.clone())) {
+                        continue;
+                    }
                 }
             }
             Err(crossbeam_channel::TryRecvError::Empty) => {}
@@ -181,11 +186,16 @@ async fn main() -> anyhow::Result<()> {
             Ok(res) => {
                 let consumers = consumers2.lock().unwrap();
                 for c in consumers.values() {
-                    c.send(UnifiedMessage::Signal(res.clone())).unwrap();
+                    if let Err(e) = c.send(UnifiedMessage::Signal(res.clone())) {
+                        continue;
+                    }
                 }
             }
             Err(crossbeam_channel::TryRecvError::Empty) => {}
-            Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                log::warn!("[BROADCAST] Shutting down.");
+                break;
+            }
         }
     });
 
@@ -248,6 +258,16 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| "Could not start webserver")?;
 
     info!("Blaulicht is shutting down...");
+    audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+
+    loop {
+        thread::sleep(Duration::from_secs(1));
+
+        let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+        if sig == AudioThreadControlSignal::DEAD {
+            break;
+        }
+    }
 
     Ok(())
 }
