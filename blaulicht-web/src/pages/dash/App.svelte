@@ -3,11 +3,13 @@
   import Page from "../../Page.svelte";
   import { loading } from "../../global";
   import {
+    Blade,
     Button,
     Folder,
     FpsGraph,
     List,
     Monitor,
+    Separator,
     ThemeUtils,
     type ListOptions,
   } from "svelte-tweakpane-ui";
@@ -87,7 +89,7 @@
 
   onMount(async () => {
     $loading = true;
-    ThemeUtils.setGlobalDefaultTheme(ThemeUtils.presets.retro);
+    ThemeUtils.setGlobalDefaultTheme(ThemeUtils.presets.iceberg);
 
     // Connect socket.
     const callbacks = new BlaulichtWebsocketCallbacks();
@@ -298,150 +300,127 @@
 </script>
 
 <Page pageId="dash">
-  <div class="page">
-    <div style="width: 100%; display: flex;">
-      <div style="width: 60%; display: flex; flex-direction: column; gap: 3rem;">
-        <div
-          style="display: flex; flex-direction: column; background-color: red; gap: 1rem;"
-        >
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={loopSpeed}
-                graph={true}
-                max={100}
-                theme={ThemeUtils.presets.retro}
-                format={(v) => `${v} micro s`}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>LOOP SPEED</span>
-              <Monitor value={loopSpeed} graph={false} />
-            </div>
-          </div>
+  <div
+    class="page"
+    style="height: 100vh; display: flex; flex-direction: column;"
+  >
+    <div style="width: 100%; height: 70%; display: flex; flex: 1;">
+      <div style="width: 100%; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 1rem;">
+        <Folder userExpandable={false} expanded={true} title="System">
+          <Monitor value={loopSpeed} graph={false} label={"Loop Speed"} />
+          <Monitor
+            value={loopSpeed}
+            graph={true}
+            max={200}
+            format={(v) => `${v} micro s`}
+          />
 
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={tickSpeed}
-                graph={true}
-                max={50}
-                theme={ThemeUtils.presets.retro}
-                format={(v) => `${v} micro s`}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>WASM SPEED</span>
-              <Monitor value={tickSpeed} graph={false} />
-            </div>
-          </div>
-        </div>
+          <Blade
+            options={{
+              view: "separator",
+            }}
+          />
 
-        <div
-          style="display: flex; flex-direction: column; background-color: blue; gap: 1rem;"
-        >
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={volume}
-                graph={true}
-                max={300}
-                theme={ThemeUtils.presets.retro}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>VOLUME</span>
-              <Monitor value={volume} graph={false} />
-            </div>
-          </div>
+          <Monitor value={tickSpeed} graph={false} label={"Tick Speed"} />
+          <Monitor
+            value={tickSpeed}
+            graph={true}
+            max={100}
+            format={(v) => `${v} micro s`}
+          />
+        </Folder>
 
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={bass}
-                graph={true}
-                max={300}
-                theme={ThemeUtils.presets.retro}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>BASS</span>
-              <Monitor value={bass} graph={false} />
-            </div>
-          </div>
+        <Folder userExpandable={false} expanded={true} title="Audio">
+          <Monitor value={volume} graph={false} label={"Volume"} />
+          <Monitor
+            value={volume}
+            graph={true}
+            max={300}
+            theme={ThemeUtils.presets.retro}
+          />
 
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={bassAvgShort}
-                graph={true}
-                max={300}
-                theme={ThemeUtils.presets.retro}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>BASS PEAK</span>
-              <Monitor value={bassAvgShort} graph={false} />
-            </div>
-          </div>
+          <Blade
+            options={{
+              view: "separator",
+            }}
+          />
 
-          <div style="display: flex;">
-            <div style="width: 90%">
-              <Monitor
-                value={bassAvg}
-                graph={true}
-                max={300}
-                theme={ThemeUtils.presets.retro}
-              />
-            </div>
-            <div style="width: 10%">
-              <span>BASS AVG.</span>
-              <Monitor value={bassAvg} graph={false} />
-            </div>
-          </div>
-        </div>
+          <Monitor value={bass} graph={false} label={"Bass"} />
+          <Monitor
+            value={bass}
+            graph={true}
+            max={300}
+            theme={ThemeUtils.presets.retro}
+          />
 
-        <!-- <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={beatVolume}
-              graph={true}
-              max={300}
-              theme={ThemeUtils.presets.retro}
-            />
-          </div>
-          <div style="width: 10%">
-            <span>BEAT VOL.</span>
-            <Monitor value={beatVolume} graph={false} />
-          </div>
-        </div> -->
+          <Blade
+            options={{
+              view: "separator",
+            }}
+          />
 
-        <div style="display: flex;">
-          <div style="width: 90%">
-            <Monitor
-              value={bpm}
-              graph={true}
-              max={160}
-              min={90}
-              theme={ThemeUtils.presets.retro}
-            />
-          </div>
-          <div style="width: 10%">
-            <span>BPM</span>
-            <Monitor value={bpm} graph={false} />
-          </div>
+          <Monitor value={bassAvg} graph={false} label={"Bass AVG."} />
+          <Monitor
+            value={bassAvg}
+            graph={true}
+            max={300}
+            theme={ThemeUtils.presets.retro}
+          />
+        </Folder>
+
+        <Folder userExpandable={false} expanded={true} title="Beat Detection">
+          <Monitor value={bassAvgShort} graph={false} label={"Bass Peak"} />
+          <Monitor
+            value={bassAvgShort}
+            graph={true}
+            max={300}
+            theme={ThemeUtils.presets.retro}
+          />
+
+          <Blade
+            options={{
+              view: "separator",
+            }}
+          />
+
+          <Monitor value={bpm} graph={false} label={"BPM"} />
+          <Monitor
+            value={bpm}
+            graph={true}
+            max={160}
+            min={90}
+            theme={ThemeUtils.presets.translucent}
+          />
 
           <BpmLight {bpm} dimensions={80}></BpmLight>
-        </div>
+        </Folder>
 
-        <!-- <WaveformMonitor value={waveData} min={-1} max={11} lineStyle={'bezier'} /> -->
+        <Folder userExpandable={false} expanded={true} title="Devices">
+          <List
+            bind:value={selectedSerial}
+            label="Serial Port"
+            options={serialPortListOptions}
+            on:change={(e) => selectSerial(e.detail.value)}
+          />
+          <pre>Selected Option: {selectedSerial}</pre>
 
-        <!-- <Folder expanded={true} title="Reticulation Management Folder"> -->
-        <!--     <Button on:click={() => console.log("incr")} title="Increment" /> -->
-        <!--     <Monitor value={0} label="Count" /> -->
-        <!-- </Folder> -->
+          <List
+            bind:value={selectedAudio}
+            label="Audio Input"
+            options={audioPortListOptions}
+            on:change={(e) => selectAudio(e.detail.value)}
+          />
+          <pre>Selected Option: {selectedAudio}</pre>
 
-        <div style="padding: 1rem; box-sizing: border-box;">
+          <Button on:click={reloadEngine} label={"Engine"} title="Reload"
+          ></Button>
+        </Folder>
+      </div>
+
+      <div style="width: 100%;">
+        <div
+          style="width: 100%; padding: 1rem; box-sizing: border-box; display: flex; justify-content:center;"
+        >
           <ControlMatrix
             config={controlMatrixConfig}
             states={controlMatrixStates}
@@ -463,37 +442,19 @@
           ></ControlMatrix>
         </div>
       </div>
+    </div>
 
-      <div style="width: 40%;">
-        <Folder userExpandable={false} expanded={true} title="Devices">
-          <List
-            bind:value={selectedSerial}
-            label="Serial Port"
-            options={serialPortListOptions}
-            on:change={(e) => selectSerial(e.detail.value)}
-          />
-          <pre>Selected Option: {selectedSerial}</pre>
+    <div
+      style="width: 100%; height: 30%; display: flex; gap: 1rem; padding: 1rem; box-sizing: border-box; flex-shrink: 0;"
+    >
+      <div style="width: 50%; height: 100%; background-colo">
+        <h6>LOGS</h6>
+        <Terminal lines={logs}></Terminal>
+      </div>
 
-          <List
-            bind:value={selectedAudio}
-            label="Audio Input"
-            options={audioPortListOptions}
-            on:change={(e) => selectAudio(e.detail.value)}
-          />
-          <pre>Selected Option: {selectedAudio}</pre>
-        </Folder>
-
-        <Button on:click={reloadEngine} title="Reload"></Button>
-
-        <div style="width: 90%;">
-          <h6>LOGS</h6>
-          <Terminal lines={logs}></Terminal>
-        </div>
-
-        <div style="width: 90%;">
-          <h6>WASM LOGS</h6>
-          <Terminal lines={wasmLogs}></Terminal>
-        </div>
+      <div style="width: 50%; height: 100%;">
+        <h6>WASM LOGS</h6>
+        <Terminal lines={wasmLogs}></Terminal>
       </div>
     </div>
   </div>
@@ -501,4 +462,15 @@
 
 <style lang="scss">
   @use "../../mixins" as *;
+  :global(html),
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    // overflow: hidden;
+    height: 100vh;
+  }
+
+  :global(h6) {
+    margin: 0;
+  }
 </style>

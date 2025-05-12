@@ -181,7 +181,12 @@ pub mod prelude {
 // }
 
 /// Uses input ranging from 0 to 360.
-pub fn hsv_to_rgb(h: u16) -> (u8, u8, u8) {
+pub fn hsv_to_rgb(h: isize) -> (u8, u8, u8) {
+    // Catch white.
+    if h == -1 {
+        return (255, 255, 255);
+    }
+
     // Normalize hue to [0, 360)
     // let mut h = h % 360;
     // if h < 0 {

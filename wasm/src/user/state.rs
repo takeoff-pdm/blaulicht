@@ -2,13 +2,38 @@ use std::{collections::HashMap, ops::Range};
 
 #[derive(Debug)]
 pub struct State {
+    pub fogger: bool,
+    pub fogger_int: u8,
+
     pub was_initial: bool,
     pub init_time: u32,
     pub last_beat_time: u32,
+    pub last_beat_time_mood: u32,
 
     pub faders: Fader,
 
     pub animation: Animation,
+
+    pub crossfader_input: bool,
+
+    pub logo_mode: LogoMode,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LogoMode {
+    Drop,
+    Breakdown,
+    Normal,
+}
+
+impl LogoMode {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            LogoMode::Drop => b"D1",
+            LogoMode::Breakdown => b"D0",
+            LogoMode::Normal => b"D2",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -46,6 +71,7 @@ pub struct Animation {
     pub strobe: Strobe,
     pub mood: Mood,
     pub video: Video,
+    pub dim: Dimmer,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -109,6 +135,18 @@ impl VideoFile {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Dimmer {
+    pub stage_real_brightness: u8,
+    pub controls: DimmerControls,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DimmerControls {
+    pub brightness_stage: u8,
+    pub brightness_other: u8,
+}
+
 #[derive(Debug)]
 pub struct Strobe {
     // strobe_is_currently_on: bool,
@@ -125,7 +163,12 @@ pub struct Strobe {
 #[derive(Debug)]
 pub struct Mood {
     // Loops from 0 to 360.
-    pub counter: u16,
+    pub counter_range_index: usize,
+    pub counter_in_range_value: isize,
+    pub last_counter_update: u32,
+    pub hsv: isize,
+    pub animation_speed: f32,
+    pub animation_speed_beat: f32,
     pub controls: MoodControls,
 }
 
@@ -136,6 +179,7 @@ pub struct MoodControls {
     pub brightness: u8,
     pub animation: MoodAnimation,
     pub color_palette: MoodColorPalette,
+    pub animation_on_beat: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -143,14 +187,17 @@ pub enum MoodColorPalette {
     All,
     CyanMagenta,
     OrangeBlue,
+    White,
 }
 
 impl MoodColorPalette {
-    pub fn to_hsv_ranges(&self) -> Vec<Range<usize>> {
+    pub fn to_hsv_ranges(&self) -> Vec<Range<isize>> {
         match self {
             Self::All => vec![0..361],
-            Self::CyanMagenta => vec![180..345],
+            // TODO: fix this kind of animation.
+            Self::CyanMagenta => vec![180..180, 345..345],
             Self::OrangeBlue => vec![240..241, 40..41],
+            Self::White => vec![-1..-1],
         }
     }
 }
@@ -193,6 +240,10 @@ pub struct StrobeControls {
     pub tilt_animation_incr: bool,
     pub tilt_animation_speed: f32,
     pub tilt_animation_last_tick: u32,
+
+    pub moving_head_group_enabled: bool,
+    pub stage_light_group_enabled: bool,
+    pub panel_group_enabled: bool,
 }
 
 impl StrobeControls {
@@ -263,8 +314,14 @@ impl Default for AnimationAlternating {
 impl Default for State {
     fn default() -> Self {
         Self {
+            fogger: false,
+            fogger_int: 127 / 2,
+            logo_mode: LogoMode::Normal,
+            crossfader_input: false,
+
             was_initial: false,
             last_beat_time: 0,
+            last_beat_time_mood: 0,
 
             init_time: 0,
 
@@ -309,16 +366,33 @@ impl Default for State {
                         tilt_animation_incr: true,
                         tilt_animation_speed: 1.0,
                         tilt_animation_last_tick: 0,
+                        // groups
+                        moving_head_group_enabled: true,
+                        stage_light_group_enabled: true,
+                        panel_group_enabled: true,
                     },
                 },
                 mood: Mood {
-                    counter: 0,
+                    counter_range_index: 0,
+                    counter_in_range_value: 0,
+                    last_counter_update: 0,
+                    animation_speed: 1.0,
+                    animation_speed_beat: 1.0,
+                    hsv: 0,
                     controls: MoodControls {
                         on_beat: true,
                         force: false,
                         brightness: 255,
                         animation: MoodAnimation::Synced,
                         color_palette: MoodColorPalette::All,
+                        animation_on_beat: true,
+                    },
+                },
+                dim: Dimmer {
+                    stage_real_brightness: 255 / 2,
+                    controls: DimmerControls {
+                        brightness_stage: 255 / 2,
+                        brightness_other: 255 / 2,
                     },
                 },
             },

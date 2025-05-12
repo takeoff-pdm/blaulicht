@@ -79,7 +79,10 @@ pub fn midi(
                 conn_out.send(&[sig.0, sig.1, sig.2]).unwrap();
             }
             Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => panic!("ERROR"),
+            Err(TryRecvError::Disconnected) => {
+                log::warn!("[MIDI] Terminating...");
+                break;
+            },
         }
     }
 

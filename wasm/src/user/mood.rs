@@ -1,12 +1,11 @@
 use crate::{
     blaulicht::{self, bl_controls_set, TickInput},
-    colorize, printc, println, smidi,
-    user::midi::{
-        DDJ_RIGHT_BEAT_JMP_0_0, DDJ_RIGHT_BEAT_JMP_1_0, DDJ_RIGHT_BEAT_JMP_2_0,
-        DDJ_RIGHT_BEAT_LOOP_0_0, DDJ_RIGHT_BEAT_LOOP_1_0, DDJ_RIGHT_BEAT_LOOP_2_0,
-        DDJ_RIGHT_BEAT_SYNC, DDJ_RIGHT_CUE, DDJ_RIGHT_HOT_CUE_0_1, DDJ_RIGHT_HOT_CUE_1_1,
-        DDJ_RIGHT_HOT_CUE_2_1, MOOD_ALTERNATING, MOOD_BRIGHTNESS, MOOD_PALETTE_ALL,
-        MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_SNAKE, MOOD_SYNCED,
+    colorize, elapsed, printc, println, smidi,
+    user::{
+        midi::{
+            DDJ_RIGHT_BEAT_JMP_0_0, DDJ_RIGHT_BEAT_JMP_1_0, DDJ_RIGHT_BEAT_JMP_2_0, DDJ_RIGHT_BEAT_LOOP_0_0, DDJ_RIGHT_BEAT_LOOP_1_0, DDJ_RIGHT_BEAT_LOOP_2_0, DDJ_RIGHT_BEAT_LOOP_3_0, DDJ_RIGHT_BEAT_SYNC, DDJ_RIGHT_CUE, DDJ_RIGHT_HOT_CUE_0_1, DDJ_RIGHT_HOT_CUE_1_1, DDJ_RIGHT_HOT_CUE_2_1, DDJ_RIGHT_RELOOP, MOOD_ALTERNATING, MOOD_BEAT_ANIM, MOOD_BRIGHTNESS, MOOD_PALETTE_ALL, MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_PALETTE_WHITE, MOOD_SNAKE, MOOD_SPEED, MOOD_SPEED_BEAT, MOOD_SYNCED, STROBE_SPEED
+        },
+        strobe::parse_speed_multiplier,
     },
 };
 
@@ -16,11 +15,85 @@ use super::{
 };
 use map_range::MapRange;
 
-fn animation_step(state: &mut State) {
-    const UPPER_LIMIT: u16 = 360;
+fn animation_step(state: &mut State, input: TickInput) {
+    if state.animation.mood.controls.animation_on_beat {
+        // TODO: relies on being called on beat.
+    } else {
+        let base_time = 100;
+        if elapsed!(input, state.animation.mood.last_counter_update)
+            < (base_time as f32 * state.animation.mood.animation_speed) as u32
+        {
+            return;
+        }
 
-    state.animation.mood.counter += 1;
-    state.animation.mood.counter %= UPPER_LIMIT;
+        state.animation.mood.last_counter_update = input.time;
+    }
+
+    // Check if still in range.
+
+    let curr_profile = state.animation.mood.controls.color_palette.to_hsv_ranges();
+    let curr_range = match curr_profile.get(state.animation.mood.counter_range_index) {
+        Some(i) => i,
+        None => {
+            state.animation.mood.counter_range_index = 0;
+            &curr_profile[0]
+        }
+    };
+
+    // If still legal value in range, advance in range index.
+    match curr_range.contains(&(state.animation.mood.counter_in_range_value + 1)) {
+        true => {
+            state.animation.mood.counter_in_range_value += 1;
+        }
+        false => {
+            state.animation.mood.counter_range_index =
+                (state.animation.mood.counter_range_index + 1) % curr_profile.len();
+            let new_range = &curr_profile[state.animation.mood.counter_range_index];
+            state.animation.mood.counter_in_range_value = new_range.start;
+        }
+    };
+
+    state.animation.mood.hsv = state.animation.mood.counter_in_range_value;
+
+    // let hsv = {
+    //     let ranges = state.animation.mood.controls.color_palette.to_hsv_ranges();
+
+    //     let mut current_value = None;
+    //     let mut last_idx = 0;
+    //     for (idx, range) in ranges.iter().enumerate() {
+    //         last_idx = idx;
+    //         if range.contains(&(counter as usize)) {
+    //             current_value = Some(counter);
+    //             break;
+    //         }
+    //     }
+
+    //     // TODO: make it variable when the step is called.
+    //     let avg_len = ranges
+    //         .iter()
+    //         .map(|r| r.start.abs_diff(r.end))
+    //         .sum::<usize>()
+    //         / ranges.len();
+    //     let base_time = 1000 / avg_len;
+    //     println!("base_time: {base_time}");
+    //     animation_step(state, input, base_time as u32);
+
+    //     match current_value {
+    //         Some(value) => value,
+    //         None => {
+    //             let next_idx = (last_idx + 1) % (ranges.len() - 1);
+    //             let curr = ranges[next_idx].start as u16;
+    //             // println!("RESET COUNT: {curr}");
+    //             state.animation.mood.counter = curr;
+    //             curr
+    //         }
+    //     }
+    // };
+
+    // const UPPER_LIMIT: u16 = 360;
+
+    // state.animation.mood.counter_range_index += 1;
+    // state.animation.mood.counter_range_index %= UPPER_LIMIT;
 }
 
 const MOOD_LIGHT_START_ADDRS_LEFT: [usize; 0] = [];
@@ -31,6 +104,9 @@ const ADJ_MEGA_HEX: [usize; 26] = [
     25, 32, 39, 46, 53, 60, 67, 74, 81, 88, 95, 102, 109, 116, 123, 130, 137, 144, 151, 158, 165,
     172, 186, 193, 200, 207,
 ];
+
+// TODO: isolate one strobe light into ambient.
+// TODO: add ambient dimmers.
 
 // TODO: add second strobe group
 // TODO: add third strobe group (panels)
@@ -43,6 +119,10 @@ pub const LITECRAFT_AT10: [usize; 16] = [
 ];
 
 pub fn tick_on_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
+    if state.animation.mood.controls.animation_on_beat {
+        animation_step(state, input);
+    }
+
     if state.animation.mood.controls.animation == MoodAnimation::Synced {
         tick_without_beat(state, dmx, input);
         return;
@@ -57,6 +137,10 @@ pub fn tick_off_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
 }
 
 pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
+    if !state.animation.mood.controls.animation_on_beat {
+        animation_step(state, input);
+    }
+
     let brightness = match (
         (state.animation.strobe.strobe_activate_time.is_some()
             && state.animation.strobe.controls.strobe_enabled),
@@ -70,11 +154,11 @@ pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
             as u8,
     };
 
-    // TODO: make it variable when the step is called.
-    animation_step(state);
+    // Get HSV based on counter and current color scheme.
+    // TODO: this could be implemented in a more efficient way.
 
-    let counter = state.animation.mood.counter;
-    let color = blaulicht::hsv_to_rgb(counter);
+    // println!("HSV: {hsv}");
+    let color = blaulicht::hsv_to_rgb(state.animation.mood.hsv);
 
     for start in ADJ_MEGA_HEX {
         colorize!(color, dmx, start);
@@ -96,10 +180,28 @@ pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
 // Controls.
 //
 
+pub fn set_speed_multiplier(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.mood.animation_speed = parsed_value;
+    printc!(MOOD_SPEED.0, MOOD_SPEED.1, "M.SPEED {value_str}",);
+}
+
+pub fn set_speed_multiplier_beat(state: &mut State, value: u8) {
+    let (parsed_value, value_str) = parse_speed_multiplier(value);
+    state.animation.mood.animation_speed_beat = parsed_value;
+    printc!(MOOD_SPEED_BEAT.0, MOOD_SPEED_BEAT.1, "M.B.SPEED {value_str}",);
+}
+
 pub fn set_on_beat(state: &mut State, value: bool) {
     state.animation.mood.controls.on_beat = value;
     bl_controls_set(MOOD_ON_BEAT.0, MOOD_ON_BEAT.1, value);
     smidi!(DDJ_RIGHT_BEAT_SYNC, value as u8 * 127);
+}
+
+pub fn set_on_beat_anim(state: &mut State, value: bool) {
+    state.animation.mood.controls.animation_on_beat = value;
+    bl_controls_set(MOOD_BEAT_ANIM.0, MOOD_BEAT_ANIM.1, value);
+    smidi!(DDJ_RIGHT_RELOOP, value as u8 * 127);
 }
 
 pub fn set_force_on(state: &mut State, value: bool) {
@@ -110,7 +212,7 @@ pub fn set_force_on(state: &mut State, value: bool) {
 
 pub fn set_brightness(state: &mut State, value: u8) {
     state.animation.mood.controls.brightness = value;
-    printc!(MOOD_BRIGHTNESS.0, MOOD_BRIGHTNESS.1, "BRI {value:03}",);
+    printc!(MOOD_BRIGHTNESS.0, MOOD_BRIGHTNESS.1, "M.BRI {value:03}",);
 }
 
 pub fn set_animation(state: &mut State, value: MoodAnimation) {
@@ -131,16 +233,18 @@ pub fn set_animation(state: &mut State, value: MoodAnimation) {
     state.animation.mood.controls.animation = value;
 }
 
-pub fn set_color_palette(state: &mut State, value: MoodColorPalette) {
-    let (x0_y0_value, x1_y0_value, x2_y0_value) = match &value {
-        MoodColorPalette::All => (127, 0, 0),
-        MoodColorPalette::CyanMagenta => (0, 127, 0),
-        MoodColorPalette::OrangeBlue => (0, 0, 127),
+pub fn set_color_palette(state: &mut State, value: MoodColorPalette, input: TickInput) {
+    let (x0_y0_value, x1_y0_value, x2_y0_value, x3_y0_value) = match &value {
+        MoodColorPalette::All => (127, 0, 0, 0),
+        MoodColorPalette::CyanMagenta => (0, 127, 0, 0),
+        MoodColorPalette::OrangeBlue => (0, 0, 127, 0),
+        MoodColorPalette::White => (0, 0, 0, 127),
     };
 
     smidi!(DDJ_RIGHT_BEAT_LOOP_0_0, x0_y0_value);
     smidi!(DDJ_RIGHT_BEAT_LOOP_1_0, x1_y0_value);
     smidi!(DDJ_RIGHT_BEAT_LOOP_2_0, x2_y0_value);
+    smidi!(DDJ_RIGHT_BEAT_LOOP_3_0, x3_y0_value);
 
     bl_controls_set(MOOD_PALETTE_ALL.0, MOOD_PALETTE_ALL.1, x0_y0_value == 127);
     bl_controls_set(
@@ -154,5 +258,13 @@ pub fn set_color_palette(state: &mut State, value: MoodColorPalette) {
         x2_y0_value == 127,
     );
 
+    bl_controls_set(
+        MOOD_PALETTE_WHITE.0,
+        MOOD_PALETTE_WHITE.1,
+        x3_y0_value == 127,
+    );
+
     state.animation.mood.controls.color_palette = value;
+
+    animation_step(state, input);
 }

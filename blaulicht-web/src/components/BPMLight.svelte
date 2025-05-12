@@ -34,10 +34,10 @@
   
       if (isBlinking) {
         // Create a glowing effect with a radial gradient
-        let gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.2, centerX, centerY, radius);
-        gradient.addColorStop(0, 'rgba(0, 255, 0, 1)');
-        gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
-        ctx.fillStyle = gradient;
+        // let gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.2, centerX, centerY, radius);
+        // gradient.addColorStop(0, 'rgba(0, 255, 0, 1)');
+        // gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+        ctx.fillStyle = 'rgba(0, 255, 0)';
       } else {
         // Dimmed state of the bulb
         ctx.fillStyle = "rgba(0, 50, 0, 1)";

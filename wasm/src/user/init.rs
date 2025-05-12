@@ -2,14 +2,15 @@ use crate::{
     blaulicht::{self, bl_udp, TickInput},
     printc, println,
     user::{
+        dim, logo,
         midi::{
             self, MOOD_ALTERNATING, MOOD_FORCE_TOGGLE, MOOD_ON_BEAT, MOOD_PALETTE_ALL,
-            MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_SNAKE, MOOD_SYNCED,
-            STROBE_ALTERNATING, STROBE_AUTOMATION_TOGGLE, STROBE_ON_BEAT, STROBE_REMAINING_TIME,
-            STROBE_SYNCED, STROBE_TOGGLE,
+            MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_PALETTE_WHITE, MOOD_SNAKE,
+            MOOD_SYNCED, STROBE_ALTERNATING, STROBE_AUTOMATION_TOGGLE, STROBE_ON_BEAT,
+            STROBE_REMAINING_TIME, STROBE_SYNCED, STROBE_TOGGLE,
         },
         mood::{self, set_color_palette},
-        state::{MoodAnimation, MoodColorPalette, StrobeAnimation},
+        state::{LogoMode, MoodAnimation, MoodColorPalette, StrobeAnimation},
         strobe::{self, mac_aura_setup, MAC_AURA_START_ADDRS},
         video,
     },
@@ -28,7 +29,7 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     }
 
     // Initialize the control surface.
-    blaulicht::bl_controls_config(8, 7);
+    blaulicht::bl_controls_config(8, 8);
     printc!(STROBE_TOGGLE.0, STROBE_TOGGLE.1, "STROBE ENABLE");
 
     printc!(
@@ -65,6 +66,10 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     strobe::set_on_multiplier(state, 127 / 2);
     strobe::set_off_multiplier(state, 127 / 2);
 
+    strobe::toggle_moving_head_group(state, true, dmx);
+    strobe::toggle_stage_group(state, true, dmx);
+    strobe::toggle_panel_group(state, true, dmx);
+
     mood::set_brightness(state, state.animation.mood.controls.brightness);
 
     printc!(MOOD_FORCE_TOGGLE.0, MOOD_FORCE_TOGGLE.1, "MOOD + STROBE",);
@@ -89,7 +94,15 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
         MOOD_PALETTE_ORANGE_BLUE.1,
         "CLR O/B"
     );
-    mood::set_color_palette(state, state.animation.mood.controls.color_palette.clone());
+    printc!(MOOD_PALETTE_WHITE.0, MOOD_PALETTE_WHITE.1, "CLR WHITE");
+    mood::set_color_palette(
+        state,
+        state.animation.mood.controls.color_palette.clone(),
+        input,
+    );
+    mood::set_speed_multiplier(state, 127 / 2);
+    mood::set_speed_multiplier_beat(state, 127 / 2);
+    mood::set_on_beat_anim(state, state.animation.mood.controls.animation_on_beat);
 
     // AAAA
 
@@ -125,5 +138,15 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     video::set_rotate(0);
     video::set_brightness_internal(state, state.animation.video.brightness);
 
-    println!("RUNNING SETUP...");
+    dim::set_brightness_stage(state, state.animation.dim.controls.brightness_stage);
+    dim::set_brightness_other(state, state.animation.dim.controls.brightness_other);
+
+    logo::set_mode(state, LogoMode::Normal, true);
+
+    midi::toggle_fogger(state, false);
+    midi::set_fogger_intensity(state, 0);
+
+    midi::toggle_crossfader_input(state, false);
+
+    println!("[SETUP] Running...");
 }

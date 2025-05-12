@@ -4,10 +4,9 @@ use crate::{
     blaulicht::{self, bl_controls_log, bl_controls_set, bl_udp, TickInput},
     elapsed, printc, println, smidi,
     user::{
-        midi::{
+        logo, midi::{
             DDJ_FX_ON, DDJ_MASTER_CUE, DDJ_RIGHT_SAMPLER_0_0, DDJ_RIGHT_SAMPLER_0_1, DDJ_RIGHT_SAMPLER_1_0, DDJ_RIGHT_SAMPLER_1_1, DDJ_RIGHT_SAMPLER_2_0, DDJ_RIGHT_SAMPLER_2_1, DDJ_RIGHT_SAMPLER_3_0, DDJ_RIGHT_SAMPLER_3_1, VIDEO_BRI, VIDEO_FILE_1, VIDEO_FILE_2, VIDEO_FILE_3, VIDEO_FILE_4, VIDEO_FILE_5, VIDEO_FILE_6, VIDEO_FILE_7, VIDEO_FILE_8, VIDEO_FRY, VIDEO_ROTATE, VIDEO_SPEED, VIDEO_SPEED_SYNC
-        },
-        strobe,
+        }, strobe
     },
 };
 
@@ -87,7 +86,7 @@ fn send_speed_multiplier(value: f32) {
     body.extend_from_slice(&fac_bytes);
 
     blaulicht::bl_udp("127.0.0.1:9000", &body);
-    println!("Sent speed UDP.");
+    println!("[UDP] Sent speed event.");
 }
 
 pub fn set_video_file(state: &mut State, value: VideoFile) {
@@ -188,14 +187,14 @@ pub fn set_video_file(state: &mut State, value: VideoFile) {
     body.extend_from_slice(body_str);
     // TODO: make IP configurable.
     blaulicht::bl_udp("127.0.0.1:9000", &body);
-    println!("Sent play UDP.");
+    println!("[UDP] Play event.");
 
     send_speed_multiplier(state.animation.video.speed * value.speed());
 }
 
 pub fn send_sync() {
     blaulicht::bl_udp("127.0.0.1:9000", &[150, 0]);
-    println!("Sent SYNC UDP.");
+    println!("[UDP] Sync event.");
 }
 
 pub fn tick(state: &mut State, input: TickInput, force: bool) {
@@ -233,5 +232,7 @@ pub fn tick(state: &mut State, input: TickInput, force: bool) {
             input.bpm
         );
         send_speed_multiplier(modified_speed_factor);
+
+        logo::sync_bpm(input.bpm);
     }
 }
