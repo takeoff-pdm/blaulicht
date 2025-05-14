@@ -1,4 +1,7 @@
+use blaulicht::MidiDevice;
+
 mod blaulicht;
+mod ui;
 mod user;
 
 fn decode_midi(midi: &[u32]) -> Vec<blaulicht::MidiEvent> {
@@ -8,8 +11,10 @@ fn decode_midi(midi: &[u32]) -> Vec<blaulicht::MidiEvent> {
             let data1 = (word & 0x000000FF) as u8;
             let data0 = ((word & 0x0000FF00) >> 8) as u8;
             let status = ((word & 0x00FF0000) >> 16) as u8;
+            let device = ((word & 0xFF000000) >> 24) as u8;
 
             blaulicht::MidiEvent {
+                device: device.into(),
                 status,
                 kind: data0,
                 value: data1,

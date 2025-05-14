@@ -3,7 +3,7 @@ use std::{net::UdpSocket, time::Instant};
 
 use wasmtime::*;
 
-use crate::audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet};
+use crate::{app::MidiEvent, audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet}, midi::MidiError};
 
 #[derive(Clone, Copy)]
 pub struct TickInput {
@@ -51,7 +51,7 @@ pub struct TickEngine {
     data: Vec<i32>,
     dmx: Vec<u8>,
     wasm: Option<WasmEngine>,
-    midi_out: Sender<(u8, u8, u8)>,
+    midi_out: Sender<MidiEvent>,
     system_out: Sender<SystemMessage>,
 }
 
@@ -63,7 +63,7 @@ pub struct WasmEngine {
 
 impl TickEngine {
     pub fn create(
-        midi_out: Sender<(u8, u8, u8)>,
+        midi_out: Sender<MidiEvent>,
         system_out: Sender<SystemMessage>,
     ) -> Result<Self> {
         let mut engine = TickEngine {
@@ -220,8 +220,8 @@ impl TickEngine {
         linker.func_wrap(
             "blaulicht",
             "bl_midi",
-            move |status: i32, kind: i32, value: i32| {
-                mo.send((status as u8, kind as u8, value as u8)).unwrap();
+            move |device: i32, status: i32, kind: i32, value: i32| {
+                mo.send(MidiEvent { device: device as u8, status: status as u8, data0: kind as u8, data1: value as u8 }).unwrap();
             },
         )?;
 
@@ -267,7 +267,7 @@ impl TickEngine {
     pub fn tick(
         &mut self,
         input: TickInput,
-        midi_events: &[(u8, u8, u8)],
+        midi_events: &[MidiEvent],
         initial: bool,
     ) -> Result<()> {
         let wasm = self.wasm.as_mut().unwrap();
@@ -311,8 +311,10 @@ impl TickEngine {
 
         let midi_events_packed: Vec<u32> = midi_events
             .iter()
-            .map(|(a, b, c)| (0u32 | (*a as u32) << 16 | (*b as u32) << 8 | (*c as u32)))
-            .collect();
+            .map(|event| {
+                (0u32 | (event.device as u32) << 24 | (event.status as u32) << 16 | (event.data0 as u32) << 8 | (event.data1 as u32))
+            })
+            .collect::<Vec<u32>>();
 
         for &num in &midi_events_packed {
             midi_array_bytes.extend_from_slice(&num.to_le_bytes());

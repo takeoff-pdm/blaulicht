@@ -6,6 +6,8 @@ use std::thread;
 use std::time::Duration;
 use wmidi::MidiMessage;
 
+use crate::app::MidiEvent;
+
 #[derive(Debug)]
 pub enum MidiError {
     DeviceNotFound,
@@ -13,9 +15,10 @@ pub enum MidiError {
 }
 
 pub fn midi(
-    signal_from_controller_sender: Sender<(u8, u8, u8)>,
-    signal_to_controller_receiver: Receiver<(u8, u8, u8)>,
+    signal_from_controller_sender: Sender<MidiEvent>,
+    signal_to_controller_receiver: Receiver<MidiEvent>,
 ) -> Result<(), MidiError> {
+    let device_id = 1;
     log::trace!("[MIDI] Started thread");
     let mut midi_in =
         MidiInput::new("ddj-listener").map_err(|e| MidiError::Other(e.to_string()))?;
@@ -44,7 +47,12 @@ pub fn midi(
                     panic!("weird message");
                 }
                 signal_from_controller_sender
-                    .send((message[0], message[1], message[2]))
+                    .send(MidiEvent {
+                        device: device_id,
+                        status: message[0],
+                        data0: message[1],
+                        data1: message[2],
+                    })
                     .map_err(|e| MidiError::Other(e.to_string()))
                     .unwrap();
             },
@@ -76,13 +84,13 @@ pub fn midi(
         thread::sleep(Duration::from_millis(10));
         match signal_to_controller_receiver.try_recv() {
             Ok(sig) => {
-                conn_out.send(&[sig.0, sig.1, sig.2]).unwrap();
+                conn_out.send(&[sig.status, sig.data0, sig.data1]).unwrap();
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 log::warn!("[MIDI] Terminating...");
                 break;
-            },
+            }
         }
     }
 

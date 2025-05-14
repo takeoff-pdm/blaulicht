@@ -8,14 +8,14 @@ extern "C" {
         body_ptr: *const u8,
         body_len: usize,
     );
-    fn bl_midi(status: u8, data0: u8, data1: u8);
+    fn bl_midi(device: u8, status: u8, data0: u8, data1: u8);
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
     fn controls_config(x: u8, y: u8);
 }
 
-pub fn bl_midi_safe(status: u8, data0: u8, data1: u8) {
-    unsafe { bl_midi(status, data0, data1) }
+pub fn bl_midi_safe(device: u8, status: u8, data0: u8, data1: u8) {
+    unsafe { bl_midi(device, status, data0, data1) }
 }
 
 /// Log a string to the BL output
@@ -80,7 +80,23 @@ pub struct TickInput {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum MidiDevice {
+    Builtin,
+    External(u8),
+}
+
+impl From<u8> for MidiDevice {
+    fn from(value: u8) -> Self {
+        match value {
+            255 => Self::Builtin,
+            other => Self::External(other),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct MidiEvent {
+    pub device: MidiDevice,
     pub status: u8,
     pub kind: u8,
     pub value: u8,
@@ -169,7 +185,7 @@ pub mod prelude {
     #[macro_export]
     macro_rules! smidi {
         ($tuple: expr, $value: expr) => {
-            blaulicht::bl_midi_safe($tuple.0, $tuple.1, $value)
+            blaulicht::bl_midi_safe(1, $tuple.0, $tuple.1, $value)
         };
     }
 

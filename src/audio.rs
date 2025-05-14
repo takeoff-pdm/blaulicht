@@ -29,8 +29,7 @@ use serde::Serialize;
 use serialport::{SerialPortInfo, SerialPortType};
 
 use crate::{
-    dmx::{DmxUniverse, USB_DEVICES},
-    midi, performance, DmxData, ToFrontent,
+    app::MidiEvent, dmx::{DmxUniverse, USB_DEVICES}, midi, performance, DmxData, ToFrontent
 };
 
 fn map(x: isize, in_min: isize, in_max: isize, out_min: isize, out_max: isize) -> usize {
@@ -296,8 +295,8 @@ pub fn run(
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     // to_frontend_sender: Sender<ToFrontent>,
-    midi_in_receiver: Receiver<(u8, u8, u8)>,
-    midi_out_sender: Sender<(u8, u8, u8)>,
+    midi_in_receiver: Receiver<MidiEvent>,
+    midi_out_sender: Sender<MidiEvent>,
 ) -> anyhow::Result<()> {
     let config = Config::default();
 

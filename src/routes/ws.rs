@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    app::{FromFrontend, WSMatrixControlBody},
+    app::{FromFrontend, MatrixEvent, MidiEvent},
     audio::{Signal, SystemMessage, UnifiedMessage, SIGNAL_SPEED},
     utils::device_from_name,
 };
@@ -53,7 +53,7 @@ impl From<WSFromFrontend> for FromFrontend {
         match value.kind {
             WSFromFrontendKind::Reload => Self::Reload,
             WSFromFrontendKind::MatrixControl => {
-                let control: WSMatrixControlBody = serde_json::from_value(value.value).unwrap();
+                let control: MatrixEvent = serde_json::from_value(value.value).unwrap();
                 Self::MatrixControl(control)
             }
             WSFromFrontendKind::SelectAudioDevice => {

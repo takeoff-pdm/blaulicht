@@ -13,10 +13,7 @@ use std::{
 };
 
 use crate::{
-    midi,
-    utils::device_from_name,
-    wasm::{self, TickEngine, TickInput},
-    ToFrontent,
+    app::MidiEvent, midi, utils::device_from_name, wasm::{self, TickEngine, TickInput}, ToFrontent
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -37,7 +34,7 @@ struct DmxUniverseBasic {
 }
 
 impl DmxUniverseBasic {
-    fn new(midi_out: Sender<(u8, u8, u8)>, system_out: Sender<SystemMessage>) -> Self {
+    fn new(midi_out: Sender<MidiEvent>, system_out: Sender<SystemMessage>) -> Self {
         let tick_engine = wasm::TickEngine::create(midi_out, system_out.clone()).unwrap();
 
         Self {
@@ -72,7 +69,7 @@ impl DmxUniverseBasic {
         }
     }
 
-    fn tick(&mut self, midi: &[(u8, u8, u8)]) -> anyhow::Result<Duration> {
+    fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
         let start = Instant::now();
         self.tick_engine.tick(self.tickinput, &midi, false)?;
 
@@ -103,7 +100,7 @@ impl DmxUniverse {
     pub fn new(
         port_path: String,
         signal_out: Sender<Signal>,
-        midi_out: Sender<(u8, u8, u8)>,
+        midi_out: Sender<MidiEvent>,
         system_out: Sender<SystemMessage>,
     ) -> Self {
         // let mut wasm_engine = wasm::TickEngine::create(midi_out).unwrap();
@@ -112,7 +109,7 @@ impl DmxUniverse {
         Self::Real(DmxUniverseReal::new(port_path, base))
     }
 
-    pub fn new_dummy(midi_out: Sender<(u8, u8, u8)>, system_out: Sender<SystemMessage>) -> Self {
+    pub fn new_dummy(midi_out: Sender<MidiEvent>, system_out: Sender<SystemMessage>) -> Self {
         let base = DmxUniverseBasic::new(midi_out, system_out);
         Self::Dummy(DmxUniverseDummy {
             basic: base,
@@ -127,7 +124,7 @@ impl DmxUniverse {
         }
     }
 
-    pub fn tick(&mut self, midi: &[(u8, u8, u8)]) -> anyhow::Result<Duration> {
+    pub fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
         match self {
             DmxUniverse::Dummy(ref mut dummy) => {
                 let dur = dummy.basic.tick(midi)?;
@@ -238,7 +235,7 @@ impl DmxUniverseReal {
         self.base.signal(signal)
     }
 
-    pub fn tick(&mut self, midi: &[(u8, u8, u8)]) -> anyhow::Result<Duration> {
+    pub fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
         let duration = self.base.tick(midi)?;
 
         // TODO: is this right?
@@ -293,9 +290,9 @@ pub fn audio_thread(
     audio_thread_control_signal: Arc<AtomicU8>,
     signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
-    midi_in_receiver: Receiver<(u8, u8, u8)>,
-    midi_in_sender: Sender<(u8, u8, u8)>,
-    midi_out_sender: Sender<(u8, u8, u8)>,
+    midi_in_receiver: Receiver<MidiEvent>,
+    midi_in_sender: Sender<MidiEvent>,
+    midi_out_sender: Sender<MidiEvent>,
 ) {
     log::info!("[SUPERVISOR] Thread started!");
 
@@ -332,8 +329,9 @@ pub fn audio_thread(
                 device_changed = true;
             }
             Ok(FromFrontend::MatrixControl(control)) => {
+                // 255 is for the builtin device.
                 midi_in_sender
-                    .send((control.y, control.x, control.value as u8))
+                    .send(MidiEvent { device: control.device, status: control.x, data0: control.y, data1: control.value as u8 })
                     .unwrap();
             }
             Err(TryRecvError::Empty) => {}
@@ -350,7 +348,6 @@ pub fn audio_thread(
                 .unwrap();
 
             device_changed = false;
-
         } else if device_changed {
             system_out
                 .send(SystemMessage::AudioSelected(audio_device.clone()))
