@@ -4,13 +4,20 @@ use crate::{
     blaulicht::{self, bl_controls_log, bl_controls_set, bl_udp, TickInput},
     elapsed, printc, println, smidi,
     user::{
-        logo, midi::{
-            DDJ_FX_ON, DDJ_MASTER_CUE, DDJ_RIGHT_SAMPLER_0_0, DDJ_RIGHT_SAMPLER_0_1, DDJ_RIGHT_SAMPLER_1_0, DDJ_RIGHT_SAMPLER_1_1, DDJ_RIGHT_SAMPLER_2_0, DDJ_RIGHT_SAMPLER_2_1, DDJ_RIGHT_SAMPLER_3_0, DDJ_RIGHT_SAMPLER_3_1, VIDEO_BRI, VIDEO_FILE_1, VIDEO_FILE_2, VIDEO_FILE_3, VIDEO_FILE_4, VIDEO_FILE_5, VIDEO_FILE_6, VIDEO_FILE_7, VIDEO_FILE_8, VIDEO_FRY, VIDEO_ROTATE, VIDEO_SPEED, VIDEO_SPEED_SYNC
-        }, strobe
+        logo,
+        midi::{
+            DDJ_FX_ON, DDJ_MASTER_CUE, DDJ_RIGHT_SAMPLER_0_0, DDJ_RIGHT_SAMPLER_0_1,
+            DDJ_RIGHT_SAMPLER_1_0, DDJ_RIGHT_SAMPLER_1_1, DDJ_RIGHT_SAMPLER_2_0,
+            DDJ_RIGHT_SAMPLER_2_1, DDJ_RIGHT_SAMPLER_3_0, DDJ_RIGHT_SAMPLER_3_1, VIDEO_BRI,
+            VIDEO_FILE_1, VIDEO_FILE_2, VIDEO_FILE_3, VIDEO_FILE_4, VIDEO_FILE_5, VIDEO_FILE_6,
+            VIDEO_FILE_7, VIDEO_FILE_8, VIDEO_FILE_9, VIDEO_FRY, VIDEO_ROTATE, VIDEO_SPEED,
+            VIDEO_SPEED_SYNC,
+        },
+        strobe,
     },
 };
 
-use super::state::{self, State, VideoFile};
+use super::state::{State, VideoFile};
 
 // From raw MIDI.
 pub fn set_speed_multiplier(state: &mut State, value: u8) {
@@ -79,7 +86,7 @@ pub fn set_video_brightness_strobe_synced(state: &mut State, value: bool) {
     }
 }
 
-fn send_speed_multiplier(value: f32) {
+pub fn send_speed_multiplier(value: f32) {
     let fac_bytes = value.to_le_bytes();
     let mut body = Vec::with_capacity(1 + fac_bytes.len());
     body.push(200);
@@ -108,6 +115,7 @@ pub fn set_video_file(state: &mut State, value: VideoFile) {
         VideoFile::Loveletter => (0, 0, 0, 0, 0, 127, 0, 0),
         VideoFile::Molly => (0, 0, 0, 0, 0, 0, 127, 0),
         VideoFile::Platzhalter => (0, 0, 0, 0, 0, 0, 0, 127),
+        VideoFile::Hydra => (0, 0, 0, 0, 0, 0, 0, 0),
     };
     smidi!(DDJ_RIGHT_SAMPLER_0_0, x0_y0_value);
     smidi!(DDJ_RIGHT_SAMPLER_1_0, x1_y0_value);
@@ -148,7 +156,6 @@ pub fn set_video_file(state: &mut State, value: VideoFile) {
 
     // DJS
 
-
     bl_controls_log(
         VIDEO_FILE_4.0,
         VIDEO_FILE_4.1,
@@ -177,6 +184,14 @@ pub fn set_video_file(state: &mut State, value: VideoFile) {
         VIDEO_FILE_8.0,
         VIDEO_FILE_8.1,
         &format!("{}", VideoFile::Platzhalter.path()),
+    );
+
+    // Other
+
+    bl_controls_log(
+        VIDEO_FILE_9.0,
+        VIDEO_FILE_9.1,
+        &format!("{}", VideoFile::Hydra.path()),
     );
 
     state.animation.video.file = value;

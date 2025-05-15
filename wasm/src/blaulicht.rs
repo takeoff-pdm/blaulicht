@@ -185,7 +185,8 @@ pub mod prelude {
     #[macro_export]
     macro_rules! smidi {
         ($tuple: expr, $value: expr) => {
-            blaulicht::bl_midi_safe(1, $tuple.0, $tuple.1, $value)
+            blaulicht::bl_midi_safe(0, $tuple.0, $tuple.1, $value);
+            blaulicht::bl_midi_safe(1, $tuple.0, $tuple.1, $value);
         };
     }
 

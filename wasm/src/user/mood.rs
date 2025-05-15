@@ -96,9 +96,9 @@ fn animation_step(state: &mut State, input: TickInput) {
     // state.animation.mood.counter_range_index %= UPPER_LIMIT;
 }
 
-const MOOD_LIGHT_START_ADDRS_LEFT: [usize; 0] = [];
+// const MOOD_LIGHT_START_ADDRS_LEFT: [usize; 0] = [];
 
-const MOOD_LIGHT_START_ADDRS_RIGHT: [usize; 0] = [];
+// const MOOD_LIGHT_START_ADDRS_RIGHT: [usize; 0] = [];
 
 const ADJ_MEGA_HEX: [usize; 26] = [
     25, 32, 39, 46, 53, 60, 67, 74, 81, 88, 95, 102, 109, 116, 123, 130, 137, 144, 151, 158, 165,
@@ -116,6 +116,10 @@ const ADJ_MEGA_HEX: [usize; 26] = [
 // TODO: group secondary into left and right
 pub const LITECRAFT_AT10: [usize; 16] = [
     240, 248, 256, 264, 272, 280, 288, 296, 304, 312, 320, 328, 336, 344, 352, 360,
+];
+
+pub const NORMAL: [usize; 1] = [
+    10
 ];
 
 pub fn tick_on_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
@@ -163,6 +167,11 @@ pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
     for start in ADJ_MEGA_HEX {
         colorize!(color, dmx, start);
         dmx[start + 6] = brightness as u8;
+    }
+
+    for start in NORMAL {
+        colorize!(color, dmx, start);
+        dmx[start + 3] = brightness as u8;
     }
 
     // for start in LITECRAFT_AT10 {

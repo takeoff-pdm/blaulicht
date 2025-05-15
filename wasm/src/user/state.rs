@@ -76,7 +76,7 @@ pub struct Animation {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Video {
-    pub last_speed_update: u32,
+    // pub last_speed_update: u32,
     pub speed: f32,
 
     pub speed_bpm_sync: bool,
@@ -100,6 +100,7 @@ pub enum VideoFile {
     Loveletter,
     Platzhalter,
     Molly,
+    Hydra,
 }
 
 impl VideoFile {
@@ -113,6 +114,7 @@ impl VideoFile {
             VideoFile::Loveletter => "loveletter.webm",
             VideoFile::Platzhalter => "platzhalter.webm",
             VideoFile::Molly => "molly.webm",
+            VideoFile::Hydra => "HYDRA",
         }
     }
 
@@ -121,6 +123,7 @@ impl VideoFile {
             VideoFile::Cheese => 1.1,
             VideoFile::Grr => 4.0,
             VideoFile::Swim => 1.21,
+            VideoFile::Hydra => 1.0,
             _ => 1.0,
         }
     }
@@ -130,6 +133,7 @@ impl VideoFile {
             VideoFile::Cheese => 120,
             VideoFile::Grr => 120,
             VideoFile::Swim => 60,
+            VideoFile::Hydra => 60,
             _ => 60,
         }
     }
@@ -332,9 +336,9 @@ impl Default for State {
 
             animation: Animation {
                 video: Video {
-                    last_speed_update: 0,
+                    // last_speed_update: 0,
                     speed: 1.0,
-                    speed_bpm_sync: false,
+                    speed_bpm_sync: true,
                     speed_bpm_sync_last_factor: 1.0,
                     speed_sync_last_update: 0,
                     brightness_strobe_synced: false,

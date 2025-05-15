@@ -294,7 +294,7 @@ fn varytec_set_white(dmx: &mut [u8], start_addr: usize, value: u8, bpm: u8) {
 //
 
 pub const MAC_AURA_START_ADDRS: [usize; 6] = [400, 418, 436, 454, 472, 490];
-const GENERIC_3_CHAN_START_ADDRS: [usize; 0] = [];
+const GENERIC_3_CHAN_START_ADDRS: [usize; 1] = [6];
 const VARYTEC_VP1_START_ADDRS: [usize; 4] = [
     380, 384, 388, 396,
     // 392, // Above sofa.
@@ -710,4 +710,10 @@ pub fn moving_head_tick(state: &mut State, dmx: &mut [u8], input: TickInput) {
 
         state.animation.strobe.controls.tilt_animation_last_tick = input.time;
     }
+}
+
+pub fn tick(state: &mut State, dmx: &mut [u8], input: TickInput) {
+    // Call strobe auto enable logic regularly.
+    auto_enable_tick(state, input);
+    moving_head_tick(state, dmx, input);
 }

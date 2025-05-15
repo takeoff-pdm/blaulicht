@@ -1,5 +1,3 @@
-use blaulicht::MidiDevice;
-
 mod blaulicht;
 mod ui;
 mod user;

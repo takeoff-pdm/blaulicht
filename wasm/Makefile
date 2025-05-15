@@ -24,6 +24,6 @@ target:
 
 	$(CARGO) build --target=$(TARGET_TRIPLE) --$(COMPILATION_MODE) --target-dir=target
 	cp ./target/$(TARGET_TRIPLE)/$(COMPILATION_MODE)/$(CRATE).wasm $(OUT_FILE)
-	# wasm-opt -o $(OUT_FILE) -O4 --strip-debug $(OUT_FILE)
+	wasm-opt -o $(OUT_FILE) -O4 --strip-debug $(OUT_FILE)
 
 build: target

@@ -331,7 +331,7 @@ pub fn audio_thread(
             Ok(FromFrontend::MatrixControl(control)) => {
                 // 255 is for the builtin device.
                 midi_in_sender
-                    .send(MidiEvent { device: control.device, status: control.x, data0: control.y, data1: control.value as u8 })
+                    .send(MidiEvent { device: control.device, status: control.y, data0: control.x, data1: control.value as u8 })
                     .unwrap();
             }
             Err(TryRecvError::Empty) => {}

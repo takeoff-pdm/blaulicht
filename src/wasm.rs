@@ -3,7 +3,11 @@ use std::{net::UdpSocket, time::Instant};
 
 use wasmtime::*;
 
-use crate::{app::MidiEvent, audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet}, midi::MidiError};
+use crate::{
+    app::MidiEvent,
+    audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
+    midi::MidiError,
+};
 
 #[derive(Clone, Copy)]
 pub struct TickInput {
@@ -61,15 +65,14 @@ pub struct WasmEngine {
     memory: Memory,
 }
 
+const DMX_LEN: usize = 513;
+
 impl TickEngine {
-    pub fn create(
-        midi_out: Sender<MidiEvent>,
-        system_out: Sender<SystemMessage>,
-    ) -> Result<Self> {
+    pub fn create(midi_out: Sender<MidiEvent>, system_out: Sender<SystemMessage>) -> Result<Self> {
         let mut engine = TickEngine {
             timer_start: Instant::now(),
             data: vec![0; 1000],
-            dmx: vec![0; 513],
+            dmx: vec![0; DMX_LEN],
             wasm: None,
             midi_out,
             system_out,
@@ -221,7 +224,13 @@ impl TickEngine {
             "blaulicht",
             "bl_midi",
             move |device: i32, status: i32, kind: i32, value: i32| {
-                mo.send(MidiEvent { device: device as u8, status: status as u8, data0: kind as u8, data1: value as u8 }).unwrap();
+                mo.send(MidiEvent {
+                    device: device as u8,
+                    status: status as u8,
+                    data0: kind as u8,
+                    data1: value as u8,
+                })
+                .unwrap();
             },
         )?;
 
@@ -230,6 +239,14 @@ impl TickEngine {
         let memory = instance
             .get_memory(&mut store, "memory")
             .expect("Memory not found");
+
+        // Initialize DMX.
+        let dmx_array_offset = 0x20000; // TODO: make this offset a const.
+        let mut dmx_array_bytes: Vec<u8> = vec![0; DMX_LEN];
+        for &num in &self.dmx {
+            dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
+        }
+        memory.write(&mut store, dmx_array_offset, &dmx_array_bytes)?;
 
         self.wasm = Some(WasmEngine {
             store,
@@ -312,7 +329,11 @@ impl TickEngine {
         let midi_events_packed: Vec<u32> = midi_events
             .iter()
             .map(|event| {
-                (0u32 | (event.device as u32) << 24 | (event.status as u32) << 16 | (event.data0 as u32) << 8 | (event.data1 as u32))
+                (0u32
+                    | (event.device as u32) << 24
+                    | (event.status as u32) << 16
+                    | (event.data0 as u32) << 8
+                    | (event.data1 as u32))
             })
             .collect::<Vec<u32>>();
 
@@ -322,29 +343,25 @@ impl TickEngine {
         wasm.memory
             .write(&mut wasm.store, midi_array_offset, &midi_array_bytes)?;
 
-        //
-        // DMX array.
-        //
-        let dmx_array_offset = 0x20000; // TODO: make this offset a const.
-        let dmx_array_len = self.dmx.len() as i32;
-        let mut dmx_array_bytes = Vec::new();
-        for &num in &self.dmx {
-            dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
-        }
-        wasm.memory
-            .write(&mut wasm.store, dmx_array_offset, &dmx_array_bytes)?;
+        // for &num in &self.dmx {
+        //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
+        // }
+        // wasm.memory
+        //     .write(&mut wasm.store, dmx_array_offset, &dmx_array_bytes)?;
 
         //
         // Data array.
         //
         let data_array_offset = 0x90000; // Arbitrary offset
         let data_array_len = self.data.len();
-        let mut data_array_bytes = Vec::new();
-        for &num in &self.data {
-            data_array_bytes.extend_from_slice(&num.to_le_bytes());
-        }
-        wasm.memory
-            .write(&mut wasm.store, data_array_offset, &data_array_bytes)?;
+        // let mut data_array_bytes = Vec::new();
+        // for &num in &self.data {
+        //     data_array_bytes.extend_from_slice(&num.to_le_bytes());
+        // }
+        // wasm.memory
+        //     .write(&mut wasm.store, data_array_offset, &data_array_bytes)?;
+
+        let dmx_array_offset = 0x20000; // TODO: make this offset a const.
 
         // Call the function with the pointer and length
         func.call(
@@ -353,7 +370,7 @@ impl TickEngine {
                 tick_array_offset as i32,
                 tick_array_len,
                 dmx_array_offset as i32,
-                dmx_array_len,
+                DMX_LEN as i32,
                 data_array_offset as i32,
                 data_array_len as i32,
                 midi_array_offset as i32,
@@ -364,7 +381,8 @@ impl TickEngine {
         //
         // Read back the modified DMX array
         //
-        let mut updated_dmx_bytes = vec![0u8; dmx_array_bytes.len()];
+        // let mut dmx_array_bytes: Vec<u8> = Vec::with_capacity(dmx_array_len as usize);
+        let mut updated_dmx_bytes = vec![0u8; DMX_LEN];
         wasm.memory
             .read(&mut wasm.store, dmx_array_offset, &mut updated_dmx_bytes)?;
         self.dmx = updated_dmx_bytes;
@@ -372,14 +390,14 @@ impl TickEngine {
         //
         // Read back data array.
         //
-        let mut updated_data_bytes = vec![0u8; data_array_bytes.len()];
-        wasm.memory
-            .read(&mut wasm.store, data_array_offset, &mut updated_data_bytes)?;
-        let updated_data_bytes: Vec<i32> = updated_data_bytes
-            .chunks_exact(4)
-            .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
-            .collect();
-        self.data = updated_data_bytes;
+        // let mut updated_data_bytes = vec![0u8; data_array_bytes.len()];
+        // wasm.memory
+        //     .read(&mut wasm.store, data_array_offset, &mut updated_data_bytes)?;
+        // let updated_data_bytes: Vec<i32> = updated_data_bytes
+        //     .chunks_exact(4)
+        //     .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
+        //     .collect();
+        // self.data = updated_data_bytes;
 
         Ok(())
     }

@@ -433,6 +433,7 @@
               socket.send({
                 kind: "MatrixControl",
                 value: {
+                  device: 1,
                   x,
                   y,
                   value: e.detail.state,

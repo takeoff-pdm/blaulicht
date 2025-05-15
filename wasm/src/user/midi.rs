@@ -1,5 +1,4 @@
 use crate::blaulicht::{self, TickInput};
-use std::collections::HashMap;
 
 use map_range::MapRange;
 
@@ -10,8 +9,8 @@ use crate::{
 };
 
 use super::{
-    dim, mood, println,
-    state::{self, MoodAnimation, MoodColorPalette, StrobeAnimation, VideoFile},
+    dim, mood,
+    state::{MoodAnimation, MoodColorPalette, StrobeAnimation, VideoFile},
     strobe, video, State,
 };
 
@@ -68,6 +67,7 @@ pub const VIDEO_FILE_6: (u8, u8) = (6, 6);
 
 pub const VIDEO_FILE_7: (u8, u8) = (0, 7);
 pub const VIDEO_FILE_8: (u8, u8) = (1, 7);
+pub const VIDEO_FILE_9: (u8, u8) = (2, 7);
 
 pub const LEFT_FADER_ALT: (u8, u8) = (5, 7);
 pub const RIGHT_FADER_ALT: (u8, u8) = (6, 7);
@@ -374,7 +374,7 @@ pub fn tick(state: &mut State, dmx: &mut [u8], midi_events: &[MidiEvent], input:
             }
             _ => {
                 if event.value != 0 {
-                    // println!("Unknown MIDI event: {:?}", event);
+                    println!("Unknown MIDI event: {:?}", event);
                 }
                 continue;
             }
