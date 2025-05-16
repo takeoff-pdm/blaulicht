@@ -1,7 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
+use super::config::Config;
+
 #[derive(Debug)]
 pub struct State {
+    pub config: Config,
     pub fogger: bool,
     pub fogger_int: u8,
 
@@ -318,6 +321,8 @@ impl Default for AnimationAlternating {
 impl Default for State {
     fn default() -> Self {
         Self {
+            config: Config::default(),
+
             fogger: false,
             fogger_int: 127 / 2,
             logo_mode: LogoMode::Normal,

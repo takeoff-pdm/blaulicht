@@ -1,4 +1,5 @@
 mod beat;
+mod config;
 mod dim;
 mod fogger;
 mod init;
@@ -8,15 +9,15 @@ mod mood;
 mod state;
 mod strobe;
 mod video;
-mod config;
 
+use config::{Config, Fixture, FixtureType, Light};
 use state::State;
 use strobe::{mac_aura_setup, MAC_AURA_START_ADDRS};
 
 #[deny(unsafe_op_in_unsafe_fn)]
 #[allow(unused_imports)]
 use crate::blaulicht::{
-    self, colorize, elapsed, hsv_to_rgb, midi,
+    self, elapsed, midi,
     prelude::{printc, println},
     MidiEvent, TickInput,
 };

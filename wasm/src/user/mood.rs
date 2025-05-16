@@ -1,9 +1,14 @@
 use crate::{
     blaulicht::{self, bl_controls_set, TickInput},
-    colorize, elapsed, printc, println, smidi,
+    color, elapsed, printc, smidi,
     user::{
         midi::{
-            DDJ_RIGHT_BEAT_JMP_0_0, DDJ_RIGHT_BEAT_JMP_1_0, DDJ_RIGHT_BEAT_JMP_2_0, DDJ_RIGHT_BEAT_LOOP_0_0, DDJ_RIGHT_BEAT_LOOP_1_0, DDJ_RIGHT_BEAT_LOOP_2_0, DDJ_RIGHT_BEAT_LOOP_3_0, DDJ_RIGHT_BEAT_SYNC, DDJ_RIGHT_CUE, DDJ_RIGHT_HOT_CUE_0_1, DDJ_RIGHT_HOT_CUE_1_1, DDJ_RIGHT_HOT_CUE_2_1, DDJ_RIGHT_RELOOP, MOOD_ALTERNATING, MOOD_BEAT_ANIM, MOOD_BRIGHTNESS, MOOD_PALETTE_ALL, MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_PALETTE_WHITE, MOOD_SNAKE, MOOD_SPEED, MOOD_SPEED_BEAT, MOOD_SYNCED, STROBE_SPEED
+            DDJ_RIGHT_BEAT_JMP_0_0, DDJ_RIGHT_BEAT_JMP_1_0, DDJ_RIGHT_BEAT_JMP_2_0,
+            DDJ_RIGHT_BEAT_LOOP_0_0, DDJ_RIGHT_BEAT_LOOP_1_0, DDJ_RIGHT_BEAT_LOOP_2_0,
+            DDJ_RIGHT_BEAT_LOOP_3_0, DDJ_RIGHT_BEAT_SYNC, DDJ_RIGHT_CUE, DDJ_RIGHT_RELOOP,
+            MOOD_ALTERNATING, MOOD_BEAT_ANIM, MOOD_BRIGHTNESS, MOOD_PALETTE_ALL,
+            MOOD_PALETTE_CYAN_MAGENTA, MOOD_PALETTE_ORANGE_BLUE, MOOD_PALETTE_WHITE, MOOD_SNAKE,
+            MOOD_SPEED, MOOD_SPEED_BEAT, MOOD_SYNCED,
         },
         strobe::parse_speed_multiplier,
     },
@@ -100,10 +105,10 @@ fn animation_step(state: &mut State, input: TickInput) {
 
 // const MOOD_LIGHT_START_ADDRS_RIGHT: [usize; 0] = [];
 
-const ADJ_MEGA_HEX: [usize; 26] = [
-    25, 32, 39, 46, 53, 60, 67, 74, 81, 88, 95, 102, 109, 116, 123, 130, 137, 144, 151, 158, 165,
-    172, 186, 193, 200, 207,
-];
+// const ADJ_MEGA_HEX: [usize; 26] = [
+//     25, 32, 39, 46, 53, 60, 67, 74, 81, 88, 95, 102, 109, 116, 123, 130, 137, 144, 151, 158, 165,
+//     172, 186, 193, 200, 207,
+// ];
 
 // TODO: isolate one strobe light into ambient.
 // TODO: add ambient dimmers.
@@ -114,13 +119,13 @@ const ADJ_MEGA_HEX: [usize; 26] = [
 // add other mood stuff and more strobes
 // add fogger
 // TODO: group secondary into left and right
-pub const LITECRAFT_AT10: [usize; 16] = [
-    240, 248, 256, 264, 272, 280, 288, 296, 304, 312, 320, 328, 336, 344, 352, 360,
-];
+// pub const LITECRAFT_AT10: [usize; 16] = [
+//     240, 248, 256, 264, 272, 280, 288, 296, 304, 312, 320, 328, 336, 344, 352, 360,
+// ];
 
-pub const NORMAL: [usize; 1] = [
-    10
-];
+// pub const NORMAL: [usize; 1] = [
+//     10
+// ];
 
 pub fn tick_on_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
     if state.animation.mood.controls.animation_on_beat {
@@ -159,30 +164,18 @@ pub fn tick_without_beat(state: &mut State, dmx: &mut [u8], input: TickInput) {
     };
 
     // Get HSV based on counter and current color scheme.
-    // TODO: this could be implemented in a more efficient way.
+    let color = color::hsv_to_rgb(state.animation.mood.hsv);
 
-    // println!("HSV: {hsv}");
-    let color = blaulicht::hsv_to_rgb(state.animation.mood.hsv);
+    // Iterate over mood groups.
+    for group in state.config.mood_groups.iter_mut() {
+        if !group.enabled {
+            group.blackout(dmx);
+            continue;
+        }
 
-    for start in ADJ_MEGA_HEX {
-        colorize!(color, dmx, start);
-        dmx[start + 6] = brightness as u8;
+        group.set_alpha(brightness, dmx);
+        group.set_color(color, dmx);
     }
-
-    for start in NORMAL {
-        colorize!(color, dmx, start);
-        dmx[start + 3] = brightness as u8;
-    }
-
-    // for start in LITECRAFT_AT10 {
-    //     colorize!(color, dmx, start);
-    //     dmx[start + 7] = brightness as u8;
-    // }
-
-    // for start in MOOD_LIGHT_START_ADDRS_RIGHT {
-    //     colorize!(color, dmx, start);
-    //     dmx[start + 3] = brightness as u8;
-    // }
 }
 
 //
@@ -198,7 +191,11 @@ pub fn set_speed_multiplier(state: &mut State, value: u8) {
 pub fn set_speed_multiplier_beat(state: &mut State, value: u8) {
     let (parsed_value, value_str) = parse_speed_multiplier(value);
     state.animation.mood.animation_speed_beat = parsed_value;
-    printc!(MOOD_SPEED_BEAT.0, MOOD_SPEED_BEAT.1, "M.B.SPEED {value_str}",);
+    printc!(
+        MOOD_SPEED_BEAT.0,
+        MOOD_SPEED_BEAT.1,
+        "M.B.SPEED {value_str}",
+    );
 }
 
 pub fn set_on_beat(state: &mut State, value: bool) {

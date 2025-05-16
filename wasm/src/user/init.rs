@@ -2,6 +2,7 @@ use crate::{
     blaulicht::{self, bl_udp, TickInput},
     printc, println,
     user::{
+        config::{Config, Light},
         dim, logo,
         midi::{
             self, MOOD_ALTERNATING, MOOD_FORCE_TOGGLE, MOOD_ON_BEAT, MOOD_PALETTE_ALL,
@@ -16,7 +17,7 @@ use crate::{
     },
 };
 
-use super::state::State;
+use super::{config::FixtureGroup, state::State};
 
 pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     state.reset();
@@ -27,6 +28,25 @@ pub fn initialize(state: &mut State, input: TickInput, dmx: &mut [u8]) {
     for i in 0..513 {
         dmx[i] = 0;
     }
+
+    //
+    // Initialize fixtures.
+    //
+
+    state.config = Config {
+        strobe_groups: vec![FixtureGroup::new(
+            "Primary Strobe".into(),
+            vec![(Light::Generic4ChanWithAlpha.into(), 0).into()],
+        )],
+        mood_groups: vec![FixtureGroup::new(
+            "Primary Mood".into(),
+            vec![(Light::Generic4ChanWithAlpha.into(), 0).into()],
+        )],
+        dimmer_groups: vec![FixtureGroup::new(
+            "Primary Dimmer".into(),
+            vec![(Light::Generic4ChanWithAlpha.into(), 0).into()],
+        )],
+    };
 
     // Initialize the control surface.
     blaulicht::bl_controls_config(8, 8);

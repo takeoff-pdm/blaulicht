@@ -1,6 +1,7 @@
 mod blaulicht;
 mod ui;
 mod user;
+mod color;
 
 fn decode_midi(midi: &[u32]) -> Vec<blaulicht::MidiEvent> {
     let res: Vec<blaulicht::MidiEvent> = midi

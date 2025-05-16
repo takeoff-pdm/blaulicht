@@ -3,23 +3,24 @@ use serde::de::value;
 
 use crate::{
     blaulicht::{self, bl_controls_set, bl_udp, nelapsed, TickInput},
-    colorize, elapsed, printc, smidi,
+    elapsed, printc, smidi,
     user::{
-        logo, midi::{
+        logo,
+        midi::{
             self, DDJ_HIGH_FILTER_LEFT, DDJ_LEFT_BEAT_JMP_0_0, DDJ_LEFT_BEAT_JMP_0_1,
             DDJ_LEFT_BEAT_JMP_1_0, DDJ_LEFT_BEAT_JMP_1_1, DDJ_LEFT_BEAT_JMP_2_1,
             DDJ_LEFT_BEAT_SYNC, DDJ_LEFT_CUE, DDJ_LEFT_CUE_ROUND, DDJ_LEFT_HOT_CUE_0_1,
             DDJ_LEFT_HOT_CUE_1_1, DDJ_LEFT_RELOOP, MOVING_HEAD_TILT_ANIM_SPEED, STROBE_ALTERNATING,
             STROBE_BRIGHTNESS, STROBE_MOVING_HEAD_GROUP, STROBE_ON_OFF_TIME, STROBE_PANEL_GROUP,
             STROBE_REMAINING_TIME, STROBE_SPEED, STROBE_STAGE_GROUP, STROBE_SYNCED,
-        }, state::{LogoMode, StrobeAnimation, StrobeAnimationAlternatingState, StrobeControls}, video
+        },
+        state::{LogoMode, StrobeAnimation, StrobeAnimationAlternatingState, StrobeControls},
+        video,
     },
 };
 
-
 use super::{
     midi::{STROBE_AUTOMATION_TOGGLE, STROBE_ON_BEAT, STROBE_TOGGLE},
-    mood::LITECRAFT_AT10,
     println,
     video::{set_brightness_internal, set_fry},
     State,
@@ -28,7 +29,6 @@ use super::{
 const STROBE_RESET_TIME_MILLIS: u32 = 1000;
 const STROBE_ACTIVE_MILLIS: u32 = 5000;
 const STROBE_BURST_TIME_MILLIS: u32 = 500;
-
 
 //
 // Toggles.
@@ -199,11 +199,11 @@ pub fn toggle_stage_group(state: &mut State, value: bool, dmx: &mut [u8]) {
             generic_3_chan_set_white(dmx, s, 0);
         }
 
-        for start in LITECRAFT_AT10 {
-            colorize!((255, 255, 255), dmx, start);
-            dmx[start + 7] = 0;
-            dmx[start + 5] = 255;
-        }
+        // for start in LITECRAFT_AT10 {
+        //     colorize!((255, 255, 255), dmx, start);
+        //     dmx[start + 7] = 0;
+        //     dmx[start + 5] = 255;
+        // }
     }
 }
 
@@ -334,41 +334,45 @@ pub fn tick_on_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
         }
         Some(_) => match state.animation.strobe.controls.strobe_animation {
             StrobeAnimation::Synced => {
-                if state.animation.strobe.controls.moving_head_group_enabled {
-                    for s in MAC_AURA_START_ADDRS {
-                        mac_aura_set_white(
-                            state.animation.strobe.controls.brightness,
-                            dmx,
-                            s,
-                            true,
-                        );
-                    }
-                }
-                if state.animation.strobe.controls.stage_light_group_enabled {
-                    for s in GENERIC_3_CHAN_START_ADDRS {
-                        generic_3_chan_set_white(
-                            dmx,
-                            s,
-                            state.animation.strobe.controls.brightness,
-                        );
-                    }
+                // if state.animation.strobe.controls.moving_head_group_enabled {
+                //     for s in MAC_AURA_START_ADDRS {
+                //         mac_aura_set_white(
+                //             state.animation.strobe.controls.brightness,
+                //             dmx,
+                //             s,
+                //             true,
+                //         );
+                //     }
+                // }
 
-                    for start in LITECRAFT_AT10 {
-                        colorize!((255, 255, 255), dmx, start);
-                        dmx[start + 7] = state.animation.strobe.controls.brightness as u8;
-                        dmx[start + 5] = 255;
-                    }
-                }
-                if state.animation.strobe.controls.panel_group_enabled {
-                    for s in VARYTEC_VP1_START_ADDRS {
-                        varytec_set_white(
-                            dmx,
-                            s,
-                            state.animation.strobe.controls.brightness,
-                            input.bpm,
-                        );
-                    }
-                }
+                // if state.animation.strobe.controls.stage_light_group_enabled {
+                // for s in GENERIC_3_CHAN_START_ADDRS {
+                //     generic_3_chan_set_white(
+                //         dmx,
+                //         s,
+                //         state.animation.strobe.controls.brightness,
+                //     );
+                // }
+
+                // for start in LITECRAFT_AT10 {
+                //     colorize!((255, 255, 255), dmx, start);
+                //     dmx[start + 7] = state.animation.strobe.controls.brightness as u8;
+                //     dmx[start + 5] = 255;
+                // }
+                // }
+
+                // if state.animation.strobe.controls.panel_group_enabled {
+                //     for s in VARYTEC_VP1_START_ADDRS {
+                //         varytec_set_white(
+                //             dmx,
+                //             s,
+                //             state.animation.strobe.controls.brightness,
+                //             input.bpm,
+                //         );
+                //     }
+                // }
+
+                todo!("go over strobe groups");
 
                 state.animation.strobe.white_value = true;
                 state.animation.strobe.white_value_enabled_time = input.time;
@@ -403,18 +407,7 @@ fn home_moving_heads(state: &mut State) {
 }
 
 pub fn blackout(normal_bri: u8, dmx: &mut [u8]) {
-    for s in MAC_AURA_START_ADDRS {
-        mac_aura_set_white(normal_bri, dmx, s, false);
-    }
-    for s in GENERIC_3_CHAN_START_ADDRS {
-        generic_3_chan_set_white(dmx, s, 0);
-    }
-    for start in LITECRAFT_AT10 {
-        dmx[start + 7] = 0;
-    }
-    for s in VARYTEC_VP1_START_ADDRS {
-        varytec_set_white(dmx, s, 0, 0);
-    }
+    todo!("groups")
 }
 
 pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
@@ -474,27 +467,8 @@ pub fn tick_off_beat(dmx: &mut [u8], input: TickInput, state: &mut State) {
                                 > 100
                         // hardcoded value matching the strobes.
                         {
-                            for s in MAC_AURA_START_ADDRS {
-                                mac_aura_set_white(
-                                    state.animation.strobe.controls.brightness,
-                                    dmx,
-                                    s,
-                                    false,
-                                );
-                            }
+                            todo!("groups");
 
-                            for s in GENERIC_3_CHAN_START_ADDRS {
-                                generic_3_chan_set_white(dmx, s, 0);
-                            }
-
-                            for s in VARYTEC_VP1_START_ADDRS {
-                                varytec_set_white(dmx, s, 0, 0);
-                            }
-
-                            for start in LITECRAFT_AT10 {
-                                dmx[start + 7] = 0;
-                                dmx[start + 5] = 255;
-                            }
                             state.animation.strobe.white_value = false;
                         }
                     }
