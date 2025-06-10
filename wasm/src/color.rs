@@ -17,6 +17,10 @@ impl Color {
     pub fn tup(&self) -> (u8, u8, u8) {
         (self.r, self.g, self.b)
     }
+
+    pub fn white() -> Self {
+        (255, 255, 255).into()
+    }
 }
 
 impl From<(u8, u8, u8)> for Color {

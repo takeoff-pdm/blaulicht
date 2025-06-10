@@ -29,7 +29,9 @@ use serde::Serialize;
 use serialport::{SerialPortInfo, SerialPortType};
 
 use crate::{
-    app::MidiEvent, dmx::{DmxUniverse, USB_DEVICES}, midi, performance, DmxData, ToFrontent
+    app::MidiEvent,
+    dmx::{DmxUniverse, USB_DEVICES},
+    midi, performance, DmxData, ToFrontent,
 };
 
 fn map(x: isize, in_min: isize, in_max: isize, out_min: isize, out_max: isize) -> usize {
@@ -284,8 +286,9 @@ pub struct AudioThreadControlSignal;
 impl AudioThreadControlSignal {
     pub const CONTINUE: u8 = 0;
     pub const ABORT: u8 = 1;
-    pub const DEAD: u8 = 2;
-    pub const RELOAD: u8 = 3;
+    pub const ABORTED: u8 = 2;
+    pub const CRASHED: u8 = 3;
+    pub const RELOAD: u8 = 4;
 }
 
 pub fn run(
@@ -376,7 +379,7 @@ pub fn run(
             )
         }
         None => DmxUniverse::new_dummy(midi_out_sender, system_out.clone()),
-    };
+    }?;
 
     // Boost thread.
     performance::increase_thread_priority();
@@ -430,14 +433,22 @@ pub fn run(
         match control {
             AudioThreadControlSignal::ABORT => {
                 log::debug!("[AUDIO] Received kill, terminating...");
+                thread_control_signal.store(AudioThreadControlSignal::ABORTED, Ordering::Relaxed);
                 break Ok(());
             }
             AudioThreadControlSignal::RELOAD => {
-                dmx_universe.reload().unwrap();
                 system_out
-                    .send(SystemMessage::Log("[DMX] Reload engine".into()))
+                    .send(SystemMessage::Log("[ENGINE] Reload start.".into()))
+                    .unwrap();
+
+                dmx_universe.reload()?;
+                system_out
+                    .send(SystemMessage::Log("[ENGINE] Reload complete".into()))
                     .unwrap();
                 thread_control_signal.store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
+            }
+            AudioThreadControlSignal::CRASHED | AudioThreadControlSignal::ABORTED => {
+                unreachable!("Illegal state: {control}")
             }
             _ => {}
         }

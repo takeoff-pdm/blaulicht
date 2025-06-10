@@ -260,7 +260,10 @@ impl TickEngine {
     }
 
     pub fn reload(&mut self) -> Result<()> {
+        // Reset the data.
         self.data.fill(0);
+        // Reset the clock.
+        self.timer_start = Instant::now();
         self.init_wasm()?;
         self.first_tick()
     }

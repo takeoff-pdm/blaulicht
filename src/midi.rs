@@ -30,7 +30,7 @@ pub fn midi(
 ) -> Result<(), MidiError> {
     log::trace!("[MIDI] Started thread");
 
-    let connections = vec!["DDJ-400",  "DDJ-200"];
+    let connections = vec![/*"DDJ-400",*/  "DDJ-200"];
 
     let mut conns_out = HashMap::new();
     let mut conns_in = HashMap::new();

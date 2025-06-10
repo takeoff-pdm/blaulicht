@@ -1,21 +1,26 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::{mem, thread};
 
+use actix::System;
 use actix_files::Files;
 use actix_web::rt::task;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
 use anyhow::{anyhow, Context};
-use blaulicht::audio::{AudioThreadControlSignal, SystemMessage, UnifiedMessage};
+use blaulicht::app::FromFrontend;
+use blaulicht::audio::{AudioThreadControlSignal, Signal, SystemMessage, UnifiedMessage};
 use blaulicht::routes::AppState;
 use blaulicht::wasm::TickInput;
 use blaulicht::{config, dmx, midi, routes, wasm};
 use crossbeam_channel::{Sender, TryRecvError};
 use env_logger::Env;
 use log::info;
+use notify::event::{DataChange, ModifyKind};
+use notify::{Event, RecursiveMode, Watcher};
 
 // fn main() -> anyhow::Result<()> {
 //     use std::{
@@ -106,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
             match midi::midi(send, midi_out_receiver.clone()) {
                 Ok(_) => panic!("Unreachable."),
                 Err(err) => {
-                    log::error!("MIDI thread chrashed! {err:?}");
+                    log::error!("MIDI thread crashed! {err:?}");
                     break;
                 }
             }
@@ -167,6 +172,10 @@ async fn main() -> anyhow::Result<()> {
         let system_res = app_system_receiver.try_recv();
         match system_res {
             Ok(res) => {
+                match &res {
+                    SystemMessage::Log(content) => log::info!("{content}"),
+                    _ => {}
+                }
                 let consumers = consumers2.lock().unwrap();
                 for c in consumers.values() {
                     if let Err(e) = c.send(UnifiedMessage::System(res.clone())) {
@@ -195,6 +204,38 @@ async fn main() -> anyhow::Result<()> {
             Err(crossbeam_channel::TryRecvError::Disconnected) => {
                 log::warn!("[BROADCAST] Shutting down.");
                 break;
+            }
+        }
+    });
+
+    //
+    // Filesystem watcher.
+    //
+    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
+
+    // Use recommended_watcher() to automatically select the best implementation
+    // for your platform. The `EventHandler` passed to this constructor can be a
+    // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
+    // another type the trait is implemented for.
+    let tx = tx.clone();
+    let mut watcher = notify::recommended_watcher(tx)?;
+
+    // Add a path to be watched. All files and directories at that path and
+    // below will be monitored for changes.
+    watcher.watch(Path::new("./wasm/output.wasm"), RecursiveMode::NonRecursive)?;
+
+    let send = from_frontend_sender.clone();
+    thread::spawn(move || {
+        // Block forever, printing out events as they come in
+        for res in rx {
+            match res {
+                Ok(event) => match event.kind {
+                    notify::EventKind::Modify(ModifyKind::Data(DataChange::Content)) => {
+                        send.send(FromFrontend::Reload).unwrap();
+                    }
+                    _ => {}
+                },
+                Err(e) => println!("watch error: {:?}", e),
             }
         }
     });
@@ -258,14 +299,21 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| "Could not start webserver")?;
 
     info!("Blaulicht is shutting down...");
-    audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+    mem::drop(watcher);
 
-    loop {
-        thread::sleep(Duration::from_secs(1));
+    let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+    if sig == AudioThreadControlSignal::CONTINUE {
+        audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+        loop {
+            thread::sleep(Duration::from_secs(1));
 
-        let sig = audio_thread_control_signal.load(Ordering::Relaxed);
-        if sig == AudioThreadControlSignal::DEAD {
-            break;
+            let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+
+            log::trace!("Waiting for audio thread to die: {sig}");
+
+            if sig == AudioThreadControlSignal::ABORTED {
+                break;
+            }
         }
     }
 

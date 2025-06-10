@@ -13,7 +13,11 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent, midi, utils::device_from_name, wasm::{self, TickEngine, TickInput}, ToFrontent
+    app::MidiEvent,
+    midi,
+    utils::device_from_name,
+    wasm::{self, TickEngine, TickInput},
+    ToFrontent,
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -34,15 +38,18 @@ struct DmxUniverseBasic {
 }
 
 impl DmxUniverseBasic {
-    fn new(midi_out: Sender<MidiEvent>, system_out: Sender<SystemMessage>) -> Self {
-        let tick_engine = wasm::TickEngine::create(midi_out, system_out.clone()).unwrap();
+    fn new(
+        midi_out: Sender<MidiEvent>,
+        system_out: Sender<SystemMessage>,
+    ) -> wasmtime::Result<Self> {
+        let tick_engine = wasm::TickEngine::create(midi_out, system_out.clone())?;
 
-        Self {
+        Ok(Self {
             tick_engine,
             channels: [0; 513],
             tickinput: TickInput::default(),
             system_out,
-        }
+        })
     }
 
     fn signal(&mut self, signal: Signal) {
@@ -102,19 +109,22 @@ impl DmxUniverse {
         signal_out: Sender<Signal>,
         midi_out: Sender<MidiEvent>,
         system_out: Sender<SystemMessage>,
-    ) -> Self {
+    ) -> wasmtime::Result<Self> {
         // let mut wasm_engine = wasm::TickEngine::create(midi_out).unwrap();
-        let base = DmxUniverseBasic::new(midi_out, system_out);
+        let base = DmxUniverseBasic::new(midi_out, system_out)?;
 
-        Self::Real(DmxUniverseReal::new(port_path, base))
+        Ok(Self::Real(DmxUniverseReal::new(port_path, base)))
     }
 
-    pub fn new_dummy(midi_out: Sender<MidiEvent>, system_out: Sender<SystemMessage>) -> Self {
-        let base = DmxUniverseBasic::new(midi_out, system_out);
-        Self::Dummy(DmxUniverseDummy {
+    pub fn new_dummy(
+        midi_out: Sender<MidiEvent>,
+        system_out: Sender<SystemMessage>,
+    ) -> wasmtime::Result<Self> {
+        let base = DmxUniverseBasic::new(midi_out, system_out)?;
+        Ok(Self::Dummy(DmxUniverseDummy {
             basic: base,
             last_state: [0; 513],
-        })
+        }))
     }
 
     pub fn signal(&mut self, signal: Signal) {
@@ -303,6 +313,8 @@ pub fn audio_thread(
 
     // TODO: put the DMX thread under main!
 
+    audio_thread_control_signal.store(AudioThreadControlSignal::ABORTED, Ordering::Relaxed);
+
     let mut seq = 0;
 
     loop {
@@ -316,8 +328,12 @@ pub fn audio_thread(
 
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
-                audio_thread_control_signal
-                    .store(AudioThreadControlSignal::RELOAD, Ordering::Relaxed);
+                if audio_thread_control_signal.load(Ordering::Relaxed)
+                    == AudioThreadControlSignal::CONTINUE
+                {
+                    audio_thread_control_signal
+                        .store(AudioThreadControlSignal::RELOAD, Ordering::Relaxed);
+                }
             }
             Ok(FromFrontend::SelectSerialDevice(dev)) => {
                 // TODO: maybe implement this
@@ -331,18 +347,32 @@ pub fn audio_thread(
             Ok(FromFrontend::MatrixControl(control)) => {
                 // 255 is for the builtin device.
                 midi_in_sender
-                    .send(MidiEvent { device: control.device, status: control.y, data0: control.x, data1: control.value as u8 })
+                    .send(MidiEvent {
+                        device: control.device,
+                        status: control.y,
+                        data0: control.x,
+                        data1: control.value as u8,
+                    })
                     .unwrap();
             }
-            Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 log::warn!("[SUPERVISOR] Shutting down.");
                 break;
             }
+            Err(TryRecvError::Empty) => {}
         };
+
+        // Check if the thread crashed and attempt to restart it.
+        if audio_thread_control_signal.load(Ordering::Relaxed) == AudioThreadControlSignal::CRASHED
+            && audio_device.is_some()
+        {
+            thread::sleep(Duration::from_secs(2));
+            device_changed = true;
+        }
 
         if audio_device.is_none() {
             let devices = utils::get_input_devices_flat();
+
             system_out
                 .send(SystemMessage::AudioDevicesView(devices))
                 .unwrap();
@@ -364,6 +394,9 @@ pub fn audio_thread(
                 let midi_send = midi_out_sender.clone();
 
                 thread::spawn(move || {
+                    audio_thread_control_signal
+                        .store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
+
                     if let Err(err) = audio::run(
                         audio_input_device,
                         sig_0,
@@ -375,13 +408,13 @@ pub fn audio_thread(
                         // TODO: handle the audio backend error.
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))
                             .unwrap();
+
+                        audio_thread_control_signal
+                            .store(AudioThreadControlSignal::CRASHED, Ordering::Relaxed);
                     }
 
                     sys.send(SystemMessage::Log("[audio] Thread died.".into()))
                         .unwrap();
-
-                    audio_thread_control_signal
-                        .store(AudioThreadControlSignal::DEAD, Ordering::Relaxed);
                 });
             }
 

@@ -47,7 +47,7 @@ pub fn bl_controls_config(x: u8, y: u8) {
 #[doc(hidden)]
 pub unsafe fn _get_array(array_pointer: *mut u8, array_length: usize) -> &'static mut [u8] {
     // Safety: This is unsafe because we're dealing with raw pointers.
-    let mut slice = unsafe {
+    let slice = unsafe {
         assert!(!array_pointer.is_null(), "Pointer is null");
         std::slice::from_raw_parts_mut(array_pointer, array_length)
     };
@@ -68,7 +68,7 @@ pub unsafe fn _get_array_u32(array_pointer: *const u32, array_length: usize) -> 
 
 #[derive(Debug, Clone, Copy)]
 pub struct TickInput {
-    pub time: u32,
+    pub time: i32,
     pub volume: u8,
     pub beat_volume: u8,
     pub bass: u8,
@@ -130,19 +130,19 @@ impl MidiEvent {
 
 pub mod prelude {
     // Reef
-    pub use super::bl_log;
+    
 
     // Dynamic borrow checking
-    pub use std::cell::{Cell, RefCell};
-    pub use std::rc::{Rc, Weak};
+    
+    
 
     // Growable Array collections (vector)
-    pub use std::collections::VecDeque;
+    
 
     // Hash collections (via BTreeMap)
-    pub use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+    
     // Other collections
-    pub use std::collections::{BinaryHeap, LinkedList};
+    
 
     #[macro_export]
     macro_rules! println {
@@ -172,7 +172,7 @@ pub mod prelude {
             panic!("'print!' not supported in Blaulicht!");
         };
     }
-    pub use print;
+    
 
     #[macro_export]
     macro_rules! dbg {
@@ -180,7 +180,7 @@ pub mod prelude {
             panic!("'dbg!' not supported in Blaulicht!");
         };
     }
-    pub use dbg;
+    
 
     #[macro_export]
     macro_rules! smidi {
@@ -190,7 +190,7 @@ pub mod prelude {
         };
     }
 
-    pub use smidi;
+    
 }
 
 // pub fn fmod(a: f64, b: f64) -> f64 {

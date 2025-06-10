@@ -137,7 +137,7 @@ impl From<Signal> for WSSignal {
 // To frontent message.
 //
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub enum WSSystemMessageKind {
     Heartbeat,
     Log,
@@ -154,7 +154,7 @@ pub enum WSSystemMessageKind {
     Dmx,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct WSSystemMessage {
     kind: WSSystemMessageKind,
     value: serde_json::Value,

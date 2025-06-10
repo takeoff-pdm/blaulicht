@@ -34,7 +34,7 @@ fn tickinput_from_array(arr: &[u32]) -> blaulicht::TickInput {
     }
 
     blaulicht::TickInput {
-        time: arr[0],
+        time: arr[0] as i32,
         volume: arr[1] as u8,
         beat_volume: arr[2] as u8,
         bass: arr[3] as u8,
