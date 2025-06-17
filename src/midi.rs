@@ -1,11 +1,8 @@
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use midir::{Ignore, MidiInput, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
-use std::error::Error;
-use std::io::{stdin, stdout, Write};
 use std::thread;
 use std::time::Duration;
-use wmidi::MidiMessage;
 
 use crate::app::MidiEvent;
 

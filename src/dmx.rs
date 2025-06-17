@@ -1,28 +1,22 @@
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use enttecopendmx::EnttecOpenDMX;
 use std::{
-    mem,
-    net::UdpSocket,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
     thread,
     time::{Duration, Instant},
-    vec,
 };
 
 use crate::{
     app::MidiEvent,
-    midi,
-    utils::device_from_name,
     wasm::{self, TickEngine, TickInput},
-    ToFrontent,
 };
 
 use cpal::{traits::DeviceTrait, Device};
-use log::{info, warn};
-use serialport::{SerialPort, SerialPortInfo, SerialPortType};
+use log::warn;
+use serialport::{SerialPort, SerialPortInfo};
 
 use crate::{
     app::FromFrontend,

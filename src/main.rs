@@ -2,20 +2,17 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{mem, thread};
 
-use actix::System;
 use actix_files::Files;
-use actix_web::rt::task;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use blaulicht::app::FromFrontend;
-use blaulicht::audio::{AudioThreadControlSignal, Signal, SystemMessage, UnifiedMessage};
+use blaulicht::audio::{AudioThreadControlSignal, SystemMessage, UnifiedMessage};
 use blaulicht::routes::AppState;
-use blaulicht::wasm::TickInput;
-use blaulicht::{config, dmx, midi, routes, wasm};
+use blaulicht::{config, dmx, midi, routes};
 use crossbeam_channel::{Sender, TryRecvError};
 use env_logger::Env;
 use log::info;
@@ -107,13 +104,10 @@ async fn main() -> anyhow::Result<()> {
 
     let send = midi_in_sender.clone();
     thread::spawn(move || {
-        loop {
-            match midi::midi(send, midi_out_receiver.clone()) {
-                Ok(_) => panic!("Unreachable."),
-                Err(err) => {
-                    log::error!("MIDI thread crashed! {err:?}");
-                    break;
-                }
+        match midi::midi(send, midi_out_receiver.clone()) {
+            Ok(_) => panic!("Unreachable."),
+            Err(err) => {
+                log::error!("MIDI thread crashed! {err:?}");
             }
         }
 
@@ -235,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     _ => {}
                 },
-                Err(e) => println!("watch error: {:?}", e),
+                Err(e) => println!("watch error: {e:?}"),
             }
         }
     });

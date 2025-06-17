@@ -3,9 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use actix::System;
 
-use crate::{app::FromFrontend, audio::{Signal, SystemMessage, UnifiedMessage}};
+use crate::{app::FromFrontend, audio::UnifiedMessage};
 
 pub struct AppState {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,

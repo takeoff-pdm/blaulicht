@@ -1,18 +1,15 @@
 use std::{
-    collections::{HashMap, VecDeque},
-    net::UdpSocket,
+    collections::VecDeque,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
-    thread,
     time::{self, Duration, Instant},
     u8,
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use actix::System;
 use anyhow::anyhow;
 use audioviz::audio_capture::{capture::Capture, config::Config as CaptureConfig};
 use audioviz::{
@@ -24,14 +21,13 @@ use audioviz::{
 };
 use cpal::{traits::DeviceTrait, Device, HostId};
 use itertools::Itertools;
-use log::{debug, info, warn};
+use log::{info, warn};
 use serde::Serialize;
 use serialport::{SerialPortInfo, SerialPortType};
 
 use crate::{
     app::MidiEvent,
-    dmx::{DmxUniverse, USB_DEVICES},
-    midi, performance, DmxData, ToFrontent,
+    dmx::{DmxUniverse, USB_DEVICES}, performance,
 };
 
 fn map(x: isize, in_min: isize, in_max: isize, out_min: isize, out_max: isize) -> usize {

@@ -6,7 +6,6 @@ use wasmtime::*;
 use crate::{
     app::MidiEvent,
     audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
-    midi::MidiError,
 };
 
 #[derive(Clone, Copy)]
@@ -323,7 +322,7 @@ impl TickEngine {
         let midi_array_offset = 0x80000; // TODO: make this offset a const.
         let midi_array_len = midi_events.len() as i32;
 
-        if (midi_array_len > 100) {
+        if midi_array_len > 100 {
             panic!("TOO many MIDI events!");
         }
 
@@ -332,11 +331,11 @@ impl TickEngine {
         let midi_events_packed: Vec<u32> = midi_events
             .iter()
             .map(|event| {
-                (0u32
+                0u32
                     | (event.device as u32) << 24
                     | (event.status as u32) << 16
                     | (event.data0 as u32) << 8
-                    | (event.data1 as u32))
+                    | (event.data1 as u32)
             })
             .collect::<Vec<u32>>();
 

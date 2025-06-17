@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::Duration, // time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 // use actix::{Actor, StreamHandler};
 use actix_web::{
@@ -18,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    app::{FromFrontend, MatrixEvent, MidiEvent},
-    audio::{Signal, SystemMessage, UnifiedMessage, SIGNAL_SPEED},
+    app::{FromFrontend, MatrixEvent},
+    audio::{Signal, SystemMessage, UnifiedMessage},
     utils::device_from_name,
 };
 
