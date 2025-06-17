@@ -45,31 +45,24 @@ pub struct AudioConverter {
     show_vec: Vec<f32>,
     pub raw_receiver: Option<CaptureReceiver>,
     pub stream_controller: Option<StreamController>,
-    pub config: AudioConfig,
+    pub config: StreamConfig,
     pub resolution: usize,
 }
-#[derive(Debug, Clone)]
-pub struct AudioConfig(pub StreamConfig);
 
-impl Default for AudioConfig {
-    fn default() -> Self {
-        Self( 
-            audioviz::spectrum::config::StreamConfig {
-                gravity: Some(100.0),
-                ..Default::default()
-            }
-        )
-    }
-}
+// impl Default for AudioConfig {
+//     fn default() -> Self {
+//     }
+// }
 
-impl From<AudioConfig> for StreamConfig {
-    fn from(value: AudioConfig) -> Self {
-        value.0
-    }
-}
+
+// impl From<AudioConfig> for StreamConfig {
+//     fn from(value: AudioConfig) -> Self {
+//         value.0
+//     }
+// }
 
 impl AudioConverter {
-    pub fn from_capture(capture: Capture, config: AudioConfig) -> Self {
+    pub fn from_capture(capture: Capture, config: StreamConfig) -> Self {
         let raw_receiver = capture.get_receiver().unwrap();
         Self {
             raw_buf: Vec::new(),
@@ -81,7 +74,7 @@ impl AudioConverter {
         }
     }
 
-    pub fn from_stream(stream: Stream, config: AudioConfig) -> Self {
+    pub fn from_stream(stream: Stream, config: StreamConfig) -> Self {
         let stream_controller = stream.get_controller();
         Self {
             raw_buf: Vec::new(),
@@ -103,7 +96,8 @@ impl AudioConverter {
                     for buf in bufs {
                         let mut max: f32 = 0.0;
                         for value in buf {
-                            let value = value * 30.0 * self.config.0.processor.volume;
+                            println!("vollll: {}", self.config.processor.volume);
+                            let value = value * 30.0 * self.config.processor.volume;
                             if value > max {
                                 max = value
                             }
@@ -121,6 +115,7 @@ impl AudioConverter {
             }
             return Some(self.show_vec.clone());
         }
+
         if let Some(stream) = &self.stream_controller {
             let freqs = stream.get_frequencies();
 

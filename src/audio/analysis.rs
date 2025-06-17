@@ -207,7 +207,6 @@ pub fn volume(
                 * 10.0) as usize;
 
             let volume = volume_mean as u8;
-            println!("volume: {}", volume);
             &[Signal::Volume(volume)]
         }
     );
@@ -221,8 +220,6 @@ pub fn volume(
             position: 0f32,
         })
         .volume as usize;
-
-    println!("curr avg: {}", curr_avg);
 
     shift_push!(volume_samples, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE, curr_avg);
 
