@@ -1,17 +1,10 @@
 use std::{
-    collections::VecDeque,
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
-    time::{self, Duration, Instant},
+    time::Duration,
     u8,
 };
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use anyhow::{anyhow, bail};
-use audioviz::{audio_capture::{capture::Capture, config::Config as CaptureConfig}, spectrum::config::StreamConfig};
+use audioviz::{audio_capture::capture::Capture, spectrum::config::StreamConfig};
 use audioviz::{
     audio_capture::capture::CaptureReceiver,
     spectrum::{
@@ -19,16 +12,8 @@ use audioviz::{
         Frequency,
     },
 };
-use cpal::{traits::DeviceTrait, Device};
 use itertools::Itertools;
-use log::info;
 
-use crate::{
-    app::MidiEvent,
-    dmx::DmxUniverse,
-    msg::{BpmInfo, Signal, SystemMessage},
-    util,
-};
 
 const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;

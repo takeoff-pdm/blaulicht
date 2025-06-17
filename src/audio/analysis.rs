@@ -1,30 +1,19 @@
 use std::{
     collections::VecDeque,
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
-    time::{self, Duration, Instant},
+    time::{self, Instant},
     u8,
 };
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::Sender;
 
-use anyhow::{anyhow, bail};
-use audioviz::audio_capture::{capture::Capture, config::Config as CaptureConfig};
-use audioviz::spectrum::{stream::Stream, Frequency};
-use cpal::{traits::DeviceTrait, Device};
+use audioviz::spectrum::Frequency;
 use itertools::Itertools;
-use libc::TIME_OK;
-use log::info;
 
-use crate::audio::{SIGNAL_SPEED, SYSTEM_MESSAGE_SPEED};
+use crate::audio::SIGNAL_SPEED;
 use crate::{
-    app::MidiEvent,
-    audio::defs::{AudioConfig, AudioConverter, AudioThreadControlSignal},
     dmx::DmxUniverse,
-    msg::{BpmInfo, Signal, SystemMessage},
-    shift_push, signal, system_message, util,
+    msg::{BpmInfo, Signal},
+    shift_push, signal, util,
 };
 
 // Constants.

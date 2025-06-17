@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let consumers = consumers2.lock().unwrap();
                 for c in consumers.values() {
-                    if let Err(_) = c.send(UnifiedMessage::System(res.clone())) {
+                    if c.send(UnifiedMessage::System(res.clone())).is_err() {
                         continue;
                     }
                 }
@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(res) => {
                 let consumers = consumers2.lock().unwrap();
                 for c in consumers.values() {
-                    if let Err(_) = c.send(UnifiedMessage::Signal(res.clone())) {
+                    if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
                         continue;
                     }
                 }

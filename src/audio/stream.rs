@@ -14,15 +14,13 @@ use anyhow::{anyhow, bail};
 use audioviz::audio_capture::{capture::Capture, config::Config as CaptureConfig};
 use audioviz::spectrum::{stream::Stream, Frequency};
 use cpal::{traits::DeviceTrait, Device};
-use itertools::Itertools;
-use libc::TIME_OK;
 use log::info;
 
 use crate::{
     app::MidiEvent,
-    audio::{analysis::{self, bass, BASS_FRAMES, BASS_PEAK_FRAMES}, defs::{AudioConfig, AudioConverter, AudioThreadControlSignal}},
+    audio::{analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES}, defs::{AudioConfig, AudioConverter, AudioThreadControlSignal}},
     dmx::DmxUniverse,
-    msg::{BpmInfo, Signal, SystemMessage},
+    msg::{Signal, SystemMessage},
     shift_push, signal, system_message, util,
 };
 

@@ -1,11 +1,4 @@
-use crate::routes::state::AppState;
 
-use super::GenericResponse;
-use actix_web::{
-    get, put,
-    web::{Data, Json},
-    HttpResponse,
-};
 use serde::{Deserialize, Serialize};
 
 //
