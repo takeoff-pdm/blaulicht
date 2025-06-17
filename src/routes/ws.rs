@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     app::{FromFrontend, MatrixEvent},
-    audio::{Signal, SystemMessage, UnifiedMessage},
+    msg::{Signal, SystemMessage, UnifiedMessage},
     utils::device_from_name,
 };
 
@@ -207,23 +207,6 @@ impl From<SystemMessage> for WSSystemMessage {
                 )
                 .unwrap(),
             },
-            SystemMessage::SerialSelected(serial_port_info) => Self {
-                kind: WSSystemMessageKind::SerialSelected,
-                value: match serial_port_info {
-                    Some(d) => serde_json::to_value(d.port_name).unwrap(),
-                    None => serde_json::Value::Null,
-                },
-            },
-
-            SystemMessage::SerialDevicesView(devs) => Self {
-                kind: WSSystemMessageKind::AudioDevicesView,
-                value: serde_json::to_value(
-                    devs.iter()
-                        .map(|d| d.port_name.clone())
-                        .collect::<Vec<String>>(),
-                )
-                .unwrap(),
-            },
             SystemMessage::DMX(chans) => Self {
                 kind: WSSystemMessageKind::Dmx,
                 value: serde_json::to_value(chans.to_vec()).unwrap(),
@@ -389,8 +372,8 @@ pub async fn binary_ws_handler(
             }
 
             match unified_receiver.try_recv() {
-                Ok(sys) => match sys {
-                    UnifiedMessage::System(SystemMessage::DMX(dat)) => {
+                Ok(sys) => {
+                    if let UnifiedMessage::System(SystemMessage::DMX(dat)) = sys {
                         let mut vec = dat.to_vec();
                         vec.remove(0);
                         match session2.binary(vec).await {
@@ -398,8 +381,7 @@ pub async fn binary_ws_handler(
                             Err(_) => break,
                         }
                     }
-                    _ => {}
-                },
+                }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => unreachable!(),
             }
@@ -420,7 +402,7 @@ pub async fn binary_ws_handler(
                     break;
                 }
                 Ok(_) => {}
-                Err(e) => {
+                Err(_) => {
                     break;
                 }
             }

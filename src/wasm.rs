@@ -4,11 +4,11 @@ use std::{net::UdpSocket, time::Instant};
 use wasmtime::*;
 
 use crate::{
-    app::MidiEvent,
-    audio::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
+    app::MidiEvent, msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
 };
 
 #[derive(Clone, Copy)]
+#[derive(Default)]
 pub struct TickInput {
     pub volume: u8,
     pub beat_volume: u8,
@@ -35,19 +35,6 @@ impl TickInput {
     }
 }
 
-impl Default for TickInput {
-    fn default() -> Self {
-        Self {
-            volume: 0,
-            beat_volume: 0,
-            bass: 0,
-            bass_avg_short: 0,
-            bass_avg: 0,
-            bpm: 0,
-            time_between_beats_millis: 0,
-        }
-    }
-}
 
 pub struct TickEngine {
     timer_start: Instant,
@@ -331,8 +318,7 @@ impl TickEngine {
         let midi_events_packed: Vec<u32> = midi_events
             .iter()
             .map(|event| {
-                0u32
-                    | (event.device as u32) << 24
+                ((event.device as u32) << 24)
                     | (event.status as u32) << 16
                     | (event.data0 as u32) << 8
                     | (event.data1 as u32)
@@ -373,10 +359,10 @@ impl TickEngine {
                 tick_array_len,
                 dmx_array_offset as i32,
                 DMX_LEN as i32,
-                data_array_offset as i32,
+                data_array_offset,
                 data_array_len as i32,
                 midi_array_offset as i32,
-                midi_array_len as i32,
+                midi_array_len,
             ),
         )?;
 

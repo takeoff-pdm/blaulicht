@@ -27,7 +27,7 @@ pub fn midi(
 ) -> Result<(), MidiError> {
     log::trace!("[MIDI] Started thread");
 
-    let connections = vec![/*"DDJ-400",*/  "DDJ-200"];
+    let connections = [/*"DDJ-400",*/  "DDJ-200"];
 
     let mut conns_out = HashMap::new();
     let mut conns_in = HashMap::new();
@@ -57,7 +57,7 @@ pub fn midi(
                 in_port,
                 "ddj-read",
                 move |_, message, _| {
-                    println!("MIDI received: {:?}", message);
+                    println!("MIDI received: {message:?}");
                     if message.len() != 3 {
                         panic!("weird message");
                     }

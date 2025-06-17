@@ -8,3 +8,8 @@ pub fn increase_thread_priority() {
         }
     }
 }
+
+pub fn map(x: isize, in_min: isize, in_max: isize, out_min: isize, out_max: isize) -> usize {
+    let divisor = (in_max - in_min).max(1);
+    ((x - in_min) * (out_max - out_min) / (divisor) + out_min).max(0) as usize
+}

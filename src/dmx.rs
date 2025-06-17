@@ -10,24 +10,22 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent,
-    wasm::{self, TickEngine, TickInput},
+    app::MidiEvent, audio::defs::AudioThreadControlSignal, msg::{Signal, SystemMessage}, wasm::{self, TickEngine, TickInput}
 };
 
 use cpal::{traits::DeviceTrait, Device};
 use log::warn;
-use serialport::{SerialPort, SerialPortInfo};
 
 use crate::{
     app::FromFrontend,
-    audio::{self, AudioThreadControlSignal, Signal, SystemMessage},
+    audio::{self},
     utils,
 };
 
-struct DmxUniverseBasic {
+pub struct DmxUniverseBasic {
     tick_engine: TickEngine,
     channels: [u8; 513],
-    tickinput: TickInput,
+    tick_input: TickInput,
     system_out: Sender<SystemMessage>,
 }
 
@@ -41,7 +39,7 @@ impl DmxUniverseBasic {
         Ok(Self {
             tick_engine,
             channels: [0; 513],
-            tickinput: TickInput::default(),
+            tick_input: TickInput::default(),
             system_out,
         })
     }
@@ -49,33 +47,33 @@ impl DmxUniverseBasic {
     fn signal(&mut self, signal: Signal) {
         match signal {
             Signal::Volume(v) => {
-                self.tickinput.volume = v;
+                self.tick_input.volume = v;
             }
             Signal::BeatVolume(v) => {
-                self.tickinput.beat_volume = v;
+                self.tick_input.beat_volume = v;
             }
             Signal::Bass(v) => {
-                self.tickinput.bass = v;
+                self.tick_input.bass = v;
             }
             Signal::BassAvgShort(v) => {
-                self.tickinput.bass_avg_short = v;
+                self.tick_input.bass_avg_short = v;
             }
             Signal::BassAvg(v) => {
-                self.tickinput.bass_avg = v;
+                self.tick_input.bass_avg = v;
             }
             Signal::Bpm(v) => {
-                self.tickinput.bpm = v.bpm;
-                self.tickinput.time_between_beats_millis = v.time_between_beats_millis;
+                self.tick_input.bpm = v.bpm;
+                self.tick_input.time_between_beats_millis = v.time_between_beats_millis;
             }
         }
     }
 
     fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
         let start = Instant::now();
-        self.tick_engine.tick(self.tickinput, &midi, false)?;
+        self.tick_engine.tick(self.tick_input, midi, false)?;
 
         for (index, value) in self.tick_engine.dmx().iter().enumerate() {
-            self.channels[index] = *value as u8;
+            self.channels[index] = *value;
         }
 
         let elapsed = Instant::now().duration_since(start);
@@ -87,7 +85,7 @@ impl DmxUniverseBasic {
     }
 }
 
-struct DmxUniverseDummy {
+pub struct DmxUniverseDummy {
     basic: DmxUniverseBasic,
     last_state: [u8; 513],
 }
@@ -99,15 +97,11 @@ pub enum DmxUniverse {
 
 impl DmxUniverse {
     pub fn new(
-        port_path: String,
-        signal_out: Sender<Signal>,
         midi_out: Sender<MidiEvent>,
         system_out: Sender<SystemMessage>,
     ) -> wasmtime::Result<Self> {
-        // let mut wasm_engine = wasm::TickEngine::create(midi_out).unwrap();
         let base = DmxUniverseBasic::new(midi_out, system_out)?;
-
-        Ok(Self::Real(DmxUniverseReal::new(port_path, base)))
+        Ok(Self::Real(DmxUniverseReal::new(base)))
     }
 
     pub fn new_dummy(
@@ -145,7 +139,7 @@ impl DmxUniverse {
                     dummy
                         .basic
                         .system_out
-                        .send(SystemMessage::DMX(dummy.basic.channels))
+                        .send(SystemMessage::DMX(dummy.basic.channels.into()))
                         .unwrap();
 
                     dummy.last_state = dummy.basic.channels;
@@ -165,65 +159,15 @@ impl DmxUniverse {
     }
 }
 
-enum Color {
-    Red,
-    Purple,
-    Blue,
-    Cyan,
-    Green,
-    Yellow,
-}
-
-impl Color {
-    fn from_index(index: u8) -> Self {
-        match index {
-            0 => Self::Red,
-            1 => Self::Purple,
-            2 => Self::Blue,
-            3 => Self::Cyan,
-            4 => Self::Green,
-            5 => Color::Yellow,
-            _ => unreachable!(),
-        }
-    }
-
-    fn channels(&self) -> [u8; 3] {
-        match self {
-            Color::Red => [255, 0, 0],
-            Color::Purple => [255, 0, 255],
-            Color::Blue => [0, 0, 255],
-            Color::Cyan => [0, 255, 255],
-            Color::Green => [0, 255, 0],
-            Color::Yellow => [255, 255, 0],
-        }
-    }
-}
-
-struct DmxUniverseReal {
-    // serial: Box<dyn SerialPort>,
-    dmx: EnttecOpenDMX,
-    base: DmxUniverseBasic,
+pub struct DmxUniverseReal {
+    pub dmx: EnttecOpenDMX,
+    pub base: DmxUniverseBasic,
 }
 
 impl DmxUniverseReal {
-    fn new(
-        port_path: String,
-        // signal_out: Sender<Signal>,
-        // system_out: Sender<SystemMessage>,
-        base: DmxUniverseBasic,
-    ) -> Self {
-        // let serial = serialport::new(port_path, 250000)
-        //     .timeout(Duration::from_millis(1))
-        //     .stop_bits(serialport::StopBits::Two)
-        //     .data_bits(serialport::DataBits::Eight)
-        //     .parity(serialport::Parity::None)
-        //     .open()
-        //     .expect("Failed to open port");
-
+    fn new(base: DmxUniverseBasic) -> Self {
         let mut interface = enttecopendmx::EnttecOpenDMX::new().unwrap();
         interface.open().unwrap();
-
-        // let base = DmxUniverseBasic::new(midi_out, system_out);
 
         Self {
             dmx: interface,
@@ -241,52 +185,14 @@ impl DmxUniverseReal {
 
     pub fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
         let duration = self.base.tick(midi)?;
-
-        // TODO: is this right?
-        // Only update on write?
-        // self.base
-        //     .system_out
-        //     .send(SystemMessage::DMX(self.base.channels.clone()))
-        //     .unwrap();
-
         self.write_to_serial();
-
         Ok(duration)
     }
 
-    // fn send_break(&self, duration: Duration) {
-    //     self.serial.set_break().expect("Failed to set break");
-    //     spin_sleep::sleep(duration);
-    //     self.serial.clear_break().expect("Failed to clear break");
-    // }
-
     fn write_to_serial(&mut self) {
-        // interface.set_channel(1 as usize, 255 as u8);
         self.dmx.set_buffer(self.base.channels);
         self.dmx.render().unwrap();
-
-        // self.send_break(Duration::from_micros(100));
-        // spin_sleep::sleep(Duration::from_micros(100));
-        // self.serial.write_all(&self.base.channels).unwrap();
-        // self.serial.flush().unwrap();
     }
-}
-
-pub struct UsbDevice {
-    pub vid: u16,
-    pub pid: u16,
-}
-
-pub const EUROLITE_USB_DMX512_PRO_CABLE_INTERFACE: UsbDevice = UsbDevice {
-    vid: 1027,
-    pid: 24577,
-};
-
-pub const USB_DEVICES: [UsbDevice; 1] = [EUROLITE_USB_DMX512_PRO_CABLE_INTERFACE];
-// const SERIAL_ERROR_RETRY: Duration = Duration::from_secs(5);
-
-pub enum DMXControl {
-    ChangePort(Option<SerialPortInfo>),
 }
 
 pub fn audio_thread(
@@ -314,7 +220,7 @@ pub fn audio_thread(
     loop {
         thread::sleep(heartbeat_delay);
 
-        if let Err(_) = system_out.send(SystemMessage::Heartbeat(seq)) {
+        if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
             warn!("[SUPERVISOR] Shutting down...");
             break;
         };
@@ -418,7 +324,7 @@ pub fn audio_thread(
                 audio_device.clone().unwrap().name().unwrap()
             );
 
-            sys.send(SystemMessage::Log(format!("[audio] Thread started.")))
+            sys.send(SystemMessage::Log("[audio] Thread started.".to_string()))
                 .unwrap();
         }
     }

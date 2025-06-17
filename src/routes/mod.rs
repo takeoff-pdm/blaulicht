@@ -1,12 +1,3 @@
-macro_rules! db_error {
-    ($msg: expr, $err: expr) => {
-        HttpResponse::InternalServerError().json(GenericResponse::err(
-            $msg,
-            format!("Backend error: {}", $err).as_str(),
-        ))
-    };
-}
-
 mod html;
 mod api;
 mod state;

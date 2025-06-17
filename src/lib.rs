@@ -8,13 +8,5 @@ pub mod routes;
 pub mod utils;
 pub mod wasm;
 pub mod midi;
-pub mod performance;
-
-pub struct DmxData {
-    channels: [u8; 512],
-}
-
-pub enum ToFrontent {
-    Dmx(DmxData),
-    Bpm(u16),
-}
+pub mod util;
+pub mod msg;
