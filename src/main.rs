@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{mem, thread};
 
 use actix_files::Files;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
+use actix_web_actors::ws::start;
 use anyhow::Context;
 use blaulicht::app::FromFrontend;
 use blaulicht::audio::defs::AudioThreadControlSignal;
@@ -207,6 +208,7 @@ async fn main() -> anyhow::Result<()> {
     mem::drop(potential_watcher);
 
     let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+    let start_shutdown = Instant::now();
     if sig == AudioThreadControlSignal::CONTINUE {
         audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
         loop {
@@ -215,6 +217,11 @@ async fn main() -> anyhow::Result<()> {
             let sig = audio_thread_control_signal.load(Ordering::Relaxed);
 
             log::trace!("Waiting for audio thread to die: {sig}");
+
+            if start_shutdown.elapsed() > Duration::from_secs(5) {
+                log::warn!("Shutdown timeout");
+                break;
+            }
 
             if sig == AudioThreadControlSignal::ABORTED {
                 break;

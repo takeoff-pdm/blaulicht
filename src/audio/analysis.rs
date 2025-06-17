@@ -1,4 +1,5 @@
 use std::{
+    any,
     collections::VecDeque,
     time::{self, Instant},
     u8,
@@ -9,7 +10,7 @@ use crossbeam_channel::Sender;
 use audioviz::spectrum::Frequency;
 use itertools::Itertools;
 
-use crate::audio::SIGNAL_SPEED;
+use crate::audio::{stream::ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE, SIGNAL_SPEED};
 use crate::{
     dmx::DmxUniverse,
     msg::{BpmInfo, Signal},
@@ -20,6 +21,7 @@ use crate::{
 pub const BASS_FRAMES: usize = 10000;
 pub const BASS_PEAK_FRAMES: usize = 800;
 
+#[inline(always)]
 pub fn bass(
     now: Instant,
     time_of_last_beat_publish_parent: &mut Instant,
@@ -131,9 +133,9 @@ pub fn bass(
     Ok(())
 }
 
+#[inline(always)]
 pub fn beat_volume(
     values: &[Frequency],
-    now: Instant,
     time_of_last_beat_publish: &mut Instant,
     signal_out_0: &Sender<Signal>,
     dmx_universe: &mut DmxUniverse,
@@ -181,6 +183,48 @@ pub fn beat_volume(
             }
         );
     }
+
+    Ok(())
+}
+
+#[inline(always)]
+pub fn volume(
+    now: Instant,
+    time_of_last_volume_publish: &mut Instant,
+    signal_out_0: &Sender<Signal>,
+    dmx_universe: &mut DmxUniverse,
+    values: &[Frequency],
+    volume_samples: &mut VecDeque<usize>,
+) -> anyhow::Result<()> {
+    signal!(
+        now,
+        time_of_last_volume_publish,
+        signal_out_0,
+        dmx_universe,
+        {
+            let volume_mean = ((volume_samples.iter().sum::<usize>() as f32)
+                / (volume_samples.len() as f32)
+                * 10.0) as usize;
+
+            let volume = volume_mean as u8;
+            println!("volume: {}", volume);
+            &[Signal::Volume(volume)]
+        }
+    );
+
+    let curr_avg = values
+        .iter()
+        .max_by_key(|f| (f.volume * 10.0) as usize)
+        .unwrap_or(&Frequency {
+            volume: 0f32,
+            freq: 0f32,
+            position: 0f32,
+        })
+        .volume as usize;
+
+    println!("curr avg: {}", curr_avg);
+
+    shift_push!(volume_samples, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE, curr_avg);
 
     Ok(())
 }

@@ -10,7 +10,10 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent, audio::defs::AudioThreadControlSignal, msg::{Signal, SystemMessage}, wasm::{self, TickEngine, TickInput}
+    app::MidiEvent,
+    audio::defs::AudioThreadControlSignal,
+    msg::{Signal, SystemMessage},
+    wasm::{self, TickEngine, TickInput},
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -99,9 +102,10 @@ impl DmxUniverse {
     pub fn new(
         midi_out: Sender<MidiEvent>,
         system_out: Sender<SystemMessage>,
-    ) -> wasmtime::Result<Self> {
+    ) -> anyhow::Result<Self> {
         let base = DmxUniverseBasic::new(midi_out, system_out)?;
-        Ok(Self::Real(DmxUniverseReal::new(base)))
+        let real_universe = DmxUniverseReal::new(base)?;
+        Ok(Self::Real(real_universe))
     }
 
     pub fn new_dummy(
@@ -165,14 +169,16 @@ pub struct DmxUniverseReal {
 }
 
 impl DmxUniverseReal {
-    fn new(base: DmxUniverseBasic) -> Self {
-        let mut interface = enttecopendmx::EnttecOpenDMX::new().unwrap();
+    fn new(base: DmxUniverseBasic) -> anyhow::Result<Self> {
+        let mut interface = enttecopendmx::EnttecOpenDMX::new()?;
         interface.open().unwrap();
 
-        Self {
+        let this = Self {
             dmx: interface,
             base,
-        }
+        };
+
+        Ok(this)
     }
 
     fn reload(&mut self) -> wasmtime::Result<()> {

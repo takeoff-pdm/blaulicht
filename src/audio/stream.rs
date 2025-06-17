@@ -4,43 +4,39 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
+    thread,
     time::{self, Duration, Instant},
     u8,
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use audioviz::audio_capture::{capture::Capture, config::Config as CaptureConfig};
 use audioviz::spectrum::{stream::Stream, Frequency};
 use cpal::{traits::DeviceTrait, Device};
-use log::info;
+use log::{debug, info};
 
 use crate::{
     app::MidiEvent,
-    audio::{analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES}, defs::{AudioConfig, AudioConverter, AudioThreadControlSignal}},
-    dmx::DmxUniverse,
+    audio::{
+        analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES},
+        defs::{AudioConfig, AudioConverter, AudioThreadControlSignal},
+    },
+    dmx::{self, DmxUniverse},
     msg::{Signal, SystemMessage},
     shift_push, signal, system_message, util,
 };
 
-const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
-const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
+pub const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
+pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
 
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
 const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
-
-pub fn run(
-    device: Device,
-    signal_out_0: Sender<Signal>,
-    system_out: Sender<SystemMessage>,
-    thread_control_signal: Arc<AtomicU8>,
-    midi_in_receiver: Receiver<MidiEvent>,
-    midi_out_sender: Sender<MidiEvent>,
-) -> anyhow::Result<()> {
+fn init_converter(device: Device) -> anyhow::Result<AudioConverter> {
     let config = AudioConfig::default();
 
     let audio_capture_config = CaptureConfig {
@@ -53,38 +49,24 @@ pub fn run(
 
     let capture = Capture::init(audio_capture_config.clone()).map_err(|err| anyhow!("{err:?}"))?;
 
-    let mut converter: AudioConverter = {
+    let converter: AudioConverter = {
         let stream = Stream::init_with_capture(&capture, config.0.clone());
         AudioConverter::from_stream(stream, config.clone())
     };
 
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    // END PREPWORK
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
+    Ok(converter)
+}
 
-    //
-    // DMX interfaces.
-    //
-
-    info!("[DMX] Trying to establish hardware link...");
+fn init_dmx(
+    midi_out_sender: Sender<MidiEvent>,
+    system_out: Sender<SystemMessage>,
+) -> anyhow::Result<DmxUniverse> {
+    debug!("[DMX] Trying to establish hardware link...");
     let res = DmxUniverse::new(midi_out_sender.clone(), system_out.clone());
-    let mut dmx_universe = match res {
+    let dmx_universe = match res {
         Ok(universe) => universe,
         Err(e) => {
-            println!("[DMX] Failed to establish hardware link: {e}");
+            info!("[DMX] Failed to establish hardware link: {e}, using dummy...");
             let Ok(universe) = DmxUniverse::new_dummy(midi_out_sender, system_out.clone()) else {
                 bail!("[DMX] Failed to create dummy universe, exiting.");
             };
@@ -93,8 +75,28 @@ pub fn run(
         }
     };
 
-    // Boost thread.
+    Ok(dmx_universe)
+}
+
+pub fn run(
+    device: Device,
+    signal_out_0: Sender<Signal>,
+    system_out: Sender<SystemMessage>,
+    thread_control_signal: Arc<AtomicU8>,
+    midi_in_receiver: Receiver<MidiEvent>,
+    midi_out_sender: Sender<MidiEvent>,
+) -> anyhow::Result<()> {
+    let mut converter =
+        init_converter(device).with_context(|| "Failed to initialize audio converter")?;
+
+    let mut dmx_universe = init_dmx(midi_out_sender, system_out.clone())
+        .with_context(|| "Failed to initialize DMX universe")?;
+
     util::increase_thread_priority();
+
+    //
+    // State for the analyzers.
+    //
 
     // Loop speed.
     let mut time_of_last_system_publish = time::Instant::now();
@@ -117,22 +119,11 @@ pub fn run(
     let mut historic = VecDeque::with_capacity(rolling_average_frames);
 
     let mut bass_samples = VecDeque::with_capacity(BASS_FRAMES);
-
-    //
-    // DMX
-    //
-
-    let mut time_of_last_dmx_tick = time::Instant::now();
-
-    //
-    //
-    // TODO: beat detection
-    //
-    //
-    //
-
     let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(BASS_PEAK_FRAMES);
     let bass_modifier = 65;
+
+    // Dmx last tick.
+    let mut time_of_last_dmx_tick = time::Instant::now();
 
     loop {
         //
@@ -197,43 +188,24 @@ pub fn run(
                 ]
             });
         }
+
         /////////////////// Signal Begin ///////////////
 
         let values = converter.freqs();
+        println!("freqs: {:?}", values);
 
         //
         // Update volume signal.
         //
-        {
-            signal!(
-                now,
-                time_of_last_volume_publish,
-                signal_out_0,
-                dmx_universe,
-                {
-                    let volume_mean = ((volume_samples.iter().sum::<usize>() as f32)
-                        / (volume_samples.len() as f32)
-                        * 10.0) as usize;
 
-                    let volume = volume_mean as u8;
-                    &[Signal::Volume(volume)]
-                }
-            );
-
-            shift_push!(
-                volume_samples,
-                ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
-                values
-                    .iter()
-                    .max_by_key(|f| (f.volume * 10.0) as usize)
-                    .unwrap_or(&Frequency {
-                        volume: 0f32,
-                        freq: 0f32,
-                        position: 0f32
-                    })
-                    .volume as usize
-            );
-        }
+        analysis::volume(
+            now,
+            time_of_last_volume_publish,
+            &signal_out_0,
+            &mut dmx_universe,
+            &values,
+            &mut volume_samples,
+        )?;
 
         //
         // Update Bass.
@@ -256,7 +228,6 @@ pub fn run(
 
         analysis::beat_volume(
             &values,
-            now,
             time_of_last_beat_publish,
             &signal_out_0,
             &mut dmx_universe,
