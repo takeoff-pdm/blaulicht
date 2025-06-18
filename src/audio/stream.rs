@@ -2,14 +2,13 @@ use std::{
     collections::VecDeque, mem, sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
-    }, thread, time::{self, Duration, Instant}, u8
+    }, time::{self, Duration, Instant}
 };
 
-use actix_web::cookie::time::convert;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use anyhow::{anyhow, bail, Context};
-use audioviz::spectrum::{stream::Stream, Frequency};
+use audioviz::spectrum::stream::Stream;
 use audioviz::{
     audio_capture::{capture::Capture, config::Config as CaptureConfig},
     spectrum::config::StreamConfig,
@@ -18,14 +17,10 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, info};
 
 use crate::{
-    app::MidiEvent,
-    audio::{
+    app::MidiEvent, audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES},
         defs::{AudioConverter, AudioThreadControlSignal},
-    },
-    dmx::{self, DmxUniverse},
-    msg::{Signal, SystemMessage},
-    shift_push, signal, system_message, util,
+    }, config::Config, dmx::DmxUniverse, msg::{Signal, SystemMessage}, system_message, util
 };
 
 pub const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
@@ -36,15 +31,15 @@ pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
 const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
-fn init_converter(device: Device) -> anyhow::Result<(AudioConverter, Capture)> {
-    let config = StreamConfig {
-        // TODO: also experiment with fft resolution
-        // gravity: None, // OR: Some(100)
-        gravity: Some(100.0),
-        ..Default::default()
-    };
+fn init_converter(device: Device, config: StreamConfig) -> anyhow::Result<(AudioConverter, Capture)> {
+    // let config = StreamConfig {
+    //     // TODO: also experiment with fft resolution
+    //     // gravity: None, // OR: Some(100)
+    //     gravity: Some(100.0),
+    //     ..Default::default()
+    // };
 
-    println!("config: {:?}", config);
+    println!("config: {config:?}");
 
     let audio_capture_config = CaptureConfig {
         sample_rate: Some(device.default_input_config().unwrap().sample_rate().0),
@@ -89,9 +84,10 @@ pub fn run(
     thread_control_signal: Arc<AtomicU8>,
     midi_in_receiver: Receiver<MidiEvent>,
     midi_out_sender: Sender<MidiEvent>,
+    config: Config,
 ) -> anyhow::Result<()> {
-    let (mut converter, capture) =
-        init_converter(device).with_context(|| "Failed to initialize audio converter")?;
+    let (mut converter, capture ) =
+        init_converter(device, config.stream).with_context(|| "Failed to initialize audio converter")?;
 
     let mut dmx_universe = init_dmx(midi_out_sender, system_out.clone())
         .with_context(|| "Failed to initialize DMX universe")?;

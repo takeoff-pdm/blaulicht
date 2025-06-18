@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{path::PathBuf, str::FromStr, sync::{Arc, Mutex}};
 
 // use actix::{Actor, StreamHandler};
 use actix_web::{
@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    app::{FromFrontend, MatrixEvent},
-    msg::{Signal, SystemMessage, UnifiedMessage},
-    utils::device_from_name,
+    app::{FromFrontend, MatrixEvent}, config, msg::{Signal, SystemMessage, UnifiedMessage}, utils::device_from_name
 };
 
 use super::AppState;
@@ -43,35 +41,43 @@ pub struct WSFromFrontend {
     value: serde_json::Value,
 }
 
-// TODO: json deserial.
-impl From<WSFromFrontend> for FromFrontend {
-    fn from(value: WSFromFrontend) -> Self {
-        match value.kind {
-            WSFromFrontendKind::Reload => Self::Reload,
-            WSFromFrontendKind::MatrixControl => {
-                let control: MatrixEvent = serde_json::from_value(value.value).unwrap();
-                Self::MatrixControl(control)
-            }
-            WSFromFrontendKind::SelectAudioDevice => {
-                if value.value == serde_json::Value::Null {
-                    Self::SelectInputDevice(None)
-                } else {
-                    let serde_json::Value::String(device_name) = value.value else {
-                        panic!("not a string");
-                    };
+fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> FromFrontend {
+    match value.kind {
+        WSFromFrontendKind::Reload => FromFrontend::Reload,
+        WSFromFrontendKind::MatrixControl => {
+            let control: MatrixEvent = serde_json::from_value(value.value).unwrap();
+            FromFrontend::MatrixControl(control)
+        }
+        WSFromFrontendKind::SelectAudioDevice => {
+            if value.value == serde_json::Value::Null {
+                FromFrontend::SelectInputDevice(None)
+            } else {
+                let serde_json::Value::String(device_name) = value.value else {
+                    panic!("not a string");
+                };
 
-                    log::info!("[WS] Selected INPUT: <{}>", &device_name);
-                    let device = device_from_name(device_name);
-                    Self::SelectInputDevice(device)
-                }
+                log::info!("[WS] Selected INPUT: <{}>", &device_name);
+                let device = device_from_name(device_name.clone());
+
+                let mut config_mut = data.config.lock().unwrap();
+
+                config_mut.default_audio_device = match device {
+                    Some(_) => Some(device_name),
+                    None => None,
+                };
+
+                let path = PathBuf::from_str(&data.config_path).unwrap();
+                config::write_config(path, config_mut.clone()).unwrap();
+
+                FromFrontend::SelectInputDevice(device)
             }
-            WSFromFrontendKind::SelectSerialDevice => {
-                if value.value == serde_json::Value::Null {
-                    Self::SelectSerialDevice(None)
-                } else {
-                    let device = value.value.to_string();
-                    Self::SelectSerialDevice(Some(device))
-                }
+        }
+        WSFromFrontendKind::SelectSerialDevice => {
+            if value.value == serde_json::Value::Null {
+                FromFrontend::SelectSerialDevice(None)
+            } else {
+                let device = value.value.to_string();
+                FromFrontend::SelectSerialDevice(Some(device))
             }
         }
     }
@@ -300,7 +306,9 @@ pub async fn ws_handler(
                     let msg: WSFromFrontend =
                         serde_json::from_str(text.to_string().as_str()).unwrap();
 
-                    from_frontend_sender.send(msg.clone().into()).unwrap();
+                    let converted = process_ws_from_frontend(msg, data.clone());
+
+                    from_frontend_sender.send(converted).unwrap();
                 }
 
                 Ok(AggregatedMessage::Binary(bin)) => {

@@ -5,26 +5,34 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use audioviz::spectrum::config::StreamConfig;
 use log::debug;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub port: u16,
-    pub extra_serial_paths: Vec<PathBuf>,
+    pub default_audio_device: Option<String>,
+    pub stream: StreamConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             port: 1234,
-            extra_serial_paths: vec!["/dev/pts/0".into()],
+            default_audio_device: None,
+            stream: StreamConfig {
+                // TODO: also experiment with fft resolution
+                // gravity: None, // OR: Some(100)
+                gravity: Some(100.0),
+                ..Default::default()
+            },
         }
     }
 }
 
 pub fn config_path() -> Result<PathBuf> {
-    Ok("~/blualicht.toml".into())
+    Ok("~/blaulicht.toml".into())
 }
 
 pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
@@ -54,4 +62,14 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
             Ok(None)
         }
     }
+}
+
+pub fn write_config(file_path: PathBuf, config: Config) -> Result<Option<Config>> {
+    // Either read or create a configuration file based on it's current existence
+    let path = Path::new(&file_path);
+    fs::create_dir_all(path.parent().unwrap())?;
+    let mut file = File::create(path)?;
+    file.write_all(toml::to_string_pretty(&config).unwrap().as_bytes())
+        .with_context(|| "Failed to write default config file (create new one)")?;
+    Ok(None)
 }

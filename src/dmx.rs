@@ -10,10 +10,7 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent,
-    audio::defs::AudioThreadControlSignal,
-    msg::{Signal, SystemMessage},
-    wasm::{self, TickEngine, TickInput},
+    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, msg::{Signal, SystemMessage}, wasm::{self, TickEngine, TickInput}
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -209,6 +206,7 @@ pub fn audio_thread(
     midi_in_receiver: Receiver<MidiEvent>,
     midi_in_sender: Sender<MidiEvent>,
     midi_out_sender: Sender<MidiEvent>,
+    config: Config, 
 ) {
     log::info!("[SUPERVISOR] Thread started!");
 
@@ -298,6 +296,7 @@ pub fn audio_thread(
 
                 let midi_recv = midi_in_receiver.clone();
                 let midi_send = midi_out_sender.clone();
+                let config = config.clone();
 
                 thread::spawn(move || {
                     audio_thread_control_signal
@@ -310,6 +309,7 @@ pub fn audio_thread(
                         audio_thread_control_signal.clone(),
                         midi_recv,
                         midi_send,
+                        config,
                     ) {
                         // TODO: handle the audio backend error.
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))

@@ -8,16 +8,17 @@ use std::{mem, thread};
 use actix_files::Files;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
-use actix_web_actors::ws::start;
-use anyhow::Context;
+use anyhow::{bail, Context};
 use blaulicht::app::FromFrontend;
 use blaulicht::audio::defs::AudioThreadControlSignal;
 use blaulicht::msg::{SystemMessage, UnifiedMessage};
 use blaulicht::routes::AppState;
+use blaulicht::utils::device_from_name;
 use blaulicht::{config, dmx, midi, routes};
 use crossbeam_channel::{Sender, TryRecvError};
 use env_logger::Env;
-use log::info;
+use libc::system;
+use log::{error, info};
 use notify::event::{DataChange, ModifyKind};
 use notify::{Event, RecursiveMode, Watcher};
 
@@ -46,12 +47,35 @@ async fn main() -> anyhow::Result<()> {
     let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
     let (midi_out_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
 
+    //
+    // Read config file.
+    //
+
+    match cfg.default_audio_device {
+        None => {}
+        Some(ref name) => {
+            let Some(dev) = device_from_name(name.clone()) else  {
+                bail!("No such device: {name}");
+            };
+            
+            info!("Using default audio device: <{name}> from configuration file.");
+            from_frontend_sender.send(FromFrontend::SelectInputDevice(Some(dev))).unwrap();
+        }
+    }
+
+    //
+    // Launch midi thread.
+    //
+
     let send = midi_in_sender.clone();
+    let sys_out = system_out.clone();
     thread::spawn(move || {
         match midi::midi(send, midi_out_receiver.clone()) {
             Ok(_) => panic!("Unreachable."),
             Err(err) => {
-                log::error!("MIDI thread crashed! {err:?}");
+                let msg = format!("MIDI thread crashed! {err:?}");
+                log::error!("{msg}");
+                sys_out.send(SystemMessage::Log(msg)).unwrap();
             }
         }
 
@@ -78,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
         let system_out = system_out.clone();
         let audio_thread_control_signal = audio_thread_control_signal.clone();
         let send = midi_in_sender.clone();
+        let cfg = cfg.clone();
         thread::spawn(move || {
             dmx::audio_thread(
                 from_frontend_receiver,
@@ -87,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
                 midi_in_receiver,
                 send,
                 midi_out_sender,
+                cfg,
             )
         });
     }
@@ -181,6 +207,8 @@ async fn main() -> anyhow::Result<()> {
         from_frontend_sender,
         // app_signal_receiver,
         to_frontend_consumers: consumers,
+        config: Arc::new(Mutex::new(cfg.clone())),
+        config_path: config_filepath.to_string(),
     });
 
     let server = HttpServer::new(move || {
