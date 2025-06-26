@@ -1,11 +1,14 @@
 {
     "cSpell.words": [
         "actix",
+        "addrs",
         "audioviz",
         "blaulicht",
         "Deque",
         "Enttec",
         "itertools",
+        "mainloop",
+        "striked",
         "wasmtime"
     ]
 }

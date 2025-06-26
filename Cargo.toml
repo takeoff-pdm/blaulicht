@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "./crates/os",
+    "./crates/core",
     "./crates/shared",
-    "./crates/firmware"
-, "crates/shared"]
+    "./crates/plugins"
+]
+resolver = "2"
