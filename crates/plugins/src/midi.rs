@@ -1,7 +1,7 @@
 use std::u8;
 
 use crate::{
-    blaulicht::{self, prelude::println},
+    blaulicht::{self},
     error::{MidiError, Result},
 };
 
@@ -87,7 +87,7 @@ impl MidiEvent {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct MidiEvent {
     pub device: u8,
     pub status: u8,

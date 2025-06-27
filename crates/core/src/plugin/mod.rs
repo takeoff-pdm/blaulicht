@@ -1,9 +1,15 @@
 use std::{
-    cell::{RefCell, UnsafeCell}, collections::HashMap, hash::Hash, path::{Path, PathBuf}, rc::Rc, sync::{mpsc, Arc, Mutex}, time::{Duration, Instant}
+    cell::{RefCell, UnsafeCell},
+    collections::HashMap,
+    hash::Hash,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::{mpsc, Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use anyhow::Context;
-use blaulicht_shared::CollectedAudioSnapshot;
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::{debug, trace};
 use notify::{
@@ -13,12 +19,7 @@ use notify::{
 use wasmtime::{Instance, Memory, Store};
 
 use crate::{
-    app::{FromFrontend, MidiEvent},
-    config::PluginConfig,
-    msg::SystemMessage,
-    plugin::{
-        midi::MidiManager, wasm::MidiStatus
-    },
+    app::{FromFrontend, MidiEvent}, config::PluginConfig, event::SystemEventBusConnection, msg::SystemMessage, plugin::{midi::MidiManager, wasm::MidiStatus}
 };
 
 pub mod midi;
@@ -37,6 +38,8 @@ pub struct PluginManager {
 
     // todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
     midi_manager_ref: Arc<Mutex<MidiManager>>,
+
+    event_bus: SystemEventBusConnection,
 }
 
 pub struct Plugin {
@@ -59,6 +62,7 @@ impl PluginManager {
         from_midi_manager: Receiver<MidiEvent>,
         system_out: Sender<SystemMessage>,
         midi_manager_ref: Arc<Mutex<MidiManager>>,
+        event_bus: SystemEventBusConnection,
     ) -> Self {
         Self {
             timer_start: Instant::now(),
@@ -69,13 +73,17 @@ impl PluginManager {
             from_midi_manager,
             system_out,
             midi_manager_ref,
+            event_bus,
         }
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
         self.instantiate_plugins()?;
         self.is_initial_tick = true;
-        self.tick(CollectedAudioSnapshot::default(), &[])?;
+        self.tick(
+            CollectedAudioSnapshot::default(),
+            &[],
+        )?;
 
         Ok(())
     }

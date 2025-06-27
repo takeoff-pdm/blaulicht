@@ -12,6 +12,7 @@
     Separator,
     ThemeUtils,
     type ListOptions,
+    Text,
   } from "svelte-tweakpane-ui";
   import { Binding, type BindingObject } from "svelte-tweakpane-ui";
   import {
@@ -23,6 +24,7 @@
     topicBassAvgShort,
     topicBeatVolume,
     topicBPM,
+    topicControl,
     topicDMX,
     topicHeartbeat,
     topicLog,
@@ -74,6 +76,8 @@
   let selectedAudio = null;
 
   let socket: BlaulichtWebsocket | null = null;
+
+  let controlInput = "";
 
   audioPortListOptions["None"] = "None";
 
@@ -233,6 +237,10 @@
       bpm = event.value;
     });
 
+    callbacks.subscribe(topicControl(), (event) => {
+      console.log("control", event);
+    });
+
     socket = new BlaulichtWebsocket(callbacks);
 
     // Serial devices.
@@ -297,6 +305,22 @@
       value: null,
     });
   }
+
+  async function sendControlWrapper() {
+    try {
+      let parsed = JSON.parse(controlInput);
+      sendControl(parsed);
+    } catch (e) {
+      alert(e);
+    }
+  }
+
+  async function sendControl(data: any) {
+    socket.send({
+      kind: "Control",
+      value: data,
+    });
+  }
 </script>
 
 <Page pageId="dash">
@@ -305,7 +329,9 @@
     style="height: 100vh; display: flex; flex-direction: column;"
   >
     <div style="width: 100%; height: 70%; display: flex; flex: 1;">
-      <div style="width: 100%; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 1rem;">
+      <div
+        style="width: 100%; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 1rem;"
+      >
         <Folder userExpandable={false} expanded={true} title="System">
           <Monitor value={loopSpeed} graph={false} label={"Loop Speed"} />
           <Monitor
@@ -413,6 +439,15 @@
           <pre>Selected Option: {selectedAudio}</pre>
 
           <Button on:click={reloadEngine} label={"Engine"} title="Reload"
+          ></Button>
+        </Folder>
+
+        <Folder userExpandable={false} expanded={true} title="Control DBG">
+          <Text bind:value={controlInput} label="Input (JSON)"></Text>
+          <Button
+            on:click={sendControlWrapper}
+            label={"Control"}
+            title="Send"
           ></Button>
         </Folder>
       </div>

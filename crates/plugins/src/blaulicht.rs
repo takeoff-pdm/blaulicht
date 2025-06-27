@@ -12,6 +12,9 @@ extern "C" {
     fn bl_open_midi_device(device_name_ptr: *const u8, device_name_len: usize) -> u8;
     fn bl_transmit_midi(device_id: u8, status: u8, data0: u8, data1: u8);
 
+    fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
+
+
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
     fn controls_config(x: u8, y: u8);
@@ -30,6 +33,11 @@ pub fn bl_transmit_midi_safe(device: u8, status: u8, data0: u8, data1: u8) {
 /// Log a string to the BL output
 pub fn bl_log(msg: &str) {
     unsafe { log(msg.as_ptr(), msg.len()) }
+}
+
+pub fn bl_send(event: ControlEvent) {
+    let serialized = event.serialize();
+    unsafe { bl_send_event(serialized.as_ptr(), serialized.len()) };
 }
 
 pub fn bl_udp(addr: &str, body: &[u8]) {
@@ -134,6 +142,7 @@ macro_rules! elapsed {
 
 use std::fmt::Display;
 
+use blaulicht_shared::ControlEvent;
 pub use elapsed;
 
 #[macro_export]

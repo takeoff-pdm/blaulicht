@@ -5,12 +5,13 @@ use std::{
 };
 
 use anyhow::Context;
-use blaulicht_shared::{CollectedAudioSnapshot, TickInput};
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, TickInput};
 use crossbeam_channel::{RecvError, TryRecvError};
 use log::debug;
 
 use crate::{
-    app::MidiEvent, plugin::{Plugin, PluginManager},
+    app::MidiEvent,
+    plugin::{Plugin, PluginManager},
 };
 
 impl PluginManager {
@@ -20,18 +21,36 @@ impl PluginManager {
         midi_events: &[MidiEvent],
     ) -> anyhow::Result<Duration> {
         let start = Instant::now();
+
+        //
+        // Collect recent events.
+        //
+
+        let mut events= vec![];
+        loop {
+            let Some(event) = self.event_bus.try_recv() else {
+                break;
+            };
+
+            events.push(event);
+        }
+
         // Generate tick input.
         let input = TickInput {
             clock: self.timer_start.elapsed().as_millis() as u32, // TODO: what if we overflow?
             initial: self.is_initial_tick,
             audio_data,
+            events: ControlEventCollection {
+                events,
+            },
         };
 
         let mut err_res = None;
 
         for (_, plugin) in self.plugins.iter_mut() {
             // TODO: handle errors for each plugin separately.
-            if let Err(err) = plugin.tick(input, midi_events) {
+            // TODO: this clone might hurt?
+            if let Err(err) = plugin.tick(input.clone(), midi_events) {
                 err_res = Some(anyhow::anyhow!(
                     "Failed to tick plugin '{}': {}",
                     plugin.path,
@@ -56,7 +75,7 @@ impl Plugin {
         //
         // Tick function.
         //
-        let func = self.instance.get_typed_func::<(i32, i32, i32), ()>(
+        let func = self.instance.get_typed_func::<(i32, i32), ()>(
             &mut self.store,
             "internal_tick", // TODO: external type and name constants.
         )?;
@@ -127,7 +146,7 @@ impl Plugin {
         //
         // Data array.
         //
-        let data_array_offset = 0x90000; // Arbitrary offset
+        // let data_array_offset = 0x90000; // Arbitrary offset
 
         // let mut data_array_bytes = Vec::new();
         // for &num in &self.data {
@@ -144,7 +163,6 @@ impl Plugin {
             (
                 tick_array_offset as i32,
                 tick_array_len,
-                data_array_offset,
                 // midi_array_offset as i32,
                 // midi_array_len,
             ),

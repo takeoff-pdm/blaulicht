@@ -1,3 +1,4 @@
+use blaulicht_shared::ControlEvent;
 use cpal::Device;
 use serde::Deserialize;
 

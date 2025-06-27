@@ -26,19 +26,14 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, info};
 
 use crate::{
-    app::MidiEvent,
-    audio::{
+    app::MidiEvent, audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_LOOP_ITERATIONS},
         capture,
         defs::{AudioConverter, AudioThreadControlSignal},
-    },
-    config::Config,
-    msg::{Signal, SystemMessage},
-    plugin::{
+    }, config::Config, event::SystemEventBusConnection, msg::{Signal, SystemMessage}, plugin::{
         midi::{self, MidiManager},
         PluginManager,
-    },
-    system_message, util,
+    }, system_message, util
 };
 
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
@@ -52,6 +47,7 @@ pub fn run(
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
+    event_bus: SystemEventBusConnection,
 ) -> anyhow::Result<()> {
     //
     // MIDI.
@@ -72,6 +68,7 @@ pub fn run(
         to_plugins_receiver,
         system_out.clone(),
         Arc::clone(&midi_manager),
+        event_bus,
     );
 
     plugin_manager
@@ -167,6 +164,11 @@ pub fn run(
             let midi = midi_manager
                 .tick()
                 .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?;
+
+            //
+            // Collect control events.
+            //
+
 
             let dmx_tick_duration = match plugin_manager.tick(collector.take_snapshot(), &midi) {
                 Ok(dur) => {

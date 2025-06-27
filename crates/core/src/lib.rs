@@ -11,3 +11,4 @@ pub mod plugin;
 pub mod util;
 pub mod msg;
 pub mod mainloop;
+pub mod event;

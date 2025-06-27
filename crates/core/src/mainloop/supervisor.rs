@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, mainloop, msg::{Signal, SystemMessage}, plugin::midi
+    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, event::SystemEventBusConnection, mainloop, msg::{Signal, SystemMessage}, plugin::midi
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -205,6 +205,7 @@ pub fn supervisor_thread(
     signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
     config: Config,
+    event_bus_connection: SystemEventBusConnection,
 ) {
     log::info!("[SUPERVISOR] Thread started!");
 
@@ -306,8 +307,8 @@ pub fn supervisor_thread(
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
 
                 let sys = sys.clone();
-
                 let config = config.clone();
+                let bus_connection = event_bus_connection.clone();
 
                 thread::spawn(move || {
                     audio_thread_control_signal
@@ -319,6 +320,7 @@ pub fn supervisor_thread(
                         sys.clone(),
                         audio_thread_control_signal.clone(),
                         config,
+                        bus_connection,
                     ) {
                         // TODO: handle the audio backend error.
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))

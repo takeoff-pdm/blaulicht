@@ -24,6 +24,7 @@ export enum TopicKind {
   BeatVolume = "BeatVolume",
   LoopSpeed = "LoopSpeed",
   TickSpeed = "TickSpeed",
+  Control = "Control"
 }
 
 //
@@ -31,7 +32,7 @@ export enum TopicKind {
 //
 
 export interface SendEvent {
-  kind: "SelectAudioDevice" | "SelectSerialDevice" | "Reload" | "MatrixControl"
+  kind: "SelectAudioDevice" | "SelectSerialDevice" | "Reload" | "MatrixControl" | "Control"
   value: any;
 }
 
@@ -111,6 +112,10 @@ export function topicTickSpeed(): Topic<TopicKind.TickSpeed> {
   return { kind: TopicKind.TickSpeed };
 }
 
+export function topicControl(): Topic<TopicKind.Control> {
+  return { kind: TopicKind.Control };
+}
+
 export type UpdateMessage<T> = T extends TopicKind.DMX
   ? { kind: Topic<T>; value: number[] }
   : T extends TopicKind.Heartbeat
@@ -145,6 +150,8 @@ export type UpdateMessage<T> = T extends TopicKind.DMX
   ? { kind: Topic<T>; value: number }
   : T extends TopicKind.TickSpeed
   ? { kind: Topic<T>; value: number }
+  : T extends TopicKind.Control
+  ? { kind: Topic<T>; value: any } // TODO: proper typing here!
   : never;
 
 type OnMessageCallBack<T extends TopicKind> = (data: UpdateMessage<T>) => void;

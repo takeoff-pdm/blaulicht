@@ -1,6 +1,10 @@
+use bincode::{config, Decode, Encode};
+use serde::{Deserialize, Serialize};
+
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
 /// Furthermore, they are also piped back into the plugin system to allow plugins to react to these events.
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Copy, Clone)]
 pub enum ControlEvent {
     //
     // Selections Actions.
@@ -43,4 +47,32 @@ pub enum ControlEvent {
         descriptor: u8,
         value: u8,
     },
+}
+
+impl ControlEvent {
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, config::standard()).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Self {
+        let (data,_) = bincode::decode_from_slice(buf, config::standard()).unwrap();
+        data
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Default, Clone)]
+pub struct ControlEventCollection {
+    pub events: Vec<ControlEvent>,
+}
+
+impl ControlEventCollection {
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, config::standard()).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Self {
+        let (data,_) = bincode::decode_from_slice(buf, config::standard()).unwrap();
+        data
+    }
 }

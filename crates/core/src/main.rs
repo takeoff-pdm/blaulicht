@@ -11,6 +11,7 @@ use actix_web::{App, HttpServer};
 use anyhow::{bail, Context};
 use blaulicht_core::app::FromFrontend;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
+use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::msg::{SystemMessage, UnifiedMessage};
 use blaulicht_core::plugin::{midi, PluginManager};
 use blaulicht_core::routes::AppState;
@@ -69,42 +70,47 @@ async fn main() -> anyhow::Result<()> {
     }
 
     //
-    // Launch midi thread.
+    // Event bus.
     //
 
-    // let send = midi_in_sender.clone();
-    let sys_out = system_out.clone();
+    let mut event_bus = SystemEventBus::new();
+    let event_bus_connection_mainloop = event_bus.new_connection();
+    let event_bus_connection_websocket = event_bus.new_connection();
 
+    thread::spawn(move || {
+        event_bus.run();
+    });
+
+    // let send = midi_in_sender.clone();
     // TODO: use every midi device available on the system?
     // OR: have a midi pool which is dynamic and each plugin can request a midi device?
     // -> this seems reasonable
 
-
     // thread::spawn(move || {
-        // match plugin::midi::midi(send, midi_out_receiver.clone()) {
-        //     Ok(_) => panic!("Unreachable."),
-        //     Err(err) => {
-        //         let msg = format!("MIDI thread crashed! {err:?}");
-        //         sys_out.send(SystemMessage::Log(msg)).unwrap();
-        //     }
-        // }
+    // match plugin::midi::midi(send, midi_out_receiver.clone()) {
+    //     Ok(_) => panic!("Unreachable."),
+    //     Err(err) => {
+    //         let msg = format!("MIDI thread crashed! {err:?}");
+    //         sys_out.send(SystemMessage::Log(msg)).unwrap();
+    //     }
+    // }
 
-        // Debug midi thread.
-        // Allows the dev to se what MIDI messages are sent to the device.
-        // loop {
-        //     thread::sleep(Duration::from_millis(50));
-        //     match midi_out_receiver.try_recv() {
-        //         Ok(_midi) => {
-        //             // TODO: include if required
-        //             // println!("MIDI to dev: {_midi:?}")
-        //         }
-        //         Err(TryRecvError::Empty) => {}
-        //         Err(TryRecvError::Disconnected) => {
-        //             log::warn!("[MIDI] Shutting down.");
-        //             break;
-        //         }
-        //     }
-        // }
+    // Debug midi thread.
+    // Allows the dev to se what MIDI messages are sent to the device.
+    // loop {
+    //     thread::sleep(Duration::from_millis(50));
+    //     match midi_out_receiver.try_recv() {
+    //         Ok(_midi) => {
+    //             // TODO: include if required
+    //             // println!("MIDI to dev: {_midi:?}")
+    //         }
+    //         Err(TryRecvError::Empty) => {}
+    //         Err(TryRecvError::Disconnected) => {
+    //             log::warn!("[MIDI] Shutting down.");
+    //             break;
+    //         }
+    //     }
+    // }
     // });
 
     {
@@ -119,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
                 app_signal_out,
                 system_out,
                 cfg,
+                event_bus_connection_mainloop,
             )
         });
     }
@@ -178,9 +185,10 @@ async fn main() -> anyhow::Result<()> {
     //
     let from_frontend_sender_clone = from_frontend_sender.clone();
     let plugins = cfg.plugins.clone();
-    thread::spawn(move ||{
+    thread::spawn(move || {
         PluginManager::watch_plugins(from_frontend_sender_clone, &plugins)
-            .context("Failed to start plugin watcher").unwrap();
+            .context("Failed to start plugin watcher")
+            .unwrap();
     });
 
     let data = Data::new(AppState {
@@ -189,6 +197,7 @@ async fn main() -> anyhow::Result<()> {
         to_frontend_consumers: consumers,
         config: Arc::new(Mutex::new(cfg.clone())),
         config_path: config_filepath.to_string(),
+        event_bus_connection: event_bus_connection_websocket,
     });
 
     let server = HttpServer::new(move || {

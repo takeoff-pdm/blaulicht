@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Context;
+use blaulicht_shared::ControlEvent;
 use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
@@ -180,6 +181,27 @@ impl PluginManager {
 
                 so.send(SystemMessage::WasmLog(received_string))
                     .expect("Failed to send log message");
+            },
+        )?;
+
+        let event_bus = self.event_bus.clone();
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "bl_send_event",
+            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("Failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("Failed to read memory");
+
+                // TODO: may panic.
+                let event = ControlEvent::deserialize(&buffer);
+                event_bus.send(event);
             },
         )?;
 

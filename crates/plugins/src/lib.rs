@@ -1,21 +1,17 @@
-use blaulicht_shared::TickInput;
+use blaulicht_shared::{ControlEventCollection, TickInput};
 
 mod blaulicht;
-mod user;
 mod error;
 mod midi;
+mod user;
 
 #[no_mangle]
 pub extern "C" fn internal_tick(
     // Tick input.
-    tick_input_array: *const u32,
+    tick_input_array: *mut u8,
     tick_input_length: usize,
-    // Data array.
-    data_array: *mut u8,
 ) {
-    let tick_array = unsafe { blaulicht::_get_array_u32(tick_input_array, tick_input_length) };
-    // let dmx_array = unsafe { blaulicht::_get_array(dmx_array, dmx_array_length) };
-    // let midi_array = unsafe { blaulicht::_get_array_u32(midi_array, midi_len) };
+    let tick_array = unsafe { blaulicht::_get_array(tick_input_array, tick_input_length) };
 
     // Run user code
     let tick_input = TickInput::deserialize(tick_array);
@@ -27,8 +23,10 @@ pub extern "C" fn internal_tick(
                 blaulicht::bl_log(&format!("***PANIC***: {}", info.to_string()));
             }));
 
-            user::initialize(tick_input, data_array)
+            user::initialize(tick_input)
         }
-        false => user::run(tick_input, data_array),
+        false => {
+            user::run(tick_input);
+        }
     };
 }

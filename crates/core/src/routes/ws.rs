@@ -1,4 +1,8 @@
-use std::{path::PathBuf, str::FromStr, sync::{Arc, Mutex}};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 // use actix::{Actor, StreamHandler};
 use actix_web::{
@@ -8,13 +12,19 @@ use actix_web::{
 };
 // use actix_web_actors::ws;
 use actix_ws::AggregatedMessage;
+use blaulicht_shared::ControlEvent;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
+use log::error;
+use mach::exception_types::mach_exception_subcode_t;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    app::{FromFrontend, MatrixEvent}, config, msg::{Signal, SystemMessage, UnifiedMessage}, utils::device_from_name
+    app::{FromFrontend, MatrixEvent},
+    config,
+    msg::{Signal, SystemMessage, UnifiedMessage},
+    utils::device_from_name,
 };
 
 use super::AppState;
@@ -33,6 +43,7 @@ pub enum WSFromFrontendKind {
     SelectSerialDevice,
     Reload,
     MatrixControl,
+    Control,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -41,8 +52,10 @@ pub struct WSFromFrontend {
     value: serde_json::Value,
 }
 
-fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> FromFrontend {
-    match value.kind {
+/// TODO:
+/// When no value is produced, the event was handled internally
+fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> Option<FromFrontend> {
+    let res = match value.kind {
         WSFromFrontendKind::Reload => FromFrontend::Reload,
         WSFromFrontendKind::MatrixControl => {
             let control: MatrixEvent = serde_json::from_value(value.value).unwrap();
@@ -80,7 +93,23 @@ fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> From
                 FromFrontend::SelectSerialDevice(Some(device))
             }
         }
-    }
+        WSFromFrontendKind::Control => {
+            let event: ControlEvent = match serde_json::from_value(value.value)  {
+                Ok(event) => event,
+                Err(err) => {
+                    error!("Control event parse error: {err}");
+                    println!("{}", serde_json::to_string_pretty(&ControlEvent::SetColor((1, 1, 1))).unwrap());
+                    return None;
+                },
+            };
+
+            // Send to system event bus ASAP.
+            data.event_bus_connection.send(event);
+            return None;
+        }
+    };
+
+    Some(res)
 }
 
 //
@@ -306,9 +335,10 @@ pub async fn ws_handler(
                     let msg: WSFromFrontend =
                         serde_json::from_str(text.to_string().as_str()).unwrap();
 
-                    let converted = process_ws_from_frontend(msg, data.clone());
-
-                    from_frontend_sender.send(converted).unwrap();
+                    let maybe_converted = process_ws_from_frontend(msg, data.clone());
+                    if let Some(converted) = maybe_converted {
+                        from_frontend_sender.send(converted).unwrap();
+                    }
                 }
 
                 Ok(AggregatedMessage::Binary(bin)) => {
