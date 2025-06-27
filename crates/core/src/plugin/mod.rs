@@ -1,9 +1,5 @@
 use std::{
-    collections::HashMap,
-    hash::Hash,
-    path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex},
-    time::{Duration, Instant},
+    cell::{RefCell, UnsafeCell}, collections::HashMap, hash::Hash, path::{Path, PathBuf}, rc::Rc, sync::{mpsc, Arc, Mutex}, time::{Duration, Instant}
 };
 
 use anyhow::Context;
@@ -21,8 +17,7 @@ use crate::{
     config::PluginConfig,
     msg::SystemMessage,
     plugin::{
-        midi::{FromMidiManagerMessage, ToMidiManagerMessage},
-        wasm::MidiStatus,
+        midi::MidiManager, wasm::MidiStatus
     },
 };
 
@@ -37,19 +32,11 @@ pub struct PluginManager {
     plugins: HashMap<String, Plugin>,
     // Channels.
     system_out: Sender<SystemMessage>,
-    to_midi_manager: Sender<ToMidiManagerMessage>,
-    from_midi_manager: Receiver<FromMidiManagerMessage>,
+    to_midi_devices: Sender<MidiEvent>,
+    from_midi_manager: Receiver<MidiEvent>,
 
-    last_device_request_outcome: Arc<Mutex<DeviceOutcome>>,
-
-    todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
-}
-
-#[derive(Eq, PartialEq)]
-pub enum DeviceOutcome {
-    Idle,
-    Waiting,
-    Response(String, Option<u8>)
+    // todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
+    midi_manager_ref: Arc<Mutex<MidiManager>>,
 }
 
 pub struct Plugin {
@@ -68,19 +55,20 @@ pub struct PluginReloadRequest {
 impl PluginManager {
     pub fn new(
         plugin_config: Vec<PluginConfig>,
-        to_midi_manager: Sender<ToMidiManagerMessage>,
-        from_midi_manager: Receiver<FromMidiManagerMessage>,
+        to_midi_manager: Sender<MidiEvent>,
+        from_midi_manager: Receiver<MidiEvent>,
         system_out: Sender<SystemMessage>,
+        midi_manager_ref: Arc<Mutex<MidiManager>>,
     ) -> Self {
         Self {
             timer_start: Instant::now(),
             is_initial_tick: true,
             plugin_config,
             plugins: HashMap::new(),
-            to_midi_manager,
+            to_midi_devices: to_midi_manager,
             from_midi_manager,
             system_out,
-            last_device_request_outcome: Arc::new(Mutex::new(DeviceOutcome::Idle)),
+            midi_manager_ref,
         }
     }
 

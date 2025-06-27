@@ -4,21 +4,22 @@ use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
 use log::{debug, info, warn};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::u8;
 use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant};
 
 use wasmtime::*;
 
-use crate::plugin::DeviceOutcome;
 use crate::{
     app::MidiEvent,
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
     plugin::{
-        midi::{self, ToMidiManagerMessage},
+        midi::{self},
         Plugin, PluginManager,
     },
 };
@@ -236,23 +237,22 @@ impl PluginManager {
             },
         )?;
 
-        let mo = self.to_midi_manager.clone();
+        let mo = self.to_midi_devices.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_transmit_midi",
             move |device: i32, status: i32, kind: i32, value: i32| {
-                mo.send(ToMidiManagerMessage::SendMidiEvent(MidiEvent {
+                mo.send(MidiEvent {
                     device: device as u8,
                     status: status as u8,
                     data0: kind as u8,
                     data1: value as u8,
-                }))
+                })
                 .unwrap();
             },
         )?;
 
-        let handle_to_latest_midi_outcome = self.last_device_request_outcome.clone();
-        let to_midi_manager = self.to_midi_manager.clone();
+        let midi_manager = Arc::clone(&self.midi_manager_ref);
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_open_midi_device",
@@ -269,39 +269,10 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                to_midi_manager
-                    .send(ToMidiManagerMessage::RequestDevice(device_name.clone()))
-                    .unwrap();
-                {
-                    let mut handle = handle_to_latest_midi_outcome.lock().unwrap();
-                    *handle = DeviceOutcome::Waiting;
-                }
-
                 println!("open midi...");
 
-                loop {
-                    {
-                        println!("Locking...");
-                        let handle = handle_to_latest_midi_outcome.lock().unwrap();
-                        println!("Locked...");
-
-                        match &*handle {
-                            DeviceOutcome::Idle => panic!("poisoned"),
-                            DeviceOutcome::Waiting => {
-                                println!("still waiting...");
-                            }
-                            DeviceOutcome::Response(name, response) => {
-                                println!("finished");
-                                debug_assert!(name != &device_name);
-
-                                break match response {
-                                    Some(id) => *id,
-                                    None => u8::MAX,
-                                } as u32;
-                            }
-                        }
-                    }
-                }
+                let mut midi_manager = midi_manager.lock().unwrap();
+                midi_manager.request_device(&device_name).unwrap_or(u8::MAX) as u32
             },
         )?;
 
@@ -667,7 +638,7 @@ impl MidiStatus {
 }
 
 impl Plugin {
-    fn acquire_midi_buffer_addresses(&mut self) -> anyhow::Result<MidiStatus> {
+    fn acquire_midi_buffer_addresses(&mut self) -> anyhow::Result<()> {
         debug!("Acquiring MIDI buffer addresses for plugin: {}", self.path);
         //
         // Get midi buffer start address.
@@ -696,6 +667,7 @@ impl Plugin {
 
         debug!("Acquired MIDI buffer addresses: {:?}", addrs);
 
-        return Ok(addrs);
+        self.midi_status = addrs;
+        Ok(())
     }
 }

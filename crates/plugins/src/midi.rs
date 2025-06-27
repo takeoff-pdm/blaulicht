@@ -1,7 +1,7 @@
 use std::u8;
 
 use crate::{
-    blaulicht::{self},
+    blaulicht::{self, prelude::println},
     error::{MidiError, Result},
 };
 
@@ -35,6 +35,10 @@ pub struct MidiConnection {
     device_id: u8,
 }
 
+pub struct MidiConnectionMeta {
+    pub device_id: u8,
+}
+
 const MIDI_DEVICE_NOT_FOUND: u8 = u8::MAX;
 
 impl MidiConnection {
@@ -51,17 +55,25 @@ impl MidiConnection {
         })
     }
 
+    pub fn get_meta(&self) -> MidiConnectionMeta {
+        MidiConnectionMeta {
+            device_id: self.device_id,
+        }
+    }
+
     pub fn send(&self, status: u8, kind: u8, value: u8) {
         blaulicht::bl_transmit_midi_safe(self.device_id, status, kind, value);
     }
 
     pub fn poll(&self) -> Vec<MidiEvent> {
+        let device_id = self.device_id;
+
         // Get matching MIDI events from the global buffer.
         unsafe {
             decode_midi_selective(
-                &GLOBAL_MIDI_SOURCE.buffer,
+                &raw const GLOBAL_MIDI_SOURCE.buffer,
                 GLOBAL_MIDI_SOURCE.current_length as usize,
-                self.device_id,
+                device_id,
             )
         }
     }
@@ -105,10 +117,12 @@ pub use cmidi;
 
 // TODO: maybe also put this into shared.
 fn decode_midi_selective(
-    midi: &[u32],
+    midi: *const [u32],
     current_midi_buffer_len: usize,
     device_id: u8,
 ) -> Vec<MidiEvent> {
+    let midi = unsafe { &*midi };
+
     let res: Vec<MidiEvent> = midi
         .iter()
         .take(current_midi_buffer_len)

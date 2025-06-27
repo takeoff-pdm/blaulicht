@@ -10,8 +10,7 @@ use crossbeam_channel::{RecvError, TryRecvError};
 use log::debug;
 
 use crate::{
-    app::MidiEvent,
-    plugin::{midi::FromMidiManagerMessage, DeviceOutcome, Plugin, PluginManager},
+    app::MidiEvent, plugin::{Plugin, PluginManager},
 };
 
 impl PluginManager {
@@ -21,7 +20,6 @@ impl PluginManager {
         midi_events: &[MidiEvent],
     ) -> anyhow::Result<Duration> {
         let start = Instant::now();
-
         // Generate tick input.
         let input = TickInput {
             clock: self.timer_start.elapsed().as_millis() as u32, // TODO: what if we overflow?
@@ -117,7 +115,7 @@ impl Plugin {
         self.memory.write(
             &mut self.store,
             self.midi_status.buffer_len_addr(),
-            &midi_array_bytes,
+            &midi_length_bytes,
         )?;
 
         // for &num in &self.dmx {

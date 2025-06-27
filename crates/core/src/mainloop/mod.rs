@@ -3,11 +3,13 @@ use blaulicht_shared::TickInput;
 pub use supervisor::supervisor_thread;
 
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     mem,
+    rc::Rc,
     sync::{
         atomic::{AtomicU8, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{self, Duration, Instant},
 };
@@ -32,7 +34,10 @@ use crate::{
     },
     config::Config,
     msg::{Signal, SystemMessage},
-    plugin::{midi, PluginManager},
+    plugin::{
+        midi::{self, MidiManager},
+        PluginManager,
+    },
     system_message, util,
 };
 
@@ -53,7 +58,10 @@ pub fn run(
     //
     let (to_midi_manager_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
     let (to_plugins_sender, to_plugins_receiver) = crossbeam_channel::bounded(10);
-    let mut midi_manager = midi::MidiManager::new(midi_out_receiver, to_plugins_sender);
+    let midi_manager = Arc::new(Mutex::new(MidiManager::new(
+        midi_out_receiver,
+        to_plugins_sender,
+    )));
 
     //
     // Plugin system.
@@ -63,6 +71,7 @@ pub fn run(
         to_midi_manager_sender,
         to_plugins_receiver,
         system_out.clone(),
+        Arc::clone(&midi_manager),
     );
 
     plugin_manager
@@ -151,6 +160,10 @@ pub fn run(
 
         // Constant tick.
         if now.duration_since(time_of_last_dmx_tick) > DMX_TICK_TIME {
+            // TODO: does this even work?
+            let midi_manager = Arc::clone(&midi_manager);
+            let mut midi_manager = midi_manager.lock().unwrap();
+
             let midi = midi_manager
                 .tick()
                 .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?;

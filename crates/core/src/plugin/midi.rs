@@ -2,6 +2,7 @@ use actix_web::cookie::time::error;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use wmidi::MidiMessage;
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
@@ -19,7 +20,7 @@ pub enum MidiError {
 //
 
 pub struct MidiManager {
-    connection_map: HashMap<u8, MidiDeviceHandle>,
+    connection_map: HashMap<String, MidiDeviceHandle>,
     device_id_counter: u8,
 
     // Events from a outside to the manager.
@@ -27,10 +28,10 @@ pub struct MidiManager {
     midi_in_receiver: Receiver<MidiEvent>,
 
     // Events from the manager to a device.
-    to_manager_receiver: Receiver<ToMidiManagerMessage>,
+    to_manager_receiver: Receiver<MidiEvent>,
 
     // To plugins sender.
-    to_plugins_sender: Sender<FromMidiManagerMessage>,
+    to_plugins_sender: Sender<MidiEvent>,
 }
 
 struct MidiDeviceHandle {
@@ -40,24 +41,11 @@ struct MidiDeviceHandle {
     input: MidiInputConnection<()>,
 }
 
-// struct MidiOutHandle {
-//     device_id: u8,
-//     conn: MidiOutputConnection,
-// }
-
-pub enum ToMidiManagerMessage {
-    RequestDevice(String),
-    SendMidiEvent(MidiEvent),
-}
-
-pub enum FromMidiManagerMessage {
-    DeviceRequestStatus(String, Option<u8>),
-}
 
 impl MidiManager {
     pub fn new(
-        midi_out_receiver: Receiver<ToMidiManagerMessage>,
-        to_plugins_sender: Sender<FromMidiManagerMessage>,
+        midi_out_receiver: Receiver<MidiEvent>,
+        to_plugins_sender: Sender<MidiEvent>,
     ) -> Self {
         let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
@@ -71,7 +59,13 @@ impl MidiManager {
         }
     }
 
-    fn request_device(&mut self, device_name: &str) {
+    pub fn request_device(&mut self, device_name: &str) -> Option<u8> {
+        // Check if there is already a handle for this device.
+        if let Some(dev)  = self.connection_map.get(device_name) {
+            debug!("Reusing existing MIDI connection with id: {} for device: '{device_name}'", dev.device_id);
+            return Some(dev.device_id);
+        }
+
         let id = match self.request_device_internal(device_name) {
             Ok(id) => {
                 info!("Opened MIDI device '{}' with ID {}", device_name, id);
@@ -83,15 +77,10 @@ impl MidiManager {
             }
         };
 
-        self.to_plugins_sender
-            .send(FromMidiManagerMessage::DeviceRequestStatus(
-                device_name.to_string(),
-                id,
-            ))
-            .expect("Failed to send device request status");
+        id
     }
 
-    pub fn request_device_internal(&mut self, device_name: &str) -> Result<u8, MidiError> {
+    fn request_device_internal(&mut self, device_name: &str) -> Result<u8, MidiError> {
         let device_id = {
             if self.device_id_counter == u8::MAX {
                 return Err(MidiError::Other("Maximum device ID reached".to_string()));
@@ -134,10 +123,10 @@ impl MidiManager {
                 in_port,
                 format!("{device_name}_listener").as_str(),
                 move |_, message, _| {
-                    println!("MIDI received: {message:?}");
+                    // println!("MIDI received: {message:?}");
                     if message.len() != 3 {
                         // TODO: handle this more gracefully.
-                        panic!("BUG: weird message");
+                        panic!("BUG: weird message: {message:?}");
                     }
 
                     send.send(MidiEvent {
@@ -174,7 +163,7 @@ impl MidiManager {
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
         self.connection_map.insert(
-            device_id,
+            device_name.to_string(),
             MidiDeviceHandle {
                 device_name: device_name.to_string(),
                 device_id,
@@ -203,15 +192,14 @@ impl MidiManager {
         // Send any outgoing MIDI events.
         //
         match self.to_manager_receiver.try_recv() {
-            Ok(ToMidiManagerMessage::SendMidiEvent(sig)) => {
+            Ok(sig) => {
                 // Get matching MIDI output connection.
-                let Some(output_device) = self.connection_map.get_mut(&sig.device) else {
+                let Some(output_device) = self.connection_map.values_mut().find(|d| d.device_id == sig.device) else {
                     // Device disconnected.
                     warn!(
-                        "MIDI device {} not found, removing from connection map.",
+                        "MIDI device {} not found in connection map",
                         sig.device
                     );
-                    self.connection_map.remove(&sig.device);
                     return Err(MidiError::DeviceNotFound);
                 };
 
@@ -219,9 +207,6 @@ impl MidiManager {
                     .output
                     .send(&[sig.status, sig.data0, sig.data1])
                     .unwrap();
-            }
-            Ok(ToMidiManagerMessage::RequestDevice(device_name)) => {
-                self.request_device(&device_name);
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
