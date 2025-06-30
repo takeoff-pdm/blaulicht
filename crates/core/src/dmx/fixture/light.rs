@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::user::clock::Time;
+use crate::dmx::clock::Time;
 
 use super::Fixture;
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Light {
     //
     // 0: Red
@@ -33,21 +33,21 @@ impl Light {
     pub fn write(&self, this: &Fixture, dmx: &mut [u8]) {
         match self {
             Light::Generic3ChanNoAlpha => {
-                dmx[this.start_channel + 0] = this.color.r;
-                dmx[this.start_channel + 1] = this.color.g;
-                dmx[this.start_channel + 2] = this.color.b;
+                dmx[this.state.start_addr + 0] = this.state.color.r;
+                dmx[this.state.start_addr + 1] = this.state.color.g;
+                dmx[this.state.start_addr + 2] = this.state.color.b;
             }
             Light::Generic4ChanWithAlpha => {
-                dmx[this.start_channel + 0] = this.alpha;
-                dmx[this.start_channel + 1] = this.color.r;
-                dmx[this.start_channel + 2] = this.color.g;
-                dmx[this.start_channel + 3] = this.color.b;
+                dmx[this.state.start_addr + 0] = this.state.alpha;
+                dmx[this.state.start_addr + 1] = this.state.color.r;
+                dmx[this.state.start_addr + 2] = this.state.color.g;
+                dmx[this.state.start_addr + 3] = this.state.color.b;
             }
             Light::LEDPartyTCLSpot => {
-                dmx[this.start_channel + 0] = this.color.r;
-                dmx[this.start_channel + 1] = this.color.g;
-                dmx[this.start_channel + 2] = this.color.b;
-                dmx[this.start_channel + 3] = this.alpha;
+                dmx[this.state.start_addr + 0] = this.state.color.r;
+                dmx[this.state.start_addr + 1] = this.state.color.g;
+                dmx[this.state.start_addr + 2] = this.state.color.b;
+                dmx[this.state.start_addr + 3] = this.state.alpha;
             }
         }
     }
@@ -55,26 +55,27 @@ impl Light {
     pub fn blackout(&self, this: &Fixture, dmx: &mut [u8]) {
         match self {
             Light::Generic3ChanNoAlpha => {
-                dmx[this.start_channel + 0] = 0;
-                dmx[this.start_channel + 1] = 0;
-                dmx[this.start_channel + 2] = 0;
+                dmx[this.state.start_addr + 0] = 0;
+                dmx[this.state.start_addr + 1] = 0;
+                dmx[this.state.start_addr + 2] = 0;
             }
             Light::Generic4ChanWithAlpha => {
-                dmx[this.start_channel + 0] = 0;
-                dmx[this.start_channel + 1] = this.color.r;
-                dmx[this.start_channel + 2] = this.color.g;
-                dmx[this.start_channel + 3] = this.color.b;
+                dmx[this.state.start_addr + 0] = 0;
+                dmx[this.state.start_addr + 1] = this.state.color.r;
+                dmx[this.state.start_addr + 2] = this.state.color.g;
+                dmx[this.state.start_addr + 3] = this.state.color.b;
             }
             Light::LEDPartyTCLSpot => {
-                dmx[this.start_channel + 0] = this.color.r;
-                dmx[this.start_channel + 1] = this.color.g;
-                dmx[this.start_channel + 2] = this.color.b;
-                dmx[this.start_channel + 3] = 0;
+                dmx[this.state.start_addr + 0] = this.state.color.r;
+                dmx[this.state.start_addr + 1] = this.state.color.g;
+                dmx[this.state.start_addr + 2] = this.state.color.b;
+                dmx[this.state.start_addr + 3] = 0;
             }
         }
     }
 
     pub fn setup(&self, this: &Fixture, time: Time, dmx: &mut [u8]) {
+        todo!("difficult")
         // match self {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
         //     MovingHead::Generic4ChanWithAlpha => todo!(),

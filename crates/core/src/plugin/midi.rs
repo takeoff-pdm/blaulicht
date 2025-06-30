@@ -2,10 +2,10 @@ use actix_web::cookie::time::error;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
-use wmidi::MidiMessage;
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
+use wmidi::MidiMessage;
 
 use crate::app::MidiEvent;
 
@@ -41,7 +41,6 @@ struct MidiDeviceHandle {
     input: MidiInputConnection<()>,
 }
 
-
 impl MidiManager {
     pub fn new(
         midi_out_receiver: Receiver<MidiEvent>,
@@ -61,8 +60,11 @@ impl MidiManager {
 
     pub fn request_device(&mut self, device_name: &str) -> Option<u8> {
         // Check if there is already a handle for this device.
-        if let Some(dev)  = self.connection_map.get(device_name) {
-            debug!("Reusing existing MIDI connection with id: {} for device: '{device_name}'", dev.device_id);
+        if let Some(dev) = self.connection_map.get(device_name) {
+            debug!(
+                "Reusing existing MIDI connection with id: {} for device: '{device_name}'",
+                dev.device_id
+            );
             return Some(dev.device_id);
         }
 
@@ -184,37 +186,43 @@ impl MidiManager {
             match self.midi_in_receiver.try_recv() {
                 Ok(data) => incoming_events.push(data),
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Disconnected) => {
+                    unreachable!("MIDI detached")
+                }
             }
         }
 
         //
         // Send any outgoing MIDI events.
         //
-        match self.to_manager_receiver.try_recv() {
-            Ok(sig) => {
-                // Get matching MIDI output connection.
-                let Some(output_device) = self.connection_map.values_mut().find(|d| d.device_id == sig.device) else {
-                    // Device disconnected.
-                    warn!(
-                        "MIDI device {} not found in connection map",
-                        sig.device
-                    );
-                    return Err(MidiError::DeviceNotFound);
-                };
+        loop {
+            debug_assert!(!self.to_manager_receiver.is_full());
+            match self.to_manager_receiver.try_recv() {
+                Ok(sig) => {
+                    // Get matching MIDI output connection.
+                    let Some(output_device) = self
+                        .connection_map
+                        .values_mut()
+                        .find(|d| d.device_id == sig.device)
+                    else {
+                        // Device disconnected.
+                        warn!("MIDI device {} not found in connection map", sig.device);
+                        return Err(MidiError::DeviceNotFound);
+                    };
 
-                output_device
-                    .output
-                    .send(&[sig.status, sig.data0, sig.data1])
-                    .unwrap();
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                // TODO: how to handle this?
-                log::warn!("[MIDI] Terminating...");
-                return Ok(vec![]);
-            }
-        };
+                    output_device
+                        .output
+                        .send(&[sig.status, sig.data0, sig.data1])
+                        .unwrap();
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    // TODO: how to handle this?
+                    log::warn!("[MIDI] Terminating...");
+                    return Ok(vec![]);
+                }
+            };
+        }
 
         Ok(incoming_events)
     }

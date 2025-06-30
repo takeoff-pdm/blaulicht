@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::user::clock::Time;
+use crate::dmx::clock::Time;
 
 use super::Fixture;
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum MovingHead {
     MartinMacAura,
 }
@@ -14,15 +14,15 @@ impl MovingHead {
         match self {
             MovingHead::MartinMacAura => {
                 // Strobe state.
-                dmx[this.start_channel + 0] = this.strobe_state as u8 * 255;
+                dmx[this.state.start_addr + 0] = this.state.strobe_speed as u8 * 255;
 
                 // Alpha.
-                dmx[this.start_channel + 1] = this.alpha;
+                dmx[this.state.start_addr + 1] = this.state.alpha;
 
                 // Color.
-                dmx[this.start_channel + 9] = this.color.r;
-                dmx[this.start_channel + 10] = this.color.g;
-                dmx[this.start_channel + 11] = this.color.b;
+                dmx[this.state.start_addr + 9] = this.state.color.r;
+                dmx[this.state.start_addr + 10] = this.state.color.g;
+                dmx[this.state.start_addr + 11] = this.state.color.b;
             }
         }
         // match self {

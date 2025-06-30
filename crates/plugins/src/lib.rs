@@ -1,4 +1,4 @@
-use blaulicht_shared::{ControlEventCollection, TickInput};
+use blaulicht_shared::TickInput;
 
 mod blaulicht;
 mod error;
@@ -15,13 +15,20 @@ pub extern "C" fn internal_tick(
 
     // Run user code
     let tick_input = TickInput::deserialize(tick_array);
-    // let midi_inputs = midi::decode_midi(midi_array);
 
     match tick_input.initial {
         true => {
             std::panic::set_hook(Box::new(|info| {
-                blaulicht::bl_log(&format!("***PANIC***: {}", info.to_string()));
+                blaulicht::bl_log(&format!(
+                    "***PANIC***: (plugin {}): {}",
+                    unsafe { blaulicht::PLUGIN_ID },
+                    info.to_string()
+                ));
+                blaulicht::report_panic()
             }));
+
+            // Set plugin ID.
+            unsafe { blaulicht::PLUGIN_ID = tick_input.id };
 
             user::initialize(tick_input)
         }

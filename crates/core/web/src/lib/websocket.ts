@@ -24,7 +24,7 @@ export enum TopicKind {
   BeatVolume = "BeatVolume",
   LoopSpeed = "LoopSpeed",
   TickSpeed = "TickSpeed",
-  Control = "Control"
+  Control = "Control",
 }
 
 //
@@ -32,7 +32,12 @@ export enum TopicKind {
 //
 
 export interface SendEvent {
-  kind: "SelectAudioDevice" | "SelectSerialDevice" | "Reload" | "MatrixControl" | "Control"
+  kind:
+    | "SelectAudioDevice"
+    | "SelectSerialDevice"
+    | "Reload"
+    | "MatrixControl"
+    | "Control";
   value: any;
 }
 
@@ -127,7 +132,13 @@ export type UpdateMessage<T> = T extends TopicKind.DMX
   : T extends TopicKind.Log
   ? { kind: Topic<T>; value: string }
   : T extends TopicKind.WasmLog
-  ? { kind: Topic<T>; value: string }
+  ? {
+      kind: Topic<T>;
+      value: {
+        msg: string;
+        plugin_id: number;
+      };
+    }
   : T extends TopicKind.WasmControlsLog
   ? { kind: Topic<T>; value: { x: number; y: number; value: string } }
   : T extends TopicKind.WasmControlsSet

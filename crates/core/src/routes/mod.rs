@@ -2,7 +2,7 @@ mod html;
 mod api;
 mod state;
 mod ws;
-pub use state::AppState;
+pub use state::{AppStateWrapper, AppState, PluginFlags};
 pub use html::*;
 pub use api::*;
 pub use ws::*;

@@ -5,6 +5,7 @@ use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
 use log::{debug, info, warn};
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -15,6 +16,7 @@ use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant
 
 use wasmtime::*;
 
+use crate::msg::WasmLogBody;
 use crate::{
     app::MidiEvent,
     config::PluginConfig,
@@ -44,7 +46,7 @@ impl PluginManager {
 
         let mut modules = HashMap::new();
 
-        for plugin in &self.plugin_config {
+        for (plugin_id, plugin) in self.plugin_config.iter().enumerate() {
             if !plugin.enabled {
                 warn!("Plugin {} is disabled, skipping.", plugin.file_path);
                 continue;
@@ -86,7 +88,7 @@ impl PluginManager {
 
             // Store the instance and store for future use
             let mut plugin = Plugin {
-                path: plugin.file_path.clone(),
+                path: plugin.file_path.clone().into(),
                 memory: instance
                     .get_memory(&mut store, "memory")
                     .expect("Memory not found"),
@@ -99,7 +101,9 @@ impl PluginManager {
                 .acquire_midi_buffer_addresses()
                 .map_err(|e| anyhow!("Failed to acquire MIDI buffer addresses: {e}"))?;
 
-            self.plugins.insert(plugin_name, plugin);
+            debug_assert!(plugin_id < u8::MAX as usize);
+
+            self.plugins.insert(plugin_id as u8, plugin);
         }
 
         info!(
@@ -164,7 +168,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "log",
-            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -177,10 +181,11 @@ impl PluginManager {
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                log::debug!("[WASM] {received_string}");
-
-                so.send(SystemMessage::WasmLog(received_string))
-                    .expect("Failed to send log message");
+                so.send(SystemMessage::WasmLog(WasmLogBody {
+                    plugin_id: plugin_id as u8,
+                    msg: received_string.into(),
+                }))
+                .expect("Failed to send log message");
             },
         )?;
 
@@ -273,6 +278,23 @@ impl PluginManager {
                 .unwrap();
             },
         )?;
+
+        linker.func_wrap::<_, ()>("blaulicht", "bl_report_panic", move || {
+            println!("REPORT PANIC!");
+            // TODO: do we really need this?
+        })?;
+
+        // let mo = self.to_midi_devices.clone();
+        // linker.func_wrap::<_, ()>(
+        //     "blaulicht",
+        //     "bl_transmit_midi_bulk",
+        //     move |buf_start: u32, buf_len: u32| {
+        //         mo.send(MidiEvent {
+
+        //         })
+        //         .unwrap();
+        //     },
+        // )?;
 
         let midi_manager = Arc::clone(&self.midi_manager_ref);
         linker.func_wrap::<_, u32>(

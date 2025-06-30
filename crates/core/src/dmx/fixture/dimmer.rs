@@ -1,11 +1,11 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::user::clock::Time;
+use crate::dmx::clock::Time;
 
 use super::Fixture;
 
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Dimmer {}
 
 impl Dimmer {

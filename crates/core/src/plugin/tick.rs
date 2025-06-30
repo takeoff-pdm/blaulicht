@@ -1,13 +1,10 @@
 use std::{
-    sync::Arc,
-    thread,
+    collections::HashMap,
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, TickInput};
-use crossbeam_channel::{RecvError, TryRecvError};
-use log::debug;
+use log::warn;
 
 use crate::{
     app::MidiEvent,
@@ -25,8 +22,7 @@ impl PluginManager {
         //
         // Collect recent events.
         //
-
-        let mut events= vec![];
+        let mut events = vec![];
         loop {
             let Some(event) = self.event_bus.try_recv() else {
                 break;
@@ -35,27 +31,33 @@ impl PluginManager {
             events.push(event);
         }
 
-        // Generate tick input.
-        let input = TickInput {
-            clock: self.timer_start.elapsed().as_millis() as u32, // TODO: what if we overflow?
-            initial: self.is_initial_tick,
-            audio_data,
-            events: ControlEventCollection {
-                events,
-            },
-        };
+        let mut err_res: HashMap<u8, _> = HashMap::new();
+        {
+            // TODO: skip all disabled plugins.
+            // TODO: the active plugins function is probably extremely slow.
+            let active_plugins = self.active_plugins();
+            for plugin_key in active_plugins {
+                // Generate tick input.
+                let input = TickInput {
+                    id: plugin_key,
+                    clock: self.timer_start.elapsed().as_millis() as u32, // TODO: what if we overflow?
+                    initial: self.is_initial_tick,
+                    audio_data,
+                    events: ControlEventCollection {
+                        events: events.clone(),
+                    },
+                };
 
-        let mut err_res = None;
-
-        for (_, plugin) in self.plugins.iter_mut() {
-            // TODO: handle errors for each plugin separately.
-            // TODO: this clone might hurt?
-            if let Err(err) = plugin.tick(input.clone(), midi_events) {
-                err_res = Some(anyhow::anyhow!(
-                    "Failed to tick plugin '{}': {}",
-                    plugin.path,
-                    err
-                ));
+                let plugin = self.plugins.get_mut(&plugin_key).unwrap();
+                // TODO: handle errors for each plugin separately.
+                // TODO: this clone might hurt?
+                if let Err(err) = plugin.tick(input, midi_events) {
+                    let path = plugin_key.clone();
+                    err_res.insert(
+                        path,
+                        anyhow::anyhow!("Failed to tick plugin '{}': {}", plugin_key, err),
+                    );
+                }
             }
         }
 
@@ -63,10 +65,25 @@ impl PluginManager {
             self.is_initial_tick = false;
         }
 
-        match err_res {
-            Some(e) => Err(e),
-            None => Ok(start.elapsed()),
-        }
+        // Process any errors.
+        let ret_val = {
+            let mut ret = Ok(start.elapsed());
+            let err_res = err_res;
+            let mut plugins = self.state_ref.plugins.write().unwrap();
+
+            for (plugin_key, err) in err_res.into_iter() {
+                if ret.is_ok() {
+                    ret = Err(err);
+                }
+
+                warn!("Disabling plugin with error(s): (id={})...", plugin_key);
+                plugins.get_mut(&plugin_key).unwrap().set_errored(true);
+            }
+
+            ret
+        };
+
+        ret_val
     }
 }
 
@@ -158,6 +175,7 @@ impl Plugin {
         // let dmx_array_offset = 0x20000; // TODO: make this offset a const.
 
         // Call the function with the pointer and length
+
         func.call(
             &mut self.store,
             (

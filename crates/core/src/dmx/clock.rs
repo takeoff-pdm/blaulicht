@@ -4,14 +4,14 @@ use std::{
     fmt::Display,
     iter::Sum,
     ops::{Add, Div, Sub},
+    time::Instant,
 };
 
-use crate::blaulicht::TickInput;
-use crate::println;
-
-use super::GLOBAL_TIME;
+use blaulicht_shared::CollectedAudioSnapshot;
 
 type TIME_INNER = i32;
+
+static mut CLOCK_START: Option<Instant> = None;
 
 #[derive(PartialEq, Eq, Debug, Default, Clone, Copy)]
 pub struct Time(TIME_INNER);
@@ -88,7 +88,11 @@ impl Time {
     }
 
     pub fn now() -> Self {
-        unsafe { GLOBAL_TIME }
+        Self(
+            Instant::now()
+                .duration_since(unsafe { CLOCK_START.unwrap() })
+                .as_millis() as TIME_INNER,
+        )
     }
 
     pub fn elapsed(&self) -> Self {
@@ -127,7 +131,7 @@ impl BeatClock {
         }
     }
 
-    fn internal_speed_update(&mut self, input: TickInput) {
+    fn internal_speed_update(&mut self, input: CollectedAudioSnapshot) {
         if input.bpm == 0 {
             self.avg_drift.clear();
             return;
@@ -139,7 +143,7 @@ impl BeatClock {
         self.target_time_between_ticks = Time::new(target_time_between_ticks_avg);
     }
 
-    pub fn tick(&mut self, input: TickInput) {
+    pub fn tick(&mut self, input: CollectedAudioSnapshot) {
         self.internal_speed_update(input);
 
         //

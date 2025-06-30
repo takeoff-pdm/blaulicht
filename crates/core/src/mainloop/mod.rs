@@ -33,7 +33,7 @@ use crate::{
     }, config::Config, event::SystemEventBusConnection, msg::{Signal, SystemMessage}, plugin::{
         midi::{self, MidiManager},
         PluginManager,
-    }, system_message, util
+    }, routes::AppState, system_message, util
 };
 
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
@@ -48,12 +48,13 @@ pub fn run(
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
     event_bus: SystemEventBusConnection,
+    app_state: Arc<AppState>,
 ) -> anyhow::Result<()> {
     //
     // MIDI.
     //
-    let (to_midi_manager_sender, midi_out_receiver) = crossbeam_channel::bounded(10);
-    let (to_plugins_sender, to_plugins_receiver) = crossbeam_channel::bounded(10);
+    let (to_midi_manager_sender, midi_out_receiver) = crossbeam_channel::bounded(1000);
+    let (to_plugins_sender, to_plugins_receiver) = crossbeam_channel::bounded(1000); // LIMIT
     let midi_manager = Arc::new(Mutex::new(MidiManager::new(
         midi_out_receiver,
         to_plugins_sender,
@@ -69,6 +70,7 @@ pub fn run(
         system_out.clone(),
         Arc::clone(&midi_manager),
         event_bus,
+        app_state,
     );
 
     plugin_manager

@@ -27,7 +27,7 @@ use crate::{
     utils::device_from_name,
 };
 
-use super::AppState;
+use super::AppStateWrapper;
 
 // struct MyWebSocket {
 //     app_state: web::Data<AppState>,
@@ -54,7 +54,10 @@ pub struct WSFromFrontend {
 
 /// TODO:
 /// When no value is produced, the event was handled internally
-fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> Option<FromFrontend> {
+fn process_ws_from_frontend(
+    value: WSFromFrontend,
+    data: Data<AppStateWrapper>,
+) -> Option<FromFrontend> {
     let res = match value.kind {
         WSFromFrontendKind::Reload => FromFrontend::Reload,
         WSFromFrontendKind::MatrixControl => {
@@ -94,13 +97,16 @@ fn process_ws_from_frontend(value: WSFromFrontend, data: Data<AppState>) -> Opti
             }
         }
         WSFromFrontendKind::Control => {
-            let event: ControlEvent = match serde_json::from_value(value.value)  {
+            let event: ControlEvent = match serde_json::from_value(value.value) {
                 Ok(event) => event,
                 Err(err) => {
                     error!("Control event parse error: {err}");
-                    println!("{}", serde_json::to_string_pretty(&ControlEvent::SetColor((1, 1, 1))).unwrap());
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&ControlEvent::SetColor((1, 1, 1))).unwrap()
+                    );
                     return None;
-                },
+                }
             };
 
             // Send to system event bus ASAP.
@@ -202,9 +208,9 @@ impl From<SystemMessage> for WSSystemMessage {
                 kind: WSSystemMessageKind::Log,
                 value: serde_json::to_value(msg).unwrap(),
             },
-            SystemMessage::WasmLog(msg) => Self {
+            SystemMessage::WasmLog(body) => Self {
                 kind: WSSystemMessageKind::WasmLog,
-                value: serde_json::to_value(msg).unwrap(),
+                value: serde_json::to_value(body).unwrap(),
             },
             SystemMessage::WasmControlsLog(msg) => Self {
                 kind: WSSystemMessageKind::WasmControlsLog,
@@ -252,7 +258,7 @@ impl From<SystemMessage> for WSSystemMessage {
 
 pub async fn ws_handler(
     req: HttpRequest,
-    data: Data<AppState>,
+    data: Data<AppStateWrapper>,
     stream: web::Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
@@ -278,9 +284,12 @@ pub async fn ws_handler(
 
     let a = b.clone();
 
+    //
+    // Broadcast current system state.
+    //
+
     rt::spawn(async move {
         // let mut last_sent_value: HashMap<WSSignalKind, u8> = HashMap::new();
-
         loop {
             {
                 if !*a.lock().unwrap() {
@@ -375,7 +384,7 @@ pub async fn ws_handler(
 
 pub async fn binary_ws_handler(
     req: HttpRequest,
-    data: Data<AppState>,
+    data: Data<AppStateWrapper>,
     stream: web::Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;

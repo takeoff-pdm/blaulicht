@@ -4,6 +4,7 @@ use crate::ControlEventCollection;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
+    pub id: u8,
     pub clock: u32,
     pub initial: bool,
     pub audio_data: CollectedAudioSnapshot,

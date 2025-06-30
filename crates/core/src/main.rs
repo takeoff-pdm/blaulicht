@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -14,7 +14,7 @@ use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::msg::{SystemMessage, UnifiedMessage};
 use blaulicht_core::plugin::{midi, PluginManager};
-use blaulicht_core::routes::AppState;
+use blaulicht_core::routes::{AppState, AppStateWrapper};
 use blaulicht_core::{config, dmx, mainloop, plugin, routes, utils};
 // use blaulicht::app::FromFrontend;
 // use blaulicht::audio::defs::AudioThreadControlSignal;
@@ -113,11 +113,14 @@ async fn main() -> anyhow::Result<()> {
     // }
     // });
 
+    let app_state = Arc::new(AppState::new(&cfg.plugins));
+
     {
         // Audio recording and analysis thread.
         let system_out = system_out.clone();
         let audio_thread_control_signal = audio_thread_control_signal.clone();
         let cfg = cfg.clone();
+        let app_state = Arc::clone(&app_state);
         thread::spawn(move || {
             mainloop::supervisor_thread(
                 from_frontend_receiver,
@@ -126,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
                 system_out,
                 cfg,
                 event_bus_connection_mainloop,
+                app_state,
             )
         });
     }
@@ -138,44 +142,55 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(Mutex::new(HashMap::new()));
 
     let consumers2 = consumers.clone();
-    thread::spawn(move || loop {
-        //
-        // System messages.
-        //
-        let system_res = app_system_receiver.try_recv();
-        match system_res {
-            Ok(res) => {
-                if let SystemMessage::Log(content) = &res {
-                    log::info!("{content}")
-                }
-                let consumers = consumers2.lock().unwrap();
-                for c in consumers.values() {
-                    if c.send(UnifiedMessage::System(res.clone())).is_err() {
-                        continue;
+    let app_state_temp = Arc::clone(&app_state);
+    thread::spawn(move || {
+        loop {
+            //
+            // System messages.
+            //
+            let system_res = app_system_receiver.try_recv();
+            match system_res {
+                Ok(res) => {
+                    match &res {
+                        SystemMessage::Log(msg) => {
+                            app_state_temp.log(msg.clone().into()); // TODO: GRR, clone!
+                        }
+                        SystemMessage::WasmLog(body) => {
+                            println!("{}", body.msg);
+                            app_state_temp.log_plugin(body.plugin_id, body.msg.clone()); // TODO: GRR, clone!
+                        }
+                        _ => {}
                     }
-                }
-            }
-            Err(crossbeam_channel::TryRecvError::Empty) => {}
-            Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
-        }
 
-        //
-        // Signal messages.
-        //
-        let signal_res = app_signal_receiver.try_recv();
-        match signal_res {
-            Ok(res) => {
-                let consumers = consumers2.lock().unwrap();
-                for c in consumers.values() {
-                    if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
-                        continue;
+                    let consumers = consumers2.lock().unwrap();
+                    for c in consumers.values() {
+                        if c.send(UnifiedMessage::System(res.clone())).is_err() {
+                            continue;
+                        }
                     }
                 }
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+                Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
             }
-            Err(crossbeam_channel::TryRecvError::Empty) => {}
-            Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                log::warn!("[BROADCAST] Shutting down.");
-                break;
+
+            //
+            // Signal messages.
+            //
+            let signal_res = app_signal_receiver.try_recv();
+            match signal_res {
+                Ok(res) => {
+                    let consumers = consumers2.lock().unwrap();
+                    for c in consumers.values() {
+                        if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
+                            continue;
+                        }
+                    }
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    log::warn!("[BROADCAST] Shutting down.");
+                    break;
+                }
             }
         }
     });
@@ -191,15 +206,15 @@ async fn main() -> anyhow::Result<()> {
             .unwrap();
     });
 
-    let data = Data::new(AppState {
+    let data = Data::new(AppStateWrapper {
         from_frontend_sender,
         // app_signal_receiver,
         to_frontend_consumers: consumers,
         config: Arc::new(Mutex::new(cfg.clone())),
         config_path: config_filepath.to_string(),
         event_bus_connection: event_bus_connection_websocket,
+        state: Arc::clone(&app_state),
     });
-
     let server = HttpServer::new(move || {
         App::new()
             .app_data(data.clone())

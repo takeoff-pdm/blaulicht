@@ -4,14 +4,14 @@ use enttecopendmx::EnttecOpenDMX;
 use std::{
     sync::{
         atomic::{AtomicU8, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::{Duration, Instant},
 };
 
 use crate::{
-    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, event::SystemEventBusConnection, mainloop, msg::{Signal, SystemMessage}, plugin::midi
+    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, event::SystemEventBusConnection, mainloop, msg::{Signal, SystemMessage}, plugin::midi, routes::AppState
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -206,6 +206,7 @@ pub fn supervisor_thread(
     system_out: Sender<SystemMessage>,
     config: Config,
     event_bus_connection: SystemEventBusConnection,
+    app_state: Arc<AppState>,
 ) {
     log::info!("[SUPERVISOR] Thread started!");
 
@@ -310,6 +311,7 @@ pub fn supervisor_thread(
                 let config = config.clone();
                 let bus_connection = event_bus_connection.clone();
 
+                let app_state = Arc::clone(&app_state);
                 thread::spawn(move || {
                     audio_thread_control_signal
                         .store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
@@ -321,6 +323,7 @@ pub fn supervisor_thread(
                         audio_thread_control_signal.clone(),
                         config,
                         bus_connection,
+                        app_state,
                     ) {
                         // TODO: handle the audio backend error.
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))

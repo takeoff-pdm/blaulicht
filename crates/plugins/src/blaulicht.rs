@@ -1,7 +1,7 @@
 // Wasm imports
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
-    fn log(ptr: *const u8, len: usize);
+    fn log(plugin_id: u8, ptr: *const u8, len: usize);
     fn udp(
         target_addr_ptr: *const u8,
         target_addr_len: usize,
@@ -11,9 +11,9 @@ extern "C" {
 
     fn bl_open_midi_device(device_name_ptr: *const u8, device_name_len: usize) -> u8;
     fn bl_transmit_midi(device_id: u8, status: u8, data0: u8, data1: u8);
+    fn bl_report_panic();
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
-
 
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
@@ -21,8 +21,12 @@ extern "C" {
 }
 
 pub fn bl_open_midi_device_safe(device_name: &str) -> u8 {
+    unsafe { bl_open_midi_device(device_name.as_ptr(), device_name.len()) }
+}
+
+pub fn report_panic() {
     unsafe {
-        bl_open_midi_device(device_name.as_ptr(), device_name.len())
+        bl_report_panic();
     }
 }
 
@@ -31,8 +35,11 @@ pub fn bl_transmit_midi_safe(device: u8, status: u8, data0: u8, data1: u8) {
 }
 
 /// Log a string to the BL output
+
+pub static mut PLUGIN_ID: u8 = 0;
+
 pub fn bl_log(msg: &str) {
-    unsafe { log(msg.as_ptr(), msg.len()) }
+    unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len()) }
 }
 
 pub fn bl_send(event: ControlEvent) {
@@ -153,4 +160,3 @@ macro_rules! nelapsed {
 }
 
 pub use nelapsed;
-

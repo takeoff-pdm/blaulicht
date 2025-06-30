@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use cpal::{Device, HostId};
 use serde::Serialize;
@@ -44,7 +44,7 @@ pub enum SystemMessage {
     // System.
     Heartbeat(usize),
     Log(String),
-    WasmLog(String),
+    WasmLog(WasmLogBody),
     // Controls.
     WasmControlsLog(WasmControlsLog),
     WasmControlsSet(WasmControlsSet),
@@ -57,6 +57,12 @@ pub enum SystemMessage {
     AudioDevicesView(Vec<(HostId, Device)>),
     // DMX.
     DMX(Box<[u8; 513]>),
+}
+
+#[derive(Clone, Serialize)]
+pub struct WasmLogBody {
+    pub plugin_id: u8,
+    pub msg: Cow<'static, str>,
 }
 
 #[derive(Clone)]

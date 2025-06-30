@@ -88,8 +88,8 @@
 
   let dmx = new Array(513);
 
-  let logs = [];
-  let wasmLogs = [];
+  let logs: string[] = [];
+  let wasmLogs: string[] = [];
 
   onMount(async () => {
     $loading = true;
@@ -144,7 +144,7 @@
         wasmLogs.splice(0, 1);
       }
 
-      wasmLogs = [...wasmLogs, msg];
+      wasmLogs = [...wasmLogs, `[${msg.plugin_id}]: ${msg.msg}`];
     });
 
     callbacks.subscribe(topicWasmControlsLog(), (event) => {
