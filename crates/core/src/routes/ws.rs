@@ -12,7 +12,7 @@ use actix_web::{
 };
 // use actix_web_actors::ws;
 use actix_ws::AggregatedMessage;
-use blaulicht_shared::ControlEvent;
+use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use log::error;
@@ -97,10 +97,10 @@ fn process_ws_from_frontend(
             }
         }
         WSFromFrontendKind::Control => {
-            let event: ControlEvent = match serde_json::from_value(value.value) {
+            let event: ControlEvent = match serde_json::from_value(value.value.clone()) {
                 Ok(event) => event,
                 Err(err) => {
-                    error!("Control event parse error: {err}");
+                    error!("Control event parse error: (input={}) | {err}", value.value);
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&ControlEvent::SetColor((1, 1, 1))).unwrap()
@@ -110,7 +110,8 @@ fn process_ws_from_frontend(
             };
 
             // Send to system event bus ASAP.
-            data.event_bus_connection.send(event);
+            data.event_bus_connection
+                .send(ControlEventMessage::new(EventOriginator::Web, event));
             return None;
         }
     };

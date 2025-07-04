@@ -44,6 +44,8 @@
   import Terminal from "../../components/Terminal.svelte";
   import ControlMatrix from "../../components/ControlMatrix.svelte";
   import { CalculationInterpolation } from "sass";
+  import StageEditor from "../../components/editor/StageEditor.svelte";
+  import type { Data } from "../../lib/types";
   // import { midi } from '../../lib/midi';
 
   async function loadAvailableAudioDevices(): Promise<String[]> {
@@ -91,6 +93,18 @@
   let logs: string[] = [];
   let wasmLogs: string[] = [];
 
+  let data: Data = null;
+
+  async function getData() {
+    const res = await (await fetch("/api/state")).json();
+    return res;
+  }
+
+  async function fetchDataDaemon() {
+    data = await getData()
+    setTimeout(fetchDataDaemon, 100)
+  }
+
   onMount(async () => {
     $loading = true;
     ThemeUtils.setGlobalDefaultTheme(ThemeUtils.presets.iceberg);
@@ -98,8 +112,13 @@
     // Connect socket.
     const callbacks = new BlaulichtWebsocketCallbacks();
     callbacks.subscribe(topicHeartbeat(), (event) => {
-      console.log(`Heartbeat: ${event.value}`);
+      // console.log(`Heartbeat: ${event.value}`);
+      // TODO: !!!
     });
+
+    // TODO: what
+    // data = await getData();
+    fetchDataDaemon()
 
     callbacks.subscribe(topicAudioDevicesView(), (event) => {
       const devices = event.value;
@@ -321,6 +340,10 @@
       value: data,
     });
   }
+
+  async function handleEditorControl(event: CustomEvent<any>) {
+    await sendControl(event.detail)
+  }
 </script>
 
 <Page pageId="dash">
@@ -441,18 +464,9 @@
           <Button on:click={reloadEngine} label={"Engine"} title="Reload"
           ></Button>
         </Folder>
-
-        <Folder userExpandable={false} expanded={true} title="Control DBG">
-          <Text bind:value={controlInput} label="Input (JSON)"></Text>
-          <Button
-            on:click={sendControlWrapper}
-            label={"Control"}
-            title="Send"
-          ></Button>
-        </Folder>
       </div>
 
-      <div style="width: 100%;">
+      <div style="width: 100%; height: 70vh; overflow-y: scroll;">
         <div
           style="width: 100%; padding: 1rem; box-sizing: border-box; display: flex; justify-content:center;"
         >
@@ -476,6 +490,23 @@
               });
             }}
           ></ControlMatrix>
+
+          <div style="width: 100%;">
+            <!-- List fixtures & groups -->
+
+            <Folder userExpandable={false} expanded={true} title="Control DBG">
+              <Text bind:value={controlInput} label="Input (JSON)"></Text>
+              <Button
+                on:click={sendControlWrapper}
+                label={"Control"}
+                title="Send"
+              ></Button>
+            </Folder>
+
+            {#if data}
+              <StageEditor state={data.dmx_engine} on:control={handleEditorControl}></StageEditor>
+            {/if}
+          </div>
         </div>
       </div>
     </div>

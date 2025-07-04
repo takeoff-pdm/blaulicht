@@ -4,7 +4,7 @@ use crate::dmx::clock::Time;
 
 use super::Fixture;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Light {
     //
     // 0: Red

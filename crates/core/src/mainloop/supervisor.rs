@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, event::SystemEventBusConnection, mainloop, msg::{Signal, SystemMessage}, plugin::midi, routes::AppState
+    app::MidiEvent, audio::defs::AudioThreadControlSignal, config::Config, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, mainloop, msg::{Signal, SystemMessage}, plugin::midi, routes::AppState
 };
 
 use cpal::{traits::DeviceTrait, Device};
@@ -205,7 +205,8 @@ pub fn supervisor_thread(
     signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
     config: Config,
-    event_bus_connection: SystemEventBusConnection,
+    event_bus_connection_plugins: SystemEventBusConnectionInst,
+    event_bus_connection_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) {
     log::info!("[SUPERVISOR] Thread started!");
@@ -309,7 +310,8 @@ pub fn supervisor_thread(
 
                 let sys = sys.clone();
                 let config = config.clone();
-                let bus_connection = event_bus_connection.clone();
+                let bus_connection_plugins = event_bus_connection_plugins.clone();
+                let bus_connection_dmx = event_bus_connection_dmx.clone();
 
                 let app_state = Arc::clone(&app_state);
                 thread::spawn(move || {
@@ -322,7 +324,8 @@ pub fn supervisor_thread(
                         sys.clone(),
                         audio_thread_control_signal.clone(),
                         config,
-                        bus_connection,
+                        bus_connection_plugins,
+                        bus_connection_dmx,
                         app_state,
                     ) {
                         // TODO: handle the audio backend error.

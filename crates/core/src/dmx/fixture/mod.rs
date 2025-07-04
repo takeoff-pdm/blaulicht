@@ -11,35 +11,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::dmx::{clock::Time, color::Color};
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
     pan: u8,
     tilt: u8,
     rotation: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FixtureGroup {
     // Assigns an ID to a fixture.
     pub fixtures: HashMap<u8, Fixture>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Fixture {
-    name: Cow<'static, str>,
-    type_: FixtureType,
-    state: FixtureState,
+    pub name: Cow<'static, str>,
+    pub type_: FixtureType,
+    pub state: FixtureState,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FixtureState {
-    start_addr: usize,
+    pub start_addr: usize,
     // the many values a fixture could have.
-    brightness: u8,
-    color: Color,
-    alpha: u8,
-    orientation: FixtureOrientation,
-    strobe_speed: u8,
+    pub brightness: u8,
+    pub color: Color,
+    pub alpha: u8,
+    pub orientation: FixtureOrientation,
+    pub strobe_speed: u8,
     // ... todo
 }
 
@@ -63,8 +63,13 @@ impl Fixture {
         self.type_.write(self, dmx)
     }
 
-    pub fn set_color(&mut self, color: Color) {
-        self.state.color = color;
+    pub fn set_color(&mut self, color: (u8, u8, u8)) {
+        self.state.color = color.into();
+        // self.type_.write(self, dmx)
+    }
+
+    pub fn set_brightness(&mut self, bri: u8) {
+        self.state.brightness = bri;
         // self.type_.write(self, dmx)
     }
 
@@ -102,7 +107,7 @@ impl Fixture {
 // Types.
 //
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum FixtureType {
     MovingHead(MovingHead),
     Light(Light),

@@ -23,7 +23,7 @@ use wasmtime::{Instance, Memory, Store};
 use crate::{
     app::{FromFrontend, MidiEvent},
     config::PluginConfig,
-    event::SystemEventBusConnection,
+    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     msg::SystemMessage,
     plugin::{midi::MidiManager, wasm::MidiStatus},
     routes::{AppState, PluginFlags},
@@ -46,7 +46,7 @@ pub struct PluginManager {
     // todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
     midi_manager_ref: Arc<Mutex<MidiManager>>,
 
-    event_bus: SystemEventBusConnection,
+    event_bus: SystemEventBusConnectionInst,
 
     state_ref: Arc<AppState>,
 }
@@ -71,7 +71,7 @@ impl PluginManager {
         from_midi_manager: Receiver<MidiEvent>,
         system_out: Sender<SystemMessage>,
         midi_manager_ref: Arc<Mutex<MidiManager>>,
-        event_bus: SystemEventBusConnection,
+        event_bus: SystemEventBusConnectionInst,
         app_state_ref: Arc<AppState>,
     ) -> Self {
         Self {

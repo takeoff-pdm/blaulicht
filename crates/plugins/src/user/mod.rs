@@ -4,13 +4,17 @@ use crate::{
     blaulicht::{bl_send, prelude::println},
     midi::{MidiConnection, MidiEvent},
 };
-use blaulicht_shared::{ControlEvent, ControlEventCollection, TickInput};
+use blaulicht_shared::{ControlEvent, ControlEventCollection, ControlEventMessage, TickInput};
+use map_range::MapRange;
 
 struct State {
     counter: f32,
     midi_handles: Vec<MidiConnection>,
     enabled: bool,
     last_update: u32,
+
+    // Selection state.
+    groups: Vec<bool>,
 }
 
 static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
@@ -19,9 +23,9 @@ pub fn initialize(input: TickInput) {
     println!("Initializing...");
 
     let devices = vec![
-        // "MIDI Mix",
-        // "nanoKONTROL Studio CTRL",
-        // "APC mini mk2 Control",
+        "MIDI Mix",
+        "nanoKONTROL Studio CTRL",
+        "APC mini mk2 Control",
     ];
 
     let mut midi_handles = vec![];
@@ -43,6 +47,7 @@ pub fn initialize(input: TickInput) {
             midi_handles,
             enabled: false,
             last_update: 0,
+            groups: vec![false; 8],
         });
     }
 }
@@ -50,6 +55,9 @@ pub fn initialize(input: TickInput) {
 fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     for e in ev {
         match (e.status, e.kind, e.value) {
+            (176, 19, v) => {
+                bl_send(ControlEvent::SetBrightness((v as u16).map_range(0..127, 0..255) as u8));
+            }
             (144, 1, 127) => {
                 state.enabled = !state.enabled;
                 conn.send(144, 1, state.counter as u8 % 127);
@@ -65,23 +73,43 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     }
 }
 
-fn nano(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
+fn nano_in(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     // conn.send(0x90, 24, 127);
-    for i in 0..255 {
-        conn.send(0x90, i, 127);
-    }
+    // for i in 0..255 {
+    //     conn.send(0xC1, i, 127);
+    // }
 
-   // for i in 0..2 {
+    // conn.send(0x91, 102, 127);
+
+    // for i in 0..2 {
     //     for j in 0..10 {
     //         conn.send(0x91 + i, j, 127);
     //     }
     // }
 
+    const SELECT_BUTTON_STARTER: u8 = 24;
+    const COUNT_SELECT_BUTTONS: u8 = 8;
+
     for e in ev {
         match (e.status, e.kind, e.value) {
-            (179, 46, 127) => {
-                state.enabled = !state.enabled;
+            // Group Select.
+            (144, key, 127)
+                if key >= SELECT_BUTTON_STARTER
+                    && key <= SELECT_BUTTON_STARTER + COUNT_SELECT_BUTTONS =>
+            {
+                let g_idx = key - SELECT_BUTTON_STARTER;
+                let old = state.groups[g_idx as usize];
+                state.groups[g_idx as usize] = !old;
+
+                let msg = match !old {
+                    true => ControlEvent::DeSelectGroup(g_idx),
+                    false => ControlEvent::SelectGroup(g_idx),
+                };
+
+                bl_send(msg);
             }
+            // Set button on the left.
+            (144, 82, 127) => {}
             _ => {
                 println!("{}: {:?}", conn.get_meta().device_id, e);
             }
@@ -89,7 +117,39 @@ fn nano(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     }
 }
 
+fn nano_out(
+    conn: MidiConnection,
+    // ev: Vec<MidiEvent>,
+    control_events: &[ControlEventMessage],
+    state: &mut State,
+) {
+    for ev in control_events {
+        match ev.body() {
+            ControlEvent::SelectGroup(g_index) => {
+                println!("a");
+                conn.send(0x90, g_index, 127);
+            }
+            ControlEvent::DeSelectGroup(g_index) => {
+                println!("b");
+                conn.send(0x90, g_index, 1);
+            }
+            _ => {} // ControlEvent::LimitSelectionToFixtureInCurrentGroup(_) => todo!(),
+                    // ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_) => todo!(),
+                    // ControlEvent::RemoveSelection => todo!(),
+                    // ControlEvent::SetEnabled(_) => todo!(),
+                    // ControlEvent::SetBrightness(_) => todo!(),
+                    // ControlEvent::SetColor(_) => todo!(),
+                    // ControlEvent::MiscEvent { descriptor, value } => todo!(),
+        }
+    }
+}
+
 fn apc(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State, input: TickInput) {
+    if ev.is_empty() {
+        return;
+    }
+
+    println!("apc");
     if input.clock - state.last_update > 0 {
         for i in 0..64 {
             conn.send(0x96, i as u8, (state.counter as usize % 127) as u8);
@@ -120,13 +180,12 @@ pub fn run(input: TickInput) {
 
         // dev.send(144, 1,  state.counter as u8 % 127);
 
-        if res.is_empty() {
-            continue;
-        }
-
         match dev.get_meta().device_id {
             1 => midimix(dev, res, state),
-            2 => nano(dev, res, state),
+            2 => {
+                nano_in(dev, res, state);
+                nano_out(dev, &input.events.events, state);
+            }
             3 => apc(dev, res, state, input.clone()),
             _ => {}
         };

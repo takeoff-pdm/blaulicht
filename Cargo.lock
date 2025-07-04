@@ -552,6 +552,7 @@ dependencies = [
  "libc",
  "log",
  "mach",
+ "maplit",
  "midir",
  "notify",
  "serde",
@@ -1989,6 +1990,12 @@ checksum = "bffa558d7f51b549670be5ff6db164cd9be428c035cbf4e3f782db3da66845a5"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "memchr"

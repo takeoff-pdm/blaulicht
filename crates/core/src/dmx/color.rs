@@ -7,6 +7,16 @@ pub struct Color {
     pub b: u8,
 }
 
+impl From<(u8, u8, u8)> for Color {
+    fn from(value: (u8, u8, u8)) -> Self {
+        Self {
+            r: value.0,
+            g: value.1,
+            b: value.2,
+        }
+    }
+}
+
 impl Default for Color {
     fn default() -> Self {
         Self { r: 0, g: 0, b: 0 }
@@ -20,16 +30,6 @@ impl Color {
 
     pub fn white() -> Self {
         (255, 255, 255).into()
-    }
-}
-
-impl From<(u8, u8, u8)> for Color {
-    fn from(value: (u8, u8, u8)) -> Self {
-        Self {
-            r: value.0,
-            g: value.1,
-            b: value.2,
-        }
     }
 }
 

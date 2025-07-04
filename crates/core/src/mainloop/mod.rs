@@ -26,14 +26,22 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, info};
 
 use crate::{
-    app::MidiEvent, audio::{
+    app::MidiEvent,
+    audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_LOOP_ITERATIONS},
         capture,
         defs::{AudioConverter, AudioThreadControlSignal},
-    }, config::Config, event::SystemEventBusConnection, msg::{Signal, SystemMessage}, plugin::{
+    },
+    config::Config,
+    dmx::DmxEngine,
+    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    msg::{Signal, SystemMessage},
+    plugin::{
         midi::{self, MidiManager},
         PluginManager,
-    }, routes::AppState, system_message, util
+    },
+    routes::AppState,
+    system_message, util,
 };
 
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
@@ -47,7 +55,8 @@ pub fn run(
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
-    event_bus: SystemEventBusConnection,
+    event_bus_plugins: SystemEventBusConnectionInst,
+    event_bus_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) -> anyhow::Result<()> {
     //
@@ -63,19 +72,22 @@ pub fn run(
     //
     // Plugin system.
     //
+    let p_app_state = Arc::clone(&app_state);
     let mut plugin_manager = PluginManager::new(
         config.plugins,
         to_midi_manager_sender,
         to_plugins_receiver,
         system_out.clone(),
         Arc::clone(&midi_manager),
-        event_bus,
-        app_state,
+        event_bus_plugins,
+        p_app_state,
     );
 
     plugin_manager
         .init()
         .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
+
+    let mut dmx_engine = DmxEngine::new(app_state, event_bus_dmx, system_out.clone());
 
     //
     // Audio signal collector.
@@ -171,7 +183,6 @@ pub fn run(
             // Collect control events.
             //
 
-
             let dmx_tick_duration = match plugin_manager.tick(collector.take_snapshot(), &midi) {
                 Ok(dur) => {
                     plugin_wasm_engine_crashed = false; // Reset crash state on successful tick.
@@ -185,6 +196,9 @@ pub fn run(
                     Duration::from_micros(0)
                 }
             };
+
+            // TODO: maybe feed with audio signals.
+            dmx_engine.tick();
 
             time_of_last_dmx_tick = now;
 

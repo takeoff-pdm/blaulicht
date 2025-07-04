@@ -9,7 +9,7 @@ use heapless::spsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::FromFrontend, config::{Config, PluginConfig}, dmx::EngineState, event::SystemEventBusConnection, msg::UnifiedMessage, plugin::Plugin
+    app::FromFrontend, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::UnifiedMessage, plugin::Plugin
 };
 
 pub struct AppStateWrapper {
@@ -19,7 +19,7 @@ pub struct AppStateWrapper {
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
     // System event bus connection.
-    pub event_bus_connection: SystemEventBusConnection,
+    pub event_bus_connection: SystemEventBusConnectionInst,
 
     // Real state.
     pub state: Arc<AppState>,

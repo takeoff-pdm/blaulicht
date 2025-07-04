@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use blaulicht_shared::ControlEvent;
+use blaulicht_shared::ControlEventMessage;
+use blaulicht_shared::EventOriginator;
 use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
@@ -206,7 +208,7 @@ impl PluginManager {
 
                 // TODO: may panic.
                 let event = ControlEvent::deserialize(&buffer);
-                event_bus.send(event);
+                event_bus.send(ControlEventMessage::new(EventOriginator::Plugin, event));
             },
         )?;
 

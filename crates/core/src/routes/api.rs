@@ -1,5 +1,8 @@
 
+use actix_web::{get, web::{Data, Json}, HttpResponse};
 use serde::{Deserialize, Serialize};
+
+use crate::routes::{AppState, AppStateWrapper};
 
 //
 // BPM Functions.
@@ -11,10 +14,11 @@ pub struct BPMObject {
     pub bpm: i64,
 }
 
-// #[put("/api/bpm")]
-// pub async fn set_bpm(body: Json<BPMObject>, data: Data<AppState>) -> HttpResponse {
-//     HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
-// }
+#[get("/api/state")]
+pub async fn get_state(data: Data<AppStateWrapper>) -> HttpResponse {
+    HttpResponse::Ok().json(&*data.state)
+    // HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
+}
 
 //
 // Audio device functions.

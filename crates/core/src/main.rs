@@ -16,6 +16,7 @@ use blaulicht_core::msg::{SystemMessage, UnifiedMessage};
 use blaulicht_core::plugin::{midi, PluginManager};
 use blaulicht_core::routes::{AppState, AppStateWrapper};
 use blaulicht_core::{config, dmx, mainloop, plugin, routes, utils};
+use blaulicht_shared::ControlEventMessage;
 // use blaulicht::app::FromFrontend;
 // use blaulicht::audio::defs::AudioThreadControlSignal;
 // use blaulicht::msg::{SystemMessage, UnifiedMessage};
@@ -74,8 +75,10 @@ async fn main() -> anyhow::Result<()> {
     //
 
     let mut event_bus = SystemEventBus::new();
+
     let event_bus_connection_mainloop = event_bus.new_connection();
     let event_bus_connection_websocket = event_bus.new_connection();
+    let event_bus_connection_dmx = event_bus.new_connection();
 
     thread::spawn(move || {
         event_bus.run();
@@ -129,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
                 system_out,
                 cfg,
                 event_bus_connection_mainloop,
+                event_bus_connection_dmx,
                 app_state,
             )
         });
@@ -222,6 +226,7 @@ async fn main() -> anyhow::Result<()> {
             // HTML endpoints
             .service(routes::get_index)
             .service(routes::get_dash)
+            .service(routes::get_state)
             // API endpoints
             .route("/api/ws", web::get().to(routes::ws_handler))
             .route("/api/ws/sink", web::get().to(routes::binary_ws_handler))

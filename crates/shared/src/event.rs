@@ -1,9 +1,63 @@
-use bincode::{config, Decode, Encode};
+use std::fmt::Display;
+
+use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
 /// Furthermore, they are also piped back into the plugin system to allow plugins to react to these events.
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Copy, Clone)]
+pub struct ControlEventMessage {
+    originator: EventOriginator,
+    body: ControlEvent,
+}
+
+impl Display for ControlEventMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl ControlEventMessage {
+    pub fn new(originator: EventOriginator, body: ControlEvent) -> Self {
+        Self {
+            originator,
+            body,
+        }
+    }
+
+    pub fn requires_selection(&self) -> bool {
+        match self.originator {
+            EventOriginator::Web | EventOriginator::Plugin => self.body.requires_selection(),
+            EventOriginator::DmxEngine => false,
+        }
+    }
+
+    pub fn body(&self) -> ControlEvent {
+        self.body
+    }
+
+    pub fn originator(&self) -> EventOriginator {
+        self.originator
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, config::standard()).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Self {
+        let (data, _) = bincode::decode_from_slice(buf, config::standard()).unwrap();
+        data
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Copy, Clone, PartialEq, PartialOrd)]
+pub enum EventOriginator {
+    Web,
+    DmxEngine,
+    Plugin,
+}
+
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Copy, Clone)]
 pub enum ControlEvent {
     //
@@ -21,6 +75,9 @@ pub enum ControlEvent {
     // Limits application of operations of the current group to the fixture matching the given index relative to the group.
     // Only works if exactly one group is selected.
     LimitSelectionToFixtureInCurrentGroup(u8),
+
+    // Undoes the operation from above.
+    UnLimitSelectionToFixtureInCurrentGroup(u8),
 
     /// Removes the current selection.
     /// Works top-down: if a fixture is selected, it will be removed first then the group.
@@ -49,21 +106,39 @@ pub enum ControlEvent {
     },
 }
 
+#[macro_export]
+macro_rules! CONTROLS_REQUIRING_SELECTION {
+    () => {
+        ControlEvent::SetEnabled(_) | ControlEvent::SetBrightness(_) | ControlEvent::SetColor(_)
+    };
+}
+
 impl ControlEvent {
     pub fn serialize(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, config::standard()).unwrap()
     }
 
     pub fn deserialize(buf: &[u8]) -> Self {
-        let (data,_) = bincode::decode_from_slice(buf, config::standard()).unwrap();
+        let (data, _) = bincode::decode_from_slice(buf, config::standard()).unwrap();
         data
+    }
+
+    pub fn requires_selection(&self) -> bool {
+        match self {
+            CONTROLS_REQUIRING_SELECTION!() => true,
+            ControlEvent::SelectGroup(_)
+            | ControlEvent::DeSelectGroup(_)
+            | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
+            | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
+            | ControlEvent::RemoveSelection
+            | ControlEvent::MiscEvent { .. } => false,
+        }
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Default, Clone)]
 pub struct ControlEventCollection {
-    pub events: Vec<ControlEvent>,
+    pub events: Vec<ControlEventMessage>,
 }
 
 impl ControlEventCollection {
@@ -72,7 +147,7 @@ impl ControlEventCollection {
     }
 
     pub fn deserialize(buf: &[u8]) -> Self {
-        let (data,_) = bincode::decode_from_slice(buf, config::standard()).unwrap();
+        let (data, _) = bincode::decode_from_slice(buf, config::standard()).unwrap();
         data
     }
 }
