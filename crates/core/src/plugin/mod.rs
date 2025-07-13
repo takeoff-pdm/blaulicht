@@ -21,7 +21,7 @@ use notify::{
 use wasmtime::{Instance, Memory, Store};
 
 use crate::{
-    app::{FromFrontend, MidiEvent},
+    msg::{FromFrontend, MidiEvent},
     config::PluginConfig,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     msg::SystemMessage,

@@ -4,18 +4,23 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
+use crossbeam_channel::Receiver;
 use crossbeam_queue::ArrayQueue;
 use heapless::spsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::FromFrontend, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::UnifiedMessage, plugin::Plugin
+    config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
 };
 
 pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
-    pub to_frontend_consumers:
-        Arc<Mutex<HashMap<String, crossbeam_channel::Sender<UnifiedMessage>>>>,
+
+    pub system_message_receiver: Receiver<SystemMessage>,
+    pub signal_receiver: Receiver<Signal>,
+
+    // pub to_frontend_consumers:
+    //     Arc<Mutex<HashMap<String, crossbeam_channel::Sender<UnifiedMessage>>>>,
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
     // System event bus connection.
@@ -28,10 +33,24 @@ pub struct AppStateWrapper {
 const APP_LOG_LENGTH: usize = 1000;
 
 #[derive(Serialize, Deserialize)]
+pub struct AudioState {
+    pub device_name: Option<String>,
+}
+
+impl AudioState {
+    pub fn default() -> Self {
+        Self {
+            device_name: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub dmx_engine: RwLock<EngineState>,
+    pub audio: RwLock<AudioState>,
 }
 
 impl AppState {
@@ -51,6 +70,7 @@ impl AppState {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             dmx_engine: RwLock::new(EngineState::default()),
+            audio: RwLock::new(AudioState::default())
         }
     }
 

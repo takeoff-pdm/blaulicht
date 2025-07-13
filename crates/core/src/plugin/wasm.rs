@@ -18,9 +18,9 @@ use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant
 
 use wasmtime::*;
 
+use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::{
-    app::MidiEvent,
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
     plugin::{

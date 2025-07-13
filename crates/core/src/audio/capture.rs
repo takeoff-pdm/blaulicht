@@ -9,7 +9,7 @@ use cpal::{traits::DeviceTrait, Device};
 use crate::{audio::defs::AudioConverter, msg::Signal};
 
 pub struct SignalCollector {
-    current: CollectedAudioSnapshot,
+    pub(crate) current: CollectedAudioSnapshot,
 }
 
 impl SignalCollector {

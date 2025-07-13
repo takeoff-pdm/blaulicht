@@ -9,9 +9,10 @@ use actix_files::Files;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
 use anyhow::{bail, Context};
-use blaulicht_core::app::FromFrontend;
+use blaulicht_core::app::TemplateApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
+use blaulicht_core::msg::FromFrontend;
 use blaulicht_core::msg::{SystemMessage, UnifiedMessage};
 use blaulicht_core::plugin::{midi, PluginManager};
 use blaulicht_core::routes::{AppState, AppStateWrapper};
@@ -142,62 +143,65 @@ async fn main() -> anyhow::Result<()> {
     // End audio.
     //
 
-    let consumers: Arc<Mutex<HashMap<String, Sender<UnifiedMessage>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    // TODO: SLOOOWW DISTRIBUTOR LOGIC!
 
-    let consumers2 = consumers.clone();
-    let app_state_temp = Arc::clone(&app_state);
-    thread::spawn(move || {
-        loop {
-            //
-            // System messages.
-            //
-            let system_res = app_system_receiver.try_recv();
-            match system_res {
-                Ok(res) => {
-                    match &res {
-                        SystemMessage::Log(msg) => {
-                            app_state_temp.log(msg.clone().into()); // TODO: GRR, clone!
-                        }
-                        SystemMessage::WasmLog(body) => {
-                            println!("{}", body.msg);
-                            app_state_temp.log_plugin(body.plugin_id, body.msg.clone()); // TODO: GRR, clone!
-                        }
-                        _ => {}
-                    }
+    // let consumers: Arc<Mutex<HashMap<String, Sender<UnifiedMessage>>>> =
+    //     Arc::new(Mutex::new(HashMap::new()));
 
-                    let consumers = consumers2.lock().unwrap();
-                    for c in consumers.values() {
-                        if c.send(UnifiedMessage::System(res.clone())).is_err() {
-                            continue;
-                        }
-                    }
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {}
-                Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
-            }
+    // let consumers2 = consumers.clone();
+    // let app_state_temp = Arc::clone(&app_state);
+    // thread::spawn(move || {
+    //     loop {
+    //         //
+    //         // System messages.
+    //         //
+    //         let system_res = app_system_receiver.try_recv();
+    //         match system_res {
+    //             Ok(res) => {
+    //                 match &res {
+    //                     SystemMessage::Log(msg) => {
+    //                         app_state_temp.log(msg.clone().into()); // TODO: GRR, clone!
+    //                     }
+    //                     SystemMessage::WasmLog(body) => {
+    //                         println!("{}", body.msg);
+    //                         app_state_temp.log_plugin(body.plugin_id, body.msg.clone());
+    //                         // TODO: GRR, clone!
+    //                     }
+    //                     _ => {}
+    //                 }
 
-            //
-            // Signal messages.
-            //
-            let signal_res = app_signal_receiver.try_recv();
-            match signal_res {
-                Ok(res) => {
-                    let consumers = consumers2.lock().unwrap();
-                    for c in consumers.values() {
-                        if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
-                            continue;
-                        }
-                    }
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {}
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    log::warn!("[BROADCAST] Shutting down.");
-                    break;
-                }
-            }
-        }
-    });
+    //                 let consumers = consumers2.lock().unwrap();
+    //                 for c in consumers.values() {
+    //                     if c.send(UnifiedMessage::System(res.clone())).is_err() {
+    //                         continue;
+    //                     }
+    //                 }
+    //             }
+    //             Err(crossbeam_channel::TryRecvError::Empty) => {}
+    //             Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
+    //         }
+
+    //         //
+    //         // Signal messages.
+    //         //
+    //         let signal_res = app_signal_receiver.try_recv();
+    //         match signal_res {
+    //             Ok(res) => {
+    //                 let consumers = consumers2.lock().unwrap();
+    //                 for c in consumers.values() {
+    //                     if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
+    //                         continue;
+    //                     }
+    //                 }
+    //             }
+    //             Err(crossbeam_channel::TryRecvError::Empty) => {}
+    //             Err(crossbeam_channel::TryRecvError::Disconnected) => {
+    //                 log::warn!("[BROADCAST] Shutting down.");
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // });
 
     //
     // Filesystem plugin watcher.
@@ -210,38 +214,58 @@ async fn main() -> anyhow::Result<()> {
             .unwrap();
     });
 
-    let data = Data::new(AppStateWrapper {
+    // Spawn UI thread.
+    thread::spawn(|| {});
+
+    let state_wrapper = AppStateWrapper {
         from_frontend_sender,
-        // app_signal_receiver,
-        to_frontend_consumers: consumers,
         config: Arc::new(Mutex::new(cfg.clone())),
         config_path: config_filepath.to_string(),
         event_bus_connection: event_bus_connection_websocket,
         state: Arc::clone(&app_state),
-    });
-    let server = HttpServer::new(move || {
-        App::new()
-            .app_data(data.clone())
-            .service(Files::new("/assets", "./web/dist/assets/"))
-            // HTML endpoints
-            .service(routes::get_index)
-            .service(routes::get_dash)
-            .service(routes::get_state)
-            // API endpoints
-            .route("/api/ws", web::get().to(routes::ws_handler))
-            .route("/api/ws/sink", web::get().to(routes::binary_ws_handler))
-    })
-    .bind(("0.0.0.0", cfg.port))
-    .with_context(|| "could not start webserver")?;
+        system_message_receiver: app_system_receiver,
+        signal_receiver: app_signal_receiver,
+    };
+    // let data = Data::new(state_wrapper);
 
-    info!("Blaulicht is running on `http://localhost:{}`", cfg.port,);
+    // thread::spawn(|| {
+    // let server = HttpServer::new(move || {
+    //     App::new()
+    //         .app_data(data.clone())
+    //         .service(Files::new("/assets", "./web/dist/assets/"))
+    //         // HTML endpoints
+    //         .service(routes::get_index)
+    //         .service(routes::get_dash)
+    //         .service(routes::get_state)
+    //         // API endpoints
+    //         .route("/api/ws", web::get().to(routes::ws_handler))
+    //         .route("/api/ws/sink", web::get().to(routes::binary_ws_handler))
+    // })
+    // .bind(("0.0.0.0", cfg.port))
+    // .with_context(|| "could not start webserver")?;
 
-    server
-        .run()
-        .await
-        .with_context(|| "Could not start webserver")?;
+    // info!("Blaulicht is running on `http://localhost:{}`", cfg.port,);
+
+    // server
+    //     .run()
+    //     .await
+    //     .with_context(|| "Could not start webserver")?;
 
     info!("Blaulicht is shutting down...");
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([400.0, 300.0])
+            .with_min_inner_size([300.0, 220.0]),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "eframe template",
+        native_options,
+        Box::new(|cc| Ok(Box::new(TemplateApp::new(cc, state_wrapper)))),
+    )
+    .unwrap();
 
     let sig = audio_thread_control_signal.load(Ordering::Relaxed);
     let start_shutdown = Instant::now();

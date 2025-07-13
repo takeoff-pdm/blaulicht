@@ -20,10 +20,7 @@ impl Display for ControlEventMessage {
 
 impl ControlEventMessage {
     pub fn new(originator: EventOriginator, body: ControlEvent) -> Self {
-        Self {
-            originator,
-            body,
-        }
+        Self { originator, body }
     }
 
     pub fn requires_selection(&self) -> bool {
@@ -82,6 +79,16 @@ pub enum ControlEvent {
     /// Removes the current selection.
     /// Works top-down: if a fixture is selected, it will be removed first then the group.
     RemoveSelection,
+
+    /// Removes everything that is selected.
+    RemoveAllSelection,
+
+    /// Pushes the current selection to the selection stack, making the current selection empty.
+    PushSelection,
+
+    /// Pops the top selection off the selection stack, replacing the current selection.
+    PopSelection,
+
     //
     // Basic Fixture Actions.
     //
@@ -131,7 +138,10 @@ impl ControlEvent {
             | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
             | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
             | ControlEvent::RemoveSelection
-            | ControlEvent::MiscEvent { .. } => false,
+            | ControlEvent::RemoveAllSelection
+            | ControlEvent::MiscEvent { .. }
+            | ControlEvent::PopSelection
+            | ControlEvent::PushSelection => false,
         }
     }
 }

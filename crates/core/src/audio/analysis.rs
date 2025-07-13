@@ -9,9 +9,10 @@ use crossbeam_channel::Sender;
 use audioviz::spectrum::Frequency;
 use itertools::Itertools;
 
-
 use crate::{
-    audio::{capture::SignalCollector, SIGNAL_SPEED}, msg::{BpmInfo, Signal}, shift_push, signal, util
+    audio::{capture::SignalCollector, SIGNAL_SPEED},
+    msg::{BpmInfo, Signal},
+    shift_push, signal, util,
 };
 
 // Constants.
@@ -38,10 +39,26 @@ pub fn bass(
         signal_out_0,
         signal_collector,
         {
-            let v = values
-                .iter()
-                .map(|f| f.volume as usize)
-                .collect::<Vec<usize>>();
+            // TODO: algorithmically tune this if there is no bass for longer (5 secs).
+            let uses_bass = true;
+
+            let (v, lower_volume_limit) = match uses_bass {
+                true => (
+                    values
+                        .iter()
+                        .filter(|f| f.freq > 20.0 && f.freq < 250.0)
+                        .map(|f| f.volume as usize)
+                        .collect::<Vec<usize>>(),
+                    100.0,
+                ),
+                false => (
+                    values
+                        .iter()
+                        .map(|f| f.volume as usize)
+                        .collect::<Vec<usize>>(),
+                    30.0,
+                ),
+            };
 
             let avg = v.iter().sum::<usize>() as f32 / v.len() as f32;
             let bass_sig = (avg * 100.0) as u8;
@@ -65,7 +82,7 @@ pub fn bass(
             // Do not consider values under bass 10.
             let mut peaked = false;
 
-            if bass_moving_average >= 30.0 {
+            if bass_moving_average >= lower_volume_limit {
                 let bass_moving_average_theoretical_max =
                     (bass_moving_average * 2.0) * (bass_modifier as f64 / 100.0);
 
@@ -120,8 +137,8 @@ pub fn bass(
                 }),
                 if peaked || elapsed_since_last_peak < 100 {
                     Signal::BassAvgShort(255)
-                } else if bass_moving_average > 40.0 {
-                    Signal::BassAvgShort((elapsed_since_last_peak / 10) as u8)
+                // } else if bass_moving_average > 40.0 {
+                //     Signal::BassAvgShort((elapsed_since_last_peak / 10) as u8)
                 } else {
                     Signal::BassAvgShort(0)
                 },

@@ -7,8 +7,7 @@ use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, TickInput
 use log::warn;
 
 use crate::{
-    app::MidiEvent,
-    plugin::{Plugin, PluginManager},
+    msg::MidiEvent, plugin::{Plugin, PluginManager}
 };
 
 impl PluginManager {

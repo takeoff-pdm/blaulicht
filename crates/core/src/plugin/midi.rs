@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 use wmidi::MidiMessage;
 
-use crate::app::MidiEvent;
+use crate::msg::MidiEvent;
 
 #[derive(Debug)]
 pub enum MidiError {

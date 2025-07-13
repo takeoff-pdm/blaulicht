@@ -41,8 +41,7 @@ impl TickInput {
             Ok((data, _)) => data,
             Err(err) => {
                 // Panic handler is usually not registered yet.
-                println!("TickInput::deserialize(): {err}");
-                panic!("Deserialize error");
+                panic!("Deserialize error: {}", err);
             },
         };
 

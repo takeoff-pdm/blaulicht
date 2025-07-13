@@ -26,7 +26,7 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, info};
 
 use crate::{
-    app::MidiEvent,
+    msg::MidiEvent,
     audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_LOOP_ITERATIONS},
         capture,

@@ -17,12 +17,12 @@ use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
-use libc::group;
+use libc::{group, select};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
     sync::{Arc, RwLock, RwLockWriteGuard},
 };
@@ -276,6 +276,31 @@ impl DmxEngine {
                     (None, None)
                 }
             }
+            ControlEvent::RemoveAllSelection => {
+                state.selection.clear();
+                (None, None)
+            }
+            ControlEvent::PushSelection => {
+                let selection = state.selection.clone();
+
+                if let Some(top) = state.selection_stack.front() {
+                    if selection.is_empty() && top.is_empty() {
+                        return (Some("Push to empty selection"), None)
+                    }
+                }
+
+                state.selection_stack.push_front(selection);
+                state.selection.clear();
+                (None, None)
+            }
+            ControlEvent::PopSelection => {
+                if let Some(top) = state.selection_stack.pop_front() {
+                    state.selection = top;
+                    (None, None)
+                } else {
+                    (Some("Selection stack empty"), None)
+                }
+            }
             ControlEvent::MiscEvent { descriptor, value } => {
                 todo!("Not implemented");
             }
@@ -296,6 +321,7 @@ pub struct EngineState {
     groups: HashMap<u8, FixtureGroup>,
     // Selection.
     selection: EngineSelection,
+    selection_stack: VecDeque<EngineSelection>,
 }
 
 impl Default for EngineState {
@@ -345,14 +371,47 @@ impl Default for EngineState {
                             }
                         },
                      }
-                }
+                },
+                2 => FixtureGroup {
+                     fixtures: hashmap! {
+                        0 => Fixture {
+                            name: "G2".into(),
+                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                              state: FixtureState {
+                                start_addr: 42,
+                                brightness: 0,
+                                color: Color::default(),
+                                alpha: 0,
+                                orientation: FixtureOrientation::default(),
+                                strobe_speed: 0,
+                            }
+                        },
+                     }
+                },
+                3 => FixtureGroup {
+                     fixtures: hashmap! {
+                        0 => Fixture {
+                            name: "G2".into(),
+                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                              state: FixtureState {
+                                start_addr: 42,
+                                brightness: 0,
+                                color: Color::default(),
+                                alpha: 0,
+                                orientation: FixtureOrientation::default(),
+                                strobe_speed: 0,
+                            }
+                        },
+                     }
+                },
             },
             selection: Default::default(),
+            selection_stack: VecDeque::new(),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct EngineSelection {
     pub group_ids: HashSet<u8>,
     // This is only populated if there is one element in the group selection.
@@ -372,6 +431,11 @@ impl EngineSelection {
 
         // self.fixtures_in_group.is_empty()
         self.group_ids.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.group_ids.clear();
+        self.fixtures_in_group.clear();
     }
 }
 
