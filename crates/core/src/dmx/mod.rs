@@ -144,9 +144,11 @@ impl DmxEngine {
     pub fn tick(&mut self) {
         if self.tick_internal() {
             println!("changed dmx...");
-            self.system_out
-                .send(SystemMessage::DMX(Box::new(self.dmx)))
-                .unwrap();
+
+            // TODO: THIS might be too heavy.
+            // self.system_out
+            //     .send(SystemMessage::DMX(Box::new(self.dmx)))
+            //     .unwrap();
         }
     }
 
@@ -285,7 +287,7 @@ impl DmxEngine {
 
                 if let Some(top) = state.selection_stack.front() {
                     if selection.is_empty() && top.is_empty() {
-                        return (Some("Push to empty selection"), None)
+                        return (Some("Push to empty selection"), None);
                     }
                 }
 
@@ -304,7 +306,9 @@ impl DmxEngine {
             ControlEvent::MiscEvent { descriptor, value } => {
                 todo!("Not implemented");
             }
-            CONTROLS_REQUIRING_SELECTION!() => (selection.apply(state, ev.body()), None),
+            CONTROLS_REQUIRING_SELECTION!() => {
+                (selection.apply(state, ev.body()), None)
+            }
         }
     }
 }
@@ -313,7 +317,7 @@ impl DmxEngine {
 // State.
 //
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EngineState {
     // TODO: how to solve this?
     // fixtures: Vec<Fixture>,
@@ -408,6 +412,15 @@ impl Default for EngineState {
             selection: Default::default(),
             selection_stack: VecDeque::new(),
         }
+    }
+}
+
+impl EngineState {
+    pub fn groups(&self) -> &HashMap<u8, FixtureGroup> {
+        &self.groups
+    }
+    pub fn selection(&self) -> &EngineSelection {
+        &self.selection
     }
 }
 

@@ -7,10 +7,10 @@ use std::{
     time::Duration,
 };
 
-use std::fmt::Debug;
 use blaulicht_shared::{ControlEvent, ControlEventMessage};
-use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, TrySelectError, TrySendError};
 use log::debug;
+use std::fmt::Debug;
 
 use crate::audio::SIGNAL_SPEED;
 
@@ -34,11 +34,18 @@ impl<T> SystemEventBusConnection<T> {
 
     /// Panics.
     pub fn send(&self, event: T) {
-        self.to_exchange_sender.send(event).unwrap()
+        match self.to_exchange_sender.try_send(event) {
+            Ok(_) => {}
+            Err(TrySendError::Disconnected(_)) => unreachable!("UNREACHABLE"),
+            Err(TrySendError::Full(_)) => {
+                debug!("BUFFER OVERRUN")
+            }
+        }
     }
 }
 
 // TODO: build the actual exchange that broadcasts.
+const BUS_CAPACITY: usize = 128;
 type BroadCastMembers<T> = HashMap<usize, Sender<T>>;
 pub struct SystemEventBus<T> {
     // Incoming messages will be sent out to all broadcast members.
@@ -55,7 +62,7 @@ where
     T: Clone + Copy + Display + Debug,
 {
     pub fn new() -> Self {
-        let (sender, receiver) = crossbeam_channel::unbounded();
+        let (sender, receiver) = crossbeam_channel::bounded(BUS_CAPACITY);
 
         Self {
             receiver,
@@ -102,13 +109,17 @@ where
             let mut members_to_remove: Option<Vec<_>> = None;
 
             for (id, client) in members.iter() {
-                if client.send(msg).is_err() {
-                    match members_to_remove {
+                match client.try_send(msg) {
+                    Ok(_) => {}
+                    Err(TrySendError::Full(_)) => {
+                        panic!("Channel full!");
+                    }
+                    Err(TrySendError::Disconnected(_)) => match members_to_remove {
                         Some(ref mut mem) => {
                             mem.push(*id);
                         }
                         None => members_to_remove = Some(vec![*id]),
-                    }
+                    },
                 }
             }
 
@@ -119,6 +130,7 @@ where
             }
 
             mem::drop(members);
+
             thread::sleep(Duration::from_millis(10));
         }
     }

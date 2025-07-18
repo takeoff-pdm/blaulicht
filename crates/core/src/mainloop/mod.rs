@@ -26,16 +26,15 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, info};
 
 use crate::{
-    msg::MidiEvent,
     audio::{
-        analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_LOOP_ITERATIONS},
+        analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE},
         capture,
         defs::{AudioConverter, AudioThreadControlSignal},
     },
     config::Config,
     dmx::DmxEngine,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::{Signal, SystemMessage},
+    msg::{MidiEvent, Signal, SystemMessage},
     plugin::{
         midi::{self, MidiManager},
         PluginManager,
@@ -109,7 +108,7 @@ pub fn run(
     let time_of_last_volume_publish = &mut time_of_last_volume_publish;
 
     let mut volume_samples: VecDeque<usize> =
-        VecDeque::with_capacity(ROLLING_AVERAGE_LOOP_ITERATIONS);
+        VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE);
 
     // Beat
     let mut time_of_last_beat_publish = time::Instant::now();
@@ -130,7 +129,9 @@ pub fn run(
     let mut plugin_wasm_engine_crashed = false;
 
     // Boost the current thread.
-    util::increase_thread_priority();
+
+    // TODO: enable again.
+    // util::increase_thread_priority();
 
     loop {
         //

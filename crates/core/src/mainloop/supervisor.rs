@@ -22,7 +22,7 @@ use crate::{
 };
 
 use cpal::{traits::DeviceTrait, Device};
-use log::{debug, info, warn, Log};
+use log::{debug, error, info, warn, Log};
 
 use crate::{
     msg::FromFrontend,
@@ -346,6 +346,7 @@ pub fn supervisor_thread(
                         app_state,
                     ) {
                         // TODO: handle the audio backend error.
+                        error!("[audio] THREAD CRASH: {err}");
                         sys.send(SystemMessage::Log(format!("[audio] {err}")))
                             .unwrap();
 

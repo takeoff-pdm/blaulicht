@@ -31,8 +31,8 @@ use log::{error, info};
 use notify::event::{DataChange, ModifyKind};
 use notify::{Event, RecursiveMode, Watcher};
 
-#[actix_web::main]
-async fn main() -> anyhow::Result<()> {
+// #[actix_web::main]
+fn main() -> anyhow::Result<()> {
     let config_filepath = "./config.toml";
 
     let cfg = config::read_config(config_filepath.into())?;
@@ -215,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Spawn UI thread.
-    thread::spawn(|| {});
+    // thread::spawn(|| {});
 
     let state_wrapper = AppStateWrapper {
         from_frontend_sender,
@@ -251,7 +251,7 @@ async fn main() -> anyhow::Result<()> {
     //     .await
     //     .with_context(|| "Could not start webserver")?;
 
-    info!("Blaulicht is shutting down...");
+    // info!("Blaulicht is shutting down...");
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -267,27 +267,28 @@ async fn main() -> anyhow::Result<()> {
     )
     .unwrap();
 
-    let sig = audio_thread_control_signal.load(Ordering::Relaxed);
-    let start_shutdown = Instant::now();
-    if sig == AudioThreadControlSignal::CONTINUE {
-        audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
-        loop {
-            thread::sleep(Duration::from_secs(1));
+    // TODO: what is this?
+    // let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+    // let start_shutdown = Instant::now();
+    // if sig == AudioThreadControlSignal::CONTINUE {
+    //     audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+    //     loop {
+    //         thread::sleep(Duration::from_secs(1));
 
-            let sig = audio_thread_control_signal.load(Ordering::Relaxed);
+    //         let sig = audio_thread_control_signal.load(Ordering::Relaxed);
 
-            log::trace!("Waiting for audio thread to die: {sig}");
+    //         log::trace!("Waiting for audio thread to die: {sig}");
 
-            if start_shutdown.elapsed() > Duration::from_secs(5) {
-                log::warn!("Shutdown timeout");
-                break;
-            }
+    //         if start_shutdown.elapsed() > Duration::from_secs(5) {
+    //             log::warn!("Shutdown timeout");
+    //             break;
+    //         }
 
-            if sig == AudioThreadControlSignal::ABORTED {
-                break;
-            }
-        }
-    }
+    //         if sig == AudioThreadControlSignal::ABORTED {
+    //             break;
+    //         }
+    //     }
+    // }
 
     Ok(())
 }

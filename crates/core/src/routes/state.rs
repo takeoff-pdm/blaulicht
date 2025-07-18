@@ -97,9 +97,9 @@ impl AppState {
 const PLUGIN_LOG_LENGTH: usize = 1000;
 #[derive(Deserialize, Serialize)]
 pub struct PluginState {
-    path: Cow<'static, str>,
-    flags: PluginFlags,
-    logs: VecDeque<Cow<'static, str>>,
+    pub path: Cow<'static, str>,
+    pub flags: PluginFlags,
+    pub logs: VecDeque<Cow<'static, str>>,
 }
 
 #[derive(Deserialize, Serialize)]

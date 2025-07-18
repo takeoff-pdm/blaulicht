@@ -19,8 +19,8 @@ use crate::{
 pub const BASS_FRAMES: usize = 10000;
 pub const BASS_PEAK_FRAMES: usize = 800;
 
-pub const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
-pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
+// TODO: what is this constant even
+pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = 100;
 
 #[inline(always)]
 pub fn bass(
@@ -39,10 +39,9 @@ pub fn bass(
         signal_out_0,
         signal_collector,
         {
-            // TODO: algorithmically tune this if there is no bass for longer (5 secs).
-            let uses_bass = true;
+            const USES_BASS: bool = true;
 
-            let (v, lower_volume_limit) = match uses_bass {
+            let (v, lower_volume_limit) = match USES_BASS {
                 true => (
                     values
                         .iter()
@@ -56,7 +55,7 @@ pub fn bass(
                         .iter()
                         .map(|f| f.volume as usize)
                         .collect::<Vec<usize>>(),
-                    30.0,
+                    10.0,
                 ),
             };
 
@@ -83,10 +82,9 @@ pub fn bass(
             let mut peaked = false;
 
             if bass_moving_average >= lower_volume_limit {
-                let bass_moving_average_theoretical_max =
+                let bass_signal_threshold_for_a_peak =
                     (bass_moving_average * 2.0) * (bass_modifier as f64 / 100.0);
-
-                if bass_sig >= bass_moving_average_theoretical_max as u8
+                if bass_sig >= bass_signal_threshold_for_a_peak as u8
                     && elapsed_since_last_peak > 300
                 {
                     bass_peaks.push_back(Instant::now());
@@ -121,7 +119,7 @@ pub fn bass(
             let bass_peak_sum = bass_peak_durations.sum::<f64>();
             let avg_bass_peak_durations = bass_peak_sum / (bass_len as f64);
 
-            let bpm = if bass_moving_average <= 30.0 {
+            let bpm = if bass_moving_average <= lower_volume_limit {
                 0.0
             } else {
                 SECONDS_IN_A_MINUTE / avg_bass_peak_durations

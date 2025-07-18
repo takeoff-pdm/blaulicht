@@ -15,6 +15,7 @@ struct State {
 
     // Selection state.
     groups: Vec<bool>,
+    brightness_mod: u8,
 }
 
 static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
@@ -26,6 +27,7 @@ pub fn initialize(input: TickInput) {
         "MIDI Mix",
         "nanoKONTROL Studio CTRL",
         "APC mini mk2 Control",
+        // "Minilab3 MIDI"
     ];
 
     let mut midi_handles = vec![];
@@ -48,6 +50,7 @@ pub fn initialize(input: TickInput) {
             enabled: false,
             last_update: 0,
             groups: vec![false; 8],
+            brightness_mod: 0,
         });
     }
 }
@@ -56,7 +59,9 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     for e in ev {
         match (e.status, e.kind, e.value) {
             (176, 19, v) => {
-                bl_send(ControlEvent::SetBrightness((v as u16).map_range(0..127, 0..255) as u8));
+                bl_send(ControlEvent::SetBrightness(
+                    (v as u16).map_range(0..127, 0..255) as u8,
+                ));
             }
             (144, 1, 127) => {
                 state.enabled = !state.enabled;
@@ -110,6 +115,17 @@ fn nano_in(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
             }
             // Set button on the left.
             (144, 82, 127) => {}
+            (176, 60, value) => {
+                if value >= 60 {
+                    if state.brightness_mod > 0 {
+                        state.brightness_mod -= 1;
+                    }
+                } else if state.brightness_mod < 255 {
+                    state.brightness_mod += 1;
+                }
+
+                bl_send(ControlEvent::SetBrightness(state.brightness_mod));
+            }
             _ => {
                 println!("{}: {:?}", conn.get_meta().device_id, e);
             }
