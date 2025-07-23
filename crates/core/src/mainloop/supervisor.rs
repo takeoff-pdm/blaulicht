@@ -11,11 +11,11 @@ use std::{
 };
 
 use crate::{
-    msg::MidiEvent,
     audio::defs::AudioThreadControlSignal,
     config::Config,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     mainloop,
+    msg::MidiEvent,
     msg::{Signal, SystemMessage},
     plugin::midi,
     routes::AppState,
@@ -25,8 +25,8 @@ use cpal::{traits::DeviceTrait, Device};
 use log::{debug, error, info, warn, Log};
 
 use crate::{
-    msg::FromFrontend,
     audio::{self},
+    msg::FromFrontend,
     utils,
 };
 
@@ -286,6 +286,17 @@ pub fn supervisor_thread(
             device_changed = true;
         }
 
+        if device_changed {
+            // Update state.
+            {
+                let mut audio = app_state.audio.write().unwrap();
+                audio.device_name = match audio_device {
+                    Some(ref dev) => Some(dev.name().unwrap().to_string()),
+                    None => None,
+                };
+            }
+        }
+
         if audio_device.is_none() {
             let devices = utils::get_input_devices_flat();
 
@@ -305,20 +316,16 @@ pub fn supervisor_thread(
             }
 
             device_changed = false;
+
+            if audio_thread_control_signal.load(Ordering::Relaxed) == AudioThreadControlSignal::CONTINUE {
+                audio_thread_control_signal
+                    .store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+            }
         } else if device_changed {
             // TODO: just broadcast a state-change message.
             system_out
                 .send(SystemMessage::AudioSelected(audio_device.clone()))
                 .unwrap();
-
-            // Update state.
-            {
-                let mut audio = app_state.audio.write().unwrap();
-                audio.device_name = match audio_device {
-                    Some(ref dev) => Some(dev.name().unwrap().to_string()),
-                    None => None,
-                };
-            }
 
             let (sig_0, sys) = (signal_out_0.clone(), system_out.clone());
             {

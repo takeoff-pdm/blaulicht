@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! system_message {
     ($now:ident,$last_publish:ident,$system_out:ident,$tx_signal:expr) => {

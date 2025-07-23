@@ -16,15 +16,15 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::{debug, trace};
 use notify::{
     event::{DataChange, ModifyKind},
-    Config, Error, Event, EventKind, FsEventWatcher, RecommendedWatcher, RecursiveMode, Watcher,
+    Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use wasmtime::{Instance, Memory, Store};
 
 use crate::{
-    msg::{FromFrontend, MidiEvent},
     config::PluginConfig,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     msg::SystemMessage,
+    msg::{FromFrontend, MidiEvent},
     plugin::{midi::MidiManager, wasm::MidiStatus},
     routes::{AppState, PluginFlags},
 };

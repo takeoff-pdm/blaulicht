@@ -1,5 +1,4 @@
 port = 1234
-default_audio_device = "BlackHole 2ch"
 
 [stream]
 fft_resolution = 4096

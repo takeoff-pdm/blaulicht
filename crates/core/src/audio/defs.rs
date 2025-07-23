@@ -1,8 +1,4 @@
-use std::{
-    time::Duration,
-    u8,
-};
-
+use std::{time::Duration, u8};
 
 use audioviz::{audio_capture::capture::Capture, spectrum::config::StreamConfig};
 use audioviz::{
@@ -14,7 +10,6 @@ use audioviz::{
 };
 use itertools::Itertools;
 
-
 const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
 
@@ -22,7 +17,6 @@ const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATION
 pub const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
-
 
 #[non_exhaustive]
 pub struct AudioThreadControlSignal;
@@ -53,7 +47,6 @@ pub struct AudioConverter {
 //     fn default() -> Self {
 //     }
 // }
-
 
 // impl From<AudioConfig> for StreamConfig {
 //     fn from(value: AudioConfig) -> Self {

@@ -10,7 +10,11 @@ use heapless::spsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
+    config::{Config, PluginConfig},
+    dmx::EngineState,
+    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage},
+    plugin::Plugin,
 };
 
 pub struct AppStateWrapper {
@@ -39,9 +43,7 @@ pub struct AudioState {
 
 impl AudioState {
     pub fn default() -> Self {
-        Self {
-            device_name: None,
-        }
+        Self { device_name: None }
     }
 }
 
@@ -70,7 +72,7 @@ impl AppState {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             dmx_engine: RwLock::new(EngineState::default()),
-            audio: RwLock::new(AudioState::default())
+            audio: RwLock::new(AudioState::default()),
         }
     }
 

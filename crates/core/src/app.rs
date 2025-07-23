@@ -1,21 +1,23 @@
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator,
 };
+use cpal::traits::DeviceTrait;
 use cpal::Device;
 use crossbeam_channel::{Receiver, Select, TryRecvError};
 use egui::Color32;
-use libc::select;
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::mem;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::msg::FromFrontend;
 use crate::{
     audio::capture::SignalCollector,
     msg::{SystemMessage, UnifiedMessage},
     routes::AppStateWrapper,
 };
+use crate::{system_message, utils};
 
 //
 // Log Window Component
@@ -532,6 +534,9 @@ pub struct TemplateApp {
     current_page: AppPage,
     last_heartbeat_frame: u64,
     selected_fixture_group: Option<u8>,
+
+    // Audio devices.
+    available_audio_devices: Vec<String>,
 }
 
 impl TemplateApp {
@@ -596,6 +601,7 @@ impl TemplateApp {
             current_page: AppPage::Main,
             last_heartbeat_frame: 0,
             selected_fixture_group: None,
+            available_audio_devices: vec![],
         }
     }
 }
@@ -670,7 +676,7 @@ impl eframe::App for TemplateApp {
                 Some(bus) => println!("bus: {:?}", bus),
                 None => {
                     empty += 1;
-                },
+                }
             }
 
             match self.data.signal_receiver.try_recv() {
@@ -750,11 +756,17 @@ impl eframe::App for TemplateApp {
                         // );
                     }
                     SystemMessage::AudioDevicesView(items) => {
-                        self.log_window.add_log(
-                            LogLevel::Debug,
-                            format!("Audio devices updated: {} devices", items.len()),
-                            "Audio".to_string(),
-                        );
+                        // Check if number of devices changed.
+                        //
+                        if self.available_audio_devices.len() != items.len() {
+                            self.log_window.add_log(
+                                LogLevel::Debug,
+                                format!("Available audio devices updated: {} devices", items.len()),
+                                "Audio".to_string(),
+                            );
+                            let items_str = items.into_iter().map(|(_, dev)| dev.name().unwrap()).collect();
+                            self.available_audio_devices = items_str;
+                        }
                     }
                     SystemMessage::DMX(dmx_msg) => {
                         // self.log_window.add_log(
@@ -774,10 +786,7 @@ impl eframe::App for TemplateApp {
             }
 
             if empty >= 3 {
-                println!("break");
                 break;
-            } else {
-                println!("{empty}")
             }
         }
 
@@ -1112,8 +1121,27 @@ impl eframe::App for TemplateApp {
                             egui::vec2(graph_panel_width, ui.available_height()),
                             egui::Layout::top_down(egui::Align::LEFT),
                             |ui| {
-                                ui.heading("Audio Graphs");
-                                ui.label("Real-time audio visualization");
+                                ui.heading("Audio");
+                                let mut selected_device = self.data.state.audio.read().unwrap().device_name.clone();
+                                ui.label(format!("Input device: {}", selected_device.clone().unwrap_or_else(||"N/A".to_string())));
+
+                                let before = selected_device.clone();
+
+                                egui::ComboBox::from_label("Audio Device")
+                                    .selected_text(format!("{:?}", selected_device))
+                                    .show_ui(ui, |ui| {
+                                        for dev in &self.available_audio_devices {
+                                            ui.selectable_value(&mut selected_device, Some(dev.to_owned()), dev);
+                                        }
+                                        ui.selectable_value(&mut selected_device, None, "None");
+                                    }
+                                );
+
+                                if selected_device != before {
+                                    // Handle selection change
+                                    let new_dev = selected_device.map(|d|utils::device_from_name(d).unwrap());
+                                    self.data.from_frontend_sender.send(FromFrontend::SelectInputDevice(new_dev)).unwrap();
+                                }
 
                                 // Show animation info
                                 ui.label(format!(

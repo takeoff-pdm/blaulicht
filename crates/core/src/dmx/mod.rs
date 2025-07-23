@@ -17,7 +17,6 @@ use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
-use libc::{group, select};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -306,9 +305,7 @@ impl DmxEngine {
             ControlEvent::MiscEvent { descriptor, value } => {
                 todo!("Not implemented");
             }
-            CONTROLS_REQUIRING_SELECTION!() => {
-                (selection.apply(state, ev.body()), None)
-            }
+            CONTROLS_REQUIRING_SELECTION!() => (selection.apply(state, ev.body()), None),
         }
     }
 }

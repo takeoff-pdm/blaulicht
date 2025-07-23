@@ -1,5 +1,8 @@
-
-use actix_web::{get, web::{Data, Json}, HttpResponse};
+use actix_web::{
+    get,
+    web::{Data, Json},
+    HttpResponse,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::routes::{AppState, AppStateWrapper};

@@ -4,7 +4,6 @@ use crate::dmx::clock::Time;
 
 use super::Fixture;
 
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Dimmer {}
 

@@ -26,7 +26,6 @@ use blaulicht_shared::ControlEventMessage;
 // use blaulicht::{config, dmx, midi, routes};
 use crossbeam_channel::{Sender, TryRecvError};
 use env_logger::Env;
-use libc::system;
 use log::{error, info};
 use notify::event::{DataChange, ModifyKind};
 use notify::{Event, RecursiveMode, Watcher};

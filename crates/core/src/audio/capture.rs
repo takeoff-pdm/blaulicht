@@ -48,7 +48,6 @@ impl SignalCollector {
     }
 }
 
-
 //
 // Converter.
 //
