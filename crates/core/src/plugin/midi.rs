@@ -98,13 +98,14 @@ impl MidiManager {
         let in_ports = midi_in.ports();
 
         debug!(
-            "Available MIDI input ports: [{}]",
+            "Available MIDI input ports: [\n{}\n]",
             in_ports
                 .iter()
-                .map(|p| midi_in.port_name(p).unwrap())
+                .map(|p| format!("'{}'", midi_in.port_name(p).unwrap()))
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(",\n")
         );
+
 
         let in_port = in_ports
             .iter()

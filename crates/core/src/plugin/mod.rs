@@ -13,7 +13,7 @@ use std::{
 use anyhow::Context;
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use log::{debug, trace};
+use log::{debug, info, trace};
 use notify::{
     event::{DataChange, ModifyKind},
     Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
@@ -152,22 +152,23 @@ impl PluginManager {
             debug!("Watching file: {:?}", file);
         }
 
-        println!("Watching files...");
+        debug!("Watching {} files...", files_to_watch.len());
 
         // Process events
         loop {
             match rx.recv_timeout(Duration::from_secs(1)) {
                 Ok(event) => {
                     if let Ok(event) = event {
+                        trace!("Plugin file change event: {:?}", event);
                         if !matches!(
                             event.kind,
-                            EventKind::Modify(ModifyKind::Data(DataChange::Content))
+                            EventKind::Modify(ModifyKind::Data(DataChange::Any))
                         ) {
                             // Only handle data changes.
                             continue;
                         }
 
-                        println!(
+                        info!(
                             "Change detected in: {:?} (kind: {:?}) ----> RELOADING...",
                             event.paths, event.kind
                         );

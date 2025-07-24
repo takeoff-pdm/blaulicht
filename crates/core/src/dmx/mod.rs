@@ -1,10 +1,8 @@
 mod clock;
-pub mod color;
 mod fixture;
 
 use crate::{
     dmx::{
-        color::Color,
         fixture::{
             Fixture, FixtureGroup, FixtureOrientation, FixtureState, FixtureType, Light, MovingHead,
         },
@@ -14,14 +12,14 @@ use crate::{
     routes::AppState,
 };
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION,
+    Color, ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION
 };
 use crossbeam_channel::Sender;
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     hash::Hash,
     sync::{Arc, RwLock, RwLockWriteGuard},
 };
@@ -50,6 +48,22 @@ impl Fixture {
     }
 }
 
+// TODO: maybe fuse this together?
+
+impl FixtureState {
+    fn apply(&mut self, ev: ControlEvent) {
+        match ev {
+            ControlEvent::SetBrightness(brightness) => {
+                self.brightness = brightness;
+            }
+            ControlEvent::SetColor(clr) => {
+                self.color = clr.into();
+            }
+            _ => {}
+        }
+    }
+}
+
 impl FixtureSelection {
     fn apply(
         &mut self,
@@ -65,8 +79,11 @@ impl FixtureSelection {
                 .fixtures
                 .get_mut(fix_id)
                 .unwrap();
+
             fixture.apply(ev);
         }
+
+        state.control_buffer.apply(ev);
 
         None
     }
@@ -207,8 +224,14 @@ impl DmxEngine {
         }
 
         // Require selection.
-        if ev.requires_selection() && state.selection.is_empty() {
+        let requires_selection = ev.requires_selection();
+        if requires_selection && state.selection.is_empty() {
             return (Some("No selected object(s)"), None);
+        }
+
+        // Empties the fixture state buffer on selecion events.
+        if !requires_selection {
+            state.control_buffer = FixtureState::default();
         }
 
         let mut selection = self.get_selection(state);
@@ -319,10 +342,14 @@ pub struct EngineState {
     // TODO: how to solve this?
     // fixtures: Vec<Fixture>,
     // Assigns an ID to a group.
-    groups: HashMap<u8, FixtureGroup>,
+    groups: BTreeMap<u8, FixtureGroup>,
     // Selection.
     selection: EngineSelection,
     selection_stack: VecDeque<EngineSelection>,
+
+    // This is a buffer where control events are also being written into before they get applied on
+    // fixtures.
+    pub control_buffer: FixtureState,
 }
 
 impl Default for EngineState {
@@ -355,7 +382,7 @@ impl Default for EngineState {
                                 strobe_speed: 0,
                             }
                         }
-                     }
+                     }.into_iter().collect(),
                 },
                 1 => FixtureGroup {
                      fixtures: hashmap! {
@@ -371,7 +398,7 @@ impl Default for EngineState {
                                 strobe_speed: 0,
                             }
                         },
-                     }
+                     }.into_iter().collect(),
                 },
                 2 => FixtureGroup {
                      fixtures: hashmap! {
@@ -387,7 +414,7 @@ impl Default for EngineState {
                                 strobe_speed: 0,
                             }
                         },
-                     }
+                     }.into_iter().collect(),
                 },
                 3 => FixtureGroup {
                      fixtures: hashmap! {
@@ -403,17 +430,20 @@ impl Default for EngineState {
                                 strobe_speed: 0,
                             }
                         },
-                     }
+                     }.into_iter().collect(),
                 },
-            },
+            }
+            .into_iter()
+            .collect(),
             selection: Default::default(),
             selection_stack: VecDeque::new(),
+            control_buffer: FixtureState::default(),
         }
     }
 }
 
 impl EngineState {
-    pub fn groups(&self) -> &HashMap<u8, FixtureGroup> {
+    pub fn groups(&self) -> &BTreeMap<u8, FixtureGroup> {
         &self.groups
     }
     pub fn selection(&self) -> &EngineSelection {

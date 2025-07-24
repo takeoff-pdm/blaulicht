@@ -1,3 +1,5 @@
+use core::f32;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -34,20 +36,18 @@ impl Color {
 }
 
 /// Uses input ranging from 0 to 360.
-pub fn hsv_to_rgb(h: isize) -> Color {
+pub fn hsv_to_rgb(h: u16, s: f32, v: f32) -> Color {
     // Catch white.
-    if h == -1 {
-        return (255, 255, 255).into();
-    }
+    // if h == -1 {
+    //     return (255, 255, 255).into();
+    // }
 
     // Normalize hue to [0, 360)
     // let mut h = h % 360;
     // if h < 0 {
     //     h += 360;
     // }
-
-    let s = 1.0f32;
-    let v = 1.0f32;
+    
     let c = v * s;
     let h_prime = h as f32 / 60.0;
     let x = c * (1.0 - ((h_prime % 2.0) - 1.0).abs());

@@ -1,4 +1,5 @@
 port = 1234
+default_audio_device = "pipewire"
 
 [stream]
 fft_resolution = 4096

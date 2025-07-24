@@ -8,6 +8,8 @@ use egui::Color32;
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::mem;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -17,7 +19,7 @@ use crate::{
     msg::{SystemMessage, UnifiedMessage},
     routes::AppStateWrapper,
 };
-use crate::{system_message, utils};
+use crate::{config, system_message, utils};
 
 //
 // Log Window Component
@@ -764,7 +766,10 @@ impl eframe::App for TemplateApp {
                                 format!("Available audio devices updated: {} devices", items.len()),
                                 "Audio".to_string(),
                             );
-                            let items_str = items.into_iter().map(|(_, dev)| dev.name().unwrap()).collect();
+                            let items_str = items
+                                .into_iter()
+                                .map(|(_, dev)| dev.name().unwrap())
+                                .collect();
                             self.available_audio_devices = items_str;
                         }
                     }
@@ -1140,7 +1145,17 @@ impl eframe::App for TemplateApp {
                                 if selected_device != before {
                                     // Handle selection change
                                     let new_dev = selected_device.map(|d|utils::device_from_name(d).unwrap());
-                                    self.data.from_frontend_sender.send(FromFrontend::SelectInputDevice(new_dev)).unwrap();
+                                    self.data.from_frontend_sender.send(FromFrontend::SelectInputDevice(new_dev.clone())).unwrap();
+
+                                    let mut config_mut = self.data.config.lock().unwrap();
+
+                                    config_mut.default_audio_device = match new_dev {
+                                        Some(d) => Some(d.name().unwrap()),
+                                        None => None,
+                                    };
+
+                                    let path = PathBuf::from_str(&self.data.config_path).unwrap();
+                                    config::write_config(path, config_mut.clone()).unwrap();
                                 }
 
                                 // Show animation info
@@ -1415,14 +1430,20 @@ impl eframe::App for TemplateApp {
                                     None
                                 };
 
-                                if let Some((g_id, f_id, _)) = selected_fixture {
-                                    let fixture = groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
+                                    let buf = match selected_fixture {
+                                        Some((g_id, f_id, _))  => {
+                                            let fixture = groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
+                                            fixture.state.clone()
+                                        },
+                                        None => {dmx_engine.control_buffer.clone()}
+                                    };
+
 
                                     ui.vertical(|ui| {
                                         ui.label("Fixture Controls");
                                         ui.add_space(8.0);
                                         // Brightness slider
-                                        let mut brightness = fixture.state.brightness as u32;
+                                        let mut brightness = buf.brightness as u32;
                                         if ui
                                             .add(
                                                 egui::Slider::new(&mut brightness, 0..=255)
@@ -1468,9 +1489,9 @@ impl eframe::App for TemplateApp {
 
                                         // Color picker
                                         let mut color = [
-                                            fixture.state.color.r as f32 / 255.0,
-                                            fixture.state.color.g as f32 / 255.0,
-                                            fixture.state.color.b as f32 / 255.0,
+                                            buf.color.r as f32 / 255.0,
+                                            buf.color.g as f32 / 255.0,
+                                            buf.color.b as f32 / 255.0,
                                         ];
                                         if ui.color_edit_button_rgb(&mut color).changed() {
                                             let r = (color[0] * 255.0) as u8;
@@ -1483,7 +1504,8 @@ impl eframe::App for TemplateApp {
                                                 .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::SetColor((r, g, b))));
                                         }
                                     });
-                                }
+                                // }
+
                             });
                         }
                     });

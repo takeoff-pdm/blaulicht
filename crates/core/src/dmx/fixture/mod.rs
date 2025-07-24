@@ -2,14 +2,15 @@ mod dimmer;
 mod light;
 mod moving_head;
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::BTreeMap};
 
+use blaulicht_shared::Color;
 pub use dimmer::*;
 pub use light::*;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
 
-use crate::dmx::{clock::Time, color::Color};
+use crate::dmx::clock::Time;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
@@ -21,7 +22,7 @@ pub struct FixtureOrientation {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FixtureGroup {
     // Assigns an ID to a fixture.
-    pub fixtures: HashMap<u8, Fixture>,
+    pub fixtures: BTreeMap<u8, Fixture>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,6 +42,19 @@ pub struct FixtureState {
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
     // ... todo
+}
+
+impl Default for FixtureState {
+    fn default() -> Self {
+        FixtureState {
+            start_addr: 42,
+            brightness: 0,
+            color: Color::default(),
+            alpha: 0,
+            orientation: FixtureOrientation::default(),
+            strobe_speed: 0,
+        }
+    }
 }
 
 impl Fixture {

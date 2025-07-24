@@ -1,21 +1,59 @@
-use std::mem::MaybeUninit;
+use std::{collections::HashMap, fmt::Display, mem::MaybeUninit};
 
 use crate::{
     blaulicht::{bl_send, prelude::println},
     midi::{MidiConnection, MidiEvent},
 };
-use blaulicht_shared::{ControlEvent, ControlEventCollection, ControlEventMessage, TickInput};
+use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventCollection, ControlEventMessage, TickInput};
 use map_range::MapRange;
+
+//
+// MIDI start.
+//
+
+#[derive(Clone, Copy)]
+enum MidiDevice {
+    NanoKontrol,
+    MidiMix,
+    APCMini,
+}
+
+impl Display for MidiDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio nanoKONTROL  32:0",
+            MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1 28:0",
+            MidiDevice::APCMini =>"APC mini mk2:APC mini mk2 APC mini mk2 Contr 24:0",
+        })
+    }
+}
+
+impl MidiDevice {
+    fn index(&self) -> usize {
+        match self {
+            MidiDevice::NanoKontrol => 0,
+            MidiDevice::MidiMix => 1,
+            MidiDevice::APCMini => 2,
+        }
+    }
+}
+
+//
+// MIDI end.
+//
 
 struct State {
     counter: f32,
-    midi_handles: Vec<MidiConnection>,
+    midi_handles: Vec<(MidiDevice, MidiConnection)>,
+    // ids_to_midi_types: HashMap<MidiDevice, usize>,
     enabled: bool,
     last_update: u32,
 
     // Selection state.
     groups: Vec<bool>,
     brightness_mod: u8,
+
+    hsv: (u16, f32, f32),
 }
 
 static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
@@ -23,30 +61,34 @@ static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
 pub fn initialize(input: TickInput) {
     println!("Initializing...");
 
-    let devices = vec![
-        "MIDI Mix",
-        "nanoKONTROL Studio CTRL",
-        "APC mini mk2 Control",
-        // "Minilab3 MIDI"
+    let mut devices = vec![
+        MidiDevice::NanoKontrol,
+        MidiDevice::MidiMix,
+        MidiDevice::APCMini,
     ];
+    devices.sort_by(|a, b| a.index().cmp(&b.index()));
 
-    let mut midi_handles = vec![];
+    let mut midi_handles = Vec::with_capacity(devices.len());
+    // let mut ids_to_midi_types = HashMap::new();
 
     for dev in devices {
-        let midi_handle = MidiConnection::open(dev).unwrap();
+        let name = dev.to_string();
+        let midi_handle = MidiConnection::open(&name).unwrap();
         println!(
             "Got MIDI handle to device! HANDLE ID: {}",
             midi_handle.get_meta().device_id
         );
 
-        midi_handles.push(midi_handle);
+        midi_handles.push((dev, midi_handle));
     }
 
     unsafe {
         #[allow(static_mut_refs)]
         STATE.write(State {
+            hsv: (127, 127.0, 127.0),
             counter: 0.0,
             midi_handles,
+            // ids_to_midi_types,
             enabled: false,
             last_update: 0,
             groups: vec![false; 8],
@@ -67,6 +109,24 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
                 state.enabled = !state.enabled;
                 conn.send(144, 1, state.counter as u8 % 127);
                 state.counter += 1.0;
+            }
+            (176, 16, value) => {
+                let hue = (value as u16).map_range(0..127, 0..360);
+                state.hsv.0 = hue;
+                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
+                bl_send(ControlEvent::SetColor(color.tup()));
+            }
+            (176, 17, value) => {
+                let sat = (value as u16).map_range(0..127, 0..100) as f32 / 100.0;
+                state.hsv.1 = sat;
+                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
+                bl_send(ControlEvent::SetColor(color.tup()));
+            }
+            (176, 18, value) => {
+                let val = (value as u16).map_range(0..127, 0..100) as f32 / 100.0;
+                state.hsv.2 = val;
+                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
+                bl_send(ControlEvent::SetColor(color.tup()));
             }
             (128, 1, 127) => {
                 // conn.send(144, 1, 0);
@@ -106,7 +166,7 @@ fn nano_in(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
                 let old = state.groups[g_idx as usize];
                 state.groups[g_idx as usize] = !old;
 
-                let msg = match !old {
+                let msg = match old {
                     true => ControlEvent::DeSelectGroup(g_idx),
                     false => ControlEvent::SelectGroup(g_idx),
                 };
@@ -165,14 +225,12 @@ fn apc(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State, input: TickI
         return;
     }
 
-    println!("apc");
     if input.clock - state.last_update > 0 {
         for i in 0..64 {
             conn.send(0x96, i as u8, (state.counter as usize % 127) as u8);
         }
         state.counter += 1.0;
         state.last_update = input.clock;
-        println!("udate");
     }
 
     for e in ev {
@@ -191,20 +249,17 @@ pub fn run(input: TickInput) {
     };
 
     let handles = state.midi_handles.clone();
-    for dev in handles {
-        let res = dev.poll();
+    for (dev, handle) in handles {
+        let res = handle.poll();
 
-        // dev.send(144, 1,  state.counter as u8 % 127);
-
-        match dev.get_meta().device_id {
-            1 => midimix(dev, res, state),
-            2 => {
-                nano_in(dev, res, state);
-                nano_out(dev, &input.events.events, state);
+        match dev {
+            MidiDevice::MidiMix => midimix(handle, res, state),
+            MidiDevice::NanoKontrol => {
+                nano_in(handle, res, state);
+                nano_out(handle, &input.events.events, state);
             }
-            3 => apc(dev, res, state, input.clone()),
-            _ => {}
-        };
+            MidiDevice::APCMini => apc(handle, res, state, input.clone()),
+        }
     }
 
     for ev in &input.events.events {

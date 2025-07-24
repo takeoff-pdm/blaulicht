@@ -14,7 +14,7 @@ const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
 
 // Important.
-pub const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
+pub const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
