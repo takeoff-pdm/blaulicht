@@ -21,9 +21,9 @@ enum MidiDevice {
 impl Display for MidiDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
-            MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio nanoKONTROL  32:0",
-            MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1 28:0",
-            MidiDevice::APCMini =>"APC mini mk2:APC mini mk2 APC mini mk2 Contr 24:0",
+            MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio nanoKONTROL",
+            MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1",
+            MidiDevice::APCMini =>"APC mini mk2:APC mini mk2 APC mini mk2 Contr",
         })
     }
 }
