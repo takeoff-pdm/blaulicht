@@ -109,7 +109,7 @@ impl MidiManager {
 
         let in_port = in_ports
             .iter()
-            .find(|p| midi_in.port_name(p).unwrap() == device_name)
+            .find(|p| midi_in.port_name(p).unwrap().contains(device_name))
             .ok_or(MidiError::DeviceNotFound)?;
 
         debug!(
@@ -150,7 +150,7 @@ impl MidiManager {
         let out_ports = midi_out.ports();
         let out_port = out_ports
             .iter()
-            .find(|p| midi_out.port_name(p).unwrap() == device_name)
+            .find(|p| midi_out.port_name(p).unwrap().contains(device_name))
             .ok_or("MIDI device not found")
             .map_err(|_| MidiError::DeviceNotFound)?;
 

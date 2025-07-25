@@ -4,7 +4,7 @@ use blaulicht_shared::{
 use cpal::traits::DeviceTrait;
 use cpal::Device;
 use crossbeam_channel::{Receiver, Select, TryRecvError};
-use egui::Color32;
+use egui::{Color32, Context};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::mem;
@@ -834,48 +834,7 @@ impl eframe::App for TemplateApp {
         });
 
         // Left sidebar
-        egui::SidePanel::left("left_panel")
-            .resizable(true)
-            .default_width(200.0)
-            .width_range(150.0..=300.0)
-            .show(ctx, |ui| {
-                ui.heading("Navigation");
-                ui.separator();
-
-                // Tab switcher
-                ui.label("Pages");
-                ui.add_space(8.0);
-
-                if ui
-                    .selectable_label(self.current_page == AppPage::Main, "Main")
-                    .clicked()
-                {
-                    self.current_page = AppPage::Main;
-                }
-                if ui
-                    .selectable_label(self.current_page == AppPage::Fixtures, "Fixtures")
-                    .clicked()
-                {
-                    self.current_page = AppPage::Fixtures;
-                }
-
-                ui.add_space(16.0);
-                ui.label("Tools");
-                ui.add_space(8.0);
-
-                if ui.button("Calculator").clicked() {
-                    // Placeholder action
-                }
-                if ui.button("Notes").clicked() {
-                    // Placeholder action
-                }
-
-                ui.add_space(16.0);
-                ui.label("Status");
-                ui.add_space(8.0);
-                ui.label("Online");
-                ui.label("Last updated: Now");
-            });
+        self.left_panel_ui(ctx);
 
         // Right sidebar
         egui::SidePanel::right("right_panel")
@@ -1104,411 +1063,10 @@ impl eframe::App for TemplateApp {
             // Page content based on selected tab
             match self.current_page {
                 AppPage::Main => {
-                    // Main content area with graphs panel
-                    ui.horizontal(|ui| {
-                        // Left content area (3/4 width)
-                        let total_width = ui.available_width();
-                        let graph_panel_width = total_width * 0.25;
-                        let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
-
-                        ui.vertical(|ui| {
-                            ui.set_width(main_panel_width);
-                            ui.heading("Main Content");
-                            ui.label("This is the main content area taking up 3/4 of the width.");
-                            ui.add_space(20.0);
-                            ui.label("You can put your main application content here.");
-                        });
-
-                        ui.separator();
-
-                        // Graphs panel (1/4 width) - fixed width
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(graph_panel_width, ui.available_height()),
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| {
-                                ui.heading("Audio");
-                                let mut selected_device = self.data.state.audio.read().unwrap().device_name.clone();
-                                ui.label(format!("Input device: {}", selected_device.clone().unwrap_or_else(||"N/A".to_string())));
-
-                                let before = selected_device.clone();
-
-                                egui::ComboBox::from_label("Audio Device")
-                                    .selected_text(format!("{:?}", selected_device))
-                                    .show_ui(ui, |ui| {
-                                        for dev in &self.available_audio_devices {
-                                            ui.selectable_value(&mut selected_device, Some(dev.to_owned()), dev);
-                                        }
-                                        ui.selectable_value(&mut selected_device, None, "None");
-                                    }
-                                );
-
-                                if selected_device != before {
-                                    // Handle selection change
-                                    let new_dev = selected_device.map(|d|utils::device_from_name(d).unwrap());
-                                    self.data.from_frontend_sender.send(FromFrontend::SelectInputDevice(new_dev.clone())).unwrap();
-
-                                    let mut config_mut = self.data.config.lock().unwrap();
-
-                                    config_mut.default_audio_device = match new_dev {
-                                        Some(d) => Some(d.name().unwrap()),
-                                        None => None,
-                                    };
-
-                                    let path = PathBuf::from_str(&self.data.config_path).unwrap();
-                                    config::write_config(path, config_mut.clone()).unwrap();
-                                }
-
-                                // Show animation info
-                                ui.label(format!(
-                                    "Frame: {} | Animation Time: {:.2}s",
-                                    self.frame_count, self.animation_time
-                                ));
-
-                                // Set larger graph height
-                                let graph_height = 140.0;
-                                let graph_width = graph_panel_width - 16.0;
-                                let padding = 10.0;
-
-                                ui.add_space(padding);
-                                let (response, painter) = ui.allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                                self.volume_graph.draw(painter, response.rect);
-
-                                ui.add_space(padding);
-                                let (response_beat_volume, painter_beat_volume) = ui
-                                    .allocate_painter(
-                                        egui::vec2(graph_width, graph_height),
-                                        egui::Sense::hover(),
-                                    );
-                                self.beat_volume_graph
-                                    .draw(painter_beat_volume, response_beat_volume.rect);
-
-                                ui.add_space(padding);
-                                let (response_bass, painter_bass) = ui.allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                                self.bass_graph.draw(painter_bass, response_bass.rect);
-
-                                ui.add_space(padding);
-                                let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                                self.bass_avg_graph
-                                    .draw(painter_bass_avg, response_bass_avg.rect);
-
-                                ui.add_space(padding);
-                                let (response_bass_avg_short, painter_bass_avg_short) = ui
-                                    .allocate_painter(
-                                        egui::vec2(graph_width, graph_height),
-                                        egui::Sense::hover(),
-                                    );
-                                self.bass_avg_short_graph
-                                    .draw(painter_bass_avg_short, response_bass_avg_short.rect);
-
-                                ui.add_space(padding);
-                                let (response_bpm, painter_bpm) = ui.allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                                self.bpm_graph.draw(painter_bpm, response_bpm.rect);
-
-                                ui.add_space(padding);
-                                let (response_time_between_beats, painter_time_between_beats) = ui
-                                    .allocate_painter(
-                                        egui::vec2(graph_width, graph_height),
-                                        egui::Sense::hover(),
-                                    );
-                                self.time_between_beats_graph.draw(
-                                    painter_time_between_beats,
-                                    response_time_between_beats.rect,
-                                );
-
-                                ui.add_space(padding);
-
-                                // Graph controls
-                                ui.horizontal(|ui| {
-                                    if ui.button("Add Point").clicked() {
-                                        let random_value = 0;
-                                        self.volume_graph.add_data_point(random_value);
-                                        self.log_window.add_log(
-                                            LogLevel::Debug,
-                                            format!("Added data point: {}", random_value),
-                                            "Graph".to_string(),
-                                        );
-                                    }
-
-                                    if ui.button("Clear").clicked() {
-                                        self.volume_graph.clear();
-                                        self.log_window.add_log(
-                                            LogLevel::Warning,
-                                            "Volume graph cleared".to_string(),
-                                            "Graph".to_string(),
-                                        );
-                                    }
-
-                                    ui.label(format!(
-                                        "Points: {}",
-                                        self.volume_graph.data_points_count()
-                                    ));
-                                });
-                            },
-                        );
-                    });
+                    self.main_ui(ui);
                 }
                 AppPage::Fixtures => {
-                    ui.heading("Fixtures");
-                    ui.separator();
-                    let dmx_engine = {
-                        self.data.state.dmx_engine.read().unwrap().clone()
-                     };
-
-                    let groups = dmx_engine.groups();
-                    // let group_count = groups.len();
-                    // let mut selected_group = self.selected_fixture_group;
-                    // Layout: left (groups), right (fixtures if one group selected)
-
-                    // let mut selected_groups = vec![];
-
-                    ui.horizontal(|ui| {
-                        // Left: groups list
-                        let selection = dmx_engine.selection();
-                        ui.vertical(|ui| {
-                            ui.label("Groups:");
-                            ui.add_space(8.0);
-                            for (group_id, group) in groups.iter() {
-                                let is_selected = selection.group_ids.contains(group_id);
-
-                                // if is_selected {
-                                //     selected_groups.push(group_id);
-                                // }
-
-                                let rect = ui.allocate_exact_size(
-                                    egui::vec2(180.0, 48.0),
-                                    egui::Sense::click(),
-                                );
-                                let painter = ui.painter();
-                                let bg_color = if is_selected {
-                                    egui::Color32::from_rgb(60, 120, 200)
-                                } else {
-                                    egui::Color32::from_gray(40)
-                                };
-                                painter.rect_filled(rect.0, 6.0, bg_color);
-                                let fixture_count = group.fixtures.len();
-                                let name = format!("Group {}", group_id);
-                                painter.text(
-                                    rect.0.left_top() + egui::vec2(12.0, 8.0),
-                                    egui::Align2::LEFT_TOP,
-                                    &name,
-                                    egui::FontId::proportional(16.0),
-                                    egui::Color32::WHITE,
-                                );
-                                painter.text(
-                                    rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                                    egui::Align2::LEFT_BOTTOM,
-                                    format!("{} fixtures", fixture_count),
-                                    egui::FontId::proportional(12.0),
-                                    egui::Color32::GRAY,
-                                );
-                                if rect.1.clicked() {
-                                    // Toggle group selection
-                                    let msg = if is_selected {
-                                        ControlEvent::DeSelectGroup(*group_id)
-                                    } else {
-                                        ControlEvent::SelectGroup(*group_id)
-                                    };
-
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                                }
-                                ui.add_space(8.0);
-                            }
-                            // self.selected_fixture_group = selected_group;
-                        });
-                        // Right: fixtures in selected group
-
-                        #[derive(PartialEq, Eq, Clone, Copy)]
-                        enum Selection {
-                            Off,
-                            Limited,
-                            Cascading,
-                        }
-
-                        impl Selection {
-                            fn color(&self) -> Color32 {
-                                match self {
-                                    Selection::Off => Color32::from_gray(60),
-                                    Selection::Limited => Color32::from_rgb(120, 180, 80),
-                                    Selection::Cascading => Color32::from_rgb(80, 180, 120),
-                                }
-                            }
-                        }
-
-                        if !selection.group_ids.is_empty() {
-                            // Get selection info
-                            let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-                            let selection = dmx_engine.selection();
-
-                            let highlight_all = selection.fixtures_in_group.is_empty();
-                            let highlight_fixtures = &selection.fixtures_in_group;
-
-                            let mut total_fixtures = vec![];
-                            for g_id in selection.group_ids.iter() {
-                                let group = groups.get(g_id).unwrap();
-                                if selection.fixtures_in_group.is_empty() {
-                                    total_fixtures.extend( group.fixtures.keys().map(|f_id| (*g_id, *f_id, Selection::Cascading)));
-                                } else {
-                                    total_fixtures.extend( group.fixtures.keys().map(|f_id|{
-                                        let is_limited = selection.fixtures_in_group.contains(f_id);
-                                        let selection = match is_limited {
-                                            true => Selection::Limited,
-                                            false => Selection::Off,
-                                        };
-
-                                    (*g_id, *f_id, selection)
-                                    }
-                                ));
-                                }
-                            }
-
-                            // Layout: left (fixtures), right (controls)
-                            ui.horizontal(|ui| {
-                                // Fixtures list
-                                ui.vertical(|ui| {
-                                    ui.label(format!("Fixtures in Group"));
-                                    ui.add_space(8.0);
-
-                                    for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                                        // let is_selected =
-                                        //      highlight_fixtures.contains(fix_id);
-                                        let fixture = groups.get(&group_id).unwrap().fixtures.get(&fix_id).unwrap();
-
-                                        let fix_rect = ui.allocate_exact_size(
-                                            egui::vec2(180.0, 36.0),
-                                            egui::Sense::click(),
-                                        );
-                                        let painter = ui.painter();
-
-                                        let bg = fixture_selection.color();
-
-                                        painter.rect_filled(fix_rect.0, 4.0, bg);
-                                        painter.text(
-                                            fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
-                                            egui::Align2::LEFT_CENTER,
-                                            &fixture.name,
-                                            egui::FontId::proportional(14.0),
-                                            egui::Color32::WHITE,
-                                        );
-
-                                        // Click to toggle fixture selection if exactly one group is selected
-                                        if fix_rect.1.clicked() && selection.group_ids.len() == 1 && total_fixtures.len() != 1 {
-                                            let is_fix_selected =
-                                                highlight_fixtures.contains(fix_id);
-
-                                    let msg = if is_fix_selected {
-                                        ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(*fix_id)
-                                    } else {
-                                        ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id)
-                                    };
-
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                                }}
-                                });
-                                // Controls panel (right)
-                                // Only show if one fixture group is selected
-                                let selected_fixture = if selection.fixtures_in_group.len() == 1 {
-                                    total_fixtures.iter().filter(|(_, _, select)| *select == Selection::Limited ).next().cloned()
-                                } else if  total_fixtures.len() == 1 {
-                                    total_fixtures.first().cloned()
-                                } else {
-                                    None
-                                };
-
-                                    let buf = match selected_fixture {
-                                        Some((g_id, f_id, _))  => {
-                                            let fixture = groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
-                                            fixture.state.clone()
-                                        },
-                                        None => {dmx_engine.control_buffer.clone()}
-                                    };
-
-
-                                    ui.vertical(|ui| {
-                                        ui.label("Fixture Controls");
-                                        ui.add_space(8.0);
-                                        // Brightness slider
-                                        let mut brightness = buf.brightness as u32;
-                                        if ui
-                                            .add(
-                                                egui::Slider::new(&mut brightness, 0..=255)
-                                                    .text("Brightness"),
-                                            )
-                                            .changed()
-                                        {
-                                            // println!("SetBrightness({})", brightness);
-                                            self.data
-                                                .event_bus_connection
-                                                .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::SetBrightness(brightness as u8)));
-                                        }
-
-                                        // Alpha slider
-                                        // let mut alpha = fixture.state.alpha as u32;
-                                        // if ui
-                                        //     .add(
-                                        //         egui::Slider::new(&mut alpha, 0..=255)
-                                        //             .text("Alpha"),
-                                        //     )
-                                        //     .changed()
-                                        // {
-                                        //     // println!("SetAlpha({})", alpha);
-                                        //     self.data
-                                        //         .event_bus_connection
-                                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::));
-                                        // }
-
-                                        // Strobe speed slider
-                                        // let mut strobe = fixture.state.strobe_speed as u32;
-                                        // if ui
-                                        //     .add(
-                                        //         egui::Slider::new(&mut strobe, 0..=255)
-                                        //             .text("Strobe Speed"),
-                                        //     )
-                                        //     .changed()
-                                        // {
-                                        //     println!("SetStrobeSpeed({})", strobe);
-                                        //     self.data
-                                        //         .event_bus_connection
-                                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::Strobe ));
-                                        // }
-
-                                        // Color picker
-                                        let mut color = [
-                                            buf.color.r as f32 / 255.0,
-                                            buf.color.g as f32 / 255.0,
-                                            buf.color.b as f32 / 255.0,
-                                        ];
-                                        if ui.color_edit_button_rgb(&mut color).changed() {
-                                            let r = (color[0] * 255.0) as u8;
-                                            let g = (color[1] * 255.0) as u8;
-                                            let b = (color[2] * 255.0) as u8;
-                                            println!("SetColor({}, {}, {})", r, g, b);
-
-                                            self.data
-                                                .event_bus_connection
-                                                .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::SetColor((r, g, b))));
-                                        }
-                                    });
-                                // }
-
-                            });
-                        }
-                    });
+                    self.fixtures_ui(ui);
                 }
             }
 
@@ -1524,6 +1082,476 @@ impl eframe::App for TemplateApp {
                 egui::warn_if_debug_build(ui);
             });
         });
+    }
+}
+
+impl TemplateApp {
+    fn main_ui(&mut self, ui: &mut egui::Ui) {
+        // Main content area with graphs panel
+        ui.horizontal(|ui| {
+            // Left content area (3/4 width)
+            let total_width = ui.available_width();
+            let graph_panel_width = total_width * 0.25;
+            let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
+
+            ui.vertical(|ui| {
+                ui.set_width(main_panel_width);
+                ui.heading("Main Content");
+                ui.label("This is the main content area taking up 3/4 of the width.");
+                ui.add_space(20.0);
+                ui.label("You can put your main application content here.");
+            });
+
+            ui.separator();
+
+            // Graphs panel (1/4 width) - fixed width
+            ui.allocate_ui_with_layout(
+                egui::vec2(graph_panel_width, ui.available_height()),
+                egui::Layout::top_down(egui::Align::LEFT),
+                |ui| {
+                    ui.heading("Audio");
+                    let mut selected_device =
+                        self.data.state.audio.read().unwrap().device_name.clone();
+                    ui.label(format!(
+                        "Input device: {}",
+                        selected_device.clone().unwrap_or_else(|| "N/A".to_string())
+                    ));
+
+                    let before = selected_device.clone();
+
+                    egui::ComboBox::from_label("Audio Device")
+                        .selected_text(format!("{:?}", selected_device))
+                        .show_ui(ui, |ui| {
+                            for dev in &self.available_audio_devices {
+                                ui.selectable_value(
+                                    &mut selected_device,
+                                    Some(dev.to_owned()),
+                                    dev,
+                                );
+                            }
+                            ui.selectable_value(&mut selected_device, None, "None");
+                        });
+
+                    if selected_device != before {
+                        // Handle selection change
+                        let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
+                        self.data
+                            .from_frontend_sender
+                            .send(FromFrontend::SelectInputDevice(new_dev.clone()))
+                            .unwrap();
+
+                        let mut config_mut = self.data.config.lock().unwrap();
+
+                        config_mut.default_audio_device = match new_dev {
+                            Some(d) => Some(d.name().unwrap()),
+                            None => None,
+                        };
+
+                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
+                        config::write_config(path, config_mut.clone()).unwrap();
+                    }
+
+                    // Show animation info
+                    ui.label(format!(
+                        "Frame: {} | Animation Time: {:.2}s",
+                        self.frame_count, self.animation_time
+                    ));
+
+                    // Set larger graph height
+                    let graph_height = 140.0;
+                    let graph_width = graph_panel_width - 16.0;
+                    let padding = 10.0;
+
+                    ui.add_space(padding);
+                    let (response, painter) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.volume_graph.draw(painter, response.rect);
+
+                    ui.add_space(padding);
+                    let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.beat_volume_graph
+                        .draw(painter_beat_volume, response_beat_volume.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass, painter_bass) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_graph.draw(painter_bass, response_bass.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_avg_graph
+                        .draw(painter_bass_avg, response_bass_avg.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass_avg_short, painter_bass_avg_short) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_avg_short_graph
+                        .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+
+                    ui.add_space(padding);
+                    let (response_bpm, painter_bpm) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bpm_graph.draw(painter_bpm, response_bpm.rect);
+
+                    ui.add_space(padding);
+                    let (response_time_between_beats, painter_time_between_beats) = ui
+                        .allocate_painter(
+                            egui::vec2(graph_width, graph_height),
+                            egui::Sense::hover(),
+                        );
+                    self.time_between_beats_graph
+                        .draw(painter_time_between_beats, response_time_between_beats.rect);
+
+                    ui.add_space(padding);
+
+                    // Graph controls
+                    ui.horizontal(|ui| {
+                        if ui.button("Add Point").clicked() {
+                            let random_value = 0;
+                            self.volume_graph.add_data_point(random_value);
+                            self.log_window.add_log(
+                                LogLevel::Debug,
+                                format!("Added data point: {}", random_value),
+                                "Graph".to_string(),
+                            );
+                        }
+
+                        if ui.button("Clear").clicked() {
+                            self.volume_graph.clear();
+                            self.log_window.add_log(
+                                LogLevel::Warning,
+                                "Volume graph cleared".to_string(),
+                                "Graph".to_string(),
+                            );
+                        }
+
+                        ui.label(format!("Points: {}", self.volume_graph.data_points_count()));
+                    });
+                },
+            );
+        });
+    }
+
+    fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Fixtures");
+        ui.separator();
+        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+
+        let groups = dmx_engine.groups();
+        // let group_count = groups.len();
+        // let mut selected_group = self.selected_fixture_group;
+        // Layout: left (groups), right (fixtures if one group selected)
+
+        // let mut selected_groups = vec![];
+
+        ui.horizontal(|ui| {
+            // Left: groups list
+            let selection = dmx_engine.selection();
+            ui.vertical(|ui| {
+                ui.label("Groups:");
+                ui.add_space(8.0);
+                for (group_id, group) in groups.iter() {
+                    let is_selected = selection.group_ids.contains(group_id);
+
+                    // if is_selected {
+                    //     selected_groups.push(group_id);
+                    // }
+
+                    let rect =
+                        ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
+                    let painter = ui.painter();
+                    let bg_color = if is_selected {
+                        egui::Color32::from_rgb(60, 120, 200)
+                    } else {
+                        egui::Color32::from_gray(40)
+                    };
+                    painter.rect_filled(rect.0, 6.0, bg_color);
+                    let fixture_count = group.fixtures.len();
+                    let name = format!("Group {}", group_id);
+                    painter.text(
+                        rect.0.left_top() + egui::vec2(12.0, 8.0),
+                        egui::Align2::LEFT_TOP,
+                        &name,
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE,
+                    );
+                    painter.text(
+                        rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        format!("{} fixtures", fixture_count),
+                        egui::FontId::proportional(12.0),
+                        egui::Color32::GRAY,
+                    );
+                    if rect.1.clicked() {
+                        // Toggle group selection
+                        let msg = if is_selected {
+                            ControlEvent::DeSelectGroup(*group_id)
+                        } else {
+                            ControlEvent::SelectGroup(*group_id)
+                        };
+
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::Web, msg));
+                    }
+                    ui.add_space(8.0);
+                }
+                // self.selected_fixture_group = selected_group;
+            });
+            // Right: fixtures in selected group
+
+            #[derive(PartialEq, Eq, Clone, Copy)]
+            enum Selection {
+                Off,
+                Limited,
+                Cascading,
+            }
+
+            impl Selection {
+                fn color(&self) -> Color32 {
+                    match self {
+                        Selection::Off => Color32::from_gray(60),
+                        Selection::Limited => Color32::from_rgb(120, 180, 80),
+                        Selection::Cascading => Color32::from_rgb(80, 180, 120),
+                    }
+                }
+            }
+
+            if !selection.group_ids.is_empty() {
+                // Get selection info
+                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+                let selection = dmx_engine.selection();
+
+                let highlight_all = selection.fixtures_in_group.is_empty();
+                let highlight_fixtures = &selection.fixtures_in_group;
+
+                let mut total_fixtures = vec![];
+                for g_id in selection.group_ids.iter() {
+                    let group = groups.get(g_id).unwrap();
+                    if selection.fixtures_in_group.is_empty() {
+                        total_fixtures.extend(
+                            group
+                                .fixtures
+                                .keys()
+                                .map(|f_id| (*g_id, *f_id, Selection::Cascading)),
+                        );
+                    } else {
+                        total_fixtures.extend(group.fixtures.keys().map(|f_id| {
+                            let is_limited = selection.fixtures_in_group.contains(f_id);
+                            let selection = match is_limited {
+                                true => Selection::Limited,
+                                false => Selection::Off,
+                            };
+
+                            (*g_id, *f_id, selection)
+                        }));
+                    }
+                }
+                // Layout: left (fixtures), right (controls)
+
+                ui.horizontal(|ui| {
+                    // Fixtures list
+                    ui.vertical(|ui| {
+                        ui.label(format!("Fixtures in Group"));
+                        ui.add_space(8.0);
+
+                        for (group_id, fix_id, fixture_selection) in &total_fixtures {
+                            // let is_selected =
+                            //      highlight_fixtures.contains(fix_id);
+                            let fixture = groups
+                                .get(&group_id)
+                                .unwrap()
+                                .fixtures
+                                .get(&fix_id)
+                                .unwrap();
+
+                            let fix_rect = ui
+                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::click());
+                            let painter = ui.painter();
+
+                            let bg = fixture_selection.color();
+
+                            painter.rect_filled(fix_rect.0, 4.0, bg);
+                            painter.text(
+                                fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                &fixture.name,
+                                egui::FontId::proportional(14.0),
+                                egui::Color32::WHITE,
+                            );
+
+                            // Click to toggle fixture selection if exactly one group is selected
+                            if fix_rect.1.clicked()
+                                && selection.group_ids.len() == 1
+                                && total_fixtures.len() != 1
+                            {
+                                let is_fix_selected = highlight_fixtures.contains(fix_id);
+
+                                let msg = if is_fix_selected {
+                                    ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(*fix_id)
+                                } else {
+                                    ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id)
+                                };
+
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(EventOriginator::Web, msg));
+                            }
+                        }
+                    });
+                    // Controls panel (right)
+                    // Only show if one fixture group is selected
+                    let selected_fixture = if selection.fixtures_in_group.len() == 1 {
+                        total_fixtures
+                            .iter()
+                            .filter(|(_, _, select)| *select == Selection::Limited)
+                            .next()
+                            .cloned()
+                    } else if total_fixtures.len() == 1 {
+                        total_fixtures.first().cloned()
+                    } else {
+                        None
+                    };
+
+                    let buf = match selected_fixture {
+                        Some((g_id, f_id, _)) => {
+                            let fixture = groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
+                            fixture.state.clone()
+                        }
+                        None => dmx_engine.control_buffer.clone(),
+                    };
+
+                    ui.vertical(|ui| {
+                        ui.label("Fixture Controls");
+                        ui.add_space(8.0);
+                        // Brightness slider
+                        let mut brightness = buf.brightness as u32;
+                        if ui
+                            .add(egui::Slider::new(&mut brightness, 0..=255).text("Brightness"))
+                            .changed()
+                        {
+                            // println!("SetBrightness({})", brightness);
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetBrightness(brightness as u8),
+                                ));
+                        }
+
+                        // Alpha slider
+                        // let mut alpha = fixture.state.alpha as u32;
+                        // if ui
+                        //     .add(
+                        //         egui::Slider::new(&mut alpha, 0..=255)
+                        //             .text("Alpha"),
+                        //     )
+                        //     .changed()
+                        // {
+                        //     // println!("SetAlpha({})", alpha);
+                        //     self.data
+                        //         .event_bus_connection
+                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::));
+                        // }
+
+                        // Strobe speed slider
+                        // let mut strobe = fixture.state.strobe_speed as u32;
+                        // if ui
+                        //     .add(
+                        //         egui::Slider::new(&mut strobe, 0..=255)
+                        //             .text("Strobe Speed"),
+                        //     )
+                        //     .changed()
+                        // {
+                        //     println!("SetStrobeSpeed({})", strobe);
+                        //     self.data
+                        //         .event_bus_connection
+                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::Strobe ));
+                        // }
+
+                        // Color picker
+                        let mut color = [
+                            buf.color.r as f32 / 255.0,
+                            buf.color.g as f32 / 255.0,
+                            buf.color.b as f32 / 255.0,
+                        ];
+                        if ui.color_edit_button_rgb(&mut color).changed() {
+                            let r = (color[0] * 255.0) as u8;
+                            let g = (color[1] * 255.0) as u8;
+                            let b = (color[2] * 255.0) as u8;
+                            println!("SetColor({}, {}, {})", r, g, b);
+
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetColor((r, g, b)),
+                                ));
+                        }
+                    });
+                    // }
+                });
+            }
+        });
+    }
+
+    fn left_panel_ui(&mut self, ctx: &Context) {
+        egui::SidePanel::left("left_panel")
+            .resizable(true)
+            .default_width(200.0)
+            .width_range(150.0..=300.0)
+            .show(ctx, |ui| {
+                ui.heading("Navigation");
+                ui.separator();
+
+                // Tab switcher
+                ui.label("Pages");
+                ui.add_space(8.0);
+
+                if ui
+                    .selectable_label(self.current_page == AppPage::Main, "Main")
+                    .clicked()
+                {
+                    self.current_page = AppPage::Main;
+                }
+                if ui
+                    .selectable_label(self.current_page == AppPage::Fixtures, "Fixtures")
+                    .clicked()
+                {
+                    self.current_page = AppPage::Fixtures;
+                }
+
+                ui.add_space(16.0);
+                ui.label("Tools");
+                ui.add_space(8.0);
+
+                if ui.button("Calculator").clicked() {
+                    // Placeholder action
+                }
+                if ui.button("Notes").clicked() {
+                    // Placeholder action
+                }
+
+                ui.add_space(16.0);
+                ui.label("Status");
+                ui.add_space(8.0);
+                ui.label("Online");
+                ui.label("Last updated: Now");
+            });
     }
 }
 
