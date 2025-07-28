@@ -17,11 +17,11 @@ pub struct BPMObject {
     pub bpm: i64,
 }
 
-#[get("/api/state")]
-pub async fn get_state(data: Data<AppStateWrapper>) -> HttpResponse {
-    HttpResponse::Ok().json(&*data.state)
-    // HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
-}
+// #[get("/api/state")]
+// pub async fn get_state(data: Data<AppStateWrapper>) -> HttpResponse {
+//     HttpResponse::Ok().json(&*data.state)
+//     // HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
+// }
 
 //
 // Audio device functions.

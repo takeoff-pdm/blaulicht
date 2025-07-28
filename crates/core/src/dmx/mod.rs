@@ -2,26 +2,22 @@ mod clock;
 mod fixture;
 
 use crate::{
-    dmx::{
-        fixture::{
-            Fixture, FixtureGroup, FixtureOrientation, FixtureState, FixtureType, Light, MovingHead,
-        },
+    dmx::fixture::{
+        Fixture, FixtureGroup, FixtureOrientation, FixtureState, FixtureType, Light, MovingHead,
     },
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    event::SystemEventBusConnectionInst,
     msg::SystemMessage,
     routes::AppState,
 };
 use blaulicht_shared::{
-    Color, ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION
+    Color, ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    hash::Hash,
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    collections::{BTreeMap, HashSet, VecDeque},
+    sync::{Arc, RwLockWriteGuard},
 };
 
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
@@ -92,7 +88,6 @@ impl FixtureSelection {
 pub struct DmxEngine {
     // TODO: check if this is too slow.
     state_ref: Arc<AppState>,
-    pub dmx: [u8; 513],      // Starting at 1
     dmx_previous: [u8; 513], // Starting at 1
     // TODO: add more, internal state.
     event_bus_connection: SystemEventBusConnectionInst,
@@ -108,7 +103,7 @@ impl DmxEngine {
         Self {
             state_ref,
             dmx_previous: [0; 513],
-            dmx: [0; 513],
+            // dmx: [0; 513],
             event_bus_connection,
             system_out,
         }
@@ -149,12 +144,16 @@ impl DmxEngine {
         // TODO: flatten to DMX buffer.
 
         // Return true if the dmx buffer changed.
-        if self.dmx != self.dmx_previous {
-            self.dmx_previous = self.dmx;
-            true
-        } else {
-            false
-        }
+        // let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
+        // if buffer.dmx_buffer != self.dmx_previous {
+        //     self.dmx_previous = buffer.dmx_buffer;
+        //     true
+        // } else {
+        //     false
+        // }
+
+        // TODO: this always returns true in the current impl
+        true
     }
 
     pub fn tick(&mut self) {
@@ -170,11 +169,12 @@ impl DmxEngine {
 
     fn update_dmx_buffer(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
+        let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
 
         for group in &state.groups {
             for fixture in &group.1.fixtures {
                 let fix = fixture.1;
-                fix.write(&mut self.dmx);
+                fix.write(&mut buffer.dmx_buffer);
             }
         }
     }
@@ -337,12 +337,14 @@ impl DmxEngine {
 // State.
 //
 
+pub type EngineGroups = BTreeMap<u8, FixtureGroup>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EngineState {
     // TODO: how to solve this?
     // fixtures: Vec<Fixture>,
     // Assigns an ID to a group.
-    groups: BTreeMap<u8, FixtureGroup>,
+    groups: EngineGroups,
     // Selection.
     selection: EngineSelection,
     selection_stack: VecDeque<EngineSelection>,
@@ -368,7 +370,8 @@ impl Default for EngineState {
                                 alpha: 0,
                                 orientation: FixtureOrientation::default(),
                                 strobe_speed: 0,
-                            }
+                            },
+                            pos: (1, 2).into(),
                         },
                         1 => Fixture {
                             name: "BarQuux".into(),
@@ -380,7 +383,8 @@ impl Default for EngineState {
                                 alpha: 0,
                                 orientation: FixtureOrientation::default(),
                                 strobe_speed: 0,
-                            }
+                            },
+                            pos: (1, 3).into(),
                         }
                      }.into_iter().collect(),
                 },
@@ -396,7 +400,8 @@ impl Default for EngineState {
                                 alpha: 0,
                                 orientation: FixtureOrientation::default(),
                                 strobe_speed: 0,
-                            }
+                            },
+                            pos: (1, 4).into(),
                         },
                      }.into_iter().collect(),
                 },
@@ -412,7 +417,8 @@ impl Default for EngineState {
                                 alpha: 0,
                                 orientation: FixtureOrientation::default(),
                                 strobe_speed: 0,
-                            }
+                            },
+                            pos: (1, 5).into(),
                         },
                      }.into_iter().collect(),
                 },
@@ -428,7 +434,8 @@ impl Default for EngineState {
                                 alpha: 0,
                                 orientation: FixtureOrientation::default(),
                                 strobe_speed: 0,
-                            }
+                            },
+                            pos: (1, 6).into(),
                         },
                      }.into_iter().collect(),
                 },
@@ -443,7 +450,7 @@ impl Default for EngineState {
 }
 
 impl EngineState {
-    pub fn groups(&self) -> &BTreeMap<u8, FixtureGroup> {
+    pub fn groups(&self) -> &EngineGroups {
         &self.groups
     }
     pub fn selection(&self) -> &EngineSelection {

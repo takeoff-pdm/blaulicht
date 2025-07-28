@@ -47,12 +47,24 @@ impl AudioState {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
+    pub dmx_buffer: RwLock<DmxBuffer>,
+}
+
+pub struct DmxBuffer {
+    pub dmx_buffer: [u8; 513],
+}
+
+impl DmxBuffer {
+    pub fn new() -> Self {
+        Self {
+            dmx_buffer: [0; 513],
+        }
+    }
 }
 
 impl AppState {
@@ -72,6 +84,7 @@ impl AppState {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             dmx_engine: RwLock::new(EngineState::default()),
+            dmx_buffer: RwLock::new(DmxBuffer::new()),
             audio: RwLock::new(AudioState::default()),
         }
     }

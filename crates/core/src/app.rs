@@ -10,16 +10,35 @@ use std::collections::VecDeque;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLockReadGuard};
 use std::time::Instant;
 
+use crate::dmx::EngineGroups;
 use crate::msg::FromFrontend;
+use crate::routes::DmxBuffer;
 use crate::{
     audio::capture::SignalCollector,
     msg::{SystemMessage, UnifiedMessage},
     routes::AppStateWrapper,
 };
 use crate::{config, system_message, utils};
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Selection {
+    Off,
+    Limited,
+    Cascading,
+}
+
+impl Selection {
+    fn color(&self) -> Color32 {
+        match self {
+            Selection::Off => Color32::from_gray(60),
+            Selection::Limited => Color32::from_rgb(120, 180, 80),
+            Selection::Cascading => Color32::from_rgb(80, 180, 120),
+        }
+    }
+}
 
 //
 // Log Window Component
@@ -1252,190 +1271,191 @@ impl TemplateApp {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
 
         let groups = dmx_engine.groups();
+        let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+        let selection = dmx_engine.selection();
+
+        let highlight_fixtures = &selection.fixtures_in_group;
+
+        let mut total_fixtures = vec![];
+        for g_id in selection.group_ids.iter() {
+            let group = groups.get(g_id).unwrap();
+            if selection.fixtures_in_group.is_empty() {
+                total_fixtures.extend(
+                    group
+                        .fixtures
+                        .keys()
+                        .map(|f_id| (*g_id, *f_id, Selection::Cascading)),
+                );
+            } else {
+                total_fixtures.extend(group.fixtures.keys().map(|f_id| {
+                    let is_limited = selection.fixtures_in_group.contains(f_id);
+                    let selection = match is_limited {
+                        true => Selection::Limited,
+                        false => Selection::Off,
+                    };
+
+                    (*g_id, *f_id, selection)
+                }));
+            }
+        }
+
+        let selected_fixture = if selection.fixtures_in_group.len() == 1 {
+            total_fixtures
+                .iter()
+                .filter(|(_, _, select)| *select == Selection::Limited)
+                .next()
+                .cloned()
+        } else if total_fixtures.len() == 1 {
+            total_fixtures.first().cloned()
+        } else {
+            None
+        };
+
         // let group_count = groups.len();
         // let mut selected_group = self.selected_fixture_group;
         // Layout: left (groups), right (fixtures if one group selected)
 
         // let mut selected_groups = vec![];
 
-        ui.horizontal(|ui| {
-            // Left: groups list
-            let selection = dmx_engine.selection();
-            ui.vertical(|ui| {
-                ui.label("Groups:");
-                ui.add_space(8.0);
-                for (group_id, group) in groups.iter() {
-                    let is_selected = selection.group_ids.contains(group_id);
-
-                    // if is_selected {
-                    //     selected_groups.push(group_id);
-                    // }
-
-                    let rect =
-                        ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
-                    let painter = ui.painter();
-                    let bg_color = if is_selected {
-                        egui::Color32::from_rgb(60, 120, 200)
-                    } else {
-                        egui::Color32::from_gray(40)
-                    };
-                    painter.rect_filled(rect.0, 6.0, bg_color);
-                    let fixture_count = group.fixtures.len();
-                    let name = format!("Group {}", group_id);
-                    painter.text(
-                        rect.0.left_top() + egui::vec2(12.0, 8.0),
-                        egui::Align2::LEFT_TOP,
-                        &name,
-                        egui::FontId::proportional(16.0),
-                        egui::Color32::WHITE,
-                    );
-                    painter.text(
-                        rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                        egui::Align2::LEFT_BOTTOM,
-                        format!("{} fixtures", fixture_count),
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::GRAY,
-                    );
-                    if rect.1.clicked() {
-                        // Toggle group selection
-                        let msg = if is_selected {
-                            ControlEvent::DeSelectGroup(*group_id)
-                        } else {
-                            ControlEvent::SelectGroup(*group_id)
-                        };
-
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                    }
-                    ui.add_space(8.0);
-                }
-                // self.selected_fixture_group = selected_group;
-            });
-            // Right: fixtures in selected group
-
-            #[derive(PartialEq, Eq, Clone, Copy)]
-            enum Selection {
-                Off,
-                Limited,
-                Cascading,
-            }
-
-            impl Selection {
-                fn color(&self) -> Color32 {
-                    match self {
-                        Selection::Off => Color32::from_gray(60),
-                        Selection::Limited => Color32::from_rgb(120, 180, 80),
-                        Selection::Cascading => Color32::from_rgb(80, 180, 120),
-                    }
-                }
-            }
-
-            if !selection.group_ids.is_empty() {
-                // Get selection info
-                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-                let selection = dmx_engine.selection();
-
-                let highlight_all = selection.fixtures_in_group.is_empty();
-                let highlight_fixtures = &selection.fixtures_in_group;
-
-                let mut total_fixtures = vec![];
-                for g_id in selection.group_ids.iter() {
-                    let group = groups.get(g_id).unwrap();
-                    if selection.fixtures_in_group.is_empty() {
-                        total_fixtures.extend(
-                            group
-                                .fixtures
-                                .keys()
-                                .map(|f_id| (*g_id, *f_id, Selection::Cascading)),
-                        );
-                    } else {
-                        total_fixtures.extend(group.fixtures.keys().map(|f_id| {
-                            let is_limited = selection.fixtures_in_group.contains(f_id);
-                            let selection = match is_limited {
-                                true => Selection::Limited,
-                                false => Selection::Off,
-                            };
-
-                            (*g_id, *f_id, selection)
-                        }));
-                    }
-                }
-                // Layout: left (fixtures), right (controls)
-
+        let box_size = egui::vec2(ui.available_width(), 64.0);
+        ui.allocate_ui_with_layout(
+            box_size,
+            egui::Layout::top_down(egui::Align::Center),
+            |ui| {
                 ui.horizontal(|ui| {
-                    // Fixtures list
+                    // ui.horizontal(|ui| {
+                    // Left: groups list
                     ui.vertical(|ui| {
-                        ui.label(format!("Fixtures in Group"));
+                        ui.label("Groups:");
                         ui.add_space(8.0);
+                        for (group_id, group) in groups.iter() {
+                            let is_selected = selection.group_ids.contains(group_id);
 
-                        for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                            // let is_selected =
-                            //      highlight_fixtures.contains(fix_id);
-                            let fixture = groups
-                                .get(&group_id)
-                                .unwrap()
-                                .fixtures
-                                .get(&fix_id)
-                                .unwrap();
+                            // if is_selected {
+                            //     selected_groups.push(group_id);
+                            // }
 
-                            let fix_rect = ui
-                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::click());
+                            let rect = ui
+                                .allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
                             let painter = ui.painter();
-
-                            let bg = fixture_selection.color();
-
-                            painter.rect_filled(fix_rect.0, 4.0, bg);
+                            let bg_color = if is_selected {
+                                egui::Color32::from_rgb(60, 120, 200)
+                            } else {
+                                egui::Color32::from_gray(40)
+                            };
+                            painter.rect_filled(rect.0, 6.0, bg_color);
+                            let fixture_count = group.fixtures.len();
+                            let name = format!("Group {}", group_id);
                             painter.text(
-                                fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
-                                egui::Align2::LEFT_CENTER,
-                                &fixture.name,
-                                egui::FontId::proportional(14.0),
+                                rect.0.left_top() + egui::vec2(12.0, 8.0),
+                                egui::Align2::LEFT_TOP,
+                                &name,
+                                egui::FontId::proportional(16.0),
                                 egui::Color32::WHITE,
                             );
-
-                            // Click to toggle fixture selection if exactly one group is selected
-                            if fix_rect.1.clicked()
-                                && selection.group_ids.len() == 1
-                                && total_fixtures.len() != 1
-                            {
-                                let is_fix_selected = highlight_fixtures.contains(fix_id);
-
-                                let msg = if is_fix_selected {
-                                    ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(*fix_id)
+                            painter.text(
+                                rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                format!("{} fixtures", fixture_count),
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::GRAY,
+                            );
+                            if rect.1.clicked() {
+                                // Toggle group selection
+                                let msg = if is_selected {
+                                    ControlEvent::DeSelectGroup(*group_id)
                                 } else {
-                                    ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id)
+                                    ControlEvent::SelectGroup(*group_id)
                                 };
 
                                 self.data
                                     .event_bus_connection
                                     .send(ControlEventMessage::new(EventOriginator::Web, msg));
                             }
+                            ui.add_space(8.0);
                         }
+                        // self.selected_fixture_group = selected_group;
                     });
-                    // Controls panel (right)
-                    // Only show if one fixture group is selected
-                    let selected_fixture = if selection.fixtures_in_group.len() == 1 {
-                        total_fixtures
-                            .iter()
-                            .filter(|(_, _, select)| *select == Selection::Limited)
-                            .next()
-                            .cloned()
-                    } else if total_fixtures.len() == 1 {
-                        total_fixtures.first().cloned()
-                    } else {
-                        None
-                    };
 
-                    let buf = match selected_fixture {
-                        Some((g_id, f_id, _)) => {
-                            let fixture = groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
-                            fixture.state.clone()
+                    // Right: fixtures in selected group
+                    // Get selection info
+                    // Layout: left (fixtures), right (controls)
+
+                    ui.horizontal(|ui| {
+                        // Fixtures list
+                        if !selection.group_ids.is_empty() {
+                            ui.vertical(|ui| {
+                                ui.label(format!("Fixtures in Group"));
+                                ui.add_space(8.0);
+
+                                for (group_id, fix_id, fixture_selection) in &total_fixtures {
+                                    // let is_selected =
+                                    //      highlight_fixtures.contains(fix_id);
+                                    let fixture = groups
+                                        .get(&group_id)
+                                        .unwrap()
+                                        .fixtures
+                                        .get(&fix_id)
+                                        .unwrap();
+
+                                    let fix_rect = ui.allocate_exact_size(
+                                        egui::vec2(180.0, 36.0),
+                                        egui::Sense::click(),
+                                    );
+                                    let painter = ui.painter();
+
+                                    let bg = fixture_selection.color();
+
+                                    painter.rect_filled(fix_rect.0, 4.0, bg);
+                                    painter.text(
+                                        fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        &fixture.name,
+                                        egui::FontId::proportional(14.0),
+                                        egui::Color32::WHITE,
+                                    );
+
+                                    // Click to toggle fixture selection if exactly one group is selected
+                                    if fix_rect.1.clicked()
+                                        && selection.group_ids.len() == 1
+                                        && total_fixtures.len() != 1
+                                    {
+                                        let is_fix_selected = highlight_fixtures.contains(fix_id);
+
+                                        let msg = if is_fix_selected {
+                                            ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
+                                                *fix_id,
+                                            )
+                                        } else {
+                                            ControlEvent::LimitSelectionToFixtureInCurrentGroup(
+                                                *fix_id,
+                                            )
+                                        };
+
+                                        self.data.event_bus_connection.send(
+                                            ControlEventMessage::new(EventOriginator::Web, msg),
+                                        );
+                                    }
+                                }
+                            });
+                        } else {
+                            let _ = ui
+                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::empty());
                         }
-                        None => dmx_engine.control_buffer.clone(),
-                    };
+                        // }
+                    });
 
+                    // Controls panel (right)
                     ui.vertical(|ui| {
+                        let buf = match selected_fixture {
+                            Some((g_id, f_id, _)) => {
+                                let fixture =
+                                    groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
+                                fixture.state.clone()
+                            }
+                            None => dmx_engine.control_buffer.clone(),
+                        };
+
                         ui.label("Fixture Controls");
                         ui.add_space(8.0);
                         // Brightness slider
@@ -1503,10 +1523,12 @@ impl TemplateApp {
                                 ));
                         }
                     });
-                    // }
+
+                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                    simulate_dmx(ui, groups, dmx_buffer)
                 });
-            }
-        });
+            },
+        );
     }
 
     fn left_panel_ui(&mut self, ctx: &Context) {
@@ -1567,4 +1589,11 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
         );
         ui.label(".");
     });
+}
+
+fn simulate_dmx(ui: &mut egui::Ui, groups: &EngineGroups, dmx: RwLockReadGuard<'_, DmxBuffer>) {
+    let rect = ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
+    let painter = ui.painter();
+    let bg_color = egui::Color32::from_rgb(255, 120, 200);
+    painter.rect_filled(rect.0, 6.0, bg_color);
 }
