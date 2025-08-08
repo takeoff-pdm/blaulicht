@@ -1,34 +1,16 @@
-use std::collections::{HashMap, VecDeque};
-use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{mem, thread};
-
-use actix_files::Files;
-use actix_web::web::{self, Data};
-use actix_web::{App, HttpServer};
 use anyhow::{bail, Context};
-use blaulicht_core::app::TemplateApp;
+use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::msg::FromFrontend;
-use blaulicht_core::msg::{SystemMessage, UnifiedMessage};
-use blaulicht_core::plugin::{midi, PluginManager};
+use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::routes::{AppState, AppStateWrapper};
-use blaulicht_core::{config, dmx, mainloop, plugin, routes, utils};
-use blaulicht_shared::ControlEventMessage;
-// use blaulicht::app::FromFrontend;
-// use blaulicht::audio::defs::AudioThreadControlSignal;
-// use blaulicht::msg::{SystemMessage, UnifiedMessage};
-// use blaulicht::routes::AppState;
-// use blaulicht::utils::device_from_name;
-// use blaulicht::{config, dmx, midi, routes};
-use crossbeam_channel::{Sender, TryRecvError};
+use blaulicht_core::{config, mainloop, utils};
 use env_logger::Env;
-use log::{error, info};
-use notify::event::{DataChange, ModifyKind};
-use notify::{Event, RecursiveMode, Watcher};
+use log::info;
+use std::sync::atomic::AtomicU8;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 // #[actix_web::main]
 fn main() -> anyhow::Result<()> {
@@ -260,9 +242,9 @@ fn main() -> anyhow::Result<()> {
     };
 
     eframe::run_native(
-        "eframe template",
+        "blaulicht",
         native_options,
-        Box::new(|cc| Ok(Box::new(TemplateApp::new(cc, state_wrapper)))),
+        Box::new(|cc| Ok(Box::new(BlaulichtApp::new(cc, state_wrapper)))),
     )
     .unwrap();
 

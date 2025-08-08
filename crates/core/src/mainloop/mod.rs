@@ -199,7 +199,7 @@ pub fn run(
             };
 
             // TODO: maybe feed with audio signals.
-            dmx_engine.tick();
+            dmx_engine.tick(collector.take_snapshot());
 
             time_of_last_dmx_tick = now;
 

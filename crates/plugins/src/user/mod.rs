@@ -1,10 +1,10 @@
-use std::{collections::HashMap, fmt::Display, mem::MaybeUninit};
+use std::{fmt::Display, mem::MaybeUninit};
 
 use crate::{
     blaulicht::{bl_send, prelude::println},
     midi::{MidiConnection, MidiEvent},
 };
-use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventCollection, ControlEventMessage, TickInput};
+use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventMessage, TickInput};
 use map_range::MapRange;
 
 //
@@ -20,11 +20,15 @@ enum MidiDevice {
 
 impl Display for MidiDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio nanoKONTROL",
-            MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1",
-            MidiDevice::APCMini =>"APC mini mk2:APC mini mk2 APC mini mk2 Contr",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio",
+                MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1",
+                MidiDevice::APCMini => "APC mini mk2:APC mini mk2 Control",
+            }
+        )
     }
 }
 
@@ -66,7 +70,7 @@ pub fn initialize(input: TickInput) {
         MidiDevice::MidiMix,
         MidiDevice::APCMini,
     ];
-    devices.sort_by(|a, b| a.index().cmp(&b.index()));
+    devices.sort_by_key(|a| a.index());
 
     let mut midi_handles = Vec::with_capacity(devices.len());
     // let mut ids_to_midi_types = HashMap::new();

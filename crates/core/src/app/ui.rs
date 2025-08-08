@@ -1,566 +1,22 @@
-use blaulicht_shared::{
-    CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator,
-};
+use crate::app::graph::TimeSeriesGraph;
+use crate::app::log::{LogLevel, LogWindow};
+use crate::app::{AnimationPageState, AppPage, BlaulichtApp};
+use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
+use crate::msg::FromFrontend;
+use crate::{audio::capture::SignalCollector, msg::SystemMessage, routes::AppStateWrapper};
+use crate::{config, utils};
 use cpal::traits::DeviceTrait;
-use cpal::Device;
-use crossbeam_channel::{Receiver, Select, TryRecvError};
+use crossbeam_channel::TryRecvError;
 use egui::{Color32, Context};
-use serde::Deserialize;
-use std::collections::VecDeque;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, RwLockReadGuard};
-use std::time::Instant;
-
-use crate::dmx::EngineGroups;
-use crate::msg::FromFrontend;
-use crate::routes::DmxBuffer;
-use crate::{
-    audio::capture::SignalCollector,
-    msg::{SystemMessage, UnifiedMessage},
-    routes::AppStateWrapper,
-};
-use crate::{config, system_message, utils};
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum Selection {
-    Off,
-    Limited,
-    Cascading,
-}
-
-impl Selection {
-    fn color(&self) -> Color32 {
-        match self {
-            Selection::Off => Color32::from_gray(60),
-            Selection::Limited => Color32::from_rgb(120, 180, 80),
-            Selection::Cascading => Color32::from_rgb(80, 180, 120),
-        }
-    }
-}
-
-//
-// Log Window Component
-//
-
-/// A log window component that displays scrolling log messages
-pub struct LogWindow {
-    logs: VecDeque<LogEntry>,
-    max_logs: usize,
-    auto_scroll: bool,
-    filter_text: String,
-    selected_log_level: LogLevel,
-    log_height: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct LogEntry {
-    timestamp: std::time::SystemTime,
-    level: LogLevel,
-    message: String,
-    source: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warning,
-    Error,
-    All,
-}
-
-impl LogLevel {
-    fn color(&self) -> egui::Color32 {
-        match self {
-            LogLevel::Debug => egui::Color32::from_gray(150),
-            LogLevel::Info => egui::Color32::from_rgb(100, 150, 255),
-            LogLevel::Warning => egui::Color32::from_rgb(255, 200, 100),
-            LogLevel::Error => egui::Color32::from_rgb(255, 100, 100),
-            LogLevel::All => egui::Color32::WHITE,
-        }
-    }
-
-    fn icon(&self) -> &'static str {
-        match self {
-            LogLevel::Debug => "🔍",
-            LogLevel::Info => "ℹ️",
-            LogLevel::Warning => "⚠️",
-            LogLevel::Error => "❌",
-            LogLevel::All => "📋",
-        }
-    }
-}
-
-impl LogWindow {
-    pub fn new(max_logs: usize) -> Self {
-        Self {
-            logs: VecDeque::new(),
-            max_logs,
-            auto_scroll: true,
-            filter_text: String::new(),
-            selected_log_level: LogLevel::All,
-            log_height: 200.0,
-        }
-    }
-
-    pub fn add_log(&mut self, level: LogLevel, message: String, source: String) {
-        let entry = LogEntry {
-            timestamp: std::time::SystemTime::now(),
-            level,
-            message,
-            source,
-        };
-
-        self.logs.push_back(entry);
-
-        // Keep only the latest logs
-        if self.logs.len() > self.max_logs {
-            self.logs.pop_front();
-        }
-    }
-
-    pub fn clear_logs(&mut self) {
-        self.logs.clear();
-    }
-
-    pub fn draw(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Log Terminal");
-
-        // Controls
-        ui.horizontal(|ui| {
-            ui.label("Filter:");
-            ui.text_edit_singleline(&mut self.filter_text);
-
-            ui.separator();
-
-            ui.label("Level:");
-            egui::ComboBox::from_id_salt("log_level")
-                .selected_text(format!(
-                    "{} {}",
-                    self.selected_log_level.icon(),
-                    format!("{:?}", self.selected_log_level)
-                ))
-                .show_ui(ui, |ui| {
-                    for level in [
-                        LogLevel::All,
-                        LogLevel::Debug,
-                        LogLevel::Info,
-                        LogLevel::Warning,
-                        LogLevel::Error,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.selected_log_level,
-                            level.clone(),
-                            format!("{} {:?}", level.icon(), level),
-                        );
-                    }
-                });
-
-            ui.separator();
-
-            ui.checkbox(&mut self.auto_scroll, "Auto-scroll");
-
-            if ui.button("Clear").clicked() {
-                self.clear_logs();
-            }
-        });
-
-        ui.separator();
-
-        // Log display area - resizable content area
-        ui.horizontal(|ui| {
-            ui.label("Log Height:");
-            ui.add(egui::Slider::new(&mut self.log_height, 100.0..=600.0).text("height"));
-        });
-
-        egui::ScrollArea::vertical()
-            .max_height(self.log_height)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-
-                let mut should_scroll_to_bottom = false;
-
-                for entry in &self.logs {
-                    // Apply filters
-                    if self.selected_log_level != LogLevel::All
-                        && entry.level != self.selected_log_level
-                    {
-                        continue;
-                    }
-
-                    if !self.filter_text.is_empty() {
-                        if !entry
-                            .message
-                            .to_lowercase()
-                            .contains(&self.filter_text.to_lowercase())
-                            && !entry
-                                .source
-                                .to_lowercase()
-                                .contains(&self.filter_text.to_lowercase())
-                        {
-                            continue;
-                        }
-                    }
-
-                    // Format timestamp
-                    let timestamp = entry
-                        .timestamp
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-
-                    let time_str = format!(
-                        "{:02}:{:02}:{:02}",
-                        (timestamp / 3600) % 24,
-                        (timestamp / 60) % 60,
-                        timestamp % 60
-                    );
-
-                    // Create log line
-                    let log_text = format!(
-                        "[{}] {:?} {} | {} | {}",
-                        time_str,
-                        entry.level,
-                        format!("{:?}", entry.level),
-                        entry.source,
-                        entry.message
-                    );
-
-                    // Display with appropriate color
-                    ui.colored_label(entry.level.color(), log_text);
-
-                    should_scroll_to_bottom = true;
-                }
-
-                // Auto-scroll to bottom
-                if self.auto_scroll && should_scroll_to_bottom {
-                    ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
-                }
-            });
-
-        // Status bar
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            ui.label(format!("Total logs: {}", self.logs.len()));
-            ui.separator();
-            ui.label(format!("Filtered level: {:?}", self.selected_log_level));
-            if !self.filter_text.is_empty() {
-                ui.separator();
-                ui.label(format!("Filter: '{}'", self.filter_text));
-            }
-        });
-    }
-}
-
-//
-// Graph component
-//
-
-const CAP: usize = 1000;
-const TIME_WINDOW_MS: u64 = 3000;
-const GRAPH_UPDATE_INTERVAL_MS: u64 = 5;
-
-/// Modular time series graph component
-pub struct TimeSeriesGraph {
-    time_series_data: Vec<(u64, i32)>,
-    start_time: u64,
-    last_update: u64,
-    title: String,
-    min_value: i32,
-    max_value: i32,
-    line_color: egui::Color32,
-    shadow_color: egui::Color32,
-}
-
-impl TimeSeriesGraph {
-    pub fn new(title: String, min_value: i32, max_value: i32, line_color: egui::Color32) -> Self {
-        let start_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-
-        Self {
-            time_series_data: {
-                let mut v = vec![];
-                for i in 0..100 {
-                    v.push((i * 20, 0))
-                }
-                v
-            },
-            start_time,
-            last_update: 0,
-            title,
-            min_value,
-            max_value,
-            line_color,
-            shadow_color: egui::Color32::from_gray(40),
-        }
-    }
-
-    /// Add a new data point to the time series
-    pub fn add_data_point(&mut self, value: i32) {
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-        let relative_time = current_time - self.start_time;
-        self.time_series_data.push((relative_time, value));
-        if self.time_series_data.len() > CAP {
-            self.time_series_data.remove(0);
-        }
-    }
-
-    /// Update the graph with new data if enough time has passed
-    pub fn update(&mut self, current_value: i32) {
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-        let elapsed = current_time - self.last_update;
-        if elapsed >= GRAPH_UPDATE_INTERVAL_MS {
-            self.add_data_point(current_value);
-            self.last_update = current_time;
-        }
-    }
-
-    /// Create smooth curve points using cubic interpolation
-    fn create_smooth_curve(&self, points: &[egui::Pos2], y_offset: f32) -> Vec<egui::Pos2> {
-        if points.len() < 2 {
-            return points.to_vec();
-        }
-
-        let mut smooth_points = Vec::new();
-        let segments_per_point = 8; // Number of interpolated points between each original point
-
-        for i in 0..points.len() - 1 {
-            let p0 = if i > 0 { points[i - 1] } else { points[i] };
-            let p1 = points[i];
-            let p2 = points[i + 1];
-            let p3 = if i + 2 < points.len() {
-                points[i + 2]
-            } else {
-                points[i + 1]
-            };
-
-            for j in 0..=segments_per_point {
-                let t = j as f32 / segments_per_point as f32;
-                let x = self.cubic_interpolate(p0.x, p1.x, p2.x, p3.x, t);
-                let y = self.cubic_interpolate(p0.y, p1.y, p2.y, p3.y, t) + y_offset;
-                smooth_points.push(egui::pos2(x, y));
-            }
-        }
-
-        smooth_points
-    }
-
-    /// Cubic interpolation between four points
-    fn cubic_interpolate(&self, p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
-        let t2 = t * t;
-        let t3 = t2 * t;
-
-        // Catmull-Rom spline coefficients
-        let a0 = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
-        let a1 = p0 - 2.5 * p1 + 2.0 * p2 - 0.5 * p3;
-        let a2 = -0.5 * p0 + 0.5 * p2;
-        let a3 = p1;
-
-        a0 * t3 + a1 * t2 + a2 * t + a3
-    }
-
-    /// Draw the time series graph using a painter
-    pub fn draw(&self, painter: egui::Painter, rect: egui::Rect) {
-        if self.time_series_data.is_empty() {
-            painter.text(
-                egui::pos2(rect.min.x + 10.0, rect.center().y),
-                egui::Align2::CENTER_CENTER,
-                "No data available",
-                egui::FontId::proportional(16.0),
-                egui::Color32::from_gray(150),
-            );
-            return;
-        }
-        // Use real time for smooth scrolling, but convert to relative time for filtering
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-        let relative_now = now - self.start_time;
-        let min_relative_time = relative_now.saturating_sub(TIME_WINDOW_MS);
-        let actual_data: Vec<_> = self
-            .time_series_data
-            .iter()
-            .filter(|(t, _)| *t >= min_relative_time)
-            .collect();
-        if actual_data.len() < 2 {
-            painter.text(
-                egui::pos2(rect.min.x + 10.0, rect.center().y),
-                egui::Align2::CENTER_CENTER,
-                "No data available",
-                egui::FontId::proportional(16.0),
-                egui::Color32::from_gray(150),
-            );
-            return;
-        }
-        let graph_rect = rect.shrink(15.0);
-
-        // Professional dark background
-        let bg_color = egui::Color32::from_rgb(20, 20, 25);
-        painter.rect_filled(graph_rect, 0.0, bg_color);
-
-        // Smooth scrolling: X position based on timestamp
-        let value_range = (self.max_value - self.min_value).max(1);
-        let mut points: Vec<egui::Pos2> = actual_data
-            .iter()
-            .map(|(t, value)| {
-                let x_frac = (*t as f32 - min_relative_time as f32) / (TIME_WINDOW_MS as f32);
-                let x = graph_rect.min.x + x_frac.clamp(0.0, 1.0) * graph_rect.width();
-                let y = (graph_rect.max.y
-                    - ((*value - self.min_value) as f32 / value_range as f32)
-                        * graph_rect.height())
-                .round();
-                egui::pos2(x, y)
-            })
-            .collect();
-
-        // Downsample points if there are more points than pixels available
-        let max_points = (graph_rect.width() as usize).max(1);
-        let mut downsampled_points = Vec::new();
-        if points.len() > max_points {
-            let bin_size = points.len() as f32 / max_points as f32;
-            for i in 0..max_points {
-                let start = (i as f32 * bin_size).floor() as usize;
-                let end = ((i as f32 + 1.0) * bin_size).ceil() as usize;
-                let end = end.min(points.len());
-                if start < end {
-                    // Average the points in this bin
-                    let (sum_x, sum_y, count) =
-                        points[start..end].iter().fold((0.0, 0.0, 0), |acc, p| {
-                            (acc.0 + p.x, acc.1 + p.y, acc.2 + 1)
-                        });
-                    downsampled_points.push(egui::pos2(sum_x / count as f32, sum_y / count as f32));
-                }
-            }
-            points = downsampled_points;
-        }
-
-        // Draw smooth curves between points using cubic interpolation
-        if points.len() > 1 {
-            // Remove shadow rendering
-            // Create smooth curve points for main line
-            let smooth_points = self.create_smooth_curve(&points, 0.0);
-            for i in 0..smooth_points.len() - 1 {
-                painter.line_segment(
-                    [smooth_points[i], smooth_points[i + 1]],
-                    (2.0, self.line_color),
-                );
-            }
-        }
-        // Title and current value
-        let current_value = if let Some((_, value)) = actual_data.last() {
-            *value
-        } else {
-            0
-        };
-
-        // Title with current value - styled with padding, smaller monospace font, and translucent background
-        let title_text = format!("{}: {}", self.title, current_value);
-        let title_font = egui::FontId::monospace(14.0);
-        let padding = 8.0;
-        let margin = 4.0;
-        let estimated_width = title_text.len() as f32 * 8.0; // Rough estimate for monospace font
-        let estimated_height = 20.0; // Fixed height for the background
-
-        // Place background in the upper-left corner, fully inside the graph
-        let bg_left = rect.min.x + margin;
-        let bg_top = rect.min.y + margin;
-        let bg_right = (bg_left + estimated_width + padding * 2.0).min(rect.max.x - margin);
-        let bg_bottom = (bg_top + estimated_height + padding * 2.0).min(rect.max.y - margin);
-        let bg_rect =
-            egui::Rect::from_min_max(egui::pos2(bg_left, bg_top), egui::pos2(bg_right, bg_bottom));
-
-        // Draw translucent background
-        let bg_color = egui::Color32::from_rgba_premultiplied(0, 0, 0, 180); // Semi-transparent black
-        painter.rect_filled(bg_rect, 4.0, bg_color);
-
-        // Draw title text, always inside the background
-        let text_x = bg_left + padding;
-        let text_y = bg_top + padding;
-        painter.text(
-            egui::pos2(text_x, text_y),
-            egui::Align2::LEFT_TOP,
-            &title_text,
-            title_font,
-            egui::Color32::from_rgb(220, 220, 220),
-        );
-    }
-
-    /// Clear all data points
-    pub fn clear(&mut self) {
-        self.time_series_data.clear();
-    }
-
-    /// Get the number of data points
-    pub fn data_points_count(&self) -> usize {
-        self.time_series_data.len()
-    }
-}
 
 //
 // Actual eframe shit.
 //
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(Clone, PartialEq)]
-pub enum AppPage {
-    Main,
-    Fixtures,
-}
-
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    value: f32,
-
-    // Multiple graph instances for all audio values
-    volume_graph: TimeSeriesGraph,
-    beat_volume_graph: TimeSeriesGraph,
-    bass_graph: TimeSeriesGraph,
-    bass_avg_graph: TimeSeriesGraph,
-    bass_avg_short_graph: TimeSeriesGraph,
-    bpm_graph: TimeSeriesGraph,
-    time_between_beats_graph: TimeSeriesGraph,
-
-    // For continuous rendering
-    frame_count: u64,
-
-    animation_time: f32,
-
-    data: AppStateWrapper,
-
-    // recv: Receiver<UnifiedMessage>,
-    collector: SignalCollector,
-
-    loop_speed: usize,
-    tick_speed: usize,
-
-    // logs: Vec<String>,
-    log_window: LogWindow,
-
-    // Current page
-    current_page: AppPage,
-    last_heartbeat_frame: u64,
-    selected_fixture_group: Option<u8>,
-
-    // Audio devices.
-    available_audio_devices: Vec<String>,
-}
-
-impl TemplateApp {
+impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
         let collector = SignalCollector::new();
 
@@ -623,13 +79,20 @@ impl TemplateApp {
             last_heartbeat_frame: 0,
             selected_fixture_group: None,
             available_audio_devices: vec![],
+            animation_page: AnimationPageState {
+                selected_animation: None,
+                clamp_min: 0,
+                clamp_max: 255,
+                base_function: MathematicalBaseFunction::Sin,
+                timing: PhaserDuration::Fixed(1000),
+            },
         }
     }
 }
 
 const UI_RECV_KEY: &'static str = "eframe_ui";
 
-impl Drop for TemplateApp {
+impl Drop for BlaulichtApp {
     fn drop(&mut self) {
         // let mut consumers = self.data.to_frontend_consumers.lock().unwrap();
         // let removed = consumers.remove(UI_RECV_KEY);
@@ -637,7 +100,7 @@ impl Drop for TemplateApp {
     }
 }
 
-impl TemplateApp {
+impl BlaulichtApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>, state: AppStateWrapper) -> Self {
         // This is also where you can customize the look and feel of egui using
@@ -666,7 +129,7 @@ impl TemplateApp {
     }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for BlaulichtApp {
     /// Called by the framework to save state before shutdown.
     // fn save(&mut self, storage: &mut dyn eframe::Storage) {
     //     eframe::set_value(storage, eframe::APP_KEY, self);
@@ -1087,6 +550,9 @@ impl eframe::App for TemplateApp {
                 AppPage::Fixtures => {
                     self.fixtures_ui(ui);
                 }
+                AppPage::Animations => {
+                    self.animations_ui(ui);
+                }
             }
 
             ui.separator();
@@ -1104,7 +570,7 @@ impl eframe::App for TemplateApp {
     }
 }
 
-impl TemplateApp {
+impl BlaulichtApp {
     fn main_ui(&mut self, ui: &mut egui::Ui) {
         // Main content area with graphs panel
         ui.horizontal(|ui| {
@@ -1265,272 +731,6 @@ impl TemplateApp {
         });
     }
 
-    fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Fixtures");
-        ui.separator();
-        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-
-        let groups = dmx_engine.groups();
-        let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-        let selection = dmx_engine.selection();
-
-        let highlight_fixtures = &selection.fixtures_in_group;
-
-        let mut total_fixtures = vec![];
-        for g_id in selection.group_ids.iter() {
-            let group = groups.get(g_id).unwrap();
-            if selection.fixtures_in_group.is_empty() {
-                total_fixtures.extend(
-                    group
-                        .fixtures
-                        .keys()
-                        .map(|f_id| (*g_id, *f_id, Selection::Cascading)),
-                );
-            } else {
-                total_fixtures.extend(group.fixtures.keys().map(|f_id| {
-                    let is_limited = selection.fixtures_in_group.contains(f_id);
-                    let selection = match is_limited {
-                        true => Selection::Limited,
-                        false => Selection::Off,
-                    };
-
-                    (*g_id, *f_id, selection)
-                }));
-            }
-        }
-
-        let selected_fixture = if selection.fixtures_in_group.len() == 1 {
-            total_fixtures
-                .iter()
-                .filter(|(_, _, select)| *select == Selection::Limited)
-                .next()
-                .cloned()
-        } else if total_fixtures.len() == 1 {
-            total_fixtures.first().cloned()
-        } else {
-            None
-        };
-
-        // let group_count = groups.len();
-        // let mut selected_group = self.selected_fixture_group;
-        // Layout: left (groups), right (fixtures if one group selected)
-
-        // let mut selected_groups = vec![];
-
-        let box_size = egui::vec2(ui.available_width(), 64.0);
-        ui.allocate_ui_with_layout(
-            box_size,
-            egui::Layout::top_down(egui::Align::Center),
-            |ui| {
-                ui.horizontal(|ui| {
-                    // ui.horizontal(|ui| {
-                    // Left: groups list
-                    ui.vertical(|ui| {
-                        ui.label("Groups:");
-                        ui.add_space(8.0);
-                        for (group_id, group) in groups.iter() {
-                            let is_selected = selection.group_ids.contains(group_id);
-
-                            // if is_selected {
-                            //     selected_groups.push(group_id);
-                            // }
-
-                            let rect = ui
-                                .allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
-                            let painter = ui.painter();
-                            let bg_color = if is_selected {
-                                egui::Color32::from_rgb(60, 120, 200)
-                            } else {
-                                egui::Color32::from_gray(40)
-                            };
-                            painter.rect_filled(rect.0, 6.0, bg_color);
-                            let fixture_count = group.fixtures.len();
-                            let name = format!("Group {}", group_id);
-                            painter.text(
-                                rect.0.left_top() + egui::vec2(12.0, 8.0),
-                                egui::Align2::LEFT_TOP,
-                                &name,
-                                egui::FontId::proportional(16.0),
-                                egui::Color32::WHITE,
-                            );
-                            painter.text(
-                                rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                format!("{} fixtures", fixture_count),
-                                egui::FontId::proportional(12.0),
-                                egui::Color32::GRAY,
-                            );
-                            if rect.1.clicked() {
-                                // Toggle group selection
-                                let msg = if is_selected {
-                                    ControlEvent::DeSelectGroup(*group_id)
-                                } else {
-                                    ControlEvent::SelectGroup(*group_id)
-                                };
-
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                            }
-                            ui.add_space(8.0);
-                        }
-                        // self.selected_fixture_group = selected_group;
-                    });
-
-                    // Right: fixtures in selected group
-                    // Get selection info
-                    // Layout: left (fixtures), right (controls)
-
-                    ui.horizontal(|ui| {
-                        // Fixtures list
-                        if !selection.group_ids.is_empty() {
-                            ui.vertical(|ui| {
-                                ui.label(format!("Fixtures in Group"));
-                                ui.add_space(8.0);
-
-                                for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                                    // let is_selected =
-                                    //      highlight_fixtures.contains(fix_id);
-                                    let fixture = groups
-                                        .get(&group_id)
-                                        .unwrap()
-                                        .fixtures
-                                        .get(&fix_id)
-                                        .unwrap();
-
-                                    let fix_rect = ui.allocate_exact_size(
-                                        egui::vec2(180.0, 36.0),
-                                        egui::Sense::click(),
-                                    );
-                                    let painter = ui.painter();
-
-                                    let bg = fixture_selection.color();
-
-                                    painter.rect_filled(fix_rect.0, 4.0, bg);
-                                    painter.text(
-                                        fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
-                                        egui::Align2::LEFT_CENTER,
-                                        &fixture.name,
-                                        egui::FontId::proportional(14.0),
-                                        egui::Color32::WHITE,
-                                    );
-
-                                    // Click to toggle fixture selection if exactly one group is selected
-                                    if fix_rect.1.clicked()
-                                        && selection.group_ids.len() == 1
-                                        && total_fixtures.len() != 1
-                                    {
-                                        let is_fix_selected = highlight_fixtures.contains(fix_id);
-
-                                        let msg = if is_fix_selected {
-                                            ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
-                                                *fix_id,
-                                            )
-                                        } else {
-                                            ControlEvent::LimitSelectionToFixtureInCurrentGroup(
-                                                *fix_id,
-                                            )
-                                        };
-
-                                        self.data.event_bus_connection.send(
-                                            ControlEventMessage::new(EventOriginator::Web, msg),
-                                        );
-                                    }
-                                }
-                            });
-                        } else {
-                            let _ = ui
-                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::empty());
-                        }
-                        // }
-                    });
-
-                    // Controls panel (right)
-                    ui.vertical(|ui| {
-                        let buf = match selected_fixture {
-                            Some((g_id, f_id, _)) => {
-                                let fixture =
-                                    groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
-                                fixture.state.clone()
-                            }
-                            None => dmx_engine.control_buffer.clone(),
-                        };
-
-                        ui.label("Fixture Controls");
-                        ui.add_space(8.0);
-                        // Brightness slider
-                        let mut brightness = buf.brightness as u32;
-                        if ui
-                            .add(egui::Slider::new(&mut brightness, 0..=255).text("Brightness"))
-                            .changed()
-                        {
-                            // println!("SetBrightness({})", brightness);
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetBrightness(brightness as u8),
-                                ));
-                        }
-
-                        // Alpha slider
-                        // let mut alpha = fixture.state.alpha as u32;
-                        // if ui
-                        //     .add(
-                        //         egui::Slider::new(&mut alpha, 0..=255)
-                        //             .text("Alpha"),
-                        //     )
-                        //     .changed()
-                        // {
-                        //     // println!("SetAlpha({})", alpha);
-                        //     self.data
-                        //         .event_bus_connection
-                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::));
-                        // }
-
-                        // Strobe speed slider
-                        // let mut strobe = fixture.state.strobe_speed as u32;
-                        // if ui
-                        //     .add(
-                        //         egui::Slider::new(&mut strobe, 0..=255)
-                        //             .text("Strobe Speed"),
-                        //     )
-                        //     .changed()
-                        // {
-                        //     println!("SetStrobeSpeed({})", strobe);
-                        //     self.data
-                        //         .event_bus_connection
-                        //         .send(ControlEventMessage::new(EventOriginator::Web, ControlEvent::Strobe ));
-                        // }
-
-                        // Color picker
-                        let mut color = [
-                            buf.color.r as f32 / 255.0,
-                            buf.color.g as f32 / 255.0,
-                            buf.color.b as f32 / 255.0,
-                        ];
-                        if ui.color_edit_button_rgb(&mut color).changed() {
-                            let r = (color[0] * 255.0) as u8;
-                            let g = (color[1] * 255.0) as u8;
-                            let b = (color[2] * 255.0) as u8;
-                            println!("SetColor({}, {}, {})", r, g, b);
-
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetColor((r, g, b)),
-                                ));
-                        }
-                    });
-
-                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                    simulate_dmx(ui, groups, dmx_buffer)
-                });
-            },
-        );
-    }
-
     fn left_panel_ui(&mut self, ctx: &Context) {
         egui::SidePanel::left("left_panel")
             .resizable(true)
@@ -1544,6 +744,7 @@ impl TemplateApp {
                 ui.label("Pages");
                 ui.add_space(8.0);
 
+                // TODO: loop here.
                 if ui
                     .selectable_label(self.current_page == AppPage::Main, "Main")
                     .clicked()
@@ -1555,6 +756,12 @@ impl TemplateApp {
                     .clicked()
                 {
                     self.current_page = AppPage::Fixtures;
+                }
+                if ui
+                    .selectable_label(self.current_page == AppPage::Animations, "Animations")
+                    .clicked()
+                {
+                    self.current_page = AppPage::Animations;
                 }
 
                 ui.add_space(16.0);
@@ -1589,11 +796,4 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
         );
         ui.label(".");
     });
-}
-
-fn simulate_dmx(ui: &mut egui::Ui, groups: &EngineGroups, dmx: RwLockReadGuard<'_, DmxBuffer>) {
-    let rect = ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
-    let painter = ui.painter();
-    let bg_color = egui::Color32::from_rgb(255, 120, 200);
-    painter.rect_filled(rect.0, 6.0, bg_color);
 }

@@ -3,18 +3,19 @@ mod light;
 mod moving_head;
 
 use crate::dmx::clock::Time;
-use blaulicht_shared::Color;
+use blaulicht_shared::{AnimationSpeedModifier, Color};
 pub use dimmer::*;
 pub use light::*;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, time::Instant};
+use strum::EnumIter;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
-    pan: u8,
-    tilt: u8,
-    rotation: u8,
+    pub pan: u8,
+    pub tilt: u8,
+    pub rotation: u8,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -50,23 +51,42 @@ impl From<(usize, usize)> for Position {
 pub struct FixtureState {
     pub start_addr: usize,
     // the many values a fixture could have.
-    pub brightness: u8,
     pub color: Color,
     pub alpha: u8,
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
+    pub animations: BTreeMap<u8, AppliedAnimation>,
     // ... todo
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AppliedAnimation {
+    pub id: u8,
+    // 1/16 | 1/8 | 1/4 | 1/2 | 1 | 2 | 4 | 8
+    pub speed_factor: AnimationSpeedModifier,
+    // TODO: override parameters
+    pub enabled: bool,
+    pub last_tick_time: u64,
+    pub timer: u64, // Counts up continously
+}
+
+impl AppliedAnimation {
+    // Advances the timer variable
+    pub fn tick(&mut self, now: u64) {
+        self.timer += 1;
+        self.last_tick_time = now;
+    }
 }
 
 impl Default for FixtureState {
     fn default() -> Self {
         FixtureState {
             start_addr: 42,
-            brightness: 0,
             color: Color::default(),
             alpha: 0,
             orientation: FixtureOrientation::default(),
             strobe_speed: 0,
+            animations: BTreeMap::new(),
         }
     }
 }
@@ -78,11 +98,11 @@ impl Fixture {
             type_,
             state: FixtureState {
                 start_addr, // TODO: add check?
-                brightness: 0,
                 color: Color::default(),
                 alpha: 0,
                 strobe_speed: 0,
                 orientation: FixtureOrientation::default(),
+                animations: BTreeMap::new(),
             },
             pos: Position::default(),
         }
@@ -92,36 +112,31 @@ impl Fixture {
         self.type_.write(self, dmx)
     }
 
-    pub fn set_color(&mut self, color: (u8, u8, u8)) {
-        self.state.color = color.into();
-        // self.type_.write(self, dmx)
-    }
-
-    pub fn set_brightness(&mut self, bri: u8) {
-        self.state.brightness = bri;
-        // self.type_.write(self, dmx)
-    }
-
-    pub fn set_alpha(&mut self, alpha: u8) {
-        self.state.alpha = alpha;
-        // self.type_.write(self, dmx)
-    }
+    // pub fn set_color(&mut self, color: (u8, u8, u8)) {
+    //     self.state.color = color.into();
+    //     // self.type_.write(self, dmx)
+    // }
+    //
+    // pub fn set_alpha(&mut self, alpha: u8) {
+    //     self.state.alpha = alpha;
+    //     // self.type_.write(self, dmx)
+    // }
 
     //
     // Begin rotation.
     //
 
-    pub fn set_tilt(&mut self, tilt: u8) {
-        self.state.orientation.tilt = tilt;
-    }
-
-    pub fn set_pan(&mut self, pan: u8) {
-        self.state.orientation.pan = pan;
-    }
-
-    pub fn set_rotation(&mut self, rotation: u8) {
-        self.state.orientation.rotation = rotation;
-    }
+    // pub fn set_tilt(&mut self, tilt: u8) {
+    //     self.state.orientation.tilt = tilt;
+    // }
+    //
+    // pub fn set_pan(&mut self, pan: u8) {
+    //     self.state.orientation.pan = pan;
+    // }
+    //
+    // pub fn set_rotation(&mut self, rotation: u8) {
+    //     self.state.orientation.rotation = rotation;
+    // }
 
     //
     // End rotation.

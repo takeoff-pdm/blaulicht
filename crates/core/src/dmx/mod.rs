@@ -1,26 +1,29 @@
+/// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod clock;
 mod fixture;
+mod state;
+
+pub use state::*;
+pub mod animation;
+pub use fixture::*;
 
 use crate::{
-    dmx::fixture::{
-        Fixture, FixtureGroup, FixtureOrientation, FixtureState, FixtureType, Light, MovingHead,
-    },
+    audio::{self, defs::DMX_TICK_TIME},
+    dmx::animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
     routes::AppState,
 };
 use blaulicht_shared::{
-    Color, ControlEvent, ControlEventMessage, EventOriginator, CONTROLS_REQUIRING_SELECTION,
+    AnimationSpeedModifier, CollectedAudioSnapshot, ControlEvent, ControlEventMessage,
+    EventOriginator, FixtureProperty, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
-use maplit::hashmap;
-use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::BTreeMap,
     sync::{Arc, RwLockWriteGuard},
+    time::Instant,
 };
-
-/// This module deals with applying events on fixtures to produce a continuous DMX output.
 
 pub struct FixtureSelection {
     fixtures: Vec<(u8, u8)>,
@@ -28,19 +31,20 @@ pub struct FixtureSelection {
 
 impl Fixture {
     fn apply(&mut self, ev: ControlEvent) {
-        match ev {
-            ControlEvent::SetEnabled(enabled) => {
-                todo!("not supported");
-            }
-            ControlEvent::SetBrightness(brightness) => {
-                self.set_brightness(brightness);
-            }
-            ControlEvent::SetColor(clr) => {
-                self.set_color(clr);
-            }
-            ControlEvent::MiscEvent { descriptor, value } => todo!(),
-            _ => {}
-        }
+        // match ev {
+        //     ControlEvent::SetEnabled(enabled) => {
+        //         todo!("not supported");
+        //     }
+        //     ControlEvent::SetBrightness(brightness) => {
+        //         self.set_alpha(brightness);
+        //     }
+        //     ControlEvent::SetColor(clr) => {
+        //         self.set_color(clr);
+        //     }
+        //     ControlEvent::MiscEvent { descriptor, value } => todo!(),
+        //     _ => {}
+        // }
+        self.state.apply(ev);
     }
 }
 
@@ -49,13 +53,53 @@ impl Fixture {
 impl FixtureState {
     fn apply(&mut self, ev: ControlEvent) {
         match ev {
-            ControlEvent::SetBrightness(brightness) => {
-                self.brightness = brightness;
+            ControlEvent::SetBrightness(alpha) => {
+                self.alpha = alpha;
             }
             ControlEvent::SetColor(clr) => {
                 self.color = clr.into();
             }
-            _ => {}
+            ControlEvent::AddAnimation(id) => {
+                self.animations.insert(
+                    id,
+                    AppliedAnimation {
+                        id,
+                        speed_factor: AnimationSpeedModifier::_1,
+                        enabled: false,
+                        timer: 0,
+                        last_tick_time: 0,
+                    },
+                );
+            }
+            ControlEvent::RemoveAnimation(id) => {
+                self.animations.remove(&id);
+            }
+            ControlEvent::SetAnimationSpeed(animation_id, speed) => {
+                // TODO: this can go run
+                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
+                    // TODO: shall not happen
+                    todo!();
+                    return;
+                };
+                anim.speed_factor = speed;
+            }
+            ControlEvent::PauseAnimation(animation_id) => {
+                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
+                    // TODO: shall not happen
+                    todo!();
+                    return;
+                };
+                anim.enabled = false;
+            }
+            ControlEvent::PlayAnimation(animation_id) => {
+                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
+                    // TODO: shall not happen
+                    todo!();
+                    return;
+                };
+                anim.enabled = true;
+            }
+            _ => todo!(),
         }
     }
 }
@@ -67,7 +111,7 @@ impl FixtureSelection {
         ev: ControlEvent,
     ) -> Option<&'static str> {
         for (group_id, fix_id) in &self.fixtures {
-            println!("apply: {group_id} {fix_id}");
+            println!("apply: (ev = {ev:?}) on (gid={group_id} fid={fix_id})");
             let fixture = state
                 .groups
                 .get_mut(group_id)
@@ -76,7 +120,7 @@ impl FixtureSelection {
                 .get_mut(fix_id)
                 .unwrap();
 
-            fixture.apply(ev);
+            fixture.apply(ev.clone());
         }
 
         state.control_buffer.apply(ev);
@@ -92,6 +136,10 @@ pub struct DmxEngine {
     // TODO: add more, internal state.
     event_bus_connection: SystemEventBusConnectionInst,
     system_out: Sender<SystemMessage>,
+
+    // This is not part of state_ref since this is only a cache
+    animation_base_times: BTreeMap<u8, u64>,
+    start_time: Instant,
 }
 
 impl DmxEngine {
@@ -106,11 +154,13 @@ impl DmxEngine {
             // dmx: [0; 513],
             event_bus_connection,
             system_out,
+            animation_base_times: BTreeMap::new(),
+            start_time: Instant::now(),
         }
     }
 
     /// Returns whether the DMX buffer changed.
-    fn tick_internal(&mut self) -> bool {
+    fn tick_internal(&mut self, audio_snapshot: CollectedAudioSnapshot) -> bool {
         // Read back events.
         let mut events = vec![];
         loop {
@@ -119,6 +169,77 @@ impl DmxEngine {
                 None => break,
             }
         }
+
+        self.build_animations_cache(audio_snapshot);
+
+        // Advance animations.
+        {
+            let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+            let mut state = self.state_ref.dmx_engine.write().unwrap();
+            let animations = state.animations.clone();
+            let fixtures = state
+                .groups
+                .iter_mut()
+                .flat_map(|(_, g)| g.fixtures.values_mut());
+
+            for fixture in fixtures {
+                for (animation_id, animation) in &mut fixture.state.animations {
+                    if !animation.enabled {
+                        continue;
+                    }
+
+                    let transition_time = (*self.animation_base_times.get(animation_id).unwrap())
+                        as f32
+                        * animation.speed_factor.as_float();
+
+                    // TODO: limited by tick speed
+
+                    println!("animation-speed: {transition_time}");
+                    println!("{}", now - animation.last_tick_time);
+
+                    let mut num_ticks = 1;
+
+                    let millis = DMX_TICK_TIME.as_millis();
+                    if transition_time < millis as f32 {
+                        num_ticks = (millis as f32 / transition_time) as usize;
+                        println!("NUM TICKS: {num_ticks}");
+                    }
+
+                    if transition_time == 0.0 {
+                        continue;
+                    }
+
+                    if now - animation.last_tick_time >= transition_time as u64 {
+                        for _ in 0..num_ticks {
+                            animation.tick(now);
+                        }
+
+                        let spec = animations.get(animation_id).unwrap();
+
+                        let v = self.generate_animation_value(
+                            audio_snapshot,
+                            spec,
+                            *animation_id,
+                            animation.timer,
+                        );
+
+                        match spec.property {
+                            FixtureProperty::Brightness => fixture.state.alpha = v,
+                            FixtureProperty::ColorHue => todo!(),
+                            FixtureProperty::ColorSaturation => todo!(),
+                            FixtureProperty::ColorValue => todo!(),
+                            FixtureProperty::Tilt => fixture.state.orientation.tilt = v,
+                            FixtureProperty::Pan => fixture.state.orientation.pan = v,
+                            FixtureProperty::Rotation => fixture.state.orientation.rotation = v,
+                        }
+
+                        println!("update animation");
+                    };
+                }
+            }
+        }
+        // let mut state = self.state_ref.dmx_engine.write().unwrap();
+        // state.groups().iter().flat_map(|g|g.values());
 
         if !events.is_empty() {
             let mut state = self.state_ref.dmx_engine.write().unwrap();
@@ -156,14 +277,61 @@ impl DmxEngine {
         true
     }
 
-    pub fn tick(&mut self) {
-        if self.tick_internal() {
-            println!("changed dmx...");
-
+    pub fn tick(&mut self, audio_snapshot: CollectedAudioSnapshot) {
+        if self.tick_internal(audio_snapshot) {
             // TODO: THIS might be too heavy.
             // self.system_out
             //     .send(SystemMessage::DMX(Box::new(self.dmx)))
             //     .unwrap();
+        }
+    }
+
+    fn generate_animation_value(
+        &self,
+        audio_snapshot: CollectedAudioSnapshot,
+        spec: &AnimationSpec,
+        id: u8,
+        time: u64,
+    ) -> u8 {
+        // let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
+        // let animation = animations.get(&id).unwrap();
+
+        match &spec.body {
+            AnimationSpecBody::Phaser(body) => body.generate(time as f32),
+            AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
+                todo!()
+            }
+            AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+            AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+        }
+    }
+
+    fn build_animations_cache(&mut self, audio_snapshot: CollectedAudioSnapshot) {
+        // Only build every 100ms or so?
+
+        let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
+
+        for (anim_id, anim) in animations {
+            let total_speed_raw = {
+                let animation_spec = animations.get(anim_id).unwrap();
+                match &animation_spec.body {
+                    AnimationSpecBody::Phaser(body) => match body.time_total {
+                        PhaserDuration::Fixed(time) => time,
+                        PhaserDuration::Beat(beats) => {
+                            audio_snapshot.time_between_beats_millis as u64 * beats as u64
+                        }
+                    },
+                    AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
+                        todo!()
+                    }
+                    AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+                    AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+                }
+            };
+
+            let speed_per_step = total_speed_raw / 360;
+
+            self.animation_base_times.insert(*anim_id, speed_per_step);
         }
     }
 
@@ -238,6 +406,9 @@ impl DmxEngine {
 
         // Match event.
         match ev.body() {
+            ControlEvent::Transaction(t) => {
+                todo!("Transaction: {t:?}");
+            }
             ControlEvent::SelectGroup(group_id) => {
                 if !state.groups.contains_key(&group_id) {
                     return (
@@ -332,167 +503,3 @@ impl DmxEngine {
         }
     }
 }
-
-//
-// State.
-//
-
-pub type EngineGroups = BTreeMap<u8, FixtureGroup>;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct EngineState {
-    // TODO: how to solve this?
-    // fixtures: Vec<Fixture>,
-    // Assigns an ID to a group.
-    groups: EngineGroups,
-    // Selection.
-    selection: EngineSelection,
-    selection_stack: VecDeque<EngineSelection>,
-
-    // This is a buffer where control events are also being written into before they get applied on
-    // fixtures.
-    pub control_buffer: FixtureState,
-}
-
-impl Default for EngineState {
-    fn default() -> Self {
-        Self {
-            groups: hashmap! {
-                0 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "FooBar".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 42,
-                                brightness: 0,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                            },
-                            pos: (1, 2).into(),
-                        },
-                        1 => Fixture {
-                            name: "BarQuux".into(),
-                             type_: FixtureType::Light(Light::Generic3ChanNoAlpha),
-                              state: FixtureState {
-                                start_addr: 69,
-                                brightness: 0,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                            },
-                            pos: (1, 3).into(),
-                        }
-                     }.into_iter().collect(),
-                },
-                1 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G2".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 42,
-                                brightness: 0,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                            },
-                            pos: (1, 4).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-                2 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G2".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 42,
-                                brightness: 0,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                            },
-                            pos: (1, 5).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-                3 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G2".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 42,
-                                brightness: 0,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                            },
-                            pos: (1, 6).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-            }
-            .into_iter()
-            .collect(),
-            selection: Default::default(),
-            selection_stack: VecDeque::new(),
-            control_buffer: FixtureState::default(),
-        }
-    }
-}
-
-impl EngineState {
-    pub fn groups(&self) -> &EngineGroups {
-        &self.groups
-    }
-    pub fn selection(&self) -> &EngineSelection {
-        &self.selection
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct EngineSelection {
-    pub group_ids: HashSet<u8>,
-    // This is only populated if there is one element in the group selection.
-    pub fixtures_in_group: HashSet<u8>,
-}
-
-impl EngineSelection {
-    pub fn is_empty(&self) -> bool {
-        debug_assert!(
-            (self.group_ids.len() == 1)
-                || (self.group_ids.len() != 1 && self.fixtures_in_group.is_empty())
-        );
-
-        // if self.group_ids.is_empty() {
-        //     return true;
-        // }
-
-        // self.fixtures_in_group.is_empty()
-        self.group_ids.is_empty()
-    }
-
-    pub fn clear(&mut self) {
-        self.group_ids.clear();
-        self.fixtures_in_group.clear();
-    }
-}
-
-// #[derive(Serialize, Deserialize, Debug)]
-// pub struct FixtureGroupState {
-//     pub fixtures: Vec<FixtureState>,
-// }
-
-// impl DmxEngine {
-//     pub fn snapshot() -> EngineState {
-//         todo!("Not implemented")
-//     }
-// }

@@ -59,7 +59,7 @@ pub struct SystemEventBus<T> {
 
 impl<T> SystemEventBus<T>
 where
-    T: Clone + Copy + Display + Debug,
+    T: Clone + Display + Debug,
 {
     pub fn new() -> Self {
         let (sender, receiver) = crossbeam_channel::bounded(BUS_CAPACITY);
@@ -109,7 +109,7 @@ where
             let mut members_to_remove: Option<Vec<_>> = None;
 
             for (id, client) in members.iter() {
-                match client.try_send(msg) {
+                match client.try_send(msg.clone()) {
                     Ok(_) => {}
                     Err(TrySendError::Full(_)) => {
                         panic!("Channel full!");

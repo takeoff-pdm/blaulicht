@@ -33,9 +33,12 @@ impl Light {
     pub fn write(&self, this: &Fixture, dmx: &mut [u8]) {
         match self {
             Light::Generic3ChanNoAlpha => {
-                dmx[this.state.start_addr + 0] = this.state.color.r;
-                dmx[this.state.start_addr + 1] = this.state.color.g;
-                dmx[this.state.start_addr + 2] = this.state.color.b;
+                let (r, g, b) = this.state.color.tup();
+                let alpha = this.state.alpha;
+
+                dmx[this.state.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.state.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.state.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
             }
             Light::Generic4ChanWithAlpha => {
                 dmx[this.state.start_addr + 0] = this.state.alpha;
