@@ -61,8 +61,7 @@ pub struct BlaulichtApp {
     pub data: AppStateWrapper,
 
     // recv: Receiver<UnifiedMessage>,
-    collector: SignalCollector,
-
+    // collector: SignalCollector,
     loop_speed: usize,
     tick_speed: usize,
 
@@ -78,6 +77,8 @@ pub struct BlaulichtApp {
     available_audio_devices: Vec<String>,
 
     animation_page: AnimationPageState,
+
+    new_scene_name: String,
 }
 
 pub struct AnimationPageState {

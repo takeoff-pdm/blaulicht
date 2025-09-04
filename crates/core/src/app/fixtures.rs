@@ -3,7 +3,7 @@ use std::sync::RwLockReadGuard;
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
-use egui::{Align2, Button, Color32, Frame};
+use egui::{Align2, Button, Color32, Frame, TextBuffer};
 
 use crate::{
     app::{BlaulichtApp, Selection},
@@ -16,6 +16,17 @@ impl BlaulichtApp {
     pub fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("Fixtures");
         ui.separator();
+
+        ui.add(egui::TextEdit::singleline(&mut self.new_scene_name));
+        if ui.button("Create Scene").clicked() {
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::CreateScene(self.new_scene_name.take()),
+                ));
+        }
+
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
 
         let groups = dmx_engine.groups();
@@ -195,23 +206,26 @@ impl BlaulichtApp {
 
                     // Controls panel (right)
                     {
-                        let buf = match selected_fixture {
-                            Some((g_id, f_id, _)) => {
-                                let fixture =
-                                    groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
-                                fixture.state.clone()
-                            }
-                            None => dmx_engine.control_buffer.clone(),
-                        };
-                        let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
-
-                        fixture_controls(
-                            ui,
-                            &buf,
-                            self.data.event_bus_connection.clone(),
-                            animations.as_slice(),
-                        );
+                        // let buf = match selected_fixture {
+                        //     Some((g_id, f_id, _)) => {
+                        //         let fixture =
+                        //             groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
+                        //         fixture.state.clone()
+                        //     }
+                        //     None => dmx_engine.control_buffer.clone(),
+                        // };
+                        // let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
+                        //
+                        // fixture_controls(
+                        //     ui,
+                        //     &buf,
+                        //     self.data.event_bus_connection.clone(),
+                        //     animations.as_slice(),
+                        // );
+                        todo!("FIXTURE CONTROLS")
                     }
+
+                    // Show animation groups.
 
                     let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
                     simulate_dmx(ui, groups, dmx_buffer)
@@ -221,11 +235,68 @@ impl BlaulichtApp {
     }
 }
 
+fn animation_groups(
+    ui: &mut egui::Ui,
+    animations: &[u8],
+    event_bus_connection: SystemEventBusConnectionInst,
+) {
+    todo!("animations")
+    // // List currently applied animations
+    // ui.label(format!("Animations len {}", buf.animations.len()));
+    //
+    // for (applied_id, applied) in buf.animations.iter() {
+    //     ui.horizontal(|ui| {
+    //         ui.label(format!("Animation {}", applied.id));
+    //         // Speed factor knob/slider
+    //         // let speeds = AnimationSpeedModifier::iter();
+    //
+    //         let mut index = applied.speed_factor.as_index();
+    //         let max_index = AnimationSpeedModifier::ALL.len() - 1;
+    //
+    //         ui.label(format!("Selected: {}", applied.speed_factor.as_str()));
+    //         if ui
+    //             .add(egui::Slider::new(&mut index, 0..=max_index).text("Enum"))
+    //             .changed()
+    //         {
+    //             // applied.speed_factor = AnimationSpeedModifier::from_index(index);
+    //             event_bus_connection.send(ControlEventMessage::new(
+    //                 EventOriginator::Web,
+    //                 ControlEvent::SetAnimationSpeed(
+    //                     *applied_id,
+    //                     AnimationSpeedModifier::from_index(index),
+    //                 ),
+    //             ));
+    //         }
+    //
+    //         // Remove button
+    //         if ui.button("Remove").clicked() {
+    //             event_bus_connection.send(ControlEventMessage::new(
+    //                 EventOriginator::Web,
+    //                 ControlEvent::RemoveAnimation(*applied_id),
+    //             ));
+    //         }
+    //
+    //         if ui.button("Play").clicked() {
+    //             event_bus_connection.send(ControlEventMessage::new(
+    //                 EventOriginator::Web,
+    //                 ControlEvent::PlayAnimation(*applied_id),
+    //             ));
+    //         }
+    //
+    //         if ui.button("Pause").clicked() {
+    //             event_bus_connection.send(ControlEventMessage::new(
+    //                 EventOriginator::Web,
+    //                 ControlEvent::PauseAnimation(*applied_id),
+    //             ));
+    //         }
+    //     });
+    // }
+}
+
 fn fixture_controls(
     ui: &mut egui::Ui,
     buf: &FixtureState,
     event_bus_connection: SystemEventBusConnectionInst,
-    animations: &[u8],
 ) {
     Frame::new()
         .fill(Color32::from_rgb(50, 50, 50))
@@ -270,90 +341,40 @@ fn fixture_controls(
                 ui.separator();
                 ui.label("Animations");
 
+                // TODO: Animations come to a different 'window / tab'
+                //
                 // Add Animation Selection: Prettier fixed-height boxes
-                ui.label("Add Animation:");
-                ui.add_space(4.0);
-                let mut selected_anim: Option<u8> = None;
-                egui::ScrollArea::vertical()
-                    .max_height(120.0)
-                    .show(ui, |ui| {
-                        for &anim_id in animations.iter() {
-                            // Draw custom box background
-                            let rect = ui
-                                .allocate_exact_size(egui::vec2(150.0, 36.0), egui::Sense::hover());
-                            let painter = ui.painter();
-                            let bg_color = Color32::from_rgb(70, 70, 120);
-                            painter.rect_filled(rect.0, 6.0, bg_color);
-                            // Overlay input element for accessibility and keyboard navigation
-                            let response = ui.put(
-                                rect.0,
-                                Button::selectable(false, format!("Animation {}", anim_id)),
-                            );
-                            if response.clicked() {
-                                selected_anim = Some(anim_id);
-                            }
-                            ui.add_space(4.0);
-                        }
-                    });
-
-                if let Some(anim_id) = selected_anim {
-                    event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::AddAnimation(anim_id),
-                    ));
-                }
-
-                // List currently applied animations
-
-                // ui.label(format!("Animations len {}", buf.animations.len()));
-
-                for (applied_id, applied) in buf.animations.iter() {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Animation {}", applied.id));
-                        // Speed factor knob/slider
-                        // let speeds = AnimationSpeedModifier::iter();
-
-                        let mut index = applied.speed_factor.as_index();
-                        let max_index = AnimationSpeedModifier::ALL.len() - 1;
-
-                        ui.label(format!("Selected: {}", applied.speed_factor.as_str()));
-                        if ui
-                            .add(egui::Slider::new(&mut index, 0..=max_index).text("Enum"))
-                            .changed()
-                        {
-                            // applied.speed_factor = AnimationSpeedModifier::from_index(index);
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetAnimationSpeed(
-                                    *applied_id,
-                                    AnimationSpeedModifier::from_index(index),
-                                ),
-                            ));
-                        }
-
-                        // Remove button
-                        if ui.button("Remove").clicked() {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::RemoveAnimation(*applied_id),
-                            ));
-                        }
-
-                        if ui.button("Play").clicked() {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::PlayAnimation(*applied_id),
-                            ));
-                        }
-
-                        if ui.button("Pause").clicked() {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::PauseAnimation(*applied_id),
-                            ));
-                        }
-                    });
-                }
+                // ui.label("Add Animation:");
+                // ui.add_space(4.0);
+                // let mut selected_anim: Option<u8> = None;
+                // egui::ScrollArea::vertical()
+                //     .max_height(120.0)
+                //     .show(ui, |ui| {
+                //         for &anim_id in animations.iter() {
+                //             // Draw custom box background
+                //             let rect = ui
+                //                 .allocate_exact_size(egui::vec2(150.0, 36.0), egui::Sense::hover());
+                //             let painter = ui.painter();
+                //             let bg_color = Color32::from_rgb(70, 70, 120);
+                //             painter.rect_filled(rect.0, 6.0, bg_color);
+                //             // Overlay input element for accessibility and keyboard navigation
+                //             let response = ui.put(
+                //                 rect.0,
+                //                 Button::selectable(false, format!("Animation {}", anim_id)),
+                //             );
+                //             if response.clicked() {
+                //                 selected_anim = Some(anim_id);
+                //             }
+                //             ui.add_space(4.0);
+                //         }
+                //     });
+                //
+                // if let Some(anim_id) = selected_anim {
+                //     event_bus_connection.send(ControlEventMessage::new(
+                //         EventOriginator::Web,
+                //         ControlEvent::AddAnimation(anim_id),
+                //     ));
+                // }
             });
         });
 }

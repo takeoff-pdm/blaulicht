@@ -3,13 +3,12 @@ mod light;
 mod moving_head;
 
 use crate::dmx::clock::Time;
-use blaulicht_shared::{AnimationSpeedModifier, Color};
+use blaulicht_shared::Color;
 pub use dimmer::*;
 pub use light::*;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap, time::Instant};
-use strum::EnumIter;
+use std::{borrow::Cow, collections::BTreeMap};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
@@ -28,7 +27,6 @@ pub struct FixtureGroup {
 pub struct Fixture {
     pub name: Cow<'static, str>,
     pub type_: FixtureType,
-    pub state: FixtureState,
     pub pos: Position,
 }
 
@@ -55,27 +53,7 @@ pub struct FixtureState {
     pub alpha: u8,
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
-    pub animations: BTreeMap<u8, AppliedAnimation>,
     // ... todo
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AppliedAnimation {
-    pub id: u8,
-    // 1/16 | 1/8 | 1/4 | 1/2 | 1 | 2 | 4 | 8
-    pub speed_factor: AnimationSpeedModifier,
-    // TODO: override parameters
-    pub enabled: bool,
-    pub last_tick_time: u64,
-    pub timer: u64, // Counts up continously
-}
-
-impl AppliedAnimation {
-    // Advances the timer variable
-    pub fn tick(&mut self, now: u64) {
-        self.timer += 1;
-        self.last_tick_time = now;
-    }
 }
 
 impl Default for FixtureState {
@@ -86,7 +64,6 @@ impl Default for FixtureState {
             alpha: 0,
             orientation: FixtureOrientation::default(),
             strobe_speed: 0,
-            animations: BTreeMap::new(),
         }
     }
 }
@@ -96,20 +73,19 @@ impl Fixture {
         Self {
             name,
             type_,
-            state: FixtureState {
-                start_addr, // TODO: add check?
-                color: Color::default(),
-                alpha: 0,
-                strobe_speed: 0,
-                orientation: FixtureOrientation::default(),
-                animations: BTreeMap::new(),
-            },
+            // state: FixtureState {
+            //     start_addr, // TODO: add check?
+            //     color: Color::default(),
+            //     alpha: 0,
+            //     strobe_speed: 0,
+            //     orientation: FixtureOrientation::default(),
+            // },
             pos: Position::default(),
         }
     }
 
-    pub fn write(&self, dmx: &mut [u8]) {
-        self.type_.write(self, dmx)
+    pub fn write(&self, state: &FixtureState, dmx: &mut [u8]) {
+        self.type_.write(self, state, dmx)
     }
 
     // pub fn set_color(&mut self, color: (u8, u8, u8)) {
@@ -142,8 +118,8 @@ impl Fixture {
     // End rotation.
     //
 
-    pub fn setup(&mut self, time: Time, dmx: &mut [u8]) {
-        self.type_.setup(self, time, dmx);
+    pub fn setup(&mut self, time: Time, state: &FixtureState, dmx: &mut [u8]) {
+        self.type_.setup(self, time, state, dmx);
     }
 }
 
@@ -159,27 +135,27 @@ pub enum FixtureType {
 }
 
 impl FixtureType {
-    pub fn write(&self, this: &Fixture, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
-            FixtureType::MovingHead(moving_head) => moving_head.write(this, dmx),
-            FixtureType::Light(light) => light.write(this, dmx),
-            FixtureType::Dimmer(dimmer) => dimmer.write(this, dmx),
+            FixtureType::MovingHead(moving_head) => moving_head.write(this, state, dmx),
+            FixtureType::Light(light) => light.write(this, state, dmx),
+            FixtureType::Dimmer(dimmer) => dimmer.write(this, state, dmx),
         }
     }
 
-    pub fn blackout(&self, this: &Fixture, dmx: &mut [u8]) {
+    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
-            FixtureType::MovingHead(moving_head) => moving_head.blackout(this, dmx),
-            FixtureType::Light(light) => light.blackout(this, dmx),
-            FixtureType::Dimmer(dimmer) => dimmer.blackout(this, dmx),
+            FixtureType::MovingHead(moving_head) => moving_head.blackout(this, state, dmx),
+            FixtureType::Light(light) => light.blackout(this, state, dmx),
+            FixtureType::Dimmer(dimmer) => dimmer.blackout(this, state, dmx),
         }
     }
 
-    pub fn setup(&self, this: &Fixture, time: Time, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: Time, state: &FixtureState, dmx: &mut [u8]) {
         match self {
-            FixtureType::MovingHead(moving_head) => moving_head.setup(this, time, dmx),
-            FixtureType::Light(light) => light.setup(this, time, dmx),
-            FixtureType::Dimmer(dimmer) => dimmer.setup(this, time, dmx),
+            FixtureType::MovingHead(moving_head) => moving_head.setup(this, time, state, dmx),
+            FixtureType::Light(light) => light.setup(this, time, state, dmx),
+            FixtureType::Dimmer(dimmer) => dimmer.setup(this, time, state, dmx),
         }
     }
 }

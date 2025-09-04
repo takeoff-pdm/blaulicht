@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dmx::clock::Time;
+use crate::dmx::{clock::Time, FixtureState};
 
 use super::Fixture;
 
@@ -10,19 +10,19 @@ pub enum MovingHead {
 }
 
 impl MovingHead {
-    pub fn write(&self, this: &Fixture, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             MovingHead::MartinMacAura => {
                 // Strobe state.
-                dmx[this.state.start_addr + 0] = this.state.strobe_speed as u8 * 255;
+                dmx[state.start_addr + 0] = state.strobe_speed as u8 * 255;
 
                 // Alpha.
-                dmx[this.state.start_addr + 1] = this.state.alpha;
+                dmx[state.start_addr + 1] = state.alpha;
 
                 // Color.
-                dmx[this.state.start_addr + 9] = this.state.color.r;
-                dmx[this.state.start_addr + 10] = this.state.color.g;
-                dmx[this.state.start_addr + 11] = this.state.color.b;
+                dmx[state.start_addr + 9] = state.color.r;
+                dmx[state.start_addr + 10] = state.color.g;
+                dmx[state.start_addr + 11] = state.color.b;
             }
         }
         // match self {
@@ -31,16 +31,17 @@ impl MovingHead {
         // }
     }
 
-    pub fn blackout(&self, this: &Fixture, dmx: &mut [u8]) {
+    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         // match self {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
         //     MovingHead::Generic4ChanWithAlpha => todo!(),
         // }
     }
 
-    pub fn setup(&self, this: &Fixture, time: Time, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: Time, state: &FixtureState, dmx: &mut [u8]) {
+        todo!("hard")
         // TODO: just call write.
-        self.write(this, dmx);
+        // self.write(this, dmx);
         // match self {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
         //     MovingHead::Generic4ChanWithAlpha => todo!(),

@@ -317,7 +317,9 @@ pub fn supervisor_thread(
 
             device_changed = false;
 
-            if audio_thread_control_signal.load(Ordering::Relaxed) == AudioThreadControlSignal::CONTINUE {
+            if audio_thread_control_signal.load(Ordering::Relaxed)
+                == AudioThreadControlSignal::CONTINUE
+            {
                 audio_thread_control_signal
                     .store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
             }

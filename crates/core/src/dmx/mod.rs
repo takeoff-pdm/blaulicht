@@ -6,126 +6,71 @@ mod state;
 pub use state::*;
 pub mod animation;
 pub use fixture::*;
+pub mod scene;
 
 use crate::{
-    audio::{self, defs::DMX_TICK_TIME},
-    dmx::animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
+    dmx::{
+        animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
+        scene::{EngineSink, Scene},
+    },
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
     routes::AppState,
 };
 use blaulicht_shared::{
-    AnimationSpeedModifier, CollectedAudioSnapshot, ControlEvent, ControlEventMessage,
-    EventOriginator, FixtureProperty, CONTROLS_REQUIRING_SELECTION,
+    CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    CONTROLS_REQUIRING_SELECTION, CONTROLS_WITHOUT_SCENE, CONTROLS_WITH_SCENE,
 };
 use crossbeam_channel::Sender;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     sync::{Arc, RwLockWriteGuard},
     time::Instant,
 };
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FixtureSelection {
     fixtures: Vec<(u8, u8)>,
 }
 
-impl Fixture {
-    fn apply(&mut self, ev: ControlEvent) {
-        // match ev {
-        //     ControlEvent::SetEnabled(enabled) => {
-        //         todo!("not supported");
-        //     }
-        //     ControlEvent::SetBrightness(brightness) => {
-        //         self.set_alpha(brightness);
-        //     }
-        //     ControlEvent::SetColor(clr) => {
-        //         self.set_color(clr);
-        //     }
-        //     ControlEvent::MiscEvent { descriptor, value } => todo!(),
-        //     _ => {}
-        // }
-        self.state.apply(ev);
-    }
-}
-
+// impl Fixture {
+//     fn apply(&mut self, ev: ControlEvent) {
+//         // match ev {
+//         //     ControlEvent::SetEnabled(enabled) => {
+//         //         todo!("not supported");
+//         //     }
+//         //     ControlEvent::SetBrightness(brightness) => {
+//         //         self.set_alpha(brightness);
+//         //     }
+//         //     ControlEvent::SetColor(clr) => {
+//         //         self.set_color(clr);
+//         //     }
+//         //     ControlEvent::MiscEvent { descriptor, value } => todo!(),
+//         //     _ => {}
+//         // }
+//         self.state.apply(ev);
+//     }
+// }
+//
 // TODO: maybe fuse this together?
 
 impl FixtureState {
-    fn apply(&mut self, ev: ControlEvent) {
+    fn apply(&mut self, ev: ControlEvent) -> Vec<FixtureProperty> {
         match ev {
             ControlEvent::SetBrightness(alpha) => {
                 self.alpha = alpha;
+                vec![FixtureProperty::Brightness]
             }
             ControlEvent::SetColor(clr) => {
                 self.color = clr.into();
-            }
-            ControlEvent::AddAnimation(id) => {
-                self.animations.insert(
-                    id,
-                    AppliedAnimation {
-                        id,
-                        speed_factor: AnimationSpeedModifier::_1,
-                        enabled: false,
-                        timer: 0,
-                        last_tick_time: 0,
-                    },
-                );
-            }
-            ControlEvent::RemoveAnimation(id) => {
-                self.animations.remove(&id);
-            }
-            ControlEvent::SetAnimationSpeed(animation_id, speed) => {
-                // TODO: this can go run
-                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
-                    // TODO: shall not happen
-                    todo!();
-                    return;
-                };
-                anim.speed_factor = speed;
-            }
-            ControlEvent::PauseAnimation(animation_id) => {
-                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
-                    // TODO: shall not happen
-                    todo!();
-                    return;
-                };
-                anim.enabled = false;
-            }
-            ControlEvent::PlayAnimation(animation_id) => {
-                let Some(mut anim) = self.animations.get_mut(&animation_id) else {
-                    // TODO: shall not happen
-                    todo!();
-                    return;
-                };
-                anim.enabled = true;
+                vec![
+                    FixtureProperty::ColorHue,
+                    FixtureProperty::ColorSaturation,
+                    FixtureProperty::ColorValue,
+                ]
             }
             _ => todo!(),
         }
-    }
-}
-
-impl FixtureSelection {
-    fn apply(
-        &mut self,
-        state: &mut RwLockWriteGuard<'_, EngineState>,
-        ev: ControlEvent,
-    ) -> Option<&'static str> {
-        for (group_id, fix_id) in &self.fixtures {
-            println!("apply: (ev = {ev:?}) on (gid={group_id} fid={fix_id})");
-            let fixture = state
-                .groups
-                .get_mut(group_id)
-                .unwrap()
-                .fixtures
-                .get_mut(fix_id)
-                .unwrap();
-
-            fixture.apply(ev.clone());
-        }
-
-        state.control_buffer.apply(ev);
-
-        None
     }
 }
 
@@ -170,73 +115,89 @@ impl DmxEngine {
             }
         }
 
-        self.build_animations_cache(audio_snapshot);
-
+        // self.build_animations_cache(audio_snapshot);
         // Advance animations.
         {
-            let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
-            let mut state = self.state_ref.dmx_engine.write().unwrap();
-            let animations = state.animations.clone();
-            let fixtures = state
-                .groups
-                .iter_mut()
-                .flat_map(|(_, g)| g.fixtures.values_mut());
-
-            for fixture in fixtures {
-                for (animation_id, animation) in &mut fixture.state.animations {
-                    if !animation.enabled {
-                        continue;
-                    }
-
-                    let transition_time = (*self.animation_base_times.get(animation_id).unwrap())
-                        as f32
-                        * animation.speed_factor.as_float();
-
-                    // TODO: limited by tick speed
-
-                    println!("animation-speed: {transition_time}");
-                    println!("{}", now - animation.last_tick_time);
-
-                    let mut num_ticks = 1;
-
-                    let millis = DMX_TICK_TIME.as_millis();
-                    if transition_time < millis as f32 {
-                        num_ticks = (millis as f32 / transition_time) as usize;
-                        println!("NUM TICKS: {num_ticks}");
-                    }
-
-                    if transition_time == 0.0 {
-                        continue;
-                    }
-
-                    if now - animation.last_tick_time >= transition_time as u64 {
-                        for _ in 0..num_ticks {
-                            animation.tick(now);
-                        }
-
-                        let spec = animations.get(animation_id).unwrap();
-
-                        let v = self.generate_animation_value(
-                            audio_snapshot,
-                            spec,
-                            *animation_id,
-                            animation.timer,
-                        );
-
-                        match spec.property {
-                            FixtureProperty::Brightness => fixture.state.alpha = v,
-                            FixtureProperty::ColorHue => todo!(),
-                            FixtureProperty::ColorSaturation => todo!(),
-                            FixtureProperty::ColorValue => todo!(),
-                            FixtureProperty::Tilt => fixture.state.orientation.tilt = v,
-                            FixtureProperty::Pan => fixture.state.orientation.pan = v,
-                            FixtureProperty::Rotation => fixture.state.orientation.rotation = v,
-                        }
-
-                        println!("update animation");
-                    };
-                }
-            }
+            // let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+            // let mut state = self.state_ref.dmx_engine.write().unwrap();
+            // let animations = state.animations.clone();
+            // let fixtures = state
+            //     .groups
+            //     .iter_mut()
+            //     .flat_map(|(_, g)| g.fixtures.values_mut());
+            //
+            // for fixture in fixtures {
+            //     for (animation_id, animation) in &mut fixture.state.animations {
+            //         if !animation.enabled {
+            //             continue;
+            //         }
+            //
+            //         let transition_time = (*self.animation_base_times.get(animation_id).unwrap())
+            //             as f32
+            //             * animation.speed_factor.as_float();
+            //
+            //         // TODO: limited by tick speed
+            //
+            //         println!("animation-speed: {transition_time}");
+            //         println!("{}", now - animation.last_tick_time);
+            //
+            //         let mut num_ticks = 1;
+            //
+            //         let millis = DMX_TICK_TIME.as_millis();
+            //         if transition_time < millis as f32 {
+            //             num_ticks = (millis as f32 / transition_time) as usize;
+            //             println!("NUM TICKS: {num_ticks}");
+            //         }
+            //
+            //         if transition_time == 0.0 {
+            //             continue;
+            //         }
+            //
+            //         // TODO: extremely naiive implementation
+            //         // FLAWS:
+            //         //  - beat-timing is not considered
+            //         //  - syncing between animations is also not considered
+            //         //      - Different sync modes
+            //         //          - No sync (when playing current animation, disregard everything and
+            //         //          start it)
+            //         //          - Group sync (sync with all other fixtures in the parent group that
+            //         //          also use this animation)
+            //         //          - Global (sync with ALL other fixtures (also from other groups)
+            //         //          that also use this animation)
+            //         //      - How is syncing done?
+            //         //      - when sync mode is changed, timing is reset to 0 for all fixtures and
+            //         //      the stepper logic uses the sync
+            //         //      - Syncing shall be displayed graphically
+            //         //      - Running animations shall also be displayed graphically
+            //         //      - Each phaser can be absolute / relative!
+            //         if now - animation.last_tick_time >= transition_time as u64 {
+            //             for _ in 0..num_ticks {
+            //                 animation.tick(now);
+            //             }
+            //
+            //             let spec = animations.get(animation_id).unwrap();
+            //
+            //             let v = self.generate_animation_value(
+            //                 audio_snapshot,
+            //                 spec,
+            //                 *animation_id,
+            //                 animation.timer,
+            //             );
+            //
+            //             match spec.property {
+            //                 FixtureProperty::Brightness => fixture.state.alpha = v,
+            //                 FixtureProperty::ColorHue => todo!(),
+            //                 FixtureProperty::ColorSaturation => todo!(),
+            //                 FixtureProperty::ColorValue => todo!(),
+            //                 FixtureProperty::Tilt => fixture.state.orientation.tilt = v,
+            //                 FixtureProperty::Pan => fixture.state.orientation.pan = v,
+            //                 FixtureProperty::Rotation => fixture.state.orientation.rotation = v,
+            //             }
+            //
+            //             println!("update animation");
+            //         };
+            //     }
+            // }
         }
         // let mut state = self.state_ref.dmx_engine.write().unwrap();
         // state.groups().iter().flat_map(|g|g.values());
@@ -342,7 +303,9 @@ impl DmxEngine {
         for group in &state.groups {
             for fixture in &group.1.fixtures {
                 let fix = fixture.1;
-                fix.write(&mut buffer.dmx_buffer);
+
+                // TODO: we will need to use the merged fixture states here and then write them.
+                // fix.write( &mut buffer.dmx_buffer);
             }
         }
     }
@@ -499,7 +462,214 @@ impl DmxEngine {
             ControlEvent::MiscEvent { descriptor, value } => {
                 todo!("Not implemented");
             }
-            CONTROLS_REQUIRING_SELECTION!() => (selection.apply(state, ev.body()), None),
+            CONTROLS_REQUIRING_SELECTION!() => match ev.body() {
+                CONTROLS_WITHOUT_SCENE!() => {
+                    let curr_selection = self.get_selection(state);
+                    self.apply_on_selection_without_scene(&curr_selection, state, ev)
+                }
+                CONTROLS_WITH_SCENE!() => {
+                    let curr_selection = self.get_selection(state);
+                    self.apply_on_selection_and_scene(&curr_selection, state, ev)
+                }
+                _ => unreachable!("All options covered"),
+            },
         }
+    }
+
+    fn apply_on_selection_without_scene(
+        &self,
+        curr_selection: &FixtureSelection,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
+        ev: ControlEventMessage,
+    ) -> (Option<&'static str>, Option<ControlEvent>) {
+        debug_assert!(matches!(ev.body(), CONTROLS_WITHOUT_SCENE!()));
+        debug_assert!(matches!(ev.body(), CONTROLS_REQUIRING_SELECTION!()));
+
+        let current_scene_focus = state.current_scene_focus;
+        let this_scene = state.scenes.get(&current_scene_focus).unwrap();
+
+        match ev.body() {
+            ControlEvent::CreateScene(name) => {
+                let start = Instant::now();
+                let mut state_capture = BTreeMap::new();
+
+                // let curr_selection = self.get_selection(state);
+                for selection in &curr_selection.fixtures {
+                    let fixture = this_scene.sink.fixture_states.get(selection).unwrap();
+                    state_capture.insert(*selection, fixture.clone());
+                }
+
+                // TODO: is unsafe when there are more than 255 scenes.
+                let new_id = state.scenes.len();
+                let active_animations = this_scene.sink.active_animations.clone();
+                state.scenes.insert(
+                    new_id as u8,
+                    Scene {
+                        sink: EngineSink {
+                            fixture_states: todo!(),
+                            active_animations,
+                            changeset: HashSet::new(),
+                        },
+                        // state_capture,
+                        name: name.clone(),
+                        // active_animations,
+                    },
+                );
+
+                self.system_out
+                    .send(SystemMessage::Log(format!(
+                        "Save scene <{name}> took {:?}",
+                        start.elapsed()
+                    )))
+                    .unwrap();
+
+                (None, None)
+            }
+            _ => unreachable!("All options covered"),
+        }
+    }
+
+    fn apply_on_selection_and_scene(
+        &self,
+        curr_selection: &FixtureSelection,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
+        ev: ControlEventMessage,
+    ) -> (Option<&'static str>, Option<ControlEvent>) {
+        let current_scene_focus = state.current_scene_focus;
+        let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+
+        let (msg, undo, effective_properties) = match ev.body() {
+            ControlEvent::AddAnimation(id) => {
+                if !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(&curr_selection)
+                {
+                    this_scene
+                        .sink
+                        .active_animations
+                        .insert(curr_selection.clone(), BTreeMap::new());
+                }
+
+                let selec_anim = this_scene
+                    .sink
+                    .active_animations
+                    .get_mut(&curr_selection)
+                    .unwrap();
+
+                match selec_anim.contains_key(&id) {
+                    true => (Some("Animation already applied"), None, None),
+                    false => {
+                        // Get the source animation to determine its property.
+                        let animation = state.animations.get(&id).unwrap();
+
+                        (None, None, Some(vec![animation.property]))
+                    }
+                }
+            }
+            ControlEvent::RemoveAnimation(id) => {
+                // let curr_selection = self.get_selection(state);
+                match !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(&curr_selection)
+                {
+                    true => (Some("No animations for this selection"), None, None),
+                    false => {
+                        let selec_anim = this_scene
+                            .sink
+                            .active_animations
+                            .get_mut(&curr_selection)
+                            .unwrap();
+
+                        match selec_anim.remove(&id) {
+                            None => (Some("Animation not applied to selection"), None, None),
+                            Some(_) => {
+                                let animation = state.animations.get(&id).unwrap();
+                                (None, None, Some(vec![animation.property]))
+                            }
+                        }
+                    }
+                }
+            }
+            ControlEvent::PlayAnimation(id) => {
+                match !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(&curr_selection)
+                {
+                    true => (
+                        Some("No such selection"),
+                        Some(ControlEvent::PauseAnimation(id)),
+                        None,
+                    ),
+                    false => {
+                        let selec_anim = this_scene
+                            .sink
+                            .active_animations
+                            .get_mut(&curr_selection)
+                            .unwrap();
+
+                        match selec_anim.get_mut(&id) {
+                            Some(anim) => {
+                                anim.enabled = true;
+                                let animation = state.animations.get(&id).unwrap();
+                                (None, None, Some(vec![animation.property]))
+                            }
+                            None => (
+                                Some("No such animation on selection"),
+                                Some(ControlEvent::PauseAnimation(id)),
+                                None,
+                            ),
+                        }
+                    }
+                }
+            }
+            ControlEvent::PauseAnimation(id) => {
+                // let curr_selection = self.get_selection(state);
+                match !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(&curr_selection)
+                {
+                    true => (
+                        Some("No such selection"),
+                        Some(ControlEvent::PauseAnimation(id)),
+                        None,
+                    ),
+                    false => {
+                        let selec_anim = this_scene
+                            .sink
+                            .active_animations
+                            .get_mut(&curr_selection)
+                            .unwrap();
+                        match selec_anim.get_mut(&id) {
+                            Some(anim) => {
+                                anim.enabled = false;
+                                let animation = state.animations.get(&id).unwrap();
+                                (None, None, Some(vec![animation.property]))
+                            }
+                            None => (
+                                Some("No such animation on selection"),
+                                Some(ControlEvent::PauseAnimation(id)),
+                                None,
+                            ),
+                        }
+                    }
+                }
+            }
+            _ => {
+                let properties = this_scene
+                    .sink
+                    .apply_with_selection(curr_selection, ev.body());
+
+                (None, None, Some(properties))
+            }
+        };
+
+        // Mark the effective_property
+        todo!("Effective properties: {:?}", effective_properties);
+
+        (msg, undo)
     }
 }

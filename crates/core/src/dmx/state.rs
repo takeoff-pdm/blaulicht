@@ -6,33 +6,89 @@ use crate::dmx::{
     fixture::{
         Fixture, FixtureGroup, FixtureOrientation, FixtureState, FixtureType, Light, MovingHead,
     },
+    scene::{EngineSink, Scene},
+    FixtureSelection,
 };
-use blaulicht_shared::{Color, FixtureProperty};
+use blaulicht_shared::{AnimationSpeedModifier, Color, FixtureProperty};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 //
 // State.
 //
 
+//
 pub type EngineGroups = BTreeMap<u8, FixtureGroup>;
 
+// Animations.
+//
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct AnimationTimerState {
+    pub last_tick_time: u64,
+    pub timer: u64, // Counts up continously
+}
+
+impl AnimationTimerState {
+    // Advances the timer variable
+    pub fn tick(&mut self, now: u64) {
+        self.timer += 1;
+        self.last_tick_time = now;
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActiveAnimation {
+    // pub animation_id: u8,
+    // 1/16 | 1/8 | 1/4 | 1/2 | 1 | 2 | 4 | 8
+    pub speed_factor: AnimationSpeedModifier,
+    // TODO: override parameters
+    pub enabled: bool,
+    // pub selection: EngineSelection,
+    pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
+    pub sync: u8, // TOOD: placeholder type for the sync mode
+}
+
+impl ActiveAnimation {
+    pub fn new(fixtures: &[(u8, u8)]) -> Self {
+        let mut fixture_timers = BTreeMap::new();
+
+        for key in fixtures {
+            fixture_timers.insert(*key, AnimationTimerState::default());
+        }
+
+        Self {
+            speed_factor: AnimationSpeedModifier::_1,
+            enabled: false,
+            fixture_timers,
+            sync: 0, // TODO
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct EngineState {
-    // TODO: how to solve this?
-    // fixtures: Vec<Fixture>,
-    // Assigns an ID to a group.
+    // Strores the actual output state of all fixtures.
     pub groups: EngineGroups,
+
+    // These are the reusable base animations.
+    pub animations: BTreeMap<u8, AnimationSpec>,
+
     // Selection.
     pub selection: EngineSelection,
     pub selection_stack: VecDeque<EngineSelection>,
 
     // This is a buffer where control events are also being written into before they get applied on
-    // fixtures.
+    // fixtures, this is mainly useful for UI.
+    // TODO: will be migrated to hashmap from selection -> control buffer maybe
     pub control_buffer: FixtureState,
 
-    pub animations: BTreeMap<u8, AnimationSpec>,
+    // ID 0 is reserved for the 'empty' scene.
+    pub scenes: BTreeMap<u8, Scene>,
+
+    pub current_scene_focus: u8,
+    // pub current_overlay_scenes: Vec<u8>,
 }
 
 impl EngineState {
@@ -93,6 +149,87 @@ impl EngineSelection {
 
 impl Default for EngineState {
     fn default() -> Self {
+        let groups: BTreeMap<u8, FixtureGroup> = hashmap! {
+            0 => FixtureGroup {
+                 fixtures: hashmap! {
+                    0 => Fixture {
+                        name: "G0 FooBar".into(),
+                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                        //   state: FixtureState {
+                        //     start_addr: 42,
+                        //     color: Color::default(),
+                        //     alpha: 0,
+                        //     orientation: FixtureOrientation::default(),
+                        //     strobe_speed: 0,
+                        // },
+                        pos: (1, 2).into(),
+                    },
+                    1 => Fixture {
+                        name: "G0 BarQuux".into(),
+                         type_: FixtureType::Light(Light::Generic3ChanNoAlpha),
+                        //   state: FixtureState {
+                        //     start_addr: 69,
+                        //     color: Color::default(),
+                        //     alpha: 0,
+                        //     orientation: FixtureOrientation::default(),
+                        //     strobe_speed: 0,
+                        // },
+                        pos: (1, 3).into(),
+                    }
+                 }.into_iter().collect(),
+            },
+            1 => FixtureGroup {
+                 fixtures: hashmap! {
+                    0 => Fixture {
+                        name: "G1".into(),
+                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                        //   state: FixtureState {
+                        //     start_addr: 142,
+                        //     color: Color::default(),
+                        //     alpha: 0,
+                        //     orientation: FixtureOrientation::default(),
+                        //     strobe_speed: 0,
+                        // },
+                        pos: (1, 4).into(),
+                    },
+                 }.into_iter().collect(),
+            },
+            2 => FixtureGroup {
+                 fixtures: hashmap! {
+                    0 => Fixture {
+                        name: "G2".into(),
+                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                        //   state: FixtureState {
+                        //     start_addr: 169,
+                        //     color: Color::default(),
+                        //     alpha: 0,
+                        //     orientation: FixtureOrientation::default(),
+                        //     strobe_speed: 0,
+                        // },
+                        pos: (1, 5).into(),
+                    },
+                 }.into_iter().collect(),
+            },
+            3 => FixtureGroup {
+                 fixtures: hashmap! {
+                    0 => Fixture {
+                        name: "G3".into(),
+                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
+                        //   state: FixtureState {
+                        //     start_addr: 242,
+                        //     color: Color::default(),
+                        //     alpha: 0,
+                        //     orientation: FixtureOrientation::default(),
+                        //     strobe_speed: 0,
+                        // },
+                        pos: (1, 6).into(),
+                    },
+                 }.into_iter().collect(),
+            },
+        }
+        .into_iter()
+        .collect();
+
         Self {
             animations: hashmap! {
                 0 => AnimationSpec {
@@ -124,94 +261,20 @@ impl Default for EngineState {
             }
             .into_iter()
             .collect(),
-            groups: hashmap! {
-                0 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G0 FooBar".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 42,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                                animations: BTreeMap::new(),
-                            },
-                            pos: (1, 2).into(),
-                        },
-                        1 => Fixture {
-                            name: "G0 BarQuux".into(),
-                             type_: FixtureType::Light(Light::Generic3ChanNoAlpha),
-                              state: FixtureState {
-                                start_addr: 69,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                                animations: BTreeMap::new(),
-                            },
-                            pos: (1, 3).into(),
-                        }
-                     }.into_iter().collect(),
-                },
-                1 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G1".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 142,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                                animations: BTreeMap::new(),
-                            },
-                            pos: (1, 4).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-                2 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G2".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 169,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                                animations: BTreeMap::new(),
-                            },
-                            pos: (1, 5).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-                3 => FixtureGroup {
-                     fixtures: hashmap! {
-                        0 => Fixture {
-                            name: "G3".into(),
-                             type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                              state: FixtureState {
-                                start_addr: 242,
-                                color: Color::default(),
-                                alpha: 0,
-                                orientation: FixtureOrientation::default(),
-                                strobe_speed: 0,
-                                animations: BTreeMap::new(),
-                            },
-                            pos: (1, 6).into(),
-                        },
-                     }.into_iter().collect(),
-                },
-            }
-            .into_iter()
-            .collect(),
+            groups: groups.clone(),
             selection: Default::default(),
             selection_stack: VecDeque::new(),
             control_buffer: FixtureState::default(),
+            // active_animations: HashMap::new(),
+            scenes: hashmap! {
+               0 => Scene{
+                   name: "Default Scene".to_string(),
+                   sink: EngineSink::from_groups(&groups),
+               }
+            }
+            .into_iter()
+            .collect(),
+            current_scene_focus: 0,
         }
     }
 }

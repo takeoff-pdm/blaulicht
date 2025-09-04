@@ -205,7 +205,7 @@ fn main() -> anyhow::Result<()> {
         event_bus_connection: event_bus_connection_websocket,
         state: Arc::clone(&app_state),
         system_message_receiver: app_system_receiver,
-        signal_receiver: app_signal_receiver,
+        // signal_receiver: app_signal_receiver,
     };
     // let data = Data::new(state_wrapper);
 

@@ -15,7 +15,7 @@ pub struct ControlEventMessage {
 
 impl Display for ControlEventMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -142,7 +142,7 @@ impl AnimationSpeedModifier {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone, EnumIter, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone, Copy, EnumIter, PartialEq, Eq)]
 pub enum FixtureProperty {
     Brightness,
     ColorHue,
@@ -223,6 +223,12 @@ pub enum ControlEvent {
     },
     // Transaction Actions.
     Transaction(Vec<ControlEvent>),
+    //
+    // Scene-related events.
+    //
+    // Captures the active selection and saves the fixture state to a new scene.
+    // This will create a new scene with this name.
+    CreateScene(String),
 }
 
 #[macro_export]
@@ -230,6 +236,28 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
     () => {
         ControlEvent::SetEnabled(_)
             | ControlEvent::SetBrightness(_)
+            | ControlEvent::SetColor(_)
+            | ControlEvent::AddAnimation(_)
+            | ControlEvent::RemoveAnimation(_)
+            | ControlEvent::ResetAnimation(_)
+            | ControlEvent::PauseAnimation(_)
+            | ControlEvent::PlayAnimation(_)
+            | ControlEvent::SetAnimationSpeed(_, _)
+            | ControlEvent::CreateScene(_)
+    };
+}
+
+#[macro_export]
+macro_rules! CONTROLS_WITHOUT_SCENE {
+    () => {
+        ControlEvent::CreateScene(_)
+    };
+}
+
+#[macro_export]
+macro_rules! CONTROLS_WITH_SCENE {
+    () => {
+        ControlEvent::SetBrightness(_)
             | ControlEvent::SetColor(_)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)

@@ -86,7 +86,8 @@ pub fn run(
         .init()
         .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
 
-    let mut dmx_engine = DmxEngine::new(app_state, event_bus_dmx, system_out.clone());
+    let dmx_appstate = Arc::clone(&app_state);
+    let mut dmx_engine = DmxEngine::new(dmx_appstate, event_bus_dmx, system_out.clone());
 
     //
     // Audio signal collector.
@@ -212,6 +213,11 @@ pub fn run(
         }
 
         /////////////////// Signal Begin ///////////////
+
+        {
+            let mut audio_sig = app_state.audio_snapshot.write().unwrap();
+            *audio_sig = collector.take_snapshot();
+        }
 
         let values = converter.freqs();
         // println!("freqs: {:?}", values);

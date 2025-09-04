@@ -3,7 +3,7 @@ use crate::app::log::{LogLevel, LogWindow};
 use crate::app::{AnimationPageState, AppPage, BlaulichtApp};
 use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
 use crate::msg::FromFrontend;
-use crate::{audio::capture::SignalCollector, msg::SystemMessage, routes::AppStateWrapper};
+use crate::{msg::SystemMessage, routes::AppStateWrapper};
 use crate::{config, utils};
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
@@ -18,8 +18,6 @@ use std::str::FromStr;
 
 impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
-        let collector = SignalCollector::new();
-
         Self {
             // Example stuff:
             label: "Hello World!".to_owned(),
@@ -70,7 +68,7 @@ impl BlaulichtApp {
             animation_time: 0.0,
             data,
             // recv,
-            collector,
+            // collector,
             loop_speed: 0,
             tick_speed: 0,
             // logs: vec![],
@@ -86,6 +84,7 @@ impl BlaulichtApp {
                 base_function: MathematicalBaseFunction::Sin,
                 timing: PhaserDuration::Fixed(1000),
             },
+            new_scene_name: "My Scene".to_string(),
         }
     }
 }
@@ -163,16 +162,16 @@ impl eframe::App for BlaulichtApp {
                 }
             }
 
-            match self.data.signal_receiver.try_recv() {
-                Ok(signal) => {
-                    self.collector.signal(signal);
-                    // new_signal = true;
-                }
-                Err(TryRecvError::Empty) => {
-                    empty += 1;
-                }
-                Err(TryRecvError::Disconnected) => unreachable!("CANNOT REACH"),
-            }
+            // match self.data.signal_receiver.try_recv() {
+            //     Ok(signal) => {
+            //         // self.collector.signal(signal);
+            //         // new_signal = true;
+            //     }
+            //     Err(TryRecvError::Empty) => {
+            //         empty += 1;
+            //     }
+            //     Err(TryRecvError::Disconnected) => unreachable!("CANNOT REACH"),
+            // }
 
             match self.data.system_message_receiver.try_recv() {
                 Ok(sys) => match sys {
@@ -278,20 +277,19 @@ impl eframe::App for BlaulichtApp {
         }
 
         // Update all graphs with current data
-        self.volume_graph
-            .update(self.collector.take_snapshot().volume as i32);
-        self.beat_volume_graph
-            .update(self.collector.take_snapshot().beat_volume as i32);
-        self.bass_graph
-            .update(self.collector.take_snapshot().bass as i32);
-        self.bass_avg_graph
-            .update(self.collector.take_snapshot().bass_avg as i32);
-        self.bass_avg_short_graph
-            .update(self.collector.take_snapshot().bass_avg_short as i32);
-        self.bpm_graph
-            .update(self.collector.take_snapshot().bpm as i32);
-        self.time_between_beats_graph
-            .update(self.collector.take_snapshot().time_between_beats_millis as i32);
+        {
+            let audio_data = self.data.state.audio_snapshot.read().unwrap();
+            self.volume_graph.update(audio_data.volume as i32);
+            self.volume_graph.update(audio_data.volume as i32);
+            self.beat_volume_graph.update(audio_data.beat_volume as i32);
+            self.bass_graph.update(audio_data.bass as i32);
+            self.bass_avg_graph.update(audio_data.bass_avg as i32);
+            self.bass_avg_short_graph
+                .update(audio_data.bass_avg_short as i32);
+            self.bpm_graph.update(audio_data.bpm as i32);
+            self.time_between_beats_graph
+                .update(audio_data.time_between_beats_millis as i32);
+        }
 
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui

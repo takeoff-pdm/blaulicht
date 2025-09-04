@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
+use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::Receiver;
 use crossbeam_queue::ArrayQueue;
 use heapless::spsc;
@@ -21,7 +22,7 @@ pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
 
     pub system_message_receiver: Receiver<SystemMessage>,
-    pub signal_receiver: Receiver<Signal>,
+    // pub signal_receiver: Receiver<Signal>,
 
     // pub to_frontend_consumers:
     //     Arc<Mutex<HashMap<String, crossbeam_channel::Sender<UnifiedMessage>>>>,
@@ -53,6 +54,7 @@ pub struct AppState {
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
     pub dmx_buffer: RwLock<DmxBuffer>,
+    pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
 }
 
 pub struct DmxBuffer {
@@ -86,6 +88,7 @@ impl AppState {
             dmx_engine: RwLock::new(EngineState::default()),
             dmx_buffer: RwLock::new(DmxBuffer::new()),
             audio: RwLock::new(AudioState::default()),
+            audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
         }
     }
 
