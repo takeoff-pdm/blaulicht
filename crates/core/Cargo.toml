@@ -52,6 +52,7 @@ map-range = "0.1.2"
 egui_plot = "0.33.0"
 strum = { version = "0.27.2", features = ["derive"] }
 noise = "0.9.0"
+color_space = "0.5.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"

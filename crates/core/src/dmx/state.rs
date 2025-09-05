@@ -9,7 +9,7 @@ use crate::dmx::{
     scene::{EngineSink, Scene},
     FixtureSelection,
 };
-use blaulicht_shared::{AnimationSpeedModifier, Color, FixtureProperty};
+use blaulicht_shared::{AnimationSpeedModifier, RGBColor, FixtureProperty};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -88,15 +88,27 @@ pub struct EngineState {
     pub scenes: BTreeMap<u8, Scene>,
 
     pub current_scene_focus: u8,
-    // pub current_overlay_scenes: Vec<u8>,
+
+    // First scene is the least-significant.
+    pub current_overlay_scenes: Vec<u8>,
 }
 
-impl EngineState {
+impl<'engine> EngineState {
     pub fn groups(&self) -> &EngineGroups {
         &self.groups
     }
     pub fn selection(&self) -> &EngineSelection {
         &self.selection
+    }
+
+    pub fn curr_scene(&'engine self) -> &'engine Scene {
+        let curr_scene_id = self.current_scene_focus;
+        self.scenes.get(&curr_scene_id).unwrap()
+    }
+
+    pub fn curr_scene_mut(&'engine mut self) -> &'engine mut Scene {
+        let curr_scene_id = self.current_scene_focus;
+        self.scenes.get_mut(&curr_scene_id).unwrap()
     }
 }
 
@@ -234,7 +246,7 @@ impl Default for EngineState {
             animations: hashmap! {
                 0 => AnimationSpec {
                     name: "Brightness Animation 0".into(),
-                    property: FixtureProperty::Brightness,
+                    property: FixtureProperty::Alpha,
                     body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
                         kind: PhaserKind::Mathematical(MathematicalPhaser {
                             base: MathematicalBaseFunction::Sin,
@@ -247,7 +259,7 @@ impl Default for EngineState {
                 },
                 1 => AnimationSpec {
                     name: "Brightness Animation 1".into(),
-                    property: FixtureProperty::Brightness,
+                    property: FixtureProperty::Alpha,
                     body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
                         kind: PhaserKind::Mathematical(MathematicalPhaser {
                             base: MathematicalBaseFunction::EaseInOut,
@@ -275,6 +287,7 @@ impl Default for EngineState {
             .into_iter()
             .collect(),
             current_scene_focus: 0,
+            current_overlay_scenes: vec![],
         }
     }
 }

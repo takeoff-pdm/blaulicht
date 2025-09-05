@@ -1,7 +1,7 @@
 use std::sync::RwLockReadGuard;
 
 use blaulicht_shared::{
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, RGBColor,
 };
 use egui::{Align2, Button, Color32, Frame, TextBuffer};
 
@@ -206,23 +206,28 @@ impl BlaulichtApp {
 
                     // Controls panel (right)
                     {
-                        // let buf = match selected_fixture {
-                        //     Some((g_id, f_id, _)) => {
-                        //         let fixture =
-                        //             groups.get(&g_id).unwrap().fixtures.get(&f_id).unwrap();
-                        //         fixture.state.clone()
-                        //     }
-                        //     None => dmx_engine.control_buffer.clone(),
-                        // };
+                        let buf = match selected_fixture {
+                            Some((g_id, f_id, _)) => {
+                                let fixture = dmx_engine
+                                    .curr_scene()
+                                    .sink
+                                    .fixture_states
+                                    .get(&(g_id, f_id))
+                                    .unwrap();
+                                fixture.clone()
+                            }
+                            None => dmx_engine.control_buffer.clone(),
+                        };
+
                         // let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
-                        //
-                        // fixture_controls(
-                        //     ui,
-                        //     &buf,
-                        //     self.data.event_bus_connection.clone(),
-                        //     animations.as_slice(),
-                        // );
-                        todo!("FIXTURE CONTROLS")
+
+                        fixture_controls(
+                            ui,
+                            &buf,
+                            self.data.event_bus_connection.clone(),
+                            // animations.as_slice(),
+                        );
+                        // todo!("FIXTURE CONTROLS")
                     }
 
                     // Show animation groups.
@@ -315,26 +320,35 @@ fn fixture_controls(
                     {
                         event_bus_connection.send(ControlEventMessage::new(
                             EventOriginator::Web,
-                            ControlEvent::SetBrightness(brightness as u8),
+                            ControlEvent::SetAlpha(brightness as u8),
                         ));
                     }
                 }
 
                 // Color picker
+                let b_color: RGBColor = buf.color.into();
                 let mut color = [
-                    buf.color.r as f32 / 255.0,
-                    buf.color.g as f32 / 255.0,
-                    buf.color.b as f32 / 255.0,
+                    b_color.r as f32 / 255.0,
+                    b_color.g as f32 / 255.0,
+                    b_color.b as f32 / 255.0,
                 ];
                 if ui.color_edit_button_rgb(&mut color).changed() {
                     let r = (color[0] * 255.0) as u8;
                     let g = (color[1] * 255.0) as u8;
                     let b = (color[2] * 255.0) as u8;
 
-                    event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::SetColor((r, g, b)),
-                    ));
+                    let tup = (r, g, b);
+                    if RGBColor::from(tup) != b_color {
+                        println!(
+                            "RGBColor::from(tup) != b_color ({:?} != {:?})",
+                            RGBColor::from(tup),
+                            b_color
+                        );
+                        event_bus_connection.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::SetColor(tup),
+                        ));
+                    }
                 }
 
                 // --- Animation Controls ---

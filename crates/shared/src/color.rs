@@ -1,15 +1,56 @@
-use core::f32;
+use core::{f32, f64};
 
+use color_space::{FromColor, FromRgb};
+use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct Color {
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+pub struct HSVColor {
+    pub h: f64,
+    pub s: f64,
+    pub v: f64,
+}
+
+impl From<RGBColor> for HSVColor {
+    fn from(value: RGBColor) -> Self {
+        let converted = color_space::Hsv::from_rgb(&color_space::Rgb {
+            r: value.r as f64,
+            g: value.g as f64,
+            b: value.b as f64,
+        });
+
+        Self {
+            h: converted.h,
+            s: converted.s,
+            v: converted.v,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RGBColor {
     pub r: u8,
     pub g: u8,
     pub b: u8,
 }
 
-impl From<(u8, u8, u8)> for Color {
+impl From<HSVColor> for RGBColor {
+    fn from(value: HSVColor) -> Self {
+        let converted = color_space::Rgb::from_color(&color_space::Hsv {
+            h: value.h,
+            s: value.s,
+            v: value.v,
+        });
+
+        Self {
+            r: converted.r as u8,
+            g: converted.g as u8,
+            b: converted.b as u8,
+        }
+    }
+}
+
+impl From<(u8, u8, u8)> for RGBColor {
     fn from(value: (u8, u8, u8)) -> Self {
         Self {
             r: value.0,
@@ -19,13 +60,13 @@ impl From<(u8, u8, u8)> for Color {
     }
 }
 
-impl Default for Color {
-    fn default() -> Self {
-        Self { r: 0, g: 0, b: 0 }
-    }
-}
+// impl Default for RGBColor {
+//     fn default() -> Self {
+//         Self { r: 0, g: 0, b: 0 }
+//     }
+// }
 
-impl Color {
+impl RGBColor {
     pub fn tup(&self) -> (u8, u8, u8) {
         (self.r, self.g, self.b)
     }
@@ -36,7 +77,7 @@ impl Color {
 }
 
 /// Uses input ranging from 0 to 360.
-pub fn hsv_to_rgb(h: u16, s: f32, v: f32) -> Color {
+pub fn hsv_to_rgb(h: u16, s: f32, v: f32) -> RGBColor {
     // Catch white.
     // if h == -1 {
     //     return (255, 255, 255).into();
@@ -47,7 +88,7 @@ pub fn hsv_to_rgb(h: u16, s: f32, v: f32) -> Color {
     // if h < 0 {
     //     h += 360;
     // }
-    
+
     let c = v * s;
     let h_prime = h as f32 / 60.0;
     let x = c * (1.0 - ((h_prime % 2.0) - 1.0).abs());

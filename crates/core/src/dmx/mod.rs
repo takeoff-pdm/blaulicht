@@ -19,7 +19,7 @@ use crate::{
 };
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
-    CONTROLS_REQUIRING_SELECTION, CONTROLS_WITHOUT_SCENE, CONTROLS_WITH_SCENE,
+    RGBColor, CONTROLS_REQUIRING_SELECTION, CONTROLS_WITHOUT_SCENE, CONTROLS_WITH_SCENE,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -55,14 +55,19 @@ pub struct FixtureSelection {
 // TODO: maybe fuse this together?
 
 impl FixtureState {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
     fn apply(&mut self, ev: ControlEvent) -> Vec<FixtureProperty> {
         match ev {
-            ControlEvent::SetBrightness(alpha) => {
+            ControlEvent::SetAlpha(alpha) => {
                 self.alpha = alpha;
-                vec![FixtureProperty::Brightness]
+                vec![FixtureProperty::Alpha]
             }
             ControlEvent::SetColor(clr) => {
-                self.color = clr.into();
+                let color: RGBColor = clr.into();
+                self.color = color.into();
                 vec![
                     FixtureProperty::ColorHue,
                     FixtureProperty::ColorSaturation,
@@ -300,12 +305,46 @@ impl DmxEngine {
         let state = self.state_ref.dmx_engine.read().unwrap();
         let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
 
+        // For each fixture, merge all scene states.
+
+        // let mut scenes = vec![state.curr_scene()];
+        // for scene_id in &state.current_overlay_scenes {
+        //     scenes.push(state.scenes.get(scene_id).unwrap());
+        // }
+
         for group in &state.groups {
             for fixture in &group.1.fixtures {
+                // Apply base scene state.
+                let mut merged_state = state
+                    .curr_scene()
+                    .sink
+                    .fixture_states
+                    .get(&(*group.0, *fixture.0))
+                    .unwrap()
+                    .clone(); // This fixture must exist.
+
+                for overlay_id in &state.current_overlay_scenes {
+                    let this_scene = state.scenes.get(overlay_id).unwrap();
+                    let scene_fixture_state = this_scene
+                        .sink
+                        .fixture_states
+                        .get(&(*group.0, *fixture.0))
+                        .unwrap();
+
+                    let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
+                    for change in changeset {
+                        // TODO: pull change into merged state.
+                        merged_state.merge_from(scene_fixture_state, change, MergeStrategy::Latest);
+                    }
+                }
+
+                // merged_state.
+                // todo!();
+
                 let fix = fixture.1;
 
                 // TODO: we will need to use the merged fixture states here and then write them.
-                // fix.write( &mut buffer.dmx_buffer);
+                fix.write(&merged_state, &mut buffer.dmx_buffer);
             }
         }
     }
@@ -362,10 +401,8 @@ impl DmxEngine {
 
         // Empties the fixture state buffer on selecion events.
         if !requires_selection {
-            state.control_buffer = FixtureState::default();
+            state.control_buffer.reset();
         }
-
-        let mut selection = self.get_selection(state);
 
         // Match event.
         match ev.body() {
@@ -496,7 +533,7 @@ impl DmxEngine {
                 // let curr_selection = self.get_selection(state);
                 for selection in &curr_selection.fixtures {
                     let fixture = this_scene.sink.fixture_states.get(selection).unwrap();
-                    state_capture.insert(*selection, fixture.clone());
+                    state_capture.insert(selection, fixture.clone());
                 }
 
                 // TODO: is unsafe when there are more than 255 scenes.
@@ -536,14 +573,14 @@ impl DmxEngine {
         ev: ControlEventMessage,
     ) -> (Option<&'static str>, Option<ControlEvent>) {
         let current_scene_focus = state.current_scene_focus;
-        let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
 
         let (msg, undo, effective_properties) = match ev.body() {
             ControlEvent::AddAnimation(id) => {
+                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
                 if !this_scene
                     .sink
                     .active_animations
-                    .contains_key(&curr_selection)
+                    .contains_key(curr_selection)
                 {
                     this_scene
                         .sink
@@ -554,7 +591,7 @@ impl DmxEngine {
                 let selec_anim = this_scene
                     .sink
                     .active_animations
-                    .get_mut(&curr_selection)
+                    .get_mut(curr_selection)
                     .unwrap();
 
                 match selec_anim.contains_key(&id) {
@@ -568,18 +605,18 @@ impl DmxEngine {
                 }
             }
             ControlEvent::RemoveAnimation(id) => {
-                // let curr_selection = self.get_selection(state);
+                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
                     .active_animations
-                    .contains_key(&curr_selection)
+                    .contains_key(curr_selection)
                 {
                     true => (Some("No animations for this selection"), None, None),
                     false => {
                         let selec_anim = this_scene
                             .sink
                             .active_animations
-                            .get_mut(&curr_selection)
+                            .get_mut(curr_selection)
                             .unwrap();
 
                         match selec_anim.remove(&id) {
@@ -593,10 +630,11 @@ impl DmxEngine {
                 }
             }
             ControlEvent::PlayAnimation(id) => {
+                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
                     .active_animations
-                    .contains_key(&curr_selection)
+                    .contains_key(curr_selection)
                 {
                     true => (
                         Some("No such selection"),
@@ -607,7 +645,7 @@ impl DmxEngine {
                         let selec_anim = this_scene
                             .sink
                             .active_animations
-                            .get_mut(&curr_selection)
+                            .get_mut(curr_selection)
                             .unwrap();
 
                         match selec_anim.get_mut(&id) {
@@ -626,11 +664,11 @@ impl DmxEngine {
                 }
             }
             ControlEvent::PauseAnimation(id) => {
-                // let curr_selection = self.get_selection(state);
+                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
                     .active_animations
-                    .contains_key(&curr_selection)
+                    .contains_key(curr_selection)
                 {
                     true => (
                         Some("No such selection"),
@@ -641,7 +679,7 @@ impl DmxEngine {
                         let selec_anim = this_scene
                             .sink
                             .active_animations
-                            .get_mut(&curr_selection)
+                            .get_mut(curr_selection)
                             .unwrap();
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
@@ -659,16 +697,35 @@ impl DmxEngine {
                 }
             }
             _ => {
-                let properties = this_scene
+                // NOTE: this applies the changeset internally on the sink.
+                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+
+                this_scene
                     .sink
                     .apply_with_selection(curr_selection, ev.body());
 
-                (None, None, Some(properties))
+                // Update control buffer for the UI.
+                state.control_buffer.apply(ev.body());
+
+                return (None, None);
             }
         };
 
-        // Mark the effective_property
-        todo!("Effective properties: {:?}", effective_properties);
+        // Update the changeset
+        let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+
+        for selector in &curr_selection.fixtures {
+            let Some(ref effective_properties) = effective_properties else {
+                continue;
+            };
+
+            for property in effective_properties {
+                this_scene
+                    .sink
+                    .changeset
+                    .insert((*selector, *property).into());
+            }
+        }
 
         (msg, undo)
     }

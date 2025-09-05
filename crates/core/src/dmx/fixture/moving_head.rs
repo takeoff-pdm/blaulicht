@@ -1,3 +1,4 @@
+use blaulicht_shared::RGBColor;
 use serde::{Deserialize, Serialize};
 
 use crate::dmx::{clock::Time, FixtureState};
@@ -11,6 +12,8 @@ pub enum MovingHead {
 
 impl MovingHead {
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+        let color: RGBColor = state.color.into();
+
         match self {
             MovingHead::MartinMacAura => {
                 // Strobe state.
@@ -20,9 +23,9 @@ impl MovingHead {
                 dmx[state.start_addr + 1] = state.alpha;
 
                 // Color.
-                dmx[state.start_addr + 9] = state.color.r;
-                dmx[state.start_addr + 10] = state.color.g;
-                dmx[state.start_addr + 11] = state.color.b;
+                dmx[state.start_addr + 9] = color.r;
+                dmx[state.start_addr + 10] = color.g;
+                dmx[state.start_addr + 11] = color.b;
             }
         }
         // match self {

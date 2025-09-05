@@ -3,12 +3,13 @@ mod light;
 mod moving_head;
 
 use crate::dmx::clock::Time;
-use blaulicht_shared::Color;
+use blaulicht_shared::{FixtureProperty, HSVColor, RGBColor};
 pub use dimmer::*;
 pub use light::*;
+use map_range::MapRange;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, u16};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
@@ -49,7 +50,7 @@ impl From<(usize, usize)> for Position {
 pub struct FixtureState {
     pub start_addr: usize,
     // the many values a fixture could have.
-    pub color: Color,
+    pub color: HSVColor,
     pub alpha: u8,
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
@@ -60,10 +61,68 @@ impl Default for FixtureState {
     fn default() -> Self {
         FixtureState {
             start_addr: 42,
-            color: Color::default(),
+            color: HSVColor::default(),
             alpha: 0,
             orientation: FixtureOrientation::default(),
             strobe_speed: 0,
+        }
+    }
+}
+
+pub enum MergeStrategy {
+    Highest,
+    Latest,
+    Interpolate,
+}
+
+impl FixtureState {
+    // Pulls in a changed property of another fixture state.
+    // Uses the specified merge strategy.
+    pub fn merge_from(
+        &mut self,
+        other: &FixtureState,
+        property: FixtureProperty,
+        strategy: MergeStrategy,
+    ) {
+        let self_value = self.get_value(property);
+        let other_value = other.get_value(property);
+
+        let new_value = match strategy {
+            MergeStrategy::Highest => self_value.max(other_value),
+            MergeStrategy::Latest => other_value,
+            MergeStrategy::Interpolate => self_value.midpoint(other_value),
+        };
+
+        self.apply_value(new_value, property);
+    }
+
+    fn apply_value(&mut self, value: u16, property: FixtureProperty) {
+        match property {
+            FixtureProperty::Alpha => self.alpha = value as u8,
+            FixtureProperty::ColorHue => {
+                self.color.h = (value as f64).map_range(0.0..360.0, 0.0..1.0)
+            }
+            FixtureProperty::ColorSaturation => {
+                self.color.s = (value as f64).map_range(0.0..255.0, 0.0..1.0)
+            }
+            FixtureProperty::ColorValue => {
+                self.color.v = (value as f64).map_range(0.0..255.0, 0.0..1.0)
+            }
+            FixtureProperty::Tilt => self.orientation.tilt = value as u8,
+            FixtureProperty::Pan => self.orientation.pan = value as u8,
+            FixtureProperty::Rotation => self.orientation.rotation = value as u8,
+        }
+    }
+
+    fn get_value(&self, property: FixtureProperty) -> u16 {
+        match property {
+            FixtureProperty::Alpha => self.alpha as u16,
+            FixtureProperty::ColorHue => self.color.h.map_range(0.0..1.0, 0.0..360.0) as u16,
+            FixtureProperty::ColorSaturation => self.color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
+            FixtureProperty::ColorValue => self.color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
+            FixtureProperty::Tilt => self.orientation.tilt as u16,
+            FixtureProperty::Pan => self.orientation.pan as u16,
+            FixtureProperty::Rotation => self.orientation.rotation as u16,
         }
     }
 }

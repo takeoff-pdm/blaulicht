@@ -142,9 +142,9 @@ impl AnimationSpeedModifier {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone, Copy, EnumIter, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone, Copy, EnumIter, PartialEq, Eq, Hash)]
 pub enum FixtureProperty {
-    Brightness,
+    Alpha,
     ColorHue,
     ColorSaturation,
     ColorValue,
@@ -197,7 +197,7 @@ pub enum ControlEvent {
     SetEnabled(bool),
     /// Sets the brightness of the fixture, 0 is usually black, 255 is full brightness.
     /// TODO: replace this with set-property messages
-    SetBrightness(u8),
+    SetAlpha(u8),
     /// Sets the color of the fixture using the RGB format.
     SetColor((u8, u8, u8)),
     //
@@ -235,7 +235,7 @@ pub enum ControlEvent {
 macro_rules! CONTROLS_REQUIRING_SELECTION {
     () => {
         ControlEvent::SetEnabled(_)
-            | ControlEvent::SetBrightness(_)
+            | ControlEvent::SetAlpha(_)
             | ControlEvent::SetColor(_)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)
@@ -257,7 +257,7 @@ macro_rules! CONTROLS_WITHOUT_SCENE {
 #[macro_export]
 macro_rules! CONTROLS_WITH_SCENE {
     () => {
-        ControlEvent::SetBrightness(_)
+        ControlEvent::SetAlpha(_)
             | ControlEvent::SetColor(_)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)

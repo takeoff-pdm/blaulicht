@@ -850,6 +850,7 @@ dependencies = [
  "anyhow",
  "audioviz",
  "blaulicht-shared",
+ "color_space",
  "cpal 0.15.3",
  "crossbeam-channel",
  "crossbeam-queue",
@@ -896,6 +897,8 @@ name = "blaulicht-shared"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "color_space",
+ "map-range",
  "serde",
  "strum 0.27.2",
 ]
@@ -1123,6 +1126,12 @@ dependencies = [
  "termcolor",
  "unicode-width",
 ]
+
+[[package]]
+name = "color_space"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52fdfaf2bee6357023bf7f95b15a8ef0b82759d2bce705cc45efcae9ae10f0ff"
 
 [[package]]
 name = "colorchoice"

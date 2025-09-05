@@ -105,7 +105,7 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
     for e in ev {
         match (e.status, e.kind, e.value) {
             (176, 19, v) => {
-                bl_send(ControlEvent::SetBrightness(
+                bl_send(ControlEvent::SetAlpha(
                     (v as u16).map_range(0..127, 0..255) as u8,
                 ));
             }
@@ -188,7 +188,7 @@ fn nano_in(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
                     state.brightness_mod += 1;
                 }
 
-                bl_send(ControlEvent::SetBrightness(state.brightness_mod));
+                bl_send(ControlEvent::SetAlpha(state.brightness_mod));
             }
             _ => {
                 println!("{}: {:?}", conn.get_meta().device_id, e);
