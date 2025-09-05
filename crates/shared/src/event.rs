@@ -142,7 +142,9 @@ impl AnimationSpeedModifier {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone, Copy, EnumIter, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Serialize, Deserialize, Encode, Decode, Clone, Copy, EnumIter, PartialEq, Eq, Hash,
+)]
 pub enum FixtureProperty {
     Alpha,
     ColorHue,
@@ -226,9 +228,8 @@ pub enum ControlEvent {
     //
     // Scene-related events.
     //
-    // Captures the active selection and saves the fixture state to a new scene.
-    // This will create a new scene with this name.
-    CreateScene(String),
+    // Focusses the scene with the given ID.
+    SetSceneFocus(u8),
 }
 
 #[macro_export]
@@ -236,28 +237,6 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
     () => {
         ControlEvent::SetEnabled(_)
             | ControlEvent::SetAlpha(_)
-            | ControlEvent::SetColor(_)
-            | ControlEvent::AddAnimation(_)
-            | ControlEvent::RemoveAnimation(_)
-            | ControlEvent::ResetAnimation(_)
-            | ControlEvent::PauseAnimation(_)
-            | ControlEvent::PlayAnimation(_)
-            | ControlEvent::SetAnimationSpeed(_, _)
-            | ControlEvent::CreateScene(_)
-    };
-}
-
-#[macro_export]
-macro_rules! CONTROLS_WITHOUT_SCENE {
-    () => {
-        ControlEvent::CreateScene(_)
-    };
-}
-
-#[macro_export]
-macro_rules! CONTROLS_WITH_SCENE {
-    () => {
-        ControlEvent::SetAlpha(_)
             | ControlEvent::SetColor(_)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)
@@ -289,7 +268,8 @@ impl ControlEvent {
             | ControlEvent::RemoveAllSelection
             | ControlEvent::MiscEvent { .. }
             | ControlEvent::PopSelection
-            | ControlEvent::PushSelection => false,
+            | ControlEvent::PushSelection
+            | ControlEvent::SetSceneFocus(_) => false,
             ControlEvent::Transaction(_) => false,
         }
     }

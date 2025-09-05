@@ -519,26 +519,26 @@ impl eframe::App for BlaulichtApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            // Continuous rendering - always request repaints
-            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
-
-            // Update animation time for continuous rendering
-            self.frame_count += 1;
-            self.animation_time += 0.016; // 16ms = 0.016 seconds
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
-
-            ui.separator();
+            // ui.heading("eframe template");
+            //
+            // // Continuous rendering - always request repaints
+            // ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
+            //
+            // // Update animation time for continuous rendering
+            // self.frame_count += 1;
+            // self.animation_time += 0.016; // 16ms = 0.016 seconds
+            //
+            // ui.horizontal(|ui| {
+            //     ui.label("Write something: ");
+            //     ui.text_edit_singleline(&mut self.label);
+            // });
+            //
+            // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+            // if ui.button("Increment").clicked() {
+            //     self.value += 1.0;
+            // }
+            //
+            // ui.separator();
 
             // Page content based on selected tab
             match self.current_page {
@@ -553,17 +553,17 @@ impl eframe::App for BlaulichtApp {
                 }
             }
 
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
+            // ui.separator();
+            //
+            // ui.add(egui::github_link_file!(
+            //     "https://github.com/emilk/eframe_template/blob/main/",
+            //     "Source code."
+            // ));
+            //
+            // ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+            //     powered_by_egui_and_eframe(ui);
+            //     egui::warn_if_debug_build(ui);
+            // });
         });
     }
 }
@@ -575,17 +575,17 @@ impl BlaulichtApp {
             // Left content area (3/4 width)
             let total_width = ui.available_width();
             let graph_panel_width = total_width * 0.25;
-            let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
+            // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
 
-            ui.vertical(|ui| {
-                ui.set_width(main_panel_width);
-                ui.heading("Main Content");
-                ui.label("This is the main content area taking up 3/4 of the width.");
-                ui.add_space(20.0);
-                ui.label("You can put your main application content here.");
-            });
+            // ui.vertical(|ui| {
+            //     ui.set_width(main_panel_width);
+            //     ui.heading("Main Content");
+            //     ui.label("This is the main content area taking up 3/4 of the width.");
+            //     ui.add_space(20.0);
+            //     ui.label("You can put your main application content here.");
+            // });
 
-            ui.separator();
+            // ui.separator();
 
             // Graphs panel (1/4 width) - fixed width
             ui.allocate_ui_with_layout(
@@ -644,6 +644,8 @@ impl BlaulichtApp {
                     let graph_height = 140.0;
                     let graph_width = graph_panel_width - 16.0;
                     let padding = 10.0;
+
+                    debug_assert!(graph_width > 0.0);
 
                     ui.add_space(padding);
                     let (response, painter) = ui.allocate_painter(

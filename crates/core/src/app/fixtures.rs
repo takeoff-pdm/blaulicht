@@ -1,4 +1,4 @@
-use std::sync::RwLockReadGuard;
+use std::{collections::HashSet, mem, sync::RwLockReadGuard};
 
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, RGBColor,
@@ -7,30 +7,85 @@ use egui::{Align2, Button, Color32, Frame, TextBuffer};
 
 use crate::{
     app::{BlaulichtApp, Selection},
-    dmx::{EngineGroups, FixtureState},
+    dmx::{self, EngineGroups, EngineSelection, EngineState, FixtureState},
     event::SystemEventBusConnectionInst,
     routes::DmxBuffer,
 };
 
 impl BlaulichtApp {
-    pub fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Fixtures");
-        ui.separator();
+    fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        ui.horizontal(|ui| {
+            // TODO: limit width. OR use popups for creation stuff.
+            ui.vertical(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut self.new_scene_name));
+                if ui.button("Create Scene").clicked() {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.new_scene(self.new_scene_name.take());
+                }
+            });
 
-        ui.add(egui::TextEdit::singleline(&mut self.new_scene_name));
-        if ui.button("Create Scene").clicked() {
-            self.data
-                .event_bus_connection
-                .send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::CreateScene(self.new_scene_name.take()),
-                ));
-        }
+            for (scene_id, scene) in &dmx_engine.scenes {
+                let is_selected = dmx_engine.current_scene_focus == *scene_id;
 
-        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+                let rect = ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
+                let painter = ui.painter();
+                let bg_color = if is_selected {
+                    egui::Color32::from_rgb(60, 120, 200)
+                } else {
+                    egui::Color32::from_gray(40)
+                };
+                painter.rect_filled(rect.0, 6.0, bg_color);
 
-        let groups = dmx_engine.groups();
+                // let fixture_count = group.fixtures.len();
+                let name = format!("Scene {scene_id}");
+                painter.text(
+                    rect.0.left_top() + egui::vec2(12.0, 8.0),
+                    egui::Align2::LEFT_TOP,
+                    &name,
+                    egui::FontId::proportional(16.0),
+                    egui::Color32::WHITE,
+                );
+                // painter.text(
+                //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
+                //     egui::Align2::LEFT_CENTER,
+                //     format!("TODO: overlay or not"),
+                //     egui::FontId::proportional(12.0),
+                //     egui::Color32::GRAY,
+                // );
+                painter.text(
+                    rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    format!("Changes: {}", scene.sink.changeset.len()),
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::GRAY,
+                );
+
+                if rect.1.clicked() {
+                    // Toggle group selection
+                    if !is_selected {
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetSceneFocus(*scene_id),
+                            ));
+                    };
+                }
+                ui.add_space(8.0);
+            }
+        });
+    }
+
+    fn fixture_selection(
+        &mut self,
+        groups: &EngineGroups,
+        ui: &mut egui::Ui,
+        // selection: &EngineSelection,
+        // total_fixtures: &[(u8, u8, Selection)],
+        // highlight_fixtures: &HashSet<u8>,
+    ) {
         let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+
         let selection = dmx_engine.selection();
 
         let highlight_fixtures = &selection.fixtures_in_group;
@@ -57,18 +112,6 @@ impl BlaulichtApp {
                 }));
             }
         }
-
-        let selected_fixture = if selection.fixtures_in_group.len() == 1 {
-            total_fixtures
-                .iter()
-                .filter(|(_, _, select)| *select == Selection::Limited)
-                .next()
-                .cloned()
-        } else if total_fixtures.len() == 1 {
-            total_fixtures.first().cloned()
-        } else {
-            None
-        };
 
         // let group_count = groups.len();
         // let mut selected_group = self.selected_fixture_group;
@@ -203,194 +246,230 @@ impl BlaulichtApp {
                         }
                         // }
                     });
-
-                    // Controls panel (right)
-                    {
-                        let buf = match selected_fixture {
-                            Some((g_id, f_id, _)) => {
-                                let fixture = dmx_engine
-                                    .curr_scene()
-                                    .sink
-                                    .fixture_states
-                                    .get(&(g_id, f_id))
-                                    .unwrap();
-                                fixture.clone()
-                            }
-                            None => dmx_engine.control_buffer.clone(),
-                        };
-
-                        // let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
-
-                        fixture_controls(
-                            ui,
-                            &buf,
-                            self.data.event_bus_connection.clone(),
-                            // animations.as_slice(),
-                        );
-                        // todo!("FIXTURE CONTROLS")
-                    }
-
-                    // Show animation groups.
-
-                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                    simulate_dmx(ui, groups, dmx_buffer)
                 });
             },
         );
+
+        {
+            // let selection = .selection();
+            let selected_fixture = if selection.fixtures_in_group.len() == 1 {
+                total_fixtures
+                    .iter()
+                    .filter(|(_, _, select)| *select == Selection::Limited)
+                    .next()
+                    .cloned()
+            } else if total_fixtures.len() == 1 {
+                total_fixtures.first().cloned()
+            } else {
+                None
+            };
+
+            let buf = match selected_fixture {
+                Some((g_id, f_id, _)) => {
+                    let fixture = dmx_engine
+                        .curr_scene()
+                        .sink
+                        .fixture_states
+                        .get(&(g_id, f_id))
+                        .unwrap();
+                    fixture.clone()
+                }
+                None => dmx_engine.control_buffer.clone(),
+            };
+
+            // let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
+
+            self.fixture_controls(
+                ui,
+                &buf,
+                self.data.event_bus_connection.clone(),
+                // animations.as_slice(),
+            );
+            // todo!("FIXTURE CONTROLS")
+        }
     }
-}
 
-fn animation_groups(
-    ui: &mut egui::Ui,
-    animations: &[u8],
-    event_bus_connection: SystemEventBusConnectionInst,
-) {
-    todo!("animations")
-    // // List currently applied animations
-    // ui.label(format!("Animations len {}", buf.animations.len()));
-    //
-    // for (applied_id, applied) in buf.animations.iter() {
-    //     ui.horizontal(|ui| {
-    //         ui.label(format!("Animation {}", applied.id));
-    //         // Speed factor knob/slider
-    //         // let speeds = AnimationSpeedModifier::iter();
-    //
-    //         let mut index = applied.speed_factor.as_index();
-    //         let max_index = AnimationSpeedModifier::ALL.len() - 1;
-    //
-    //         ui.label(format!("Selected: {}", applied.speed_factor.as_str()));
-    //         if ui
-    //             .add(egui::Slider::new(&mut index, 0..=max_index).text("Enum"))
-    //             .changed()
-    //         {
-    //             // applied.speed_factor = AnimationSpeedModifier::from_index(index);
-    //             event_bus_connection.send(ControlEventMessage::new(
-    //                 EventOriginator::Web,
-    //                 ControlEvent::SetAnimationSpeed(
-    //                     *applied_id,
-    //                     AnimationSpeedModifier::from_index(index),
-    //                 ),
-    //             ));
-    //         }
-    //
-    //         // Remove button
-    //         if ui.button("Remove").clicked() {
-    //             event_bus_connection.send(ControlEventMessage::new(
-    //                 EventOriginator::Web,
-    //                 ControlEvent::RemoveAnimation(*applied_id),
-    //             ));
-    //         }
-    //
-    //         if ui.button("Play").clicked() {
-    //             event_bus_connection.send(ControlEventMessage::new(
-    //                 EventOriginator::Web,
-    //                 ControlEvent::PlayAnimation(*applied_id),
-    //             ));
-    //         }
-    //
-    //         if ui.button("Pause").clicked() {
-    //             event_bus_connection.send(ControlEventMessage::new(
-    //                 EventOriginator::Web,
-    //                 ControlEvent::PauseAnimation(*applied_id),
-    //             ));
-    //         }
-    //     });
-    // }
-}
+    pub fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Fixtures");
+        ui.separator();
 
-fn fixture_controls(
-    ui: &mut egui::Ui,
-    buf: &FixtureState,
-    event_bus_connection: SystemEventBusConnectionInst,
-) {
-    Frame::new()
-        .fill(Color32::from_rgb(50, 50, 50))
-        .show(ui, |ui| {
-            ui.set_max_width(200.0);
-            ui.vertical(|ui| {
-                ui.label("Fixture Controls");
-                ui.add_space(8.0);
+        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+        let groups = dmx_engine.groups();
 
-                // Brightness slider
-                {
-                    let mut brightness = buf.alpha as u32;
-                    if ui
-                        .add(egui::Slider::new(&mut brightness, 0..=255).text("Brightness"))
-                        .changed()
-                    {
-                        event_bus_connection.send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            ControlEvent::SetAlpha(brightness as u8),
-                        ));
-                    }
-                }
+        ui.vertical(|ui| {
+            //
+            // WTF.
+            //
 
-                // Color picker
-                let b_color: RGBColor = buf.color.into();
-                let mut color = [
-                    b_color.r as f32 / 255.0,
-                    b_color.g as f32 / 255.0,
-                    b_color.b as f32 / 255.0,
-                ];
-                if ui.color_edit_button_rgb(&mut color).changed() {
-                    let r = (color[0] * 255.0) as u8;
-                    let g = (color[1] * 255.0) as u8;
-                    let b = (color[2] * 255.0) as u8;
+            // Scene overview
+            self.scene_overview(ui, &dmx_engine);
 
-                    let tup = (r, g, b);
-                    if RGBColor::from(tup) != b_color {
-                        println!(
-                            "RGBColor::from(tup) != b_color ({:?} != {:?})",
-                            RGBColor::from(tup),
-                            b_color
-                        );
-                        event_bus_connection.send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            ControlEvent::SetColor(tup),
-                        ));
-                    }
-                }
+            ui.separator();
 
-                // --- Animation Controls ---
-                ui.separator();
-                ui.label("Animations");
+            ui.horizontal(|ui| {
+                self.fixture_selection(groups, ui);
 
-                // TODO: Animations come to a different 'window / tab'
-                //
-                // Add Animation Selection: Prettier fixed-height boxes
-                // ui.label("Add Animation:");
-                // ui.add_space(4.0);
-                // let mut selected_anim: Option<u8> = None;
-                // egui::ScrollArea::vertical()
-                //     .max_height(120.0)
-                //     .show(ui, |ui| {
-                //         for &anim_id in animations.iter() {
-                //             // Draw custom box background
-                //             let rect = ui
-                //                 .allocate_exact_size(egui::vec2(150.0, 36.0), egui::Sense::hover());
-                //             let painter = ui.painter();
-                //             let bg_color = Color32::from_rgb(70, 70, 120);
-                //             painter.rect_filled(rect.0, 6.0, bg_color);
-                //             // Overlay input element for accessibility and keyboard navigation
-                //             let response = ui.put(
-                //                 rect.0,
-                //                 Button::selectable(false, format!("Animation {}", anim_id)),
-                //             );
-                //             if response.clicked() {
-                //                 selected_anim = Some(anim_id);
-                //             }
-                //             ui.add_space(4.0);
-                //         }
-                //     });
-                //
-                // if let Some(anim_id) = selected_anim {
-                //     event_bus_connection.send(ControlEventMessage::new(
-                //         EventOriginator::Web,
-                //         ControlEvent::AddAnimation(anim_id),
-                //     ));
-                // }
+                // TODO: Show animation groups.
+
+                let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                simulate_dmx(ui, groups, dmx_buffer)
             });
         });
+    }
+
+    fn animation_groups(
+        ui: &mut egui::Ui,
+        animations: &[u8],
+        event_bus_connection: SystemEventBusConnectionInst,
+    ) {
+        todo!("animations")
+        // // List currently applied animations
+        // ui.label(format!("Animations len {}", buf.animations.len()));
+        //
+        // for (applied_id, applied) in buf.animations.iter() {
+        //     ui.horizontal(|ui| {
+        //         ui.label(format!("Animation {}", applied.id));
+        //         // Speed factor knob/slider
+        //         // let speeds = AnimationSpeedModifier::iter();
+        //
+        //         let mut index = applied.speed_factor.as_index();
+        //         let max_index = AnimationSpeedModifier::ALL.len() - 1;
+        //
+        //         ui.label(format!("Selected: {}", applied.speed_factor.as_str()));
+        //         if ui
+        //             .add(egui::Slider::new(&mut index, 0..=max_index).text("Enum"))
+        //             .changed()
+        //         {
+        //             // applied.speed_factor = AnimationSpeedModifier::from_index(index);
+        //             event_bus_connection.send(ControlEventMessage::new(
+        //                 EventOriginator::Web,
+        //                 ControlEvent::SetAnimationSpeed(
+        //                     *applied_id,
+        //                     AnimationSpeedModifier::from_index(index),
+        //                 ),
+        //             ));
+        //         }
+        //
+        //         // Remove button
+        //         if ui.button("Remove").clicked() {
+        //             event_bus_connection.send(ControlEventMessage::new(
+        //                 EventOriginator::Web,
+        //                 ControlEvent::RemoveAnimation(*applied_id),
+        //             ));
+        //         }
+        //
+        //         if ui.button("Play").clicked() {
+        //             event_bus_connection.send(ControlEventMessage::new(
+        //                 EventOriginator::Web,
+        //                 ControlEvent::PlayAnimation(*applied_id),
+        //             ));
+        //         }
+        //
+        //         if ui.button("Pause").clicked() {
+        //             event_bus_connection.send(ControlEventMessage::new(
+        //                 EventOriginator::Web,
+        //                 ControlEvent::PauseAnimation(*applied_id),
+        //             ));
+        //         }
+        //     });
+        // }
+    }
+
+    fn fixture_controls(
+        &self,
+        ui: &mut egui::Ui,
+        buf: &FixtureState,
+        event_bus_connection: SystemEventBusConnectionInst,
+    ) {
+        Frame::new()
+            .fill(Color32::from_rgb(50, 50, 50))
+            .show(ui, |ui| {
+                ui.set_max_width(200.0);
+                ui.vertical(|ui| {
+                    ui.label("Fixture Controls");
+                    ui.add_space(8.0);
+
+                    // Brightness slider
+                    {
+                        let mut brightness = buf.alpha as u32;
+                        if ui
+                            .add(egui::Slider::new(&mut brightness, 0..=255).text("Brightness"))
+                            .changed()
+                        {
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetAlpha(brightness as u8),
+                            ));
+                        }
+                    }
+
+                    // Color picker
+                    let b_color: RGBColor = buf.color.into();
+                    let mut color = [
+                        b_color.r as f32 / 255.0,
+                        b_color.g as f32 / 255.0,
+                        b_color.b as f32 / 255.0,
+                    ];
+                    if ui.color_edit_button_rgb(&mut color).changed() {
+                        let r = (color[0] * 255.0) as u8;
+                        let g = (color[1] * 255.0) as u8;
+                        let b = (color[2] * 255.0) as u8;
+
+                        let tup = (r, g, b);
+                        if RGBColor::from(tup) != b_color {
+                            println!(
+                                "RGBColor::from(tup) != b_color ({:?} != {:?})",
+                                RGBColor::from(tup),
+                                b_color
+                            );
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetColor(tup),
+                            ));
+                        }
+                    }
+
+                    // --- Animation Controls ---
+                    ui.separator();
+                    ui.label("Animations");
+
+                    // TODO: Animations come to a different 'window / tab'
+                    //
+                    // Add Animation Selection: Prettier fixed-height boxes
+                    // ui.label("Add Animation:");
+                    // ui.add_space(4.0);
+                    // let mut selected_anim: Option<u8> = None;
+                    // egui::ScrollArea::vertical()
+                    //     .max_height(120.0)
+                    //     .show(ui, |ui| {
+                    //         for &anim_id in animations.iter() {
+                    //             // Draw custom box background
+                    //             let rect = ui
+                    //                 .allocate_exact_size(egui::vec2(150.0, 36.0), egui::Sense::hover());
+                    //             let painter = ui.painter();
+                    //             let bg_color = Color32::from_rgb(70, 70, 120);
+                    //             painter.rect_filled(rect.0, 6.0, bg_color);
+                    //             // Overlay input element for accessibility and keyboard navigation
+                    //             let response = ui.put(
+                    //                 rect.0,
+                    //                 Button::selectable(false, format!("Animation {}", anim_id)),
+                    //             );
+                    //             if response.clicked() {
+                    //                 selected_anim = Some(anim_id);
+                    //             }
+                    //             ui.add_space(4.0);
+                    //         }
+                    //     });
+                    //
+                    // if let Some(anim_id) = selected_anim {
+                    //     event_bus_connection.send(ControlEventMessage::new(
+                    //         EventOriginator::Web,
+                    //         ControlEvent::AddAnimation(anim_id),
+                    //     ));
+                    // }
+                });
+            });
+    }
 }
 
 fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<'_, DmxBuffer>) {

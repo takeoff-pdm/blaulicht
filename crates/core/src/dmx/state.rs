@@ -9,10 +9,13 @@ use crate::dmx::{
     scene::{EngineSink, Scene},
     FixtureSelection,
 };
-use blaulicht_shared::{AnimationSpeedModifier, RGBColor, FixtureProperty};
+use blaulicht_shared::{AnimationSpeedModifier, FixtureProperty, RGBColor};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    time::Instant,
+};
 
 //
 // State.
@@ -109,6 +112,20 @@ impl<'engine> EngineState {
     pub fn curr_scene_mut(&'engine mut self) -> &'engine mut Scene {
         let curr_scene_id = self.current_scene_focus;
         self.scenes.get_mut(&curr_scene_id).unwrap()
+    }
+
+    pub fn new_scene(&mut self, name: String) {
+        // TODO: this fails when there are too many scenes.
+        let new_id = self.scenes.len();
+        debug_assert!(new_id == new_id as u8 as usize);
+
+        self.scenes.insert(
+            new_id as u8,
+            Scene {
+                sink: EngineSink::from_groups(self.groups()),
+                name: name.clone(),
+            },
+        );
     }
 }
 

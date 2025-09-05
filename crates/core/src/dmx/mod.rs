@@ -19,7 +19,7 @@ use crate::{
 };
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
-    RGBColor, CONTROLS_REQUIRING_SELECTION, CONTROLS_WITHOUT_SCENE, CONTROLS_WITH_SCENE,
+    RGBColor, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -499,70 +499,15 @@ impl DmxEngine {
             ControlEvent::MiscEvent { descriptor, value } => {
                 todo!("Not implemented");
             }
-            CONTROLS_REQUIRING_SELECTION!() => match ev.body() {
-                CONTROLS_WITHOUT_SCENE!() => {
-                    let curr_selection = self.get_selection(state);
-                    self.apply_on_selection_without_scene(&curr_selection, state, ev)
-                }
-                CONTROLS_WITH_SCENE!() => {
-                    let curr_selection = self.get_selection(state);
-                    self.apply_on_selection_and_scene(&curr_selection, state, ev)
-                }
-                _ => unreachable!("All options covered"),
-            },
-        }
-    }
-
-    fn apply_on_selection_without_scene(
-        &self,
-        curr_selection: &FixtureSelection,
-        state: &mut RwLockWriteGuard<'_, EngineState>,
-        ev: ControlEventMessage,
-    ) -> (Option<&'static str>, Option<ControlEvent>) {
-        debug_assert!(matches!(ev.body(), CONTROLS_WITHOUT_SCENE!()));
-        debug_assert!(matches!(ev.body(), CONTROLS_REQUIRING_SELECTION!()));
-
-        let current_scene_focus = state.current_scene_focus;
-        let this_scene = state.scenes.get(&current_scene_focus).unwrap();
-
-        match ev.body() {
-            ControlEvent::CreateScene(name) => {
-                let start = Instant::now();
-                let mut state_capture = BTreeMap::new();
-
-                // let curr_selection = self.get_selection(state);
-                for selection in &curr_selection.fixtures {
-                    let fixture = this_scene.sink.fixture_states.get(selection).unwrap();
-                    state_capture.insert(selection, fixture.clone());
-                }
-
-                // TODO: is unsafe when there are more than 255 scenes.
-                let new_id = state.scenes.len();
-                let active_animations = this_scene.sink.active_animations.clone();
-                state.scenes.insert(
-                    new_id as u8,
-                    Scene {
-                        sink: EngineSink {
-                            fixture_states: todo!(),
-                            active_animations,
-                            changeset: HashSet::new(),
-                        },
-                        // state_capture,
-                        name: name.clone(),
-                        // active_animations,
-                    },
-                );
-
-                self.system_out
-                    .send(SystemMessage::Log(format!(
-                        "Save scene <{name}> took {:?}",
-                        start.elapsed()
-                    )))
-                    .unwrap();
-
+            ControlEvent::SetSceneFocus(id) => {
+                debug_assert!(state.scenes.get(&id).is_some());
+                state.current_scene_focus = id;
                 (None, None)
             }
-            _ => unreachable!("All options covered"),
+            CONTROLS_REQUIRING_SELECTION!() => {
+                let curr_selection = self.get_selection(state);
+                self.apply_on_selection_and_scene(&curr_selection, state, ev)
+            }
         }
     }
 
