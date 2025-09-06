@@ -1,9 +1,14 @@
-use std::{collections::HashSet, mem, sync::RwLockReadGuard};
+use std::{
+    collections::{BTreeMap, HashSet},
+    mem,
+    sync::RwLockReadGuard,
+};
 
 use blaulicht_shared::{
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, RGBColor,
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    RGBColor,
 };
-use egui::{Align2, Button, Color32, Frame, TextBuffer};
+use egui::{Align2, Button, Color32, Frame, RichText, TextBuffer};
 
 use crate::{
     app::{BlaulichtApp, Selection},
@@ -119,7 +124,7 @@ impl BlaulichtApp {
 
         // let mut selected_groups = vec![];
 
-        let box_size = egui::vec2(ui.available_width(), 64.0);
+        let box_size = egui::vec2(ui.available_width(), ui.available_height());
         ui.allocate_ui_with_layout(
             box_size,
             egui::Layout::top_down(egui::Align::Center),
@@ -296,25 +301,105 @@ impl BlaulichtApp {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let groups = dmx_engine.groups();
 
-        ui.vertical(|ui| {
-            //
-            // WTF.
-            //
+        // ui.allocate_ui(ve ui.available_height(), |ui| {
+        //
+        // });
+        //
+        ui.allocate_ui_with_layout(
+            egui::Vec2::new(ui.available_width(), ui.available_height()), // fill all space
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.vertical(|ui| {
+                    ui.painter().rect_filled(
+                        ui.available_rect_before_wrap(),
+                        0.0,
+                        Color32::LIGHT_GREEN,
+                    );
+                    //
+                    // WTF.
+                    //
 
-            // Scene overview
-            self.scene_overview(ui, &dmx_engine);
+                    // Scene overview
+                    self.scene_overview(ui, &dmx_engine);
 
-            ui.separator();
+                    ui.separator();
 
-            ui.horizontal(|ui| {
-                self.fixture_selection(groups, ui);
+                    Frame::new().fill(Color32::LIGHT_RED).show(ui, |ui| {
+                        ui.set_min_height(ui.available_height());
+                        ui.horizontal(|ui| {
+                            ui.set_min_height(ui.available_height());
 
-                // TODO: Show animation groups.
+                            ui.painter().rect_filled(
+                                ui.available_rect_before_wrap(),
+                                0.0,
+                                Color32::LIGHT_RED,
+                            );
 
-                let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                simulate_dmx(ui, groups, dmx_buffer)
-            });
-        });
+                            self.fixture_selection(groups, ui);
+
+                            // TODO: Show animation groups.
+                            //
+                            ui.separator();
+
+                            Frame::new().fill(Color32::LIGHT_BLUE).show(ui, |ui| {
+                                ui.set_min_height(ui.available_height());
+
+                                ui.vertical(|ui| {
+                                    ui.set_min_height(ui.available_height());
+
+                                    ui.painter().rect_filled(
+                                        ui.available_rect_before_wrap(),
+                                        0.0,
+                                        Color32::LIGHT_BLUE,
+                                    );
+
+                                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                                    simulate_dmx(ui, groups, dmx_buffer);
+
+                                    ui.separator();
+
+                                    // Scene stats.
+
+                                    ui.label("Scene Changeset");
+
+                                    let scene = dmx_engine.curr_scene();
+
+                                    let mut changeset_organized: BTreeMap<
+                                        (u8, u8),
+                                        Vec<FixtureProperty>,
+                                    > = BTreeMap::new();
+
+                                    for change in &scene.sink.changeset {
+                                        match changeset_organized.get_mut(&(change.gid, change.fid))
+                                        {
+                                            Some(mut entry) => entry.push(change.property),
+                                            None => {
+                                                changeset_organized.insert(
+                                                    (change.gid, change.fid),
+                                                    vec![change.property],
+                                                );
+                                            }
+                                        }
+                                    }
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        for ((gid, fid), properties) in changeset_organized {
+                                            ui.label(
+                                                RichText::new(format!("GID: {gid} | FID: {fid}"))
+                                                    .color(Color32::LIGHT_GREEN),
+                                            );
+
+                                            for prop in properties {
+                                                ui.label(format!("- {prop}"));
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            },
+        );
     }
 
     fn animation_groups(

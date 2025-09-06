@@ -155,6 +155,20 @@ pub enum FixtureProperty {
     Rotation,
 }
 
+impl Display for FixtureProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            FixtureProperty::Alpha => "Alpha",
+            FixtureProperty::ColorHue => "ColorHue",
+            FixtureProperty::ColorSaturation => "ColorSaturation",
+            FixtureProperty::ColorValue => "ColorValue",
+            FixtureProperty::Tilt => "Tilt",
+            FixtureProperty::Pan => "Pan",
+            FixtureProperty::Rotation => "Rotation",
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]
 pub enum ControlEvent {
     //
