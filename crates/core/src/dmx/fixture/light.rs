@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use blaulicht_shared::RGBColor;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +32,12 @@ pub enum Light {
     LEDPartyTCLSpot,
 }
 
+impl Display for Light {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 impl Light {
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
@@ -39,21 +47,21 @@ impl Light {
                 let (r, g, b) = color.tup();
                 let alpha = state.alpha;
 
-                dmx[state.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
-                dmx[state.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
-                dmx[state.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
             }
             Light::Generic4ChanWithAlpha => {
-                dmx[state.start_addr + 0] = state.alpha;
-                dmx[state.start_addr + 1] = color.r;
-                dmx[state.start_addr + 2] = color.g;
-                dmx[state.start_addr + 3] = color.b;
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = color.r;
+                dmx[this.start_addr + 2] = color.g;
+                dmx[this.start_addr + 3] = color.b;
             }
             Light::LEDPartyTCLSpot => {
-                dmx[state.start_addr + 0] = color.r;
-                dmx[state.start_addr + 1] = color.g;
-                dmx[state.start_addr + 2] = color.b;
-                dmx[state.start_addr + 3] = state.alpha;
+                dmx[this.start_addr + 0] = color.r;
+                dmx[this.start_addr + 1] = color.g;
+                dmx[this.start_addr + 2] = color.b;
+                dmx[this.start_addr + 3] = state.alpha;
             }
         }
     }
@@ -63,21 +71,21 @@ impl Light {
 
         match self {
             Light::Generic3ChanNoAlpha => {
-                dmx[state.start_addr + 0] = 0;
-                dmx[state.start_addr + 1] = 0;
-                dmx[state.start_addr + 2] = 0;
+                dmx[this.start_addr + 0] = 0;
+                dmx[this.start_addr + 1] = 0;
+                dmx[this.start_addr + 2] = 0;
             }
             Light::Generic4ChanWithAlpha => {
-                dmx[state.start_addr + 0] = 0;
-                dmx[state.start_addr + 1] = color.r;
-                dmx[state.start_addr + 2] = color.g;
-                dmx[state.start_addr + 3] = color.b;
+                dmx[this.start_addr + 0] = 0;
+                dmx[this.start_addr + 1] = color.r;
+                dmx[this.start_addr + 2] = color.g;
+                dmx[this.start_addr + 3] = color.b;
             }
             Light::LEDPartyTCLSpot => {
-                dmx[state.start_addr + 0] = color.r;
-                dmx[state.start_addr + 1] = color.g;
-                dmx[state.start_addr + 2] = color.b;
-                dmx[state.start_addr + 3] = 0;
+                dmx[this.start_addr + 0] = color.r;
+                dmx[this.start_addr + 1] = color.g;
+                dmx[this.start_addr + 2] = color.b;
+                dmx[this.start_addr + 3] = 0;
             }
         }
     }

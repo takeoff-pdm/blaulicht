@@ -123,9 +123,17 @@ impl DmxEngine {
         // self.build_animations_cache(audio_snapshot);
         // Advance animations.
         {
-            // let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
-            // let mut state = self.state_ref.dmx_engine.write().unwrap();
-            // let animations = state.animations.clone();
+            // // TODO: what's the plan for this?
+            // //
+            // // Go over all scenes and then over all selections for that scene.
+            //
+            let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+            let mut state = self.state_ref.dmx_engine.write().unwrap();
+            let animations = state.animations.clone();
+
+            let scenes = state.scenes;
+
+            //
             // let fixtures = state
             //     .groups
             //     .iter_mut()
@@ -307,11 +315,6 @@ impl DmxEngine {
 
         // For each fixture, merge all scene states.
 
-        // let mut scenes = vec![state.curr_scene()];
-        // for scene_id in &state.current_overlay_scenes {
-        //     scenes.push(state.scenes.get(scene_id).unwrap());
-        // }
-
         for group in &state.groups {
             for fixture in &group.1.fixtures {
                 // Apply base scene state.
@@ -321,7 +324,9 @@ impl DmxEngine {
                     .fixture_states
                     .get(&(*group.0, *fixture.0))
                     .unwrap()
-                    .clone(); // This fixture must exist.
+                    .clone();
+
+                println!("{merged_state:?}");
 
                 for overlay_id in &state.current_overlay_scenes {
                     let this_scene = state.scenes.get(overlay_id).unwrap();
@@ -334,7 +339,11 @@ impl DmxEngine {
                     let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
                     for change in changeset {
                         // TODO: pull change into merged state.
-                        merged_state.merge_from(scene_fixture_state, change, MergeStrategy::Latest);
+                        merged_state.merge_from(
+                            scene_fixture_state,
+                            change,
+                            MergeStrategy::Highest,
+                        );
                     }
                 }
 
@@ -542,6 +551,8 @@ impl DmxEngine {
                 match selec_anim.contains_key(&id) {
                     true => (Some("Animation already applied"), None, None),
                     false => {
+                        selec_anim.insert(id, ActiveAnimation::new(&curr_selection.fixtures));
+
                         // Get the source animation to determine its property.
                         let animation = state.animations.get(&id).unwrap();
 

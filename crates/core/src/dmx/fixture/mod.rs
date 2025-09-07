@@ -9,7 +9,7 @@ pub use light::*;
 use map_range::MapRange;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap, u16};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Display, u16};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
@@ -29,6 +29,8 @@ pub struct Fixture {
     pub name: Cow<'static, str>,
     pub type_: FixtureType,
     pub pos: Position,
+    // DMX start address.
+    pub start_addr: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -48,7 +50,6 @@ impl From<(usize, usize)> for Position {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FixtureState {
-    pub start_addr: usize,
     // the many values a fixture could have.
     pub color: HSVColor,
     pub alpha: u8,
@@ -60,7 +61,6 @@ pub struct FixtureState {
 impl Default for FixtureState {
     fn default() -> Self {
         FixtureState {
-            start_addr: 42,
             color: HSVColor::default(),
             alpha: 0,
             orientation: FixtureOrientation::default(),
@@ -132,14 +132,8 @@ impl Fixture {
         Self {
             name,
             type_,
-            // state: FixtureState {
-            //     start_addr, // TODO: add check?
-            //     color: Color::default(),
-            //     alpha: 0,
-            //     strobe_speed: 0,
-            //     orientation: FixtureOrientation::default(),
-            // },
             pos: Position::default(),
+            start_addr,
         }
     }
 
@@ -191,6 +185,16 @@ pub enum FixtureType {
     MovingHead(MovingHead),
     Light(Light),
     Dimmer(Dimmer),
+}
+
+impl Display for FixtureType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FixtureType::MovingHead(moving_head) => write!(f, "MovingHead | {moving_head}"),
+            FixtureType::Light(light) => write!(f, "Light | {light}"),
+            FixtureType::Dimmer(dimmer) => write!(f, "Dimmer | {dimmer}"),
+        }
+    }
 }
 
 impl FixtureType {

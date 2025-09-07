@@ -181,78 +181,23 @@ impl Default for EngineState {
         let groups: BTreeMap<u8, FixtureGroup> = hashmap! {
             0 => FixtureGroup {
                  fixtures: hashmap! {
-                    0 => Fixture {
-                        name: "G0 FooBar".into(),
-                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                        //   state: FixtureState {
-                        //     start_addr: 42,
-                        //     color: Color::default(),
-                        //     alpha: 0,
-                        //     orientation: FixtureOrientation::default(),
-                        //     strobe_speed: 0,
-                        // },
-                        pos: (1, 2).into(),
-                    },
-                    1 => Fixture {
-                        name: "G0 BarQuux".into(),
-                         type_: FixtureType::Light(Light::Generic3ChanNoAlpha),
-                        //   state: FixtureState {
-                        //     start_addr: 69,
-                        //     color: Color::default(),
-                        //     alpha: 0,
-                        //     orientation: FixtureOrientation::default(),
-                        //     strobe_speed: 0,
-                        // },
-                        pos: (1, 3).into(),
-                    }
+                    0 => Fixture::new(1, "G0 FooBar".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
+                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic3ChanNoAlpha)),
                  }.into_iter().collect(),
             },
             1 => FixtureGroup {
                  fixtures: hashmap! {
-                    0 => Fixture {
-                        name: "G1".into(),
-                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                        //   state: FixtureState {
-                        //     start_addr: 142,
-                        //     color: Color::default(),
-                        //     alpha: 0,
-                        //     orientation: FixtureOrientation::default(),
-                        //     strobe_speed: 0,
-                        // },
-                        pos: (1, 4).into(),
-                    },
+                    0 => Fixture::new(30, "G1".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
                  }.into_iter().collect(),
             },
             2 => FixtureGroup {
                  fixtures: hashmap! {
-                    0 => Fixture {
-                        name: "G2".into(),
-                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                        //   state: FixtureState {
-                        //     start_addr: 169,
-                        //     color: Color::default(),
-                        //     alpha: 0,
-                        //     orientation: FixtureOrientation::default(),
-                        //     strobe_speed: 0,
-                        // },
-                        pos: (1, 5).into(),
-                    },
+                    0 => Fixture::new(50, "G2".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
                  }.into_iter().collect(),
             },
             3 => FixtureGroup {
                  fixtures: hashmap! {
-                    0 => Fixture {
-                        name: "G3".into(),
-                         type_: FixtureType::MovingHead(MovingHead::MartinMacAura),
-                        //   state: FixtureState {
-                        //     start_addr: 242,
-                        //     color: Color::default(),
-                        //     alpha: 0,
-                        //     orientation: FixtureOrientation::default(),
-                        //     strobe_speed: 0,
-                        // },
-                        pos: (1, 6).into(),
-                    },
+                    0 => Fixture::new(60, "G3".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
                  }.into_iter().collect(),
             },
         }

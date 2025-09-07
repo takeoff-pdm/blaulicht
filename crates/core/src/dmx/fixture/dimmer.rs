@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::dmx::{animation::state, clock::Time, FixtureState};
@@ -6,6 +8,12 @@ use super::Fixture;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Dimmer {}
+
+impl Display for Dimmer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
 
 impl Dimmer {
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {}

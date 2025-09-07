@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use blaulicht_shared::RGBColor;
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +12,12 @@ pub enum MovingHead {
     MartinMacAura,
 }
 
+impl Display for MovingHead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 impl MovingHead {
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
@@ -17,15 +25,15 @@ impl MovingHead {
         match self {
             MovingHead::MartinMacAura => {
                 // Strobe state.
-                dmx[state.start_addr + 0] = state.strobe_speed as u8 * 255;
+                dmx[this.start_addr + 0] = state.strobe_speed as u8 * 255;
 
                 // Alpha.
-                dmx[state.start_addr + 1] = state.alpha;
+                dmx[this.start_addr + 1] = state.alpha;
 
                 // Color.
-                dmx[state.start_addr + 9] = color.r;
-                dmx[state.start_addr + 10] = color.g;
-                dmx[state.start_addr + 11] = color.b;
+                dmx[this.start_addr + 9] = color.r;
+                dmx[this.start_addr + 10] = color.g;
+                dmx[this.start_addr + 11] = color.b;
             }
         }
         // match self {

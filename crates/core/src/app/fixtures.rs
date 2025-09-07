@@ -124,136 +124,130 @@ impl BlaulichtApp {
 
         // let mut selected_groups = vec![];
 
-        let box_size = egui::vec2(ui.available_width(), ui.available_height());
-        ui.allocate_ui_with_layout(
-            box_size,
-            egui::Layout::top_down(egui::Align::Center),
-            |ui| {
-                ui.horizontal(|ui| {
-                    // ui.horizontal(|ui| {
-                    // Left: groups list
+        ui.horizontal(|ui| {
+            ui.set_min_height(ui.available_height());
+            // ui.horizontal(|ui| {
+            // Left: groups list
+            ui.vertical(|ui| {
+                ui.label("Groups:");
+                ui.add_space(8.0);
+                for (group_id, group) in groups.iter() {
+                    let is_selected = selection.group_ids.contains(group_id);
+
+                    // if is_selected {
+                    //     selected_groups.push(group_id);
+                    // }
+
+                    let rect =
+                        ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
+                    let painter = ui.painter();
+                    let bg_color = if is_selected {
+                        egui::Color32::from_rgb(60, 120, 200)
+                    } else {
+                        egui::Color32::from_gray(40)
+                    };
+                    painter.rect_filled(rect.0, 6.0, bg_color);
+                    let fixture_count = group.fixtures.len();
+                    let name = format!("Group {}", group_id);
+                    painter.text(
+                        rect.0.left_top() + egui::vec2(12.0, 8.0),
+                        egui::Align2::LEFT_TOP,
+                        &name,
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE,
+                    );
+                    painter.text(
+                        rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        format!("{} fixtures", fixture_count),
+                        egui::FontId::proportional(12.0),
+                        egui::Color32::GRAY,
+                    );
+                    if rect.1.clicked() {
+                        // Toggle group selection
+                        let msg = if is_selected {
+                            ControlEvent::DeSelectGroup(*group_id)
+                        } else {
+                            ControlEvent::SelectGroup(*group_id)
+                        };
+
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::Web, msg));
+                    }
+                    ui.add_space(8.0);
+                }
+                // self.selected_fixture_group = selected_group;
+            });
+
+            // Right: fixtures in selected group
+            // Get selection info
+            // Layout: left (fixtures), right (controls)
+
+            ui.horizontal(|ui| {
+                // Fixtures list
+                if !selection.group_ids.is_empty() {
                     ui.vertical(|ui| {
-                        ui.label("Groups:");
+                        ui.label(format!("Fixtures in Group"));
                         ui.add_space(8.0);
-                        for (group_id, group) in groups.iter() {
-                            let is_selected = selection.group_ids.contains(group_id);
 
-                            // if is_selected {
-                            //     selected_groups.push(group_id);
-                            // }
+                        for (group_id, fix_id, fixture_selection) in &total_fixtures {
+                            // let is_selected =
+                            //      highlight_fixtures.contains(fix_id);
+                            let fixture = groups
+                                .get(&group_id)
+                                .unwrap()
+                                .fixtures
+                                .get(&fix_id)
+                                .unwrap();
 
-                            let rect = ui
-                                .allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
+                            let fix_rect = ui
+                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::click());
                             let painter = ui.painter();
-                            let bg_color = if is_selected {
-                                egui::Color32::from_rgb(60, 120, 200)
-                            } else {
-                                egui::Color32::from_gray(40)
-                            };
-                            painter.rect_filled(rect.0, 6.0, bg_color);
-                            let fixture_count = group.fixtures.len();
-                            let name = format!("Group {}", group_id);
+
+                            let bg = fixture_selection.color();
+
+                            painter.rect_filled(fix_rect.0, 4.0, bg);
                             painter.text(
-                                rect.0.left_top() + egui::vec2(12.0, 8.0),
-                                egui::Align2::LEFT_TOP,
-                                &name,
-                                egui::FontId::proportional(16.0),
+                                fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                &fixture.name,
+                                egui::FontId::proportional(14.0),
                                 egui::Color32::WHITE,
                             );
                             painter.text(
-                                rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                format!("{} fixtures", fixture_count),
-                                egui::FontId::proportional(12.0),
-                                egui::Color32::GRAY,
+                                fix_rect.0.left_center() + egui::vec2(12.0, 12.0),
+                                egui::Align2::LEFT_CENTER,
+                                format!("{}", fixture.type_),
+                                egui::FontId::proportional(14.0),
+                                egui::Color32::WHITE,
                             );
-                            if rect.1.clicked() {
-                                // Toggle group selection
-                                let msg = if is_selected {
-                                    ControlEvent::DeSelectGroup(*group_id)
+
+                            // Click to toggle fixture selection if exactly one group is selected
+                            if fix_rect.1.clicked()
+                                && selection.group_ids.len() == 1
+                                && total_fixtures.len() != 1
+                            {
+                                let is_fix_selected = highlight_fixtures.contains(fix_id);
+
+                                let msg = if is_fix_selected {
+                                    ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(*fix_id)
                                 } else {
-                                    ControlEvent::SelectGroup(*group_id)
+                                    ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id)
                                 };
 
                                 self.data
                                     .event_bus_connection
                                     .send(ControlEventMessage::new(EventOriginator::Web, msg));
                             }
-                            ui.add_space(8.0);
                         }
-                        // self.selected_fixture_group = selected_group;
                     });
-
-                    // Right: fixtures in selected group
-                    // Get selection info
-                    // Layout: left (fixtures), right (controls)
-
-                    ui.horizontal(|ui| {
-                        // Fixtures list
-                        if !selection.group_ids.is_empty() {
-                            ui.vertical(|ui| {
-                                ui.label(format!("Fixtures in Group"));
-                                ui.add_space(8.0);
-
-                                for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                                    // let is_selected =
-                                    //      highlight_fixtures.contains(fix_id);
-                                    let fixture = groups
-                                        .get(&group_id)
-                                        .unwrap()
-                                        .fixtures
-                                        .get(&fix_id)
-                                        .unwrap();
-
-                                    let fix_rect = ui.allocate_exact_size(
-                                        egui::vec2(180.0, 36.0),
-                                        egui::Sense::click(),
-                                    );
-                                    let painter = ui.painter();
-
-                                    let bg = fixture_selection.color();
-
-                                    painter.rect_filled(fix_rect.0, 4.0, bg);
-                                    painter.text(
-                                        fix_rect.0.left_center() + egui::vec2(12.0, 0.0),
-                                        egui::Align2::LEFT_CENTER,
-                                        &fixture.name,
-                                        egui::FontId::proportional(14.0),
-                                        egui::Color32::WHITE,
-                                    );
-
-                                    // Click to toggle fixture selection if exactly one group is selected
-                                    if fix_rect.1.clicked()
-                                        && selection.group_ids.len() == 1
-                                        && total_fixtures.len() != 1
-                                    {
-                                        let is_fix_selected = highlight_fixtures.contains(fix_id);
-
-                                        let msg = if is_fix_selected {
-                                            ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
-                                                *fix_id,
-                                            )
-                                        } else {
-                                            ControlEvent::LimitSelectionToFixtureInCurrentGroup(
-                                                *fix_id,
-                                            )
-                                        };
-
-                                        self.data.event_bus_connection.send(
-                                            ControlEventMessage::new(EventOriginator::Web, msg),
-                                        );
-                                    }
-                                }
-                            });
-                        } else {
-                            let _ = ui
-                                .allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::empty());
-                        }
-                        // }
-                    });
-                });
-            },
-        );
+                } else {
+                    let _ = ui.allocate_exact_size(egui::vec2(180.0, 36.0), egui::Sense::empty());
+                }
+                // }
+            });
+        });
 
         {
             // let selection = .selection();
@@ -282,13 +276,13 @@ impl BlaulichtApp {
                 None => dmx_engine.control_buffer.clone(),
             };
 
-            // let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
+            let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
 
             self.fixture_controls(
                 ui,
                 &buf,
                 self.data.event_bus_connection.clone(),
-                // animations.as_slice(),
+                animations.as_slice(),
             );
             // todo!("FIXTURE CONTROLS")
         }
@@ -305,64 +299,41 @@ impl BlaulichtApp {
         //
         // });
         //
+
         ui.allocate_ui_with_layout(
-            egui::Vec2::new(ui.available_width(), ui.available_height()), // fill all space
+            egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
-                ui.vertical(|ui| {
-                    ui.painter().rect_filled(
-                        ui.available_rect_before_wrap(),
-                        0.0,
-                        Color32::LIGHT_GREEN,
-                    );
-                    //
-                    // WTF.
-                    //
+                self.scene_overview(ui, &dmx_engine);
 
-                    // Scene overview
-                    self.scene_overview(ui, &dmx_engine);
+                // Scene overview
 
-                    ui.separator();
+                ui.separator();
 
-                    Frame::new().fill(Color32::LIGHT_RED).show(ui, |ui| {
-                        ui.set_min_height(ui.available_height());
-                        ui.horizontal(|ui| {
-                            ui.set_min_height(ui.available_height());
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+                    egui::Layout::left_to_right(egui::Align::Min),
+                    |ui| {
+                        self.fixture_selection(groups, ui);
 
-                            ui.painter().rect_filled(
-                                ui.available_rect_before_wrap(),
-                                0.0,
-                                Color32::LIGHT_RED,
-                            );
+                        // TODO: Show animation groups.
 
-                            self.fixture_selection(groups, ui);
+                        ui.separator();
 
-                            // TODO: Show animation groups.
-                            //
+                        ui.vertical(|ui| {
+                            let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                            simulate_dmx(ui, groups, dmx_buffer);
+
                             ui.separator();
 
-                            Frame::new().fill(Color32::LIGHT_BLUE).show(ui, |ui| {
-                                ui.set_min_height(ui.available_height());
+                            // Scene stats.
+                            //
+
+                            ui.horizontal(|ui| {
+                                let scene = dmx_engine.curr_scene();
 
                                 ui.vertical(|ui| {
-                                    ui.set_min_height(ui.available_height());
-
-                                    ui.painter().rect_filled(
-                                        ui.available_rect_before_wrap(),
-                                        0.0,
-                                        Color32::LIGHT_BLUE,
-                                    );
-
-                                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                                    simulate_dmx(ui, groups, dmx_buffer);
-
-                                    ui.separator();
-
-                                    // Scene stats.
-
                                     ui.label("Scene Changeset");
-
-                                    let scene = dmx_engine.curr_scene();
 
                                     let mut changeset_organized: BTreeMap<
                                         (u8, u8),
@@ -372,7 +343,7 @@ impl BlaulichtApp {
                                     for change in &scene.sink.changeset {
                                         match changeset_organized.get_mut(&(change.gid, change.fid))
                                         {
-                                            Some(mut entry) => entry.push(change.property),
+                                            Some(entry) => entry.push(change.property),
                                             None => {
                                                 changeset_organized.insert(
                                                     (change.gid, change.fid),
@@ -394,10 +365,26 @@ impl BlaulichtApp {
                                         }
                                     });
                                 });
+
+                                ui.separator();
+
+                                ui.vertical(|ui| {
+                                    for (selection, anim) in &scene.sink.active_animations {
+                                        ui.label(
+                                            RichText::new(format!("Selection: {:?}", selection))
+                                                .color(Color32::LIGHT_GREEN),
+                                        );
+
+                                        ui.label(
+                                            RichText::new(format!("Anim: {:?}", anim))
+                                                .color(Color32::WHITE),
+                                        );
+                                    }
+                                });
                             });
                         });
-                    });
-                });
+                    },
+                );
             },
         );
     }
@@ -465,6 +452,7 @@ impl BlaulichtApp {
         ui: &mut egui::Ui,
         buf: &FixtureState,
         event_bus_connection: SystemEventBusConnectionInst,
+        animations: &[u8],
     ) {
         Frame::new()
             .fill(Color32::from_rgb(50, 50, 50))
@@ -521,37 +509,39 @@ impl BlaulichtApp {
                     // TODO: Animations come to a different 'window / tab'
                     //
                     // Add Animation Selection: Prettier fixed-height boxes
-                    // ui.label("Add Animation:");
-                    // ui.add_space(4.0);
-                    // let mut selected_anim: Option<u8> = None;
-                    // egui::ScrollArea::vertical()
-                    //     .max_height(120.0)
-                    //     .show(ui, |ui| {
-                    //         for &anim_id in animations.iter() {
-                    //             // Draw custom box background
-                    //             let rect = ui
-                    //                 .allocate_exact_size(egui::vec2(150.0, 36.0), egui::Sense::hover());
-                    //             let painter = ui.painter();
-                    //             let bg_color = Color32::from_rgb(70, 70, 120);
-                    //             painter.rect_filled(rect.0, 6.0, bg_color);
-                    //             // Overlay input element for accessibility and keyboard navigation
-                    //             let response = ui.put(
-                    //                 rect.0,
-                    //                 Button::selectable(false, format!("Animation {}", anim_id)),
-                    //             );
-                    //             if response.clicked() {
-                    //                 selected_anim = Some(anim_id);
-                    //             }
-                    //             ui.add_space(4.0);
-                    //         }
-                    //     });
-                    //
-                    // if let Some(anim_id) = selected_anim {
-                    //     event_bus_connection.send(ControlEventMessage::new(
-                    //         EventOriginator::Web,
-                    //         ControlEvent::AddAnimation(anim_id),
-                    //     ));
-                    // }
+                    ui.label("Add Animation:");
+                    ui.add_space(4.0);
+                    let mut selected_anim: Option<u8> = None;
+                    egui::ScrollArea::vertical()
+                        .max_height(120.0)
+                        .show(ui, |ui| {
+                            for anim_id in animations {
+                                // Draw custom box background
+                                let rect = ui.allocate_exact_size(
+                                    egui::vec2(150.0, 36.0),
+                                    egui::Sense::hover(),
+                                );
+                                let painter = ui.painter();
+                                let bg_color = Color32::from_rgb(70, 70, 120);
+                                painter.rect_filled(rect.0, 6.0, bg_color);
+                                // Overlay input element for accessibility and keyboard navigation
+                                let response = ui.put(
+                                    rect.0,
+                                    Button::selectable(false, format!("Animation {}", anim_id)),
+                                );
+                                if response.clicked() {
+                                    selected_anim = Some(*anim_id);
+                                }
+                                ui.add_space(4.0);
+                            }
+                        });
+
+                    if let Some(anim_id) = selected_anim {
+                        event_bus_connection.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::AddAnimation(anim_id),
+                        ));
+                    }
                 });
             });
     }
@@ -566,6 +556,8 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
 
     let dim_pixels = dimensions as f32 * (base_height + padding);
 
+    let dmx_buffer = dmx.dmx_buffer;
+
     ui.horizontal(|ui| {
         // Remove spacing in this container
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -578,7 +570,7 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
         // Draw the cells manually
         for row in 0..dimensions {
             for col in 0..dimensions {
-                let value = dmx.dmx_buffer[row * dimensions + col];
+                let value = dmx_buffer[row * dimensions + col];
 
                 // Calculate top-left corner of this cell
                 let x = rect.min.x + col as f32 * (base_height + padding);
@@ -592,9 +584,9 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
                 // Color based on value
                 let (bg_color, fg_color) = match value {
                     0 => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
-                    1..=85 => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
+                    1..=85 => (Color32::from_rgb(255, 0, 0), Color32::MAGENTA),
                     86..=170 => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
-                    171..=255 => (Color32::from_rgb(0, 255, 0), Color32::WHITE),
+                    171..=255 => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
                 };
 
                 painter.rect_filled(cell_rect, 0.0, bg_color);
