@@ -1,3 +1,5 @@
+use std::u16;
+
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
@@ -117,7 +119,7 @@ impl BlaulichtApp {
                             egui::DragValue::new(&mut self.animation_page.clamp_min)
                                 .speed(0.1) // How fast dragging changes the value
                                 // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=255.0)
+                                .range(0.0..=u16::MAX as f32)
                                 .prefix("Value: ") // Prefix text
                                 .suffix(" units"), // Suffix text
                         );
@@ -125,7 +127,7 @@ impl BlaulichtApp {
                             egui::DragValue::new(&mut self.animation_page.clamp_max)
                                 .speed(0.1) // How fast dragging changes the value
                                 // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=255.0)
+                                .range(0.0..=u16::MAX as f32)
                                 .prefix("Value: ") // Prefix text
                                 .suffix(" units"), // Suffix text
                         );

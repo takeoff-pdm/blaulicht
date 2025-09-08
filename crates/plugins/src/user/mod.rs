@@ -106,7 +106,7 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
         match (e.status, e.kind, e.value) {
             (176, 19, v) => {
                 bl_send(ControlEvent::SetAlpha(
-                    (v as u16).map_range(0..127, 0..255) as u8,
+                    (v as u16).map_range(0..127, 0..255) as u8
                 ));
             }
             (144, 1, 127) => {
@@ -115,22 +115,16 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
                 state.counter += 1.0;
             }
             (176, 16, value) => {
-                let hue = (value as u16).map_range(0..127, 0..360);
-                state.hsv.0 = hue;
-                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
-                bl_send(ControlEvent::SetColor(color.tup()));
+                let val = (value as u16).map_range(0..127, 0..255);
+                bl_send(ControlEvent::SetColorHue(val as u8));
             }
             (176, 17, value) => {
-                let sat = (value as u16).map_range(0..127, 0..100) as f32 / 100.0;
-                state.hsv.1 = sat;
-                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
-                bl_send(ControlEvent::SetColor(color.tup()));
+                let val = (value as u16).map_range(0..127, 0..255);
+                bl_send(ControlEvent::SetColorSaturation(val as u8));
             }
             (176, 18, value) => {
-                let val = (value as u16).map_range(0..127, 0..100) as f32 / 100.0;
-                state.hsv.2 = val;
-                let color = hsv_to_rgb(state.hsv.0, state.hsv.1, state.hsv.2);
-                bl_send(ControlEvent::SetColor(color.tup()));
+                let val = (value as u16).map_range(0..127, 0..255);
+                bl_send(ControlEvent::SetColorValue(val as u8));
             }
             (128, 1, 127) => {
                 // conn.send(144, 1, 0);

@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use crate::dmx::animation::{AnimationSpecBodyPhaser, MathematicalBaseFunction, PhaserKind};
 
 impl AnimationSpecBodyPhaser {
-    pub fn generate(&self, degrees_raw: f32) -> u8 {
+    pub fn generate(&self, degrees_raw: f32) -> u16 {
         let degrees = degrees_raw % 360.0;
         debug_assert!((0.0..=360.0).contains(&degrees));
 
@@ -100,8 +100,8 @@ impl AnimationSpecBodyPhaser {
             PhaserKind::Keyframed(_keyframed_phaser) => todo!(),
         };
 
-        debug_assert!((0.0..=255.0).contains(&value));
-        value as u8
+        debug_assert!((0.0..=u16::MAX as f32).contains(&value));
+        value as u16
     }
 
     // fn generate(&self, degrees: f32) -> u8 {

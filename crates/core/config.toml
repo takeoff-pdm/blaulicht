@@ -1,5 +1,6 @@
 port = 1234
 default_audio_device = "pipewire"
+last_open_showfile = "/home/mik/bl"
 
 [stream]
 fft_resolution = 4096

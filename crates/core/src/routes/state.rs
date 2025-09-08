@@ -5,7 +5,7 @@ use std::{
 };
 
 use blaulicht_shared::CollectedAudioSnapshot;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use crossbeam_queue::ArrayQueue;
 use heapless::spsc;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,7 @@ pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
 
     pub system_message_receiver: Receiver<SystemMessage>,
+    pub system_message_sender: Sender<SystemMessage>,
     // pub signal_receiver: Receiver<Signal>,
 
     // pub to_frontend_consumers:

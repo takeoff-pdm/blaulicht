@@ -2,12 +2,17 @@ use crate::app::graph::TimeSeriesGraph;
 use crate::app::log::{LogLevel, LogWindow};
 use crate::app::{AnimationPageState, AppPage, BlaulichtApp};
 use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
+use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
-use crate::{msg::SystemMessage, routes::AppStateWrapper};
 use crate::{config, utils};
+use crate::{msg::SystemMessage, routes::AppStateWrapper};
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::{Color32, Context};
+use log::info;
+use serde::{Deserialize, Serialize};
+use std::fs::{self, File};
+use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -298,16 +303,99 @@ impl eframe::App for BlaulichtApp {
             // The top panel is often a good place for a menu bar:
 
             egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open showfile").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().save_file() {
+                            let mut f = File::open(path.clone()).expect("no file found");
+                            let metadata = fs::metadata(&path).expect("unable to read metadata");
+                            let mut buffer = vec![0; metadata.len() as usize];
+                            f.read(&mut buffer).expect("buffer overflow");
+
+                            let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
+                            let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                            // dmx.overwrite(decoded);
+                            *dmx = decoded;
+
+                            let mut config_mut = self.data.config.lock().unwrap();
+                            config_mut.last_open_showfile = Some(path.clone());
+
+                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                            config::write_config(config_path, config_mut.clone()).unwrap();
+
+                            self.data
+                                .system_message_sender
+                                .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                .unwrap();
                         }
-                    });
-                    ui.add_space(16.0);
-                }
+                    }
+
+                    if ui.button("Save to new showfile").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().save_file() {
+                            let dmx = self.data.state.dmx_engine.read().unwrap();
+                            let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                            std::fs::write(&path, serialized).unwrap();
+
+                            let mut config_mut = self.data.config.lock().unwrap();
+                            config_mut.last_open_showfile = Some(path.clone());
+
+                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                            config::write_config(config_path, config_mut.clone()).unwrap();
+
+                            self.data
+                                .system_message_sender
+                                .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                .unwrap();
+                        }
+                    }
+
+                    let label = match &self
+                        .data
+                        .config
+                        .lock()
+                        .unwrap()
+                        .last_open_showfile
+                        .is_some()
+                    {
+                        true => "Save to current Showfile",
+                        false => "Save to current Showfile (none open)",
+                    };
+
+                    if ui.button(label).clicked() {
+                        let mut config_mut = self.data.config.lock().unwrap();
+
+                        match config_mut.last_open_showfile.clone() {
+                            Some(ref path) => {
+                                let dmx = self.data.state.dmx_engine.read().unwrap();
+                                let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                                std::fs::write(&path, serialized).unwrap();
+
+                                config_mut.last_open_showfile = Some(path.clone());
+
+                                let config_path =
+                                    PathBuf::from_str(&self.data.config_path).unwrap();
+                                config::write_config(config_path, config_mut.clone()).unwrap();
+
+                                self.data
+                                    .system_message_sender
+                                    .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                    .unwrap();
+                            }
+                            None => {
+                                self.data
+                                    .system_message_sender
+                                    .send(SystemMessage::Log("No opened showfile".to_string()))
+                                    .unwrap();
+                            }
+                        }
+
+                        ui.close();
+                    }
+
+                    if ui.button("Quit").clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                ui.add_space(16.0);
 
                 egui::widgets::global_theme_preference_buttons(ui);
             });
@@ -521,24 +609,24 @@ impl eframe::App for BlaulichtApp {
             // The central panel the region left after adding TopPanel's and SidePanel's
             // ui.heading("eframe template");
             //
-            // // Continuous rendering - always request repaints
-            // ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
-            //
-            // // Update animation time for continuous rendering
-            // self.frame_count += 1;
-            // self.animation_time += 0.016; // 16ms = 0.016 seconds
-            //
-            // ui.horizontal(|ui| {
-            //     ui.label("Write something: ");
-            //     ui.text_edit_singleline(&mut self.label);
-            // });
-            //
-            // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            // if ui.button("Increment").clicked() {
-            //     self.value += 1.0;
-            // }
-            //
-            // ui.separator();
+            // Continuous rendering - always request repaints
+            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
+                                                                             //
+                                                                             // // Update animation time for continuous rendering
+            self.frame_count += 1;
+            self.animation_time += 0.016; // 16ms = 0.016 seconds
+                                          //
+                                          // ui.horizontal(|ui| {
+                                          //     ui.label("Write something: ");
+                                          //     ui.text_edit_singleline(&mut self.label);
+                                          // });
+                                          //
+                                          // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+                                          // if ui.button("Increment").clicked() {
+                                          //     self.value += 1.0;
+                                          // }
+                                          //
+                                          // ui.separator();
 
             // Page content based on selected tab
             match self.current_page {

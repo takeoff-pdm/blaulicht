@@ -96,11 +96,11 @@ impl FixtureState {
         self.apply_value(new_value, property);
     }
 
-    fn apply_value(&mut self, value: u16, property: FixtureProperty) {
+    pub fn apply_value(&mut self, value: u16, property: FixtureProperty) {
         match property {
             FixtureProperty::Alpha => self.alpha = value as u8,
             FixtureProperty::ColorHue => {
-                self.color.h = (value as f64).map_range(0.0..360.0, 0.0..1.0)
+                self.color.h = value as f64;
             }
             FixtureProperty::ColorSaturation => {
                 self.color.s = (value as f64).map_range(0.0..255.0, 0.0..1.0)
@@ -117,7 +117,7 @@ impl FixtureState {
     fn get_value(&self, property: FixtureProperty) -> u16 {
         match property {
             FixtureProperty::Alpha => self.alpha as u16,
-            FixtureProperty::ColorHue => self.color.h.map_range(0.0..1.0, 0.0..360.0) as u16,
+            FixtureProperty::ColorHue => self.color.h as u16,
             FixtureProperty::ColorSaturation => self.color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
             FixtureProperty::ColorValue => self.color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
             FixtureProperty::Tilt => self.orientation.tilt as u16,

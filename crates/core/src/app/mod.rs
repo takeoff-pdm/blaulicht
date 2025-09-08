@@ -83,8 +83,8 @@ pub struct BlaulichtApp {
 
 pub struct AnimationPageState {
     pub selected_animation: Option<u8>,
-    pub clamp_min: u8,
-    pub clamp_max: u8,
+    pub clamp_min: u16,
+    pub clamp_max: u16,
     pub base_function: MathematicalBaseFunction,
     pub timing: PhaserDuration,
 }

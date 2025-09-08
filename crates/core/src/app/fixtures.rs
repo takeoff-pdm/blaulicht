@@ -369,16 +369,82 @@ impl BlaulichtApp {
                                 ui.separator();
 
                                 ui.vertical(|ui| {
-                                    for (selection, anim) in &scene.sink.active_animations {
+                                    for (selection, animations) in &scene.sink.active_animations {
                                         ui.label(
-                                            RichText::new(format!("Selection: {:?}", selection))
+                                            RichText::new(format!("Selection: {selection:?}"))
                                                 .color(Color32::LIGHT_GREEN),
                                         );
 
-                                        ui.label(
-                                            RichText::new(format!("Anim: {:?}", anim))
+                                        for (animation_id, animation) in animations {
+                                            let spec =
+                                                dmx_engine.animations.get(animation_id).unwrap();
+
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "[{}] {} | {}",
+                                                    animation_id, spec.name, spec.property
+                                                ))
                                                 .color(Color32::WHITE),
-                                        );
+                                            );
+
+                                            // Remove button
+                                            if ui.button("Remove").clicked() {
+                                                let mut selection_instructions =
+                                                    selection.generate_instructions();
+
+                                                selection_instructions
+                                                    .push_front(ControlEvent::PushSelection);
+                                                selection_instructions.push_back(
+                                                    ControlEvent::RemoveAnimation(*animation_id),
+                                                );
+                                                selection_instructions
+                                                    .push_back(ControlEvent::PopSelection);
+
+                                                self.data.event_bus_connection.send(
+                                                    ControlEventMessage::new(
+                                                        EventOriginator::Web,
+                                                        ControlEvent::Transaction(
+                                                            selection_instructions
+                                                                .into_iter()
+                                                                .collect(),
+                                                        ),
+                                                    ),
+                                                );
+                                            }
+
+                                            let (label, event) = match animation.enabled {
+                                                true => (
+                                                    "Pause",
+                                                    ControlEvent::PauseAnimation(*animation_id),
+                                                ),
+                                                false => (
+                                                    "Play",
+                                                    ControlEvent::PlayAnimation(*animation_id),
+                                                ),
+                                            };
+
+                                            if ui.button(label).clicked() {
+                                                let mut selection_instructions =
+                                                    selection.generate_instructions();
+
+                                                selection_instructions
+                                                    .push_front(ControlEvent::PushSelection);
+                                                selection_instructions.push_back(event);
+                                                selection_instructions
+                                                    .push_back(ControlEvent::PopSelection);
+
+                                                self.data.event_bus_connection.send(
+                                                    ControlEventMessage::new(
+                                                        EventOriginator::Web,
+                                                        ControlEvent::Transaction(
+                                                            selection_instructions
+                                                                .into_iter()
+                                                                .collect(),
+                                                        ),
+                                                    ),
+                                                );
+                                            }
+                                        }
                                     }
                                 });
                             });
@@ -422,27 +488,6 @@ impl BlaulichtApp {
         //             ));
         //         }
         //
-        //         // Remove button
-        //         if ui.button("Remove").clicked() {
-        //             event_bus_connection.send(ControlEventMessage::new(
-        //                 EventOriginator::Web,
-        //                 ControlEvent::RemoveAnimation(*applied_id),
-        //             ));
-        //         }
-        //
-        //         if ui.button("Play").clicked() {
-        //             event_bus_connection.send(ControlEventMessage::new(
-        //                 EventOriginator::Web,
-        //                 ControlEvent::PlayAnimation(*applied_id),
-        //             ));
-        //         }
-        //
-        //         if ui.button("Pause").clicked() {
-        //             event_bus_connection.send(ControlEventMessage::new(
-        //                 EventOriginator::Web,
-        //                 ControlEvent::PauseAnimation(*applied_id),
-        //             ));
-        //         }
         //     });
         // }
     }

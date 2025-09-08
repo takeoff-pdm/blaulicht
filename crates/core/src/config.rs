@@ -15,6 +15,7 @@ pub struct Config {
     pub default_audio_device: Option<String>,
     pub stream: StreamConfig,
     pub plugins: Vec<PluginConfig>,
+    pub last_open_showfile: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -40,6 +41,7 @@ impl Default for Config {
                 enabled: false,
                 enable_watcher: false,
             }],
+            last_open_showfile: None,
         }
     }
 }

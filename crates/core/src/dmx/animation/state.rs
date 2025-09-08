@@ -53,8 +53,8 @@ pub struct MathematicalPhaser {
     pub base: MathematicalBaseFunction,
     // TODO: this should actually be deprecated!
     pub stretch_factor: f32, // Between 0-1.
-    pub amplitude_min: u8,
-    pub amplitude_max: u8,
+    pub amplitude_min: u16,
+    pub amplitude_max: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, EnumIter, PartialEq, Eq)]

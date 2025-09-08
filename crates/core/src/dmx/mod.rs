@@ -3,12 +3,18 @@ mod clock;
 mod fixture;
 mod state;
 
+use map_range::MapRange;
+use serde::{Deserialize, Serialize};
+use serialport::SerialPort;
 pub use state::*;
 pub mod animation;
 pub use fixture::*;
 pub mod scene;
 
+use log::{debug, error};
+
 use crate::{
+    audio::defs::DMX_TICK_TIME,
     dmx::{
         animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
         scene::{EngineSink, Scene},
@@ -23,14 +29,45 @@ use blaulicht_shared::{
 };
 use crossbeam_channel::Sender;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet, VecDeque},
+    mem,
     sync::{Arc, RwLockWriteGuard},
-    time::Instant,
+    thread,
+    time::{Duration, Instant},
 };
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct FixtureSelection {
     fixtures: Vec<(u8, u8)>,
+}
+
+impl FixtureSelection {
+    pub fn generate_instructions(&self) -> VecDeque<ControlEvent> {
+        let mut gids = HashSet::new();
+        let mut fids = HashSet::new();
+
+        for (gid, fid) in &self.fixtures {
+            gids.insert(gid);
+            fids.insert(fid);
+        }
+
+        match (gids.len(), fids.len()) {
+            (1, 1) => vec![
+                ControlEvent::SelectGroup(**gids.iter().next().unwrap()),
+                ControlEvent::LimitSelectionToFixtureInCurrentGroup(**fids.iter().next().unwrap()),
+            ]
+            .into(),
+            (_, _) => {
+                let mut group_instr = VecDeque::new();
+
+                for gid in gids {
+                    group_instr.push_back(ControlEvent::SelectGroup(*gid))
+                }
+
+                group_instr
+            }
+        }
+    }
 }
 
 // impl Fixture {
@@ -74,6 +111,19 @@ impl FixtureState {
                     FixtureProperty::ColorValue,
                 ]
             }
+            ControlEvent::SetColorHue(hue) => {
+                self.color.h = (hue as f64).map_range(0.0..255.0, 0.0..360.0);
+                println!("hue: {}", self.color.h);
+                vec![FixtureProperty::ColorHue]
+            }
+            ControlEvent::SetColorSaturation(sat) => {
+                self.color.s = (sat as f64).map_range(0.0..255.0, 0.0..1.0);
+                vec![FixtureProperty::ColorSaturation]
+            }
+            ControlEvent::SetColorValue(val) => {
+                self.color.v = (val as f64).map_range(0.0..255.0, 0.0..1.0);
+                vec![FixtureProperty::ColorValue]
+            }
             _ => todo!(),
         }
     }
@@ -90,14 +140,40 @@ pub struct DmxEngine {
     // This is not part of state_ref since this is only a cache
     animation_base_times: BTreeMap<u8, u64>,
     start_time: Instant,
+
+    dmx_port: Option<Box<dyn SerialPort>>,
 }
 
 impl DmxEngine {
+    fn open_hw_interface() -> Option<Box<dyn SerialPort>> {
+        // TODO: use USB intrinsics for detection: look at v1 branch
+
+        // Open your Enttec device (likely /dev/ttyUSB0)
+        let port_name = "/dev/ttyUSB0";
+        let baud_rate = 250_000;
+
+        match serialport::new(port_name, baud_rate)
+            .data_bits(serialport::DataBits::Eight)
+            .parity(serialport::Parity::None)
+            .stop_bits(serialport::StopBits::Two)
+            .timeout(Duration::from_millis(10))
+            .open()
+        {
+            Ok(port) => Some(port),
+            Err(err) => {
+                error!("Could not establish link to DMX interface: {err}");
+                None
+            }
+        }
+    }
+
     pub fn new(
         state_ref: Arc<AppState>,
         event_bus_connection: SystemEventBusConnectionInst,
         system_out: Sender<SystemMessage>,
     ) -> Self {
+        let dmx_port = Self::open_hw_interface();
+
         Self {
             state_ref,
             dmx_previous: [0; 513],
@@ -106,6 +182,7 @@ impl DmxEngine {
             system_out,
             animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
+            dmx_port,
         }
     }
 
@@ -113,15 +190,13 @@ impl DmxEngine {
     fn tick_internal(&mut self, audio_snapshot: CollectedAudioSnapshot) -> bool {
         // Read back events.
         let mut events = vec![];
-        loop {
-            match self.event_bus_connection.try_recv() {
-                Some(ev) => events.push(ev),
-                None => break,
-            }
+        while let Some(ev) = self.event_bus_connection.try_recv() {
+            events.push(ev)
         }
 
-        // self.build_animations_cache(audio_snapshot);
         // Advance animations.
+        self.build_animations_cache(audio_snapshot);
+
         {
             // // TODO: what's the plan for this?
             // //
@@ -131,7 +206,80 @@ impl DmxEngine {
             let mut state = self.state_ref.dmx_engine.write().unwrap();
             let animations = state.animations.clone();
 
-            let scenes = state.scenes;
+            for (scene_id, scene) in state.scenes.iter_mut() {
+                for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
+                    // println!("scene anim: {scene_animations:?}");
+
+                    for (animation_id, animation) in scene_animations.iter_mut() {
+                        if !animation.enabled {
+                            continue;
+                        }
+
+                        for (fixture_selec, fixture_anim_state) in
+                            animation.fixture_timers.iter_mut()
+                        {
+                            let transition_time =
+                                (*self.animation_base_times.get(animation_id).unwrap()) as f32
+                                    * animation.speed_factor.as_float();
+
+                            // TODO: limited by tick speed
+
+                            // println!("{}", now - animation.last_tick_time);
+
+                            let mut num_ticks = 1;
+
+                            let millis = DMX_TICK_TIME.as_millis();
+                            if transition_time < millis as f32 {
+                                num_ticks = (millis as f32 / transition_time) as usize;
+                                // println!("NUM TICKS: {num_ticks}");
+                            }
+
+                            if transition_time == 0.0 {
+                                continue;
+                            }
+
+                            // TODO: extremely naiive implementation
+                            // FLAWS:
+                            //  - beat-timing is not considered
+                            //  - syncing between animations is also not considered
+                            //      - Different sync modes
+                            //          - No sync (when playing current animation, disregard everything and
+                            //          start it)
+                            //          - Group sync (sync with all other fixtures in the parent group that
+                            //          also use this animation)
+                            //          - Global (sync with ALL other fixtures (also from other groups)
+                            //          that also use this animation)
+                            //      - How is syncing done?
+                            //      - when sync mode is changed, timing is reset to 0 for all fixtures and
+                            //      the stepper logic uses the sync
+                            //      - Syncing shall be displayed graphically
+                            //      - Running animations shall also be displayed graphically
+                            //      - Each phaser can be absolute / relative!
+                            if now - fixture_anim_state.last_tick_time >= transition_time as u64 {
+                                for _ in 0..num_ticks {
+                                    fixture_anim_state.tick(now);
+                                }
+
+                                let spec = animations.get(animation_id).unwrap();
+
+                                let v = self.generate_animation_value(
+                                    audio_snapshot,
+                                    spec,
+                                    *animation_id,
+                                    fixture_anim_state.timer,
+                                );
+
+                                let fixture_state =
+                                    scene.sink.fixture_states.get_mut(fixture_selec).unwrap();
+
+                                fixture_state.apply_value(v, spec.property);
+
+                                // println!("update animation");
+                            }
+                        }
+                    }
+                }
+            }
 
             //
             // let fixtures = state
@@ -140,76 +288,6 @@ impl DmxEngine {
             //     .flat_map(|(_, g)| g.fixtures.values_mut());
             //
             // for fixture in fixtures {
-            //     for (animation_id, animation) in &mut fixture.state.animations {
-            //         if !animation.enabled {
-            //             continue;
-            //         }
-            //
-            //         let transition_time = (*self.animation_base_times.get(animation_id).unwrap())
-            //             as f32
-            //             * animation.speed_factor.as_float();
-            //
-            //         // TODO: limited by tick speed
-            //
-            //         println!("animation-speed: {transition_time}");
-            //         println!("{}", now - animation.last_tick_time);
-            //
-            //         let mut num_ticks = 1;
-            //
-            //         let millis = DMX_TICK_TIME.as_millis();
-            //         if transition_time < millis as f32 {
-            //             num_ticks = (millis as f32 / transition_time) as usize;
-            //             println!("NUM TICKS: {num_ticks}");
-            //         }
-            //
-            //         if transition_time == 0.0 {
-            //             continue;
-            //         }
-            //
-            //         // TODO: extremely naiive implementation
-            //         // FLAWS:
-            //         //  - beat-timing is not considered
-            //         //  - syncing between animations is also not considered
-            //         //      - Different sync modes
-            //         //          - No sync (when playing current animation, disregard everything and
-            //         //          start it)
-            //         //          - Group sync (sync with all other fixtures in the parent group that
-            //         //          also use this animation)
-            //         //          - Global (sync with ALL other fixtures (also from other groups)
-            //         //          that also use this animation)
-            //         //      - How is syncing done?
-            //         //      - when sync mode is changed, timing is reset to 0 for all fixtures and
-            //         //      the stepper logic uses the sync
-            //         //      - Syncing shall be displayed graphically
-            //         //      - Running animations shall also be displayed graphically
-            //         //      - Each phaser can be absolute / relative!
-            //         if now - animation.last_tick_time >= transition_time as u64 {
-            //             for _ in 0..num_ticks {
-            //                 animation.tick(now);
-            //             }
-            //
-            //             let spec = animations.get(animation_id).unwrap();
-            //
-            //             let v = self.generate_animation_value(
-            //                 audio_snapshot,
-            //                 spec,
-            //                 *animation_id,
-            //                 animation.timer,
-            //             );
-            //
-            //             match spec.property {
-            //                 FixtureProperty::Brightness => fixture.state.alpha = v,
-            //                 FixtureProperty::ColorHue => todo!(),
-            //                 FixtureProperty::ColorSaturation => todo!(),
-            //                 FixtureProperty::ColorValue => todo!(),
-            //                 FixtureProperty::Tilt => fixture.state.orientation.tilt = v,
-            //                 FixtureProperty::Pan => fixture.state.orientation.pan = v,
-            //                 FixtureProperty::Rotation => fixture.state.orientation.rotation = v,
-            //             }
-            //
-            //             println!("update animation");
-            //         };
-            //     }
             // }
         }
         // let mut state = self.state_ref.dmx_engine.write().unwrap();
@@ -266,7 +344,7 @@ impl DmxEngine {
         spec: &AnimationSpec,
         id: u8,
         time: u64,
-    ) -> u8 {
+    ) -> u16 {
         // let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
         // let animation = animations.get(&id).unwrap();
 
@@ -309,6 +387,27 @@ impl DmxEngine {
         }
     }
 
+    fn write_to_hw(&mut self) {
+        let mut buffer = self.state_ref.dmx_buffer.read().unwrap();
+
+        if let Some(port) = &mut self.dmx_port {
+            port.set_break().unwrap();
+            spin_sleep::sleep(Duration::from_micros(100));
+            port.clear_break().unwrap();
+            spin_sleep::sleep(Duration::from_micros(12));
+
+            // Write frame
+            port.write_all(&buffer.dmx_buffer).unwrap();
+        };
+
+        // let this = Self {
+        //     dmx: interface,
+        //     base,
+        // };
+        //
+        // Ok(this)
+    }
+
     fn update_dmx_buffer(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
         let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
@@ -325,8 +424,6 @@ impl DmxEngine {
                     .get(&(*group.0, *fixture.0))
                     .unwrap()
                     .clone();
-
-                println!("{merged_state:?}");
 
                 for overlay_id in &state.current_overlay_scenes {
                     let this_scene = state.scenes.get(overlay_id).unwrap();
@@ -356,6 +453,11 @@ impl DmxEngine {
                 fix.write(&merged_state, &mut buffer.dmx_buffer);
             }
         }
+
+        mem::drop(state);
+        mem::drop(buffer);
+
+        self.write_to_hw();
     }
 
     fn get_selection<'engine>(
@@ -416,7 +518,19 @@ impl DmxEngine {
         // Match event.
         match ev.body() {
             ControlEvent::Transaction(t) => {
-                todo!("Transaction: {t:?}");
+                for t_ev in t {
+                    debug!("Apply transaction: {:?}", &ev);
+
+                    let (err, rollback) =
+                        self.apply(state, ControlEventMessage::new(ev.originator(), t_ev));
+
+                    if err.is_some() {
+                        error!("Error during transaction: {err:?}");
+                        return (err, rollback);
+                    }
+                }
+
+                (None, None)
             }
             ControlEvent::SelectGroup(group_id) => {
                 if !state.groups.contains_key(&group_id) {
@@ -561,6 +675,8 @@ impl DmxEngine {
                 }
             }
             ControlEvent::RemoveAnimation(id) => {
+                println!("REMove anim");
+
                 let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
@@ -578,6 +694,7 @@ impl DmxEngine {
                         match selec_anim.remove(&id) {
                             None => (Some("Animation not applied to selection"), None, None),
                             Some(_) => {
+                                println!("REMOVED");
                                 let animation = state.animations.get(&id).unwrap();
                                 (None, None, Some(vec![animation.property]))
                             }

@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use blaulicht_shared::{ControlEvent, FixtureProperty};
+use serde::{Deserialize, Serialize};
 
 use crate::dmx::{ActiveAnimation, FixtureGroup, FixtureSelection, FixtureState};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scene {
     pub sink: EngineSink,
     pub name: String,
@@ -28,7 +29,7 @@ impl Scene {
 
 // An `EngineSink` is a target to where the engine outputs the effects of control messages.
 // So the selection is applied on this data type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineSink {
     pub fixture_states: BTreeMap<(u8, u8), FixtureState>,
     // These are the current active animations.
@@ -57,7 +58,7 @@ impl EngineSink {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureSelector {
     pub gid: u8,
     pub fid: u8,

@@ -51,6 +51,7 @@ pub struct ActiveAnimation {
     // pub selection: EngineSelection,
     pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
     pub sync: u8, // TOOD: placeholder type for the sync mode
+                  //
 }
 
 impl ActiveAnimation {
@@ -70,7 +71,7 @@ impl ActiveAnimation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineState {
     // Strores the actual output state of all fixtures.
     pub groups: EngineGroups,
@@ -182,7 +183,7 @@ impl Default for EngineState {
             0 => FixtureGroup {
                  fixtures: hashmap! {
                     0 => Fixture::new(1, "G0 FooBar".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
-                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic3ChanNoAlpha)),
+                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic4ChanWithAlpha)),
                  }.into_iter().collect(),
             },
             1 => FixtureGroup {
@@ -220,6 +221,19 @@ impl Default for EngineState {
                     }),
                 },
                 1 => AnimationSpec {
+                    name: "Hue Animation 0".into(),
+                    property: FixtureProperty::ColorHue,
+                    body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
+                        kind: PhaserKind::Mathematical(MathematicalPhaser {
+                            base: MathematicalBaseFunction::Sin,
+                            stretch_factor: 1.0,
+                            amplitude_min: 0,
+                            amplitude_max: 255
+                        }),
+                        time_total: PhaserDuration::Fixed(1000),
+                    }),
+                },
+                2 => AnimationSpec {
                     name: "Brightness Animation 1".into(),
                     property: FixtureProperty::Alpha,
                     body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {

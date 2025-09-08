@@ -157,15 +157,19 @@ pub enum FixtureProperty {
 
 impl Display for FixtureProperty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            FixtureProperty::Alpha => "Alpha",
-            FixtureProperty::ColorHue => "ColorHue",
-            FixtureProperty::ColorSaturation => "ColorSaturation",
-            FixtureProperty::ColorValue => "ColorValue",
-            FixtureProperty::Tilt => "Tilt",
-            FixtureProperty::Pan => "Pan",
-            FixtureProperty::Rotation => "Rotation",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                FixtureProperty::Alpha => "Alpha",
+                FixtureProperty::ColorHue => "ColorHue",
+                FixtureProperty::ColorSaturation => "ColorSaturation",
+                FixtureProperty::ColorValue => "ColorValue",
+                FixtureProperty::Tilt => "Tilt",
+                FixtureProperty::Pan => "Pan",
+                FixtureProperty::Rotation => "Rotation",
+            }
+        )
     }
 }
 
@@ -216,6 +220,9 @@ pub enum ControlEvent {
     SetAlpha(u8),
     /// Sets the color of the fixture using the RGB format.
     SetColor((u8, u8, u8)),
+    SetColorHue(u8),
+    SetColorSaturation(u8),
+    SetColorValue(u8),
     //
     // Animations
     //
@@ -252,6 +259,9 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
         ControlEvent::SetEnabled(_)
             | ControlEvent::SetAlpha(_)
             | ControlEvent::SetColor(_)
+            | ControlEvent::SetColorHue(_)
+            | ControlEvent::SetColorSaturation(_)
+            | ControlEvent::SetColorValue(_)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)
             | ControlEvent::ResetAnimation(_)
