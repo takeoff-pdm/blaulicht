@@ -16,6 +16,7 @@ use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
+use strum::IntoEnumIterator;
 
 //
 // Actual eframe shit.
@@ -404,7 +405,224 @@ impl eframe::App for BlaulichtApp {
         // Left sidebar
         self.left_panel_ui(ctx);
 
-        // Right sidebar
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // The central panel the region left after adding TopPanel's and SidePanel's
+            // ui.heading("eframe template");
+            //
+            // Continuous rendering - always request repaints
+            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
+                                                                             //
+                                                                             // // Update animation time for continuous rendering
+            self.frame_count += 1;
+            self.animation_time += 0.016; // 16ms = 0.016 seconds
+                                          //
+                                          // ui.horizontal(|ui| {
+                                          //     ui.label("Write something: ");
+                                          //     ui.text_edit_singleline(&mut self.label);
+                                          // });
+                                          //
+                                          // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+                                          // if ui.button("Increment").clicked() {
+                                          //     self.value += 1.0;
+                                          // }
+                                          //
+                                          // ui.separator();
+
+            // Page content based on selected tab
+            match self.current_page {
+                AppPage::System => {
+                    self.system_ui(ui, ctx);
+                }
+                AppPage::Main => {
+                    self.main_ui(ui);
+                }
+                AppPage::Fixtures => {
+                    self.fixtures_ui(ui);
+                }
+                AppPage::Animations => {
+                    self.animations_ui(ui);
+                }
+            }
+
+            // ui.separator();
+            //
+            // ui.add(egui::github_link_file!(
+            //     "https://github.com/emilk/eframe_template/blob/main/",
+            //     "Source code."
+            // ));
+            //
+            // ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+            //     powered_by_egui_and_eframe(ui);
+            //     egui::warn_if_debug_build(ui);
+            // });
+        });
+    }
+}
+
+impl BlaulichtApp {
+    fn main_ui(&mut self, ui: &mut egui::Ui) {
+        // Main content area with graphs panel
+        ui.horizontal(|ui| {
+            // Left content area (3/4 width)
+            let total_width = ui.available_width();
+            let graph_panel_width = total_width * 0.25;
+            // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
+
+            // ui.vertical(|ui| {
+            //     ui.set_width(main_panel_width);
+            //     ui.heading("Main Content");
+            //     ui.label("This is the main content area taking up 3/4 of the width.");
+            //     ui.add_space(20.0);
+            //     ui.label("You can put your main application content here.");
+            // });
+
+            // ui.separator();
+
+            // Graphs panel (1/4 width) - fixed width
+            ui.allocate_ui_with_layout(
+                egui::vec2(graph_panel_width, ui.available_height()),
+                egui::Layout::top_down(egui::Align::LEFT),
+                |ui| {
+                    ui.heading("Audio");
+                    let mut selected_device =
+                        self.data.state.audio.read().unwrap().device_name.clone();
+                    ui.label(format!(
+                        "Input device: {}",
+                        selected_device.clone().unwrap_or_else(|| "N/A".to_string())
+                    ));
+
+                    let before = selected_device.clone();
+
+                    egui::ComboBox::from_label("Audio Device")
+                        .selected_text(format!("{:?}", selected_device))
+                        .show_ui(ui, |ui| {
+                            for dev in &self.available_audio_devices {
+                                ui.selectable_value(
+                                    &mut selected_device,
+                                    Some(dev.to_owned()),
+                                    dev,
+                                );
+                            }
+                            ui.selectable_value(&mut selected_device, None, "None");
+                        });
+
+                    if selected_device != before {
+                        // Handle selection change
+                        let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
+                        self.data
+                            .from_frontend_sender
+                            .send(FromFrontend::SelectInputDevice(new_dev.clone()))
+                            .unwrap();
+
+                        let mut config_mut = self.data.config.lock().unwrap();
+
+                        config_mut.default_audio_device = match new_dev {
+                            Some(d) => Some(d.name().unwrap()),
+                            None => None,
+                        };
+
+                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
+                        config::write_config(path, config_mut.clone()).unwrap();
+                    }
+
+                    // Show animation info
+                    ui.label(format!(
+                        "Frame: {} | Animation Time: {:.2}s",
+                        self.frame_count, self.animation_time
+                    ));
+
+                    // Set larger graph height
+                    let graph_height = 140.0;
+                    let graph_width = graph_panel_width - 16.0;
+                    let padding = 10.0;
+
+                    debug_assert!(graph_width > 0.0);
+
+                    ui.add_space(padding);
+                    let (response, painter) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.volume_graph.draw(painter, response.rect);
+
+                    ui.add_space(padding);
+                    let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.beat_volume_graph
+                        .draw(painter_beat_volume, response_beat_volume.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass, painter_bass) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_graph.draw(painter_bass, response_bass.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_avg_graph
+                        .draw(painter_bass_avg, response_bass_avg.rect);
+
+                    ui.add_space(padding);
+                    let (response_bass_avg_short, painter_bass_avg_short) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bass_avg_short_graph
+                        .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+
+                    ui.add_space(padding);
+                    let (response_bpm, painter_bpm) = ui.allocate_painter(
+                        egui::vec2(graph_width, graph_height),
+                        egui::Sense::hover(),
+                    );
+                    self.bpm_graph.draw(painter_bpm, response_bpm.rect);
+
+                    ui.add_space(padding);
+                    let (response_time_between_beats, painter_time_between_beats) = ui
+                        .allocate_painter(
+                            egui::vec2(graph_width, graph_height),
+                            egui::Sense::hover(),
+                        );
+                    self.time_between_beats_graph
+                        .draw(painter_time_between_beats, response_time_between_beats.rect);
+
+                    ui.add_space(padding);
+
+                    // Graph controls
+                    ui.horizontal(|ui| {
+                        if ui.button("Add Point").clicked() {
+                            let random_value = 0;
+                            self.volume_graph.add_data_point(random_value);
+                            self.log_window.add_log(
+                                LogLevel::Debug,
+                                format!("Added data point: {}", random_value),
+                                "Graph".to_string(),
+                            );
+                        }
+
+                        if ui.button("Clear").clicked() {
+                            self.volume_graph.clear();
+                            self.log_window.add_log(
+                                LogLevel::Warning,
+                                "Volume graph cleared".to_string(),
+                                "Graph".to_string(),
+                            );
+                        }
+
+                        ui.label(format!("Points: {}", self.volume_graph.data_points_count()));
+                    });
+                },
+            );
+        });
+    }
+
+    fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         egui::SidePanel::right("right_panel")
             .resizable(true)
             .default_width(250.0)
@@ -598,259 +816,73 @@ impl eframe::App for BlaulichtApp {
                 ui.label("Theme: Default");
             });
 
+        // Terminal.
+        // Right sidebar
         // Bottom log panel - fixed height
         egui::TopBottomPanel::bottom("log_panel")
             .default_height(300.0)
             .show(ctx, |ui| {
                 self.log_window.draw(ui);
             });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            // ui.heading("eframe template");
-            //
-            // Continuous rendering - always request repaints
-            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
-                                                                             //
-                                                                             // // Update animation time for continuous rendering
-            self.frame_count += 1;
-            self.animation_time += 0.016; // 16ms = 0.016 seconds
-                                          //
-                                          // ui.horizontal(|ui| {
-                                          //     ui.label("Write something: ");
-                                          //     ui.text_edit_singleline(&mut self.label);
-                                          // });
-                                          //
-                                          // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-                                          // if ui.button("Increment").clicked() {
-                                          //     self.value += 1.0;
-                                          // }
-                                          //
-                                          // ui.separator();
-
-            // Page content based on selected tab
-            match self.current_page {
-                AppPage::Main => {
-                    self.main_ui(ui);
-                }
-                AppPage::Fixtures => {
-                    self.fixtures_ui(ui);
-                }
-                AppPage::Animations => {
-                    self.animations_ui(ui);
-                }
-            }
-
-            // ui.separator();
-            //
-            // ui.add(egui::github_link_file!(
-            //     "https://github.com/emilk/eframe_template/blob/main/",
-            //     "Source code."
-            // ));
-            //
-            // ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-            //     powered_by_egui_and_eframe(ui);
-            //     egui::warn_if_debug_build(ui);
-            // });
-        });
-    }
-}
-
-impl BlaulichtApp {
-    fn main_ui(&mut self, ui: &mut egui::Ui) {
-        // Main content area with graphs panel
-        ui.horizontal(|ui| {
-            // Left content area (3/4 width)
-            let total_width = ui.available_width();
-            let graph_panel_width = total_width * 0.25;
-            // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
-
-            // ui.vertical(|ui| {
-            //     ui.set_width(main_panel_width);
-            //     ui.heading("Main Content");
-            //     ui.label("This is the main content area taking up 3/4 of the width.");
-            //     ui.add_space(20.0);
-            //     ui.label("You can put your main application content here.");
-            // });
-
-            // ui.separator();
-
-            // Graphs panel (1/4 width) - fixed width
-            ui.allocate_ui_with_layout(
-                egui::vec2(graph_panel_width, ui.available_height()),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    ui.heading("Audio");
-                    let mut selected_device =
-                        self.data.state.audio.read().unwrap().device_name.clone();
-                    ui.label(format!(
-                        "Input device: {}",
-                        selected_device.clone().unwrap_or_else(|| "N/A".to_string())
-                    ));
-
-                    let before = selected_device.clone();
-
-                    egui::ComboBox::from_label("Audio Device")
-                        .selected_text(format!("{:?}", selected_device))
-                        .show_ui(ui, |ui| {
-                            for dev in &self.available_audio_devices {
-                                ui.selectable_value(
-                                    &mut selected_device,
-                                    Some(dev.to_owned()),
-                                    dev,
-                                );
-                            }
-                            ui.selectable_value(&mut selected_device, None, "None");
-                        });
-
-                    if selected_device != before {
-                        // Handle selection change
-                        let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
-                        self.data
-                            .from_frontend_sender
-                            .send(FromFrontend::SelectInputDevice(new_dev.clone()))
-                            .unwrap();
-
-                        let mut config_mut = self.data.config.lock().unwrap();
-
-                        config_mut.default_audio_device = match new_dev {
-                            Some(d) => Some(d.name().unwrap()),
-                            None => None,
-                        };
-
-                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
-                        config::write_config(path, config_mut.clone()).unwrap();
-                    }
-
-                    // Show animation info
-                    ui.label(format!(
-                        "Frame: {} | Animation Time: {:.2}s",
-                        self.frame_count, self.animation_time
-                    ));
-
-                    // Set larger graph height
-                    let graph_height = 140.0;
-                    let graph_width = graph_panel_width - 16.0;
-                    let padding = 10.0;
-
-                    debug_assert!(graph_width > 0.0);
-
-                    ui.add_space(padding);
-                    let (response, painter) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.volume_graph.draw(painter, response.rect);
-
-                    ui.add_space(padding);
-                    let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.beat_volume_graph
-                        .draw(painter_beat_volume, response_beat_volume.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass, painter_bass) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_graph.draw(painter_bass, response_bass.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_avg_graph
-                        .draw(painter_bass_avg, response_bass_avg.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass_avg_short, painter_bass_avg_short) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_avg_short_graph
-                        .draw(painter_bass_avg_short, response_bass_avg_short.rect);
-
-                    ui.add_space(padding);
-                    let (response_bpm, painter_bpm) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bpm_graph.draw(painter_bpm, response_bpm.rect);
-
-                    ui.add_space(padding);
-                    let (response_time_between_beats, painter_time_between_beats) = ui
-                        .allocate_painter(
-                            egui::vec2(graph_width, graph_height),
-                            egui::Sense::hover(),
-                        );
-                    self.time_between_beats_graph
-                        .draw(painter_time_between_beats, response_time_between_beats.rect);
-
-                    ui.add_space(padding);
-
-                    // Graph controls
-                    ui.horizontal(|ui| {
-                        if ui.button("Add Point").clicked() {
-                            let random_value = 0;
-                            self.volume_graph.add_data_point(random_value);
-                            self.log_window.add_log(
-                                LogLevel::Debug,
-                                format!("Added data point: {}", random_value),
-                                "Graph".to_string(),
-                            );
-                        }
-
-                        if ui.button("Clear").clicked() {
-                            self.volume_graph.clear();
-                            self.log_window.add_log(
-                                LogLevel::Warning,
-                                "Volume graph cleared".to_string(),
-                                "Graph".to_string(),
-                            );
-                        }
-
-                        ui.label(format!("Points: {}", self.volume_graph.data_points_count()));
-                    });
-                },
-            );
-        });
     }
 
     fn left_panel_ui(&mut self, ctx: &Context) {
         egui::SidePanel::left("left_panel")
-            .resizable(true)
-            .default_width(200.0)
-            .width_range(150.0..=300.0)
+            .resizable(false)
+            .default_width(100.0)
+            // .width_range(150.0..=300.0)
             .show(ctx, |ui| {
-                ui.heading("Navigation");
-                ui.separator();
-
-                // Tab switcher
                 ui.label("Pages");
                 ui.add_space(8.0);
 
-                // TODO: loop here.
-                if ui
-                    .selectable_label(self.current_page == AppPage::Main, "Main")
-                    .clicked()
-                {
-                    self.current_page = AppPage::Main;
+                for page in AppPage::iter() {
+                    let is_selected = self.current_page == page;
+
+                    let rect = ui.allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
+                    let painter = ui.painter();
+                    let bg_color = if is_selected {
+                        egui::Color32::from_rgb(60, 120, 200)
+                    } else {
+                        egui::Color32::from_gray(40)
+                    };
+                    painter.rect_filled(rect.0, 0.0, bg_color);
+
+                    // let fixture_count = group.fixtures.len();
+                    let name = format!("{}", page.short()).to_uppercase();
+
+                    painter.text(
+                        rect.0.center(),
+                        egui::Align2::CENTER_CENTER,
+                        &name,
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE,
+                    );
+
+                    if rect.1.clicked() && !is_selected {
+                        self.current_page = page;
+                    }
+                    ui.add_space(8.0);
                 }
-                if ui
-                    .selectable_label(self.current_page == AppPage::Fixtures, "Fixtures")
-                    .clicked()
-                {
-                    self.current_page = AppPage::Fixtures;
-                }
-                if ui
-                    .selectable_label(self.current_page == AppPage::Animations, "Animations")
-                    .clicked()
-                {
-                    self.current_page = AppPage::Animations;
-                }
+
+                // // TODO: loop here.
+                // if ui
+                //     .selectable_label(self.current_page == AppPage::Main, "Main")
+                //     .clicked()
+                // {
+                //     self.current_page = AppPage::Main;
+                // }
+                // if ui
+                //     .selectable_label(self.current_page == AppPage::Fixtures, "Fixtures")
+                //     .clicked()
+                // {
+                //     self.current_page = AppPage::Fixtures;
+                // }
+                // if ui
+                //     .selectable_label(self.current_page == AppPage::Animations, "Animations")
+                //     .clicked()
+                // {
+                //     self.current_page = AppPage::Animations;
+                // }
 
                 ui.add_space(16.0);
                 ui.label("Tools");

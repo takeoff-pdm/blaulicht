@@ -24,9 +24,9 @@ impl Display for MidiDevice {
             f,
             "{}",
             match self {
-                MidiDevice::NanoKontrol => "nanoKONTROL Studio:nanoKONTROL Studio",
-                MidiDevice::MidiMix => "MIDI Mix:MIDI Mix MIDI 1",
-                MidiDevice::APCMini => "APC mini mk2:APC mini mk2 Control",
+                MidiDevice::NanoKontrol => "nanoKONTROL Studio",
+                MidiDevice::MidiMix => "MIDI Mix",
+                MidiDevice::APCMini => "APC mini mk2",
             }
         )
     }

@@ -1,4 +1,7 @@
+use std::fmt::Display;
+
 use egui::Color32;
+use strum::EnumIter;
 
 use crate::{
     app::{graph::TimeSeriesGraph, log::LogWindow},
@@ -31,11 +34,23 @@ impl Selection {
 }
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, EnumIter)]
 pub enum AppPage {
+    System,
     Main,
     Fixtures,
     Animations,
+}
+
+impl AppPage {
+    fn short(&self) -> &'static str {
+        match self {
+            AppPage::System => "Sys",
+            AppPage::Main => "Main",
+            AppPage::Fixtures => "Fix",
+            AppPage::Animations => "Anim",
+        }
+    }
 }
 
 pub struct BlaulichtApp {
