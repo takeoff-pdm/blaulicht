@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::{debug, info, trace};
@@ -99,12 +99,26 @@ impl PluginManager {
         plugins
             .iter()
             .filter(|(_, p)| p.is_active())
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| *key)
             .collect()
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
-        self.instantiate_plugins()?;
+        if let Err(err) = self.instantiate_plugins() {
+            let plugin_error_list: HashMap<u8, anyhow::Error> = self
+                .state_ref
+                .plugins
+                .read()
+                .unwrap()
+                .keys()
+                .map(|plugin_id| (*plugin_id, anyhow!("Engine initialization error: {err}")))
+                .collect();
+
+            self.disable_errored_plugins(plugin_error_list);
+
+            return Err(err);
+        };
+
         self.is_initial_tick = true;
 
         // Ignore any tick errors caused by misbehaving plugins.

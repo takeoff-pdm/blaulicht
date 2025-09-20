@@ -1,4 +1,4 @@
-use blaulicht_shared::TickInput;
+use blaulicht_shared::{LogLevel, TickInput};
 
 mod blaulicht;
 mod error;
@@ -19,11 +19,14 @@ pub extern "C" fn internal_tick(
     match tick_input.initial {
         true => {
             std::panic::set_hook(Box::new(|info| {
-                blaulicht::bl_log(&format!(
-                    "***PANIC***: (plugin {}): {}",
-                    unsafe { blaulicht::PLUGIN_ID },
-                    info.to_string()
-                ));
+                blaulicht::bl_log(
+                    &format!(
+                        "***PANIC***: (plugin {}): {}",
+                        unsafe { blaulicht::PLUGIN_ID },
+                        info.to_string(),
+                    ),
+                    LogLevel::Err,
+                );
                 blaulicht::report_panic()
             }));
 

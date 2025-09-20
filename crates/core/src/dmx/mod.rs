@@ -25,7 +25,7 @@ use crate::{
 };
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
-    RGBColor, CONTROLS_REQUIRING_SELECTION,
+    LogLevel, RGBColor, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -301,7 +301,7 @@ impl DmxEngine {
 
                 if let Some(msg) = msg {
                     self.system_out
-                        .send(SystemMessage::Log(msg.to_string()))
+                        .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug))
                         .unwrap();
                 }
 

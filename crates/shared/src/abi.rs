@@ -1,6 +1,7 @@
-use bincode::{Decode, Encode, config};
-
 use crate::ControlEventCollection;
+use bincode::{Decode, Encode, config};
+use serde::Serialize;
+use strum::EnumIter;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
@@ -24,6 +25,39 @@ pub struct CollectedAudioSnapshot {
     pub initial: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Err,
+}
+
+impl TryFrom<i32> for LogLevel {
+    type Error = ();
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Debug,
+            1 => Self::Info,
+            2 => Self::Warn,
+            3 => Self::Err,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl From<LogLevel> for i32 {
+    fn from(value: LogLevel) -> Self {
+        match value {
+            LogLevel::Debug => 0,
+            LogLevel::Info => 1,
+            LogLevel::Warn => 2,
+            LogLevel::Err => 3,
+        }
+    }
+}
+
 // const TICKINPUT_WIREFORMAT_LENGTH: usize = 2;
 
 // const VALUE_CLOCK_INDEX: usize = 0;
@@ -42,7 +76,7 @@ impl TickInput {
             Err(err) => {
                 // Panic handler is usually not registered yet.
                 panic!("Deserialize error: {}", err);
-            },
+            }
         };
 
         data

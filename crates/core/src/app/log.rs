@@ -4,14 +4,27 @@
 
 use std::collections::VecDeque;
 
+use blaulicht_shared::LogLevel;
+use chrono::{DateTime, Local};
+use strum::IntoEnumIterator;
+
+fn log_level_color(from: &LogLevel) -> egui::Color32 {
+    match from {
+        LogLevel::Debug => egui::Color32::from_gray(150),
+        LogLevel::Info => egui::Color32::from_rgb(100, 150, 255),
+        LogLevel::Warn => egui::Color32::from_rgb(255, 200, 100),
+        LogLevel::Err => egui::Color32::from_rgb(255, 100, 100),
+    }
+}
+
 /// A log window component that displays scrolling log messages
 pub struct LogWindow {
     logs: VecDeque<LogEntry>,
     max_logs: usize,
     auto_scroll: bool,
     filter_text: String,
-    selected_log_level: LogLevel,
-    log_height: f32,
+    selected_log_level: Option<LogLevel>,
+    // log_height: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -22,37 +35,6 @@ pub struct LogEntry {
     source: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warning,
-    Error,
-    All,
-}
-
-impl LogLevel {
-    fn color(&self) -> egui::Color32 {
-        match self {
-            LogLevel::Debug => egui::Color32::from_gray(150),
-            LogLevel::Info => egui::Color32::from_rgb(100, 150, 255),
-            LogLevel::Warning => egui::Color32::from_rgb(255, 200, 100),
-            LogLevel::Error => egui::Color32::from_rgb(255, 100, 100),
-            LogLevel::All => egui::Color32::WHITE,
-        }
-    }
-
-    fn icon(&self) -> &'static str {
-        match self {
-            LogLevel::Debug => "🔍",
-            LogLevel::Info => "ℹ️",
-            LogLevel::Warning => "⚠️",
-            LogLevel::Error => "❌",
-            LogLevel::All => "📋",
-        }
-    }
-}
-
 impl LogWindow {
     pub fn new(max_logs: usize) -> Self {
         Self {
@@ -60,8 +42,7 @@ impl LogWindow {
             max_logs,
             auto_scroll: true,
             filter_text: String::new(),
-            selected_log_level: LogLevel::All,
-            log_height: 200.0,
+            selected_log_level: None,
         }
     }
 
@@ -86,10 +67,12 @@ impl LogWindow {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Log Terminal");
-
         // Controls
         ui.horizontal(|ui| {
+            ui.label("Logs");
+
+            ui.separator();
+
             ui.label("Filter:");
             ui.text_edit_singleline(&mut self.filter_text);
 
@@ -97,25 +80,16 @@ impl LogWindow {
 
             ui.label("Level:");
             egui::ComboBox::from_id_salt("log_level")
-                .selected_text(format!(
-                    "{} {}",
-                    self.selected_log_level.icon(),
-                    format!("{:?}", self.selected_log_level)
-                ))
+                .selected_text(format!("{:?}", self.selected_log_level))
                 .show_ui(ui, |ui| {
-                    for level in [
-                        LogLevel::All,
-                        LogLevel::Debug,
-                        LogLevel::Info,
-                        LogLevel::Warning,
-                        LogLevel::Error,
-                    ] {
+                    for level in LogLevel::iter() {
                         ui.selectable_value(
                             &mut self.selected_log_level,
-                            level.clone(),
-                            format!("{} {:?}", level.icon(), level),
+                            Some(level.clone()),
+                            format!("{level:?}"),
                         );
                     }
+                    ui.selectable_value(&mut self.selected_log_level, None, "All");
                 });
 
             ui.separator();
@@ -127,16 +101,14 @@ impl LogWindow {
             }
         });
 
-        ui.separator();
-
         // Log display area - resizable content area
-        ui.horizontal(|ui| {
-            ui.label("Log Height:");
-            ui.add(egui::Slider::new(&mut self.log_height, 100.0..=600.0).text("height"));
-        });
+        // ui.horizontal(|ui| {
+        //     ui.label("Log Height:");
+        //     ui.add(egui::Slider::new(&mut self.log_height, 100.0..=600.0).text("height"));
+        // });
 
         egui::ScrollArea::vertical()
-            .max_height(self.log_height)
+            .max_height(ui.available_height())
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
@@ -145,10 +117,9 @@ impl LogWindow {
 
                 for entry in &self.logs {
                     // Apply filters
-                    if self.selected_log_level != LogLevel::All
-                        && entry.level != self.selected_log_level
-                    {
-                        continue;
+                    match &self.selected_log_level {
+                        Some(level) if entry.level != *level => continue,
+                        Some(_) | None => {}
                     }
 
                     if !self.filter_text.is_empty() {
@@ -165,32 +136,17 @@ impl LogWindow {
                         }
                     }
 
-                    // Format timestamp
-                    let timestamp = entry
-                        .timestamp
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-
-                    let time_str = format!(
-                        "{:02}:{:02}:{:02}",
-                        (timestamp / 3600) % 24,
-                        (timestamp / 60) % 60,
-                        timestamp % 60
-                    );
+                    let datetime: DateTime<Local> = entry.timestamp.into();
+                    let time_formatted = datetime.format("%H:%M:%S").to_string();
 
                     // Create log line
                     let log_text = format!(
-                        "[{}] {:?} {} | {} | {}",
-                        time_str,
-                        entry.level,
-                        format!("{:?}", entry.level),
-                        entry.source,
-                        entry.message
+                        "[{}] {:?} | {} | {}",
+                        time_formatted, entry.level, entry.source, entry.message
                     );
 
                     // Display with appropriate color
-                    ui.colored_label(entry.level.color(), log_text);
+                    ui.colored_label(log_level_color(&entry.level), log_text);
 
                     should_scroll_to_bottom = true;
                 }

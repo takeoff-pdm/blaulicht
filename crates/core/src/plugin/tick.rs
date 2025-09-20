@@ -3,12 +3,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, TickInput};
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
 use log::warn;
 
 use crate::{
-    msg::MidiEvent,
+    msg::{MidiEvent, SystemMessage},
     plugin::{Plugin, PluginManager},
+    system_message,
 };
 
 impl PluginManager {
@@ -66,17 +67,31 @@ impl PluginManager {
         }
 
         // Process any errors.
+        match self.disable_errored_plugins(err_res) {
+            Some(err) => Err(err),
+            None => Ok(start.elapsed()),
+        }
+    }
+
+    pub fn disable_errored_plugins(
+        &mut self,
+        plugins_err: HashMap<u8, anyhow::Error>,
+    ) -> Option<anyhow::Error> {
+        let mut ret = None;
+
         let ret_val = {
-            let mut ret = Ok(start.elapsed());
-            let err_res = err_res;
             let mut plugins = self.state_ref.plugins.write().unwrap();
 
-            for (plugin_key, err) in err_res.into_iter() {
-                if ret.is_ok() {
-                    ret = Err(err);
+            for (plugin_key, err) in plugins_err.into_iter() {
+                if ret.is_none() {
+                    ret = Some(err);
                 }
 
-                warn!("Disabling plugin with error(s): (id={})...", plugin_key);
+                self.system_out.send(SystemMessage::Log(
+                    format!("Disabling plugin with error(s): (id={})...", plugin_key),
+                    LogLevel::Warn,
+                )).unwrap();
+
                 plugins.get_mut(&plugin_key).unwrap().set_errored(true);
             }
 

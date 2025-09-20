@@ -97,6 +97,7 @@ impl MidiManager {
         midi_in.ignore(Ignore::None);
         let in_ports = midi_in.ports();
 
+        // TODO: make this viewable in a different way!.
         debug!(
             "Available MIDI input ports: [\n{}\n]",
             in_ports
@@ -105,7 +106,6 @@ impl MidiManager {
                 .collect::<Vec<_>>()
                 .join(",\n")
         );
-
 
         let in_port = in_ports
             .iter()
@@ -145,7 +145,7 @@ impl MidiManager {
             )
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
-        let midi_out = MidiOutput::new("ddj-sender").unwrap();
+        let midi_out = MidiOutput::new("midi-sender").unwrap();
         // midi_out.ignore(Ignore::None);
         let out_ports = midi_out.ports();
         let out_port = out_ports
@@ -162,7 +162,7 @@ impl MidiManager {
         );
 
         let conn_out = midi_out
-            .connect(out_port, "ddj-send")
+            .connect(out_port, "midi-sender")
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
         self.connection_map.insert(

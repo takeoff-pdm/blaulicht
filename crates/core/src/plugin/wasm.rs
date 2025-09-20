@@ -3,9 +3,11 @@ use anyhow::Context;
 use blaulicht_shared::ControlEvent;
 use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
+use blaulicht_shared::LogLevel;
 use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
+use log::error;
 use log::{debug, info, warn};
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -32,6 +34,17 @@ use crate::{
 // TODO: optimize this module:
 // Load multiple plugins at once, not just one.
 // Manage plugins and their health / allow activation / deactivation.
+
+// struct PluginError {
+//     pub message: String,
+//     pub plugin_id: u8,
+// }
+//
+// impl From<PluginError> for anyhow::Error {
+//     fn from(err: PluginError) -> Self {
+//         anyhow!("ID: {} | {}", err.plugin_id, err.message)
+//     }
+// }
 
 impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
@@ -170,7 +183,11 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "log",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  level_raw: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -183,9 +200,16 @@ impl PluginManager {
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
 
+                let level : LogLevel =
+                    level_raw.try_into().unwrap_or_else(|_|  {
+                        error!("A plugin called blaulicht::log with an illegal log-level-integer: {level_raw}");
+                        LogLevel::Info
+                    });
+
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: received_string.into(),
+                    level,
                 }))
                 .expect("Failed to send log message");
             },

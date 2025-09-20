@@ -1,26 +1,41 @@
 use crate::app::graph::TimeSeriesGraph;
-use crate::app::log::{LogLevel, LogWindow};
-use crate::app::{AnimationPageState, AppPage, BlaulichtApp};
+use crate::app::log::LogWindow;
+use crate::app::{AnimationPageState, AppPage, BlaulichtApp, PopupSpec};
+use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
-use crate::dmx::{DmxEngine, EngineState};
+use crate::dmx::EngineState;
 use crate::msg::FromFrontend;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, routes::AppStateWrapper};
+use blaulicht_shared::LogLevel;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
-use egui::{Color32, Context};
-use log::info;
-use serde::{Deserialize, Serialize};
+use egui::{
+    Button, Color32, Context, CornerRadius, Frame, Margin, ProgressBar, RichText, Rounding, Stroke,
+    Vec2,
+};
 use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Instant;
 use strum::IntoEnumIterator;
 
 //
 // Actual eframe shit.
 //
+
+// fn update_button_style(ctx: &egui::Context) {
+//     let mut style = (*ctx.style()).clone();
+//
+//     // Base look
+//     style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(220, 220, 220); // idle
+//     style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(180, 200, 255); // hover
+//     style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(0, 120, 255); // when pressed
+//
+//     ctx.set_style(style);
+// }
 
 impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
@@ -79,7 +94,7 @@ impl BlaulichtApp {
             tick_speed: 0,
             // logs: vec![],
             log_window: LogWindow::new(100),
-            current_page: AppPage::Main,
+            current_page: AppPage::Audio,
             last_heartbeat_frame: 0,
             selected_fixture_group: None,
             available_audio_devices: vec![],
@@ -91,6 +106,8 @@ impl BlaulichtApp {
                 timing: PhaserDuration::Fixed(1000),
             },
             new_scene_name: "My Scene".to_string(),
+            popup: None,
+            popup_open_time: Instant::now(),
         }
     }
 }
@@ -132,16 +149,100 @@ impl BlaulichtApp {
 
         app
     }
+
+    fn show_popup(&mut self, popup: PopupSpec) {
+        self.popup = Some(popup);
+        self.popup_open_time = Instant::now();
+    }
+
+    fn close_popup(&mut self) {
+        self.popup = None;
+    }
 }
 
 impl eframe::App for BlaulichtApp {
-    /// Called by the framework to save state before shutdown.
-    // fn save(&mut self, storage: &mut dyn eframe::Storage) {
-    //     eframe::set_value(storage, eframe::APP_KEY, self);
-    // }
-
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(ref popup) = self.popup {
+            let popup = popup.clone();
+            // egui::Window::new(&popup)
+            //     .collapsible(false)
+            //     .resizable(false)
+            //     .show(ctx, |ui| {
+            //         ui.label(&popup);
+            //         if ui.button("Close").clicked() {
+            //             self.popup = None;
+            //         }
+            //     });
+
+            let screen_rect = ctx.screen_rect();
+            let popup_size = egui::Vec2::new(200.0, 100.0); // desired popup size
+
+            let center_pos = egui::Pos2::new(
+                screen_rect.center().x - popup_size.x / 2.0,
+                screen_rect.center().y - popup_size.y / 2.0,
+            );
+
+            let elapsed = self.popup_open_time.elapsed();
+            if elapsed >= popup.lifetime_duration {
+                self.close_popup();
+            }
+
+            egui::Window::new(&popup.label)
+                .fixed_size(popup_size)
+                .collapsible(false)
+                .resizable(false)
+                .title_bar(false)
+                .fixed_pos(center_pos)
+                .frame(Frame {
+                    corner_radius: CornerRadius::same(1),
+                    fill: Color32::from_gray(40),
+                    stroke: Stroke::new(1.0, Color32::from_gray(60)),
+                    inner_margin: Margin::symmetric(6, 12),
+                    ..Frame::default()
+                })
+                .show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(RichText::new(&popup.label).size(24.0));
+
+                        if let Some(ref button) = popup.button {
+                            ui.add_space(8.0);
+
+                            let rect = ui
+                                .allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
+                            let painter = ui.painter();
+                            let bg_color = egui::Color32::from_rgb(60, 120, 200);
+                            painter.rect_filled(rect.0, 0.0, bg_color);
+
+                            painter.text(
+                                rect.0.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &button.label,
+                                egui::FontId::proportional(16.0),
+                                egui::Color32::WHITE,
+                            );
+
+                            if rect.1.clicked() {
+                                self.close_popup();
+                            }
+                        }
+
+                        let progress = 1.0
+                            - elapsed.as_millis() as f32
+                                / popup.lifetime_duration.as_millis() as f32;
+
+                        ui.add(
+                            ProgressBar::new(progress)
+                                .text(format!(
+                                    "{}S remaining",
+                                    popup.lifetime_duration.as_secs() - elapsed.as_secs()
+                                ))
+                                .fill(Color32::from_rgb(60, 120, 200)),
+                        );
+                    })
+                });
+        }
+
         // for i in 0..1000 {
         //     self.data
         //         .event_bus_connection
@@ -189,14 +290,14 @@ impl eframe::App for BlaulichtApp {
                         //     "System".to_string(),
                         // );
                     }
-                    SystemMessage::Log(log_msg) => {
+                    SystemMessage::Log(log_msg, level) => {
                         self.log_window
-                            .add_log(LogLevel::Info, log_msg, "System".to_string());
+                            .add_log(level, log_msg, "System".to_string());
                     }
                     SystemMessage::WasmLog(wasm_log_body) => {
                         self.log_window.add_log(
-                            LogLevel::Info,
-                            format!("{:?}", wasm_log_body),
+                            wasm_log_body.level.clone(),
+                            format!("PID: {} | {}", wasm_log_body.plugin_id, wasm_log_body.msg),
                             "WASM".to_string(),
                         );
                     }
@@ -325,7 +426,10 @@ impl eframe::App for BlaulichtApp {
 
                             self.data
                                 .system_message_sender
-                                .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                .send(SystemMessage::Log(
+                                    format!("Saved showfile to {path:?}"),
+                                    LogLevel::Info,
+                                ))
                                 .unwrap();
                         }
                     }
@@ -344,7 +448,10 @@ impl eframe::App for BlaulichtApp {
 
                             self.data
                                 .system_message_sender
-                                .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                .send(SystemMessage::Log(
+                                    format!("Saved showfile to {path:?}"),
+                                    LogLevel::Info,
+                                ))
                                 .unwrap();
                         }
                     }
@@ -378,13 +485,19 @@ impl eframe::App for BlaulichtApp {
 
                                 self.data
                                     .system_message_sender
-                                    .send(SystemMessage::Log(format!("Saved showfile to {path:?}")))
+                                    .send(SystemMessage::Log(
+                                        format!("Saved showfile to {path:?}"),
+                                        LogLevel::Info,
+                                    ))
                                     .unwrap();
                             }
                             None => {
                                 self.data
                                     .system_message_sender
-                                    .send(SystemMessage::Log("No opened showfile".to_string()))
+                                    .send(SystemMessage::Log(
+                                        "No opened showfile, not saving".to_string(),
+                                        LogLevel::Err,
+                                    ))
                                     .unwrap();
                             }
                         }
@@ -430,10 +543,13 @@ impl eframe::App for BlaulichtApp {
 
             // Page content based on selected tab
             match self.current_page {
+                AppPage::Logs => {
+                    self.logs_ui(ui, ctx);
+                }
                 AppPage::System => {
                     self.system_ui(ui, ctx);
                 }
-                AppPage::Main => {
+                AppPage::Audio => {
                     self.main_ui(ui);
                 }
                 AppPage::Fixtures => {
@@ -609,7 +725,7 @@ impl BlaulichtApp {
                         if ui.button("Clear").clicked() {
                             self.volume_graph.clear();
                             self.log_window.add_log(
-                                LogLevel::Warning,
+                                LogLevel::Info,
                                 "Volume graph cleared".to_string(),
                                 "Graph".to_string(),
                             );
@@ -620,6 +736,18 @@ impl BlaulichtApp {
                 },
             );
         });
+    }
+
+    fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        self.log_window.draw(ui);
+
+        // Terminal.
+        // Right sidebar
+        // Bottom log panel - fixed height
+        // egui::TopBottomPanel::bottom("log_panel")
+        //     .default_height(300.0)
+        //     .show(ctx, |ui| {
+        //     });
     }
 
     fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
@@ -689,6 +817,7 @@ impl BlaulichtApp {
                         ui.add_space(8.0);
                     }
                     ui.separator();
+
                     mem::drop(plugins)
                 }
 
@@ -782,47 +911,41 @@ impl BlaulichtApp {
                     ui.label("Heartbeat");
                 });
 
-                // --- Existing right panel content ---
-                ui.heading("Right Sidebar");
-                ui.separator();
+                // --- Reload button ---
+                {
+                    let signal = *self.data.state.mainloop_state.read().unwrap();
 
-                // Placeholder widgets for the right sidebar
-                ui.label("Properties");
-                ui.add_space(8.0);
+                    ui.label(format!("LOOP {:?}", signal));
 
-                ui.label("Name:");
-                ui.text_edit_singleline(&mut self.label);
+                    let bg_color = match signal {
+                        AudioThreadControlSignal::CONTINUE => egui::Color32::from_gray(40),
+                        AudioThreadControlSignal::ABORT
+                        | AudioThreadControlSignal::ABORTED
+                        | AudioThreadControlSignal::CRASHED => egui::Color32::DARK_RED,
+                        AudioThreadControlSignal::RELOAD => egui::Color32::from_rgb(60, 120, 200),
+                    };
 
-                ui.add_space(8.0);
-                ui.label("Value:");
-                ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+                    let rect = ui.allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
+                    let painter = ui.painter();
+                    painter.rect_filled(rect.0, 0.0, bg_color);
 
-                ui.add_space(16.0);
-                ui.label("Actions");
-                ui.add_space(8.0);
+                    painter.text(
+                        rect.0.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "RELOAD",
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE,
+                    );
 
-                if ui.button("Reset").clicked() {
-                    self.value = 0.0;
+                    if rect.1.clicked() && signal != AudioThreadControlSignal::RELOAD {
+                        // self.data
+                        //     .from_frontend_sender
+                        //     .send(FromFrontend::Reload)
+                        //     .unwrap();
+
+                        self.show_popup(PopupSpec::default("Reload in progress...".to_string()));
+                    }
                 }
-                if ui.button("Randomize").clicked() {
-                    self.value = 0.0;
-                }
-
-                ui.add_space(16.0);
-                ui.label("Info");
-                ui.add_space(8.0);
-                ui.label(format!("Current value: {:.2}", self.value));
-                ui.label("Widget count: 3");
-                ui.label("Theme: Default");
-            });
-
-        // Terminal.
-        // Right sidebar
-        // Bottom log panel - fixed height
-        egui::TopBottomPanel::bottom("log_panel")
-            .default_height(300.0)
-            .show(ctx, |ui| {
-                self.log_window.draw(ui);
             });
     }
 
@@ -832,8 +955,8 @@ impl BlaulichtApp {
             .default_width(100.0)
             // .width_range(150.0..=300.0)
             .show(ctx, |ui| {
-                ui.label("Pages");
-                ui.add_space(8.0);
+                // ui.label("Pages");
+                // ui.add_space(8.0);
 
                 for page in AppPage::iter() {
                     let is_selected = self.current_page == page;
@@ -848,7 +971,7 @@ impl BlaulichtApp {
                     painter.rect_filled(rect.0, 0.0, bg_color);
 
                     // let fixture_count = group.fixtures.len();
-                    let name = format!("{}", page.short()).to_uppercase();
+                    let name = page.short().to_uppercase();
 
                     painter.text(
                         rect.0.center(),
@@ -884,22 +1007,22 @@ impl BlaulichtApp {
                 //     self.current_page = AppPage::Animations;
                 // }
 
-                ui.add_space(16.0);
-                ui.label("Tools");
-                ui.add_space(8.0);
-
-                if ui.button("Calculator").clicked() {
-                    // Placeholder action
-                }
-                if ui.button("Notes").clicked() {
-                    // Placeholder action
-                }
-
-                ui.add_space(16.0);
-                ui.label("Status");
-                ui.add_space(8.0);
-                ui.label("Online");
-                ui.label("Last updated: Now");
+                // ui.add_space(16.0);
+                // ui.label("Tools");
+                // ui.add_space(8.0);
+                //
+                // if ui.button("Calculator").clicked() {
+                //     // Placeholder action
+                // }
+                // if ui.button("Notes").clicked() {
+                //     // Placeholder action
+                // }
+                //
+                // ui.add_space(16.0);
+                // ui.label("Status");
+                // ui.add_space(8.0);
+                // ui.label("Online");
+                // ui.label("Last updated: Now");
             });
     }
 }

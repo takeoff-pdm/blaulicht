@@ -11,6 +11,7 @@ use heapless::spsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
@@ -56,6 +57,7 @@ pub struct AppState {
     pub audio: RwLock<AudioState>,
     pub dmx_buffer: RwLock<DmxBuffer>,
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
+    pub mainloop_state: RwLock<AudioThreadControlSignal>,
 }
 
 pub struct DmxBuffer {
@@ -90,6 +92,7 @@ impl AppState {
             dmx_buffer: RwLock::new(DmxBuffer::new()),
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
         }
     }
 

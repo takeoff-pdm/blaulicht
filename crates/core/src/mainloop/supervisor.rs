@@ -1,4 +1,5 @@
 use anyhow::bail;
+use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use enttecopendmx::EnttecOpenDMX;
 use std::{
@@ -206,6 +207,15 @@ use crate::{
 //     }
 // }
 
+pub fn signal_mainloop(
+    audio_thread_control_signal: Arc<AtomicU8>,
+    app_state: Arc<AppState>,
+    signal: AudioThreadControlSignal,
+) {
+    audio_thread_control_signal.store(signal.into(), Ordering::Relaxed);
+    *app_state.mainloop_state.write().unwrap() = signal;
+}
+
 pub fn supervisor_thread(
     from_frontend: Receiver<FromFrontend>,
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -225,7 +235,11 @@ pub fn supervisor_thread(
 
     // TODO: put the DMX thread under main!
 
-    audio_thread_control_signal.store(AudioThreadControlSignal::ABORTED, Ordering::Relaxed);
+    signal_mainloop(
+        Arc::clone(&audio_thread_control_signal),
+        Arc::clone(&app_state),
+        AudioThreadControlSignal::ABORTED,
+    );
 
     let mut seq = 0;
 
@@ -243,11 +257,15 @@ pub fn supervisor_thread(
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
                 info!("[SUPERVISOR] Got reload request");
-                if audio_thread_control_signal.load(Ordering::Relaxed)
-                    == AudioThreadControlSignal::CONTINUE
+                if AudioThreadControlSignal::from(
+                    audio_thread_control_signal.load(Ordering::Relaxed),
+                ) == AudioThreadControlSignal::CONTINUE
                 {
-                    audio_thread_control_signal
-                        .store(AudioThreadControlSignal::RELOAD, Ordering::Relaxed);
+                    signal_mainloop(
+                        Arc::clone(&audio_thread_control_signal),
+                        Arc::clone(&app_state),
+                        AudioThreadControlSignal::RELOAD,
+                    );
                 }
             }
             Ok(FromFrontend::SelectSerialDevice(dev)) => {
@@ -279,7 +297,8 @@ pub fn supervisor_thread(
         };
 
         // Check if the thread crashed and attempt to restart it.
-        if audio_thread_control_signal.load(Ordering::Relaxed) == AudioThreadControlSignal::CRASHED
+        if AudioThreadControlSignal::from(audio_thread_control_signal.load(Ordering::Relaxed))
+            == AudioThreadControlSignal::CRASHED.into()
             && audio_device.is_some()
         {
             thread::sleep(Duration::from_secs(2));
@@ -310,6 +329,7 @@ pub fn supervisor_thread(
                 system_out
                     .send(SystemMessage::Log(
                         "[audio] No audio device selected, waiting for selection...".to_string(),
+                        LogLevel::Debug,
                     ))
                     .unwrap();
                 sent_no_device_available_log_message = true;
@@ -317,11 +337,14 @@ pub fn supervisor_thread(
 
             device_changed = false;
 
-            if audio_thread_control_signal.load(Ordering::Relaxed)
-                == AudioThreadControlSignal::CONTINUE
+            if AudioThreadControlSignal::from(audio_thread_control_signal.load(Ordering::Relaxed))
+                == AudioThreadControlSignal::CONTINUE.into()
             {
-                audio_thread_control_signal
-                    .store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
+                signal_mainloop(
+                    Arc::clone(&audio_thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORT,
+                );
             }
         } else if device_changed {
             // TODO: just broadcast a state-change message.
@@ -341,8 +364,11 @@ pub fn supervisor_thread(
 
                 let app_state = Arc::clone(&app_state);
                 thread::spawn(move || {
-                    audio_thread_control_signal
-                        .store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
+                    signal_mainloop(
+                        Arc::clone(&audio_thread_control_signal),
+                        Arc::clone(&app_state),
+                        AudioThreadControlSignal::CONTINUE,
+                    );
 
                     if let Err(err) = mainloop::run(
                         audio_input_device,
@@ -352,19 +378,25 @@ pub fn supervisor_thread(
                         config,
                         bus_connection_plugins,
                         bus_connection_dmx,
-                        app_state,
+                        Arc::clone(&app_state),
                     ) {
                         // TODO: handle the audio backend error.
                         error!("[audio] THREAD CRASH: {err}");
-                        sys.send(SystemMessage::Log(format!("[audio] {err}")))
+                        sys.send(SystemMessage::Log(format!("[audio] {err}"), LogLevel::Err))
                             .unwrap();
 
-                        audio_thread_control_signal
-                            .store(AudioThreadControlSignal::CRASHED, Ordering::Relaxed);
+                        signal_mainloop(
+                            Arc::clone(&audio_thread_control_signal),
+                            Arc::clone(&app_state),
+                            AudioThreadControlSignal::CRASHED,
+                        );
                     }
 
-                    sys.send(SystemMessage::Log("[audio] Thread died.".into()))
-                        .unwrap();
+                    sys.send(SystemMessage::Log(
+                        "[audio] Thread died.".into(),
+                        LogLevel::Warn,
+                    ))
+                    .unwrap();
                 });
             }
 
@@ -374,8 +406,11 @@ pub fn supervisor_thread(
                 audio_device.clone().unwrap().name().unwrap()
             );
 
-            sys.send(SystemMessage::Log("[audio] Thread started.".to_string()))
-                .unwrap();
+            sys.send(SystemMessage::Log(
+                "[audio] Thread started.".to_string(),
+                LogLevel::Info,
+            ))
+            .unwrap();
         }
     }
 }

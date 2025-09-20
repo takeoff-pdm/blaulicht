@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::{Duration, Instant}};
 
 use egui::Color32;
 use strum::EnumIter;
@@ -36,8 +36,9 @@ impl Selection {
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(Clone, PartialEq, EnumIter)]
 pub enum AppPage {
+    Logs,
     System,
-    Main,
+    Audio,
     Fixtures,
     Animations,
 }
@@ -45,10 +46,36 @@ pub enum AppPage {
 impl AppPage {
     fn short(&self) -> &'static str {
         match self {
+            AppPage::Logs => "Logs",
             AppPage::System => "Sys",
-            AppPage::Main => "Main",
+            AppPage::Audio => "Audio",
             AppPage::Fixtures => "Fix",
             AppPage::Animations => "Anim",
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PopupButtonSpec {
+    label: String,
+}
+
+#[derive(Clone)]
+pub struct PopupSpec {
+    label: String,
+    // Auto-close duration
+    lifetime_duration: Duration,
+    button: Option<PopupButtonSpec>,
+}
+
+impl PopupSpec {
+    pub fn default(label: String) -> Self {
+        Self {
+            label,
+            lifetime_duration: Duration::from_secs(5),
+            button: Some(PopupButtonSpec {
+                label: "Close".to_string(),
+            }),
         }
     }
 }
@@ -94,6 +121,9 @@ pub struct BlaulichtApp {
     animation_page: AnimationPageState,
 
     new_scene_name: String,
+
+    popup: Option<PopupSpec>,
+    popup_open_time: Instant,
 }
 
 pub struct AnimationPageState {

@@ -1,5 +1,6 @@
 use std::{borrow::Cow, time::Duration};
 
+use blaulicht_shared::LogLevel;
 use cpal::{Device, HostId};
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +44,7 @@ pub struct WasmControlsConfig {
 pub enum SystemMessage {
     // System.
     Heartbeat(usize),
-    Log(String),
+    Log(String, LogLevel),
     WasmLog(WasmLogBody),
     // Controls.
     WasmControlsLog(WasmControlsLog),
@@ -63,6 +64,7 @@ pub enum SystemMessage {
 pub struct WasmLogBody {
     pub plugin_id: u8,
     pub msg: Cow<'static, str>,
+    pub level: LogLevel,
 }
 
 #[derive(Clone)]

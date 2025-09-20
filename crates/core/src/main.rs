@@ -32,7 +32,8 @@ fn main() -> anyhow::Result<()> {
     let (app_signal_out, app_signal_receiver) = crossbeam_channel::unbounded();
 
     let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
-    let audio_thread_control_signal = Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE));
+    let audio_thread_control_signal =
+        Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE.into()));
 
     //
     // Read config file.

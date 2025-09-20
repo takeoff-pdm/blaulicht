@@ -1,52 +1,38 @@
 pub mod supervisor;
-use blaulicht_shared::TickInput;
-pub use supervisor::supervisor_thread;
-
+use blaulicht_shared::LogLevel;
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     mem,
-    rc::Rc,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex,
     },
     time::{self, Duration, Instant},
 };
-
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
-
-use anyhow::{anyhow, bail, Context};
-use audioviz::spectrum::stream::Stream;
-use audioviz::{
-    audio_capture::{capture::Capture, config::Config as CaptureConfig},
-    spectrum::config::StreamConfig,
-};
-use cpal::{traits::DeviceTrait, Device};
-use log::{debug, info};
+pub use supervisor::supervisor_thread;
 
 use crate::{
     audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE},
         capture,
-        defs::{AudioConverter, AudioThreadControlSignal},
+        defs::AudioThreadControlSignal,
     },
     config::Config,
     dmx::DmxEngine,
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::{MidiEvent, Signal, SystemMessage},
-    plugin::{
-        midi::{self, MidiManager},
-        PluginManager,
-    },
+    event::SystemEventBusConnectionInst,
+    mainloop::supervisor::signal_mainloop,
+    msg::{Signal, SystemMessage},
+    plugin::{midi::MidiManager, PluginManager},
     routes::AppState,
-    system_message, util,
+    system_message,
 };
-
-const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
-pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
+use anyhow::{anyhow, Context};
+use cpal::Device;
+use crossbeam_channel::Sender;
 
 const DMX_TICK_TIME: Duration = Duration::from_millis(25);
+const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
+pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
 pub fn run(
     device: Device,
@@ -82,9 +68,12 @@ pub fn run(
         p_app_state,
     );
 
-    plugin_manager
+    if let Err(err) = plugin_manager
         .init()
-        .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
+        .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))
+    {
+        return Err(err);
+    }
 
     let dmx_appstate = Arc::clone(&app_state);
     let mut dmx_engine = DmxEngine::new(dmx_appstate, event_bus_dmx, system_out.clone());
@@ -138,28 +127,52 @@ pub fn run(
         //
         // Loop control.
         //
-        let control = thread_control_signal.load(Ordering::Relaxed);
+        let control: AudioThreadControlSignal =
+            thread_control_signal.load(Ordering::Relaxed).into();
+
         match control {
             AudioThreadControlSignal::ABORT => {
-                log::debug!("[AUDIO] Received kill, terminating...");
-                thread_control_signal.store(AudioThreadControlSignal::ABORTED, Ordering::Relaxed);
+                system_out
+                    .send(SystemMessage::Log(
+                        "[AUDIO] Received kill signal.".into(),
+                        LogLevel::Debug,
+                    ))
+                    .unwrap();
+
+                signal_mainloop(
+                    Arc::clone(&thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORTED,
+                );
+
                 break;
             }
             AudioThreadControlSignal::RELOAD => {
                 system_out
-                    .send(SystemMessage::Log("[ENGINE] Reload start.".into()))
+                    .send(SystemMessage::Log(
+                        "[ENGINE] Reload start.".into(),
+                        LogLevel::Debug,
+                    ))
                     .unwrap();
 
                 // dmx_universe.reload()?;
                 plugin_manager.reload()?;
 
                 system_out
-                    .send(SystemMessage::Log("[ENGINE] Reload complete".into()))
+                    .send(SystemMessage::Log(
+                        "[ENGINE] Reload complete".into(),
+                        LogLevel::Info,
+                    ))
                     .unwrap();
-                thread_control_signal.store(AudioThreadControlSignal::CONTINUE, Ordering::Relaxed);
+
+                signal_mainloop(
+                    Arc::clone(&thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::CONTINUE,
+                );
             }
             AudioThreadControlSignal::CRASHED | AudioThreadControlSignal::ABORTED => {
-                unreachable!("Illegal state: {control}")
+                unreachable!("Illegal state: {control:?}")
             }
             _ => {}
         }

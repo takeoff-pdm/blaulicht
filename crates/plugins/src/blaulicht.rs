@@ -1,7 +1,7 @@
 // Wasm imports
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
-    fn log(plugin_id: u8, ptr: *const u8, len: usize);
+    fn log(plugin_id: u8, ptr: *const u8, len: usize, log_level: i32);
     fn udp(
         target_addr_ptr: *const u8,
         target_addr_len: usize,
@@ -38,8 +38,8 @@ pub fn bl_transmit_midi_safe(device: u8, status: u8, data0: u8, data1: u8) {
 
 pub static mut PLUGIN_ID: u8 = 0;
 
-pub fn bl_log(msg: &str) {
-    unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len()) }
+pub fn bl_log(msg: &str, level: LogLevel) {
+    unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len(), level.into()) }
 }
 
 pub fn bl_send(event: ControlEvent) {
@@ -91,13 +91,16 @@ pub unsafe fn _get_array_u32(array_pointer: *const u32, array_length: usize) -> 
 }
 
 pub mod prelude {
+
     #[macro_export]
     macro_rules! println {
             () => {
-                $crate::blaulicht::bl_log!("");
+                use blaulicht_shared::LogLevel;
+                $crate::blaulicht::bl_log!("", LogLevel::Info);
             };
             ($($arg:tt)*) => {{
-                $crate::blaulicht::bl_log(&format!($($arg)*));
+                use blaulicht_shared::LogLevel;
+                $crate::blaulicht::bl_log(&format!($($arg)*), LogLevel::Info);
             }};
         }
     pub use println;
@@ -149,7 +152,7 @@ macro_rules! elapsed {
 
 use std::fmt::Display;
 
-use blaulicht_shared::ControlEvent;
+use blaulicht_shared::{ControlEvent, LogLevel};
 pub use elapsed;
 
 #[macro_export]
