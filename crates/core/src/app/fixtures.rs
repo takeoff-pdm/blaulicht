@@ -8,26 +8,58 @@ use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
     RGBColor,
 };
-use egui::{Align2, Button, Color32, Frame, RichText, TextBuffer};
+use egui::{
+    Align2, Button, Color32, Context, FontId, Frame, Margin, RichText, TextBuffer, TextEdit, Vec2,
+};
 
 use crate::{
-    app::{BlaulichtApp, Selection},
+    app::{
+        ui::{button, dialog, ButtonSize},
+        BlaulichtApp, Selection,
+    },
     dmx::{self, EngineGroups, EngineSelection, EngineState, FixtureState},
     event::SystemEventBusConnectionInst,
     routes::DmxBuffer,
 };
 
+pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
+
 impl BlaulichtApp {
-    fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+    fn scene_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
         ui.horizontal(|ui| {
-            // TODO: limit width. OR use popups for creation stuff.
-            ui.vertical(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut self.new_scene_name));
-                if ui.button("Create Scene").clicked() {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.new_scene(self.new_scene_name.take());
-                }
-            });
+            if button(ui, false, "Scene +", ButtonSize::Medium) {
+                self.new_scene_dialog_open = true;
+            }
+
+            if self.new_scene_dialog_open {
+                const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+                const SPACING: f32 = 16.0;
+
+                let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+                dialog(ctx, "Create Scene", size, false, |ui| {
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut self.new_scene_name)
+                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                            );
+                        });
+
+                    ui.add_space(SPACING);
+
+                    if button(ui, false, "OK", BUTTON_SIZE) {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                        dmx_engine.new_scene(self.new_scene_name.take());
+                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                        self.new_scene_dialog_open = false;
+                    }
+                });
+            }
+
+            // // TODO: limit width. OR use popups for creation stuff.
+            // ui.vertical(|ui| {});
 
             for (scene_id, scene) in &dmx_engine.scenes {
                 let is_selected = dmx_engine.current_scene_focus == *scene_id;
@@ -288,8 +320,9 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn fixtures_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Fixtures");
+    pub fn fixtures_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        ui.label("Fixtures");
+
         ui.separator();
 
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
@@ -304,7 +337,7 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
-                self.scene_overview(ui, &dmx_engine);
+                self.scene_overview(ui, ctx, &dmx_engine);
 
                 // Scene overview
 
@@ -321,8 +354,17 @@ impl BlaulichtApp {
                         ui.separator();
 
                         ui.vertical(|ui| {
-                            let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                            simulate_dmx(ui, groups, dmx_buffer);
+                            if button(ui, self.show_dmx_simulation, "Show DMX", ButtonSize::Medium)
+                            {
+                                self.show_dmx_simulation = !self.show_dmx_simulation;
+                            }
+
+                            if self.show_dmx_simulation {
+                                dialog(ctx, "DMX Output", egui::vec2(500.0, 500.0), true, |ui| {
+                                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                                    simulate_dmx(ui, groups, dmx_buffer);
+                                });
+                            }
 
                             ui.separator();
 
@@ -388,7 +430,7 @@ impl BlaulichtApp {
                                             );
 
                                             // Remove button
-                                            if ui.button("Remove").clicked() {
+                                            if button(ui, false, "Remove", ButtonSize::Medium) {
                                                 let mut selection_instructions =
                                                     selection.generate_instructions();
 
@@ -412,18 +454,20 @@ impl BlaulichtApp {
                                                 );
                                             }
 
-                                            let (label, event) = match animation.enabled {
+                                            let (label, enabled, event) = match animation.enabled {
                                                 true => (
                                                     "Pause",
+                                                    true,
                                                     ControlEvent::PauseAnimation(*animation_id),
                                                 ),
                                                 false => (
                                                     "Play",
+                                                    false,
                                                     ControlEvent::PlayAnimation(*animation_id),
                                                 ),
                                             };
 
-                                            if ui.button(label).clicked() {
+                                            if button(ui, enabled, label, ButtonSize::Medium) {
                                                 let mut selection_instructions =
                                                     selection.generate_instructions();
 
@@ -596,7 +640,7 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
     let len = dmx.dmx_buffer.len() as f32;
     let dimensions = len.sqrt() as usize;
 
-    let base_height = 8.0;
+    let base_height = 16.0;
     let padding = 1.0;
 
     let dim_pixels = dimensions as f32 * (base_height + padding);

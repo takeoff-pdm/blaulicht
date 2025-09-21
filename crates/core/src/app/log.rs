@@ -6,7 +6,10 @@ use std::collections::VecDeque;
 
 use blaulicht_shared::LogLevel;
 use chrono::{DateTime, Local};
+use egui::{Color32, Context, FontId, RichText, TextEdit, Vec2};
 use strum::IntoEnumIterator;
+
+use crate::app::ui::{button, selection_dialog, ButtonSize};
 
 fn log_level_color(from: &LogLevel) -> egui::Color32 {
     match from {
@@ -24,6 +27,7 @@ pub struct LogWindow {
     auto_scroll: bool,
     filter_text: String,
     selected_log_level: Option<LogLevel>,
+    select_dialog_open: bool,
     // log_height: f32,
 }
 
@@ -43,6 +47,7 @@ impl LogWindow {
             auto_scroll: true,
             filter_text: String::new(),
             selected_log_level: None,
+            select_dialog_open: false,
         }
     }
 
@@ -66,40 +71,84 @@ impl LogWindow {
         self.logs.clear();
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui) {
+    pub fn draw(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         // Controls
         ui.horizontal(|ui| {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+            const FONT_SIZE: f32 = ButtonSize::Medium.dim().1;
+
+            ui.set_min_height(BUTTON_SIZE.dim().0.y);
+
             ui.label("Logs");
 
             ui.separator();
 
             ui.label("Filter:");
-            ui.text_edit_singleline(&mut self.filter_text);
+
+            ui.add(
+                TextEdit::singleline(&mut self.filter_text).font(FontId::proportional(FONT_SIZE)),
+            );
 
             ui.separator();
 
-            ui.label("Level:");
-            egui::ComboBox::from_id_salt("log_level")
-                .selected_text(format!("{:?}", self.selected_log_level))
-                .show_ui(ui, |ui| {
-                    for level in LogLevel::iter() {
-                        ui.selectable_value(
-                            &mut self.selected_log_level,
-                            Some(level.clone()),
-                            format!("{level:?}"),
-                        );
-                    }
-                    ui.selectable_value(&mut self.selected_log_level, None, "All");
-                });
+            if button(ui, self.auto_scroll, "Auto-Scroll", BUTTON_SIZE) {
+                self.auto_scroll = !self.auto_scroll;
+            }
 
-            ui.separator();
-
-            ui.checkbox(&mut self.auto_scroll, "Auto-scroll");
-
-            if ui.button("Clear").clicked() {
+            if button(ui, false, "Clear", BUTTON_SIZE) {
                 self.clear_logs();
             }
+
+            ui.separator();
+
+            if button(
+                ui,
+                self.selected_log_level.is_some(),
+                "Filter Level",
+                BUTTON_SIZE,
+            ) {
+                self.select_dialog_open = true;
+            }
+
+            ui.separator();
+
+            ui.label(RichText::new("Level Filter:").size(FONT_SIZE));
+            ui.label(
+                RichText::new(match self.selected_log_level.is_some() {
+                    true => "Active",
+                    false => "N/A",
+                })
+                .size(FONT_SIZE)
+                .color(Color32::LIGHT_RED),
+            );
+
+            if self.select_dialog_open {
+                const ALL_LEVELS: &str = "All";
+                let mut options = LogLevel::iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<String>>();
+                options.push(ALL_LEVELS.to_string());
+
+                let (new_log_level, changed) = selection_dialog(
+                    ctx,
+                    options,
+                    self.selected_log_level
+                        .as_ref()
+                        .map(|l| l.to_string())
+                        .unwrap_or_else(|| ALL_LEVELS.to_string()),
+                    &mut self.select_dialog_open,
+                );
+
+                if changed {
+                    self.selected_log_level = match new_log_level.as_str() {
+                        ALL_LEVELS => None,
+                        other => Some(LogLevel::from(other)),
+                    }
+                }
+            }
         });
+
+        ui.separator();
 
         // Log display area - resizable content area
         // ui.horizontal(|ui| {
@@ -146,9 +195,14 @@ impl LogWindow {
                     );
 
                     // Display with appropriate color
-                    ui.colored_label(log_level_color(&entry.level), log_text);
+                    ui.colored_label(
+                        log_level_color(&entry.level),
+                        RichText::new(log_text).size(18.0),
+                    );
 
                     should_scroll_to_bottom = true;
+
+                    ui.separator();
                 }
 
                 // Auto-scroll to bottom

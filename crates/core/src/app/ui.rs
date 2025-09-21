@@ -1,3 +1,4 @@
+use crate::app::fixtures::DEFAULT_NEW_SCENE_NAME;
 use crate::app::graph::TimeSeriesGraph;
 use crate::app::log::LogWindow;
 use crate::app::{AnimationPageState, AppPage, BlaulichtApp, PopupSpec};
@@ -11,15 +12,17 @@ use blaulicht_shared::LogLevel;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::{
-    Button, Color32, Context, CornerRadius, Frame, Margin, ProgressBar, RichText, Rounding, Stroke,
-    Vec2,
+    Button, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, ProgressBar, Rect,
+    RichText, Rounding, Sense, Stroke, Style, TextStyle, Ui, Vec2,
 };
+use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
 //
@@ -105,9 +108,40 @@ impl BlaulichtApp {
                 base_function: MathematicalBaseFunction::Sin,
                 timing: PhaserDuration::Fixed(1000),
             },
-            new_scene_name: "My Scene".to_string(),
+            new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
+            new_scene_dialog_open: false,
+            show_dmx_simulation: false,
             popup: None,
             popup_open_time: Instant::now(),
+            set_audio_device_popup_open: false,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum ButtonSize {
+    Small,
+    Medium,
+    Large,
+    Custom(f32, f32, f32),
+}
+
+impl ButtonSize {
+    pub fn with_width(&self, width: f32) -> Self {
+        Self::Custom(width, self.dim().0.y, self.dim().1)
+    }
+
+    pub fn with_height(&self, height: f32) -> Self {
+        Self::Custom(self.dim().0.x, height, self.dim().1)
+    }
+
+    // Returns button and font size.
+    pub const fn dim(&self) -> (Vec2, f32) {
+        match self {
+            ButtonSize::Small => (egui::vec2(90.0, 12.0), 9.0),
+            ButtonSize::Medium => (egui::vec2(90.0, 32.0), 11.0),
+            ButtonSize::Large => (egui::vec2(90.0, 64.0), 16.0),
+            ButtonSize::Custom(x, y, f) => (egui::vec2(*x, *y), *f),
         }
     }
 }
@@ -120,6 +154,177 @@ impl Drop for BlaulichtApp {
         // let removed = consumers.remove(UI_RECV_KEY);
         // debug_assert!(removed.is_some());
     }
+}
+
+// Returns an option value and if it was changed.
+pub fn selection_dialog<I, T>(
+    ctx: &Context,
+    options: I,
+    current_selection: T,
+    is_open: &mut bool,
+) -> (T, bool)
+where
+    I: IntoIterator<Item = T>,
+    I: Clone,
+    T: Display,
+    T: PartialEq,
+    T: Eq,
+    T: Clone,
+{
+    let vpadding = 5.0;
+    let options_len = options.clone().into_iter().count();
+
+    let height = ((options_len + 2) as f32 * (ButtonSize::Medium.dim().0.y + vpadding)) - vpadding;
+
+    let width = 300.0;
+    let dialog_dim = Vec2::new(width, height);
+
+    let button_size = ButtonSize::Custom(
+        width * 2.0 / 3.0,
+        ButtonSize::Medium.dim().0.y,
+        ButtonSize::Medium.dim().1,
+    );
+
+    let mut selection = current_selection.clone();
+    let mut changed = false;
+
+    dialog(ctx, "Change Audio Device", dialog_dim, false, |ui| {
+        for (idx, option) in options.into_iter().enumerate() {
+            if button(
+                ui,
+                current_selection == option,
+                &option.to_string(),
+                button_size,
+            ) {
+                selection = option;
+                changed = true;
+                *is_open = false;
+            }
+
+            if idx + 1 < options_len {
+                ui.add_space(vpadding);
+            }
+        }
+
+        ui.add_space(vpadding);
+
+        ui.separator();
+
+        ui.add_space(vpadding);
+
+        if button(ui, false, "Close", button_size) {
+            *is_open = false;
+        }
+    });
+
+    (selection, changed)
+}
+
+pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool {
+    let radius = 1.0;
+
+    let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
+
+    let painter = ui.painter();
+
+    let normal_bg_color = match active {
+        true => egui::Color32::from_rgb(60, 120, 200),
+        false => egui::Color32::from_gray(50),
+    };
+
+    let is_pressed = response.is_pointer_button_down_on();
+
+    let bg_color = if is_pressed {
+        normal_bg_color.gamma_multiply(1.2)
+    } else if response.hovered() {
+        normal_bg_color.gamma_multiply(1.4)
+    } else {
+        normal_bg_color
+    };
+
+    // Shadow parameters
+    let shadow_offset = if is_pressed {
+        Vec2::new(1.0, 1.0)
+    } else {
+        Vec2::new(3.0, 3.0)
+    };
+    let shadow_color = if is_pressed {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 100)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 50)
+    };
+
+    // Draw shadow behind button
+    ui.painter()
+        .rect_filled(rect.translate(shadow_offset), radius + 1.0, shadow_color);
+
+    // Actual button.
+
+    painter.rect_filled(rect, radius, bg_color);
+
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(size.dim().1),
+        egui::Color32::WHITE,
+    );
+
+    response.clicked()
+}
+
+pub fn dialog(
+    ctx: &egui::Context,
+    label: &str,
+    popup_size: Vec2,
+    moveable: bool,
+    add_contents: impl FnOnce(&mut Ui),
+) {
+    let screen_rect = ctx.screen_rect();
+
+    // println!(
+    //     "center: {} {}",
+    //     screen_rect.center().x,
+    //     screen_rect.center().y
+    // );
+    let center_pos = egui::Pos2::new(
+        screen_rect.center().x - popup_size.x / 2.0,
+        screen_rect.center().y - popup_size.y / 2.0,
+    );
+
+    // Clamp to screen boundaries
+    // center_pos.x = center_pos
+    //     .x
+    //     .clamp(screen_rect.left(), screen_rect.right() - popup_size.x);
+    // center_pos.y = center_pos
+    //     .y
+    //     .clamp(screen_rect.top(), screen_rect.bottom() - popup_size.y);
+
+    let window_proto = egui::Window::new(label)
+        .min_size(popup_size)
+        .fixed_size(popup_size)
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false);
+
+    let window_proto = match moveable {
+        true => window_proto.default_pos(center_pos),
+        false => window_proto.fixed_pos(center_pos),
+    };
+
+    window_proto
+        .frame(Frame {
+            corner_radius: CornerRadius::same(1),
+            fill: Color32::from_gray(40),
+            stroke: Stroke::new(1.0, Color32::from_gray(60)),
+            inner_margin: Margin::symmetric(6, 12),
+            ..Frame::default()
+        })
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                add_contents(ui);
+            });
+        });
 }
 
 impl BlaulichtApp {
@@ -158,22 +363,38 @@ impl BlaulichtApp {
     fn close_popup(&mut self) {
         self.popup = None;
     }
-}
 
-impl eframe::App for BlaulichtApp {
-    /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // `ui` is your egui Ui, `progress` is a value between 0.0 and 1.0
+    fn draw_progress_bar(ui: &mut Ui, progress: f32, height: f32, text: &str) {
+        // Allocate space for the progress bar
+        let (rect, _response) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
+
+        let painter: &Painter = ui.painter();
+
+        // Draw the background (non-rounded)
+        painter.rect_filled(rect, 0.0, Color32::from_rgb(30, 30, 30));
+
+        // Draw the filled portion
+        let fill_rect = Rect::from_min_max(
+            rect.min,
+            egui::pos2(rect.min.x + rect.width() * progress, rect.max.y),
+        );
+        painter.rect_filled(fill_rect, 0.0, Color32::from_rgb(60, 120, 200));
+
+        // Optional: draw percentage text
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(12.0),
+            Color32::WHITE,
+        );
+    }
+
+    fn render_popup(&mut self, ctx: &egui::Context) {
         if let Some(ref popup) = self.popup {
             let popup = popup.clone();
-            // egui::Window::new(&popup)
-            //     .collapsible(false)
-            //     .resizable(false)
-            //     .show(ctx, |ui| {
-            //         ui.label(&popup);
-            //         if ui.button("Close").clicked() {
-            //             self.popup = None;
-            //         }
-            //     });
 
             let screen_rect = ctx.screen_rect();
             let popup_size = egui::Vec2::new(200.0, 100.0); // desired popup size
@@ -205,44 +426,36 @@ impl eframe::App for BlaulichtApp {
                     ui.vertical_centered(|ui| {
                         ui.label(RichText::new(&popup.label).size(24.0));
 
-                        if let Some(ref button) = popup.button {
+                        if let Some(ref btn) = popup.button {
                             ui.add_space(8.0);
 
-                            let rect = ui
-                                .allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
-                            let painter = ui.painter();
-                            let bg_color = egui::Color32::from_rgb(60, 120, 200);
-                            painter.rect_filled(rect.0, 0.0, bg_color);
-
-                            painter.text(
-                                rect.0.center(),
-                                egui::Align2::CENTER_CENTER,
-                                &button.label,
-                                egui::FontId::proportional(16.0),
-                                egui::Color32::WHITE,
-                            );
-
-                            if rect.1.clicked() {
+                            if button(ui, false, &btn.label, ButtonSize::Large) {
                                 self.close_popup();
                             }
+
+                            ui.add_space(8.0);
                         }
 
                         let progress = 1.0
                             - elapsed.as_millis() as f32
                                 / popup.lifetime_duration.as_millis() as f32;
 
-                        ui.add(
-                            ProgressBar::new(progress)
-                                .text(format!(
-                                    "{}S remaining",
-                                    popup.lifetime_duration.as_secs() - elapsed.as_secs()
-                                ))
-                                .fill(Color32::from_rgb(60, 120, 200)),
+                        let text = format!(
+                            "{} seconds remaining",
+                            popup.lifetime_duration.as_secs() - elapsed.as_secs()
                         );
+
+                        Self::draw_progress_bar(ui, progress, 18.0, &text);
                     })
                 });
         }
+    }
+}
 
+impl eframe::App for BlaulichtApp {
+    /// Called each time the UI needs repainting, which may be many times per second.
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.render_popup(ctx);
         // for i in 0..1000 {
         //     self.data
         //         .event_bus_connection
@@ -401,119 +614,119 @@ impl eframe::App for BlaulichtApp {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
+        // egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        // The top panel is often a good place for a menu bar:
 
-            egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Open showfile").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().save_file() {
-                            let mut f = File::open(path.clone()).expect("no file found");
-                            let metadata = fs::metadata(&path).expect("unable to read metadata");
-                            let mut buffer = vec![0; metadata.len() as usize];
-                            f.read(&mut buffer).expect("buffer overflow");
-
-                            let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
-                            let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                            // dmx.overwrite(decoded);
-                            *dmx = decoded;
-
-                            let mut config_mut = self.data.config.lock().unwrap();
-                            config_mut.last_open_showfile = Some(path.clone());
-
-                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                            config::write_config(config_path, config_mut.clone()).unwrap();
-
-                            self.data
-                                .system_message_sender
-                                .send(SystemMessage::Log(
-                                    format!("Saved showfile to {path:?}"),
-                                    LogLevel::Info,
-                                ))
-                                .unwrap();
-                        }
-                    }
-
-                    if ui.button("Save to new showfile").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().save_file() {
-                            let dmx = self.data.state.dmx_engine.read().unwrap();
-                            let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                            std::fs::write(&path, serialized).unwrap();
-
-                            let mut config_mut = self.data.config.lock().unwrap();
-                            config_mut.last_open_showfile = Some(path.clone());
-
-                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                            config::write_config(config_path, config_mut.clone()).unwrap();
-
-                            self.data
-                                .system_message_sender
-                                .send(SystemMessage::Log(
-                                    format!("Saved showfile to {path:?}"),
-                                    LogLevel::Info,
-                                ))
-                                .unwrap();
-                        }
-                    }
-
-                    let label = match &self
-                        .data
-                        .config
-                        .lock()
-                        .unwrap()
-                        .last_open_showfile
-                        .is_some()
-                    {
-                        true => "Save to current Showfile",
-                        false => "Save to current Showfile (none open)",
-                    };
-
-                    if ui.button(label).clicked() {
-                        let mut config_mut = self.data.config.lock().unwrap();
-
-                        match config_mut.last_open_showfile.clone() {
-                            Some(ref path) => {
-                                let dmx = self.data.state.dmx_engine.read().unwrap();
-                                let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                                std::fs::write(&path, serialized).unwrap();
-
-                                config_mut.last_open_showfile = Some(path.clone());
-
-                                let config_path =
-                                    PathBuf::from_str(&self.data.config_path).unwrap();
-                                config::write_config(config_path, config_mut.clone()).unwrap();
-
-                                self.data
-                                    .system_message_sender
-                                    .send(SystemMessage::Log(
-                                        format!("Saved showfile to {path:?}"),
-                                        LogLevel::Info,
-                                    ))
-                                    .unwrap();
-                            }
-                            None => {
-                                self.data
-                                    .system_message_sender
-                                    .send(SystemMessage::Log(
-                                        "No opened showfile, not saving".to_string(),
-                                        LogLevel::Err,
-                                    ))
-                                    .unwrap();
-                            }
-                        }
-
-                        ui.close();
-                    }
-
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-                ui.add_space(16.0);
-
-                egui::widgets::global_theme_preference_buttons(ui);
-            });
-        });
+        //     egui::MenuBar::new().ui(ui, |ui| {
+        //         ui.menu_button("File", |ui| {
+        //             if ui.button("Open showfile").clicked() {
+        //                 if let Some(path) = rfd::FileDialog::new().save_file() {
+        //                     let mut f = File::open(path.clone()).expect("no file found");
+        //                     let metadata = fs::metadata(&path).expect("unable to read metadata");
+        //                     let mut buffer = vec![0; metadata.len() as usize];
+        //                     f.read(&mut buffer).expect("buffer overflow");
+        //
+        //                     let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
+        //                     let mut dmx = self.data.state.dmx_engine.write().unwrap();
+        //                     // dmx.overwrite(decoded);
+        //                     *dmx = decoded;
+        //
+        //                     let mut config_mut = self.data.config.lock().unwrap();
+        //                     config_mut.last_open_showfile = Some(path.clone());
+        //
+        //                     let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+        //                     config::write_config(config_path, config_mut.clone()).unwrap();
+        //
+        //                     self.data
+        //                         .system_message_sender
+        //                         .send(SystemMessage::Log(
+        //                             format!("Saved showfile to {path:?}"),
+        //                             LogLevel::Info,
+        //                         ))
+        //                         .unwrap();
+        //                 }
+        //             }
+        //
+        //             if ui.button("Save to new showfile").clicked() {
+        //                 if let Some(path) = rfd::FileDialog::new().save_file() {
+        //                     let dmx = self.data.state.dmx_engine.read().unwrap();
+        //                     let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+        //                     std::fs::write(&path, serialized).unwrap();
+        //
+        //                     let mut config_mut = self.data.config.lock().unwrap();
+        //                     config_mut.last_open_showfile = Some(path.clone());
+        //
+        //                     let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+        //                     config::write_config(config_path, config_mut.clone()).unwrap();
+        //
+        //                     self.data
+        //                         .system_message_sender
+        //                         .send(SystemMessage::Log(
+        //                             format!("Saved showfile to {path:?}"),
+        //                             LogLevel::Info,
+        //                         ))
+        //                         .unwrap();
+        //                 }
+        //             }
+        //
+        //             let label = match &self
+        //                 .data
+        //                 .config
+        //                 .lock()
+        //                 .unwrap()
+        //                 .last_open_showfile
+        //                 .is_some()
+        //             {
+        //                 true => "Save to current Showfile",
+        //                 false => "Save to current Showfile (none open)",
+        //             };
+        //
+        //             if ui.button(label).clicked() {
+        //                 let mut config_mut = self.data.config.lock().unwrap();
+        //
+        //                 match config_mut.last_open_showfile.clone() {
+        //                     Some(ref path) => {
+        //                         let dmx = self.data.state.dmx_engine.read().unwrap();
+        //                         let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+        //                         std::fs::write(&path, serialized).unwrap();
+        //
+        //                         config_mut.last_open_showfile = Some(path.clone());
+        //
+        //                         let config_path =
+        //                             PathBuf::from_str(&self.data.config_path).unwrap();
+        //                         config::write_config(config_path, config_mut.clone()).unwrap();
+        //
+        //                         self.data
+        //                             .system_message_sender
+        //                             .send(SystemMessage::Log(
+        //                                 format!("Saved showfile to {path:?}"),
+        //                                 LogLevel::Info,
+        //                             ))
+        //                             .unwrap();
+        //                     }
+        //                     None => {
+        //                         self.data
+        //                             .system_message_sender
+        //                             .send(SystemMessage::Log(
+        //                                 "No opened showfile, not saving".to_string(),
+        //                                 LogLevel::Err,
+        //                             ))
+        //                             .unwrap();
+        //                     }
+        //                 }
+        //
+        //                 ui.close();
+        //             }
+        //
+        //             if ui.button("Quit").clicked() {
+        //                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        //             }
+        //         });
+        //         ui.add_space(16.0);
+        //
+        //         egui::widgets::global_theme_preference_buttons(ui);
+        //     });
+        // });
 
         // Left sidebar
         self.left_panel_ui(ctx);
@@ -550,10 +763,10 @@ impl eframe::App for BlaulichtApp {
                     self.system_ui(ui, ctx);
                 }
                 AppPage::Audio => {
-                    self.main_ui(ui);
+                    self.main_ui(ui, ctx);
                 }
                 AppPage::Fixtures => {
-                    self.fixtures_ui(ui);
+                    self.fixtures_ui(ui, ctx);
                 }
                 AppPage::Animations => {
                     self.animations_ui(ui);
@@ -576,12 +789,12 @@ impl eframe::App for BlaulichtApp {
 }
 
 impl BlaulichtApp {
-    fn main_ui(&mut self, ui: &mut egui::Ui) {
+    fn main_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // Main content area with graphs panel
         ui.horizontal(|ui| {
             // Left content area (3/4 width)
             let total_width = ui.available_width();
-            let graph_panel_width = total_width * 0.25;
+            let graph_panel_width = total_width / 3.0;
             // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
 
             // ui.vertical(|ui| {
@@ -592,38 +805,65 @@ impl BlaulichtApp {
             //     ui.label("You can put your main application content here.");
             // });
 
-            // ui.separator();
-
-            // Graphs panel (1/4 width) - fixed width
             ui.allocate_ui_with_layout(
-                egui::vec2(graph_panel_width, ui.available_height()),
+                egui::vec2(ui.available_width(), ui.available_height()),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
-                    ui.heading("Audio");
                     let mut selected_device =
                         self.data.state.audio.read().unwrap().device_name.clone();
-                    ui.label(format!(
-                        "Input device: {}",
-                        selected_device.clone().unwrap_or_else(|| "N/A".to_string())
-                    ));
+
+                    let selected_device_label =
+                        selected_device.clone().unwrap_or_else(|| "N/A".to_string());
 
                     let before = selected_device.clone();
 
-                    egui::ComboBox::from_label("Audio Device")
-                        .selected_text(format!("{:?}", selected_device))
-                        .show_ui(ui, |ui| {
-                            for dev in &self.available_audio_devices {
-                                ui.selectable_value(
-                                    &mut selected_device,
-                                    Some(dev.to_owned()),
-                                    dev,
-                                );
-                            }
-                            ui.selectable_value(&mut selected_device, None, "None");
-                        });
+                    ui.horizontal_centered(|ui| {
+                        ui.set_min_height(ButtonSize::Medium.dim().0.y);
+
+                        ui.label("Audio");
+
+                        ui.separator();
+
+                        if button(ui, false, "Change Device", ButtonSize::Medium) {
+                            self.set_audio_device_popup_open = true;
+                        }
+
+                        ui.separator();
+
+                        ui.label(RichText::new("Current Input:").size(ButtonSize::Medium.dim().1));
+                        ui.label(
+                            RichText::new(selected_device_label)
+                                .size(ButtonSize::Medium.dim().1)
+                                .color(Color32::LIGHT_RED),
+                        );
+                    });
+
+                    if self.set_audio_device_popup_open {
+                        const NONE_LABEL: &str = "None";
+
+                        let mut options = self.available_audio_devices.clone();
+                        debug_assert!(!options.contains(&NONE_LABEL.to_string()));
+                        options.push(NONE_LABEL.to_string());
+
+                        let (new_device, changed) = selection_dialog(
+                            ctx,
+                            options,
+                            match selected_device.clone() {
+                                Some(val) => val,
+                                None => NONE_LABEL.to_string(),
+                            },
+                            &mut self.set_audio_device_popup_open,
+                        );
+
+                        if changed {
+                            selected_device = match new_device.as_str() {
+                                NONE_LABEL => None,
+                                other => Some(other.to_string()),
+                            };
+                        }
+                    }
 
                     if selected_device != before {
-                        // Handle selection change
                         let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
                         self.data
                             .from_frontend_sender
@@ -632,106 +872,79 @@ impl BlaulichtApp {
 
                         let mut config_mut = self.data.config.lock().unwrap();
 
-                        config_mut.default_audio_device = match new_dev {
-                            Some(d) => Some(d.name().unwrap()),
-                            None => None,
-                        };
+                        config_mut.default_audio_device = new_dev.map(|d| d.name().unwrap());
 
                         let path = PathBuf::from_str(&self.data.config_path).unwrap();
                         config::write_config(path, config_mut.clone()).unwrap();
                     }
 
-                    // Show animation info
-                    ui.label(format!(
-                        "Frame: {} | Animation Time: {:.2}s",
-                        self.frame_count, self.animation_time
-                    ));
-
                     // Set larger graph height
                     let graph_height = 140.0;
-                    let graph_width = graph_panel_width - 16.0;
+                    let graph_width = graph_panel_width - 5.0;
                     let padding = 10.0;
 
                     debug_assert!(graph_width > 0.0);
 
-                    ui.add_space(padding);
-                    let (response, painter) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.volume_graph.draw(painter, response.rect);
+                    ui.separator();
 
-                    ui.add_space(padding);
-                    let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.beat_volume_graph
-                        .draw(painter_beat_volume, response_beat_volume.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass, painter_bass) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_graph.draw(painter_bass, response_bass.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_avg_graph
-                        .draw(painter_bass_avg, response_bass_avg.rect);
-
-                    ui.add_space(padding);
-                    let (response_bass_avg_short, painter_bass_avg_short) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bass_avg_short_graph
-                        .draw(painter_bass_avg_short, response_bass_avg_short.rect);
-
-                    ui.add_space(padding);
-                    let (response_bpm, painter_bpm) = ui.allocate_painter(
-                        egui::vec2(graph_width, graph_height),
-                        egui::Sense::hover(),
-                    );
-                    self.bpm_graph.draw(painter_bpm, response_bpm.rect);
-
-                    ui.add_space(padding);
-                    let (response_time_between_beats, painter_time_between_beats) = ui
-                        .allocate_painter(
-                            egui::vec2(graph_width, graph_height),
-                            egui::Sense::hover(),
-                        );
-                    self.time_between_beats_graph
-                        .draw(painter_time_between_beats, response_time_between_beats.rect);
-
-                    ui.add_space(padding);
-
-                    // Graph controls
                     ui.horizontal(|ui| {
-                        if ui.button("Add Point").clicked() {
-                            let random_value = 0;
-                            self.volume_graph.add_data_point(random_value);
-                            self.log_window.add_log(
-                                LogLevel::Debug,
-                                format!("Added data point: {}", random_value),
-                                "Graph".to_string(),
+                        ui.vertical(|ui| {
+                            let (response, painter) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
                             );
-                        }
+                            self.volume_graph.draw(painter, response.rect);
 
-                        if ui.button("Clear").clicked() {
-                            self.volume_graph.clear();
-                            self.log_window.add_log(
-                                LogLevel::Info,
-                                "Volume graph cleared".to_string(),
-                                "Graph".to_string(),
+                            ui.add_space(padding);
+                            let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
                             );
-                        }
+                            self.beat_volume_graph
+                                .draw(painter_beat_volume, response_beat_volume.rect);
 
-                        ui.label(format!("Points: {}", self.volume_graph.data_points_count()));
+                            ui.add_space(padding);
+                            let (response_bass, painter_bass) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
+                            );
+                            self.bass_graph.draw(painter_bass, response_bass.rect);
+                        });
+
+                        ui.vertical(|ui| {
+                            let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
+                            );
+                            self.bass_avg_graph
+                                .draw(painter_bass_avg, response_bass_avg.rect);
+
+                            ui.add_space(padding);
+                            let (response_bass_avg_short, painter_bass_avg_short) = ui
+                                .allocate_painter(
+                                    egui::vec2(graph_width, graph_height),
+                                    egui::Sense::hover(),
+                                );
+                            self.bass_avg_short_graph
+                                .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+                        });
+
+                        ui.vertical(|ui| {
+                            let (response_bpm, painter_bpm) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
+                            );
+                            self.bpm_graph.draw(painter_bpm, response_bpm.rect);
+
+                            ui.add_space(padding);
+                            let (response_time_between_beats, painter_time_between_beats) = ui
+                                .allocate_painter(
+                                    egui::vec2(graph_width, graph_height),
+                                    egui::Sense::hover(),
+                                );
+                            self.time_between_beats_graph
+                                .draw(painter_time_between_beats, response_time_between_beats.rect);
+                        })
                     });
                 },
             );
@@ -739,7 +952,7 @@ impl BlaulichtApp {
     }
 
     fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        self.log_window.draw(ui);
+        self.log_window.draw(ctx, ui);
 
         // Terminal.
         // Right sidebar
@@ -938,12 +1151,15 @@ impl BlaulichtApp {
                     );
 
                     if rect.1.clicked() && signal != AudioThreadControlSignal::RELOAD {
-                        // self.data
-                        //     .from_frontend_sender
-                        //     .send(FromFrontend::Reload)
-                        //     .unwrap();
+                        self.data
+                            .from_frontend_sender
+                            .send(FromFrontend::Reload)
+                            .unwrap();
 
-                        self.show_popup(PopupSpec::default("Reload in progress...".to_string()));
+                        self.show_popup(PopupSpec::with_duration(
+                            Duration::from_secs(2),
+                            "Reload in progress...".to_string(),
+                        ));
                     }
                 }
             });
@@ -952,39 +1168,33 @@ impl BlaulichtApp {
     fn left_panel_ui(&mut self, ctx: &Context) {
         egui::SidePanel::left("left_panel")
             .resizable(false)
-            .default_width(100.0)
+            .default_width(64.0)
             // .width_range(150.0..=300.0)
             .show(ctx, |ui| {
                 // ui.label("Pages");
                 // ui.add_space(8.0);
 
-                for page in AppPage::iter() {
+                let button_count = AppPage::iter().count();
+                let spacing_top_bottom = 3.0;
+                let spacing = 6.0;
+                let button_height = ui.available_height() / button_count as f32;
+                let button_size = ButtonSize::Large
+                    .with_height(button_height - spacing - spacing_top_bottom)
+                    .with_width(64.0);
+
+                ui.add_space(spacing_top_bottom);
+
+                for (idx, page) in AppPage::iter().enumerate() {
                     let is_selected = self.current_page == page;
+                    let label = page.short().to_uppercase();
 
-                    let rect = ui.allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
-                    let painter = ui.painter();
-                    let bg_color = if is_selected {
-                        egui::Color32::from_rgb(60, 120, 200)
-                    } else {
-                        egui::Color32::from_gray(40)
-                    };
-                    painter.rect_filled(rect.0, 0.0, bg_color);
-
-                    // let fixture_count = group.fixtures.len();
-                    let name = page.short().to_uppercase();
-
-                    painter.text(
-                        rect.0.center(),
-                        egui::Align2::CENTER_CENTER,
-                        &name,
-                        egui::FontId::proportional(16.0),
-                        egui::Color32::WHITE,
-                    );
-
-                    if rect.1.clicked() && !is_selected {
+                    if button(ui, is_selected, &label, button_size) && !is_selected {
                         self.current_page = page;
                     }
-                    ui.add_space(8.0);
+
+                    if idx + 1 < button_count {
+                        ui.add_space(spacing);
+                    }
                 }
 
                 // // TODO: loop here.

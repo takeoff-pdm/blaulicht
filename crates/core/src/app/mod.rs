@@ -1,4 +1,7 @@
-use std::{fmt::Display, time::{Duration, Instant}};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 use egui::Color32;
 use strum::EnumIter;
@@ -78,6 +81,12 @@ impl PopupSpec {
             }),
         }
     }
+
+    pub fn with_duration(duration: Duration, label: String) -> Self {
+        let mut s = Self::default(label);
+        s.lifetime_duration = duration;
+        s
+    }
 }
 
 pub struct BlaulichtApp {
@@ -121,9 +130,13 @@ pub struct BlaulichtApp {
     animation_page: AnimationPageState,
 
     new_scene_name: String,
+    new_scene_dialog_open: bool,
+    show_dmx_simulation: bool,
 
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
+
+    set_audio_device_popup_open: bool,
 }
 
 pub struct AnimationPageState {

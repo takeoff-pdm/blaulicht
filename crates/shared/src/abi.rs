@@ -1,6 +1,7 @@
 use crate::ControlEventCollection;
 use bincode::{Decode, Encode, config};
 use serde::Serialize;
+use std::fmt::Display;
 use strum::EnumIter;
 
 #[derive(Clone, Encode, Decode, Default)]
@@ -31,6 +32,24 @@ pub enum LogLevel {
     Info,
     Warn,
     Err,
+}
+
+impl Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl From<&str> for LogLevel {
+    fn from(value: &str) -> Self {
+        match value {
+            "Debug" => Self::Debug,
+            "Info" => Self::Info,
+            "Warn" => Self::Warn,
+            "Err" => Self::Err,
+            _ => unreachable!("Parse error in log level conversion"),
+        }
+    }
 }
 
 impl TryFrom<i32> for LogLevel {
