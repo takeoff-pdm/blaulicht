@@ -12,6 +12,24 @@ use crate::{
     system_message,
 };
 
+///
+/// Mock implementation
+///
+#[cfg(not(feature = "wasmtime"))]
+impl PluginManager {
+    pub fn tick(&mut self, _: CollectedAudioSnapshot, _: &[MidiEvent]) -> anyhow::Result<Duration> {
+        Ok(Duration::from_millis(42))
+    }
+
+    pub fn disable_errored_plugins(
+        &mut self,
+        _: HashMap<u8, anyhow::Error>,
+    ) -> Option<anyhow::Error> {
+        None
+    }
+}
+
+#[cfg(feature = "wasmtime")]
 impl PluginManager {
     pub fn tick(
         &mut self,
@@ -53,7 +71,7 @@ impl PluginManager {
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
                 if let Err(err) = plugin.tick(input, midi_events) {
-                    let path = plugin_key.clone();
+                    let path = plugin_key;
                     err_res.insert(
                         path,
                         anyhow::anyhow!("Failed to tick plugin '{}': {}", plugin_key, err),
@@ -87,10 +105,12 @@ impl PluginManager {
                     ret = Some(err);
                 }
 
-                self.system_out.send(SystemMessage::Log(
-                    format!("Disabling plugin with error(s): (id={})...", plugin_key),
-                    LogLevel::Warn,
-                )).unwrap();
+                self.system_out
+                    .send(SystemMessage::Log(
+                        format!("Disabling plugin with error(s): (id={})...", plugin_key),
+                        LogLevel::Warn,
+                    ))
+                    .unwrap();
 
                 plugins.get_mut(&plugin_key).unwrap().set_errored(true);
             }
@@ -102,6 +122,20 @@ impl PluginManager {
     }
 }
 
+//
+// Mocked implementation
+//
+// #[cfg(not(feature = "wasmtime"))]
+// impl Plugin {
+//     fn tick(&mut self, _: TickInput, _: &[MidiEvent]) -> anyhow::Result<()> {
+//         Ok(())
+//     }
+// }
+
+//
+// Real Wasmtime implementation.
+//
+#[cfg(feature = "wasmtime")]
 impl Plugin {
     fn tick(&mut self, input: TickInput, midi_events: &[MidiEvent]) -> anyhow::Result<()> {
         //

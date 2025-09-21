@@ -21,7 +21,7 @@ use crate::{
     },
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
-    routes::AppState,
+    state::AppState,
 };
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,

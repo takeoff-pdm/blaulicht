@@ -10,7 +10,7 @@ use crate::{
     app::{graph::TimeSeriesGraph, log::LogWindow},
     audio::capture::SignalCollector,
     dmx::animation::{MathematicalBaseFunction, MathematicalPhaser, PhaserDuration},
-    routes::AppStateWrapper,
+    state::AppStateWrapper,
 };
 
 mod animations;
@@ -131,12 +131,16 @@ pub struct BlaulichtApp {
 
     new_scene_name: String,
     new_scene_dialog_open: bool,
+    current_scene_dialog_open: bool,
     show_dmx_simulation: bool,
 
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
 
     set_audio_device_popup_open: bool,
+
+    // TODO: move into custom scroll area or whatever
+    scene_page_index: usize,
 }
 
 pub struct AnimationPageState {

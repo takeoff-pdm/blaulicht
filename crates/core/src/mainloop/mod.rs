@@ -23,7 +23,7 @@ use crate::{
     mainloop::supervisor::signal_mainloop,
     msg::{Signal, SystemMessage},
     plugin::{midi::MidiManager, PluginManager},
-    routes::AppState,
+    state::AppState,
     system_message,
 };
 use anyhow::{anyhow, Context};

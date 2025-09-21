@@ -1,30 +1,30 @@
-use actix_web::{
-    get,
-    web::{Data, Json},
-    HttpResponse,
-};
-use serde::{Deserialize, Serialize};
-
-use crate::routes::{AppState, AppStateWrapper};
-
+// use actix_web::{
+//     get,
+//     web::{Data, Json},
+//     HttpResponse,
+// };
+// use serde::{Deserialize, Serialize};
 //
-// BPM Functions.
+// use crate::routes::{AppState, AppStateWrapper};
 //
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BPMObject {
-    pub bpm: i64,
-}
-
-// #[get("/api/state")]
-// pub async fn get_state(data: Data<AppStateWrapper>) -> HttpResponse {
-//     HttpResponse::Ok().json(&*data.state)
-//     // HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
+// //
+// // BPM Functions.
+// //
+//
+// #[derive(Serialize, Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct BPMObject {
+//     pub bpm: i64,
 // }
-
 //
-// Audio device functions.
+// // #[get("/api/state")]
+// // pub async fn get_state(data: Data<AppStateWrapper>) -> HttpResponse {
+// //     HttpResponse::Ok().json(&*data.state)
+// //     // HttpResponse::Ok().json(GenericResponse::success("updated BPM"))
+// // }
 //
-
-// TODO: maybe?
+// //
+// // Audio device functions.
+// //
+//
+// // TODO: maybe?

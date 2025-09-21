@@ -19,7 +19,7 @@ use crate::{
     msg::MidiEvent,
     msg::{Signal, SystemMessage},
     plugin::midi,
-    routes::AppState,
+    state::AppState,
 };
 
 use cpal::{traits::DeviceTrait, Device};

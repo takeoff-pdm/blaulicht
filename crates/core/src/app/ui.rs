@@ -7,7 +7,7 @@ use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
 use crate::dmx::EngineState;
 use crate::msg::FromFrontend;
 use crate::{config, utils};
-use crate::{msg::SystemMessage, routes::AppStateWrapper};
+use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::LogLevel;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
@@ -110,10 +110,12 @@ impl BlaulichtApp {
             },
             new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
             new_scene_dialog_open: false,
+            current_scene_dialog_open: false,
             show_dmx_simulation: false,
             popup: None,
             popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
+            scene_page_index: 0,
         }
     }
 }

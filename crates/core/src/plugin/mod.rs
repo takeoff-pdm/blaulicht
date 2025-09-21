@@ -18,6 +18,8 @@ use notify::{
     event::{DataChange, ModifyKind},
     Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
+
+#[cfg(feature = "wasmtime")]
 use wasmtime::{Instance, Memory, Store};
 
 use crate::{
@@ -26,7 +28,7 @@ use crate::{
     msg::SystemMessage,
     msg::{FromFrontend, MidiEvent},
     plugin::{midi::MidiManager, wasm::MidiStatus},
-    routes::{AppState, PluginFlags},
+    state::{AppState, PluginFlags},
 };
 
 pub mod midi;
@@ -51,11 +53,19 @@ pub struct PluginManager {
     state_ref: Arc<AppState>,
 }
 
-pub struct Plugin {
-    path: Cow<'static, str>,
+#[cfg(feature = "wasmtime")]
+pub struct PluginWasmState {
     memory: Memory,
     store: Store<()>,
     instance: Instance,
+}
+
+pub struct Plugin {
+    path: Cow<'static, str>,
+
+    #[cfg(feature = "wasmtime")]
+    wasm_state: PluginWasmState,
+
     // DANGER: this is not always populated.
     midi_status: MidiStatus,
 }

@@ -4,7 +4,7 @@ use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::msg::FromFrontend;
 use blaulicht_core::plugin::PluginManager;
-use blaulicht_core::routes::{AppState, AppStateWrapper};
+use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
 use env_logger::Env;
 use log::info;

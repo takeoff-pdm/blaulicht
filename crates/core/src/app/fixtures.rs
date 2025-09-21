@@ -9,7 +9,8 @@ use blaulicht_shared::{
     RGBColor,
 };
 use egui::{
-    Align2, Button, Color32, Context, FontId, Frame, Margin, RichText, TextBuffer, TextEdit, Vec2,
+    Align2, Button, Color32, Context, FontId, Frame, Id, Key, Margin, Modifiers, RichText,
+    ScrollArea, Style, TextBuffer, TextEdit, Vec2,
 };
 
 use crate::{
@@ -19,98 +20,111 @@ use crate::{
     },
     dmx::{self, EngineGroups, EngineSelection, EngineState, FixtureState},
     event::SystemEventBusConnectionInst,
-    routes::DmxBuffer,
+    state::DmxBuffer,
 };
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 
 impl BlaulichtApp {
     fn scene_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
-        ui.horizontal(|ui| {
-            if button(ui, false, "Scene +", ButtonSize::Medium) {
-                self.new_scene_dialog_open = true;
-            }
+        // ui.horizontal(|ui| {
+        //     if ui.button("▲ Scroll Up").clicked() {
+        //         self.scroll -= 20.0; // scroll up
+        //     }
+        //     if ui.button("▼ Scroll Down").clicked() {
+        //         self.scroll += 20.0; // scroll down
+        //     }
+        // });
 
-            if self.new_scene_dialog_open {
-                const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-                const SPACING: f32 = 16.0;
+        ui.allocate_ui_with_layout(
+            egui::vec2(100.0, ui.available_height()), // fixed width, max height
+            egui::Layout::top_down(egui::Align::Center),
+            |ui| {
+                let number_of_items_total = dmx_engine.scenes.len();
+                const ITEMS_PER_PAGE: usize = 7;
+                let total_pages = number_of_items_total / ITEMS_PER_PAGE;
 
-                let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-                dialog(ctx, "Create Scene", size, false, |ui| {
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(10, 6))
-                        .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut self.new_scene_name)
-                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                            );
-                        });
+                ui.vertical(|ui| {
+                    ui.set_min_height(2.0 * ButtonSize::Medium.dim().0.y);
+                    ui.horizontal(|ui| {
+                        if button(ui, false, "◀", ButtonSize::Medium) && self.scene_page_index > 0
+                        {
+                            self.scene_page_index -= 1;
+                        }
 
-                    ui.add_space(SPACING);
+                        if button(ui, false, "▶", ButtonSize::Medium)
+                            && self.scene_page_index < total_pages
+                        {
+                            self.scene_page_index += 1;
+                        }
+                    });
 
-                    if button(ui, false, "OK", BUTTON_SIZE) {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        dmx_engine.new_scene(self.new_scene_name.take());
-                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                        self.new_scene_dialog_open = false;
-                    }
+                    ui.add_space(5.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Page {} / {total_pages}", self.scene_page_index));
+
+                        ui.label(format!("Scenes: {number_of_items_total}"));
+                    })
                 });
-            }
 
-            // // TODO: limit width. OR use popups for creation stuff.
-            // ui.vertical(|ui| {});
+                ui.add_space(5.0);
 
-            for (scene_id, scene) in &dmx_engine.scenes {
-                let is_selected = dmx_engine.current_scene_focus == *scene_id;
+                let start = self.scene_page_index * ITEMS_PER_PAGE;
+                let page_items = dmx_engine.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
 
-                let rect = ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
-                let painter = ui.painter();
-                let bg_color = if is_selected {
-                    egui::Color32::from_rgb(60, 120, 200)
-                } else {
-                    egui::Color32::from_gray(40)
-                };
-                painter.rect_filled(rect.0, 6.0, bg_color);
+                for (scene_id, scene) in page_items {
+                    let is_selected = dmx_engine.current_scene_focus == *scene_id;
 
-                // let fixture_count = group.fixtures.len();
-                let name = format!("Scene {scene_id}");
-                painter.text(
-                    rect.0.left_top() + egui::vec2(12.0, 8.0),
-                    egui::Align2::LEFT_TOP,
-                    &name,
-                    egui::FontId::proportional(16.0),
-                    egui::Color32::WHITE,
-                );
-                // painter.text(
-                //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
-                //     egui::Align2::LEFT_CENTER,
-                //     format!("TODO: overlay or not"),
-                //     egui::FontId::proportional(12.0),
-                //     egui::Color32::GRAY,
-                // );
-                painter.text(
-                    rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                    egui::Align2::LEFT_BOTTOM,
-                    format!("Changes: {}", scene.sink.changeset.len()),
-                    egui::FontId::proportional(12.0),
-                    egui::Color32::GRAY,
-                );
-
-                if rect.1.clicked() {
-                    // Toggle group selection
-                    if !is_selected {
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetSceneFocus(*scene_id),
-                            ));
+                    let rect =
+                        ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
+                    let painter = ui.painter();
+                    let bg_color = if is_selected {
+                        egui::Color32::from_rgb(60, 120, 200)
+                    } else {
+                        egui::Color32::from_gray(40)
                     };
+                    painter.rect_filled(rect.0, 6.0, bg_color);
+
+                    // let fixture_count = group.fixtures.len();
+                    let name = format!("{scene_id} | {}", scene.name);
+                    painter.text(
+                        rect.0.left_top() + egui::vec2(12.0, 8.0),
+                        egui::Align2::LEFT_TOP,
+                        &name,
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE,
+                    );
+                    // painter.text(
+                    //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
+                    //     egui::Align2::LEFT_CENTER,
+                    //     format!("TODO: overlay or not"),
+                    //     egui::FontId::proportional(12.0),
+                    //     egui::Color32::GRAY,
+                    // );
+                    painter.text(
+                        rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        format!("Changes: {}", scene.sink.changeset.len()),
+                        egui::FontId::proportional(12.0),
+                        egui::Color32::GRAY,
+                    );
+
+                    if rect.1.clicked() {
+                        // Toggle group selection
+                        if !is_selected {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetSceneFocus(*scene_id),
+                                ));
+                        };
+                    }
+                    ui.add_space(8.0);
                 }
-                ui.add_space(8.0);
-            }
-        });
+            },
+        );
     }
 
     fn fixture_selection(
@@ -149,12 +163,6 @@ impl BlaulichtApp {
                 }));
             }
         }
-
-        // let group_count = groups.len();
-        // let mut selected_group = self.selected_fixture_group;
-        // Layout: left (groups), right (fixtures if one group selected)
-
-        // let mut selected_groups = vec![];
 
         ui.horizontal(|ui| {
             ui.set_min_height(ui.available_height());
@@ -321,178 +329,261 @@ impl BlaulichtApp {
     }
 
     pub fn fixtures_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        ui.label("Fixtures");
-
-        ui.separator();
-
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let groups = dmx_engine.groups();
 
-        // ui.allocate_ui(ve ui.available_height(), |ui| {
         //
-        // });
+        // Dialogs start.
+        //
+
+        if self.show_dmx_simulation {
+            dialog(ctx, "DMX Output", egui::vec2(500.0, 500.0), true, |ui| {
+                let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
+                simulate_dmx(ui, groups, dmx_buffer);
+            });
+        }
+
+        if self.new_scene_dialog_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const SPACING: f32 = 16.0;
+
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+            dialog(ctx, "Create Scene", size, false, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::singleline(&mut self.new_scene_name)
+                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                        );
+                    });
+
+                ui.add_space(SPACING);
+
+                let mut button_pressed = button(ui, false, "OK", BUTTON_SIZE);
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        button_pressed = true;
+                    }
+                });
+
+                if button_pressed {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.new_scene(self.new_scene_name.take());
+                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                    self.new_scene_dialog_open = false;
+                }
+            });
+        }
+
+        if self.current_scene_dialog_open {
+            dialog(ctx, "Current Scene", egui::vec2(500.0, 500.0), true, |ui| {
+                let scene = dmx_engine.curr_scene();
+
+                ui.vertical(|ui| {
+                    ui.label("Scene Changeset");
+
+                    let mut changeset_organized: BTreeMap<(u8, u8), Vec<FixtureProperty>> =
+                        BTreeMap::new();
+
+                    for change in &scene.sink.changeset {
+                        match changeset_organized.get_mut(&(change.gid, change.fid)) {
+                            Some(entry) => entry.push(change.property),
+                            None => {
+                                changeset_organized
+                                    .insert((change.gid, change.fid), vec![change.property]);
+                            }
+                        }
+                    }
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for ((gid, fid), properties) in changeset_organized {
+                            ui.label(
+                                RichText::new(format!("GID: {gid} | FID: {fid}"))
+                                    .color(Color32::LIGHT_GREEN),
+                            );
+
+                            for prop in properties {
+                                ui.label(format!("- {prop}"));
+                            }
+                        }
+                    });
+                });
+            });
+        }
+
+        //
+        // Main UI start.
         //
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-            egui::Layout::top_down(egui::Align::Min),
+            egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
                 self.scene_overview(ui, ctx, &dmx_engine);
-
-                // Scene overview
 
                 ui.separator();
 
                 ui.allocate_ui_with_layout(
                     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-                    egui::Layout::left_to_right(egui::Align::Min),
+                    egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        self.fixture_selection(groups, ui);
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                if button(ui, false, "Scene +", ButtonSize::Medium) {
+                                    self.new_scene_dialog_open = true;
+                                }
 
-                        // TODO: Show animation groups.
+                                if button(
+                                    ui,
+                                    self.show_dmx_simulation,
+                                    "Show DMX",
+                                    ButtonSize::Medium,
+                                ) {
+                                    self.show_dmx_simulation = !self.show_dmx_simulation;
+                                }
+                            });
+
+                            ui.vertical(|ui| {
+                                if button(ui, self.current_scene_dialog_open, "Current Scene", ButtonSize::Medium) {
+                                    self.current_scene_dialog_open = !self.current_scene_dialog_open;
+                                }
+                            });
+                        });
 
                         ui.separator();
 
-                        ui.vertical(|ui| {
-                            if button(ui, self.show_dmx_simulation, "Show DMX", ButtonSize::Medium)
-                            {
-                                self.show_dmx_simulation = !self.show_dmx_simulation;
-                            }
+                        ui.separator();
 
-                            if self.show_dmx_simulation {
-                                dialog(ctx, "DMX Output", egui::vec2(500.0, 500.0), true, |ui| {
-                                    let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                                    simulate_dmx(ui, groups, dmx_buffer);
-                                });
-                            }
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+                            egui::Layout::left_to_right(egui::Align::Min),
+                            |ui| {
+                                self.fixture_selection(groups, ui);
 
-                            ui.separator();
-
-                            // Scene stats.
-                            //
-
-                            ui.horizontal(|ui| {
-                                let scene = dmx_engine.curr_scene();
-
-                                ui.vertical(|ui| {
-                                    ui.label("Scene Changeset");
-
-                                    let mut changeset_organized: BTreeMap<
-                                        (u8, u8),
-                                        Vec<FixtureProperty>,
-                                    > = BTreeMap::new();
-
-                                    for change in &scene.sink.changeset {
-                                        match changeset_organized.get_mut(&(change.gid, change.fid))
-                                        {
-                                            Some(entry) => entry.push(change.property),
-                                            None => {
-                                                changeset_organized.insert(
-                                                    (change.gid, change.fid),
-                                                    vec![change.property],
-                                                );
-                                            }
-                                        }
-                                    }
-                                    egui::ScrollArea::vertical().show(ui, |ui| {
-                                        for ((gid, fid), properties) in changeset_organized {
-                                            ui.label(
-                                                RichText::new(format!("GID: {gid} | FID: {fid}"))
-                                                    .color(Color32::LIGHT_GREEN),
-                                            );
-
-                                            for prop in properties {
-                                                ui.label(format!("- {prop}"));
-                                            }
-                                        }
-                                    });
-                                });
+                                // TODO: Show animation groups.
 
                                 ui.separator();
 
                                 ui.vertical(|ui| {
-                                    for (selection, animations) in &scene.sink.active_animations {
-                                        ui.label(
-                                            RichText::new(format!("Selection: {selection:?}"))
-                                                .color(Color32::LIGHT_GREEN),
-                                        );
+                                    // Scene stats.
+                                    //
 
-                                        for (animation_id, animation) in animations {
-                                            let spec =
-                                                dmx_engine.animations.get(animation_id).unwrap();
+                                    ui.horizontal(|ui| {
+                                        let scene = dmx_engine.curr_scene();
 
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "[{}] {} | {}",
-                                                    animation_id, spec.name, spec.property
-                                                ))
-                                                .color(Color32::WHITE),
-                                            );
+                                        ui.separator();
 
-                                            // Remove button
-                                            if button(ui, false, "Remove", ButtonSize::Medium) {
-                                                let mut selection_instructions =
-                                                    selection.generate_instructions();
-
-                                                selection_instructions
-                                                    .push_front(ControlEvent::PushSelection);
-                                                selection_instructions.push_back(
-                                                    ControlEvent::RemoveAnimation(*animation_id),
+                                        ui.vertical(|ui| {
+                                            for (selection, animations) in
+                                                &scene.sink.active_animations
+                                            {
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "Selection: {selection:?}"
+                                                    ))
+                                                    .color(Color32::LIGHT_GREEN),
                                                 );
-                                                selection_instructions
-                                                    .push_back(ControlEvent::PopSelection);
 
-                                                self.data.event_bus_connection.send(
-                                                    ControlEventMessage::new(
-                                                        EventOriginator::Web,
-                                                        ControlEvent::Transaction(
-                                                            selection_instructions
-                                                                .into_iter()
-                                                                .collect(),
-                                                        ),
-                                                    ),
-                                                );
+                                                for (animation_id, animation) in animations {
+                                                    let spec = dmx_engine
+                                                        .animations
+                                                        .get(animation_id)
+                                                        .unwrap();
+
+                                                    ui.label(
+                                                        RichText::new(format!(
+                                                            "[{}] {} | {}",
+                                                            animation_id, spec.name, spec.property
+                                                        ))
+                                                        .color(Color32::WHITE),
+                                                    );
+
+                                                    // Remove button
+                                                    if button(
+                                                        ui,
+                                                        false,
+                                                        "Remove",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        let mut selection_instructions =
+                                                            selection.generate_instructions();
+
+                                                        selection_instructions.push_front(
+                                                            ControlEvent::PushSelection,
+                                                        );
+                                                        selection_instructions.push_back(
+                                                            ControlEvent::RemoveAnimation(
+                                                                *animation_id,
+                                                            ),
+                                                        );
+                                                        selection_instructions
+                                                            .push_back(ControlEvent::PopSelection);
+
+                                                        self.data.event_bus_connection.send(
+                                                            ControlEventMessage::new(
+                                                                EventOriginator::Web,
+                                                                ControlEvent::Transaction(
+                                                                    selection_instructions
+                                                                        .into_iter()
+                                                                        .collect(),
+                                                                ),
+                                                            ),
+                                                        );
+                                                    }
+
+                                                    let (label, enabled, event) =
+                                                        match animation.enabled {
+                                                            true => (
+                                                                "Pause",
+                                                                true,
+                                                                ControlEvent::PauseAnimation(
+                                                                    *animation_id,
+                                                                ),
+                                                            ),
+                                                            false => (
+                                                                "Play",
+                                                                false,
+                                                                ControlEvent::PlayAnimation(
+                                                                    *animation_id,
+                                                                ),
+                                                            ),
+                                                        };
+
+                                                    if button(
+                                                        ui,
+                                                        enabled,
+                                                        label,
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        let mut selection_instructions =
+                                                            selection.generate_instructions();
+
+                                                        selection_instructions.push_front(
+                                                            ControlEvent::PushSelection,
+                                                        );
+                                                        selection_instructions.push_back(event);
+                                                        selection_instructions
+                                                            .push_back(ControlEvent::PopSelection);
+
+                                                        self.data.event_bus_connection.send(
+                                                            ControlEventMessage::new(
+                                                                EventOriginator::Web,
+                                                                ControlEvent::Transaction(
+                                                                    selection_instructions
+                                                                        .into_iter()
+                                                                        .collect(),
+                                                                ),
+                                                            ),
+                                                        );
+                                                    }
+                                                }
                                             }
-
-                                            let (label, enabled, event) = match animation.enabled {
-                                                true => (
-                                                    "Pause",
-                                                    true,
-                                                    ControlEvent::PauseAnimation(*animation_id),
-                                                ),
-                                                false => (
-                                                    "Play",
-                                                    false,
-                                                    ControlEvent::PlayAnimation(*animation_id),
-                                                ),
-                                            };
-
-                                            if button(ui, enabled, label, ButtonSize::Medium) {
-                                                let mut selection_instructions =
-                                                    selection.generate_instructions();
-
-                                                selection_instructions
-                                                    .push_front(ControlEvent::PushSelection);
-                                                selection_instructions.push_back(event);
-                                                selection_instructions
-                                                    .push_back(ControlEvent::PopSelection);
-
-                                                self.data.event_bus_connection.send(
-                                                    ControlEventMessage::new(
-                                                        EventOriginator::Web,
-                                                        ControlEvent::Transaction(
-                                                            selection_instructions
-                                                                .into_iter()
-                                                                .collect(),
-                                                        ),
-                                                    ),
-                                                );
-                                            }
-                                        }
-                                    }
+                                        });
+                                    });
                                 });
-                            });
-                        });
+                            },
+                        );
                     },
                 );
             },
@@ -673,7 +764,7 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
                 // Color based on value
                 let (bg_color, fg_color) = match value {
                     0 => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
-                    1..=85 => (Color32::from_rgb(255, 0, 0), Color32::MAGENTA),
+                    1..=85 => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
                     86..=170 => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
                     171..=255 => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
                 };
@@ -685,7 +776,7 @@ fn simulate_dmx(ui: &mut egui::Ui, _groups: &EngineGroups, dmx: RwLockReadGuard<
                         Align2::LEFT_TOP,
                         value.to_string(),
                         egui::FontId {
-                            size: 5.0,
+                            size: 9.0,
                             family: egui::FontFamily::Monospace,
                         },
                         fg_color,

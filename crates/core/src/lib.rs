@@ -10,5 +10,6 @@ pub mod mainloop;
 pub mod msg;
 pub mod plugin;
 pub mod routes;
+pub mod state;
 pub mod util;
 pub mod utils;

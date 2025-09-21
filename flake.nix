@@ -26,6 +26,7 @@
     clang
             pkgs.stdenv.cc.cc.lib
         clangStdenv
+        openssl
         ];
 
         packages = with pkgs; [
@@ -44,6 +45,7 @@
     clang
         clangStdenv
             pkgs.stdenv.cc.cc.lib
+        openssl
         ];
       in
       {
