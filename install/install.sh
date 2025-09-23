@@ -41,7 +41,7 @@ sudo systemctl enable gdm || exit  1
 sudo apt install -y wget jq || exit 1
 
 rm blaulicht || echo "No junk yet..."
-wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \                                                                   43%  ▓▒░
+wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \
   | jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' \
   | xargs wget -O blaulicht-latest.tar.gz
 # wget 'http://.edu/mik/crav/releases/download/latest/crav' || exit 1
