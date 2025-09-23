@@ -25,14 +25,14 @@ build-archives: prepare-archives build-archive-x64
 
 build-archive-x64: cargo-build-x64
 	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)
-	tar -cvzf dist/blaulicht-$(VERSION)-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
+	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
 	rm -rf $(BUILD_OUTPUT_DIR)
 
 release: clean build-archives gh-release
 
 # Publish the local release to Github releases
 gh-release:
-	gh release create v$(VERSION) ./dist/*.tar.gz -F ./CHANGELOG.md -t 'blaulicht v$(version)'
+	gh release create v$(VERSION) ./dist/*.tar.gz -F ./CHANGELOG.md -t 'blaulicht v$(VERSION)'
 
 version:
 	python3 update_version.py

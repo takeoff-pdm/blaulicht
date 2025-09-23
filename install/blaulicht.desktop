@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Blaulicht
+GenericName=Blaulicht
+Comment=Blaulicht
+Icon=org.gnome.Logs
+Exec=blaulicht.sh
+TryExec=blaulicht.sh
+Terminal=true
+Categories=System;Monitor;ConsoleOnly;
+Keywords=system;process;task
+X-GNOME-Autostart-enabled=true

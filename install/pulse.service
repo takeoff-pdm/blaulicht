@@ -1,0 +1,10 @@
+[Unit]
+Description=Enable pulseaudio
+
+[Service]
+ExecStartPre=/bin/sleep 8
+Type=oneshot
+ExecStart=/usr/bin/pulse.sh
+
+[Install]
+WantedBy=default.target
