@@ -44,7 +44,7 @@ sudo apt install -y xterm || exit 1
 #
 #
 
-sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all || exit 1
+sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox wmctrl || exit 1
 sudo killall blaulicht || echo "Blaulicht not running"
 
 rm blaulicht || echo "No junk yet..."
