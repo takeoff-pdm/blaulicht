@@ -44,6 +44,7 @@ sudo apt install -y xterm || exit 1
 #
 #
 
+sudo killall blaulicht || echo "Blaulicht not running"
 sudo apt install -y wget jq || exit 1
 
 rm blaulicht || echo "No junk yet..."
