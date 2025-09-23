@@ -44,7 +44,7 @@ sudo apt install -y xterm || exit 1
 #
 #
 
-sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox wmctrl || exit 1
+sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
 sudo killall blaulicht || echo "Blaulicht not running"
 
 rm blaulicht || echo "No junk yet..."
@@ -57,6 +57,8 @@ tar xvf blaulicht-latest.tar.gz
 mv ./blaulicht-dist/blaulicht ./blaulicht
 sudo cp blaulicht /usr/bin/blaulicht || exit 1
 sudo chmod +x /usr/bin/blaulicht || exit 1
+
+cp ./openbox-autostart ~/.config/openbox/autostart
 
 # TOOD: autostart?
 # AUTOSTART_BASE_DIR=~/.config/autostart/

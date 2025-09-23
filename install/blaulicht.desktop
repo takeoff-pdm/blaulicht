@@ -1,13 +1,6 @@
 [Desktop Entry]
+Name=Openbox Blaulicht
+Comment=Openbox minimal session for blaulicht
+Exec=/usr/bin/openbox-session
+TryExec=/usr/bin/openbox-session
 Type=Application
-Version=1.0
-Name=Blaulicht
-GenericName=Blaulicht
-Comment=Blaulicht
-Icon=org.gnome.Logs
-Exec=blaulicht.sh
-TryExec=blaulicht.sh
-Terminal=true
-Categories=System;Monitor;ConsoleOnly;
-Keywords=system;process;task
-X-GNOME-Autostart-enabled=true
