@@ -13,7 +13,8 @@ xrandr --newmode "800x480_60.00"   29.50  800 824 896 992  480 483 493 500 -hsyn
 xrandr --addmode VGA-1 "1024x600_60.00"
 xrandr --addmode VGA-1 "800x480_60.00"
 
-xrandr --output VGA-1 --mode "1024x600_60.00"
+# xrandr --output VGA-1 --mode "1024x600_60.00"
+xrandr --output VGA-1 --mode "800x480_60.00"
 
 # Launch blaulicht
 blaulicht
