@@ -24,14 +24,14 @@ fi
 # sudo udevadm control --reload  || exit 1
 
 #
-# GDM3 session login.
+# Session login.
 #
 
-sudo apt install -y gdm3 || exit 1
+sudo apt install -y lightdm || exit 1
+# sed "s/USER-PLACEHOLDER/${USER}/g" gdm3.conf | sudo tee /etc/gdm3/daemon.conf || exit 1
+sudo cp ./lightdm.conf /etc/lightdm/lightdm.conf || exit 1
 
-sed "s/USER-PLACEHOLDER/${USER}/g" gdm3.conf | sudo tee /etc/gdm3/daemon.conf || exit 1
-
-sudo systemctl enable gdm || exit  1
+sudo systemctl enable lightdm || exit  1
 
 #
 # Install Blaulicht.
@@ -56,6 +56,9 @@ sudo chmod +x /usr/bin/blaulicht || exit 1
 # mkdir -p "${AUTOSTART_BASE_DIR}"
 # cp ./crav.desktop "${AUTOSTART_BASE_DIR}" || exit 1
 # sudo cp ./crav.desktop "/usr/share/applications/" || exit 1
+
+sudo cp ./blaulicht.desktop /usr/share/xsessions/
+sudo chmod + x /usr/share/xsessions/blaulicht.desktop
 
 sudo cp blaulicht.sh /usr/bin/blaulicht.sh || exit 1
 sudo chmod +x /usr/bin/blaulicht.sh || exit 1
