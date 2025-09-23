@@ -46,8 +46,8 @@ wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \
   | xargs wget -O blaulicht-latest.tar.gz
 # wget 'http://.edu/mik/crav/releases/download/latest/crav' || exit 1
 # sudo killall crav || echo "Crav is not running..."
-tar xvf blaulicht*.tar.gz
-mv ./blaulicht-* ./blaulicht
+tar xvf blaulicht-x86_64-unknown-linux-gnu.tar.gz
+mv ./blaulicht-dist/blaulicht ./blaulicht
 sudo cp blaulicht /usr/bin/blaulicht || exit 1
 sudo chmod +x /usr/bin/blaulicht || exit 1
 

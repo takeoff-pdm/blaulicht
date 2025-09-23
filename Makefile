@@ -1,6 +1,6 @@
 DIR := ${CURDIR}
 VERSION = 0.1.0
-BUILD_OUTPUT_DIR = blaulicht-$(VERSION)
+BUILD_OUTPUT_DIR = blaulicht-dist
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \
 		build-web build-archives build-archive-armhf build-archive-armel \
@@ -24,7 +24,8 @@ build-archives: prepare-archives build-archive-x64
 
 
 build-archive-x64: cargo-build-x64
-	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)
+	mkdir -p ./$(BUILD_OUTPUT_DIR)
+	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
 	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
 	rm -rf $(BUILD_OUTPUT_DIR)
 
