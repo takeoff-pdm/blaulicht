@@ -8,3 +8,5 @@ xset s noblank
 
 # Launch blaulicht
 blaulicht
+
+xterm

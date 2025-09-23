@@ -34,6 +34,12 @@ sudo cp ./lightdm.conf /etc/lightdm/lightdm.conf || exit 1
 sudo systemctl enable lightdm || exit  1
 
 #
+# Install terminal
+#
+
+sudo apt install -y xterm || exit 1
+
+#
 # Install Blaulicht.
 #
 #
