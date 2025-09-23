@@ -58,7 +58,7 @@ sudo chmod +x /usr/bin/blaulicht || exit 1
 # sudo cp ./crav.desktop "/usr/share/applications/" || exit 1
 
 sudo cp ./blaulicht.desktop /usr/share/xsessions/
-sudo chmod + x /usr/share/xsessions/blaulicht.desktop
+sudo chmod +x /usr/share/xsessions/blaulicht.desktop
 
 sudo cp blaulicht.sh /usr/bin/blaulicht.sh || exit 1
 sudo chmod +x /usr/bin/blaulicht.sh || exit 1
