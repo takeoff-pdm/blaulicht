@@ -20,6 +20,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -776,6 +777,55 @@ impl BlaulichtApp {
 
         if components::button(ui, false, "Quit", button_size) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
+        if components::button(ui, false, "Shutdown", button_size) {
+            self.confirm_shutdown_open = true;
+        }
+
+        if self.confirm_shutdown_open {
+            components::dialog(
+                ctx,
+                "Confirm Shutdown",
+                egui::vec2(200.0, 100.0),
+                false,
+                |ui| {
+                    let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
+
+                    ui.heading(
+                        RichText::new("Confirm Shutdown")
+                            .color(if blink {
+                                Color32::RED
+                            } else {
+                                ui.visuals().text_color()
+                            })
+                            .strong(),
+                    );
+
+                    ui.add_space(12.0);
+
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                            let status = Command::new("sudo")
+                                .arg("/sbin/shutdown")
+                                .status()
+                                .expect("Failed to execute shutdown command");
+
+                            if status.success() {
+                                println!("Shutdown command executed successfully.");
+                            } else {
+                                eprintln!("Shutdown command failed!");
+                            }
+
+                            self.confirm_shutdown_open = false;
+                        }
+
+                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                            self.confirm_shutdown_open = false;
+                        }
+                    });
+                },
+            );
         }
 
         ui.separator();

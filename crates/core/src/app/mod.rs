@@ -154,6 +154,8 @@ pub struct BlaulichtApp {
 
     open_file_dialog: Option<FileDialog>,
     file_dialog_open_origin: FileDialogOpenOrigin,
+
+    confirm_shutdown_open: bool,
 }
 
 impl BlaulichtApp {
@@ -229,6 +231,7 @@ impl BlaulichtApp {
             current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
             show_dmx_simulation: false,
+            confirm_shutdown_open: false,
             popup: None,
             popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
