@@ -78,4 +78,7 @@ sudo chmod +x "/usr/bin/pulse.sh" || exit 1
 cp ./pulse.service "${SYSTEMD_BASE_PATH}/pulse.service" || exit 1
 systemctl --user enable pulse || exit 1
 
+echo "blaulicht ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/reboot" | sudo tee /etc/sudoers.d/blaulicht-shutdown
+sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown
+
 echo "Installation succeeded, please reboot."
