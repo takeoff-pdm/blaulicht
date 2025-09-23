@@ -187,17 +187,23 @@ pub enum FixtureType {
     Dimmer(Dimmer),
 }
 
-impl Display for FixtureType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FixtureType {
+    pub fn kind_string(&self) -> &'static str {
         match self {
-            FixtureType::MovingHead(moving_head) => write!(f, "MovingHead | {moving_head}"),
-            FixtureType::Light(light) => write!(f, "Light | {light}"),
-            FixtureType::Dimmer(dimmer) => write!(f, "Dimmer | {dimmer}"),
+            FixtureType::MovingHead(_) => "MovingHead",
+            FixtureType::Light(_) => "Light",
+            FixtureType::Dimmer(_) => "Dimmer",
         }
     }
-}
 
-impl FixtureType {
+    pub fn model_string(&self) -> String {
+        match self {
+            FixtureType::MovingHead(model) => model.to_string(),
+            FixtureType::Light(model) => model.to_string(),
+            FixtureType::Dimmer(model) => model.to_string(),
+        }
+    }
+
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             FixtureType::MovingHead(moving_head) => moving_head.write(this, state, dmx),

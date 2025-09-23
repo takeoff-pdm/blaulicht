@@ -2,14 +2,13 @@
 // Log Window Component
 //
 
-use std::collections::VecDeque;
-
 use blaulicht_shared::LogLevel;
 use chrono::{DateTime, Local};
-use egui::{Color32, Context, FontId, RichText, TextEdit, Vec2};
+use egui::{Color32, Context, FontId, RichText, TextEdit};
+use std::collections::VecDeque;
 use strum::IntoEnumIterator;
 
-use crate::app::ui::{button, selection_dialog, ButtonSize};
+use crate::app::components::{self, ButtonSize};
 
 fn log_level_color(from: &LogLevel) -> egui::Color32 {
     match from {
@@ -91,17 +90,17 @@ impl LogWindow {
 
             ui.separator();
 
-            if button(ui, self.auto_scroll, "Auto-Scroll", BUTTON_SIZE) {
+            if components::button(ui, self.auto_scroll, "Auto-Scroll", BUTTON_SIZE) {
                 self.auto_scroll = !self.auto_scroll;
             }
 
-            if button(ui, false, "Clear", BUTTON_SIZE) {
+            if components::button(ui, false, "Clear", BUTTON_SIZE) {
                 self.clear_logs();
             }
 
             ui.separator();
 
-            if button(
+            if components::button(
                 ui,
                 self.selected_log_level.is_some(),
                 "Filter Level",
@@ -129,7 +128,7 @@ impl LogWindow {
                     .collect::<Vec<String>>();
                 options.push(ALL_LEVELS.to_string());
 
-                let (new_log_level, changed) = selection_dialog(
+                let (new_log_level, changed) = components::selection_dialog(
                     ctx,
                     options,
                     self.selected_log_level

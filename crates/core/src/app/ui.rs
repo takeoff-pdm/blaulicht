@@ -1,7 +1,5 @@
-use crate::app::fixtures::DEFAULT_NEW_SCENE_NAME;
-use crate::app::graph::TimeSeriesGraph;
-use crate::app::log::LogWindow;
-use crate::app::{AnimationPageState, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::components::ButtonSize;
+use crate::app::{components, AnimationPageState, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
 use crate::dmx::EngineState;
@@ -15,15 +13,22 @@ use egui::{
     Button, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, ProgressBar, Rect,
     RichText, Rounding, Sense, Stroke, Style, TextStyle, Ui, Vec2,
 };
+use egui_file::FileDialog;
+use std::ffi::OsStr;
 use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
+
+pub enum FileDialogOpenOrigin {
+    Save,
+    Load,
+}
 
 //
 // Actual eframe shit.
@@ -40,114 +45,6 @@ use strum::IntoEnumIterator;
 //     ctx.set_style(style);
 // }
 
-impl BlaulichtApp {
-    fn new_default(data: AppStateWrapper) -> Self {
-        Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
-            volume_graph: TimeSeriesGraph::new(
-                "Volume".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            beat_volume_graph: TimeSeriesGraph::new(
-                "Beat Volume".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            bass_graph: TimeSeriesGraph::new(
-                "Bass".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            bass_avg_graph: TimeSeriesGraph::new(
-                "Bass Avg".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            bass_avg_short_graph: TimeSeriesGraph::new(
-                "Bass Avg Short".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            bpm_graph: TimeSeriesGraph::new(
-                "BPM".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            time_between_beats_graph: TimeSeriesGraph::new(
-                "Time Between Beats".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            frame_count: 0,
-            animation_time: 0.0,
-            data,
-            // recv,
-            // collector,
-            loop_speed: 0,
-            tick_speed: 0,
-            // logs: vec![],
-            log_window: LogWindow::new(100),
-            current_page: AppPage::Audio,
-            last_heartbeat_frame: 0,
-            selected_fixture_group: None,
-            available_audio_devices: vec![],
-            animation_page: AnimationPageState {
-                selected_animation: None,
-                clamp_min: 0,
-                clamp_max: 255,
-                base_function: MathematicalBaseFunction::Sin,
-                timing: PhaserDuration::Fixed(1000),
-            },
-            new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
-            new_scene_dialog_open: false,
-            current_scene_dialog_open: false,
-            show_dmx_simulation: false,
-            popup: None,
-            popup_open_time: Instant::now(),
-            set_audio_device_popup_open: false,
-            scene_page_index: 0,
-        }
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum ButtonSize {
-    Small,
-    Medium,
-    Large,
-    Custom(f32, f32, f32),
-}
-
-impl ButtonSize {
-    pub fn with_width(&self, width: f32) -> Self {
-        Self::Custom(width, self.dim().0.y, self.dim().1)
-    }
-
-    pub fn with_height(&self, height: f32) -> Self {
-        Self::Custom(self.dim().0.x, height, self.dim().1)
-    }
-
-    // Returns button and font size.
-    pub const fn dim(&self) -> (Vec2, f32) {
-        match self {
-            ButtonSize::Small => (egui::vec2(90.0, 12.0), 9.0),
-            ButtonSize::Medium => (egui::vec2(90.0, 32.0), 11.0),
-            ButtonSize::Large => (egui::vec2(90.0, 64.0), 16.0),
-            ButtonSize::Custom(x, y, f) => (egui::vec2(*x, *y), *f),
-        }
-    }
-}
-
 const UI_RECV_KEY: &'static str = "eframe_ui";
 
 impl Drop for BlaulichtApp {
@@ -156,177 +53,6 @@ impl Drop for BlaulichtApp {
         // let removed = consumers.remove(UI_RECV_KEY);
         // debug_assert!(removed.is_some());
     }
-}
-
-// Returns an option value and if it was changed.
-pub fn selection_dialog<I, T>(
-    ctx: &Context,
-    options: I,
-    current_selection: T,
-    is_open: &mut bool,
-) -> (T, bool)
-where
-    I: IntoIterator<Item = T>,
-    I: Clone,
-    T: Display,
-    T: PartialEq,
-    T: Eq,
-    T: Clone,
-{
-    let vpadding = 5.0;
-    let options_len = options.clone().into_iter().count();
-
-    let height = ((options_len + 2) as f32 * (ButtonSize::Medium.dim().0.y + vpadding)) - vpadding;
-
-    let width = 300.0;
-    let dialog_dim = Vec2::new(width, height);
-
-    let button_size = ButtonSize::Custom(
-        width * 2.0 / 3.0,
-        ButtonSize::Medium.dim().0.y,
-        ButtonSize::Medium.dim().1,
-    );
-
-    let mut selection = current_selection.clone();
-    let mut changed = false;
-
-    dialog(ctx, "Change Audio Device", dialog_dim, false, |ui| {
-        for (idx, option) in options.into_iter().enumerate() {
-            if button(
-                ui,
-                current_selection == option,
-                &option.to_string(),
-                button_size,
-            ) {
-                selection = option;
-                changed = true;
-                *is_open = false;
-            }
-
-            if idx + 1 < options_len {
-                ui.add_space(vpadding);
-            }
-        }
-
-        ui.add_space(vpadding);
-
-        ui.separator();
-
-        ui.add_space(vpadding);
-
-        if button(ui, false, "Close", button_size) {
-            *is_open = false;
-        }
-    });
-
-    (selection, changed)
-}
-
-pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool {
-    let radius = 1.0;
-
-    let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
-
-    let painter = ui.painter();
-
-    let normal_bg_color = match active {
-        true => egui::Color32::from_rgb(60, 120, 200),
-        false => egui::Color32::from_gray(50),
-    };
-
-    let is_pressed = response.is_pointer_button_down_on();
-
-    let bg_color = if is_pressed {
-        normal_bg_color.gamma_multiply(1.2)
-    } else if response.hovered() {
-        normal_bg_color.gamma_multiply(1.4)
-    } else {
-        normal_bg_color
-    };
-
-    // Shadow parameters
-    let shadow_offset = if is_pressed {
-        Vec2::new(1.0, 1.0)
-    } else {
-        Vec2::new(3.0, 3.0)
-    };
-    let shadow_color = if is_pressed {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 100)
-    } else {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 50)
-    };
-
-    // Draw shadow behind button
-    ui.painter()
-        .rect_filled(rect.translate(shadow_offset), radius + 1.0, shadow_color);
-
-    // Actual button.
-
-    painter.rect_filled(rect, radius, bg_color);
-
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(size.dim().1),
-        egui::Color32::WHITE,
-    );
-
-    response.clicked()
-}
-
-pub fn dialog(
-    ctx: &egui::Context,
-    label: &str,
-    popup_size: Vec2,
-    moveable: bool,
-    add_contents: impl FnOnce(&mut Ui),
-) {
-    let screen_rect = ctx.screen_rect();
-
-    // println!(
-    //     "center: {} {}",
-    //     screen_rect.center().x,
-    //     screen_rect.center().y
-    // );
-    let center_pos = egui::Pos2::new(
-        screen_rect.center().x - popup_size.x / 2.0,
-        screen_rect.center().y - popup_size.y / 2.0,
-    );
-
-    // Clamp to screen boundaries
-    // center_pos.x = center_pos
-    //     .x
-    //     .clamp(screen_rect.left(), screen_rect.right() - popup_size.x);
-    // center_pos.y = center_pos
-    //     .y
-    //     .clamp(screen_rect.top(), screen_rect.bottom() - popup_size.y);
-
-    let window_proto = egui::Window::new(label)
-        .min_size(popup_size)
-        .fixed_size(popup_size)
-        .collapsible(false)
-        .resizable(false)
-        .title_bar(false);
-
-    let window_proto = match moveable {
-        true => window_proto.default_pos(center_pos),
-        false => window_proto.fixed_pos(center_pos),
-    };
-
-    window_proto
-        .frame(Frame {
-            corner_radius: CornerRadius::same(1),
-            fill: Color32::from_gray(40),
-            stroke: Stroke::new(1.0, Color32::from_gray(60)),
-            inner_margin: Margin::symmetric(6, 12),
-            ..Frame::default()
-        })
-        .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                add_contents(ui);
-            });
-        });
 }
 
 impl BlaulichtApp {
@@ -350,6 +76,8 @@ impl BlaulichtApp {
         }
 
         let mut app = Self::new_default(state);
+
+        cc.egui_ctx.set_pixels_per_point(1.0);
 
         // Initialize animation time
         app.animation_time = 0.0;
@@ -431,7 +159,7 @@ impl BlaulichtApp {
                         if let Some(ref btn) = popup.button {
                             ui.add_space(8.0);
 
-                            if button(ui, false, &btn.label, ButtonSize::Large) {
+                            if components::button(ui, false, &btn.label, ButtonSize::Large) {
                                 self.close_popup();
                             }
 
@@ -620,114 +348,7 @@ impl eframe::App for BlaulichtApp {
         // The top panel is often a good place for a menu bar:
 
         //     egui::MenuBar::new().ui(ui, |ui| {
-        //         ui.menu_button("File", |ui| {
-        //             if ui.button("Open showfile").clicked() {
-        //                 if let Some(path) = rfd::FileDialog::new().save_file() {
-        //                     let mut f = File::open(path.clone()).expect("no file found");
-        //                     let metadata = fs::metadata(&path).expect("unable to read metadata");
-        //                     let mut buffer = vec![0; metadata.len() as usize];
-        //                     f.read(&mut buffer).expect("buffer overflow");
-        //
-        //                     let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
-        //                     let mut dmx = self.data.state.dmx_engine.write().unwrap();
-        //                     // dmx.overwrite(decoded);
-        //                     *dmx = decoded;
-        //
-        //                     let mut config_mut = self.data.config.lock().unwrap();
-        //                     config_mut.last_open_showfile = Some(path.clone());
-        //
-        //                     let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-        //                     config::write_config(config_path, config_mut.clone()).unwrap();
-        //
-        //                     self.data
-        //                         .system_message_sender
-        //                         .send(SystemMessage::Log(
-        //                             format!("Saved showfile to {path:?}"),
-        //                             LogLevel::Info,
-        //                         ))
-        //                         .unwrap();
-        //                 }
-        //             }
-        //
-        //             if ui.button("Save to new showfile").clicked() {
-        //                 if let Some(path) = rfd::FileDialog::new().save_file() {
-        //                     let dmx = self.data.state.dmx_engine.read().unwrap();
-        //                     let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-        //                     std::fs::write(&path, serialized).unwrap();
-        //
-        //                     let mut config_mut = self.data.config.lock().unwrap();
-        //                     config_mut.last_open_showfile = Some(path.clone());
-        //
-        //                     let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-        //                     config::write_config(config_path, config_mut.clone()).unwrap();
-        //
-        //                     self.data
-        //                         .system_message_sender
-        //                         .send(SystemMessage::Log(
-        //                             format!("Saved showfile to {path:?}"),
-        //                             LogLevel::Info,
-        //                         ))
-        //                         .unwrap();
-        //                 }
-        //             }
-        //
-        //             let label = match &self
-        //                 .data
-        //                 .config
-        //                 .lock()
-        //                 .unwrap()
-        //                 .last_open_showfile
-        //                 .is_some()
-        //             {
-        //                 true => "Save to current Showfile",
-        //                 false => "Save to current Showfile (none open)",
-        //             };
-        //
-        //             if ui.button(label).clicked() {
-        //                 let mut config_mut = self.data.config.lock().unwrap();
-        //
-        //                 match config_mut.last_open_showfile.clone() {
-        //                     Some(ref path) => {
-        //                         let dmx = self.data.state.dmx_engine.read().unwrap();
-        //                         let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-        //                         std::fs::write(&path, serialized).unwrap();
-        //
-        //                         config_mut.last_open_showfile = Some(path.clone());
-        //
-        //                         let config_path =
-        //                             PathBuf::from_str(&self.data.config_path).unwrap();
-        //                         config::write_config(config_path, config_mut.clone()).unwrap();
-        //
-        //                         self.data
-        //                             .system_message_sender
-        //                             .send(SystemMessage::Log(
-        //                                 format!("Saved showfile to {path:?}"),
-        //                                 LogLevel::Info,
-        //                             ))
-        //                             .unwrap();
-        //                     }
-        //                     None => {
-        //                         self.data
-        //                             .system_message_sender
-        //                             .send(SystemMessage::Log(
-        //                                 "No opened showfile, not saving".to_string(),
-        //                                 LogLevel::Err,
-        //                             ))
-        //                             .unwrap();
-        //                     }
-        //                 }
-        //
-        //                 ui.close();
-        //             }
-        //
-        //             if ui.button("Quit").clicked() {
-        //                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        //             }
-        //         });
-        //         ui.add_space(16.0);
-        //
-        //         egui::widgets::global_theme_preference_buttons(ui);
-        //     });
+        //});
         // });
 
         // Left sidebar
@@ -767,7 +388,10 @@ impl eframe::App for BlaulichtApp {
                 AppPage::Audio => {
                     self.main_ui(ui, ctx);
                 }
-                AppPage::Fixtures => {
+                AppPage::FixturesSetup => {
+                    self.fixtures_ui(ui, ctx);
+                }
+                AppPage::FixturesPerformance => {
                     self.fixtures_ui(ui, ctx);
                 }
                 AppPage::Animations => {
@@ -826,7 +450,7 @@ impl BlaulichtApp {
 
                         ui.separator();
 
-                        if button(ui, false, "Change Device", ButtonSize::Medium) {
+                        if components::button(ui, false, "Change Device", ButtonSize::Medium) {
                             self.set_audio_device_popup_open = true;
                         }
 
@@ -847,7 +471,7 @@ impl BlaulichtApp {
                         debug_assert!(!options.contains(&NONE_LABEL.to_string()));
                         options.push(NONE_LABEL.to_string());
 
-                        let (new_device, changed) = selection_dialog(
+                        let (new_device, changed) = components::selection_dialog(
                             ctx,
                             options,
                             match selected_device.clone() {
@@ -965,7 +589,201 @@ impl BlaulichtApp {
         //     });
     }
 
+    fn save_showfile(&mut self) {
+        let mut config_mut = self.data.config.lock().unwrap();
+
+        match config_mut.last_open_showfile.clone() {
+            Some(ref path) => {
+                let dmx = self.data.state.dmx_engine.read().unwrap();
+                let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                std::fs::write(&path, serialized).unwrap();
+
+                config_mut.last_open_showfile = Some(path.clone());
+
+                let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                config::write_config(config_path, config_mut.clone()).unwrap();
+
+                self.data
+                    .system_message_sender
+                    .send(SystemMessage::Log(
+                        format!("Saved showfile to {path:?}"),
+                        LogLevel::Info,
+                    ))
+                    .unwrap();
+
+                mem::drop(config_mut);
+                mem::drop(dmx);
+
+                self.show_popup(PopupSpec::with_duration(
+                    Duration::from_secs(2),
+                    "Saved Showfile".to_string(),
+                ));
+            }
+            None => {
+                self.data
+                    .system_message_sender
+                    .send(SystemMessage::Log(
+                        "No opened showfile, not saving".to_string(),
+                        LogLevel::Err,
+                    ))
+                    .unwrap();
+
+                mem::drop(config_mut);
+
+                self.show_popup(PopupSpec::with_duration(
+                    Duration::from_secs(2),
+                    "No Showfile".to_string(),
+                ));
+            }
+        }
+    }
+
     fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        if let Some(dialog) = &mut self.open_file_dialog {
+            if dialog.show(ctx).selected() {
+                let mut config = self.data.config.lock().unwrap();
+
+                if let Some(file) = dialog.path() {
+                    match self.file_dialog_open_origin {
+                        FileDialogOpenOrigin::Save => {
+                            // let dmx = self.data.state.dmx_engine.read().unwrap();
+                            // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                            // std::fs::write(file, serialized).unwrap();
+
+                            config.last_open_showfile = Some(file.to_path_buf());
+                            //
+                            // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                            // config::write_config(config_path, config.clone()).unwrap();
+                            //
+                            // self.data
+                            //     .system_message_sender
+                            //     .send(SystemMessage::Log(
+                            //         format!("Saved showfile to {file:?}"),
+                            //         LogLevel::Info,
+                            //     ))
+                            //     .unwrap();
+
+                            mem::drop(config);
+
+                            self.save_showfile();
+                        }
+                        FileDialogOpenOrigin::Load => {
+                            config.last_open_showfile = Some(file.to_path_buf());
+
+                            let mut f = File::open(file).expect("no file found");
+                            let metadata = fs::metadata(file).expect("unable to read metadata");
+                            let mut buffer = vec![0; metadata.len() as usize];
+                            f.read(&mut buffer).expect("buffer overflow");
+
+                            let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
+                            let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                            // dmx.overwrite(decoded);
+                            dmx.load_showfile(decoded);
+                            mem::drop(dmx);
+
+                            config.last_open_showfile = Some(file.to_path_buf());
+
+                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                            config::write_config(config_path, config.clone()).unwrap();
+
+                            self.data
+                                .system_message_sender
+                                .send(SystemMessage::Log(
+                                    format!("Loaded showfile from {file:?}"),
+                                    LogLevel::Info,
+                                ))
+                                .unwrap();
+
+                            mem::drop(config);
+
+                            self.show_popup(PopupSpec::with_duration(
+                                Duration::from_secs(2),
+                                "Loaded Showfile".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        let button_size = ButtonSize::Medium.with_width(100.0);
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                let showfile = self
+                    .data
+                    .config
+                    .lock()
+                    .unwrap()
+                    .last_open_showfile
+                    .as_ref()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "N/A".to_string());
+
+                ui.label("Showfile:");
+                ui.label(showfile);
+            });
+
+            if components::button(ui, false, "Load Showfile", button_size) {
+                // Show only files with the extension "txt".
+                let filter = Box::new({
+                    let ext = Some(OsStr::new("txt"));
+                    move |path: &Path| -> bool { path.extension() == ext }
+                });
+
+                let config = self.data.config.lock().unwrap();
+
+                let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
+                    .show_files_filter(filter);
+
+                dialog.open();
+                self.open_file_dialog = Some(dialog);
+                self.file_dialog_open_origin = FileDialogOpenOrigin::Load;
+            }
+
+            if components::button(ui, false, "Save to Showfile", button_size) {
+                // Show only files with the extension "txt".
+                let filter = Box::new({
+                    let ext = Some(OsStr::new("txt"));
+                    move |path: &Path| -> bool { path.extension() == ext }
+                });
+
+                let config = self.data.config.lock().unwrap();
+
+                let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
+                    .show_files_filter(filter);
+
+                dialog.open();
+                self.open_file_dialog = Some(dialog);
+                self.file_dialog_open_origin = FileDialogOpenOrigin::Save;
+            }
+
+            let (label, allowed) = match &self
+                .data
+                .config
+                .lock()
+                .unwrap()
+                .last_open_showfile
+                .is_some()
+            {
+                true => ("Save Showfile", true),
+                false => ("Sace Showfile", false),
+            };
+            if components::button(ui, allowed, label, button_size) {
+                self.save_showfile();
+            }
+        });
+
+        if components::button(ui, false, "Quit", button_size) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
+        ui.separator();
+
+        ui.add_space(16.0);
+
+        egui::widgets::global_theme_preference_buttons(ui);
+
         egui::SidePanel::right("right_panel")
             .resizable(true)
             .default_width(250.0)
@@ -1190,7 +1008,7 @@ impl BlaulichtApp {
                     let is_selected = self.current_page == page;
                     let label = page.short().to_uppercase();
 
-                    if button(ui, is_selected, &label, button_size) && !is_selected {
+                    if components::button(ui, is_selected, &label, button_size) && !is_selected {
                         self.current_page = page;
                     }
 

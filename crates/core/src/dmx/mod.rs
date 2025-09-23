@@ -112,7 +112,7 @@ impl FixtureState {
                 ]
             }
             ControlEvent::SetColorHue(hue) => {
-                self.color.h = (hue as f64).map_range(0.0..255.0, 0.0..360.0);
+                self.color.h = (hue as f64).clamp(0.0, 360.0);
                 println!("hue: {}", self.color.h);
                 vec![FixtureProperty::ColorHue]
             }
@@ -255,6 +255,7 @@ impl DmxEngine {
                             //      - Syncing shall be displayed graphically
                             //      - Running animations shall also be displayed graphically
                             //      - Each phaser can be absolute / relative!
+                            println!("{}", fixture_anim_state.last_tick_time);
                             if now - fixture_anim_state.last_tick_time >= transition_time as u64 {
                                 for _ in 0..num_ticks {
                                     fixture_anim_state.tick(now);
@@ -460,40 +461,6 @@ impl DmxEngine {
         self.write_to_hw();
     }
 
-    fn get_selection<'engine>(
-        &self,
-        state: &'engine mut RwLockWriteGuard<'_, EngineState>,
-    ) -> FixtureSelection {
-        let group_ids = state.selection.group_ids.clone();
-        let fixtures_in_group = state.selection.fixtures_in_group.clone();
-
-        // let g_fixtures_mut = &mut group.1.fixtures;
-
-        let mut fixtures_to_add = vec![];
-
-        let groups_clone = state.groups.clone();
-
-        for group in groups_clone.iter().filter(|(k, _)| group_ids.contains(&k)) {
-            if fixtures_in_group.is_empty() {
-                for (fix_id, _) in &group.1.fixtures {
-                    fixtures_to_add.push((*group.0, *fix_id));
-                }
-            } else {
-                // let group_fixture = g_fixtures.values_mut();
-                // fixtures.extend(group_fixture);
-                for fix in fixtures_in_group.clone() {
-                    fixtures_to_add.push((*group.0, fix));
-                }
-            }
-        }
-
-        println!("GOT SELECTION: {:?}", fixtures_to_add);
-
-        FixtureSelection {
-            fixtures: fixtures_to_add,
-        }
-    }
-
     pub fn apply(
         &self,
         state: &mut RwLockWriteGuard<'_, EngineState>,
@@ -628,7 +595,7 @@ impl DmxEngine {
                 (None, None)
             }
             CONTROLS_REQUIRING_SELECTION!() => {
-                let curr_selection = self.get_selection(state);
+                let curr_selection = state.get_selection();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)
             }
         }

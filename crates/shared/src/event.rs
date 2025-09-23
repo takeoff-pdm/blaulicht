@@ -220,7 +220,7 @@ pub enum ControlEvent {
     SetAlpha(u8),
     /// Sets the color of the fixture using the RGB format.
     SetColor((u8, u8, u8)),
-    SetColorHue(u8),
+    SetColorHue(u16),
     SetColorSaturation(u8),
     SetColorValue(u8),
     //

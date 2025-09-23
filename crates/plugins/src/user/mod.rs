@@ -115,8 +115,8 @@ fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
                 state.counter += 1.0;
             }
             (176, 16, value) => {
-                let val = (value as u16).map_range(0..127, 0..255);
-                bl_send(ControlEvent::SetColorHue(val as u8));
+                let val = (value as u16).map_range(0..127, 0..360);
+                bl_send(ControlEvent::SetColorHue(val));
             }
             (176, 17, value) => {
                 let val = (value as u16).map_range(0..127, 0..255);

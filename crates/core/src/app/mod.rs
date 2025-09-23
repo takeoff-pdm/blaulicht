@@ -1,22 +1,21 @@
-use std::{
-    fmt::Display,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use egui::Color32;
+use egui_file::FileDialog;
 use strum::EnumIter;
 
 use crate::{
-    app::{graph::TimeSeriesGraph, log::LogWindow},
-    audio::capture::SignalCollector,
-    dmx::animation::{MathematicalBaseFunction, MathematicalPhaser, PhaserDuration},
+    app::{
+        components::{LogWindow, TimeSeriesGraph},
+        pages::DEFAULT_NEW_SCENE_NAME,
+        ui::FileDialogOpenOrigin,
+    },
+    dmx::animation::{MathematicalBaseFunction, PhaserDuration},
     state::AppStateWrapper,
 };
 
-mod animations;
-mod fixtures;
-mod graph;
-mod log;
+mod components;
+mod pages;
 mod ui;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -42,7 +41,8 @@ pub enum AppPage {
     Logs,
     System,
     Audio,
-    Fixtures,
+    FixturesSetup,
+    FixturesPerformance,
     Animations,
 }
 
@@ -52,7 +52,8 @@ impl AppPage {
             AppPage::Logs => "Logs",
             AppPage::System => "Sys",
             AppPage::Audio => "Audio",
-            AppPage::Fixtures => "Fix",
+            AppPage::FixturesSetup => "F. Setup",
+            AppPage::FixturesPerformance => "F. Perf",
             AppPage::Animations => "Anim",
         }
     }
@@ -87,6 +88,14 @@ impl PopupSpec {
         s.lifetime_duration = duration;
         s
     }
+}
+
+pub struct AnimationPageState {
+    pub selected_animation: Option<u8>,
+    pub clamp_min: u16,
+    pub clamp_max: u16,
+    pub base_function: MathematicalBaseFunction,
+    pub timing: PhaserDuration,
 }
 
 pub struct BlaulichtApp {
@@ -131,7 +140,8 @@ pub struct BlaulichtApp {
 
     new_scene_name: String,
     new_scene_dialog_open: bool,
-    current_scene_dialog_open: bool,
+    current_scene_changeset_dialog_open: bool,
+    current_scene_animations_dialog_open: bool,
     show_dmx_simulation: bool,
 
     popup: Option<PopupSpec>,
@@ -141,12 +151,90 @@ pub struct BlaulichtApp {
 
     // TODO: move into custom scroll area or whatever
     scene_page_index: usize,
+
+    open_file_dialog: Option<FileDialog>,
+    file_dialog_open_origin: FileDialogOpenOrigin,
 }
 
-pub struct AnimationPageState {
-    pub selected_animation: Option<u8>,
-    pub clamp_min: u16,
-    pub clamp_max: u16,
-    pub base_function: MathematicalBaseFunction,
-    pub timing: PhaserDuration,
+impl BlaulichtApp {
+    fn new_default(data: AppStateWrapper) -> Self {
+        Self {
+            // Example stuff:
+            label: "Hello World!".to_owned(),
+            value: 2.7,
+            volume_graph: TimeSeriesGraph::new(
+                "Volume".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            beat_volume_graph: TimeSeriesGraph::new(
+                "Beat Volume".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            bass_graph: TimeSeriesGraph::new(
+                "Bass".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            bass_avg_graph: TimeSeriesGraph::new(
+                "Bass Avg".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            bass_avg_short_graph: TimeSeriesGraph::new(
+                "Bass Avg Short".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            bpm_graph: TimeSeriesGraph::new(
+                "BPM".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            time_between_beats_graph: TimeSeriesGraph::new(
+                "Time Between Beats".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            frame_count: 0,
+            animation_time: 0.0,
+            data,
+            // recv,
+            // collector,
+            loop_speed: 0,
+            tick_speed: 0,
+            // logs: vec![],
+            log_window: LogWindow::new(100),
+            current_page: AppPage::Logs,
+            last_heartbeat_frame: 0,
+            selected_fixture_group: None,
+            available_audio_devices: vec![],
+            animation_page: AnimationPageState {
+                selected_animation: None,
+                clamp_min: 0,
+                clamp_max: 255,
+                base_function: MathematicalBaseFunction::Sin,
+                timing: PhaserDuration::Fixed(1000),
+            },
+            new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
+            new_scene_dialog_open: false,
+            current_scene_changeset_dialog_open: false,
+            current_scene_animations_dialog_open: false,
+            show_dmx_simulation: false,
+            popup: None,
+            popup_open_time: Instant::now(),
+            set_audio_device_popup_open: false,
+            scene_page_index: 0,
+            open_file_dialog: None,
+            file_dialog_open_origin: FileDialogOpenOrigin::Save,
+        }
+    }
 }

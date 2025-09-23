@@ -98,6 +98,85 @@ pub struct EngineState {
 }
 
 impl<'engine> EngineState {
+    pub fn get_selection(&self) -> FixtureSelection {
+        let group_ids = self.selection.group_ids.clone();
+        let fixtures_in_group = self.selection.fixtures_in_group.clone();
+
+        // let g_fixtures_mut = &mut group.1.fixtures;
+
+        let mut fixtures_to_add = vec![];
+
+        let groups_clone = self.groups.clone();
+
+        for group in groups_clone.iter().filter(|(k, _)| group_ids.contains(&k)) {
+            if fixtures_in_group.is_empty() {
+                for (fix_id, _) in &group.1.fixtures {
+                    fixtures_to_add.push((*group.0, *fix_id));
+                }
+            } else {
+                // let group_fixture = g_fixtures.values_mut();
+                // fixtures.extend(group_fixture);
+                for fix in fixtures_in_group.clone() {
+                    fixtures_to_add.push((*group.0, fix));
+                }
+            }
+        }
+
+        println!("GOT SELECTION: {:?}", fixtures_to_add);
+
+        FixtureSelection {
+            fixtures: fixtures_to_add,
+        }
+    }
+
+    pub fn load_showfile(&mut self, other: EngineState) {
+        // This is actually required because the timetamps need to be reset to 0.
+        let scenes =
+            other
+                .scenes
+                .into_iter()
+                .map(|(k, scene)| {
+                    (
+                        k,
+                        Scene {
+                            sink: EngineSink {
+                                active_animations: scene
+                                    .sink
+                                    .active_animations
+                                    .into_iter()
+                                    .map(|(s, animations)| {
+                                        (
+                                            s,
+                                            animations
+                                                .into_iter()
+                                                .map(|(k, a)| {
+                                                    (
+                                                    k,
+                                                    ActiveAnimation {
+                                                        fixture_timers: a
+                                                            .fixture_timers.into_keys().map(|k| {
+                                                                (k, AnimationTimerState::default())
+                                                            })
+                                                            .collect(),
+                                                        ..a
+                                                    },
+                                                )
+                                                })
+                                                .collect(),
+                                        )
+                                    })
+                                    .collect(),
+                                ..scene.sink
+                            },
+                            ..scene
+                        },
+                    )
+                })
+                .collect();
+
+        *self = Self { scenes, ..other };
+    }
+
     pub fn groups(&self) -> &EngineGroups {
         &self.groups
     }
