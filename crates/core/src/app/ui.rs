@@ -808,6 +808,8 @@ impl BlaulichtApp {
                         if components::button(ui, false, "Confirm", ButtonSize::Large) {
                             let status = Command::new("sudo")
                                 .arg("/sbin/shutdown")
+                                .arg("-h")
+                                .arg("now")
                                 .status()
                                 .expect("Failed to execute shutdown command");
 
