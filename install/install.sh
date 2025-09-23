@@ -45,7 +45,7 @@ sudo apt install -y xterm || exit 1
 #
 
 sudo killall blaulicht || echo "Blaulicht not running"
-sudo apt install -y wget jq || exit 1
+sudo apt install -y wget jq libxkbcommon-x11-0 || exit 1
 
 rm blaulicht || echo "No junk yet..."
 wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \
