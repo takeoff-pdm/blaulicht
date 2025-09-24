@@ -141,8 +141,8 @@ impl Plugin {
         //
         // Tick function.
         //
-        let func = self.instance.get_typed_func::<(i32, i32), ()>(
-            &mut self.store,
+        let func = self.wasm_state.instance.get_typed_func::<(i32, i32), ()>(
+            &mut self.wasm_state.store,
             "internal_tick", // TODO: external type and name constants.
         )?;
 
@@ -156,8 +156,8 @@ impl Plugin {
         for &num in &tick_array_data {
             tick_array_bytes.extend_from_slice(&num.to_le_bytes());
         }
-        self.memory
-            .write(&mut self.store, tick_array_offset, &tick_array_bytes)?;
+        self.wasm_state.memory
+            .write(&mut self.wasm_state.store, tick_array_offset, &tick_array_bytes)?;
 
         // TODO: macro for this array stuff.
 
@@ -188,8 +188,8 @@ impl Plugin {
         }
 
         // Write the MIDI array to memory.
-        self.memory.write(
-            &mut self.store,
+        self.wasm_state.memory.write(
+            &mut self.wasm_state.store,
             self.midi_status.buffer_addr(),
             &midi_array_bytes,
         )?;
@@ -197,8 +197,8 @@ impl Plugin {
         // Write the length of the MIDI array to memory.
         let mut midi_length_bytes = Vec::new();
         midi_length_bytes.extend_from_slice(&midi_array_len.to_le_bytes());
-        self.memory.write(
-            &mut self.store,
+        self.wasm_state.memory.write(
+            &mut self.wasm_state.store,
             self.midi_status.buffer_len_addr(),
             &midi_length_bytes,
         )?;
@@ -226,7 +226,7 @@ impl Plugin {
         // Call the function with the pointer and length
 
         func.call(
-            &mut self.store,
+            &mut self.wasm_state.store,
             (
                 tick_array_offset as i32,
                 tick_array_len,

@@ -7,6 +7,7 @@ use blaulicht_shared::LogLevel;
 use blaulicht_shared::TickInput;
 use cpal::Device;
 use crossbeam_channel::Sender;
+use egui::ahash::HashMapExt;
 use log::error;
 use log::{debug, info, warn};
 use std::borrow::Cow;
@@ -23,6 +24,7 @@ use wasmtime::*;
 
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
+use crate::plugin::PluginWasmState;
 use crate::{
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
@@ -66,20 +68,20 @@ impl PluginManager {
 //
 
 #[cfg(feature = "wasmtime")]
-impl pluginmanager {
-    pub fn instantiate_plugins(&mut self) -> anyhow::result<()> {
+impl PluginManager {
+    pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
         //
         // basic engine setup.
         //
-        let mut config = wasmtime::config::new();
-        config.strategy(wasmtime::strategy::cranelift);
-        config.cranelift_opt_level(wasmtime::optlevel::speed);
-        let engine = engine::new(&config).with_context(|| "failed to create wasmtime engine")?;
+        let mut config = wasmtime::Config::new();
+        config.strategy(wasmtime::Strategy::Cranelift);
+        config.cranelift_opt_level(wasmtime::OptLevel::Speed);
+        let engine = Engine::new(&config).with_context(|| "failed to create wasmtime engine")?;
 
-        let mut linker = linker::new(&engine);
+        let mut linker = Linker::new(&engine);
         self.provide_host_functions(&mut linker)?;
 
-        let mut modules = hashmap::new();
+        let mut modules = HashMap::new();
 
         for (plugin_id, plugin) in self.plugin_config.iter().enumerate() {
             if !plugin.enabled {
@@ -92,10 +94,10 @@ impl pluginmanager {
             let wasm_bytes =
                 fs::read(&plugin.file_path).with_context(|| "failed to read wasm file")?;
             let module =
-                module::new(&engine, wasm_bytes).with_context(|| "failed to create wasm module")?;
+                Module::new(&engine, wasm_bytes).with_context(|| "failed to create wasm module")?;
             modules.insert(plugin_name.clone(), module.clone());
 
-            let mut store = store::new(&engine, ());
+            let mut store = Store::new(&engine, ());
 
             // instantiate the module
             let instance = linker
@@ -122,14 +124,16 @@ impl pluginmanager {
             debug!("loaded plugin: {}", plugin_name);
 
             // store the instance and store for future use
-            let mut plugin = plugin {
+            let mut plugin = Plugin {
                 path: plugin.file_path.clone().into(),
-                memory: instance
-                    .get_memory(&mut store, "memory")
-                    .expect("memory not found"),
-                store,
-                instance,
-                midi_status: midistatus::dummy(),
+                wasm_state: PluginWasmState {
+                    memory: instance
+                        .get_memory(&mut store, "memory")
+                        .expect("memory not found"),
+                    store,
+                    instance,
+                },
+                midi_status: MidiStatus::dummy(),
             };
 
             plugin
@@ -155,15 +159,15 @@ impl pluginmanager {
 
         log::info!("[wasm] initialized.");
 
-        ok(())
+        Ok(())
     }
 
-    fn provide_host_functions(&mut self, linker: &mut linker<()>) -> anyhow::result<()> {
+    fn provide_host_functions(&mut self, linker: &mut Linker<()>) -> anyhow::Result<()> {
         let so = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "udp",
-            move |mut caller: caller<'_, ()>,
+            move |mut caller: Caller<'_, ()>,
                   target_addr_pointer: i32,
                   target_addr_len: i32,
                   byte_arr_pointer: i32,
@@ -183,7 +187,7 @@ impl pluginmanager {
                     .read(&caller, target_addr_pointer as usize, &mut addr_buffer)
                     .expect("failed to read memory");
 
-                let target_addr = string::from_utf8_lossy(&addr_buffer).to_string();
+                let target_addr = String::from_utf8_lossy(&addr_buffer).to_string();
 
                 // todo: implement udp support.
                 todo!("udp support not implemented yet");
@@ -203,7 +207,7 @@ impl pluginmanager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "log",
-            move |mut caller: caller<'_, ()>,
+            move |mut caller: Caller<'_, ()>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -218,15 +222,15 @@ impl pluginmanager {
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
 
-                let received_string = string::from_utf8_lossy(&buffer).to_string();
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                let level : loglevel =
+                let level : LogLevel =
                     level_raw.try_into().unwrap_or_else(|_|  {
                         error!("a plugin called blaulicht::log with an illegal log-level-integer: {level_raw}");
-                        loglevel::info
+                        LogLevel::Info
                     });
 
-                so.send(systemmessage::wasmlog(wasmlogbody {
+                so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: received_string.into(),
                     level,
@@ -239,7 +243,7 @@ impl pluginmanager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_send_event",
-            move |mut caller: caller<'_, ()>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -251,8 +255,8 @@ impl pluginmanager {
                     .expect("failed to read memory");
 
                 // todo: may panic.
-                let event = controlevent::deserialize(&buffer);
-                event_bus.send(controleventmessage::new(eventoriginator::plugin, event));
+                let event = ControlEvent::deserialize(&buffer);
+                event_bus.send(ControlEventMessage::new(EventOriginator::Plugin, event));
             },
         )?;
 
@@ -260,7 +264,7 @@ impl pluginmanager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "controls_log",
-            move |mut caller: caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -271,9 +275,9 @@ impl pluginmanager {
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
 
-                let received_string = string::from_utf8_lossy(&buffer).to_string();
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                so.send(systemmessage::wasmcontrolslog(wasmcontrolslog {
+                so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
                     x: x as u8,
                     y: y as u8,
                     value: received_string,
@@ -286,8 +290,8 @@ impl pluginmanager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "controls_set",
-            move |mut _caller: caller<'_, ()>, x: i32, y: i32, value: i32| {
-                so.send(systemmessage::wasmcontrolsset(wasmcontrolsset {
+            move |mut _caller: Caller<'_, ()>, x: i32, y: i32, value: i32| {
+                so.send(SystemMessage::WasmControlsSet(WasmControlsSet {
                     x: x as u8,
                     y: y as u8,
                     value: value != 0,
@@ -300,8 +304,8 @@ impl pluginmanager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "controls_config",
-            move |mut _caller: caller<'_, ()>, x: i32, y: i32| {
-                so.send(systemmessage::wasmcontrolsconfig(wasmcontrolsconfig {
+            move |mut _caller: Caller<'_, ()>, x: i32, y: i32| {
+                so.send(SystemMessage::WasmControlsConfig(WasmControlsConfig {
                     x: x as u8,
                     y: y as u8,
                 }))
@@ -315,7 +319,7 @@ impl pluginmanager {
             "blaulicht",
             "bl_transmit_midi",
             move |device: i32, status: i32, kind: i32, value: i32| {
-                mo.send(midievent {
+                mo.send(MidiEvent {
                     device: device as u8,
                     status: status as u8,
                     data0: kind as u8,
@@ -342,11 +346,11 @@ impl pluginmanager {
         //     },
         // )?;
 
-        let midi_manager = arc::clone(&self.midi_manager_ref);
+        let midi_manager = Arc::clone(&self.midi_manager_ref);
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_open_midi_device",
-            move |mut caller: caller<'_, ()>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -357,16 +361,16 @@ impl pluginmanager {
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
 
-                let device_name = string::from_utf8_lossy(&buffer).to_string();
+                let device_name = String::from_utf8_lossy(&buffer).to_string();
 
                 println!("open midi...");
 
                 let mut midi_manager = midi_manager.lock().unwrap();
-                midi_manager.request_device(&device_name).unwrap_or(u8::max) as u32
+                midi_manager.request_device(&device_name).unwrap_or(u8::MAX) as u32
             },
         )?;
 
-        ok(())
+        Ok(())
     }
 }
 
@@ -738,22 +742,22 @@ impl Plugin {
         //
         // Get midi buffer start address.
         //
-        let func = self.instance.get_typed_func::<(), i32>(
-            &mut self.store,
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
             "__internal_get_global_midi_buffer_start_addr", // TODO: external type and name constants.
         )?;
 
-        let midi_buffer_start_addr = func.call(&mut self.store, ())?;
+        let midi_buffer_start_addr = func.call(&mut self.wasm_state.store, ())?;
 
         //
         // Get midi buffer length start address.
         //
-        let func = self.instance.get_typed_func::<(), i32>(
-            &mut self.store,
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
             "__internal_get_global_midi_buffer_length_start_addr", // TODO: external type and name constants.
         )?;
 
-        let midi_buffer_length_start_addr = func.call(&mut self.store, ())?;
+        let midi_buffer_length_start_addr = func.call(&mut self.wasm_state.store, ())?;
 
         let addrs = MidiStatus {
             start_addr: midi_buffer_start_addr,

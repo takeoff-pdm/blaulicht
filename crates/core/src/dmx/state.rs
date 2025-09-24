@@ -262,7 +262,7 @@ impl Default for EngineState {
             0 => FixtureGroup {
                  fixtures: hashmap! {
                     0 => Fixture::new(1, "G0 FooBar".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
-                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic4ChanWithAlpha)),
+                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic3ChanNoAlpha)),
                  }.into_iter().collect(),
             },
             1 => FixtureGroup {

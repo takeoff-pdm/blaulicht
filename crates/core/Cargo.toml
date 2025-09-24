@@ -12,8 +12,8 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 
 [features]
-default = [] # ["wasmtime"]   # keep it on by default
-wasmtime = ["dep:wasmtime"] 
+default = ["wasmtime"]   # keep it on by default
+wasmtime = ["dep:wasmtime"]
 
 [dependencies]
 log = "0.4"
