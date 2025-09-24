@@ -1,0 +1,2 @@
+maximize();
+undecorate_window();

@@ -58,7 +58,11 @@ mv ./blaulicht-dist/blaulicht ./blaulicht
 sudo cp blaulicht /usr/bin/blaulicht || exit 1
 sudo chmod +x /usr/bin/blaulicht || exit 1
 
-cp ./openbox-autostart ~/.config/openbox/autostart
+mkdir -p ~/.config/openbox
+cp ./openbox-autostart ~/.config/openbox/autostart || exit 1
+
+mkdir -p ~/.config/devilspie2
+cp ./blaulicht.lua ~/.config/devilspie2/
 
 # TOOD: autostart?
 # AUTOSTART_BASE_DIR=~/.config/autostart/
