@@ -890,7 +890,7 @@ impl BlaulichtApp {
                                     rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     name,
-                                    egui::FontId::monospace(14.0),
+                                    egui::FontId::monospace(10.0),
                                     if plugin.is_active() {
                                         Color32::WHITE
                                     } else {
