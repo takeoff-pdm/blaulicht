@@ -390,7 +390,7 @@ impl eframe::App for BlaulichtApp {
                     self.main_ui(ui, ctx);
                 }
                 AppPage::FixturesSetup => {
-                    self.fixtures_ui(ui, ctx);
+                    self.fixtures_ui_setup(ui, ctx);
                 }
                 AppPage::FixturesPerformance => {
                     self.fixtures_ui(ui, ctx);
@@ -875,7 +875,7 @@ impl BlaulichtApp {
                                         let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
                                         show_border = blink;
                                         egui::Color32::from_rgb(200, 200, 0)
-                                    },
+                                    }
                                 };
 
                                 // Draw the main box

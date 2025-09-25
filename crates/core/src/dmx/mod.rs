@@ -15,10 +15,7 @@ use log::{debug, error};
 
 use crate::{
     audio::defs::DMX_TICK_TIME,
-    dmx::{
-        animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
-        scene::{EngineSink, Scene},
-    },
+    dmx::animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
     state::AppState,
@@ -32,7 +29,6 @@ use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     mem,
     sync::{Arc, RwLockWriteGuard},
-    thread,
     time::{Duration, Instant},
 };
 
@@ -70,25 +66,6 @@ impl FixtureSelection {
     }
 }
 
-// impl Fixture {
-//     fn apply(&mut self, ev: ControlEvent) {
-//         // match ev {
-//         //     ControlEvent::SetEnabled(enabled) => {
-//         //         todo!("not supported");
-//         //     }
-//         //     ControlEvent::SetBrightness(brightness) => {
-//         //         self.set_alpha(brightness);
-//         //     }
-//         //     ControlEvent::SetColor(clr) => {
-//         //         self.set_color(clr);
-//         //     }
-//         //     ControlEvent::MiscEvent { descriptor, value } => todo!(),
-//         //     _ => {}
-//         // }
-//         self.state.apply(ev);
-//     }
-// }
-//
 // TODO: maybe fuse this together?
 
 impl FixtureState {
@@ -456,6 +433,11 @@ impl DmxEngine {
             }
         }
 
+        // Apply overrides
+        for (chan, value) in &state.overrides {
+            buffer.dmx_buffer[*chan as usize] = *value;
+        }
+
         mem::drop(state);
         mem::drop(buffer);
 
@@ -500,6 +482,30 @@ impl DmxEngine {
 
                 (None, None)
             }
+            // Overrides
+            ControlEvent::SetChannelOverride(chan, value) => {
+                if chan > 512 {
+                    return (
+                        Some("Illegal channel no."),
+                        Some(ControlEvent::RemoveChannelOverride(chan)),
+                    );
+                }
+
+                state.overrides.insert(chan as usize, value);
+                (None, None)
+            }
+            ControlEvent::RemoveChannelOverride(chan) => {
+                let ch = chan as usize;
+                if state.overrides.remove(&ch).is_none() {
+                    (
+                        Some("Channel override does not exist (missing)"),
+                        Some(ControlEvent::SetChannelOverride(chan, 0)),
+                    )
+                } else {
+                    (None, None)
+                }
+            }
+            // Other
             ControlEvent::SelectGroup(group_id) => {
                 if !state.groups.contains_key(&group_id) {
                     return (

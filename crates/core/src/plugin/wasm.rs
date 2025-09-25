@@ -20,9 +20,10 @@ use std::u8;
 use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant};
 
 #[cfg(feature = "wasmtime")]
+use super::PluginWasmState;
+#[cfg(feature = "wasmtime")]
 use wasmtime::*;
 
-use super::PluginWasmState;
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::{

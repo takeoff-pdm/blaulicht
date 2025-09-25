@@ -96,7 +96,6 @@ impl EngineSink {
         Self {
             fixture_states,
             active_animations: HashMap::new(),
-            // log: vec![],
             changeset: HashSet::new(),
         }
     }

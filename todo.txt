@@ -1,9 +1,10 @@
-- channel override
+[X] channel override 
 
-- scene transitions
-- scene cues
-- scene timeline
-- scene stacking
-- music anim
-- more anim
-- midi mappig
+[ ] music anim
+[ ] scene cues
+
+[ ] scene transitions
+[ ] scene timeline
+[ ] scene stacking
+[ ] more anim
+[ ] midi mappig

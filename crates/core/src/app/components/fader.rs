@@ -1,6 +1,6 @@
 // use egui::*;
 
-use egui::{Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
+use egui::{vec2, Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
 
 /// A vertical fader widget, like a MIDI/DMX control.
 /// - Draws a track with tick marks
@@ -157,6 +157,7 @@ impl<'a> HFader<'a> {
 impl<'a> Widget for HFader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let desired_size = egui::vec2(120.0, 28.0); // width, height
+
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
         if response.dragged() {

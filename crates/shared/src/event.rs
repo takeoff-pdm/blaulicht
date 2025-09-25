@@ -251,6 +251,10 @@ pub enum ControlEvent {
     //
     // Focusses the scene with the given ID.
     SetSceneFocus(u8),
+
+    // Other stuff,
+    SetChannelOverride(u16, u8), // Channel and value.
+    RemoveChannelOverride(u16),  // Channel
 }
 
 #[macro_export]
@@ -295,6 +299,8 @@ impl ControlEvent {
             | ControlEvent::PushSelection
             | ControlEvent::SetSceneFocus(_) => false,
             ControlEvent::Transaction(_) => false,
+            ControlEvent::SetChannelOverride(_, _) => false,
+            ControlEvent::RemoveChannelOverride(_) => false,
         }
     }
 }

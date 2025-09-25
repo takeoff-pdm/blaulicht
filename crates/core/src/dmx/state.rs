@@ -12,6 +12,7 @@ use crate::dmx::{
 use blaulicht_shared::{AnimationSpeedModifier, FixtureProperty, RGBColor};
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
+use serialport::BreakDuration;
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     time::Instant,
@@ -95,6 +96,9 @@ pub struct EngineState {
 
     // First scene is the least-significant.
     pub current_overlay_scenes: Vec<u8>,
+
+    // Overrides a channel -> value
+    pub overrides: BTreeMap<usize, u8>,
 }
 
 impl<'engine> EngineState {
@@ -343,6 +347,7 @@ impl Default for EngineState {
             .collect(),
             current_scene_focus: 0,
             current_overlay_scenes: vec![],
+            overrides: BTreeMap::new(),
         }
     }
 }

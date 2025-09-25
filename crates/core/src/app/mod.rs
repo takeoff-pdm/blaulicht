@@ -6,8 +6,7 @@ use strum::EnumIter;
 
 use crate::{
     app::{
-        components::{LogWindow, TimeSeriesGraph},
-        pages::DEFAULT_NEW_SCENE_NAME,
+        components::{LogWindow, TimeSeriesGraph, DEFAULT_NEW_SCENE_NAME},
         ui::FileDialogOpenOrigin,
     },
     dmx::animation::{MathematicalBaseFunction, PhaserDuration},
@@ -156,6 +155,12 @@ pub struct BlaulichtApp {
     file_dialog_open_origin: FileDialogOpenOrigin,
 
     confirm_shutdown_open: bool,
+
+    add_dmx_override_open: bool,
+    add_dmx_override_chan: u16,
+    add_dmx_override_value: u8,
+
+    dmx_override_dialog_open: bool,
 }
 
 impl BlaulichtApp {
@@ -238,6 +243,10 @@ impl BlaulichtApp {
             scene_page_index: 0,
             open_file_dialog: None,
             file_dialog_open_origin: FileDialogOpenOrigin::Save,
+            add_dmx_override_open: false,
+            add_dmx_override_chan: 1,
+            add_dmx_override_value: 0,
+            dmx_override_dialog_open: false,
         }
     }
 }
