@@ -16,7 +16,10 @@ use log::{debug, error};
 
 use crate::{
     audio::defs::DMX_TICK_TIME,
-    dmx::animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
+    dmx::{
+        animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
+        clock::Time,
+    },
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
     state::AppState,
@@ -120,9 +123,20 @@ pub struct DmxEngine {
     start_time: Instant,
 
     dmx_port: Option<Box<dyn SerialPort>>,
+
+    running_setup: bool,
+    run_setup_until: Instant,
 }
 
 impl DmxEngine {
+    pub fn start_setup(&mut self) {
+        const SETUP_SECS: u64 = 64;
+        self.running_setup = true;
+        self.run_setup_until = Instant::now()
+            .checked_add(Duration::from_secs(SETUP_SECS))
+            .unwrap();
+    }
+
     fn open_hw_interface(sys: Sender<SystemMessage>) -> Option<Box<dyn SerialPort>> {
         // TODO: use USB intrinsics for detection: look at v1 branch
 
@@ -162,6 +176,8 @@ impl DmxEngine {
             animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
             dmx_port,
+            running_setup: false,
+            run_setup_until: Instant::now(),
         }
     }
 
@@ -171,6 +187,16 @@ impl DmxEngine {
         let mut events = vec![];
         while let Some(ev) = self.event_bus_connection.try_recv() {
             events.push(ev)
+        }
+
+        if self.running_setup {
+            self.run_setup();
+
+            if self.run_setup_until >= Instant::now() {
+                self.running_setup = false;
+            }
+
+            return true;
         }
 
         // Advance animations.
@@ -386,6 +412,39 @@ impl DmxEngine {
         // };
         //
         // Ok(this)
+    }
+
+    fn run_setup(&mut self) {
+        let state = self.state_ref.dmx_engine.read().unwrap();
+        let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
+
+        // For each fixture, merge all scene states.
+
+        for group in &state.groups {
+            for fixture in &group.1.fixtures {
+                let fix = fixture.1;
+
+                let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+
+                println!("SETUP T: {time}");
+
+                fix.setup(
+                    Time::new(time as i32),
+                    &FixtureState::default(),
+                    &mut buffer.dmx_buffer,
+                );
+            }
+        }
+
+        // Apply overrides
+        for (chan, value) in &state.overrides {
+            buffer.dmx_buffer[*chan as usize] = *value;
+        }
+
+        mem::drop(state);
+        mem::drop(buffer);
+
+        self.write_to_hw();
     }
 
     fn update_dmx_buffer(&mut self) {

@@ -3,13 +3,13 @@ mod light;
 mod moving_head;
 
 use crate::dmx::clock::Time;
-use blaulicht_shared::{FixtureProperty, HSVColor, RGBColor};
+use blaulicht_shared::{FixtureProperty, HSVColor};
 pub use dimmer::*;
 pub use light::*;
 use map_range::MapRange;
 pub use moving_head::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap, fmt::Display, u16};
+use std::{borrow::Cow, collections::BTreeMap, u16};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FixtureOrientation {
@@ -171,7 +171,7 @@ impl Fixture {
     // End rotation.
     //
 
-    pub fn setup(&mut self, time: Time, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, time: Time, state: &FixtureState, dmx: &mut [u8]) {
         self.type_.setup(self, time, state, dmx);
     }
 }

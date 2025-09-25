@@ -3,11 +3,12 @@ use std::u16;
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
+use egui::Context;
 use egui_plot::{Line, Plot, PlotPoints};
 use strum::IntoEnumIterator;
 
 use crate::{
-    app::BlaulichtApp,
+    app::{components::{self, ButtonSize}, BlaulichtApp},
     dmx::{animation::{AnimationSpecBody, MathematicalBaseFunction, PhaserDuration, PhaserKind}, EngineState},
 };
 
