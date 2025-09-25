@@ -2,12 +2,13 @@ use std::fmt::Display;
 
 use blaulicht_shared::RGBColor;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 use crate::dmx::{clock::Time, FixtureState};
 
 use super::Fixture;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, EnumIter)]
 pub enum MovingHead {
     MartinMacAura,
 }

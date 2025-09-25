@@ -65,10 +65,6 @@ static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
 pub fn initialize(input: TickInput) {
     println!("Initializing...");
 
-    bl_sys("echo 'hello'");
-
-    return;
-
     let mut devices = vec![
         MidiDevice::NanoKontrol,
         MidiDevice::MidiMix,
@@ -103,6 +99,9 @@ pub fn initialize(input: TickInput) {
             brightness_mod: 0,
         });
     }
+
+    // Initialize fans in the end.
+    bl_sys("sudo fans on");
 }
 
 fn midimix(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State) {
@@ -245,8 +244,6 @@ fn apc(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State, input: TickI
 }
 
 pub fn run(input: TickInput) {
-    return;
-
     let state = unsafe {
         #[allow(static_mut_refs)]
         STATE.assume_init_mut()

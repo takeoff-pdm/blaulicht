@@ -55,7 +55,9 @@ pub struct AppState {
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
-    pub dmx_buffer: RwLock<DmxBuffer>,
+
+    pub dmx_universes: [RwLock<DmxBuffer>; 2],
+
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
 }
@@ -89,7 +91,7 @@ impl AppState {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             dmx_engine: RwLock::new(EngineState::default()),
-            dmx_buffer: RwLock::new(DmxBuffer::new()),
+            dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),

@@ -253,8 +253,8 @@ pub enum ControlEvent {
     SetSceneFocus(u8),
 
     // Other stuff,
-    SetChannelOverride(u16, u8), // Channel and value.
-    RemoveChannelOverride(u16),  // Channel
+    SetChannelOverride(u16, u16, u8), // Universe, Channel and value.
+    RemoveChannelOverride(u16, u16),  // Universe, Channel
 }
 
 #[macro_export]
@@ -299,8 +299,8 @@ impl ControlEvent {
             | ControlEvent::PushSelection
             | ControlEvent::SetSceneFocus(_) => false,
             ControlEvent::Transaction(_) => false,
-            ControlEvent::SetChannelOverride(_, _) => false,
-            ControlEvent::RemoveChannelOverride(_) => false,
+            ControlEvent::SetChannelOverride(_, _, _) => false,
+            ControlEvent::RemoveChannelOverride(_, _) => false,
         }
     }
 }

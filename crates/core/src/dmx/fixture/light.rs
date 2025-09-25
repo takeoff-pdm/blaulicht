@@ -2,12 +2,13 @@ use std::fmt::Display;
 
 use blaulicht_shared::RGBColor;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 use crate::dmx::{clock::Time, FixtureState};
 
 use super::Fixture;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, EnumIter)]
 pub enum Light {
     //
     // 0: Red
@@ -89,9 +90,24 @@ impl Light {
                 dmx[this.start_addr + 2] = color.b;
                 dmx[this.start_addr + 3] = state.alpha;
             }
-            Light::AdjMegaHexPar => todo!(),
-            Light::LiteCraftMiniParAT10 => todo!(),
-            Light::VaryTechVP1 => todo!(),
+            Light::AdjMegaHexPar => {
+                dmx[this.start_addr + 0] = color.r;
+                dmx[this.start_addr + 1] = color.g;
+                dmx[this.start_addr + 2] = color.b;
+                dmx[this.start_addr + 6] = state.alpha;
+            }
+            Light::LiteCraftMiniParAT10 => {
+                dmx[this.start_addr + 0] = color.r;
+                dmx[this.start_addr + 1] = color.g;
+                dmx[this.start_addr + 2] = color.b;
+                dmx[this.start_addr + 7] = state.alpha;
+            }
+            Light::VaryTechVP1 => {
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = 0; // strobe
+                dmx[this.start_addr + 2] = 127; // warm white
+                dmx[this.start_addr + 3] = 127; // cold white
+            }
         }
     }
 

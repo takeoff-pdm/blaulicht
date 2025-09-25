@@ -45,14 +45,14 @@ impl BlaulichtApp {
 
                             ui.separator();
 
-                            if components::button(
-                                ui,
-                                self.show_dmx_simulation,
-                                "Show DMX",
-                                ButtonSize::Medium,
-                            ) {
-                                self.show_dmx_simulation = !self.show_dmx_simulation;
-                            }
+                            // if components::button(
+                            //     ui,
+                            //     self.show_dmx_simulation,
+                            //     "Show DMX",
+                            //     ButtonSize::Medium,
+                            // ) {
+                            //     self.show_dmx_simulation = !self.show_dmx_simulation;
+                            // }
                         });
 
                         ui.separator();

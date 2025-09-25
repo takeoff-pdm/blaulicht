@@ -6,7 +6,7 @@ use strum::EnumIter;
 
 use crate::{
     app::{
-        components::{LogWindow, TimeSeriesGraph, DEFAULT_NEW_SCENE_NAME},
+        components::{LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME, DEFAULT_NEW_SCENE_NAME},
         ui::FileDialogOpenOrigin,
     },
     dmx::animation::{MathematicalBaseFunction, PhaserDuration},
@@ -141,7 +141,8 @@ pub struct BlaulichtApp {
     new_scene_dialog_open: bool,
     current_scene_changeset_dialog_open: bool,
     current_scene_animations_dialog_open: bool,
-    show_dmx_simulation: bool,
+
+    show_dmx_simulation_universes: [bool; 2],
 
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
@@ -157,6 +158,7 @@ pub struct BlaulichtApp {
     confirm_shutdown_open: bool,
 
     add_dmx_override_open: bool,
+    add_dmx_override_uni: u16,
     add_dmx_override_chan: u16,
     add_dmx_override_value: u8,
 
@@ -167,6 +169,7 @@ pub struct BlaulichtApp {
     add_fixture_group: u8,
     add_fixture_name: String,
     add_fixture_start_addr: u16,
+    add_fixture_universe_no: u16,
     add_fixture_pos_x: usize,
     add_fixture_pos_y: usize,
     // 0 = MovingHead, 1 = Light, 2 = Dimmer
@@ -175,6 +178,13 @@ pub struct BlaulichtApp {
     add_fixture_model_index: usize,
 
     setup_fixture_id: u8,
+
+    new_fixture_name: String,
+    new_fixture_uni: usize,
+    new_fixture_addr: usize,
+
+    add_group_open: bool,
+    new_group_name: String,
 }
 
 impl BlaulichtApp {
@@ -249,7 +259,6 @@ impl BlaulichtApp {
             new_scene_dialog_open: false,
             current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
-            show_dmx_simulation: false,
             confirm_shutdown_open: false,
             popup: None,
             popup_open_time: Instant::now(),
@@ -259,6 +268,7 @@ impl BlaulichtApp {
             file_dialog_open_origin: FileDialogOpenOrigin::Save,
             add_dmx_override_open: false,
             add_dmx_override_chan: 1,
+            add_dmx_override_uni: 0,
             add_dmx_override_value: 0,
             dmx_override_dialog_open: false,
             // Add Fixture defaults
@@ -271,6 +281,13 @@ impl BlaulichtApp {
             add_fixture_kind: 0,
             add_fixture_model_index: 0,
             setup_fixture_id: 0,
+            add_fixture_universe_no: 0,
+            show_dmx_simulation_universes: [false; 2],
+            new_fixture_name: String::new(),
+            new_fixture_addr: 0,
+            new_fixture_uni: 0,
+            add_group_open: false,
+            new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
         }
     }
 }

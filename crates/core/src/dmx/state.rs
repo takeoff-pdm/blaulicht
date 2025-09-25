@@ -97,8 +97,8 @@ pub struct EngineState {
     // First scene is the least-significant.
     pub current_overlay_scenes: Vec<u8>,
 
-    // Overrides a channel -> value
-    pub overrides: BTreeMap<usize, u8>,
+    // Overrides a (universe, channel) -> value
+    pub overrides: BTreeMap<(usize, usize), u8>,
 }
 
 impl<'engine> EngineState {
@@ -264,24 +264,28 @@ impl Default for EngineState {
     fn default() -> Self {
         let groups: BTreeMap<u8, FixtureGroup> = hashmap! {
             0 => FixtureGroup {
+                name: "Basic".to_string(),
                  fixtures: hashmap! {
-                    0 => Fixture::new(1, "G0 FooBar".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
-                    1 => Fixture::new(20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic3ChanNoAlpha)),
+                    0 => Fixture::new(0, 1, "G0 FooBar".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
+                    1 => Fixture::new(0, 20, "G0 BarQuux".into(),FixtureType::Light(Light::Generic3ChanNoAlpha)),
                  }.into_iter().collect(),
             },
             1 => FixtureGroup {
+                name: "Strobes".to_string(),
                  fixtures: hashmap! {
-                    0 => Fixture::new(30, "G1".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
+                    0 => Fixture::new(0, 30, "G1".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
                  }.into_iter().collect(),
             },
             2 => FixtureGroup {
+                name: "Strobes II".to_string(),
                  fixtures: hashmap! {
-                    0 => Fixture::new(50, "G2".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
+                    0 => Fixture::new(0, 50, "G2".into(), FixtureType::MovingHead(MovingHead::MartinMacAura))
                  }.into_iter().collect(),
             },
             3 => FixtureGroup {
+                name: "Strobes III".to_string(),
                  fixtures: hashmap! {
-                    0 => Fixture::new(60, "G3".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
+                    0 => Fixture::new(0, 60, "G3".into(), FixtureType::MovingHead(MovingHead::MartinMacAura)),
                  }.into_iter().collect(),
             },
         }

@@ -14,9 +14,13 @@ use egui::{
     Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Vec2,
 };
 use map_range::MapRange;
-use std::{collections::BTreeMap, sync::RwLockReadGuard};
+use std::{
+    collections::BTreeMap,
+    sync::{RwLockReadGuard, RwLockWriteGuard},
+};
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
+pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 
 pub fn simulate_dmx(
     ui: &mut egui::Ui,
@@ -84,11 +88,19 @@ pub fn simulate_dmx(
 
 impl BlaulichtApp {
     pub fn render_dmx_simulation_dialog(&self, ctx: &Context, groups: &EngineGroups) {
-        if self.show_dmx_simulation {
-            components::dialog(ctx, "DMX Output", egui::vec2(500.0, 500.0), true, |ui| {
-                let dmx_buffer = self.data.state.dmx_buffer.read().unwrap();
-                simulate_dmx(ui, groups, dmx_buffer);
-            });
+        for (universe, open) in self.show_dmx_simulation_universes.iter().enumerate() {
+            if *open {
+                components::dialog(
+                    ctx,
+                    &format!("DMX Universe {universe}"),
+                    egui::vec2(500.0, 500.0),
+                    true,
+                    |ui| {
+                        let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
+                        simulate_dmx(ui, groups, dmx_buffer);
+                    },
+                );
+            }
         }
     }
 

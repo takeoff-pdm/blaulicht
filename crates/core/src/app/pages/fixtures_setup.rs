@@ -1,5 +1,7 @@
+use std::mem;
 use std::time::Duration;
 
+use crate::app::components::{DEFAULT_NEW_GROUP_NAME, DEFAULT_NEW_SCENE_NAME};
 use crate::app::PopupSpec;
 use crate::dmx::{Fixture, FixtureType, Light, MovingHead, Position};
 use crate::{
@@ -10,9 +12,49 @@ use crate::{
     dmx::animation::state,
 };
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
-use egui::{Color32, Context, FontFamily, FontId, Frame, Label, RichText, TextStyle, Vec2};
+use egui::{
+    Color32, Context, FontFamily, FontId, Frame, Key, Label, Margin, RichText, TextEdit, TextStyle,
+    Vec2,
+};
+use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
+    pub fn render_add_group_dialog(&mut self, ctx: &Context) {
+        if self.add_group_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const SPACING: f32 = 16.0;
+
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+            components::dialog(ctx, "Create Group", size, false, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::singleline(&mut self.new_group_name)
+                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                        );
+                    });
+
+                ui.add_space(SPACING);
+
+                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        button_pressed = true;
+                    }
+                });
+
+                if button_pressed {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.create_group(self.new_group_name.clone());
+                    self.new_group_name = DEFAULT_NEW_GROUP_NAME.to_string();
+                    self.add_group_open = false;
+                }
+            });
+        }
+    }
+
     pub fn fixtures_ui_setup(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let groups = dmx_engine.groups();
@@ -24,6 +66,10 @@ impl BlaulichtApp {
         self.render_add_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
+
+        // mem::drop(dmx_engine);
+
+        // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
 
         if self.add_dmx_override_open {
             let cell_h = ButtonSize::Large.dim().0.y;
@@ -76,6 +122,7 @@ impl BlaulichtApp {
                                     EventOriginator::Web,
                                     ControlEvent::SetChannelOverride(
                                         self.add_dmx_override_chan,
+                                        self.add_dmx_override_chan,
                                         self.add_dmx_override_value,
                                     ),
                                 ));
@@ -119,7 +166,7 @@ impl BlaulichtApp {
 
                     ui.separator();
 
-                    for (chan, value) in &dmx_engine.overrides {
+                    for ((universe, chan), value) in &dmx_engine.overrides {
                         ui.allocate_ui_with_layout(
                             egui::vec2(ui.available_width(), 30.0),
                             egui::Layout::left_to_right(egui::Align::Min),
@@ -127,7 +174,7 @@ impl BlaulichtApp {
                                 ui.add_sized(
                                     [60.0, 16.0],
                                     Label::new(
-                                        RichText::new(format!("CH: {chan}"))
+                                        RichText::new(format!("UN: {universe} | CH: {chan}"))
                                             .color(Color32::LIGHT_RED)
                                             .size(16.0),
                                     ),
@@ -148,6 +195,7 @@ impl BlaulichtApp {
                                             ControlEventMessage::new(
                                                 EventOriginator::Web,
                                                 ControlEvent::SetChannelOverride(
+                                                    *universe as u16,
                                                     *chan as u16,
                                                     value as u8,
                                                 ),
@@ -163,7 +211,10 @@ impl BlaulichtApp {
                                         .event_bus_connection
                                         .send(ControlEventMessage::new(
                                             EventOriginator::Web,
-                                            ControlEvent::RemoveChannelOverride(*chan as u16),
+                                            ControlEvent::RemoveChannelOverride(
+                                                *universe as u16,
+                                                *chan as u16,
+                                            ),
                                         ));
                                 }
                             },
@@ -174,6 +225,10 @@ impl BlaulichtApp {
                 },
             )
         }
+
+        self.render_add_group_dialog(ctx);
+
+        let mut skip_rest = false;
 
         // Add Fixture Dialog
         if self.add_fixture_open {
@@ -200,6 +255,16 @@ impl BlaulichtApp {
                         egui::widgets::DragValue::new(&mut self.add_fixture_start_addr)
                             .speed(1)
                             .range(1..=512),
+                    );
+                });
+
+                // Universe
+                ui.horizontal(|ui| {
+                    ui.label("Universe:");
+                    ui.add(
+                        egui::widgets::DragValue::new(&mut self.add_fixture_universe_no)
+                            .speed(1)
+                            .range(0..=1),
                     );
                 });
 
@@ -233,8 +298,9 @@ impl BlaulichtApp {
                     match self.add_fixture_kind {
                         0 => {
                             // MovingHead
-                            let models = [MovingHead::MartinMacAura];
-                            let labels = [models[0].to_string()];
+                            let labels: Vec<_> =
+                                MovingHead::iter().map(|l| l.to_string()).collect();
+
                             let mut idx = self.add_fixture_model_index.min(labels.len() - 1);
                             egui::ComboBox::from_id_source("add_fixture_model_combo")
                                 .selected_text(&labels[idx])
@@ -247,11 +313,7 @@ impl BlaulichtApp {
                         }
                         1 => {
                             // Light
-                            let labels = [
-                                Light::Generic3ChanNoAlpha.to_string(),
-                                Light::Generic4ChanWithAlpha.to_string(),
-                                Light::LEDPartyTCLSpot.to_string(),
-                            ];
+                            let labels: Vec<_> = Light::iter().map(|l| l.to_string()).collect();
                             let mut idx = self.add_fixture_model_index.min(labels.len() - 1);
                             egui::ComboBox::from_id_source("add_fixture_model_combo")
                                 .selected_text(&labels[idx])
@@ -289,6 +351,7 @@ impl BlaulichtApp {
                         let group_id = self.add_fixture_group;
                         let name = std::mem::take(&mut self.add_fixture_name);
                         let start_addr = self.add_fixture_start_addr as usize;
+                        let universe_no = self.add_fixture_universe_no as usize;
                         let pos = Position {
                             x: self.add_fixture_pos_x,
                             y: self.add_fixture_pos_y,
@@ -299,7 +362,8 @@ impl BlaulichtApp {
                             0 => {
                                 // MovingHead
                                 let model = match self.add_fixture_model_index {
-                                    _ => MovingHead::MartinMacAura,
+                                    0 => MovingHead::MartinMacAura,
+                                    _ => unreachable!("Not possible"),
                                 };
                                 FixtureType::from(model)
                             }
@@ -308,29 +372,41 @@ impl BlaulichtApp {
                                 let model = match self.add_fixture_model_index {
                                     0 => Light::Generic3ChanNoAlpha,
                                     1 => Light::Generic4ChanWithAlpha,
-                                    _ => Light::LEDPartyTCLSpot,
+                                    2 => Light::LEDPartyTCLSpot,
+                                    3 => Light::AdjMegaHexPar,
+                                    4 => Light::LiteCraftMiniParAT10,
+                                    5 => Light::VaryTechVP1,
+                                    _ => unreachable!("not possible"),
                                 };
                                 FixtureType::from(model)
                             }
                             _ => unreachable!(),
                         };
 
-                        let mut fixture = Fixture::new(start_addr, name.into(), fixture_type);
+                        let mut fixture =
+                            Fixture::new(universe_no, start_addr, name.into(), fixture_type);
                         fixture.pos = pos;
 
                         {
-                            let mut engine = self.data.state.dmx_engine.write().unwrap();
-                            engine.add_fixture_to_group(group_id, fixture);
+                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                            dmx_engine.add_fixture_to_group(group_id, fixture);
+                            skip_rest = true;
                         }
 
                         // Reset some fields and close
                         self.add_fixture_open = false;
-                        self.add_fixture_model_index = 0;
-                        self.add_fixture_kind = 0;
+
+                        // self.add_fixture_model_index = 0;
+                        // self.add_fixture_kind = 0;
+
                         self.add_fixture_name = String::from("New Fixture");
                     }
                 });
             });
+        }
+
+        if skip_rest {
+            return;
         }
 
         ui.allocate_ui_with_layout(
@@ -374,25 +450,30 @@ impl BlaulichtApp {
 
                             ui.separator();
 
+                            for (universe, open) in
+                                self.show_dmx_simulation_universes.iter_mut().enumerate()
+                            {
+                                if components::button(
+                                    ui,
+                                    *open,
+                                    &format!("Sim. DMX {universe}"),
+                                    ButtonSize::Medium,
+                                ) {
+                                    *open = !*open;
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
                             if components::button(
                                 ui,
-                                self.show_dmx_simulation,
-                                "Show DMX",
+                                self.add_group_open,
+                                "Add Group",
                                 ButtonSize::Medium,
                             ) {
-                                self.show_dmx_simulation = !self.show_dmx_simulation;
+                                // dmx_engine.create_groep(name)
+                                self.add_group_open = !self.add_group_open;
                             }
-
-                            if components::button(
-                                ui,
-                                self.dmx_override_dialog_open,
-                                "Show Overrides",
-                                ButtonSize::Medium,
-                            ) {
-                                self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
-                            }
-
-                            ui.separator();
 
                             if components::button(
                                 ui,
@@ -409,31 +490,185 @@ impl BlaulichtApp {
                                     self.add_fixture_open = !self.add_fixture_open;
                                 }
                             }
+
+                            ui.separator();
+
+                            if components::button(
+                                ui,
+                                self.dmx_override_dialog_open,
+                                "Show Overrides",
+                                ButtonSize::Medium,
+                            ) {
+                                self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
+                            }
                         });
 
                         ui.separator();
 
-                        let (new_g, new_f, changed) = self.group_selection(
-                            groups,
-                            self.add_fixture_group,
-                            self.setup_fixture_id,
-                            ui,
-                        );
+                        ui.horizontal(|ui| {
+                            let (new_g, new_f, changed) = self.group_selection(
+                                dmx_engine.groups(),
+                                self.add_fixture_group,
+                                self.setup_fixture_id,
+                                ui,
+                            );
 
-                        if changed {
-                            self.add_fixture_group = new_g;
-                            self.setup_fixture_id = new_f;
-                        }
+                            // let mut new_name = fix.name.to_string();
+                            // let mut new_addr = fix.start_addr as u16;
 
-                        // ui.allocate_ui_with_layout(
-                        //     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-                        //     egui::Layout::top_down(egui::Align::Min),
-                        //     |ui| {
-                        //         if button(ui, false, "Add Fixture", ButtonSize::Medium) {
-                        //             self.add_fixture_open = true;
-                        //         }
-                        //     },
-                        // );
+                            if changed {
+                                self.add_fixture_group = new_g;
+                                self.setup_fixture_id = new_f;
+
+                                let group = dmx_engine.groups.get(&new_g).unwrap();
+                                if let Some(fix) = group.fixtures.get(&new_f) {
+                                    self.new_fixture_name = fix.name.to_string();
+                                    self.new_fixture_addr = fix.start_addr;
+                                    self.new_fixture_uni = fix.universe_no;
+                                }
+                            }
+
+                            ui.separator();
+
+                            ui.vertical(|ui| {
+                                let gid = self.add_fixture_group;
+                                let fid = self.setup_fixture_id;
+
+                                // let dmx_engine =
+                                //     { self.data.state.dmx_engine.write().unwrap().clone() };
+
+                                // Read current fixture snapshot
+                                // let engine_read = self.data.state.dmx_engine.read().unwrap();
+                                if let Some(group) = dmx_engine.groups().get(&gid) {
+                                    if let Some(fix) = group.fixtures.get(&fid) {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "Selected Fixture: Group #{} • Fixture #{}",
+                                                gid, fid
+                                            ))
+                                            .size(16.0),
+                                        );
+
+                                        ui.add_space(6.0);
+
+                                        // Editable fields (local copies, apply on save)
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Name:");
+                                            ui.text_edit_singleline(&mut self.new_fixture_name);
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Start Addr:");
+                                            ui.add(
+                                                egui::widgets::DragValue::new(
+                                                    &mut self.new_fixture_addr,
+                                                )
+                                                .speed(1)
+                                                .range(1..=512),
+                                            );
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Universe");
+                                            ui.add(
+                                                egui::widgets::DragValue::new(
+                                                    &mut self.new_fixture_uni,
+                                                )
+                                                .speed(1)
+                                                .range(0..=1),
+                                            );
+                                        });
+
+                                        ui.add_space(6.0);
+
+                                        //mem::drop(engine);
+
+                                        ui.horizontal(|ui| {
+                                            let can_save =
+                                                (1..=512).contains(&self.new_fixture_addr);
+                                            if components::button(
+                                                ui,
+                                                can_save,
+                                                "Save",
+                                                ButtonSize::Medium,
+                                            ) {
+                                                // let mut eng =
+                                                //     self.data.state.dmx_engine.write().unwrap();
+                                                let mut dmx_engine =
+                                                    self.data.state.dmx_engine.write().unwrap();
+                                                if let Some(group_mut) =
+                                                    dmx_engine.groups.get_mut(&gid)
+                                                {
+                                                    if let Some(fix_mut) =
+                                                        group_mut.fixtures.get_mut(&fid)
+                                                    {
+                                                        fix_mut.name =
+                                                            self.new_fixture_name.clone().into();
+                                                        fix_mut.start_addr = self.new_fixture_addr;
+                                                        fix_mut.universe_no = self.new_fixture_uni;
+                                                    }
+                                                }
+                                            }
+
+                                            ui.add_space(12.0);
+
+                                            if components::button(
+                                                ui,
+                                                true,
+                                                "Delete",
+                                                ButtonSize::Medium,
+                                            ) {
+                                                // let mut eng =
+                                                //     self.data.state.dmx_engine.write().unwrap();
+                                                //
+                                                let mut dmx_engine =
+                                                    self.data.state.dmx_engine.write().unwrap();
+
+                                                if let Some(group_mut) =
+                                                    dmx_engine.groups.get_mut(&gid)
+                                                {
+                                                    let removed = group_mut.fixtures.remove(&fid);
+                                                    if removed.is_some() {
+                                                        // Adjust selection to first available fixture in the group, if any
+                                                        if let Some((&first_fid, _)) =
+                                                            group_mut.fixtures.iter().next()
+                                                        {
+                                                            self.setup_fixture_id = first_fid;
+                                                        }
+
+                                                        mem::drop(dmx_engine);
+
+                                                        self.show_popup(PopupSpec::with_duration(
+                                                            Duration::from_millis(750),
+                                                            format!(
+                                                            "Deleted fixture #{} from group #{}",
+                                                            fid, gid
+                                                        ),
+                                                        ));
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    } else {
+                                        ui.label(
+                                            RichText::new("No fixture selected in this group")
+                                                .color(Color32::GRAY),
+                                        );
+                                    }
+                                } else {
+                                    ui.label(
+                                        RichText::new("No group selected").color(Color32::GRAY),
+                                    );
+                                }
+                            });
+                        });
+
+                        // Selected fixture details
+
+                        // mem::drop(dmx_engine);
+
+                        {}
                     },
                 );
             },

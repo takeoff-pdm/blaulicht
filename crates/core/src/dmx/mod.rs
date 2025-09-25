@@ -122,7 +122,7 @@ pub struct DmxEngine {
     animation_base_times: BTreeMap<u8, u64>,
     start_time: Instant,
 
-    dmx_port: Option<Box<dyn SerialPort>>,
+    dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
 
     running_setup: bool,
     run_setup_until: Instant,
@@ -137,14 +137,16 @@ impl DmxEngine {
             .unwrap();
     }
 
-    fn open_hw_interface(sys: Sender<SystemMessage>) -> Option<Box<dyn SerialPort>> {
+    fn open_hw_interface(
+        port_path: &str,
+        sys: Sender<SystemMessage>,
+    ) -> Option<Box<dyn SerialPort>> {
         // TODO: use USB intrinsics for detection: look at v1 branch
 
         // Open your Enttec device (likely /dev/ttyUSB0)
-        let port_name = "/dev/ttyUSB0";
         let baud_rate = 250_000;
 
-        match serialport::new(port_name, baud_rate)
+        match serialport::new(port_path, baud_rate)
             .data_bits(serialport::DataBits::Eight)
             .parity(serialport::Parity::None)
             .stop_bits(serialport::StopBits::Two)
@@ -154,7 +156,7 @@ impl DmxEngine {
             Ok(port) => Some(port),
             Err(err) => {
                 sys.send(SystemMessage::Log(
-                format!("[DMX] Could not establish link to interface {port_name} (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
+                format!("[DMX] Could not establish link to interface {port_path} (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
                 None
             }
         }
@@ -165,17 +167,23 @@ impl DmxEngine {
         event_bus_connection: SystemEventBusConnectionInst,
         system_out: Sender<SystemMessage>,
     ) -> Self {
-        let dmx_port = Self::open_hw_interface(system_out.clone());
+        const UNIVERSES: usize = 2;
+        let mut dmx_universe_ports = [None, None];
+
+        for universe in 0..UNIVERSES {
+            let dmx_port =
+                Self::open_hw_interface(&format!("/dev/ttyUSB{universe}"), system_out.clone());
+            dmx_universe_ports[universe] = dmx_port;
+        }
 
         Self {
             state_ref,
             dmx_previous: [0; 513],
-            // dmx: [0; 513],
             event_bus_connection,
             system_out,
             animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
-            dmx_port,
+            dmx_universe_ports,
             running_setup: false,
             run_setup_until: Instant::now(),
         }
@@ -197,6 +205,12 @@ impl DmxEngine {
             }
 
             return true;
+        }
+
+        // Clear DMX buffers (slow).
+        for buffer in self.state_ref.dmx_universes.iter() {
+            let mut buffer = buffer.write().unwrap();
+            buffer.dmx_buffer.fill(0);
         }
 
         // Advance animations.
@@ -394,62 +408,51 @@ impl DmxEngine {
     }
 
     fn write_to_hw(&mut self) {
-        let mut buffer = self.state_ref.dmx_buffer.read().unwrap();
+        for (universe_no, mut port) in self.dmx_universe_ports.iter_mut().enumerate() {
+            let buffer = self.state_ref.dmx_universes[universe_no].read().unwrap();
 
-        if let Some(port) = &mut self.dmx_port {
-            port.set_break().unwrap();
-            spin_sleep::sleep(Duration::from_micros(100));
-            port.clear_break().unwrap();
-            spin_sleep::sleep(Duration::from_micros(12));
+            if let Some(port) = &mut port {
+                port.set_break().unwrap();
+                spin_sleep::sleep(Duration::from_micros(100));
+                port.clear_break().unwrap();
+                spin_sleep::sleep(Duration::from_micros(12));
 
-            // Write frame
-            port.write_all(&buffer.dmx_buffer).unwrap();
-        };
-
-        // let this = Self {
-        //     dmx: interface,
-        //     base,
-        // };
-        //
-        // Ok(this)
+                // Write frame
+                port.write_all(&buffer.dmx_buffer).unwrap();
+            };
+        }
     }
 
     fn run_setup(&mut self) {
-        let state = self.state_ref.dmx_engine.read().unwrap();
-        let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
+        for buffer in self.state_ref.dmx_universes.iter() {
+            let mut buffer = buffer.write().unwrap();
+            let state = self.state_ref.dmx_engine.read().unwrap();
 
-        // For each fixture, merge all scene states.
+            for group in &state.groups {
+                for fixture in &group.1.fixtures {
+                    let fix = fixture.1;
 
-        for group in &state.groups {
-            for fixture in &group.1.fixtures {
-                let fix = fixture.1;
+                    let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
 
-                let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+                    println!("SETUP T: {time}");
 
-                println!("SETUP T: {time}");
-
-                fix.setup(
-                    Time::new(time as i32),
-                    &FixtureState::default(),
-                    &mut buffer.dmx_buffer,
-                );
+                    fix.setup(
+                        Time::new(time as i32),
+                        &FixtureState::default(),
+                        &mut buffer.dmx_buffer,
+                    );
+                }
             }
-        }
 
-        // Apply overrides
-        for (chan, value) in &state.overrides {
-            buffer.dmx_buffer[*chan as usize] = *value;
+            // mem::drop(state);
+            // mem::drop(buffer);
         }
-
-        mem::drop(state);
-        mem::drop(buffer);
 
         self.write_to_hw();
     }
 
     fn update_dmx_buffer(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
-        let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
 
         // For each fixture, merge all scene states.
 
@@ -487,19 +490,25 @@ impl DmxEngine {
                 // todo!();
 
                 let fix = fixture.1;
+                // let state = self.state_ref.dmx_engine.write().unwrap();
+                // let mut buffer = state.u
 
                 // TODO: we will need to use the merged fixture states here and then write them.
+                let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
+                    .write()
+                    .unwrap();
+
                 fix.write(&merged_state, &mut buffer.dmx_buffer);
             }
         }
 
         // Apply overrides
-        for (chan, value) in &state.overrides {
-            buffer.dmx_buffer[*chan as usize] = *value;
+        for ((universe, chan), value) in &state.overrides {
+            let mut buffer = self.state_ref.dmx_universes[*universe].write().unwrap();
+            buffer.dmx_buffer[*chan] = *value;
         }
 
         mem::drop(state);
-        mem::drop(buffer);
 
         self.write_to_hw();
     }
@@ -543,23 +552,23 @@ impl DmxEngine {
                 (None, None)
             }
             // Overrides
-            ControlEvent::SetChannelOverride(chan, value) => {
+            ControlEvent::SetChannelOverride(uni, chan, value) => {
                 if chan > 512 {
                     return (
                         Some("Illegal channel no."),
-                        Some(ControlEvent::RemoveChannelOverride(chan)),
+                        Some(ControlEvent::RemoveChannelOverride(uni, chan)),
                     );
                 }
 
-                state.overrides.insert(chan as usize, value);
+                state.overrides.insert((uni as usize, chan as usize), value);
                 (None, None)
             }
-            ControlEvent::RemoveChannelOverride(chan) => {
+            ControlEvent::RemoveChannelOverride(uni, chan) => {
                 let ch = chan as usize;
-                if state.overrides.remove(&ch).is_none() {
+                if state.overrides.remove(&(uni as usize, ch)).is_none() {
                     (
                         Some("Channel override does not exist (missing)"),
-                        Some(ControlEvent::SetChannelOverride(chan, 0)),
+                        Some(ControlEvent::SetChannelOverride(uni, chan, 0)),
                     )
                 } else {
                     (None, None)

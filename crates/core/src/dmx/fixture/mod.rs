@@ -21,6 +21,7 @@ pub struct FixtureOrientation {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FixtureGroup {
     // Assigns an ID to a fixture.
+    pub name: String,
     pub fixtures: BTreeMap<u8, Fixture>,
 }
 
@@ -29,8 +30,9 @@ pub struct Fixture {
     pub name: Cow<'static, str>,
     pub type_: FixtureType,
     pub pos: Position,
-    // DMX start address.
+    // DMX start address + universe number.
     pub start_addr: usize,
+    pub universe_no: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -128,12 +130,18 @@ impl FixtureState {
 }
 
 impl Fixture {
-    pub fn new(start_addr: usize, name: Cow<'static, str>, type_: FixtureType) -> Self {
+    pub fn new(
+        universe_no: usize,
+        start_addr: usize,
+        name: Cow<'static, str>,
+        type_: FixtureType,
+    ) -> Self {
         Self {
             name,
             type_,
             pos: Position::default(),
             start_addr,
+            universe_no,
         }
     }
 
