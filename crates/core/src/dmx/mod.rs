@@ -1,6 +1,7 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod clock;
 mod fixture;
+mod management;
 mod state;
 
 use map_range::MapRange;

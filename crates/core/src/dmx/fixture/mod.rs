@@ -18,7 +18,7 @@ pub struct FixtureOrientation {
     pub rotation: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FixtureGroup {
     // Assigns an ID to a fixture.
     pub fixtures: BTreeMap<u8, Fixture>,
