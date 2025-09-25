@@ -47,7 +47,10 @@ sudo apt install -y xterm || exit 1
 sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
 sudo killall blaulicht || echo "Blaulicht not running"
 
+rm blaulicht-latest.tar.gz || echo "No junk yet"
 rm blaulicht || echo "No junk yet..."
+rm -r ./blaulicht-dist || echo "No junk yet..."
+
 wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \
   | jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' \
   | xargs wget -O blaulicht-latest.tar.gz
