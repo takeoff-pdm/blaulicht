@@ -24,7 +24,7 @@ use wasmtime::*;
 
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
-use crate::plugin::PluginWasmState;
+use super::PluginWasmState;
 use crate::{
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
