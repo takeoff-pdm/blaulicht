@@ -14,16 +14,31 @@ cargo-build-x64:
 	blaulicht-cross \
 	cargo build --release --target x86_64-unknown-linux-gnu
 
+cargo-build-x64-debug:
+	docker run -it \
+	-v $(DIR)/target:/build \
+	-v `pwd`:/root/project \
+	blaulicht-cross \
+	cargo build --target x86_64-unknown-linux-gnu
+
 build-docker-cargo:
 	docker build . -t blaulicht-cross:latest
 
 # For building distributable archive files
 prepare-archives:
 	mkdir -p dist
+
 build-archives: prepare-archives build-archive-x64
+build-archives-debug: prepare-archives build-archive-x64-debug
 
 
 build-archive-x64: cargo-build-x64
+	mkdir -p ./$(BUILD_OUTPUT_DIR)
+	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
+	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
+	rm -rf $(BUILD_OUTPUT_DIR)
+
+build-archive-x64-debug: cargo-build-x64-debug
 	mkdir -p ./$(BUILD_OUTPUT_DIR)
 	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
 	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)

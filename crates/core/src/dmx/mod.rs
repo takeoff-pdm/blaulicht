@@ -145,7 +145,7 @@ pub struct DmxEngine {
 }
 
 impl DmxEngine {
-    fn open_hw_interface() -> Option<Box<dyn SerialPort>> {
+    fn open_hw_interface(sys: Sender<SystemMessage>) -> Option<Box<dyn SerialPort>> {
         // TODO: use USB intrinsics for detection: look at v1 branch
 
         // Open your Enttec device (likely /dev/ttyUSB0)
@@ -161,7 +161,8 @@ impl DmxEngine {
         {
             Ok(port) => Some(port),
             Err(err) => {
-                error!("Could not establish link to DMX interface: {err}");
+                sys.send(SystemMessage::Log(
+                format!("[DMX] Could not establish link to interface {port_name} (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
                 None
             }
         }
@@ -172,7 +173,7 @@ impl DmxEngine {
         event_bus_connection: SystemEventBusConnectionInst,
         system_out: Sender<SystemMessage>,
     ) -> Self {
-        let dmx_port = Self::open_hw_interface();
+        let dmx_port = Self::open_hw_interface(system_out.clone());
 
         Self {
             state_ref,

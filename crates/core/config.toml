@@ -1,5 +1,5 @@
 port = 1234
-default_audio_device = "default"
+default_audio_device = "pipewire"
 last_open_showfile = "/home/mik/Desktop/bl.txt"
 
 [stream]

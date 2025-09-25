@@ -156,8 +156,12 @@ impl PluginState {
         self.flags.enabled = v;
     }
 
-    pub fn is_active(&self) -> bool {
-        self.flags.enabled && !self.flags.has_error
+    pub fn has_errored(&self) -> bool {
+        self.flags.has_error
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.flags.enabled
     }
 
     pub fn log(&mut self, msg: Cow<'static, str>) {

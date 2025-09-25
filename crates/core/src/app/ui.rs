@@ -859,17 +859,24 @@ impl BlaulichtApp {
                                 let painter = ui.painter();
 
                                 // State color and blinking logic
-                                let is_alive = plugin.is_active();
-                                let border_color = if is_alive {
-                                    egui::Color32::from_rgb(0, 200, 0)
-                                } else {
-                                    egui::Color32::from_rgb(200, 0, 0)
-                                };
                                 let mut show_border = true;
-                                if !is_alive {
-                                    let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
-                                    show_border = blink;
-                                }
+                                let border_color = match (plugin.has_errored(), plugin.is_enabled())
+                                {
+                                    // Alive and healthy.
+                                    (false, true) => egui::Color32::from_rgb(0, 200, 0),
+                                    // Dead, crashed.
+                                    (true, true) => {
+                                        let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
+                                        show_border = blink;
+                                        egui::Color32::from_rgb(200, 0, 0)
+                                    }
+                                    // Disabled
+                                    (_, false) => {
+                                        let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
+                                        show_border = blink;
+                                        egui::Color32::from_rgb(200, 200, 0)
+                                    },
+                                };
 
                                 // Draw the main box
                                 painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
@@ -891,7 +898,7 @@ impl BlaulichtApp {
                                     egui::Align2::CENTER_CENTER,
                                     name,
                                     egui::FontId::monospace(10.0),
-                                    if plugin.is_active() {
+                                    if plugin.has_errored() {
                                         Color32::WHITE
                                     } else {
                                         egui::Color32::from_gray(90)

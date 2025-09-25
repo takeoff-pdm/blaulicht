@@ -2,6 +2,7 @@
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
     fn log(plugin_id: u8, ptr: *const u8, len: usize, log_level: i32);
+    fn sys(plugin_id: u8, ptr: *const u8, len: usize);
     fn udp(
         target_addr_ptr: *const u8,
         target_addr_len: usize,
@@ -40,6 +41,10 @@ pub static mut PLUGIN_ID: u8 = 0;
 
 pub fn bl_log(msg: &str, level: LogLevel) {
     unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len(), level.into()) }
+}
+
+pub fn bl_sys(cmd: &str) {
+    unsafe { sys(PLUGIN_ID, cmd.as_ptr(), cmd.len()) }
 }
 
 pub fn bl_send(event: ControlEvent) {

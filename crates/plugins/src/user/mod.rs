@@ -1,7 +1,7 @@
 use std::{fmt::Display, mem::MaybeUninit};
 
 use crate::{
-    blaulicht::{bl_send, prelude::println},
+    blaulicht::{bl_send, bl_sys, prelude::println},
     midi::{MidiConnection, MidiEvent},
 };
 use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventMessage, TickInput};
@@ -64,6 +64,10 @@ static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
 
 pub fn initialize(input: TickInput) {
     println!("Initializing...");
+
+    bl_sys("echo 'hello'");
+
+    return;
 
     let mut devices = vec![
         MidiDevice::NanoKontrol,
@@ -241,6 +245,8 @@ fn apc(conn: MidiConnection, ev: Vec<MidiEvent>, state: &mut State, input: TickI
 }
 
 pub fn run(input: TickInput) {
+    return;
+
     let state = unsafe {
         #[allow(static_mut_refs)]
         STATE.assume_init_mut()

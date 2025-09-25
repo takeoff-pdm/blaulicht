@@ -40,6 +40,12 @@ sudo systemctl enable lightdm || exit  1
 sudo apt install -y xterm || exit 1
 
 #
+# Install fan driver
+#
+
+sudo cp ./fans.sh /usr/bin/fans
+
+#
 # Install Blaulicht.
 #
 #

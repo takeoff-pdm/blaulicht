@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection};
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::{debug, info, trace};
 use notify::{
@@ -108,7 +108,7 @@ impl PluginManager {
         let plugins = self.state_ref.plugins.read().unwrap();
         plugins
             .iter()
-            .filter(|(_, p)| p.is_active())
+            .filter(|(_, p)| p.is_enabled() && !p.has_errored())
             .map(|(key, _)| *key)
             .collect()
     }
@@ -133,8 +133,14 @@ impl PluginManager {
 
         // Ignore any tick errors caused by misbehaving plugins.
         // Only return on serious errors.
+        println!("initial tick");
         if self.tick(CollectedAudioSnapshot::default(), &[]).is_err() {
-            debug!("Plugin(s) failed to initialize.")
+            self.system_out
+                .send(SystemMessage::Log(
+                    "Plugin(s) failed to initialize.".into(),
+                    LogLevel::Warn,
+                ))
+                .unwrap();
         };
 
         Ok(())

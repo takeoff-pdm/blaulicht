@@ -98,7 +98,12 @@ impl PluginManager {
 
         for (plugin_id, plugin) in self.plugin_config.iter().enumerate() {
             if !plugin.enabled {
-                warn!("plugin {} is disabled, skipping.", plugin.file_path);
+                self.system_out
+                    .send(SystemMessage::Log(
+                        format!("Plugin {} is disabled, skipping.", plugin.file_path),
+                        LogLevel::Warn,
+                    ))
+                    .unwrap();
                 continue;
             }
 
@@ -134,7 +139,12 @@ impl PluginManager {
             // }
             // memory.write(&mut store, dmx_array_offset, &dmx_array_bytes)?;
 
-            debug!("loaded plugin: {}", plugin_name);
+            self.system_out
+                .send(SystemMessage::Log(
+                    format!("loaded plugin: {}", plugin_name),
+                    LogLevel::Debug,
+                ))
+                .unwrap();
 
             // store the instance and store for future use
             let mut plugin = Plugin {
@@ -153,15 +163,10 @@ impl PluginManager {
                 .acquire_midi_buffer_addresses()
                 .map_err(|e| anyhow!("failed to acquire midi buffer addresses: {e}"))?;
 
-            debug_assert!(plugin_id < u8::max as usize);
+            debug_assert!(plugin_id < u8::MAX as usize);
 
             self.plugins.insert(plugin_id as u8, plugin);
         }
-
-        info!(
-            "loaded and instantiated {} wasm modules.",
-            self.plugins.len()
-        );
 
         //
         // bind wasm functions.
@@ -170,7 +175,15 @@ impl PluginManager {
         // todo: udp support.
         // let socket = udpsocket::bind("0.0.0.0:0")?;
 
-        log::info!("[wasm] initialized.");
+        self.system_out
+            .send(SystemMessage::Log(
+                format!(
+                    "WASM: loaded and instantiated {} wasm modules.",
+                    self.plugins.len()
+                ),
+                LogLevel::Debug,
+            ))
+            .unwrap();
 
         Ok(())
     }
@@ -213,6 +226,66 @@ impl PluginManager {
                 //         .expect("failed to send log message");
                 //         0
                 //     });
+            },
+        )?;
+
+        use std::process::Command;
+        let so = self.system_out.clone();
+
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "sys",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+                use serde::de::Error;
+
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
+
+                let output = Command::new("bash").arg("-c").arg(received_string).output();
+
+                match output {
+                    Ok(o) => {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+
+                        so.send(SystemMessage::Log(
+                            format!("WASM: Command STDOUT: {stdout}"),
+                            LogLevel::Debug,
+                        ))
+                        .unwrap();
+
+                        so.send(SystemMessage::Log(
+                            format!("WASM: Command STDERR: {stderr}"),
+                            LogLevel::Debug,
+                        ))
+                        .unwrap();
+
+                        if !o.status.success() {
+                            let code = o.status.code().unwrap_or(199);
+                            so.send(SystemMessage::Log(
+                                format!("WASM: Command failed with code: {code}"),
+                                LogLevel::Err,
+                            ))
+                            .unwrap();
+                        }
+                    }
+                    Err(err) => {
+                        so.send(SystemMessage::Log(
+                            format!("WASM: Command invocation error: {err}"),
+                            LogLevel::Err,
+                        ))
+                        .unwrap();
+                    }
+                }
             },
         )?;
 
