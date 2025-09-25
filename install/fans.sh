@@ -21,11 +21,11 @@ DEVICE=$(find_relay_device) || {
 case "${1:-}" in
   on)
     echo "Turning fan ON via $DEVICE"
-    echo -ne '\x00\xFE\x01' | sudo dd of="$DEVICE" bs=3 count=1 status=none
+    echo -ne '\x00\xFE\x01' | dd of="$DEVICE" bs=3 count=1 status=none
     ;;
   off)
     echo "Turning fan OFF via $DEVICE"
-    echo -ne '\x00\xFD\x01' | sudo dd of="$DEVICE" bs=3 count=1 status=none
+    echo -ne '\x00\xFD\x01' | dd of="$DEVICE" bs=3 count=1 status=none
     ;;
   *)
     echo "Usage: $0 {on|off}" >&2
