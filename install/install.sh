@@ -101,6 +101,9 @@ cp ./pulse.service "${SYSTEMD_BASE_PATH}/pulse.service" || exit 1
 systemctl --user enable pulse || exit 1
 
 echo "blaulicht ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/reboot" | sudo tee /etc/sudoers.d/blaulicht-shutdown
+echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/fans" | sudo tee /etc/sudoers.d/blaulicht-fans
+
 sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown
+sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 
 echo "Installation succeeded, please reboot."
