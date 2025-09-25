@@ -22,9 +22,9 @@ use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant
 #[cfg(feature = "wasmtime")]
 use wasmtime::*;
 
+use super::PluginWasmState;
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
-use super::PluginWasmState;
 use crate::{
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
@@ -59,6 +59,12 @@ use crate::{
 #[cfg(not(feature = "wasmtime"))]
 impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
+        self.system_out
+            .send(SystemMessage::Log(
+                "WASM subsystem is disabled. (compile flags)".to_string(),
+                LogLevel::Warn,
+            ))
+            .unwrap();
         Ok(())
     }
 }
@@ -70,6 +76,13 @@ impl PluginManager {
 #[cfg(feature = "wasmtime")]
 impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
+        self.system_out
+            .send(SystemMessage::Log(
+                "WASM subsystem initializing...".to_string(),
+                LogLevel::Info,
+            ))
+            .unwrap();
+
         //
         // basic engine setup.
         //
