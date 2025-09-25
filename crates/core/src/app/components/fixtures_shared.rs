@@ -3,7 +3,7 @@ use crate::{
         components::{self, ButtonColor, ButtonSize, HFader},
         BlaulichtApp, Selection,
     },
-    dmx::{EngineGroups, EngineState, FixtureState},
+    dmx::{EngineGroups, EngineState, FixtureSelection, FixtureState},
     event::SystemEventBusConnectionInst,
     state::DmxBuffer,
 };
@@ -279,6 +279,133 @@ impl BlaulichtApp {
                 }
             });
         }
+    }
+
+    pub fn group_selection(
+        &mut self,
+        groups: &EngineGroups,
+        selected_group: u8,
+        selected_fixture: u8,
+        ui: &mut egui::Ui,
+    ) -> (u8, u8, bool) {
+        let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+
+        let mut group_result = selected_group;
+        let mut fixture_result = selected_fixture;
+        let mut changed = false;
+
+        ui.horizontal(|ui| {
+            ui.set_min_height(ui.available_height());
+            ui.vertical(|ui| {
+                ui.label("Groups:");
+                ui.add_space(8.0);
+                for (group_id, group) in groups.iter() {
+                    let is_selected = selected_group == *group_id;
+
+                    let name = format!("GRP {}", group_id);
+
+                    if components::clickable(
+                        ui,
+                        is_selected,
+                        ButtonColor::Blue.into(),
+                        ButtonSize::Large.with_height(50.0),
+                        |ui, rect, fg_color| {
+                            let painter = ui.painter();
+                            let fixture_count = group.fixtures.len();
+                            let name = format!("GRP {}", group_id);
+                            painter.text(
+                                rect.left_top() + egui::vec2(12.0, 8.0),
+                                egui::Align2::LEFT_TOP,
+                                &name,
+                                egui::FontId::proportional(16.0),
+                                fg_color,
+                            );
+                            painter.text(
+                                rect.left_bottom() - egui::vec2(-12.0, 8.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                format!("{} fixtures", fixture_count),
+                                egui::FontId::proportional(12.0),
+                                fg_color,
+                            );
+                        },
+                    ) {
+                        // Toggle group selection
+                        if !is_selected {
+                            group_result = *group_id;
+                            changed = true;
+                        };
+                    }
+
+                    ui.add_space(2.0);
+                }
+            });
+
+            ui.vertical(|ui| {
+                ui.label("Fixtures");
+                ui.add_space(8.0);
+
+                if dmx_engine.groups().is_empty() {
+                    return;
+                }
+
+                let group_id = self.add_fixture_group;
+
+                for (fix_id, fixture) in dmx_engine
+                    .groups()
+                    .get(&group_id)
+                    .as_ref()
+                    .unwrap()
+                    .fixtures
+                    .iter()
+                {
+                    let fixture = groups
+                        .get(&group_id)
+                        .unwrap()
+                        .fixtures
+                        .get(&fix_id)
+                        .unwrap();
+
+                    let button_clicked = components::clickable(
+                        ui,
+                        true,
+                        if self.setup_fixture_id == *fix_id {
+                            Selection::Limited.color()
+                        } else {
+                            Selection::Off.color()
+                        },
+                        ButtonSize::Large.with_height(50.0),
+                        |ui, rect, fg| {
+                            let painter = ui.painter();
+
+                            painter.text(
+                                rect.left_center() + egui::vec2(12.0, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                &fixture.name,
+                                egui::FontId::proportional(14.0),
+                                fg,
+                            );
+
+                            painter.text(
+                                rect.left_center() + egui::vec2(12.0, 12.0),
+                                egui::Align2::LEFT_CENTER,
+                                fixture.type_.kind_string(),
+                                egui::FontId::proportional(9.0),
+                                fg,
+                            );
+                        },
+                    );
+
+                    if button_clicked {
+                        fixture_result = *fix_id;
+                        changed = true;
+                    }
+
+                    ui.add_space(2.0);
+                }
+            });
+        });
+
+        (group_result, fixture_result, changed)
     }
 
     pub fn fixture_selection(

@@ -86,7 +86,7 @@ impl BlaulichtApp {
         app
     }
 
-    fn show_popup(&mut self, popup: PopupSpec) {
+    pub fn show_popup(&mut self, popup: PopupSpec) {
         self.popup = Some(popup);
         self.popup_open_time = Instant::now();
     }

@@ -164,7 +164,7 @@ pub struct BlaulichtApp {
 
     // Add Fixture dialog state
     add_fixture_open: bool,
-    add_fixture_group: Option<u8>,
+    add_fixture_group: u8,
     add_fixture_name: String,
     add_fixture_start_addr: u16,
     add_fixture_pos_x: usize,
@@ -173,6 +173,8 @@ pub struct BlaulichtApp {
     add_fixture_kind: usize,
     // model index per kind (simple integer mapping to enum variants)
     add_fixture_model_index: usize,
+
+    setup_fixture_id: u8,
 }
 
 impl BlaulichtApp {
@@ -261,13 +263,14 @@ impl BlaulichtApp {
             dmx_override_dialog_open: false,
             // Add Fixture defaults
             add_fixture_open: false,
-            add_fixture_group: None,
+            add_fixture_group: 0,
             add_fixture_name: String::from("New Fixture"),
             add_fixture_start_addr: 1,
             add_fixture_pos_x: 0,
             add_fixture_pos_y: 0,
             add_fixture_kind: 0,
             add_fixture_model_index: 0,
+            setup_fixture_id: 0,
         }
     }
 }

@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use crate::app::PopupSpec;
 use crate::dmx::{Fixture, FixtureType, Light, MovingHead, Position};
 use crate::{
     app::{
@@ -179,27 +182,8 @@ impl BlaulichtApp {
             let height = cell_h * 7.0 + 40.0;
 
             components::dialog(ctx, "Add Fixture", egui::vec2(width, height), false, |ui| {
-                // Preselect group on first open if not set
-                if self.add_fixture_group.is_none() {
-                    self.add_fixture_group = self.selected_fixture_group.or_else(|| {
-                        // pick group 0 if exists
-                        groups.keys().next().copied()
-                    });
-                }
-
                 // Group selector
-                ui.horizontal(|ui| {
-                    ui.label("Group:");
-                    let mut selected_gid = self.add_fixture_group.unwrap_or(0);
-                    egui::ComboBox::from_id_source("add_fixture_group_combo")
-                        .selected_text(format!("#{}", selected_gid))
-                        .show_ui(ui, |ui| {
-                            for gid in groups.keys() {
-                                ui.selectable_value(&mut selected_gid, *gid, format!("#{}", gid));
-                            }
-                        });
-                    self.add_fixture_group = Some(selected_gid);
-                });
+                ui.label(format!("Group #{}", self.add_fixture_group));
 
                 ui.separator();
 
@@ -292,7 +276,7 @@ impl BlaulichtApp {
                         self.add_fixture_open = false;
                     }
 
-                    let can_create = self.add_fixture_group.is_some()
+                    let can_create = dmx_engine.groups().get(&self.add_fixture_group).is_some()
                         && self.add_fixture_start_addr >= 1
                         && self.add_fixture_start_addr <= 512
                         && match self.add_fixture_kind {
@@ -302,7 +286,7 @@ impl BlaulichtApp {
 
                     if components::button(ui, can_create, "Create", ButtonSize::Large) && can_create
                     {
-                        let group_id = self.add_fixture_group.unwrap();
+                        let group_id = self.add_fixture_group;
                         let name = std::mem::take(&mut self.add_fixture_name);
                         let start_addr = self.add_fixture_start_addr as usize;
                         let pos = Position {
@@ -416,21 +400,40 @@ impl BlaulichtApp {
                                 "Add Fixture",
                                 ButtonSize::Medium,
                             ) {
-                                self.add_fixture_open = !self.add_fixture_open;
+                                if dmx_engine.groups().is_empty() {
+                                    self.show_popup(PopupSpec::with_duration(
+                                        Duration::from_secs(1),
+                                        "Reload in progress...".to_string(),
+                                    ));
+                                } else {
+                                    self.add_fixture_open = !self.add_fixture_open;
+                                }
                             }
                         });
 
                         ui.separator();
 
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-                            egui::Layout::top_down(egui::Align::Min),
-                            |ui| {
-                                if button(ui, false, "Add Fixture", ButtonSize::Medium) {
-                                    self.add_fixture_open = true;
-                                }
-                            },
+                        let (new_g, new_f, changed) = self.group_selection(
+                            groups,
+                            self.add_fixture_group,
+                            self.setup_fixture_id,
+                            ui,
                         );
+
+                        if changed {
+                            self.add_fixture_group = new_g;
+                            self.setup_fixture_id = new_f;
+                        }
+
+                        // ui.allocate_ui_with_layout(
+                        //     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+                        //     egui::Layout::top_down(egui::Align::Min),
+                        //     |ui| {
+                        //         if button(ui, false, "Add Fixture", ButtonSize::Medium) {
+                        //             self.add_fixture_open = true;
+                        //         }
+                        //     },
+                        // );
                     },
                 );
             },
