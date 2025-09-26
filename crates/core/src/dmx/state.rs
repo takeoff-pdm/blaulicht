@@ -126,8 +126,6 @@ impl<'engine> EngineState {
             }
         }
 
-        println!("GOT SELECTION: {:?}", fixtures_to_add);
-
         FixtureSelection {
             fixtures: fixtures_to_add,
         }

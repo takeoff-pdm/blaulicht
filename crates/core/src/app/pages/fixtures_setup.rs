@@ -23,14 +23,14 @@ impl BlaulichtApp {
         if self.add_group_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
             const SPACING: f32 = 16.0;
-
-            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+            let size = egui::vec2(260.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING + 8.0);
             components::dialog(ctx, "Create Group", size, false, |ui| {
+                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
                 Frame::new()
                     .inner_margin(Margin::symmetric(10, 6))
                     .show(ui, |ui| {
                         ui.add(
-                            TextEdit::singleline(&mut self.new_group_name)
+                            TextEdit::singleline(&mut self.new_scene_name)
                                 .font(FontId::proportional(BUTTON_SIZE.dim().1))
                                 .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
                         );
@@ -56,6 +56,8 @@ impl BlaulichtApp {
     }
 
     pub fn fixtures_ui_setup(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        // Make controls touch-friendly within this page
+        ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let groups = dmx_engine.groups();
 
@@ -72,38 +74,39 @@ impl BlaulichtApp {
         // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
 
         if self.add_dmx_override_open {
-            let cell_h = ButtonSize::Large.dim().0.y;
-            let height = cell_h * 3.0 + 15.0;
+            let cell_h = ButtonSize::Medium.dim().0.y;
+            let height = cell_h * 3.5 + 24.0;
+            const LABEL_W: f32 = 120.0;
 
             components::dialog(
                 ctx,
                 "Add Override",
-                egui::vec2(200.0, height),
+                egui::vec2(260.0, height),
                 false,
                 |ui| {
+                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
                     ui.horizontal_centered(|ui| {
                         ui.set_height(cell_h);
 
                         ui.add_sized(
-                            [100.0, cell_h],
+                            [140.0, cell_h],
                             egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
                                 .speed(1)
                                 .range(1..=512),
                         );
-
-                        ui.label("DMX Channel:");
+                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
                     });
 
                     ui.separator();
 
                     ui.horizontal_centered(|ui| {
                         ui.add_sized(
-                            [100.0, cell_h],
+                            [140.0, cell_h],
                             egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
                                 .speed(1)
                                 .range(0..=255),
                         );
-                        ui.label("Value");
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
                     });
 
                     ui.separator();
@@ -111,11 +114,11 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         ui.set_height(cell_h);
 
-                        if components::button(ui, false, "Cancel", ButtonSize::Large) {
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                             self.add_dmx_override_open = false;
                         }
 
-                        if components::button(ui, true, "Add", ButtonSize::Large) {
+                        if components::button(ui, true, "Add", ButtonSize::Medium) {
                             self.data
                                 .event_bus_connection
                                 .send(ControlEventMessage::new(
@@ -232,11 +235,14 @@ impl BlaulichtApp {
 
         // Add Fixture Dialog
         if self.add_fixture_open {
-            let cell_h = ButtonSize::Large.dim().0.y;
-            let width = 420.0;
-            let height = cell_h * 7.0 + 40.0;
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+            let cell_h = BUTTON_SIZE.dim().0.y;
+            let width = 570.0;
+            let height = 390.0;
+            const LABEL_W: f32 = 120.0;
 
             components::dialog(ctx, "Add Fixture", egui::vec2(width, height), false, |ui| {
+                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
                 // Group selector
                 ui.label(format!("Group #{}", self.add_fixture_group));
 
@@ -244,14 +250,20 @@ impl BlaulichtApp {
 
                 // Name
                 ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.add_fixture_name);
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
+
+                    ui.add(
+                        TextEdit::singleline(&mut self.new_scene_name)
+                            .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                            .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                    );
                 });
 
                 // Start address
                 ui.horizontal(|ui| {
-                    ui.label("Start Addr:");
-                    ui.add(
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Start Addr:"));
+                    ui.add_sized(
+                        [140.0, cell_h],
                         egui::widgets::DragValue::new(&mut self.add_fixture_start_addr)
                             .speed(1)
                             .range(1..=512),
@@ -260,28 +272,46 @@ impl BlaulichtApp {
 
                 // Universe
                 ui.horizontal(|ui| {
-                    ui.label("Universe:");
-                    ui.add(
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Universe:"));
+                    ui.add_sized(
+                        [140.0, cell_h],
                         egui::widgets::DragValue::new(&mut self.add_fixture_universe_no)
                             .speed(1)
                             .range(0..=1),
                     );
                 });
 
+                // Count
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Count:"));
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_fixture_count)
+                            .speed(1)
+                            .range(1..=64),
+                    );
+                });
+
                 // Position
                 ui.horizontal(|ui| {
-                    ui.label("Pos X:");
-                    ui.add(egui::widgets::DragValue::new(&mut self.add_fixture_pos_x).speed(1));
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Pos X:"));
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_fixture_pos_x).speed(1),
+                    );
                     ui.add_space(10.0);
-                    ui.label("Pos Y:");
-                    ui.add(egui::widgets::DragValue::new(&mut self.add_fixture_pos_y).speed(1));
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Pos Y:"));
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_fixture_pos_y).speed(1),
+                    );
                 });
 
                 ui.separator();
 
                 // Kind selector
                 ui.horizontal(|ui| {
-                    ui.label("Type:");
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
                     let kinds = ["MovingHead", "Light", "Dimmer"];
                     egui::ComboBox::from_id_source("add_fixture_kind_combo")
                         .selected_text(kinds[self.add_fixture_kind])
@@ -294,7 +324,7 @@ impl BlaulichtApp {
 
                 // Model selector depending on kind
                 ui.horizontal(|ui| {
-                    ui.label("Model:");
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Model:"));
                     match self.add_fixture_kind {
                         0 => {
                             // MovingHead
@@ -334,7 +364,7 @@ impl BlaulichtApp {
                 ui.separator();
 
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "Cancel", ButtonSize::Large) {
+                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                         self.add_fixture_open = false;
                     }
 
@@ -346,11 +376,12 @@ impl BlaulichtApp {
                             _ => true,
                         };
 
-                    if components::button(ui, can_create, "Create", ButtonSize::Large) && can_create
+                    if components::button(ui, can_create, "Create", ButtonSize::Medium)
+                        && can_create
                     {
                         let group_id = self.add_fixture_group;
-                        let name = std::mem::take(&mut self.add_fixture_name);
-                        let start_addr = self.add_fixture_start_addr as usize;
+                        let base_name = std::mem::take(&mut self.add_fixture_name);
+                        let mut start_addr = self.add_fixture_start_addr as usize;
                         let universe_no = self.add_fixture_universe_no as usize;
                         let pos = Position {
                             x: self.add_fixture_pos_x,
@@ -383,13 +414,38 @@ impl BlaulichtApp {
                             _ => unreachable!(),
                         };
 
-                        let mut fixture =
-                            Fixture::new(universe_no, start_addr, name.into(), fixture_type);
-                        fixture.pos = pos;
+                        // Determine channel footprint for address stepping
+                        let footprint = match &fixture_type {
+                            FixtureType::MovingHead(MovingHead::MartinMacAura) => 16,
+                            FixtureType::Light(Light::Generic3ChanNoAlpha) => 3,
+                            FixtureType::Light(Light::Generic4ChanWithAlpha) => 4,
+                            FixtureType::Light(Light::LEDPartyTCLSpot) => 4,
+                            FixtureType::Light(Light::AdjMegaHexPar) => 7,
+                            FixtureType::Light(Light::LiteCraftMiniParAT10) => 8,
+                            FixtureType::Light(Light::VaryTechVP1) => 4,
+                            FixtureType::Dimmer(_) => 1,
+                        };
 
+                        // Create multiple fixtures if requested
                         {
                             let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                            dmx_engine.add_fixture_to_group(group_id, fixture);
+                            let count = self.add_fixture_count.max(1) as usize;
+                            for i in 0..count {
+                                let name = if count > 1 {
+                                    format!("{} #{}", base_name, i + 1)
+                                } else {
+                                    base_name.clone()
+                                };
+                                let mut fixture = Fixture::new(
+                                    universe_no,
+                                    start_addr,
+                                    name.into(),
+                                    fixture_type.clone(),
+                                );
+                                fixture.pos = pos.clone();
+                                dmx_engine.add_fixture_to_group(group_id, fixture);
+                                start_addr = start_addr.saturating_add(footprint);
+                            }
                             skip_rest = true;
                         }
 
@@ -506,6 +562,7 @@ impl BlaulichtApp {
                         ui.separator();
 
                         ui.horizontal(|ui| {
+                            const LABEL_W: f32 = 120.0;
                             let (new_g, new_f, changed) = self.group_selection(
                                 dmx_engine.groups(),
                                 self.add_fixture_group,
@@ -554,13 +611,26 @@ impl BlaulichtApp {
                                         // Editable fields (local copies, apply on save)
 
                                         ui.horizontal(|ui| {
-                                            ui.label("Name:");
-                                            ui.text_edit_singleline(&mut self.new_fixture_name);
+                                            ui.add_sized(
+                                                [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                Label::new("Name:"),
+                                            );
+                                            ui.add_sized(
+                                                [280.0, ButtonSize::Medium.dim().0.y],
+                                                TextEdit::singleline(&mut self.new_fixture_name)
+                                                    .font(FontId::proportional(
+                                                        ButtonSize::Medium.dim().1,
+                                                    )),
+                                            );
                                         });
 
                                         ui.horizontal(|ui| {
-                                            ui.label("Start Addr:");
-                                            ui.add(
+                                            ui.add_sized(
+                                                [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                Label::new("Start Addr:"),
+                                            );
+                                            ui.add_sized(
+                                                [140.0, ButtonSize::Medium.dim().0.y],
                                                 egui::widgets::DragValue::new(
                                                     &mut self.new_fixture_addr,
                                                 )
@@ -570,8 +640,12 @@ impl BlaulichtApp {
                                         });
 
                                         ui.horizontal(|ui| {
-                                            ui.label("Universe");
-                                            ui.add(
+                                            ui.add_sized(
+                                                [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                Label::new("Universe:"),
+                                            );
+                                            ui.add_sized(
+                                                [140.0, ButtonSize::Medium.dim().0.y],
                                                 egui::widgets::DragValue::new(
                                                     &mut self.new_fixture_uni,
                                                 )

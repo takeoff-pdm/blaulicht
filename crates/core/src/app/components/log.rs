@@ -157,6 +157,7 @@ impl LogWindow {
 
         egui::ScrollArea::vertical()
             .max_height(ui.available_height())
+            .max_width(ctx.screen_rect().width() - 100.0)
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
@@ -196,7 +197,7 @@ impl LogWindow {
                     // Display with appropriate color
                     ui.colored_label(
                         log_level_color(&entry.level),
-                        RichText::new(log_text).size(18.0),
+                        RichText::new(log_text).size(12.0),
                     );
 
                     should_scroll_to_bottom = true;

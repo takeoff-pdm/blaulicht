@@ -141,6 +141,8 @@ pub struct BlaulichtApp {
     new_scene_dialog_open: bool,
     current_scene_changeset_dialog_open: bool,
     current_scene_animations_dialog_open: bool,
+    add_animations_dialog_open: bool,
+    add_selected_animation: Option<u8>,
 
     show_dmx_simulation_universes: [bool; 2],
 
@@ -176,6 +178,8 @@ pub struct BlaulichtApp {
     add_fixture_kind: usize,
     // model index per kind (simple integer mapping to enum variants)
     add_fixture_model_index: usize,
+    // number of fixtures to create in one action
+    add_fixture_count: u16,
 
     setup_fixture_id: u8,
 
@@ -259,6 +263,8 @@ impl BlaulichtApp {
             new_scene_dialog_open: false,
             current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
+            add_animations_dialog_open: false,
+            add_selected_animation: None,
             confirm_shutdown_open: false,
             popup: None,
             popup_open_time: Instant::now(),
@@ -280,6 +286,7 @@ impl BlaulichtApp {
             add_fixture_pos_y: 0,
             add_fixture_kind: 0,
             add_fixture_model_index: 0,
+            add_fixture_count: 1,
             setup_fixture_id: 0,
             add_fixture_universe_no: 0,
             show_dmx_simulation_universes: [false; 2],

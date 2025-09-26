@@ -106,8 +106,9 @@ impl BlaulichtApp {
 
     pub fn render_scene_animations_dialog(&self, ctx: &Context, dmx_engine: &EngineState) {
         if self.current_scene_animations_dialog_open {
-            const HEIGHT: f32 = 500.0;
+            const HEIGHT: f32 = 430.0;
             const WIDTH: f32 = 500.0;
+
             components::dialog(
                 ctx,
                 "Current Scene Animations",
@@ -115,6 +116,8 @@ impl BlaulichtApp {
                 true,
                 |ui| {
                     let scene = dmx_engine.curr_scene();
+
+                    ui.set_min_height(HEIGHT - 100.0);
 
                     ui.heading("Active Animations");
                     ui.separator();
@@ -189,6 +192,8 @@ impl BlaulichtApp {
                                         ));
                                 }
                             }
+
+                            ui.separator();
                         }
                     });
                 },
@@ -733,40 +738,6 @@ impl BlaulichtApp {
                                 ControlEvent::SetColor(tup),
                             ));
                         }
-                    }
-
-                    ui.separator();
-
-                    // --- Animation Controls ---
-                    ui.label("Animations");
-
-                    // TODO: Animations come to a different 'window / tab'
-                    //
-                    // Add Animation Selection: Prettier fixed-height boxes
-                    ui.label("Add Animation:");
-                    ui.add_space(4.0);
-                    let mut selected_anim: Option<u8> = None;
-                    egui::ScrollArea::vertical()
-                        .max_height(120.0)
-                        .show(ui, |ui| {
-                            for anim_id in animations {
-                                if components::button(
-                                    ui,
-                                    false,
-                                    &format!("Animation {}", anim_id),
-                                    ButtonSize::Medium.with_width(100.0),
-                                ) {
-                                    selected_anim = Some(*anim_id);
-                                }
-                                ui.add_space(4.0);
-                            }
-                        });
-
-                    if let Some(anim_id) = selected_anim {
-                        event_bus_connection.send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            ControlEvent::AddAnimation(anim_id),
-                        ));
                     }
                 });
             });

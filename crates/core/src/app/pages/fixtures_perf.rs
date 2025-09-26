@@ -1,11 +1,97 @@
-use crate::app::{
-    components::{self, ButtonSize},
-    BlaulichtApp,
+use crate::{
+    app::{
+        components::{self, ButtonSize},
+        BlaulichtApp,
+    },
+    dmx::EngineState,
 };
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, RichText};
 
 impl BlaulichtApp {
+    pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if self.add_animations_dialog_open {
+            const HEIGHT: f32 = 430.0;
+            const WIDTH: f32 = 500.0;
+
+            components::dialog(
+                ctx,
+                "Add Scene Animation",
+                egui::vec2(WIDTH, HEIGHT),
+                true,
+                |ui| {
+                    // let scene = dmx_engine.curr_scene();
+                    ui.separator();
+
+                    ui.set_min_height(HEIGHT - 100.0);
+
+                    // let mut selected_anim: Option<u8> = None;
+
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.set_min_height(HEIGHT - 100.0);
+                        // Add Animation Selection: Prettier fixed-height boxes
+                        ui.label("Add Animation:");
+                        ui.add_space(4.0);
+                        egui::ScrollArea::vertical()
+                            .max_height(HEIGHT - 100.0)
+                            .show(ui, |ui| {
+                                for (anim_id, anim) in &dmx_engine.animations {
+                                    if components::button(
+                                        ui,
+                                        self.add_selected_animation == Some(*anim_id),
+                                        &format!("#{} {}", anim_id, anim.name),
+                                        ButtonSize::Medium.with_width(300.0),
+                                    ) {
+                                        self.add_selected_animation = Some(*anim_id);
+                                    }
+                                    ui.add_space(4.0);
+                                }
+                            });
+                    });
+
+                    ui.separator();
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(300.0, 20.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.set_width(300.0);
+
+                            if components::button(
+                                ui,
+                                false,
+                                "Cancel",
+                                ButtonSize::Medium.with_width(140.0),
+                            ) {
+                                self.add_animations_dialog_open = false;
+                                self.add_selected_animation = None;
+                            }
+                            ui.add_space(4.0);
+
+                            if components::button(
+                                ui,
+                                true,
+                                "Add",
+                                ButtonSize::Medium.with_width(140.0),
+                            ) {
+                                if let Some(anim_id) = self.add_selected_animation {
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            ControlEvent::AddAnimation(anim_id),
+                                        ));
+                                    self.add_animations_dialog_open = false;
+                                    self.add_selected_animation = None;
+                                }
+                            }
+                        },
+                    );
+                },
+            );
+        }
+    }
+
     pub fn fixtures_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let groups = dmx_engine.groups();
@@ -15,6 +101,7 @@ impl BlaulichtApp {
         //
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
+        self.render_add_animations_dialog(ctx, &dmx_engine);
 
         //
         // Main UI start.
@@ -43,16 +130,29 @@ impl BlaulichtApp {
                                     !self.current_scene_animations_dialog_open;
                             }
 
-                            ui.separator();
+                            ui.horizontal(|ui| {
+                                if components::button(
+                                    ui,
+                                    self.add_animations_dialog_open,
+                                    "Add Animations",
+                                    ButtonSize::Medium,
+                                ) {
+                                    self.add_animations_dialog_open =
+                                        !self.add_animations_dialog_open;
+                                }
+                            });
+                        });
 
-                            // if components::button(
-                            //     ui,
-                            //     self.show_dmx_simulation,
-                            //     "Show DMX",
-                            //     ButtonSize::Medium,
-                            // ) {
-                            //     self.show_dmx_simulation = !self.show_dmx_simulation;
-                            // }
+                        ui.horizontal(|ui| {
+                            if components::button(
+                                ui,
+                                self.current_scene_animations_dialog_open,
+                                "Scene Animations",
+                                ButtonSize::Medium,
+                            ) {
+                                self.current_scene_animations_dialog_open =
+                                    !self.current_scene_animations_dialog_open;
+                            }
                         });
 
                         ui.separator();
