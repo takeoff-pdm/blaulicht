@@ -16,7 +16,7 @@ pub enum MergeStrategy {
 pub struct FixtureOrientation {
     pub pan: u8,
     pub tilt: u8,
-    pub rotation: u8,
+    // pub rotation: u8,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
@@ -146,6 +146,7 @@ impl FixtureState {
     pub fn apply_value(&mut self, value: u16, property: FixtureProperty) {
         match property {
             FixtureProperty::Alpha => self.alpha = value as u8,
+            FixtureProperty::Strobe => self.strobe_speed = value as u8,
             FixtureProperty::ColorHue => {
                 self.color.h = value as f64;
             }
@@ -157,19 +158,18 @@ impl FixtureState {
             }
             FixtureProperty::Tilt => self.orientation.tilt = value as u8,
             FixtureProperty::Pan => self.orientation.pan = value as u8,
-            FixtureProperty::Rotation => self.orientation.rotation = value as u8,
         }
     }
 
     fn get_value(&self, property: FixtureProperty) -> u16 {
         match property {
             FixtureProperty::Alpha => self.alpha as u16,
+            FixtureProperty::Strobe => self.strobe_speed as u16,
             FixtureProperty::ColorHue => self.color.h as u16,
             FixtureProperty::ColorSaturation => self.color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
             FixtureProperty::ColorValue => self.color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
             FixtureProperty::Tilt => self.orientation.tilt as u16,
             FixtureProperty::Pan => self.orientation.pan as u16,
-            FixtureProperty::Rotation => self.orientation.rotation as u16,
         }
     }
 
@@ -182,6 +182,18 @@ impl FixtureState {
             ControlEvent::SetAlpha(alpha) => {
                 self.alpha = alpha;
                 vec![FixtureProperty::Alpha]
+            }
+            ControlEvent::SetStrobeSpeed(speed) => {
+                self.strobe_speed = speed;
+                vec![FixtureProperty::Strobe]
+            }
+            ControlEvent::SetPan(pan) => {
+                self.orientation.pan = pan;
+                vec![FixtureProperty::Pan]
+            }
+            ControlEvent::SetTilt(tilt) => {
+                self.orientation.tilt = tilt;
+                vec![FixtureProperty::Tilt]
             }
             ControlEvent::SetColor(clr) => {
                 let color: RGBColor = clr.into();
@@ -205,7 +217,7 @@ impl FixtureState {
                 self.color.v = (val as f64).map_range(0.0..255.0, 0.0..1.0);
                 vec![FixtureProperty::ColorValue]
             }
-            other => unreachable!("Not supported: {other:?}")
+            other => unreachable!("Not supported: {other:?}"),
         }
     }
 }

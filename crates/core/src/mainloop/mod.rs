@@ -77,6 +77,7 @@ pub fn run(
 
     let dmx_appstate = Arc::clone(&app_state);
     let mut dmx_engine = DmxEngine::new(dmx_appstate, event_bus_dmx, system_out.clone());
+    dmx_engine.start_setup();
 
     //
     // Audio signal collector.

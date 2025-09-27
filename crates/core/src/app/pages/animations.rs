@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonColor, ButtonSize, HFader},
+        components::{self, button, ButtonColor, ButtonSize, HFader},
         BlaulichtApp,
     },
     dmx::{
@@ -9,12 +9,14 @@ use crate::{
     },
 };
 use blaulicht_shared::{
-    AnimationSpecBody, AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
-    MathematicalBaseFunction, PhaserDuration, PhaserKind,
+    AnimationSpec, AnimationSpecBody, AnimationSpecBodyAudioVolume, AnimationSpecBodyBeat,
+    AnimationSpecBodyPhaser, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
+    EventOriginator, FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration,
+    PhaserKind, SyncMode,
 };
-use egui::{Color32, Context, Label, RichText};
+use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{Line, Plot, PlotPoints};
-use std::u16;
+use std::{time::Duration, u16};
 use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
@@ -125,8 +127,184 @@ impl BlaulichtApp {
         );
     }
 
-    pub fn animations_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn animations_ui(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         ui.heading("Animations");
+
+        if self.animation_page.create_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+            let cell_h = BUTTON_SIZE.dim().0.y;
+            let width = 570.0;
+            let height = 330.0;
+            const LABEL_W: f32 = 120.0;
+
+            components::dialog(
+                ctx,
+                "Add Animation",
+                egui::vec2(width, height),
+                false,
+                |ui| {
+                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+
+                    // Name
+                    ui.horizontal(|ui| {
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
+
+                        ui.add(
+                            TextEdit::singleline(&mut self.animation_page.new_name)
+                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                        );
+                    });
+
+                    ui.separator();
+
+                    // Body selector
+                    ui.horizontal(|ui| {
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
+
+                        let kinds = ["PhaserMath", "AudioVolume", "AudioBeat"];
+                        egui::ComboBox::from_id_source("add_anim_kind_combo")
+                            .width(140.0)
+                            .selected_text(self.animation_page.new_mode)
+                            .show_ui(ui, |ui| {
+                                for (idx, label) in kinds.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut self.animation_page.new_mode,
+                                        label,
+                                        *label,
+                                    );
+                                }
+                            });
+
+                        ///////
+                        // match *label {
+                        // };
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
+
+                        // let kinds = ["PhaserMath", "AudioVolume", "AudioBeat"];
+                        let kinds: Vec<_> = FixtureProperty::iter().collect();
+                        egui::ComboBox::from_id_source("add_anim_prop_combo")
+                            .width(140.0)
+                            .selected_text(format!("{}", self.animation_page.new_prop))
+                            .show_ui(ui, |ui| {
+                                for (idx, prop) in kinds.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut self.animation_page.new_prop,
+                                        *prop,
+                                        format!("{prop}"),
+                                    );
+                                }
+                            });
+
+                        ///////
+                        // match *label {
+                        // };
+                    });
+
+                    // Model selector depending on kind
+                    // ui.horizontal(|ui| {});
+
+                    ui.separator();
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                            self.add_fixture_open = false;
+                        }
+
+                        // let can_create = self.add_fixture_group.is_some()
+                        //     && dmx_engine
+                        //         .groups()
+                        //         .get(&self.add_fixture_group.unwrap())
+                        //         .is_some()
+                        //     && self.add_fixture_start_addr >= 1
+                        //     && self.add_fixture_start_addr <= 512;
+
+                        let mut button_pressed =
+                            components::button(ui, true, "Create", ButtonSize::Medium);
+                        ctx.input(|input| {
+                            if input.key_pressed(Key::Enter) {
+                                button_pressed = true;
+                            }
+                        });
+
+                        // if !can_create {
+                        //     button_pressed = false;
+                        // }
+
+                        if button_pressed {
+                            let base_name = std::mem::take(&mut self.animation_page.new_name);
+
+                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+
+                            // Build fixture type
+                            let body = match self.animation_page.new_mode {
+                                "AudioVolume" => {
+                                    AnimationSpecBody::AudioVolume(AnimationSpecBodyAudioVolume {})
+                                }
+                                "AudioBeat" => AnimationSpecBody::Beat(AnimationSpecBodyBeat {}),
+                                "PhaserMath" | _ => {
+                                    AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
+                                        kind: PhaserKind::Mathematical(MathematicalPhaser {
+                                            base: MathematicalBaseFunction::Sin,
+                                            stretch_factor: 1.0,
+                                            amplitude_min: 0,
+                                            amplitude_max: 255,
+                                        }),
+                                        time_total: PhaserDuration::Fixed(1000),
+                                    })
+                                }
+                            };
+
+                            // let prop = match self.animation_page.new_mode {
+                            //     "AudioVolume" => {
+                            //         AnimationSpecBody::AudioVolume(AnimationSpecBodyAudioVolume {})
+                            //     }
+                            //     "AudioBeat" => AnimationSpecBody::Beat(AnimationSpecBodyBeat {}),
+                            //     "PhaserMath" | _ => {
+                            //         AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
+                            //             kind: PhaserKind::Mathematical(MathematicalPhaser {
+                            //                 base: MathematicalBaseFunction::Sin,
+                            //                 stretch_factor: 1.0,
+                            //                 amplitude_min: 0,
+                            //                 amplitude_max: 255,
+                            //             }),
+                            //             time_total: PhaserDuration::Fixed(1000),
+                            //         })
+                            //     }
+                            // };
+
+                            let len = dmx_engine.0.animations.len();
+                            dmx_engine.0.animations.insert(
+                                len as u8,
+                                AnimationSpec {
+                                    name: self.animation_page.new_name.clone(),
+                                    body,
+                                    property: self.animation_page.new_prop,
+                                    sync: SyncMode::Synced,
+                                },
+                            );
+
+                            self.animation_page.create_open = false;
+                        }
+                    });
+                },
+            );
+        }
+
+        if button(
+            ui,
+            self.animation_page.create_open,
+            "Create",
+            ButtonSize::Medium,
+        ) {
+            self.animation_page.create_open = !self.animation_page.create_open;
+        }
+
         ui.separator();
 
         // let groups = dmx_engine.groups();
@@ -201,8 +379,19 @@ impl BlaulichtApp {
                                 [x as f64, y as f64]
                             })
                             .collect::<PlotPoints<'_>>(),
-                        AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => todo!(),
-                        AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+                        AnimationSpecBody::AudioVolume(_) => (0..(360) * RENDER_WIDTH)
+                            .map(|x| {
+                                let y = (x % 2) * 255;
+                                [x as f64, y as f64]
+                            })
+                            .collect::<PlotPoints<'_>>(),
+                        AnimationSpecBody::Beat(animation_spec_body_beat) => (0..(360)
+                            * RENDER_WIDTH)
+                            .map(|x| {
+                                let y = if x == 180 { 255 } else { 0 };
+                                [x as f64, y as f64]
+                            })
+                            .collect::<PlotPoints<'_>>(),
                         AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
                     };
 
@@ -221,6 +410,20 @@ impl BlaulichtApp {
                         // ui.horizontal(|ui| {
 
                         ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_label("SYNC")
+                                    .selected_text(format!("{:?}", self.animation_page.sync_mode))
+                                    .show_ui(ui, |ui| {
+                                        for mode in SyncMode::iter() {
+                                            ui.selectable_value(
+                                                &mut self.animation_page.sync_mode,
+                                                mode,
+                                                mode.to_string(),
+                                            );
+                                        }
+                                    });
+                            });
+
                             ui.horizontal(|ui| {
                                 egui::ComboBox::from_label("FN")
                                     .selected_text(format!(
@@ -311,6 +514,9 @@ impl BlaulichtApp {
                                 let mut engine = self.data.state.dmx_engine.write().unwrap();
                                 // TODO: use a message bus instead.
                                 let animation = engine.0.animations.get_mut(&id).unwrap();
+
+                                animation.sync = self.animation_page.sync_mode;
+
                                 match &mut animation.body {
                                     AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
                                         match &mut animation_spec_body_phaser.kind {

@@ -147,12 +147,13 @@ impl AnimationSpeedModifier {
 )]
 pub enum FixtureProperty {
     Alpha,
+    Strobe,
     ColorHue,
     ColorSaturation,
     ColorValue,
     Tilt,
     Pan,
-    Rotation,
+    // Rotation,
 }
 
 impl Display for FixtureProperty {
@@ -162,12 +163,12 @@ impl Display for FixtureProperty {
             "{}",
             match self {
                 FixtureProperty::Alpha => "Alpha",
+                FixtureProperty::Strobe => "Strb Speed",
                 FixtureProperty::ColorHue => "ColorHue",
                 FixtureProperty::ColorSaturation => "ColorSaturation",
                 FixtureProperty::ColorValue => "ColorValue",
                 FixtureProperty::Tilt => "Tilt",
                 FixtureProperty::Pan => "Pan",
-                FixtureProperty::Rotation => "Rotation",
             }
         )
     }
@@ -218,6 +219,9 @@ pub enum ControlEvent {
     /// Sets the brightness of the fixture, 0 is usually black, 255 is full brightness.
     /// TODO: replace this with set-property messages
     SetAlpha(u8),
+    SetStrobeSpeed(u8),
+    SetTilt(u8),
+    SetPan(u8),
     /// Sets the color of the fixture using the RGB format.
     SetColor((u8, u8, u8)),
     SetColorHue(u16),
@@ -262,6 +266,9 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
     () => {
         ControlEvent::SetEnabled(_)
             | ControlEvent::SetAlpha(_)
+            | ControlEvent::SetStrobeSpeed(_)
+            | ControlEvent::SetTilt(_)
+            | ControlEvent::SetPan(_)
             | ControlEvent::SetColor(_)
             | ControlEvent::SetColorHue(_)
             | ControlEvent::SetColorSaturation(_)

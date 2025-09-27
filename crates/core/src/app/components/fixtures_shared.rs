@@ -544,9 +544,12 @@ impl BlaulichtApp {
                                     ButtonColor::Blue.into(),
                                     ButtonSize::Large.with_height(50.0),
                                     |ui, rect, fg_color| {
+
                                         let painter = ui.painter();
                                         let fixture_count = group.fixtures.len();
-                                        let name = format!("GRP {}", group_id);
+                                        let mut name = group.name.clone();
+                                        name.truncate(10);
+
                                         painter.text(
                                             rect.left_top() + egui::vec2(12.0, 8.0),
                                             egui::Align2::LEFT_TOP,
@@ -557,7 +560,7 @@ impl BlaulichtApp {
                                         painter.text(
                                             rect.left_bottom() - egui::vec2(-12.0, 8.0),
                                             egui::Align2::LEFT_BOTTOM,
-                                            format!("{} fixtures", fixture_count),
+                                            format!("{} FX | #{}", fixture_count, group_id),
                                             egui::FontId::proportional(12.0),
                                             fg_color,
                                         );
@@ -718,7 +721,7 @@ impl BlaulichtApp {
                     ui.label("Fixture Controls");
                     ui.add_space(8.0);
 
-                    // Brightness slider.
+                    // Alpha slider.
                     {
                         let mut brightness = buf.alpha as f32;
                         if ui
@@ -728,6 +731,60 @@ impl BlaulichtApp {
                             event_bus_connection.send(ControlEventMessage::new(
                                 EventOriginator::Web,
                                 ControlEvent::SetAlpha(brightness as u8),
+                            ));
+                        };
+                    }
+
+                    ui.add_space(3.0);
+                    ui.separator();
+                    ui.add_space(3.0);
+
+                    // Strobe slider.
+                    {
+                        let mut strobe = buf.strobe_speed as f32;
+                        if ui
+                            .add(HFader::new(&mut strobe, 0.0..=255.0).with_label("Strobe"))
+                            .changed()
+                        {
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetStrobeSpeed(strobe as u8),
+                            ));
+                        };
+                    }
+
+                    ui.add_space(3.0);
+                    ui.separator();
+                    ui.add_space(3.0);
+
+                    // Tilt slider.
+                    {
+                        let mut tilt = buf.orientation.tilt as f32;
+                        if ui
+                            .add(HFader::new(&mut tilt, 0.0..=255.0).with_label("Tilt"))
+                            .changed()
+                        {
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetTilt(tilt as u8),
+                            ));
+                        };
+                    }
+
+                    ui.add_space(3.0);
+                    ui.separator();
+                    ui.add_space(3.0);
+
+                    // Pan slider.
+                    {
+                        let mut pan = buf.orientation.pan as f32;
+                        if ui
+                            .add(HFader::new(&mut pan, 0.0..=255.0).with_label("Pan"))
+                            .changed()
+                        {
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetPan(pan as u8),
                             ));
                         };
                     }

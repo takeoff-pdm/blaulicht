@@ -11,7 +11,7 @@ pub mod animation;
 // pub use fixture::*;
 pub mod scene;
 
-use log::{debug, error};
+use log::{debug, error, warn};
 
 use crate::{
     audio::defs::DMX_TICK_TIME,
@@ -28,7 +28,7 @@ use blaulicht_shared::{
     scene::FixtureSelection,
     ActiveAnimation, AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, ControlEvent,
     ControlEventMessage, EventOriginator, FixtureProperty, LogLevel, PhaserDuration, RGBColor,
-    CONTROLS_REQUIRING_SELECTION,
+    SyncMode, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -55,15 +55,20 @@ pub struct DmxEngine {
     dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
 
     running_setup: bool,
-    run_setup_until: Instant,
+    setup_start_time: Instant,
 }
+
+const SETUP_SECS: u64 = 10;
 
 impl DmxEngine {
     pub fn start_setup(&mut self) {
-        const SETUP_SECS: u64 = 64;
         self.running_setup = true;
-        self.run_setup_until = Instant::now()
-            .checked_add(Duration::from_secs(SETUP_SECS))
+        self.setup_start_time = Instant::now();
+        self.system_out
+            .send(SystemMessage::Log(
+                "[DMX] Engine setup started...".to_string(),
+                LogLevel::Debug,
+            ))
             .unwrap();
     }
 
@@ -121,7 +126,7 @@ impl DmxEngine {
             start_time: Instant::now(),
             dmx_universe_ports,
             running_setup: false,
-            run_setup_until: Instant::now(),
+            setup_start_time: Instant::now(),
         }
     }
 
@@ -136,8 +141,14 @@ impl DmxEngine {
         if self.running_setup {
             self.run_setup();
 
-            if self.run_setup_until >= Instant::now() {
+            if self.setup_start_time.elapsed().as_secs() >= SETUP_SECS {
                 self.running_setup = false;
+                self.system_out
+                    .send(SystemMessage::Log(
+                        "[DMX] Engine setup complete.".to_string(),
+                        LogLevel::Info,
+                    ))
+                    .unwrap();
             }
 
             return true;
@@ -361,29 +372,29 @@ impl DmxEngine {
     }
 
     fn run_setup(&mut self) {
-        for buffer in self.state_ref.dmx_universes.iter() {
-            let mut buffer = buffer.write().unwrap();
-            let state = self.state_ref.dmx_engine.read().unwrap();
+        let state = self.state_ref.dmx_engine.read().unwrap();
 
-            for group in &state.0.groups {
-                for fixture in &group.1.fixtures {
-                    let fix = fixture.1;
+        for group in &state.0.groups {
+            for fixture in &group.1.fixtures {
+                let fix = fixture.1;
 
-                    let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+                let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
 
-                    println!("SETUP T: {time}");
+                println!("SETUP T: {time}");
 
-                    fix.setup(
-                        time as i32,
-                        &FixtureState::default(),
-                        &mut buffer.dmx_buffer,
-                    );
-                }
+                let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
+                    .write()
+                    .unwrap();
+
+                fix.setup(
+                    time as i32,
+                    &FixtureState::default(),
+                    &mut buffer.dmx_buffer,
+                );
             }
-
-            // mem::drop(state);
-            // mem::drop(buffer);
         }
+
+        mem::drop(state);
 
         self.write_to_hw();
     }
@@ -441,6 +452,10 @@ impl DmxEngine {
 
         // Apply overrides
         for ((universe, chan), value) in &state.0.overrides {
+            if *universe >= self.state_ref.dmx_universes.len() {
+                warn!("Ignoring override: UNI: {universe} CHAN: {chan} -> VAL: {value}; out of universes");
+                continue;
+            }
             let mut buffer = self.state_ref.dmx_universes[*universe].write().unwrap();
             buffer.dmx_buffer[*chan] = *value;
         }
@@ -475,7 +490,7 @@ impl DmxEngine {
         match ev.body() {
             ControlEvent::Transaction(t) => {
                 for t_ev in t {
-                    debug!("Apply transaction: {:?}", &ev);
+                    // debug!("Apply transaction: {:?}", &ev);
 
                     let (err, rollback) =
                         self.apply(state, ControlEventMessage::new(ev.originator(), t_ev));
@@ -739,6 +754,12 @@ impl DmxEngine {
                 }
             }
             ControlEvent::PlayAnimation(id) => {
+                let (animation_sync, anim_prop) = {
+                    let anim = state.0.animations.get(&id).unwrap();
+                    let anim = anim.clone();
+                    (anim.sync, anim.property)
+                };
+
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
@@ -764,8 +785,40 @@ impl DmxEngine {
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
                                 anim.enabled = true;
-                                let animation = state.0.animations.get(&id).unwrap();
-                                (None, None, Some(vec![animation.property]))
+
+                                // TIMING mode: spread or sync the timing.
+                                let amount = anim.fixture_timers.len();
+                                match animation_sync {
+                                    SyncMode::Synced => {
+                                        for (counter, (_, timer_state)) in
+                                            anim.fixture_timers.iter_mut().enumerate()
+                                        {
+                                            timer_state.last_tick_time = 0;
+                                            timer_state.timer = 0;
+                                        }
+                                    }
+                                    SyncMode::StretchedEven => {
+                                        for (counter, (_, timer_state)) in
+                                            anim.fixture_timers.iter_mut().enumerate()
+                                        {
+                                            timer_state.last_tick_time = 0;
+                                            timer_state.timer =
+                                                ((360.0 / amount as f32) * counter as f32) as u64;
+
+                                            println!("timer: {}", timer_state.timer);
+                                        }
+                                    }
+                                    SyncMode::StretchedHalfHalf => {
+                                        for (counter, (_, timer_state)) in
+                                            anim.fixture_timers.iter_mut().enumerate()
+                                        {
+                                            timer_state.last_tick_time = 0;
+                                            timer_state.timer = (180 * (counter % 2)) as u64;
+                                        }
+                                    }
+                                }
+
+                                (None, None, Some(vec![anim_prop]))
                             }
                             None => (
                                 Some("No such animation on selection"),

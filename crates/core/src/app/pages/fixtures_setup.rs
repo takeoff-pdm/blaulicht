@@ -489,6 +489,7 @@ impl BlaulichtApp {
                                 let model = match self.add_fixture_model_index {
                                     0 => Dimmer::FogMachineSingle,
                                     1 => Dimmer::DimmerSingle,
+                                    2 => Dimmer::DimmerWStrobe,
                                     _ => unreachable!("not possible"),
                                 };
 
@@ -504,7 +505,7 @@ impl BlaulichtApp {
                             let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
                             let count = self.add_fixture_count.max(1) as usize;
                             for i in 0..count {
-                                if start_addr + fixture_type.footprint() > 512 {
+                                if start_addr + fixture_type.footprint() > 513 {
                                     mem::drop(dmx_engine);
                                     self.show_popup(PopupSpec {
                                         label: "Out of Channels".to_string(),

@@ -1,7 +1,7 @@
 use crate::{
-    AnimationSpeedModifier, FixtureProperty,
+    AnimationSpeedModifier, FixtureProperty, SyncMode,
     fixture::state::{FixtureGroup, FixtureState},
-    scene::Scene,
+    scene::{EngineSink, Scene},
 };
 use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
@@ -76,6 +76,20 @@ pub struct EngineState {
 }
 
 impl EngineState {
+    pub fn new_scene(&mut self, name: String) {
+        // TODO: this fails when there are too many scenes.
+        let new_id = self.scenes.len();
+        debug_assert!(new_id == new_id as u8 as usize);
+
+        self.scenes.insert(
+            new_id as u8,
+            Scene {
+                sink: EngineSink::from_groups(&self.groups),
+                name: name.clone(),
+            },
+        );
+    }
+
     pub fn serialize(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, config::standard()).unwrap()
     }
@@ -100,6 +114,7 @@ pub struct AnimationSpec {
     pub name: String,
     pub body: AnimationSpecBody,
     pub property: FixtureProperty,
+    pub sync: SyncMode,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]

@@ -1,10 +1,11 @@
 // Animations.
 //
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 use crate::AnimationSpeedModifier;
 
@@ -31,8 +32,27 @@ pub struct ActiveAnimation {
     pub enabled: bool,
     // pub selection: EngineSelection,
     pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
-    pub sync: u8, // TOOD: placeholder type for the sync mode
-                  //
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq, Eq, EnumIter)]
+pub enum SyncMode {
+    Synced,
+    StretchedEven,
+    StretchedHalfHalf,
+}
+
+impl Display for SyncMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SyncMode::Synced => "Synced",
+                SyncMode::StretchedEven => "SyncedEven",
+                SyncMode::StretchedHalfHalf => "SyncedHalfHalf",
+            }
+        )
+    }
 }
 
 impl ActiveAnimation {
@@ -47,7 +67,6 @@ impl ActiveAnimation {
             speed_factor: AnimationSpeedModifier::_1,
             enabled: false,
             fixture_timers,
-            sync: 0, // TODO
         }
     }
 }

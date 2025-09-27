@@ -12,6 +12,7 @@ use super::Fixture;
 pub enum Dimmer {
     FogMachineSingle,
     DimmerSingle,
+    DimmerWStrobe,
 }
 
 impl Display for Dimmer {
@@ -25,12 +26,17 @@ impl Dimmer {
         match self {
             Dimmer::FogMachineSingle => 1,
             Dimmer::DimmerSingle => 1,
+            Dimmer::DimmerWStrobe => 2,
         }
     }
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             Dimmer::FogMachineSingle => dmx[this.start_addr + 0] = state.alpha,
             Dimmer::DimmerSingle => dmx[this.start_addr + 0] = state.alpha,
+            Dimmer::DimmerWStrobe => {
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = state.strobe_speed;
+            }
         }
     }
     pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {}

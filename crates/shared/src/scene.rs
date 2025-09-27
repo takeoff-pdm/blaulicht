@@ -51,7 +51,7 @@ impl FixtureSelection {
                 ordered.sort();
 
                 for fid in ordered {
-                    println!("FID: {fid}");
+                    // println!("FID: {fid}");
                     instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(**fid));
                 }
 

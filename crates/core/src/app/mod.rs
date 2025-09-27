@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use blaulicht_shared::{MathematicalBaseFunction, PhaserDuration};
+use blaulicht_shared::{AnimationSpecBody, FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode};
 use egui::Color32;
 use egui_file::FileDialog;
 use strum::EnumIter;
@@ -94,7 +94,12 @@ pub struct AnimationPageState {
     pub clamp_min: u16,
     pub clamp_max: u16,
     pub base_function: MathematicalBaseFunction,
+    pub sync_mode: SyncMode,
     pub timing: PhaserDuration,
+    pub create_open: bool,
+    pub new_name: String,
+    pub new_mode: &'static str,
+    pub new_prop: FixtureProperty,
 }
 
 pub struct BlaulichtApp {
@@ -261,6 +266,11 @@ impl BlaulichtApp {
                 clamp_max: 255,
                 base_function: MathematicalBaseFunction::Sin,
                 timing: PhaserDuration::Fixed(1000),
+                sync_mode: SyncMode::Synced,
+                create_open: false,
+                new_mode: "PhaserMath",
+                new_name: "ANIM".to_string(),
+                new_prop: FixtureProperty::Alpha,
             },
             new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
             new_scene_dialog_open: false,

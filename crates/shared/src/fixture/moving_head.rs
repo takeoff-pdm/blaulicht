@@ -2,6 +2,7 @@ use crate::{RGBColor, fixture::state::FixtureState};
 
 use super::Fixture;
 use bincode::{Decode, Encode};
+use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
@@ -40,15 +41,29 @@ impl MovingHead {
                 // dmx[start_addr + 2] = 0;
 
                 // Strobe state.
-                dmx[this.start_addr + 0] = state.strobe_speed as u8 * 255;
+                dmx[this.start_addr + 0] = state.strobe_speed as u8;
 
                 // Alpha.
                 dmx[this.start_addr + 1] = state.alpha;
 
                 // Color.
-                dmx[this.start_addr + 9] = color.r;
-                dmx[this.start_addr + 10] = color.g;
-                dmx[this.start_addr + 11] = color.b;
+                dmx[this.start_addr + 3] = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
+
+                // Gobo wheel.
+                dmx[this.start_addr + 11] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+
+                // Gobo rot.
+                dmx[this.start_addr + 5] = state.color.v.map_range(0.0..1.0, 0.0..255.0) as u8;
+
+                // Focus
+                // dmx[this.start_addr + 6] = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
+
+                // dmx[this.start_addr + 5] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+
+                // Actually gobo shit
+                //dmx[this.start_addr + 9] = color.r; // WTF.
+                //dmx[this.start_addr + 10] = color.g;
+                //dmx[this.start_addr + 11] = color.b;
 
                 // Position
                 dmx[this.start_addr + 12] = state.orientation.pan;
@@ -78,9 +93,11 @@ impl MovingHead {
                 match time {
                     v if v <= 5000 => {
                         // Enable lamp.
+                        println!("ENABLE LAMP");
                         dmx[this.start_addr + 0] = 237;
                     }
                     v => {
+                        println!("DONT ENABLE LAMP");
                         dmx[this.start_addr + 0] = 20;
                     }
                 }

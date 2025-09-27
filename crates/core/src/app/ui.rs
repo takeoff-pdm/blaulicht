@@ -403,7 +403,7 @@ impl eframe::App for BlaulichtApp {
                     self.fixtures_ui(ui, ctx);
                 }
                 AppPage::Animations => {
-                    self.animations_ui(ui);
+                    self.animations_ui(ctx, ui);
                 }
             }
 

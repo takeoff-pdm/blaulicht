@@ -8,7 +8,7 @@ use blaulicht_shared::{
     scene::{EngineSink, FixtureSelection, Scene},
     ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser,
     AnimationSpeedModifier, AnimationTimerState, EngineGroups, EngineSelection, FixtureProperty,
-    MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, RGBColor,
+    MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, RGBColor, SyncMode,
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
@@ -85,13 +85,46 @@ impl<'engine> EngineState {
         }
     }
 
-    pub fn load_showfile(&mut self, other: blaulicht_shared::EngineState) {
+    pub fn load_showfile(&mut self, mut other: blaulicht_shared::EngineState) {
+        let groups = other.groups.clone();
+
+        let overrides = self.0.overrides.clone();
+        println!("ov: {overrides:?}");
+
+        let current_scene_focus = match &other.scenes.contains_key(&other.current_scene_focus) {
+            true => other.current_scene_focus,
+            false => {
+                println!("Loading backup scene... | SCENES: {:?}", other.scenes);
+
+                if other.scenes.is_empty() {
+                    other.new_scene("Empty Scene".to_string());
+                    println!("CREATE BACKUP SCENE...");
+                }
+
+                let backup_id = other.scenes.keys().next().unwrap();
+                println!("LOADED BACKUP ID: {backup_id}");
+                *backup_id
+            }
+        };
+
         // This is actually required because the timetamps need to be reset to 0.
         let scenes =
             other
                 .scenes
                 .into_iter()
                 .map(|(k, scene)| {
+                    let mut fixture_states = scene.sink.fixture_states;
+
+                    for (gid, group) in &groups {
+                        for (fid, _) in &group.fixtures {
+                            let selec = (*gid, *fid);
+                            if fixture_states.get(&selec).is_none() {
+                                println!("============ FIX!!!");
+                                fixture_states.insert(selec, FixtureState::default());
+                            }
+                        }
+                    }
+
                     (
                         k,
                         Scene {
@@ -122,6 +155,7 @@ impl<'engine> EngineState {
                                         )
                                     })
                                     .collect(),
+                                fixture_states,
                                 ..scene.sink
                             },
                             ..scene
@@ -132,7 +166,9 @@ impl<'engine> EngineState {
 
         *self = Self(blaulicht_shared::EngineState {
             selection: EngineSelection::default(),
+            current_scene_focus,
             scenes,
+            overrides,
             ..other
         });
     }
@@ -155,17 +191,7 @@ impl<'engine> EngineState {
     }
 
     pub fn new_scene(&mut self, name: String) {
-        // TODO: this fails when there are too many scenes.
-        let new_id = self.0.scenes.len();
-        debug_assert!(new_id == new_id as u8 as usize);
-
-        self.0.scenes.insert(
-            new_id as u8,
-            Scene {
-                sink: EngineSink::from_groups(self.groups()),
-                name: name.clone(),
-            },
-        );
+        self.0.new_scene(name)
     }
 }
 
@@ -236,6 +262,7 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                     }),
+                    sync: SyncMode::Synced,
                 },
                 1 => AnimationSpec {
                     name: "Hue Animation 0".into(),
@@ -249,6 +276,7 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                     }),
+                    sync: SyncMode::Synced,
                 },
                 2 => AnimationSpec {
                     name: "Brightness Animation 1".into(),
@@ -262,6 +290,7 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                     }),
+                    sync: SyncMode::Synced,
                 },
             }
             .into_iter()
