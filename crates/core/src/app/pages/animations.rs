@@ -1,16 +1,21 @@
-use std::u16;
-
-use blaulicht_shared::{
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
-};
-use egui::Context;
-use egui_plot::{Line, Plot, PlotPoints};
-use strum::IntoEnumIterator;
-
 use crate::{
-    app::{components::{self, ButtonSize}, BlaulichtApp},
-    dmx::{animation::{AnimationSpecBody, MathematicalBaseFunction, PhaserDuration, PhaserKind}, EngineState},
+    app::{
+        components::{self, ButtonColor, ButtonSize, HFader},
+        BlaulichtApp,
+    },
+    dmx::{
+        animation::{generate, phaser},
+        EngineState,
+    },
 };
+use blaulicht_shared::{
+    AnimationSpecBody, AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+    MathematicalBaseFunction, PhaserDuration, PhaserKind,
+};
+use egui::{Color32, Context, Label, RichText};
+use egui_plot::{Line, Plot, PlotPoints};
+use std::u16;
+use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
     fn animation_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
@@ -21,7 +26,7 @@ impl BlaulichtApp {
             egui::vec2(panel_width, ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
-                let number_of_items_total = dmx_engine.scenes.len();
+                let number_of_items_total = dmx_engine.0.scenes.len();
                 const ITEMS_PER_PAGE: usize = 7;
                 let total_pages = number_of_items_total / ITEMS_PER_PAGE;
 
@@ -54,10 +59,10 @@ impl BlaulichtApp {
                 ui.add_space(5.0);
 
                 let start = self.scene_page_index * ITEMS_PER_PAGE;
-                let page_items = dmx_engine.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
+                let page_items = dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
 
                 for (scene_id, scene) in page_items {
-                    let is_selected = dmx_engine.current_scene_focus == *scene_id;
+                    let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
 
                     let label = format!("{scene_id} | {}", scene.name);
                     if components::button(
@@ -129,15 +134,13 @@ impl BlaulichtApp {
 
         let animations = {
             let dmx_engine = self.data.state.dmx_engine.read().unwrap().clone();
-            dmx_engine.animations.clone()
+            dmx_engine.0.animations.clone()
         };
 
         ui.horizontal(|ui| {
             // ui.horizontal(|ui| {
             // Left: groups list
             ui.vertical(|ui| {
-                ui.label("Groups:");
-                ui.add_space(8.0);
                 for (animation_id, animation) in animations.iter() {
                     let is_selected = self.animation_page.selected_animation == Some(*animation_id);
 
@@ -145,25 +148,35 @@ impl BlaulichtApp {
                     //     selected_groups.push(group_id);
                     // }
 
-                    let rect =
-                        ui.allocate_exact_size(egui::vec2(180.0, 48.0), egui::Sense::click());
-                    let painter = ui.painter();
-                    let bg_color = if is_selected {
-                        egui::Color32::from_rgb(60, 120, 200)
-                    } else {
-                        egui::Color32::from_gray(40)
-                    };
-                    painter.rect_filled(rect.0, 6.0, bg_color);
-                    let name = format!("[{}]: {}", animation_id, animation.name);
-                    painter.text(
-                        rect.0.left_top() + egui::vec2(12.0, 8.0),
-                        egui::Align2::LEFT_TOP,
-                        &name,
-                        egui::FontId::proportional(16.0),
-                        egui::Color32::WHITE,
+                    let clicked = components::clickable(
+                        ui,
+                        is_selected,
+                        ButtonColor::Blue.into(),
+                        ButtonSize::Large.with_width(150.0),
+                        |ui, rect, clr| {
+                            let painter = ui.painter();
+                            let mut name = animation.name.clone();
+                            name.truncate(20);
+
+                            painter.text(
+                                rect.left_top() + egui::vec2(8.0, 15.0),
+                                egui::Align2::LEFT_TOP,
+                                name,
+                                egui::FontId::proportional(14.0),
+                                egui::Color32::WHITE,
+                            );
+
+                            painter.text(
+                                rect.left_bottom() + egui::vec2(8.0, -30.0),
+                                egui::Align2::LEFT_TOP,
+                                format!("#{animation_id}"),
+                                egui::FontId::proportional(10.0),
+                                egui::Color32::WHITE,
+                            );
+                        },
                     );
 
-                    if rect.1.clicked() {
+                    if clicked {
                         // Toggle group selection
                         if !is_selected {
                             self.animation_page.selected_animation = Some(*animation_id);
@@ -173,136 +186,159 @@ impl BlaulichtApp {
                 }
                 // self.selected_fixture_group = selected_group;
             });
-        });
 
-        match self.animation_page.selected_animation {
-            Some(id) => {
-                let animation = animations.get(&id).unwrap();
+            match self.animation_page.selected_animation {
+                Some(id) => {
+                    let animation = animations.get(&id).unwrap();
 
-                const RENDER_WIDTH: usize = 3;
+                    const RENDER_WIDTH: usize = 3;
 
-                let plot_points = match &animation.body {
-                    AnimationSpecBody::Phaser(animation_spec_body_phaser) => (0..(360)
-                        * RENDER_WIDTH)
-                        .map(|x| {
-                            let y = animation_spec_body_phaser.generate(x as f32);
-                            [x as f64, y as f64]
-                        })
-                        .collect::<PlotPoints<'_>>(),
-                    AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => todo!(),
-                    AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
-                    AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
-                };
-
-                ui.vertical(|ui| {
-                    ui.label(format!("Animation: {}", animation.name));
+                    let plot_points = match &animation.body {
+                        AnimationSpecBody::Phaser(animation_spec_body_phaser) => (0..(360)
+                            * RENDER_WIDTH)
+                            .map(|x| {
+                                let y = phaser::generate(animation_spec_body_phaser, x as f32);
+                                [x as f64, y as f64]
+                            })
+                            .collect::<PlotPoints<'_>>(),
+                        AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => todo!(),
+                        AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+                        AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+                    };
 
                     ui.vertical(|ui| {
-                        let line = Line::new("animation", plot_points);
-                        Plot::new("animation_plot")
-                            .height(128.0)
-                            .width(512.0)
-                            .view_aspect(1.0)
-                            .default_y_bounds(-1.0, 260.0)
-                            .show(ui, |plot_ui| plot_ui.line(line));
-                    });
-                    // ui.horizontal(|ui| {
+                        ui.label(format!("Animation: {}", animation.name));
 
-                    ui.horizontal(|ui| {
-                        ui.label("Write something: ");
+                        ui.vertical(|ui| {
+                            let line = Line::new("animation", plot_points);
+                            Plot::new("animation_plot")
+                                .height(128.0)
+                                .width(512.0)
+                                .view_aspect(1.0)
+                                .default_y_bounds(-1.0, 260.0)
+                                .show(ui, |plot_ui| plot_ui.line(line));
+                        });
+                        // ui.horizontal(|ui| {
 
-                        egui::ComboBox::from_label("Audio Device")
-                            .selected_text(format!("{:?}", self.animation_page.base_function))
-                            .show_ui(ui, |ui| {
-                                for func in MathematicalBaseFunction::iter() {
-                                    ui.selectable_value(
-                                        &mut self.animation_page.base_function,
-                                        func,
-                                        func.to_string(),
-                                    );
-                                }
-                            });
-
-                        ui.add(
-                            egui::DragValue::new(&mut self.animation_page.clamp_min)
-                                .speed(0.1) // How fast dragging changes the value
-                                // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=u16::MAX as f32)
-                                .prefix("Value: ") // Prefix text
-                                .suffix(" units"), // Suffix text
-                        );
-                        ui.add(
-                            egui::DragValue::new(&mut self.animation_page.clamp_max)
-                                .speed(0.1) // How fast dragging changes the value
-                                // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=u16::MAX as f32)
-                                .prefix("Value: ") // Prefix text
-                                .suffix(" units"), // Suffix text
-                        );
-
-                        if ui.button("Toggle Timing").clicked() {
-                            self.animation_page.timing = match self.animation_page.timing {
-                                PhaserDuration::Fixed(_) => {
-                                    PhaserDuration::Beat(AnimationSpeedModifier::_1)
-                                }
-                                PhaserDuration::Beat(_) => PhaserDuration::Fixed(1000),
-                            }
-                        }
-
-                        match self.animation_page.timing {
-                            PhaserDuration::Beat(ref mut value) => {
-                                let mut index = value.as_index();
-                                let max_index = AnimationSpeedModifier::ALL.len() - 1;
-
-                                ui.label(format!("Beats: {}", value.as_str()));
-                                if ui
-                                    .add(egui::Slider::new(&mut index, 0..=max_index).text("Enum"))
-                                    .changed()
-                                {
-                                    *value = AnimationSpeedModifier::from_index(index);
-                                }
-                            }
-                            PhaserDuration::Fixed(ref mut value) => {
-                                ui.add(
-                                    egui::DragValue::new(value)
-                                        .speed(1) // How fast dragging changes the value
-                                        // .clamp_range(0.0..=100.0) // Min/max range
-                                        .range(0..=10000)
-                                        .prefix("Speed: ") // Prefix text
-                                        .suffix(" millis"), // Suffix text
-                                );
-                            }
-                        };
-
-                        if ui.button("Apply").clicked() {
-                            let mut engine = self.data.state.dmx_engine.write().unwrap();
-                            // TODO: use a message bus instead.
-                            let animation = engine.animations.get_mut(&id).unwrap();
-                            match &mut animation.body {
-                                AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
-                                    match &mut animation_spec_body_phaser.kind {
-                                        PhaserKind::Mathematical(ref mut mathematical_phaser) => {
-                                            mathematical_phaser.base =
-                                                self.animation_page.base_function;
-                                            mathematical_phaser.amplitude_min =
-                                                self.animation_page.clamp_min;
-                                            mathematical_phaser.amplitude_max =
-                                                self.animation_page.clamp_max;
-                                            animation_spec_body_phaser.time_total =
-                                                self.animation_page.timing;
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_label("FN")
+                                    .selected_text(format!(
+                                        "{:?}",
+                                        self.animation_page.base_function
+                                    ))
+                                    .show_ui(ui, |ui| {
+                                        for func in MathematicalBaseFunction::iter() {
+                                            ui.selectable_value(
+                                                &mut self.animation_page.base_function,
+                                                func,
+                                                func.to_string(),
+                                            );
                                         }
-                                        PhaserKind::Keyframed(keyframed_phaser) => todo!(),
+                                    });
+
+                                if components::button(
+                                    ui,
+                                    false,
+                                    "Toggle Timing",
+                                    ButtonSize::Medium,
+                                ) {
+                                    self.animation_page.timing = match self.animation_page.timing {
+                                        PhaserDuration::Fixed(_) => {
+                                            PhaserDuration::Beat(AnimationSpeedModifier::_1)
+                                        }
+                                        PhaserDuration::Beat(_) => PhaserDuration::Fixed(1000),
                                     }
                                 }
-                                _ => todo!(),
-                            };
-                        }
+
+                                match self.animation_page.timing {
+                                    PhaserDuration::Beat(ref mut value) => {
+                                        let mut index = value.as_index() as f32;
+                                        let max_index = AnimationSpeedModifier::ALL.len() - 1;
+
+                                        ui.add_sized(
+                                            [60.0, 16.0],
+                                            Label::new(
+                                                RichText::new(format!("Beats: {}", value.as_str()))
+                                                    .color(Color32::LIGHT_RED)
+                                                    .size(16.0),
+                                            ),
+                                        );
+
+                                        if ui
+                                            .add(HFader::new(&mut index, 0.0..=(max_index as f32)))
+                                            .changed()
+                                        {
+                                            *value =
+                                                AnimationSpeedModifier::from_index(index as usize);
+                                        }
+                                    }
+                                    PhaserDuration::Fixed(ref mut value) => {
+                                        ui.add(
+                                            egui::DragValue::new(value)
+                                                .speed(1) // How fast dragging changes the value
+                                                // .clamp_range(0.0..=100.0) // Min/max range
+                                                .range(0..=10000)
+                                                .prefix("Speed: ") // Prefix text
+                                                .suffix(" millis"), // Suffix text
+                                        );
+                                    }
+                                };
+                            });
+
+                            ui.separator();
+
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut self.animation_page.clamp_min)
+                                        .speed(0.1) // How fast dragging changes the value
+                                        // .clamp_range(0.0..=100.0) // Min/max range
+                                        .range(0.0..=u16::MAX as f32)
+                                        .prefix("Value: ") // Prefix text
+                                        .suffix(" units"), // Suffix text
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut self.animation_page.clamp_max)
+                                        .speed(0.1) // How fast dragging changes the value
+                                        // .clamp_range(0.0..=100.0) // Min/max range
+                                        .range(0.0..=u16::MAX as f32)
+                                        .prefix("Value: ") // Prefix text
+                                        .suffix(" units"), // Suffix text
+                                );
+                            });
+
+                            if components::button(ui, false, "Apply", ButtonSize::Medium) {
+                                let mut engine = self.data.state.dmx_engine.write().unwrap();
+                                // TODO: use a message bus instead.
+                                let animation = engine.0.animations.get_mut(&id).unwrap();
+                                match &mut animation.body {
+                                    AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
+                                        match &mut animation_spec_body_phaser.kind {
+                                            PhaserKind::Mathematical(
+                                                ref mut mathematical_phaser,
+                                            ) => {
+                                                mathematical_phaser.base =
+                                                    self.animation_page.base_function;
+                                                mathematical_phaser.amplitude_min =
+                                                    self.animation_page.clamp_min;
+                                                mathematical_phaser.amplitude_max =
+                                                    self.animation_page.clamp_max;
+                                                animation_spec_body_phaser.time_total =
+                                                    self.animation_page.timing;
+                                            }
+                                            PhaserKind::Keyframed(keyframed_phaser) => todo!(),
+                                        }
+                                    }
+                                    _ => todo!(),
+                                };
+                            }
+                        });
                     });
-                });
+                }
+                None => {
+                    ui.label("No Animation Selected");
+                }
             }
-            None => {
-                ui.label("No Animation Selected");
-            }
-        }
+        });
     }
 }

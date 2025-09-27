@@ -3,6 +3,7 @@ use std::{fmt::Display, mem::MaybeUninit};
 use crate::{
     blaulicht::{bl_send, bl_sys, prelude::println},
     midi::{MidiConnection, MidiEvent},
+    state::get_dmx,
 };
 use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventMessage, TickInput};
 use map_range::MapRange;
@@ -64,6 +65,12 @@ static mut STATE: MaybeUninit<State> = MaybeUninit::uninit();
 
 pub fn initialize(input: TickInput) {
     println!("Initializing...");
+
+    // // Get state dump.
+    let state = get_dmx();
+    println!("STATE: {state:?}");
+    //
+    // return;
 
     let mut devices = vec![
         MidiDevice::NanoKontrol,
@@ -248,6 +255,15 @@ pub fn run(input: TickInput) {
         #[allow(static_mut_refs)]
         STATE.assume_init_mut()
     };
+
+    // if input.clock > 60000 {
+    //     let dmx = get_dmx();
+    //
+    //     println!("{dmx:?}");
+    //     panic!("");
+    // }
+
+    // return;
 
     let handles = state.midi_handles.clone();
     for (dev, handle) in handles {

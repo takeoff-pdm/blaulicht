@@ -68,18 +68,18 @@ pub enum AnimationSpeedModifier {
     _8,
 }
 
-impl TryFrom<f32> for AnimationSpeedModifier {
+impl TryFrom<f64> for AnimationSpeedModifier {
     type Error = ();
 
-    fn try_from(value: f32) -> Result<Self, Self::Error> {
-        const _1_16: f32 = 16.0;
-        const _1_8: f32 = 8.0;
-        const _1_4: f32 = 4.0;
-        const _1_2: f32 = 2.0;
-        const _1: f32 = 1.0;
-        const _2: f32 = 1.0 / 2.0;
-        const _4: f32 = 1.0 / 4.0;
-        const _8: f32 = 1.0 / 8.0;
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        const _1_16: f64 = 16.0;
+        const _1_8: f64 = 8.0;
+        const _1_4: f64 = 4.0;
+        const _1_2: f64 = 2.0;
+        const _1: f64 = 1.0;
+        const _2: f64 = 1.0 / 2.0;
+        const _4: f64 = 1.0 / 4.0;
+        const _8: f64 = 1.0 / 8.0;
 
         Ok(match value {
             _1_16 => Self::_1_16,
@@ -128,7 +128,7 @@ impl AnimationSpeedModifier {
         }
     }
 
-    pub fn as_float(&self) -> f32 {
+    pub fn as_float(&self) -> f64 {
         match self {
             AnimationSpeedModifier::_1_16 => 16.0,
             AnimationSpeedModifier::_1_8 => 8.0,

@@ -1,16 +1,18 @@
 use anyhow::{bail, Context};
-use blaulicht_core::app::BlaulichtApp;
+use blaulicht_core::app::{BlaulichtApp, PopupButtonSpec, PopupSpec};
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::msg::FromFrontend;
+use blaulicht_core::msg::{FromFrontend, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
+use blaulicht_shared::LogLevel;
 use env_logger::Env;
 use log::info;
 use std::sync::atomic::AtomicU8;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 // #[actix_web::main]
 fn main() -> anyhow::Result<()> {
@@ -245,10 +247,42 @@ fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    let initial_popup = match cfg.last_open_showfile {
+        Some(showfile) => {
+            let mut dmx = app_state.dmx_engine.write().unwrap();
+            match config::read_showfile(showfile.clone(), &mut dmx) {
+                Ok(_) => Some(PopupSpec::with_duration(
+                    Duration::from_secs(5),
+                    "Loaded Showfile".to_string(),
+                )),
+                Err(e) => {
+                    system_out
+                        .send(SystemMessage::Log(
+                            format!("Read showfile <{showfile:?}> ERR: {e}"),
+                            LogLevel::Err,
+                        ))
+                        .unwrap();
+
+                    Some(PopupSpec::with_duration(
+                        Duration::from_secs(5),
+                        "Showfile Error".to_string(),
+                    ))
+                }
+            }
+        }
+        None => None,
+    };
+
     eframe::run_native(
         "blaulicht",
         native_options,
-        Box::new(|cc| Ok(Box::new(BlaulichtApp::new(cc, state_wrapper)))),
+        Box::new(|cc| {
+            Ok(Box::new(BlaulichtApp::new(
+                cc,
+                state_wrapper,
+                initial_popup,
+            )))
+        }),
     )
     .unwrap();
 

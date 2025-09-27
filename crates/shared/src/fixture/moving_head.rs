@@ -1,16 +1,14 @@
-use std::fmt::Display;
-
-use blaulicht_shared::RGBColor;
-use serde::{Deserialize, Serialize};
-use strum::EnumIter;
-
-use crate::dmx::{clock::Time, FixtureState};
+use crate::{RGBColor, fixture::state::FixtureState};
 
 use super::Fixture;
+use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use strum::EnumIter;
 
-#[derive(Serialize, Deserialize, Debug, Clone, EnumIter)]
+#[derive(Serialize, Deserialize, Debug, Clone, EnumIter, Encode, Decode)]
 pub enum MovingHead {
-    MartinMacAura,
+    MartinMac250E,
 }
 
 impl Display for MovingHead {
@@ -20,11 +18,17 @@ impl Display for MovingHead {
 }
 
 impl MovingHead {
+    pub fn footprint(&self) -> usize {
+        match self {
+            MovingHead::MartinMac250E => 18,
+        }
+    }
+
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
 
         match self {
-            MovingHead::MartinMacAura => {
+            MovingHead::MartinMac250E => {
                 // // shutter
                 // if !value {
                 //     dmx[start_addr + 0] = 0;
@@ -68,10 +72,10 @@ impl MovingHead {
         // }
     }
 
-    pub fn setup(&self, this: &Fixture, time: Time, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
         match self {
-            MovingHead::MartinMacAura => {
-                match time.elapsed() {
+            MovingHead::MartinMac250E => {
+                match time {
                     v if v <= 5000 => {
                         // Enable lamp.
                         dmx[this.start_addr + 0] = 237;

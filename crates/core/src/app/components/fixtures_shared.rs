@@ -3,21 +3,19 @@ use crate::{
         components::{self, ButtonColor, ButtonSize, HFader},
         BlaulichtApp, Selection,
     },
-    dmx::{EngineGroups, EngineState, FixtureSelection, FixtureState},
+    dmx::EngineState,
     event::SystemEventBusConnectionInst,
     state::DmxBuffer,
 };
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, RGBColor,
+    fixture::state::FixtureState, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
+    EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
 use egui::{
     Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Vec2,
 };
 use map_range::MapRange;
-use std::{
-    collections::BTreeMap,
-    sync::{RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{collections::BTreeMap, sync::RwLockReadGuard};
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
@@ -28,7 +26,7 @@ pub fn simulate_dmx(
     dmx: RwLockReadGuard<'_, DmxBuffer>,
 ) {
     let len = dmx.dmx_buffer.len() as f32;
-    let dimensions = len.sqrt() as usize;
+    let dimensions = len.sqrt() as usize + 1;
 
     let base_height = 16.0;
     let padding = 1.0;
@@ -49,7 +47,7 @@ pub fn simulate_dmx(
         // Draw the cells manually
         for row in 0..dimensions {
             for col in 0..dimensions {
-                let value = dmx_buffer[row * dimensions + col];
+                let value = dmx_buffer.get(row * dimensions + col);
 
                 // Calculate top-left corner of this cell
                 let x = rect.min.x + col as f32 * (base_height + padding);
@@ -62,24 +60,27 @@ pub fn simulate_dmx(
 
                 // Color based on value
                 let (bg_color, fg_color) = match value {
-                    0 => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
-                    1..=85 => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
-                    86..=170 => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
-                    171..=255 => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
+                    Some(0) => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
+                    Some(1..=85) => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
+                    Some(86..=170) => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
+                    Some(171..=255) => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
+                    None => (Color32::TRANSPARENT, Color32::TRANSPARENT),
                 };
 
                 painter.rect_filled(cell_rect, 0.0, bg_color);
-                if value > 0 {
-                    painter.text(
-                        egui::Pos2 { x, y },
-                        Align2::LEFT_TOP,
-                        value.to_string(),
-                        egui::FontId {
-                            size: 9.0,
-                            family: egui::FontFamily::Monospace,
-                        },
-                        fg_color,
-                    );
+                if let Some(value) = value {
+                    if *value > 0 {
+                        painter.text(
+                            egui::Pos2 { x, y },
+                            Align2::LEFT_TOP,
+                            value.to_string(),
+                            egui::FontId {
+                                size: 9.0,
+                                family: egui::FontFamily::Monospace,
+                            },
+                            fg_color,
+                        );
+                    }
                 }
             }
         }
@@ -135,7 +136,7 @@ impl BlaulichtApp {
                             );
 
                             for (animation_id, animation) in animations {
-                                let spec = dmx_engine.animations.get(animation_id).unwrap();
+                                let spec = dmx_engine.0.animations.get(animation_id).unwrap();
 
                                 ui.label(
                                     RichText::new(format!(
@@ -153,6 +154,7 @@ impl BlaulichtApp {
                                     selection_instructions.push_front(ControlEvent::PushSelection);
                                     selection_instructions
                                         .push_back(ControlEvent::RemoveAnimation(*animation_id));
+
                                     selection_instructions.push_back(ControlEvent::PopSelection);
 
                                     self.data
@@ -180,6 +182,36 @@ impl BlaulichtApp {
 
                                     selection_instructions.push_front(ControlEvent::PushSelection);
                                     selection_instructions.push_back(event);
+                                    selection_instructions.push_back(ControlEvent::PopSelection);
+
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            ControlEvent::Transaction(
+                                                selection_instructions.into_iter().collect(),
+                                            ),
+                                        ));
+                                }
+
+                                // Speed fader (horizontal), mapped to AnimationSpeedModifier indices 0..7
+                                let mut speed_index = animation.speed_factor.as_index() as f32;
+                                let resp = ui.add(
+                                    components::HFader::new(&mut speed_index, 0.0..=7.0)
+                                        .with_label("Speed")
+                                        .show_value(false),
+                                );
+
+                                if resp.changed() {
+                                    let new_index = speed_index.round().clamp(0.0, 7.0) as usize;
+                                    let new_speed = AnimationSpeedModifier::from_index(new_index);
+
+                                    let mut selection_instructions =
+                                        selection.generate_instructions();
+                                    selection_instructions.push_front(ControlEvent::PushSelection);
+                                    selection_instructions.push_back(
+                                        ControlEvent::SetAnimationSpeed(*animation_id, new_speed),
+                                    );
                                     selection_instructions.push_back(ControlEvent::PopSelection);
 
                                     self.data
@@ -301,126 +333,148 @@ impl BlaulichtApp {
     pub fn group_selection(
         &mut self,
         groups: &EngineGroups,
-        selected_group: u8,
+        selected_group: Option<u8>,
         selected_fixture: u8,
         ui: &mut egui::Ui,
     ) -> (u8, u8, bool) {
         let dmx_engine = self.data.state.dmx_engine.read().unwrap();
 
-        let mut group_result = selected_group;
+        let mut group_result = selected_group.unwrap_or(0);
         let mut fixture_result = selected_fixture;
         let mut changed = false;
 
-        ui.horizontal(|ui| {
-            ui.set_min_height(ui.available_height());
-            ui.vertical(|ui| {
-                ui.label("Groups:");
-                ui.add_space(8.0);
-                for (group_id, group) in groups.iter() {
-                    let is_selected = selected_group == *group_id;
+        ui.set_min_height(ui.available_height());
 
-                    let name = format!("GRP {}", group_id);
+        ui.allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.set_min_height(ui.available_height());
+                ui.vertical(|ui| {
+                    ui.label("Groups:");
+                    ui.add_space(8.0);
 
-                    if components::clickable(
-                        ui,
-                        is_selected,
-                        ButtonColor::Blue.into(),
-                        ButtonSize::Large.with_height(50.0),
-                        |ui, rect, fg_color| {
-                            let painter = ui.painter();
-                            let fixture_count = group.fixtures.len();
-                            let name = format!("GRP {}", group_id);
-                            painter.text(
-                                rect.left_top() + egui::vec2(12.0, 8.0),
-                                egui::Align2::LEFT_TOP,
-                                &name,
-                                egui::FontId::proportional(16.0),
-                                fg_color,
-                            );
-                            painter.text(
-                                rect.left_bottom() - egui::vec2(-12.0, 8.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                format!("{} fixtures", fixture_count),
-                                egui::FontId::proportional(12.0),
-                                fg_color,
-                            );
-                        },
-                    ) {
-                        // Toggle group selection
-                        if !is_selected {
-                            group_result = *group_id;
-                            changed = true;
-                        };
+                    egui::ScrollArea::vertical()
+                        .id_salt("sgroups")
+                        .show(ui, |ui| {
+                            ui.set_height(400.0);
+                            for (group_id, group) in groups.iter() {
+                                let is_selected = selected_group == Some(*group_id);
+
+                                if components::clickable(
+                                    ui,
+                                    is_selected,
+                                    ButtonColor::Blue.into(),
+                                    ButtonSize::Large.with_height(50.0),
+                                    |ui, rect, fg_color| {
+                                        let painter = ui.painter();
+                                        let fixture_count = group.fixtures.len();
+                                        let mut name = group.name.clone();
+                                        name.truncate(10);
+
+                                        painter.text(
+                                            rect.left_top() + egui::vec2(12.0, 8.0),
+                                            egui::Align2::LEFT_TOP,
+                                            &name,
+                                            egui::FontId::proportional(16.0),
+                                            fg_color,
+                                        );
+                                        painter.text(
+                                            rect.left_bottom() - egui::vec2(-12.0, 8.0),
+                                            egui::Align2::LEFT_BOTTOM,
+                                            format!("{} FX | #{}", fixture_count, group_id),
+                                            egui::FontId::proportional(12.0),
+                                            fg_color,
+                                        );
+                                    },
+                                ) {
+                                    // Toggle group selection
+                                    if !is_selected {
+                                        group_result = *group_id;
+                                        changed = true;
+                                    };
+                                }
+
+                                ui.add_space(2.0);
+                            }
+                        });
+                });
+
+                ui.vertical(|ui| {
+                    ui.label("Fixtures");
+                    ui.add_space(8.0);
+
+                    if dmx_engine.groups().is_empty() {
+                        return;
                     }
 
-                    ui.add_space(2.0);
-                }
-            });
+                    let Some(group_id) = self.add_fixture_group else {
+                        return;
+                    };
 
-            ui.vertical(|ui| {
-                ui.label("Fixtures");
-                ui.add_space(8.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("sfixtures")
+                        .show(ui, |ui| {
+                            ui.set_height(400.0);
+                            for (fix_id, fixture) in dmx_engine
+                                .groups()
+                                .get(&group_id)
+                                .as_ref()
+                                .unwrap()
+                                .fixtures
+                                .iter()
+                            {
+                                let fixture =
+                                    groups.get(&group_id).unwrap().fixtures.get(fix_id).unwrap();
 
-                if dmx_engine.groups().is_empty() {
-                    return;
-                }
+                                let mut name = fixture.name.clone();
+                                name.truncate(10);
 
-                let group_id = self.add_fixture_group;
+                                let button_clicked = components::clickable(
+                                    ui,
+                                    true,
+                                    if self.setup_fixture_id == *fix_id {
+                                        Selection::Limited.color()
+                                    } else {
+                                        Selection::Off.color()
+                                    },
+                                    ButtonSize::Large.with_height(50.0),
+                                    |ui, rect, fg| {
+                                        let painter = ui.painter();
 
-                for (fix_id, fixture) in dmx_engine
-                    .groups()
-                    .get(&group_id)
-                    .as_ref()
-                    .unwrap()
-                    .fixtures
-                    .iter()
-                {
-                    let fixture = groups
-                        .get(&group_id)
-                        .unwrap()
-                        .fixtures
-                        .get(&fix_id)
-                        .unwrap();
+                                        painter.text(
+                                            rect.left_center() + egui::vec2(12.0, 0.0),
+                                            egui::Align2::LEFT_CENTER,
+                                            name,
+                                            egui::FontId::proportional(14.0),
+                                            fg,
+                                        );
 
-                    let button_clicked = components::clickable(
-                        ui,
-                        true,
-                        if self.setup_fixture_id == *fix_id {
-                            Selection::Limited.color()
-                        } else {
-                            Selection::Off.color()
-                        },
-                        ButtonSize::Large.with_height(50.0),
-                        |ui, rect, fg| {
-                            let painter = ui.painter();
+                                        painter.text(
+                                            rect.left_center() + egui::vec2(12.0, 12.0),
+                                            egui::Align2::LEFT_CENTER,
+                                            format!(
+                                                "#{} | {}",
+                                                fix_id,
+                                                fixture.type_.model_string()
+                                            ),
+                                            egui::FontId::proportional(7.0),
+                                            fg,
+                                        );
+                                    },
+                                );
 
-                            painter.text(
-                                rect.left_center() + egui::vec2(12.0, 0.0),
-                                egui::Align2::LEFT_CENTER,
-                                &fixture.name,
-                                egui::FontId::proportional(14.0),
-                                fg,
-                            );
+                                if button_clicked {
+                                    fixture_result = *fix_id;
+                                    changed = true;
+                                }
 
-                            painter.text(
-                                rect.left_center() + egui::vec2(12.0, 12.0),
-                                egui::Align2::LEFT_CENTER,
-                                fixture.type_.kind_string(),
-                                egui::FontId::proportional(9.0),
-                                fg,
-                            );
-                        },
-                    );
-
-                    if button_clicked {
-                        fixture_result = *fix_id;
-                        changed = true;
-                    }
-
-                    ui.add_space(2.0);
-                }
-            });
-        });
+                                ui.add_space(2.0);
+                            }
+                        });
+                });
+            },
+        );
 
         (group_result, fixture_result, changed)
     }
@@ -441,7 +495,9 @@ impl BlaulichtApp {
 
         let mut total_fixtures = vec![];
         for g_id in selection.group_ids.iter() {
-            let group = groups.get(g_id).unwrap();
+            let group = groups
+                .get(g_id)
+                .unwrap_or_else(|| panic!("Selection illegal: {selection:?}"));
             if selection.fixtures_in_group.is_empty() {
                 total_fixtures.extend(
                     group
@@ -462,129 +518,149 @@ impl BlaulichtApp {
             }
         }
 
-        ui.horizontal(|ui| {
-            ui.set_min_height(ui.available_height());
-            ui.vertical(|ui| {
-                ui.label("Groups:");
-                ui.add_space(8.0);
-                for (group_id, group) in groups.iter() {
-                    let is_selected = selection.group_ids.contains(group_id);
-
-                    let name = format!("GRP {}", group_id);
-
-                    if components::clickable(
-                        ui,
-                        is_selected,
-                        ButtonColor::Blue.into(),
-                        ButtonSize::Large.with_height(50.0),
-                        |ui, rect, fg_color| {
-                            let painter = ui.painter();
-                            let fixture_count = group.fixtures.len();
-                            let name = format!("GRP {}", group_id);
-                            painter.text(
-                                rect.left_top() + egui::vec2(12.0, 8.0),
-                                egui::Align2::LEFT_TOP,
-                                &name,
-                                egui::FontId::proportional(16.0),
-                                fg_color,
-                            );
-                            painter.text(
-                                rect.left_bottom() - egui::vec2(-12.0, 8.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                format!("{} fixtures", fixture_count),
-                                egui::FontId::proportional(12.0),
-                                fg_color,
-                            );
-                        },
-                    ) {
-                        // Toggle group selection
-                        let msg = if is_selected {
-                            ControlEvent::DeSelectGroup(*group_id)
-                        } else {
-                            ControlEvent::SelectGroup(*group_id)
-                        };
-
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                    }
-
-                    ui.add_space(2.0);
-                }
-                // self.selected_fixture_group = selected_group;
-            });
-
-            // Right: fixtures in selected group
-            // Get selection info
-            // Layout: left (fixtures), right (controls)
-
-            // ui.horizontal(|ui| {
-            // Fixtures list
-            if !selection.group_ids.is_empty() {
+        ui.allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.set_min_height(ui.available_height());
                 ui.vertical(|ui| {
-                    ui.label("Fixtures");
+                    ui.label("Groups:");
                     ui.add_space(8.0);
+                    ui.set_min_height(ui.available_height());
 
-                    for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                        let fixture = groups
-                            .get(&group_id)
-                            .unwrap()
-                            .fixtures
-                            .get(&fix_id)
-                            .unwrap();
+                    egui::ScrollArea::vertical()
+                        .id_salt("sgroups-p")
+                        .show(ui, |ui| {
+                            ui.set_height(400.0);
+                            ui.add_space(8.0);
+                            for (group_id, group) in groups.iter() {
+                                let is_selected = selection.group_ids.contains(group_id);
 
-                        let button_clicked = components::clickable(
-                            ui,
-                            true, //*fixture_selection == Selection::Limited,
-                            fixture_selection.color(),
-                            ButtonSize::Large.with_height(50.0),
-                            |ui, rect, fg| {
-                                let painter = ui.painter();
+                                let name = format!("GRP {}", group_id);
 
-                                // painter.rect_filled(rect, 0.0, bg);
+                                if components::clickable(
+                                    ui,
+                                    is_selected,
+                                    ButtonColor::Blue.into(),
+                                    ButtonSize::Large.with_height(50.0),
+                                    |ui, rect, fg_color| {
+                                        let painter = ui.painter();
+                                        let fixture_count = group.fixtures.len();
+                                        let name = format!("GRP {}", group_id);
+                                        painter.text(
+                                            rect.left_top() + egui::vec2(12.0, 8.0),
+                                            egui::Align2::LEFT_TOP,
+                                            &name,
+                                            egui::FontId::proportional(16.0),
+                                            fg_color,
+                                        );
+                                        painter.text(
+                                            rect.left_bottom() - egui::vec2(-12.0, 8.0),
+                                            egui::Align2::LEFT_BOTTOM,
+                                            format!("{} fixtures", fixture_count),
+                                            egui::FontId::proportional(12.0),
+                                            fg_color,
+                                        );
+                                    },
+                                ) {
+                                    // Toggle group selection
+                                    let msg = if is_selected {
+                                        ControlEvent::DeSelectGroup(*group_id)
+                                    } else {
+                                        ControlEvent::SelectGroup(*group_id)
+                                    };
 
-                                painter.text(
-                                    rect.left_center() + egui::vec2(12.0, 0.0),
-                                    egui::Align2::LEFT_CENTER,
-                                    &fixture.name,
-                                    egui::FontId::proportional(14.0),
-                                    fg,
-                                );
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(EventOriginator::Web, msg));
+                                }
 
-                                painter.text(
-                                    rect.left_center() + egui::vec2(12.0, 12.0),
-                                    egui::Align2::LEFT_CENTER,
-                                    fixture.type_.kind_string(),
-                                    egui::FontId::proportional(9.0),
-                                    fg,
-                                );
-                            },
-                        );
-
-                        if button_clicked
-                            && selection.group_ids.len() == 1
-                            && total_fixtures.len() != 1
-                        {
-                            let is_fix_selected = highlight_fixtures.contains(fix_id);
-
-                            let msg = if is_fix_selected {
-                                ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(*fix_id)
-                            } else {
-                                ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id)
-                            };
-
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                        }
-
-                        ui.add_space(2.0);
-                    }
+                                ui.add_space(2.0);
+                            }
+                            // self.selected_fixture_group = selected_group;
+                        });
                 });
-            } else {
-                let _ = ui.allocate_exact_size(ButtonSize::Large.dim().0, egui::Sense::empty());
-            }
-        });
+
+                // Right: fixtures in selected group
+                // Get selection info
+                // Layout: left (fixtures), right (controls)
+
+                // ui.horizontal(|ui| {
+                // Fixtures list
+                if !selection.group_ids.is_empty() {
+                    ui.vertical(|ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("sfix-p")
+                            .show(ui, |ui| {
+                                ui.label("Fixtures");
+                                ui.add_space(8.0);
+
+                                for (group_id, fix_id, fixture_selection) in &total_fixtures {
+                                    let fixture = groups
+                                        .get(&group_id)
+                                        .unwrap()
+                                        .fixtures
+                                        .get(&fix_id)
+                                        .unwrap();
+
+                                    let button_clicked = components::clickable(
+                                        ui,
+                                        true, //*fixture_selection == Selection::Limited,
+                                        fixture_selection.color(),
+                                        ButtonSize::Large.with_height(50.0),
+                                        |ui, rect, fg| {
+                                            let painter = ui.painter();
+
+                                            // painter.rect_filled(rect, 0.0, bg);
+
+                                            painter.text(
+                                                rect.left_center() + egui::vec2(12.0, 0.0),
+                                                egui::Align2::LEFT_CENTER,
+                                                &fixture.name,
+                                                egui::FontId::proportional(14.0),
+                                                fg,
+                                            );
+
+                                            painter.text(
+                                                rect.left_center() + egui::vec2(12.0, 12.0),
+                                                egui::Align2::LEFT_CENTER,
+                                                fixture.type_.kind_string(),
+                                                egui::FontId::proportional(9.0),
+                                                fg,
+                                            );
+                                        },
+                                    );
+
+                                    if button_clicked
+                                        && selection.group_ids.len() == 1
+                                        && total_fixtures.len() != 1
+                                    {
+                                        let is_fix_selected = highlight_fixtures.contains(fix_id);
+
+                                        let msg = if is_fix_selected {
+                                            ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
+                                                *fix_id,
+                                            )
+                                        } else {
+                                            ControlEvent::LimitSelectionToFixtureInCurrentGroup(
+                                                *fix_id,
+                                            )
+                                        };
+
+                                        self.data.event_bus_connection.send(
+                                            ControlEventMessage::new(EventOriginator::Web, msg),
+                                        );
+                                    }
+
+                                    ui.add_space(2.0);
+                                }
+                            });
+                    });
+                } else {
+                    let _ = ui.allocate_exact_size(ButtonSize::Large.dim().0, egui::Sense::empty());
+                }
+            },
+        );
 
         ui.separator();
 
@@ -611,10 +687,10 @@ impl BlaulichtApp {
                         .unwrap();
                     fixture.clone()
                 }
-                None => dmx_engine.control_buffer.clone(),
+                None => dmx_engine.0.control_buffer.clone(),
             };
 
-            let animations: Vec<u8> = dmx_engine.animations.keys().copied().collect();
+            let animations: Vec<u8> = dmx_engine.0.animations.keys().copied().collect();
 
             self.fixture_controls(
                 ui,
@@ -751,7 +827,7 @@ impl BlaulichtApp {
             egui::vec2(panel_width, ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
-                let number_of_items_total = dmx_engine.scenes.len();
+                let number_of_items_total = dmx_engine.0.scenes.len();
                 const ITEMS_PER_PAGE: usize = 7;
                 let total_pages = number_of_items_total / ITEMS_PER_PAGE;
 
@@ -784,10 +860,10 @@ impl BlaulichtApp {
                 ui.add_space(5.0);
 
                 let start = self.scene_page_index * ITEMS_PER_PAGE;
-                let page_items = dmx_engine.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
+                let page_items = dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
 
                 for (scene_id, scene) in page_items {
-                    let is_selected = dmx_engine.current_scene_focus == *scene_id;
+                    let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
 
                     let label = format!("{scene_id} | {}", scene.name);
                     if components::button(

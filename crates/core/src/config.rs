@@ -1,13 +1,16 @@
 use std::{
     fs::{self, File},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
+    sync::RwLockWriteGuard,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use audioviz::spectrum::config::StreamConfig;
-use log::debug;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
+
+use crate::dmx;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
@@ -23,6 +26,28 @@ pub struct PluginConfig {
     pub file_path: String,
     pub enabled: bool,
     pub enable_watcher: bool,
+}
+
+pub fn read_showfile(
+    file: PathBuf,
+    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+) -> anyhow::Result<()> {
+    debug!("Attempting to read showfile from {file:?}...");
+
+    let mut f = File::open(&file)?;
+    let metadata = fs::metadata(&file)?;
+    let mut buffer = vec![0; metadata.len() as usize];
+    f.read(&mut buffer)?;
+
+    match postcard::from_bytes(&buffer) {
+        Ok(de) => {
+            dmx.load_showfile(de);
+            Ok(())
+        }
+        Err(e) => {
+            Err(anyhow!(e))
+        }
+    }
 }
 
 impl Default for Config {

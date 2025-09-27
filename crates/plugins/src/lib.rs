@@ -3,7 +3,13 @@ use blaulicht_shared::{LogLevel, TickInput};
 mod blaulicht;
 mod error;
 mod midi;
+mod state;
 mod user;
+
+pub struct BufferSource<T, const N: usize> {
+    buffer: [T; N],
+    current_length: u32,
+}
 
 #[no_mangle]
 pub extern "C" fn internal_tick(

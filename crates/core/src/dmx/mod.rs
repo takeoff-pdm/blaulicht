@@ -1,6 +1,5 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod clock;
-mod fixture;
 mod management;
 mod state;
 
@@ -9,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 pub use state::*;
 pub mod animation;
-pub use fixture::*;
+// pub use fixture::*;
 pub mod scene;
 
 use log::{debug, error};
@@ -17,7 +16,7 @@ use log::{debug, error};
 use crate::{
     audio::defs::DMX_TICK_TIME,
     dmx::{
-        animation::{AnimationSpec, AnimationSpecBody, PhaserDuration},
+        animation::{generate, phaser},
         clock::Time,
     },
     event::SystemEventBusConnectionInst,
@@ -25,8 +24,11 @@ use crate::{
     state::AppState,
 };
 use blaulicht_shared::{
-    CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
-    LogLevel, RGBColor, CONTROLS_REQUIRING_SELECTION,
+    fixture::state::{FixtureState, MergeStrategy},
+    scene::FixtureSelection,
+    ActiveAnimation, AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, ControlEvent,
+    ControlEventMessage, EventOriginator, FixtureProperty, LogLevel, PhaserDuration, RGBColor,
+    CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -36,79 +38,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-pub struct FixtureSelection {
-    fixtures: Vec<(u8, u8)>,
-}
-
-impl FixtureSelection {
-    pub fn generate_instructions(&self) -> VecDeque<ControlEvent> {
-        let mut gids = HashSet::new();
-        let mut fids = HashSet::new();
-
-        for (gid, fid) in &self.fixtures {
-            gids.insert(gid);
-            fids.insert(fid);
-        }
-
-        match (gids.len(), fids.len()) {
-            (1, 1) => vec![
-                ControlEvent::SelectGroup(**gids.iter().next().unwrap()),
-                ControlEvent::LimitSelectionToFixtureInCurrentGroup(**fids.iter().next().unwrap()),
-            ]
-            .into(),
-            (_, _) => {
-                let mut group_instr = VecDeque::new();
-
-                for gid in gids {
-                    group_instr.push_back(ControlEvent::SelectGroup(*gid))
-                }
-
-                group_instr
-            }
-        }
-    }
-}
-
 // TODO: maybe fuse this together?
-
-impl FixtureState {
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-
-    fn apply(&mut self, ev: ControlEvent) -> Vec<FixtureProperty> {
-        match ev {
-            ControlEvent::SetAlpha(alpha) => {
-                self.alpha = alpha;
-                vec![FixtureProperty::Alpha]
-            }
-            ControlEvent::SetColor(clr) => {
-                let color: RGBColor = clr.into();
-                self.color = color.into();
-                vec![
-                    FixtureProperty::ColorHue,
-                    FixtureProperty::ColorSaturation,
-                    FixtureProperty::ColorValue,
-                ]
-            }
-            ControlEvent::SetColorHue(hue) => {
-                self.color.h = (hue as f64).clamp(0.0, 360.0);
-                println!("hue: {}", self.color.h);
-                vec![FixtureProperty::ColorHue]
-            }
-            ControlEvent::SetColorSaturation(sat) => {
-                self.color.s = (sat as f64).map_range(0.0..255.0, 0.0..1.0);
-                vec![FixtureProperty::ColorSaturation]
-            }
-            ControlEvent::SetColorValue(val) => {
-                self.color.v = (val as f64).map_range(0.0..255.0, 0.0..1.0);
-                vec![FixtureProperty::ColorValue]
-            }
-            _ => todo!(),
-        }
-    }
-}
 
 pub struct DmxEngine {
     // TODO: check if this is too slow.
@@ -229,9 +159,9 @@ impl DmxEngine {
             //
             let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
             let mut state = self.state_ref.dmx_engine.write().unwrap();
-            let animations = state.animations.clone();
+            let animations = state.0.animations.clone();
 
-            for (scene_id, scene) in state.scenes.iter_mut() {
+            for (scene_id, scene) in state.0.scenes.iter_mut() {
                 for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
                     // println!("scene anim: {scene_animations:?}");
 
@@ -244,7 +174,7 @@ impl DmxEngine {
                             animation.fixture_timers.iter_mut()
                         {
                             let transition_time =
-                                (*self.animation_base_times.get(animation_id).unwrap()) as f32
+                                (*self.animation_base_times.get(animation_id).unwrap()) as f64
                                     * animation.speed_factor.as_float();
 
                             // TODO: limited by tick speed
@@ -254,8 +184,8 @@ impl DmxEngine {
                             let mut num_ticks = 1;
 
                             let millis = DMX_TICK_TIME.as_millis();
-                            if transition_time < millis as f32 {
-                                num_ticks = (millis as f32 / transition_time) as usize;
+                            if transition_time < millis as f64 {
+                                num_ticks = (millis as f64 / transition_time) as usize;
                                 // println!("NUM TICKS: {num_ticks}");
                             }
 
@@ -280,7 +210,7 @@ impl DmxEngine {
                             //      - Syncing shall be displayed graphically
                             //      - Running animations shall also be displayed graphically
                             //      - Each phaser can be absolute / relative!
-                            println!("{}", fixture_anim_state.last_tick_time);
+                            // println!("{}", fixture_anim_state.last_tick_time);
                             if now - fixture_anim_state.last_tick_time >= transition_time as u64 {
                                 for _ in 0..num_ticks {
                                     fixture_anim_state.tick(now);
@@ -375,11 +305,13 @@ impl DmxEngine {
         // let animation = animations.get(&id).unwrap();
 
         match &spec.body {
-            AnimationSpecBody::Phaser(body) => body.generate(time as f32),
+            AnimationSpecBody::Phaser(body) => phaser::generate(body, time as f32),
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
-                todo!()
+                audio_snapshot.volume as u16
             }
-            AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+            AnimationSpecBody::Beat(animation_spec_body_beat) => {
+                audio_snapshot.bass_avg_short as u16
+            }
             AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
         }
     }
@@ -387,7 +319,7 @@ impl DmxEngine {
     fn build_animations_cache(&mut self, audio_snapshot: CollectedAudioSnapshot) {
         // Only build every 100ms or so?
 
-        let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
+        let animations = &self.state_ref.dmx_engine.read().unwrap().0.animations;
 
         for (anim_id, anim) in animations {
             let total_speed_raw = {
@@ -396,13 +328,12 @@ impl DmxEngine {
                     AnimationSpecBody::Phaser(body) => match body.time_total {
                         PhaserDuration::Fixed(time) => time,
                         PhaserDuration::Beat(beats) => {
-                            audio_snapshot.time_between_beats_millis as u64 * beats as u64
+                            (audio_snapshot.time_between_beats_millis as f64 * beats.as_float())
+                                as u64
                         }
                     },
-                    AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
-                        todo!()
-                    }
-                    AnimationSpecBody::Beat(animation_spec_body_beat) => todo!(),
+                    AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => 0,
+                    AnimationSpecBody::Beat(animation_spec_body_beat) => 0,
                     AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
                 }
             };
@@ -434,7 +365,7 @@ impl DmxEngine {
             let mut buffer = buffer.write().unwrap();
             let state = self.state_ref.dmx_engine.read().unwrap();
 
-            for group in &state.groups {
+            for group in &state.0.groups {
                 for fixture in &group.1.fixtures {
                     let fix = fixture.1;
 
@@ -443,7 +374,7 @@ impl DmxEngine {
                     println!("SETUP T: {time}");
 
                     fix.setup(
-                        Time::new(time as i32),
+                        time as i32,
                         &FixtureState::default(),
                         &mut buffer.dmx_buffer,
                     );
@@ -462,7 +393,7 @@ impl DmxEngine {
 
         // For each fixture, merge all scene states.
 
-        for group in &state.groups {
+        for group in &state.0.groups {
             for fixture in &group.1.fixtures {
                 // Apply base scene state.
                 let mut merged_state = state
@@ -473,8 +404,8 @@ impl DmxEngine {
                     .unwrap()
                     .clone();
 
-                for overlay_id in &state.current_overlay_scenes {
-                    let this_scene = state.scenes.get(overlay_id).unwrap();
+                for overlay_id in &state.0.current_overlay_scenes {
+                    let this_scene = state.0.scenes.get(overlay_id).unwrap();
                     let scene_fixture_state = this_scene
                         .sink
                         .fixture_states
@@ -509,7 +440,7 @@ impl DmxEngine {
         }
 
         // Apply overrides
-        for ((universe, chan), value) in &state.overrides {
+        for ((universe, chan), value) in &state.0.overrides {
             let mut buffer = self.state_ref.dmx_universes[*universe].write().unwrap();
             buffer.dmx_buffer[*chan] = *value;
         }
@@ -531,13 +462,13 @@ impl DmxEngine {
 
         // Require selection.
         let requires_selection = ev.requires_selection();
-        if requires_selection && state.selection.is_empty() {
+        if requires_selection && state.0.selection.is_empty() {
             return (Some("No selected object(s)"), None);
         }
 
         // Empties the fixture state buffer on selecion events.
         if !requires_selection {
-            state.control_buffer.reset();
+            state.0.control_buffer.reset();
         }
 
         // Match event.
@@ -566,12 +497,15 @@ impl DmxEngine {
                     );
                 }
 
-                state.overrides.insert((uni as usize, chan as usize), value);
+                state
+                    .0
+                    .overrides
+                    .insert((uni as usize, chan as usize), value);
                 (None, None)
             }
             ControlEvent::RemoveChannelOverride(uni, chan) => {
                 let ch = chan as usize;
-                if state.overrides.remove(&(uni as usize, ch)).is_none() {
+                if state.0.overrides.remove(&(uni as usize, ch)).is_none() {
                     (
                         Some("Channel override does not exist (missing)"),
                         Some(ControlEvent::SetChannelOverride(uni, chan, 0)),
@@ -582,35 +516,35 @@ impl DmxEngine {
             }
             // Other
             ControlEvent::SelectGroup(group_id) => {
-                if !state.groups.contains_key(&group_id) {
+                if !state.groups().contains_key(&group_id) {
                     return (
                         Some("Illegal group"),
                         Some(ControlEvent::DeSelectGroup(group_id)),
                     );
                 }
 
-                if !state.selection.group_ids.insert(group_id) {
+                if !state.0.selection.group_ids.insert(group_id) {
                     (Some("Already selected"), None)
                 } else {
                     (None, None)
                 }
             }
             ControlEvent::DeSelectGroup(group_id) => {
-                if !state.groups.contains_key(&group_id) {
+                if !state.groups().contains_key(&group_id) {
                     return (
                         Some("Illegal group"),
                         Some(ControlEvent::DeSelectGroup(group_id)),
                     );
                 }
 
-                if !state.selection.group_ids.remove(&group_id) {
+                if !state.0.selection.group_ids.remove(&group_id) {
                     (Some("Not selected"), None)
                 } else {
                     (None, None)
                 }
             }
             ControlEvent::LimitSelectionToFixtureInCurrentGroup(fixture_id) => {
-                if state.selection.group_ids.len() != 1 {
+                if state.selection().group_ids.len() != 1 {
                     return (
                         Some("Exactly 1 group shall be selected"),
                         Some(ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
@@ -619,50 +553,53 @@ impl DmxEngine {
                     );
                 }
 
-                if !state.selection.fixtures_in_group.insert(fixture_id) {
+                if !state.0.selection.fixtures_in_group.insert(fixture_id) {
                     (Some("Already selected"), None)
                 } else {
                     (None, None)
                 }
             }
             ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(fixture_id) => {
-                if state.selection.group_ids.len() != 1 {
+                if state.selection().group_ids.len() != 1 {
                     return (Some("Exactly 1 group shall be selected"), None);
                 }
 
-                if !state.selection.fixtures_in_group.remove(&fixture_id) {
+                if !state.0.selection.fixtures_in_group.remove(&fixture_id) {
                     (Some("Not selected"), None)
                 } else {
                     (None, None)
                 }
             }
             ControlEvent::RemoveSelection => {
-                if state.selection.is_empty() {
+                if state.selection().is_empty() {
                     (Some("No selection"), None)
                 } else {
                     (None, None)
                 }
             }
             ControlEvent::RemoveAllSelection => {
-                state.selection.clear();
+                state.0.selection.clear();
                 (None, None)
             }
             ControlEvent::PushSelection => {
-                let selection = state.selection.clone();
+                let selection = state.selection().clone();
 
-                if let Some(top) = state.selection_stack.front() {
-                    if selection.is_empty() && top.is_empty() {
-                        return (Some("Push to empty selection"), None);
-                    }
-                }
+                // if let Some(top) = state.0.selection_stack.front() {
+                //     if selection.is_empty() && top.is_empty() {
+                //         return (Some("Push to empty selection"), None);
+                //     }
+                // }
 
-                state.selection_stack.push_front(selection);
-                state.selection.clear();
+                state.0.selection_stack.push_front(selection.clone());
+                state.0.selection.clear();
+
+                println!("new selection after push: {selection:?}");
+
                 (None, None)
             }
             ControlEvent::PopSelection => {
-                if let Some(top) = state.selection_stack.pop_front() {
-                    state.selection = top;
+                if let Some(top) = state.0.selection_stack.pop_front() {
+                    state.0.selection = top;
                     (None, None)
                 } else {
                     (Some("Selection stack empty"), None)
@@ -672,12 +609,12 @@ impl DmxEngine {
                 todo!("Not implemented");
             }
             ControlEvent::SetSceneFocus(id) => {
-                debug_assert!(state.scenes.get(&id).is_some());
-                state.current_scene_focus = id;
+                debug_assert!(state.0.scenes.get(&id).is_some());
+                state.0.current_scene_focus = id;
                 (None, None)
             }
             CONTROLS_REQUIRING_SELECTION!() => {
-                let curr_selection = state.get_selection();
+                let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)
             }
         }
@@ -689,11 +626,11 @@ impl DmxEngine {
         state: &mut RwLockWriteGuard<'_, EngineState>,
         ev: ControlEventMessage,
     ) -> (Option<&'static str>, Option<ControlEvent>) {
-        let current_scene_focus = state.current_scene_focus;
+        let current_scene_focus = state.0.current_scene_focus;
 
         let (msg, undo, effective_properties) = match ev.body() {
             ControlEvent::AddAnimation(id) => {
-                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 if !this_scene
                     .sink
                     .active_animations
@@ -717,16 +654,17 @@ impl DmxEngine {
                         selec_anim.insert(id, ActiveAnimation::new(&curr_selection.fixtures));
 
                         // Get the source animation to determine its property.
-                        let animation = state.animations.get(&id).unwrap();
+                        let animation = state.0.animations.get(&id).unwrap();
 
                         (None, None, Some(vec![animation.property]))
                     }
                 }
             }
-            ControlEvent::RemoveAnimation(id) => {
-                println!("REMove anim");
+            ControlEvent::SetAnimationSpeed(id, md) => {
+                println!("set speed anim");
 
-                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+
                 match !this_scene
                     .sink
                     .active_animations
@@ -740,11 +678,60 @@ impl DmxEngine {
                             .get_mut(curr_selection)
                             .unwrap();
 
+                        match selec_anim.get_mut(&id) {
+                            None => (Some("Animation not applied to selection"), None, None),
+                            Some(anim) => {
+                                println!("set speed: {md:?}");
+
+                                // Purge selection if empty.
+                                // if selec_anim.is_empty() {
+                                //     this_scene.sink.active_animations.remove(curr_selection);
+                                //     println!("moved selection entirely");
+                                // }
+
+                                anim.speed_factor = md;
+
+                                let animation = state.0.animations.get(&id).unwrap();
+                                (None, None, Some(vec![animation.property]))
+                            }
+                        }
+                    }
+                }
+            }
+            ControlEvent::RemoveAnimation(id) => {
+                println!("REMove anim");
+
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+
+                match !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(curr_selection)
+                {
+                    true => {
+                        println!("NO SELEC: {:?}", curr_selection);
+                        println!("NO SELEC 2: {:?}", curr_selection.sorted());
+                        (Some("No animations for this selection"), None, None)
+                    }
+                    false => {
+                        let selec_anim = this_scene
+                            .sink
+                            .active_animations
+                            .get_mut(curr_selection)
+                            .unwrap();
+
                         match selec_anim.remove(&id) {
                             None => (Some("Animation not applied to selection"), None, None),
                             Some(_) => {
                                 println!("REMOVED");
-                                let animation = state.animations.get(&id).unwrap();
+
+                                // Purge selection if empty.
+                                if selec_anim.is_empty() {
+                                    this_scene.sink.active_animations.remove(curr_selection);
+                                    println!("moved selection entirely");
+                                }
+
+                                let animation = state.0.animations.get(&id).unwrap();
                                 (None, None, Some(vec![animation.property]))
                             }
                         }
@@ -752,17 +739,21 @@ impl DmxEngine {
                 }
             }
             ControlEvent::PlayAnimation(id) => {
-                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
                     .active_animations
                     .contains_key(curr_selection)
                 {
-                    true => (
-                        Some("No such selection"),
-                        Some(ControlEvent::PauseAnimation(id)),
-                        None,
-                    ),
+                    true => {
+                        debug!("No such selection: {curr_selection:?}");
+
+                        (
+                            Some("No such selection"),
+                            Some(ControlEvent::PauseAnimation(id)),
+                            None,
+                        )
+                    }
                     false => {
                         let selec_anim = this_scene
                             .sink
@@ -773,7 +764,7 @@ impl DmxEngine {
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
                                 anim.enabled = true;
-                                let animation = state.animations.get(&id).unwrap();
+                                let animation = state.0.animations.get(&id).unwrap();
                                 (None, None, Some(vec![animation.property]))
                             }
                             None => (
@@ -786,7 +777,7 @@ impl DmxEngine {
                 }
             }
             ControlEvent::PauseAnimation(id) => {
-                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
                     .active_animations
@@ -806,7 +797,7 @@ impl DmxEngine {
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
                                 anim.enabled = false;
-                                let animation = state.animations.get(&id).unwrap();
+                                let animation = state.0.animations.get(&id).unwrap();
                                 (None, None, Some(vec![animation.property]))
                             }
                             None => (
@@ -820,21 +811,21 @@ impl DmxEngine {
             }
             _ => {
                 // NOTE: this applies the changeset internally on the sink.
-                let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
 
                 this_scene
                     .sink
                     .apply_with_selection(curr_selection, ev.body());
 
                 // Update control buffer for the UI.
-                state.control_buffer.apply(ev.body());
+                state.0.control_buffer.apply(ev.body());
 
                 return (None, None);
             }
         };
 
         // Update the changeset
-        let this_scene = state.scenes.get_mut(&current_scene_focus).unwrap();
+        let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
 
         for selector in &curr_selection.fixtures {
             let Some(ref effective_properties) = effective_properties else {

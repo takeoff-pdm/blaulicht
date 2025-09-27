@@ -1,23 +1,39 @@
+use crate::state::AppState;
+use blaulicht_shared::EngineState;
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
+use log::warn;
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
 };
-
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
-use log::warn;
-
 use crate::{
     msg::{MidiEvent, SystemMessage},
     plugin::{Plugin, PluginManager},
     system_message,
 };
 
+// #[cfg(feature = "wasmtime")]
+// use blaulicht_shared::EngineState;
+
+// #[cfg(feature = "wasmtime")]
+// use crate::{
+//     msg::{MidiEvent, SystemMessage},
+//     plugin::{Plugin, PluginManager},
+//     system_message,
+// };
+
 ///
 /// Mock implementation
 ///
 #[cfg(not(feature = "wasmtime"))]
 impl PluginManager {
-    pub fn tick(&mut self, _: CollectedAudioSnapshot, _: &[MidiEvent]) -> anyhow::Result<Duration> {
+    pub fn tick(
+        &mut self,
+        _: CollectedAudioSnapshot,
+        _: &[MidiEvent],
+        _: Option<Arc<AppState>>,
+    ) -> anyhow::Result<Duration> {
         Ok(Duration::from_millis(42))
     }
 
@@ -35,6 +51,8 @@ impl PluginManager {
         &mut self,
         audio_data: CollectedAudioSnapshot,
         midi_events: &[MidiEvent],
+        // If present and enough (WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES) time has passed, write engine state into plugin.
+        app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
         let start = Instant::now();
 
@@ -70,7 +88,7 @@ impl PluginManager {
                 let plugin = self.plugins.get_mut(&plugin_key).unwrap();
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
-                if let Err(err) = plugin.tick(input, midi_events) {
+                if let Err(err) = plugin.tick(input, midi_events, app_state.clone()) {
                     let path = plugin_key;
                     err_res.insert(
                         path,
@@ -123,24 +141,24 @@ impl PluginManager {
 }
 
 //
-// Mocked implementation
-//
-// #[cfg(not(feature = "wasmtime"))]
-// impl Plugin {
-//     fn tick(&mut self, _: TickInput, _: &[MidiEvent]) -> anyhow::Result<()> {
-//         Ok(())
-//     }
-// }
-
-//
 // Real Wasmtime implementation.
 //
+
+const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(500);
+
 #[cfg(feature = "wasmtime")]
 impl Plugin {
-    fn tick(&mut self, input: TickInput, midi_events: &[MidiEvent]) -> anyhow::Result<()> {
+    fn tick(
+        &mut self,
+        input: TickInput,
+        midi_events: &[MidiEvent],
+        app_state: Option<Arc<AppState>>,
+    ) -> anyhow::Result<()> {
         //
         // Tick function.
         //
+
+        use blaulicht_shared::EngineState;
         let func = self.wasm_state.instance.get_typed_func::<(i32, i32), ()>(
             &mut self.wasm_state.store,
             "internal_tick", // TODO: external type and name constants.
@@ -156,8 +174,11 @@ impl Plugin {
         for &num in &tick_array_data {
             tick_array_bytes.extend_from_slice(&num.to_le_bytes());
         }
-        self.wasm_state.memory
-            .write(&mut self.wasm_state.store, tick_array_offset, &tick_array_bytes)?;
+        self.wasm_state.memory.write(
+            &mut self.wasm_state.store,
+            tick_array_offset,
+            &tick_array_bytes,
+        )?;
 
         // TODO: macro for this array stuff.
 
@@ -187,10 +208,12 @@ impl Plugin {
             midi_array_bytes.extend_from_slice(&num.to_le_bytes());
         }
 
+        ////////////// MIDI ////////////
+
         // Write the MIDI array to memory.
         self.wasm_state.memory.write(
             &mut self.wasm_state.store,
-            self.midi_status.buffer_addr(),
+            self.midi_buffers.buffer_addr(),
             &midi_array_bytes,
         )?;
 
@@ -199,9 +222,45 @@ impl Plugin {
         midi_length_bytes.extend_from_slice(&midi_array_len.to_le_bytes());
         self.wasm_state.memory.write(
             &mut self.wasm_state.store,
-            self.midi_status.buffer_len_addr(),
+            self.midi_buffers.buffer_len_addr(),
             &midi_length_bytes,
         )?;
+
+        ////////////// STATE ////////////
+
+        if let Some(app) = app_state {
+            if self.last_dmx_engine_sync.elapsed().as_millis()
+                > WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES.as_millis()
+            {
+                use log::debug;
+
+                self.last_dmx_engine_sync = Instant::now();
+                let state_array_bytes = {
+                    let engine = app.dmx_engine.read().unwrap();
+                    engine.0.serialize()
+                };
+
+                let state_array_len = state_array_bytes.len() as u32;
+
+                // Write the state array to memory.
+                self.wasm_state.memory.write(
+                    &mut self.wasm_state.store,
+                    self.state_buffers.buffer_addr(),
+                    &state_array_bytes,
+                )?;
+
+                // Write the length of the state array to memory.
+                let mut state_length_bytes = Vec::new();
+                state_length_bytes.extend_from_slice(&state_array_len.to_le_bytes());
+                self.wasm_state.memory.write(
+                    &mut self.wasm_state.store,
+                    self.state_buffers.buffer_len_addr(),
+                    &state_length_bytes,
+                )?;
+
+                // debug!("SYNCED ENGINE STATE");
+            }
+        }
 
         // for &num in &self.dmx {
         //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());

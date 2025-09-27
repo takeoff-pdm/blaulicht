@@ -1,14 +1,12 @@
-use std::fmt::Display;
-
-use blaulicht_shared::RGBColor;
-use serde::{Deserialize, Serialize};
-use strum::EnumIter;
-
-use crate::dmx::{clock::Time, FixtureState};
+use crate::{RGBColor, fixture::state::FixtureState};
 
 use super::Fixture;
+use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use strum::EnumIter;
 
-#[derive(Serialize, Deserialize, Debug, Clone, EnumIter)]
+#[derive(Serialize, Deserialize, Debug, Clone, EnumIter, Encode, Decode)]
 pub enum Light {
     //
     // 0: Red
@@ -66,6 +64,17 @@ impl Display for Light {
 }
 
 impl Light {
+    pub fn footprint(&self) -> usize {
+        match self {
+            Light::Generic3ChanNoAlpha => 3,
+            Light::Generic4ChanWithAlpha => 4,
+            Light::LEDPartyTCLSpot => 6,
+            Light::AdjMegaHexPar => 7,
+            Light::LiteCraftMiniParAT10 => 8,
+            Light::VaryTechVP1 => 4,
+        }
+    }
+
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
 
@@ -135,7 +144,7 @@ impl Light {
         // }
     }
 
-    pub fn setup(&self, this: &Fixture, time: Time, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
         // match self {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
         //     MovingHead::Generic4ChanWithAlpha => todo!(),

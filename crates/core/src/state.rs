@@ -4,19 +4,12 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use blaulicht_shared::CollectedAudioSnapshot;
+use blaulicht_shared::{CollectedAudioSnapshot};
 use crossbeam_channel::{Receiver, Sender};
-use crossbeam_queue::ArrayQueue;
-use heapless::spsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio::defs::AudioThreadControlSignal,
-    config::{Config, PluginConfig},
-    dmx::EngineState,
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage},
-    plugin::Plugin,
+    audio::defs::AudioThreadControlSignal, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
 };
 
 pub struct AppStateWrapper {
@@ -55,9 +48,7 @@ pub struct AppState {
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
-
     pub dmx_universes: [RwLock<DmxBuffer>; 2],
-
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
 }

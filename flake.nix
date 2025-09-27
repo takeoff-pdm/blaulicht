@@ -46,6 +46,7 @@
         clangStdenv
             pkgs.stdenv.cc.cc.lib
         openssl
+    pkgs.binaryen
         ];
       in
       {

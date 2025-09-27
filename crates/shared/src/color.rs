@@ -1,10 +1,9 @@
-use core::{f32, f64};
-
+use bincode::{Decode, Encode};
 use color_space::{FromColor, FromRgb};
-use map_range::MapRange;
+use core::{f32, f64};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, Encode, Decode)]
 pub struct HSVColor {
     pub h: f64,
     pub s: f64,

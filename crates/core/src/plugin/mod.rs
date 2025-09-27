@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel};
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, EngineState, LogLevel};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::{debug, info, trace};
 use notify::{
@@ -27,7 +27,7 @@ use crate::{
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     msg::SystemMessage,
     msg::{FromFrontend, MidiEvent},
-    plugin::{midi::MidiManager, wasm::MidiStatus},
+    plugin::{midi::MidiManager, wasm::AddrDescriptor},
     state::{AppState, PluginFlags},
 };
 
@@ -67,7 +67,11 @@ pub struct Plugin {
     wasm_state: PluginWasmState,
 
     // DANGER: this is not always populated.
-    midi_status: MidiStatus,
+    midi_buffers: AddrDescriptor,
+    state_buffers: AddrDescriptor,
+
+    // When was the last time the engine state was written into that plugin?
+    last_dmx_engine_sync: Instant,
 }
 
 pub struct PluginReloadRequest {
@@ -134,7 +138,10 @@ impl PluginManager {
         // Ignore any tick errors caused by misbehaving plugins.
         // Only return on serious errors.
         println!("initial tick");
-        if self.tick(CollectedAudioSnapshot::default(), &[]).is_err() {
+        if self
+            .tick(CollectedAudioSnapshot::default(), &[], None)
+            .is_err()
+        {
             self.system_out
                 .send(SystemMessage::Log(
                     "Plugin(s) failed to initialize.".into(),

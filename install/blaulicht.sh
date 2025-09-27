@@ -19,4 +19,4 @@ xrandr --output VGA-1 --mode "800x480_60.00"
 # Launch blaulicht
 blaulicht
 
-xterm
+xterm -e 'rescue.sh'

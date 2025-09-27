@@ -85,6 +85,12 @@ sudo chmod +x /usr/share/xsessions/blaulicht.desktop
 sudo cp blaulicht.sh /usr/bin/blaulicht.sh || exit 1
 sudo chmod +x /usr/bin/blaulicht.sh || exit 1
 
+sudo cp rescue.sh /usr/bin/rescue.sh || exit 1
+sudo chmod +x /usr/bin/rescue.sh || exit 1
+
+sudo cp shutdown.sh /usr/bin/shutdown.sh || exit 1
+sudo chmod +x /usr/bin/shutdown.sh || exit 1
+
 #
 # Pulseaudio.
 # NOTE: this is to be installed after the gnome software so that gnome does not remove pulseaudio in favour of pipewire.

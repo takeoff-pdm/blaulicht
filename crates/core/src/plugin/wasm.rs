@@ -157,12 +157,18 @@ impl PluginManager {
                     store,
                     instance,
                 },
-                midi_status: MidiStatus::dummy(),
+                midi_buffers: AddrDescriptor::dummy(),
+                state_buffers: AddrDescriptor::dummy(),
+                last_dmx_engine_sync: Instant::now(),
             };
 
             plugin
                 .acquire_midi_buffer_addresses()
                 .map_err(|e| anyhow!("failed to acquire midi buffer addresses: {e}"))?;
+
+            plugin
+                .acquire_state_buffer_address()
+                .map_err(|e| anyhow!("failed to acquire state buffer addresses: {e}"))?;
 
             debug_assert!(plugin_id < u8::MAX as usize);
 
@@ -316,6 +322,8 @@ impl PluginManager {
                         error!("a plugin called blaulicht::log with an illegal log-level-integer: {level_raw}");
                         LogLevel::Info
                     });
+
+                debug!("WASM: {received_string}");
 
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
@@ -794,16 +802,17 @@ impl PluginManager {
 //         Ok(())
 //     }
 // }
+//
 
 #[derive(Debug, Clone)]
-pub struct MidiStatus {
+pub struct AddrDescriptor {
     start_addr: i32,
     length_start_addr: i32,
 }
 
-impl MidiStatus {
+impl AddrDescriptor {
     pub fn dummy() -> Self {
-        MidiStatus {
+        AddrDescriptor {
             start_addr: 0,
             length_start_addr: 0,
         }
@@ -846,14 +855,47 @@ impl Plugin {
 
         let midi_buffer_length_start_addr = func.call(&mut self.wasm_state.store, ())?;
 
-        let addrs = MidiStatus {
+        let addrs = AddrDescriptor {
             start_addr: midi_buffer_start_addr,
             length_start_addr: midi_buffer_length_start_addr,
         };
 
         debug!("Acquired MIDI buffer addresses: {:?}", addrs);
 
-        self.midi_status = addrs;
+        self.midi_buffers = addrs;
+        Ok(())
+    }
+
+    fn acquire_state_buffer_address(&mut self) -> anyhow::Result<()> {
+        debug!("Acquiring State buffer address for plugin: {}", self.path);
+        //
+        // Get state buffer start address.
+        //
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_state_buffer_start_addr", // TODO: external type and name constants.
+        )?;
+
+        let state_buffer_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        //
+        // Get state buffer length start address.
+        //
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_state_buffer_length_start_addr", // TODO: external type and name constants.
+        )?;
+
+        let state_buffer_length_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        let addrs = AddrDescriptor {
+            start_addr: state_buffer_start_addr,
+            length_start_addr: state_buffer_length_start_addr,
+        };
+
+        debug!("Acquired State buffer addresses: {:?}", addrs);
+
+        self.state_buffers = addrs;
         Ok(())
     }
 }

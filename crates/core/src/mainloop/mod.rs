@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex,
     },
+    thread,
     time::{self, Duration, Instant},
 };
 pub use supervisor::supervisor_thread;
@@ -68,12 +69,11 @@ pub fn run(
         p_app_state,
     );
 
-    if let Err(err) = plugin_manager
+    thread::sleep(Duration::from_secs(2)); // TODO: hack
+
+    plugin_manager
         .init()
-        .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))
-    {
-        return Err(err);
-    }
+        .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
 
     let dmx_appstate = Arc::clone(&app_state);
     let mut dmx_engine = DmxEngine::new(dmx_appstate, event_bus_dmx, system_out.clone());
@@ -198,7 +198,11 @@ pub fn run(
             // Collect control events.
             //
 
-            let dmx_tick_duration = match plugin_manager.tick(collector.take_snapshot(), &midi) {
+            let dmx_tick_duration = match plugin_manager.tick(
+                collector.take_snapshot(),
+                &midi,
+                Some(Arc::clone(&app_state)),
+            ) {
                 Ok(dur) => {
                     plugin_wasm_engine_crashed = false; // Reset crash state on successful tick.
                     dur

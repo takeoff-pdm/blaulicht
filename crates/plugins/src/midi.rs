@@ -3,29 +3,31 @@ use std::u8;
 use crate::{
     blaulicht::{self},
     error::{MidiError, Result},
+    BufferSource,
 };
 
-struct MidiSource {
-    buffer: [u32; 256],
-    current_length: u32,
-}
+const MIDI_BUFFER_LEN: usize = 256;
+type MidiBufferT = u32;
 
-static mut GLOBAL_MIDI_SOURCE: MidiSource = MidiSource {
-    buffer: [0; 256],
+static mut GLOBAL_MIDI_SOURCE: BufferSource<MidiBufferT, MIDI_BUFFER_LEN> = BufferSource {
+    buffer: [0; MIDI_BUFFER_LEN],
     current_length: 0,
 };
 
 // Function called by the engine to get the location of the MIDI buffer.
 // The engine will write MIDI events into this buffer.
 #[no_mangle]
-pub extern "C" fn __internal_get_global_midi_buffer_start_addr() -> *mut u32 {
-    unsafe { &raw mut GLOBAL_MIDI_SOURCE.buffer as *mut [u32; 256] as *mut u32 }
+pub extern "C" fn __internal_get_global_midi_buffer_start_addr() -> *mut MidiBufferT {
+    unsafe {
+        &raw mut GLOBAL_MIDI_SOURCE.buffer as *mut [MidiBufferT; MIDI_BUFFER_LEN]
+            as *mut MidiBufferT
+    }
 }
 
 // Same as the above, just for the length of the buffer.
 #[no_mangle]
-pub extern "C" fn __internal_get_global_midi_buffer_length_start_addr() -> *mut u32 {
-    unsafe { &raw mut GLOBAL_MIDI_SOURCE.current_length as *mut usize as *mut u32 }
+pub extern "C" fn __internal_get_global_midi_buffer_length_start_addr() -> *mut MidiBufferT {
+    unsafe { &raw mut GLOBAL_MIDI_SOURCE.current_length as *mut usize as *mut MidiBufferT }
 }
 
 // --------------------------------------------------------

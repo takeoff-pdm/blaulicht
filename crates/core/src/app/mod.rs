@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use blaulicht_shared::{MathematicalBaseFunction, PhaserDuration};
 use egui::Color32;
 use egui_file::FileDialog;
 use strum::EnumIter;
@@ -9,7 +10,6 @@ use crate::{
         components::{LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME, DEFAULT_NEW_SCENE_NAME},
         ui::FileDialogOpenOrigin,
     },
-    dmx::animation::{MathematicalBaseFunction, PhaserDuration},
     state::AppStateWrapper,
 };
 
@@ -65,10 +65,10 @@ pub struct PopupButtonSpec {
 
 #[derive(Clone)]
 pub struct PopupSpec {
-    label: String,
+    pub label: String,
     // Auto-close duration
-    lifetime_duration: Duration,
-    button: Option<PopupButtonSpec>,
+    pub lifetime_duration: Duration,
+    pub button: Option<PopupButtonSpec>,
 }
 
 impl PopupSpec {
@@ -157,6 +157,8 @@ pub struct BlaulichtApp {
     open_file_dialog: Option<FileDialog>,
     file_dialog_open_origin: FileDialogOpenOrigin,
 
+    reload_dialog_open: bool,
+
     confirm_shutdown_open: bool,
 
     add_dmx_override_open: bool,
@@ -168,7 +170,7 @@ pub struct BlaulichtApp {
 
     // Add Fixture dialog state
     add_fixture_open: bool,
-    add_fixture_group: u8,
+    add_fixture_group: Option<u8>,
     add_fixture_name: String,
     add_fixture_start_addr: u16,
     add_fixture_universe_no: u16,
@@ -188,6 +190,7 @@ pub struct BlaulichtApp {
     new_fixture_addr: usize,
 
     add_group_open: bool,
+    delete_group_open: bool,
     new_group_name: String,
 }
 
@@ -279,7 +282,7 @@ impl BlaulichtApp {
             dmx_override_dialog_open: false,
             // Add Fixture defaults
             add_fixture_open: false,
-            add_fixture_group: 0,
+            add_fixture_group: None,
             add_fixture_name: String::from("New Fixture"),
             add_fixture_start_addr: 1,
             add_fixture_pos_x: 0,
@@ -294,7 +297,9 @@ impl BlaulichtApp {
             new_fixture_addr: 0,
             new_fixture_uni: 0,
             add_group_open: false,
+            delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
+            reload_dialog_open: false,
         }
     }
 }

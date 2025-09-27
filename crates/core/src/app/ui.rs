@@ -1,28 +1,27 @@
 use crate::app::components::ButtonSize;
-use crate::app::{components, AnimationPageState, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{components, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
-use crate::dmx::animation::{MathematicalBaseFunction, PhaserDuration};
-use crate::dmx::EngineState;
+use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::LogLevel;
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
+use egui::mutex::RwLockWriteGuard;
 use egui::{
-    Button, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, ProgressBar, Rect,
-    RichText, Rounding, Sense, Stroke, Style, TextStyle, Ui, Vec2,
+    Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense, Stroke,
+    ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
 use std::ffi::OsStr;
-use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::RwLockReadGuard;
 use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
@@ -58,7 +57,11 @@ impl Drop for BlaulichtApp {
 
 impl BlaulichtApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, state: AppStateWrapper) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        state: AppStateWrapper,
+        initial_popup: Option<PopupSpec>,
+    ) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -82,6 +85,10 @@ impl BlaulichtApp {
 
         // Initialize animation time
         app.animation_time = 0.0;
+
+        if let Some(p) = initial_popup {
+            app.show_popup(p);
+        }
 
         app
     }
@@ -506,7 +513,7 @@ impl BlaulichtApp {
                     }
 
                     // Set larger graph height
-                    let graph_height = 140.0;
+                    let graph_height = 125.0;
                     let graph_width = graph_panel_width - 5.0;
                     let padding = 10.0;
 
@@ -676,7 +683,8 @@ impl BlaulichtApp {
                             let mut buffer = vec![0; metadata.len() as usize];
                             f.read(&mut buffer).expect("buffer overflow");
 
-                            let decoded: EngineState = postcard::from_bytes(&buffer).unwrap();
+                            let decoded: blaulicht_shared::EngineState =
+                                postcard::from_bytes(&buffer).unwrap();
                             let mut dmx = self.data.state.dmx_engine.write().unwrap();
                             // dmx.overwrite(decoded);
                             dmx.load_showfile(decoded);
@@ -707,7 +715,7 @@ impl BlaulichtApp {
             }
         }
 
-        let button_size = ButtonSize::Medium.with_width(100.0);
+        let button_size = ButtonSize::Large.with_width(130.0);
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -725,63 +733,90 @@ impl BlaulichtApp {
                 ui.label(showfile);
             });
 
-            if components::button(ui, false, "Load Showfile", button_size) {
-                // Show only files with the extension "txt".
-                let filter = Box::new({
-                    let ext = Some(OsStr::new("txt"));
-                    move |path: &Path| -> bool { path.extension() == ext }
-                });
+            ui.horizontal(|ui| {
+                if components::button(ui, false, "Load Showfile", button_size) {
+                    // Show only files with the extension "txt".
+                    let filter = Box::new({
+                        let ext = Some(OsStr::new("txt"));
+                        move |path: &Path| -> bool { path.extension() == ext }
+                    });
 
-                let config = self.data.config.lock().unwrap();
+                    let config = self.data.config.lock().unwrap();
 
-                let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
-                    .show_files_filter(filter);
+                    let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
+                        .show_files_filter(filter);
 
-                dialog.open();
-                self.open_file_dialog = Some(dialog);
-                self.file_dialog_open_origin = FileDialogOpenOrigin::Load;
-            }
+                    dialog.open();
+                    self.open_file_dialog = Some(dialog);
+                    self.file_dialog_open_origin = FileDialogOpenOrigin::Load;
+                }
 
-            if components::button(ui, false, "Save to Showfile", button_size) {
-                // Show only files with the extension "txt".
-                let filter = Box::new({
-                    let ext = Some(OsStr::new("txt"));
-                    move |path: &Path| -> bool { path.extension() == ext }
-                });
+                if components::button(ui, false, "Save to Showfile", button_size) {
+                    // Show only files with the extension "txt".
+                    let filter = Box::new({
+                        let ext = Some(OsStr::new("txt"));
+                        move |path: &Path| -> bool { path.extension() == ext }
+                    });
 
-                let config = self.data.config.lock().unwrap();
+                    let config = self.data.config.lock().unwrap();
 
-                let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
-                    .show_files_filter(filter);
+                    let mut dialog = FileDialog::open_file(config.last_open_showfile.clone())
+                        .show_files_filter(filter);
 
-                dialog.open();
-                self.open_file_dialog = Some(dialog);
-                self.file_dialog_open_origin = FileDialogOpenOrigin::Save;
-            }
+                    dialog.open();
+                    self.open_file_dialog = Some(dialog);
+                    self.file_dialog_open_origin = FileDialogOpenOrigin::Save;
+                }
 
-            let (label, allowed) = match &self
-                .data
-                .config
-                .lock()
-                .unwrap()
-                .last_open_showfile
-                .is_some()
-            {
-                true => ("Save Showfile", true),
-                false => ("Sace Showfile", false),
-            };
-            if components::button(ui, allowed, label, button_size) {
-                self.save_showfile();
-            }
+                let (label, allowed) = match &self
+                    .data
+                    .config
+                    .lock()
+                    .unwrap()
+                    .last_open_showfile
+                    .is_some()
+                {
+                    true => ("Save Showfile", true),
+                    false => ("Sace Showfile", false),
+                };
+                if components::button(ui, allowed, label, button_size) {
+                    self.save_showfile();
+                }
+            });
+
+            ui.add_space(15.0);
+            ui.separator();
+            ui.add_space(15.0);
+
+            ui.horizontal(|ui| {
+                if components::button(
+                    ui,
+                    !ui.ctx().style().visuals.dark_mode,
+                    "LIGHT",
+                    button_size,
+                ) {
+                    ui.ctx().set_theme(ThemePreference::Light);
+                }
+
+                if components::button(ui, ui.ctx().style().visuals.dark_mode, "DARK", button_size) {
+                    ui.ctx().set_theme(ThemePreference::Dark);
+                }
+            });
+
+            ui.add_space(15.0);
+            ui.separator();
+            ui.add_space(15.0);
+
+            ui.horizontal(|ui| {
+                if components::button(ui, false, "Quit", button_size) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+
+                if components::button(ui, false, "Shutdown", button_size) {
+                    self.confirm_shutdown_open = true;
+                }
+            });
         });
-
-        if components::button(ui, false, "Quit", button_size) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-
-        if components::button(ui, false, "Shutdown", button_size) {
-            self.confirm_shutdown_open = true;
-        }
 
         if self.confirm_shutdown_open {
             components::dialog(
@@ -806,10 +841,7 @@ impl BlaulichtApp {
 
                     ui.horizontal(|ui| {
                         if components::button(ui, false, "Confirm", ButtonSize::Large) {
-                            let status = Command::new("sudo")
-                                .arg("/sbin/shutdown")
-                                .arg("-h")
-                                .arg("now")
+                            let status = Command::new("/usr/bin/shutdown.sh")
                                 .status()
                                 .expect("Failed to execute shutdown command");
 
@@ -831,10 +863,6 @@ impl BlaulichtApp {
         }
 
         ui.separator();
-
-        ui.add_space(16.0);
-
-        egui::widgets::global_theme_preference_buttons(ui);
 
         egui::SidePanel::right("right_panel")
             .resizable(true)
