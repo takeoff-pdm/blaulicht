@@ -263,7 +263,10 @@ impl BlaulichtApp {
                                                         ui.set_width(ButtonSize::Medium.dim().0.x);
                                                         ui.vertical(|ui| {
                                                             // LEFT: Info (name + property + timing)
-                                                            let label = &spec.name[..=10];
+                                                            let mut label = spec.name.clone();
+                                                            label.truncate(10);
+
+                                                            // [..=10];
 
                                                             ui.label(
                                                                 RichText::new(label)

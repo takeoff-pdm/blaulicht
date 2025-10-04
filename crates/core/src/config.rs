@@ -5,7 +5,7 @@ use std::{
     sync::RwLockWriteGuard,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use audioviz::spectrum::config::StreamConfig;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
@@ -44,9 +44,7 @@ pub fn read_showfile(
             dmx.load_showfile(de);
             Ok(())
         }
-        Err(e) => {
-            Err(anyhow!(e))
-        }
+        Err(e) => Err(anyhow!(e)),
     }
 }
 

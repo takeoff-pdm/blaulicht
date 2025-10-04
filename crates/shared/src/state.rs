@@ -90,6 +90,22 @@ impl EngineState {
         );
     }
 
+    pub fn clone_scene(&mut self, name: String) {
+        // TODO: this fails when there are too many scenes.
+        let new_id = self.scenes.len();
+        debug_assert!(new_id == new_id as u8 as usize);
+
+        let curr_scene = self.scenes.get(&self.current_scene_focus).unwrap();
+
+        self.scenes.insert(
+            new_id as u8,
+            Scene {
+                sink: curr_scene.sink.clone(),
+                name: name.clone(),
+            },
+        );
+    }
+
     pub fn serialize(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, config::standard()).unwrap()
     }

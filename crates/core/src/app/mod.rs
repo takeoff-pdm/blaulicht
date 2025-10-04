@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use blaulicht_shared::{AnimationSpecBody, FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode};
+use blaulicht_shared::{
+    AnimationSpecBody, FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode,
+};
 use egui::Color32;
 use egui_file::FileDialog;
 use strum::EnumIter;
@@ -144,6 +146,7 @@ pub struct BlaulichtApp {
 
     new_scene_name: String,
     new_scene_dialog_open: bool,
+    clone_scene_dialog_open: bool,
     current_scene_changeset_dialog_open: bool,
     current_scene_animations_dialog_open: bool,
     add_animations_dialog_open: bool,
@@ -274,6 +277,7 @@ impl BlaulichtApp {
             },
             new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
             new_scene_dialog_open: false,
+            clone_scene_dialog_open: false,
             current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
             add_animations_dialog_open: false,

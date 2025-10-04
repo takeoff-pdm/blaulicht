@@ -98,6 +98,7 @@ impl BlaulichtApp {
         //
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_add_scene_dialog(ctx);
+        self.render_clone_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
 
@@ -566,6 +567,11 @@ impl BlaulichtApp {
                         ui.horizontal(|ui| {
                             if components::button(ui, false, "Scene +", ButtonSize::Medium) {
                                 self.new_scene_dialog_open = true;
+                            }
+
+                            if components::button(ui, false, "Clone Sc.", ButtonSize::Medium)
+                            {
+                                self.clone_scene_dialog_open = true;
                             }
 
                             if components::button(

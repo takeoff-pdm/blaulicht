@@ -107,62 +107,87 @@ impl<'engine> EngineState {
             }
         };
 
-        // This is actually required because the timetamps need to be reset to 0.
-        let scenes =
-            other
-                .scenes
-                .into_iter()
-                .map(|(k, scene)| {
-                    let mut fixture_states = scene.sink.fixture_states;
+        let spec_animations = other.animations.clone();
 
-                    for (gid, group) in &groups {
-                        for (fid, _) in &group.fixtures {
-                            let selec = (*gid, *fid);
-                            if fixture_states.get(&selec).is_none() {
-                                println!("============ FIX!!!");
-                                fixture_states.insert(selec, FixtureState::default());
-                            }
+        // This is actually required because the timetamps need to be reset to 0.
+        let scenes = other
+            .scenes
+            .into_iter()
+            .map(|(k, scene)| {
+                let mut fixture_states = scene.sink.fixture_states;
+
+                for (gid, group) in &groups {
+                    for (fid, _) in &group.fixtures {
+                        let selec = (*gid, *fid);
+                        if fixture_states.get(&selec).is_none() {
+                            println!("============ FIX!!!");
+                            fixture_states.insert(selec, FixtureState::default());
                         }
                     }
+                }
 
-                    (
-                        k,
-                        Scene {
-                            sink: EngineSink {
-                                active_animations: scene
-                                    .sink
-                                    .active_animations
-                                    .into_iter()
-                                    .map(|(s, animations)| {
-                                        (
-                                            s,
-                                            animations
-                                                .into_iter()
-                                                .map(|(k, a)| {
-                                                    (
-                                                    k,
+                (
+                    k,
+                    Scene {
+                        sink: EngineSink {
+                            active_animations: scene
+                                .sink
+                                .active_animations
+                                .into_iter()
+                                .map(|(s, animations)| {
+                                    (
+                                        s,
+                                        animations
+                                            .into_iter()
+                                            .map(|(ak, a)| {
+                                                let anim_spec = spec_animations.get(&ak).unwrap();
+                                                let amount = a.fixture_timers.len();
+
+                                                (
+                                                    ak,
                                                     ActiveAnimation {
                                                         fixture_timers: a
-                                                            .fixture_timers.into_keys().map(|k| {
-                                                                (k, AnimationTimerState::default())
+                                                            .fixture_timers
+                                                            .into_iter()
+                                                            .enumerate()
+                                                            .map(|(counter, (k, v))| {
+                                                                let timer = match anim_spec.sync {
+                                                                    SyncMode::Synced => 0,
+                                                                    SyncMode::StretchedEven => {
+                                                                        ((360.0 / amount as f32)
+                                                                            * counter as f32)
+                                                                            as u64
+                                                                    }
+                                                                    SyncMode::StretchedHalfHalf => {
+                                                                        (180 * (counter % 2)) as u64
+                                                                    }
+                                                                };
+
+                                                                (
+                                                                    k,
+                                                                    AnimationTimerState {
+                                                                        last_tick_time: 0,
+                                                                        timer,
+                                                                    },
+                                                                )
                                                             })
                                                             .collect(),
                                                         ..a
                                                     },
                                                 )
-                                                })
-                                                .collect(),
-                                        )
-                                    })
-                                    .collect(),
-                                fixture_states,
-                                ..scene.sink
-                            },
-                            ..scene
+                                            })
+                                            .collect(),
+                                    )
+                                })
+                                .collect(),
+                            fixture_states,
+                            ..scene.sink
                         },
-                    )
-                })
-                .collect();
+                        ..scene
+                    },
+                )
+            })
+            .collect();
 
         *self = Self(blaulicht_shared::EngineState {
             selection: EngineSelection::default(),
@@ -192,6 +217,10 @@ impl<'engine> EngineState {
 
     pub fn new_scene(&mut self, name: String) {
         self.0.new_scene(name)
+    }
+
+    pub fn clone_scene(&mut self, name: String) {
+        self.0.clone_scene(name)
     }
 }
 

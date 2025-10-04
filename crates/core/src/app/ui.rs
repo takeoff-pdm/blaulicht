@@ -816,6 +816,14 @@ impl BlaulichtApp {
                     self.confirm_shutdown_open = true;
                 }
             });
+
+            // ui.horizontal(|ui| {
+            //     if components::button(ui, false, "SETUP", button_size) {
+            //         // self.confirm_shutdown_open = true;
+            //         // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+            //         // dmx_engine.start_setup();
+            //     }
+            // });
         });
 
         if self.confirm_shutdown_open {

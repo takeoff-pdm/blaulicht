@@ -144,7 +144,7 @@ impl PluginManager {
 // Real Wasmtime implementation.
 //
 
-const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(500);
+const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(50);
 
 #[cfg(feature = "wasmtime")]
 impl Plugin {

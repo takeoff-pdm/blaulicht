@@ -197,6 +197,9 @@ impl PluginManager {
 
     fn provide_host_functions(&mut self, linker: &mut Linker<()>) -> anyhow::Result<()> {
         let so = self.system_out.clone();
+
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "udp",
@@ -223,16 +226,17 @@ impl PluginManager {
                 let target_addr = String::from_utf8_lossy(&addr_buffer).to_string();
 
                 // todo: implement udp support.
-                todo!("udp support not implemented yet");
-                // socket
-                //     .send_to(&body_buffer, target_addr.clone())
-                //     .unwrap_or_else(|e| {
-                //         so.send(systemmessage::log(format!(
-                //             "udp error: send to {target_addr}: {e}"
-                //         )))
-                //         .expect("failed to send log message");
-                //         0
-                //     });
+                // todo!("udp support not implemented yet");
+                socket
+                    .send_to(&body_buffer, target_addr.clone())
+                    .unwrap_or_else(|e| {
+                        so.send(SystemMessage::Log(
+                            format!("udp error: send to {target_addr}: {e}"),
+                            LogLevel::Err,
+                        ))
+                        .expect("failed to send log message");
+                        0
+                    });
             },
         )?;
 

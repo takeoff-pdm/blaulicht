@@ -294,6 +294,42 @@ impl BlaulichtApp {
         }
     }
 
+    pub fn render_clone_scene_dialog(&mut self, ctx: &Context) {
+        if self.clone_scene_dialog_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const SPACING: f32 = 16.0;
+
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+            components::dialog(ctx, "Clone Scene", size, false, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::singleline(&mut self.new_scene_name)
+                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                        );
+                    });
+
+                ui.add_space(SPACING);
+
+                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        button_pressed = true;
+                    }
+                });
+
+                if button_pressed {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.clone_scene(self.new_scene_name.take());
+                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                    self.clone_scene_dialog_open = false;
+                }
+            });
+        }
+    }
+
     pub fn render_add_scene_dialog(&mut self, ctx: &Context) {
         if self.new_scene_dialog_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
@@ -544,7 +580,6 @@ impl BlaulichtApp {
                                     ButtonColor::Blue.into(),
                                     ButtonSize::Large.with_height(50.0),
                                     |ui, rect, fg_color| {
-
                                         let painter = ui.painter();
                                         let fixture_count = group.fixtures.len();
                                         let mut name = group.name.clone();
