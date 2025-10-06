@@ -86,6 +86,14 @@ sudo chmod +x /usr/share/xsessions/blaulicht.desktop
 sudo cp blaulicht.sh /usr/bin/blaulicht.sh || exit 1
 sudo chmod +x /usr/bin/blaulicht.sh || exit 1
 
+#
+# Rescue
+#
+
+
+sudo apt install lm-sensors -y
+sudo sensors-detect --auto
+
 sudo cp rescue.sh /usr/bin/rescue.sh || exit 1
 sudo chmod +x /usr/bin/rescue.sh || exit 1
 
