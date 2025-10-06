@@ -112,4 +112,16 @@ echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/fans" | sudo tee /etc/sudoers.d/bla
 sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown
 sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 
+
+#
+#
+# Remote desktop
+#
+#
+
+sudo apt-get install python-software-properties -y
+sudo add-apt-repository ppa:x2go/stable -y
+sudo apt-get update
+sudo apt-get install x2goserver x2goserver-xsession -y
+
 echo "Installation succeeded, please reboot."
