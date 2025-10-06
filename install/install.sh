@@ -69,6 +69,7 @@ sudo chmod +x /usr/bin/blaulicht || exit 1
 
 mkdir -p ~/.config/openbox
 cp ./openbox-autostart ~/.config/openbox/autostart || exit 1
+chmod +x ~/.config/openbox/autostart || exit 1
 
 mkdir -p ~/.config/devilspie2
 cp ./blaulicht.lua ~/.config/devilspie2/
