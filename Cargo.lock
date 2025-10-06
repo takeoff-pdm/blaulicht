@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "audioviz",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-plugins"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blaulicht-shared",
  "interpolate",
@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-shared"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "color_space",
