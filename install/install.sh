@@ -121,6 +121,6 @@ sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 #
 
 sudo apt-get update
-sudo apt-get install x2goserver x2goserver-xsession -y
+sudo apt-get install x2goserver x2goserver-xsession tmux -y
 
 echo "Installation succeeded, please reboot."

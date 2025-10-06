@@ -19,4 +19,5 @@ xrandr --output VGA-1 --mode "800x480_60.00"
 # Launch blaulicht
 blaulicht
 
-xterm -e 'rescue.sh'
+xterm -e 'tmux new-session -s rescue "rescue.sh; exec bash"'
+
