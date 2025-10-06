@@ -119,8 +119,6 @@ sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 #
 #
 
-sudo apt-get install python-software-properties -y
-sudo add-apt-repository ppa:x2go/stable -y
 sudo apt-get update
 sudo apt-get install x2goserver x2goserver-xsession -y
 
