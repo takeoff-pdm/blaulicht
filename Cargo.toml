@@ -17,7 +17,8 @@ incremental = true
 members = [
     "./crates/core",
     "./crates/shared",
-    "./crates/plugins"
+    "./crates/plugins/midi_korg_nano_kontrol/",
+    "./crates/plugin_framework/"
 ]
 resolver = "2"
 

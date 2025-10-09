@@ -1,14 +1,45 @@
+use std::mem::MaybeUninit;
+
 use blaulicht_shared::{LogLevel, TickInput};
 
-mod blaulicht;
+pub mod blaulicht;
 mod error;
 mod midi;
 mod state;
-mod user;
+
+pub use midi::*;
+pub use blaulicht::*;
+pub use state::*;
 
 pub struct BufferSource<T, const N: usize> {
     buffer: [T; N],
     current_length: u32,
+}
+
+//
+// PLUGIN
+//
+
+pub trait Plugin {
+    fn initialize(&mut self, input: TickInput);
+    fn run(&mut self, input: TickInput);
+}
+
+static mut PLUGIN: MaybeUninit<Box<dyn Plugin>> = MaybeUninit::uninit();
+
+pub fn hook_plugin(plugin: Box<dyn Plugin>) {
+    unsafe {
+        PLUGIN.write(plugin);
+    }
+}
+
+//
+// END PLUGIN
+//
+
+
+extern "C" {
+    fn main();
 }
 
 #[no_mangle]
@@ -39,10 +70,22 @@ pub extern "C" fn internal_tick(
             // Set plugin ID.
             unsafe { blaulicht::PLUGIN_ID = tick_input.id };
 
-            user::initialize(tick_input)
+            // Call user-exposed init code.
+            unsafe { main() };
+
+            let plugin = unsafe {
+                #[allow(static_mut_refs)]
+                PLUGIN.assume_init_mut()
+            };
+
+            plugin.initialize(tick_input)
         }
         false => {
-            user::run(tick_input);
+            let plugin = unsafe {
+                #[allow(static_mut_refs)]
+                PLUGIN.assume_init_mut()
+            };
+            plugin.run(tick_input);
         }
     };
 }

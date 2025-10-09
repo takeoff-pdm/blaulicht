@@ -44,6 +44,10 @@ pub struct MidiConnectionMeta {
 const MIDI_DEVICE_NOT_FOUND: u8 = u8::MAX;
 
 impl MidiConnection {
+    pub unsafe fn dummy() -> Self {
+        Self { device_id: 255 }
+    }
+
     pub fn open(device_name: &str) -> Result<Self> {
         // Request connection to MIDI device.
         let device_id_or_error_code = blaulicht::bl_open_midi_device_safe(device_name);

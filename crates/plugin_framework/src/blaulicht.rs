@@ -43,16 +43,16 @@ pub fn bl_log(msg: &str, level: LogLevel) {
     unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len(), level.into()) }
 }
 
-pub fn bl_sys(cmd: &str) {
+pub fn system(cmd: &str) {
     unsafe { sys(PLUGIN_ID, cmd.as_ptr(), cmd.len()) }
 }
 
-pub fn bl_send(event: ControlEvent) {
+pub fn send_event(event: ControlEvent) {
     let serialized = event.serialize();
     unsafe { bl_send_event(serialized.as_ptr(), serialized.len()) };
 }
 
-pub fn bl_udp(addr: &str, body: &[u8]) {
+pub fn send_udp(addr: &str, body: &[u8]) {
     unsafe { udp(addr.as_ptr(), addr.len(), body.as_ptr(), body.len()) }
 }
 

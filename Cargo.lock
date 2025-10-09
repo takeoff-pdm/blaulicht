@@ -364,6 +364,7 @@ dependencies = [
  "crossbeam-queue",
  "eframe",
  "egui",
+ "egui-phosphor",
  "egui_file",
  "egui_plot",
  "enttecopendmx",
@@ -392,9 +393,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "blaulicht-plugins"
+name = "blaulicht-plugin-framework"
 version = "0.2.0"
 dependencies = [
+ "blaulicht-shared",
+ "interpolate",
+ "map-range",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "blaulicht-plugin-midi-korg-nano-kontrol"
+version = "0.2.0"
+dependencies = [
+ "blaulicht-plugin-framework",
  "blaulicht-shared",
  "interpolate",
  "map-range",
@@ -1238,6 +1251,15 @@ dependencies = [
  "profiling",
  "smallvec",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "egui-phosphor"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80049258178b29a9807b15b5bcf3d60722a22a91d03bc9316935dec5ed5ed2e0"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use crate::app::components::ButtonSize;
-use crate::app::{components, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
@@ -89,6 +89,11 @@ impl BlaulichtApp {
         if let Some(p) = initial_popup {
             app.show_popup(p);
         }
+
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
+        cc.egui_ctx.set_fonts(fonts);
 
         app
     }
@@ -193,6 +198,8 @@ impl BlaulichtApp {
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        theme::set_theme(ctx, theme::MACCHIATO);
+
         self.render_popup(ctx);
         // for i in 0..1000 {
         //     self.data
@@ -878,7 +885,8 @@ impl BlaulichtApp {
             .width_range(200.0..=400.0)
             .show(ctx, |ui| {
                 // --- Plugin Overview ---
-                ui.heading("Plugins");
+                ui.label("Plugins");
+
                 ui.add_space(4.0);
 
                 {
@@ -1081,9 +1089,11 @@ impl BlaulichtApp {
     }
 
     fn left_panel_ui(&mut self, ctx: &Context) {
-        egui::SidePanel::left("left_panel")
+        const WIDTH: f32 = 45.0;
+
+        egui::SidePanel::left("navbar")
             .resizable(false)
-            .default_width(64.0)
+            .default_width(WIDTH)
             // .width_range(150.0..=300.0)
             .show(ctx, |ui| {
                 // ui.label("Pages");
@@ -1095,13 +1105,19 @@ impl BlaulichtApp {
                 let button_height = ui.available_height() / button_count as f32;
                 let button_size = ButtonSize::Large
                     .with_height(button_height - spacing - spacing_top_bottom)
-                    .with_width(64.0);
+                    .with_width(WIDTH)
+                    .with_font_size(20.0);
 
                 ui.add_space(spacing_top_bottom);
 
                 for (idx, page) in AppPage::iter().enumerate() {
                     let is_selected = self.current_page == page;
                     let label = page.short().to_uppercase();
+                    let label = page.icon();
+
+                    // ui.label(
+                    //     ,
+                    // );
 
                     if components::button(ui, is_selected, &label, button_size) && !is_selected {
                         self.current_page = page;

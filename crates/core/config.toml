@@ -19,6 +19,6 @@ position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
 [[plugins]]
-file_path = "../plugins/output.wasm"
+file_path = "../plugins/bundle_debug/midi_korg_nano_kontrol.wasm"
 enabled = true
 enable_watcher = true
