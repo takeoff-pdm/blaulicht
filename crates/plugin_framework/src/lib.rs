@@ -23,6 +23,7 @@ pub struct BufferSource<T, const N: usize> {
 pub trait Plugin {
     fn initialize(&mut self, input: TickInput);
     fn run(&mut self, input: TickInput);
+    fn ui(&mut self) {}
 }
 
 static mut PLUGIN: MaybeUninit<Box<dyn Plugin>> = MaybeUninit::uninit();
@@ -88,4 +89,14 @@ pub extern "C" fn internal_tick(
             plugin.run(tick_input);
         }
     };
+}
+
+#[no_mangle]
+pub extern "C" fn internal_render_ui() {
+    let plugin = unsafe {
+        #[allow(static_mut_refs)]
+        PLUGIN.assume_init_mut()
+    };
+
+    plugin.ui();
 }

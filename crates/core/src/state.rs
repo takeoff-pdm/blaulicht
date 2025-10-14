@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     audio::defs::AudioThreadControlSignal, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
 };
+use crate::ui_ops::WasmUiOp;
 
 pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
@@ -51,6 +52,8 @@ pub struct AppState {
     pub dmx_universes: [RwLock<DmxBuffer>; 2],
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
+    pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
+    pub plugin_ui_visibility: RwLock<HashMap<u8, bool>>, // per-plugin UI window visibility
 }
 
 pub struct DmxBuffer {
@@ -78,6 +81,11 @@ impl AppState {
             })
             .collect();
 
+        let mut plugin_ui_visibility = HashMap::new();
+        for (i, _) in plugins.iter().enumerate() {
+            plugin_ui_visibility.insert(i as u8, false);
+        }
+
         Self {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
@@ -86,6 +94,8 @@ impl AppState {
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
+            plugin_ui_ops: RwLock::new(HashMap::new()),
+            plugin_ui_visibility: RwLock::new(plugin_ui_visibility),
         }
     }
 

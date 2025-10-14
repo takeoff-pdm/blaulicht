@@ -621,7 +621,8 @@ impl DmxEngine {
                 }
             }
             ControlEvent::MiscEvent { descriptor, value } => {
-                todo!("Not implemented");
+                println!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
+                (None, None)
             }
             ControlEvent::SetSceneFocus(id) => {
                 debug_assert!(state.0.scenes.get(&id).is_some());

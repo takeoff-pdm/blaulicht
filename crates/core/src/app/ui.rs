@@ -5,7 +5,7 @@ use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
-use blaulicht_shared::LogLevel;
+use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, LogLevel};
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
@@ -426,6 +426,101 @@ impl eframe::App for BlaulichtApp {
             //     egui::warn_if_debug_build(ui);
             // });
         });
+
+        // Render per-plugin UI windows (visible across pages)
+        {
+            let ops_map = self.data.state.plugin_ui_ops.read().unwrap().clone();
+            let visibility_map = self
+                .data
+                .state
+                .plugin_ui_visibility
+                .read()
+                .unwrap()
+                .clone();
+
+            for (plugin_id, visible) in visibility_map.iter() {
+                let mut is_open = *visible;
+                if !is_open {
+                    continue;
+                }
+
+                let title = format!("Plugin UI #{plugin_id}");
+                egui::Window::new(title)
+                    .open(&mut is_open)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        if let Some(ops) = ops_map.get(plugin_id) {
+                            for op in ops {
+                                match op {
+                                    crate::ui_ops::WasmUiOp::Label(text) => {
+                                        ui.label(text);
+                                    }
+                                    crate::ui_ops::WasmUiOp::Separator => {
+                                        ui.separator();
+                                    }
+                                    crate::ui_ops::WasmUiOp::Button { label, id } => {
+                                        if ui.button(label).clicked() {
+                                            let evt = ControlEvent::MiscEvent {
+                                                descriptor: *id,
+                                                value: 1,
+                                            };
+                                            self.data
+                                                .event_bus_connection
+                                                .send(ControlEventMessage::new(
+                                                    EventOriginator::Web,
+                                                    evt,
+                                                ));
+                                        }
+                                    }
+                                    crate::ui_ops::WasmUiOp::Checkbox { label, id, checked } => {
+                                        let mut c = *checked;
+                                        if ui.checkbox(&mut c, label).changed() {
+                                            let evt = ControlEvent::MiscEvent {
+                                                descriptor: *id,
+                                                value: if c { 1 } else { 0 },
+                                            };
+                                            self.data
+                                                .event_bus_connection
+                                                .send(ControlEventMessage::new(
+                                                    EventOriginator::Web,
+                                                    evt,
+                                                ));
+                                        }
+                                    }
+                                    crate::ui_ops::WasmUiOp::Slider { label, id, min, max, value } => {
+                                        let mut v = *value;
+                                        if ui
+                                            .add(egui::Slider::new(&mut v, (*min)..=(*max)).text(label))
+                                            .changed()
+                                        {
+                                            let evt = ControlEvent::MiscEvent {
+                                                descriptor: *id,
+                                                value: v,
+                                            };
+                                            self.data
+                                                .event_bus_connection
+                                                .send(ControlEventMessage::new(
+                                                    EventOriginator::Web,
+                                                    evt,
+                                                ));
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            ui.label("No UI generated by plugin yet.");
+                        }
+                    });
+
+                // Update visibility if the window was closed via the UI
+                if !is_open {
+                    let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+                    if let Some(v) = map.get_mut(plugin_id) {
+                        *v = false;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -891,8 +986,15 @@ impl BlaulichtApp {
 
                 {
                     let plugins = self.data.state.plugins.read().unwrap();
+                    let current_visibility = self
+                        .data
+                        .state
+                        .plugin_ui_visibility
+                        .read()
+                        .unwrap()
+                        .clone();
 
-                    for (i, (_id, plugin)) in plugins.iter().enumerate() {
+                    for (i, (id, plugin)) in plugins.iter().enumerate() {
                         let box_size = egui::vec2(ui.available_width(), 42.0);
                         ui.allocate_ui_with_layout(
                             box_size,
@@ -935,7 +1037,7 @@ impl BlaulichtApp {
                                     painter.rect_filled(border_rect, 0.0, border_color);
                                 }
 
-                                // Plugin name (use a placeholder if you can't access the path)
+                                // Plugin name
                                 let name = format!("P:{} ({})", plugin.path, i + 1);
                                 painter.text(
                                     rect.center(),
@@ -950,6 +1052,15 @@ impl BlaulichtApp {
                                 );
                             },
                         );
+                        ui.horizontal(|ui| {
+                            let is_open = *current_visibility.get(id).unwrap_or(&false);
+                            let label = if is_open { "Hide UI" } else { "Show UI" };
+                            if ui.small_button(label).clicked() {
+                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+                                let entry = map.entry(*id).or_insert(false);
+                                *entry = !*entry;
+                            }
+                        });
                         ui.add_space(8.0);
                     }
                     ui.separator();
@@ -1086,6 +1197,8 @@ impl BlaulichtApp {
                     }
                 }
             });
+
+        // Removed global Plugin UI section; per-plugin windows are rendered globally below.
     }
 
     fn left_panel_ui(&mut self, ctx: &Context) {

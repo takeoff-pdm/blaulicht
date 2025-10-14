@@ -19,6 +19,22 @@ extern "C" {
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
     fn controls_config(x: u8, y: u8);
+
+    // Egui UI host imports
+    fn ui_begin(plugin_id: u8);
+    fn ui_label(plugin_id: u8, ptr: *const u8, len: usize);
+    fn ui_separator(plugin_id: u8);
+    fn ui_button(plugin_id: u8, ptr: *const u8, len: usize, id: u8);
+    fn ui_checkbox(plugin_id: u8, ptr: *const u8, len: usize, id: u8, checked: i32);
+    fn ui_slider(
+        plugin_id: u8,
+        ptr: *const u8,
+        len: usize,
+        id: u8,
+        min: i32,
+        max: i32,
+        value: i32,
+    );
 }
 
 pub fn bl_open_midi_device_safe(device_name: &str) -> u8 {
@@ -68,6 +84,55 @@ pub fn bl_controls_config(x: u8, y: u8) {
     println!("[MATRIX] Configuring controls to ({}, {})...", x, y);
     unsafe {
         controls_config(x, y);
+    }
+}
+
+// ---- UI (egui) helpers ----
+
+pub mod ui {
+    use super::{ui_begin as host_ui_begin, ui_button as host_ui_button, ui_label as host_ui_label, ui_separator as host_ui_separator, PLUGIN_ID};
+
+    pub fn begin() {
+        unsafe { host_ui_begin(unsafe { PLUGIN_ID }) };
+    }
+
+    pub fn label(text: &str) {
+        unsafe { host_ui_label(unsafe { PLUGIN_ID }, text.as_ptr(), text.len()) };
+    }
+
+    pub fn separator() {
+        unsafe { host_ui_separator(unsafe { PLUGIN_ID }) };
+    }
+
+    /// Enqueue a button with a stable `id` byte. When clicked on host, a ControlEvent::MiscEvent will be sent back with descriptor=id, value=1.
+    pub fn button(label: &str, id: u8) {
+        unsafe { host_ui_button(unsafe { PLUGIN_ID }, label.as_ptr(), label.len(), id) };
+    }
+
+    pub fn checkbox(label: &str, id: u8, checked: bool) {
+        unsafe {
+            host_ui_checkbox(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                if checked { 1 } else { 0 },
+            )
+        };
+    }
+
+    pub fn slider(label: &str, id: u8, min: u8, max: u8, value: u8) {
+        unsafe {
+            host_ui_slider(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                min as i32,
+                max as i32,
+                value as i32,
+            )
+        };
     }
 }
 

@@ -22,3 +22,8 @@ interpolation = "Cubic"
 file_path = "../plugins/bundle_debug/midi_korg_nano_kontrol.wasm"
 enabled = true
 enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/sample_egui_plugin.wasm"
+enabled = true
+enable_watcher = true
