@@ -10,6 +10,7 @@ enum UiMode {
     EditingSequencer(usize),
     EditingStep(usize, usize),
     AddingStep(usize),
+    RenamingSequencer(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,7 @@ pub struct DrumPlugin {
     sequencers: Vec<Sequencer>,
     ui_mode: UiMode,
     temp_sequencer_name: String,
+    temp_rename_name: String,
     temp_scene_index: u8,
     temp_midi_note_input: String,
 }
@@ -49,6 +51,7 @@ impl Default for DrumPlugin {
             sequencers: Vec::new(),
             ui_mode: UiMode::Overview,
             temp_sequencer_name: String::new(),
+            temp_rename_name: String::new(),
             temp_scene_index: 0,
             temp_midi_note_input: String::new(),
         }
@@ -158,6 +161,14 @@ impl DrumPlugin {
         }
     }
 
+    fn rename_sequencer(&mut self, seq_index: usize, new_name: String) {
+        if seq_index < self.sequencers.len() {
+            let old_name = self.sequencers[seq_index].name.clone();
+            self.sequencers[seq_index].name = new_name.clone();
+            println!("Renamed sequencer '{}' to '{}'", old_name, new_name);
+        }
+    }
+
     fn handle_events(&mut self, events: &[ControlEventMessage]) {
         for e in events {
             if let ControlEvent::PluginUi(ui_ev) = e.body() {
@@ -220,6 +231,12 @@ impl DrumPlugin {
                                     self.temp_scene_index = 0;
                                 }
                             }
+                            3 => {
+                                if seq_idx < self.sequencers.len() {
+                                    self.temp_rename_name = self.sequencers[seq_idx].name.clone();
+                                    self.ui_mode = UiMode::RenamingSequencer(seq_idx);
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -272,6 +289,19 @@ impl DrumPlugin {
                             self.update_sequencer_midi_notes(seq_idx, midi_notes);
                         }
                     }
+                    PluginUiEvent::Button { id } if id == 105 => {
+                        if let UiMode::RenamingSequencer(seq_idx) = self.ui_mode {
+                            if !self.temp_rename_name.trim().is_empty() {
+                                self.rename_sequencer(seq_idx, self.temp_rename_name.clone());
+                            }
+                            self.ui_mode = UiMode::Overview;
+                        }
+                    }
+                    PluginUiEvent::Button { id } if id == 106 => {
+                        if let UiMode::RenamingSequencer(_) = self.ui_mode {
+                            self.ui_mode = UiMode::Overview;
+                        }
+                    }
                     PluginUiEvent::Slider { id, value } if id == 110 => {
                         self.temp_scene_index = value;
                     }
@@ -283,6 +313,11 @@ impl DrumPlugin {
                     PluginUiEvent::Text { id, text } if id == 121 => {
                         if self.temp_midi_note_input != text {
                             self.temp_midi_note_input = text.clone();
+                        }
+                    }
+                    PluginUiEvent::Text { id, text } if id == 122 => {
+                        if self.temp_rename_name != text {
+                            self.temp_rename_name = text.clone();
                         }
                     }
                     _ => {
@@ -445,8 +480,10 @@ impl DrumPlugin {
             bpf::ui::begin_horizontal();
             let edit_id = (20 + seq_idx * 4) as u8;
             let delete_id = (21 + seq_idx * 4) as u8;
+            let rename_id = (23 + seq_idx * 4) as u8;
             bpf::ui::button("Edit", edit_id);
             bpf::ui::button("Delete", delete_id);
+            bpf::ui::button("Rename", rename_id);
             bpf::ui::end_horizontal();
         }
     }
@@ -548,6 +585,23 @@ impl DrumPlugin {
         bpf::ui::end_horizontal();
     }
 
+    fn draw_renaming_sequencer_ui(&self, seq_idx: usize) {
+        if seq_idx >= self.sequencers.len() {
+            return;
+        }
+
+        bpf::ui::separator();
+        bpf::ui::label(&format!("Rename Sequencer"));
+        
+        bpf::ui::label("New Name:");
+        bpf::ui::text_edit("", 122, &self.temp_rename_name);
+        
+        bpf::ui::begin_horizontal();
+        bpf::ui::button("Save", 105);
+        bpf::ui::button("Cancel", 106);
+        bpf::ui::end_horizontal();
+    }
+
     fn draw_ui(&self) {
         bpf::ui::begin();
         bpf::ui::begin_frame_styled(10, "Drum Plugin", 8, 8, 4, 4);
@@ -560,6 +614,7 @@ impl DrumPlugin {
             UiMode::EditingSequencer(seq_idx) => self.draw_editing_sequencer_ui(*seq_idx),
             UiMode::EditingStep(seq_idx, step_idx) => self.draw_editing_step_ui(*seq_idx, *step_idx),
             UiMode::AddingStep(seq_idx) => self.draw_adding_step_ui(*seq_idx),
+            UiMode::RenamingSequencer(seq_idx) => self.draw_renaming_sequencer_ui(*seq_idx),
         }
 
         bpf::ui::end_frame();
