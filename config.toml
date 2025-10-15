@@ -1,5 +1,10 @@
 port = 1234
-default_audio_device = "BlackHole 2ch"
+default_audio_device = "MacBook Air Microphone"
+
+[[plugins]]
+file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/drums.wasm"
+enabled = true
+enable_watcher = true
 
 [stream]
 fft_resolution = 4096

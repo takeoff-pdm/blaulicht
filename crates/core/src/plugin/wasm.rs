@@ -950,10 +950,37 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                println!("open midi...");
+                println!("open midi device: {}", device_name);
 
                 let mut midi_manager = midi_manager.lock().unwrap();
                 midi_manager.request_device(&device_name).unwrap_or(u8::MAX) as u32
+            },
+        )?;
+
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_enumerate_midi_devices",
+            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
+                use crate::plugin::midi::MidiManager;
+                
+                let devices = MidiManager::enumerate_devices().unwrap_or_else(|_| Vec::new());
+                let json = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".to_string());
+                let json_bytes = json.as_bytes();
+                
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+                
+                if write_len > 0 {
+                    memory
+                        .write(&mut caller, buffer_ptr as usize, &json_bytes[..write_len])
+                        .expect("failed to write memory");
+                }
+                
+                write_len as u32
             },
         )?;
 

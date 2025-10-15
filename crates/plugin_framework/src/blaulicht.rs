@@ -11,6 +11,7 @@ extern "C" {
     );
 
     fn bl_open_midi_device(device_name_ptr: *const u8, device_name_len: usize) -> u8;
+    fn bl_enumerate_midi_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn bl_transmit_midi(device_id: u8, status: u8, data0: u8, data1: u8);
     fn bl_report_panic();
 
@@ -64,6 +65,23 @@ extern "C" {
 
 pub fn bl_open_midi_device_safe(device_name: &str) -> u8 {
     unsafe { bl_open_midi_device(device_name.as_ptr(), device_name.len()) }
+}
+
+pub fn bl_enumerate_midi_devices_safe() -> Vec<String> {
+    const MAX_BUFFER_SIZE: usize = 4096;
+    let mut buffer = vec![0u8; MAX_BUFFER_SIZE];
+    
+    let written_len = unsafe {
+        bl_enumerate_midi_devices(buffer.as_mut_ptr(), MAX_BUFFER_SIZE)
+    };
+    
+    if written_len == 0 {
+        return Vec::new();
+    }
+    
+    let data = &buffer[..written_len as usize];
+    let json_str = std::str::from_utf8(data).unwrap_or("[]");
+    serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
 
 pub fn report_panic() {

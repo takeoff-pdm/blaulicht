@@ -4,7 +4,7 @@ use blaulicht_shared::{LogLevel, TickInput};
 
 pub mod blaulicht;
 mod error;
-mod midi;
+pub mod midi;
 mod state;
 
 pub use midi::*;

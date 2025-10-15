@@ -6,6 +6,10 @@ use crate::{
     BufferSource,
 };
 
+pub fn enumerate_devices() -> Vec<String> {
+    blaulicht::bl_enumerate_midi_devices_safe()
+}
+
 const MIDI_BUFFER_LEN: usize = 256;
 type MidiBufferT = u32;
 

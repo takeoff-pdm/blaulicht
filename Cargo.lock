@@ -393,6 +393,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "blaulicht-plugin-drums"
+version = "0.2.0"
+dependencies = [
+ "blaulicht-plugin-framework",
+ "blaulicht-shared",
+ "interpolate",
+ "map-range",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "blaulicht-plugin-framework"
 version = "0.2.0"
 dependencies = [
@@ -413,6 +425,15 @@ dependencies = [
  "map-range",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "blaulicht-plugin-sample-egui"
+version = "0.1.0"
+dependencies = [
+ "blaulicht-plugin-framework",
+ "blaulicht-shared",
+ "serde",
 ]
 
 [[package]]

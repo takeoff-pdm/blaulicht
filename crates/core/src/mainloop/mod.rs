@@ -190,11 +190,12 @@ pub fn run(
         if now.duration_since(time_of_last_dmx_tick) > DMX_TICK_TIME {
             // TODO: does this even work?
             let midi_manager = Arc::clone(&midi_manager);
-            let mut midi_manager = midi_manager.lock().unwrap();
-
-            let midi = midi_manager
-                .tick()
-                .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?;
+            let midi = {
+                let mut midi_manager = midi_manager.lock().unwrap();
+                midi_manager
+                    .tick()
+                    .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?
+            };
 
             //
             // Collect control events.
