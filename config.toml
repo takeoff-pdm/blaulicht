@@ -1,10 +1,6 @@
 port = 1234
 default_audio_device = "MacBook Air Microphone"
-
-[[plugins]]
-file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/drums.wasm"
-enabled = true
-enable_watcher = true
+last_open_showfile = "/Users/martintaraz/Downloads/blaulicht/showfile.txt"
 
 [stream]
 fft_resolution = 4096
@@ -21,3 +17,8 @@ volume = 1.0
 volume_normalisation = "Mixture"
 position_normalisation = "Harmonic"
 interpolation = "Cubic"
+
+[[plugins]]
+file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/drums.wasm"
+enabled = true
+enable_watcher = true
