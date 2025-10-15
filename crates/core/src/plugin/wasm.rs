@@ -541,6 +541,366 @@ impl PluginManager {
             },
         )?;
 
+        // Text edit
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_text_edit",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, label_ptr: i32, label_len: i32, id: i32, text_ptr: i32, text_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut label_buf = vec![0u8; label_len as usize];
+                memory
+                    .read(&caller, label_ptr as usize, &mut label_buf)
+                    .expect("failed to read memory");
+                let label = String::from_utf8_lossy(&label_buf).to_string();
+
+                let mut text_buf = vec![0u8; text_len as usize];
+                memory
+                    .read(&caller, text_ptr as usize, &mut text_buf)
+                    .expect("failed to read memory");
+                let text = String::from_utf8_lossy(&text_buf).to_string();
+
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::TextEdit { label, id: id as u8, text });
+            },
+        )?;
+
+        // Text edit multiline
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_text_edit_multiline",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, label_ptr: i32, label_len: i32, id: i32, text_ptr: i32, text_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut label_buf = vec![0u8; label_len as usize];
+                memory
+                    .read(&caller, label_ptr as usize, &mut label_buf)
+                    .expect("failed to read memory");
+                let label = String::from_utf8_lossy(&label_buf).to_string();
+
+                let mut text_buf = vec![0u8; text_len as usize];
+                memory
+                    .read(&caller, text_ptr as usize, &mut text_buf)
+                    .expect("failed to read memory");
+                let text = String::from_utf8_lossy(&text_buf).to_string();
+
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::TextEditMultiline { label, id: id as u8, text });
+            },
+        )?;
+
+        // Layout: vertical/horizontal begin/end
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_vertical", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginVertical);
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_vertical", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndVertical);
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_horizontal", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginHorizontal);
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_horizontal", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndHorizontal);
+        })?;
+
+        // Painter: begin/rect/circle/end
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_begin",
+            move |plugin_id: i32, id: i32, width: i32, height: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterBegin {
+                    id: id as u8,
+                    width,
+                    height,
+                });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_rect",
+            move |plugin_id: i32, x: i32, y: i32, w: i32, h: i32, r: i32, g: i32, b: i32, a: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterRect {
+                    x,
+                    y,
+                    w,
+                    h,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_circle",
+            move |plugin_id: i32, x: i32, y: i32, radius: i32, r: i32, g: i32, b: i32, a: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCircle {
+                    x,
+                    y,
+                    radius,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_painter_end", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterEnd);
+        })?;
+
+        // Painter line
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_line",
+            move |plugin_id: i32, x1: i32, y1: i32, x2: i32, y2: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterLine {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                    thickness,
+                });
+            },
+        )?;
+
+        // Painter text
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_text",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, x: i32, y: i32, size: i32, r: i32, g: i32, b: i32, a: i32, ptr: i32, len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buf = vec![0u8; len as usize];
+                memory
+                    .read(&caller, ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                let text = String::from_utf8_lossy(&buf).to_string();
+
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterText {
+                    x,
+                    y,
+                    size,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                    text,
+                });
+            },
+        )?;
+
+        // Painter strokes
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_rect_stroke",
+            move |plugin_id: i32, x: i32, y: i32, w: i32, h: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterRectStroke {
+                    x, y, w, h,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                    thickness,
+                });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_circle_stroke",
+            move |plugin_id: i32, x: i32, y: i32, radius: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCircleStroke {
+                    x, y, radius,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                    thickness,
+                });
+            },
+        )?;
+
+        // Cubic bezier
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_painter_cubic_bezier",
+            move |plugin_id: i32, x1: i32, y1: i32, cx1: i32, cy1: i32, cx2: i32, cy2: i32, x2: i32, y2: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCubicBezier {
+                    x1, y1, cx1, cy1, cx2, cy2, x2, y2,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                    thickness,
+                });
+            },
+        )?;
+
+        // Color picker
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_color_picker",
+            move |plugin_id: i32, id: i32, r: i32, g: i32, b: i32, a: i32| {
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8).or_default().push(WasmUiOp::ColorPicker {
+                    id: id as u8,
+                    r: r as u8,
+                    g: g as u8,
+                    b: b as u8,
+                    a: a as u8,
+                });
+            },
+        )?;
+
+        // Frames
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_frame", move |plugin_id: i32, id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginFrame { id: id as u8 });
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_frame", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndFrame);
+        })?;
+
+        // Frame styled
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_frame_styled",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, id: i32, ptr: i32, len: i32, pad_x: i32, pad_y: i32, margin_x: i32, margin_y: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let mut buf = vec![0u8; len as usize];
+                memory
+                    .read(&caller, ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                let title = String::from_utf8_lossy(&buf).to_string();
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginFrameStyled { id: id as u8, title, pad_x, pad_y, margin_x, margin_y });
+            },
+        )?;
+
+        // Collapsing
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_collapsing",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, id: i32, ptr: i32, len: i32, default_open: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let mut buf = vec![0u8; len as usize];
+                memory
+                    .read(&caller, ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                let title = String::from_utf8_lossy(&buf).to_string();
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginCollapsing { id: id as u8, title, default_open: default_open != 0 });
+            },
+        )?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_collapsing", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndCollapsing);
+        })?;
+
+        // Tabs
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_tabs", move |plugin_id: i32, id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginTabs { id: id as u8 });
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_tab",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, tabs_id: i32, tab_id: i32, ptr: i32, len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let mut buf = vec![0u8; len as usize];
+                memory
+                    .read(&caller, ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                let title = String::from_utf8_lossy(&buf).to_string();
+                let mut map = state_ref.plugin_ui_ops.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginTab { tabs_id: tabs_id as u8, tab_id: tab_id as u8, title });
+            },
+        )?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_tab", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndTab);
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_tabs", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops.write().unwrap();
+            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndTabs);
+        })?;
+
         let mo = self.to_midi_devices.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",

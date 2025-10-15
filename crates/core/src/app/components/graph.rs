@@ -64,7 +64,7 @@ impl TimeSeriesGraph {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
-        let elapsed = current_time - self.last_update;
+        let elapsed = current_time.saturating_sub(self.last_update);
         if elapsed >= GRAPH_UPDATE_INTERVAL_MS {
             self.add_data_point(current_value);
             self.last_update = current_time;

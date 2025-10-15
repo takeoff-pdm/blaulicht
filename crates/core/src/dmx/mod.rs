@@ -529,6 +529,10 @@ impl DmxEngine {
                     (None, None)
                 }
             }
+            // UI-only plugin events: ignore in DMX engine
+            ControlEvent::PluginUi(_) => {
+                (None, None)
+            }
             // Other
             ControlEvent::SelectGroup(group_id) => {
                 if !state.groups().contains_key(&group_id) {

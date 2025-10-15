@@ -1,12 +1,15 @@
 use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::Plugin;
-use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, TickInput};
+use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 
 pub struct SamplePlugin {
     clicks: u32,
     enabled: bool,
     intensity: u8,
+    name: String,
+    bio: String,
+    color: (u8, u8, u8, u8),
 }
 
 impl Default for SamplePlugin {
@@ -15,6 +18,9 @@ impl Default for SamplePlugin {
             clicks: 0,
             enabled: true,
             intensity: 128,
+            name: "Alice".to_string(),
+            bio: "Hello Blaulicht!\nThis is a multi-line text.\nTry editing me!".to_string(),
+            color: (120, 180, 200, 255),
         }
     }
 }
@@ -22,17 +28,33 @@ impl Default for SamplePlugin {
 impl SamplePlugin {
     fn handle_events(&mut self, events: &[ControlEventMessage]) {
         for e in events {
-            if let ControlEvent::MiscEvent { descriptor, value } = e.body() {
-                if descriptor == 1 && value == 1 {
-                    // Button with id=1 clicked in host UI
-                    self.clicks = self.clicks.saturating_add(1);
-                    println!("Sample: Button clicked! -> {}", self.clicks);
-                } else if descriptor == 2 {
-                    self.enabled = value != 0;
-                    println!("Sample: Checkbox enabled = {}", self.enabled);
-                } else if descriptor == 3 {
-                    self.intensity = value;
-                    println!("Sample: Slider intensity = {}", self.intensity);
+            if let ControlEvent::PluginUi(ui_ev) = e.body() {
+                match ui_ev {
+                    PluginUiEvent::Button { id } if id == 1 => {
+                        self.clicks = self.clicks.saturating_add(1);
+                        println!("Sample: Button clicked! -> {}", self.clicks);
+                    }
+                    PluginUiEvent::Checkbox { id, checked } if id == 2 => {
+                        self.enabled = checked;
+                        println!("Sample: Checkbox enabled = {}", self.enabled);
+                    }
+                    PluginUiEvent::Slider { id, value } if id == 3 => {
+                        self.intensity = value;
+                        println!("Sample: Slider intensity = {}", self.intensity);
+                    }
+                    PluginUiEvent::Text { id, text } if id == 4 => {
+                        println!("Sample: Text changed = {}", text);
+                        self.name = text.chars().take(32).collect();
+                    }
+                    PluginUiEvent::Text { id, text } if id == 6 => {
+                        println!("Sample: Bio changed");
+                        self.bio = text;
+                    }
+                    PluginUiEvent::Color { id, r, g, b, a } if id == 7 => {
+                        self.color = (r, g, b, a);
+                        println!("Sample: Color changed = rgba({}, {}, {}, {})", r, g, b, a);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -40,12 +62,40 @@ impl SamplePlugin {
 
     fn draw_ui(&self) {
         bpf::ui::begin();
-        bpf::ui::label("Sample egui Plugin");
-        bpf::ui::separator();
+        bpf::ui::begin_frame_styled(10, "Sample egui Plugin", 8, 8, 4, 4);
         bpf::ui::label(&format!("Clicks: {}", self.clicks));
         bpf::ui::button("Click Me", 1);
         bpf::ui::checkbox("Enabled", 2, self.enabled);
         bpf::ui::slider("Intensity", 3, 0, 255, self.intensity);
+        bpf::ui::text_edit("Name", 4, &self.name);
+        bpf::ui::text_edit_multiline("Bio", 6, &self.bio);
+        bpf::ui::color_picker(7, self.color.0, self.color.1, self.color.2, self.color.3);
+        bpf::ui::begin_collapsing(8, "Advanced", false);
+        bpf::ui::begin_horizontal();
+        bpf::ui::label("Preview:");
+        bpf::ui::painter_begin(5, 120, 40);
+        bpf::ui::painter_rect(0, 0, 120, 40, 30, 30, 30, 255);
+        bpf::ui::painter_circle(20, 20, 10, 80, 180, 120, 255);
+        bpf::ui::painter_circle(60, 20, 10, 200, 120, 80, 255);
+        bpf::ui::painter_circle(100, 20, 10, 120, 80, 200, 255);
+        bpf::ui::painter_line(0, 39, 119, 39, 255, 255, 255, 200, 1);
+        bpf::ui::painter_text(4, 4, 12, 255, 255, 255, 255, &self.name);
+        bpf::ui::painter_rect_stroke(0, 0, 120, 40, 200, 200, 200, 255, 1);
+        bpf::ui::painter_circle_stroke(60, 20, 16, 200, 200, 50, 255, 2);
+        bpf::ui::painter_cubic_bezier(0, 0, 20, 40, 100, 0, 120, 40, 255, 200, 0, 255, 1);
+        bpf::ui::painter_end();
+        bpf::ui::end_horizontal();
+        bpf::ui::end_collapsing();
+
+        bpf::ui::begin_tabs(9);
+        bpf::ui::begin_tab(9, 1, "Overview");
+        bpf::ui::label("This is the overview tab");
+        bpf::ui::end_tab();
+        bpf::ui::begin_tab(9, 2, "Details");
+        bpf::ui::label("This is the details tab");
+        bpf::ui::end_tab();
+        bpf::ui::end_tabs();
+        bpf::ui::end_frame();
     }
 }
 
