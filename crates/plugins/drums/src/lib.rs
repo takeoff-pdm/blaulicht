@@ -276,10 +276,14 @@ impl DrumPlugin {
                         self.temp_scene_index = value;
                     }
                     PluginUiEvent::Text { id, text } if id == 120 => {
-                        self.temp_sequencer_name = text.clone();
+                        if self.temp_sequencer_name != text {
+                            self.temp_sequencer_name = text.clone();
+                        }
                     }
                     PluginUiEvent::Text { id, text } if id == 121 => {
-                        self.temp_midi_note_input = text.clone();
+                        if self.temp_midi_note_input != text {
+                            self.temp_midi_note_input = text.clone();
+                        }
                     }
                     _ => {
                         println!("Unhandled UI event: {:?}", ui_ev);
@@ -585,7 +589,7 @@ impl Plugin for DrumPlugin {
 
             for midi_event in res {
                 let msg = format!(
-                    "status: 0x{:02X}, kind: 0x{:02X}, value: {}",
+                    "status: 0x{:02X}, kind: {}, value: {}",
                     midi_event.status, midi_event.kind, midi_event.value
                 );
                 println!("MIDI: {}", msg);

@@ -524,15 +524,23 @@ fn render_plugin_ops(
                 *idx += 1;
             }
             Op::TextEdit { label, id, text } => {
-                let mut s = text.clone();
-                if ui.text_edit_singleline(&mut s).changed() {
+                let edit_id = ui.make_persistent_id(format!("text_edit_{}", id));
+                let mut s = ui.data_mut(|d| {
+                    d.get_temp::<String>(edit_id)
+                        .unwrap_or_else(|| text.clone())
+                });
+                
+                let response = ui.text_edit_singleline(&mut s);
+                
+                ui.data_mut(|d| d.insert_temp(edit_id, s.clone()));
+                
+                if response.changed() {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Text { id: *id, text: s });
                     data.event_bus_connection.send(ControlEventMessage::new(
                         EventOriginator::Web,
                         evt,
                     ));
-                } else {
-                    // show label when not editing
+                } else if !response.has_focus() {
                     ui.label(label);
                 }
                 *idx += 1;
