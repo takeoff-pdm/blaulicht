@@ -250,7 +250,7 @@ fn main() -> anyhow::Result<()> {
     let initial_popup = match cfg.last_open_showfile {
         Some(showfile) => {
             let mut dmx = app_state.dmx_engine.write().unwrap();
-            match config::read_showfile(showfile.clone(), &mut dmx) {
+            match config::read_showfile(showfile.clone(), &mut dmx, &app_state.plugin_state_storage) {
                 Ok(_) => Some(PopupSpec::with_duration(
                     Duration::from_secs(5),
                     "Loaded Showfile".to_string(),

@@ -326,6 +326,8 @@ impl eframe::App for BlaulichtApp {
                         //     "DMX".to_string(),
                         // );
                     }
+                    SystemMessage::SavePluginState { plugin_name, state_data } => {
+                    }
                 },
                 Err(TryRecvError::Empty) => {
                     empty += 1;
@@ -996,7 +998,13 @@ impl BlaulichtApp {
 
         match config_mut.last_open_showfile.clone() {
             Some(ref path) => {
-                let dmx = self.data.state.dmx_engine.read().unwrap();
+                let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                
+                {
+                    let plugin_state = self.data.state.plugin_state_storage.lock().unwrap();
+                    dmx.0.plugin_state = plugin_state.clone();
+                }
+                
                 let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
                 std::fs::write(&path, serialized).unwrap();
 
@@ -1079,6 +1087,12 @@ impl BlaulichtApp {
 
                             let decoded: blaulicht_shared::EngineState =
                                 postcard::from_bytes(&buffer).unwrap();
+                            
+                            {
+                                let mut plugin_state = self.data.state.plugin_state_storage.lock().unwrap();
+                                *plugin_state = decoded.plugin_state.clone();
+                            }
+                            
                             let mut dmx = self.data.state.dmx_engine.write().unwrap();
                             // dmx.overwrite(decoded);
                             dmx.load_showfile(decoded);

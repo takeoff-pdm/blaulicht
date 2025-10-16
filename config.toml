@@ -22,3 +22,6 @@ interpolation = "Cubic"
 file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/drums.wasm"
 enabled = true
 enable_watcher = true
+
+[plugin_state]
+plugin_0 = '{"sequencers":[{"name":"Kick Drum123","steps":[0,1,3],"midi_notes":[38,40],"current_step_index":0},{"name":"Snare Drum","steps":[2,3],"midi_notes":[42,44,46],"current_step_index":0}],"selected_device_index":0}'

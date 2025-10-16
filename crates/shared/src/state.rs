@@ -6,7 +6,7 @@ use crate::{
 use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::Display,
 };
 use strum::EnumIter;
@@ -73,6 +73,9 @@ pub struct EngineState {
 
     // Overrides a (universe, channel) -> value
     pub overrides: BTreeMap<(usize, usize), u8>,
+
+    #[serde(default)]
+    pub plugin_state: HashMap<String, String>,
 }
 
 impl EngineState {

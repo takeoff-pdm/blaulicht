@@ -69,6 +69,9 @@ pub fn run(
         p_app_state,
     );
 
+    let plugin_state = app_state.plugin_state_storage.lock().unwrap().clone();
+    plugin_manager.load_plugin_states(plugin_state);
+
     thread::sleep(Duration::from_secs(2)); // TODO: hack
 
     plugin_manager

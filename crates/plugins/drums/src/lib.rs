@@ -2,6 +2,7 @@ use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::{MidiConnection, MidiEvent, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
 enum UiMode {
@@ -16,6 +17,20 @@ enum UiMode {
 #[derive(Debug, Clone)]
 struct SceneStep {
     scene_index: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SequencerState {
+    name: String,
+    steps: Vec<u8>,
+    midi_notes: Vec<u8>,
+    current_step_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PluginState {
+    sequencers: Vec<SequencerState>,
+    selected_device_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +128,7 @@ impl DrumPlugin {
         };
         self.sequencers.push(sequencer);
         println!("Added sequencer. Total: {}", self.sequencers.len());
+        self.save_state();
     }
 
     fn delete_sequencer(&mut self, index: usize) {
@@ -120,6 +136,7 @@ impl DrumPlugin {
             let name = self.sequencers[index].name.clone();
             self.sequencers.remove(index);
             println!("Deleted sequencer '{}'. Total: {}", name, self.sequencers.len());
+            self.save_state();
         }
     }
 
@@ -128,6 +145,7 @@ impl DrumPlugin {
             let step = SceneStep { scene_index };
             self.sequencers[seq_index].steps.push(step);
             println!("Added step to sequencer '{}'", self.sequencers[seq_index].name);
+            self.save_state();
         }
     }
 
@@ -140,6 +158,7 @@ impl DrumPlugin {
                     sequencer.current_step_index = sequencer.steps.len() - 1;
                 }
                 println!("Deleted step from sequencer '{}'", sequencer.name);
+                self.save_state();
             }
         }
     }
@@ -150,6 +169,7 @@ impl DrumPlugin {
             if step_index < sequencer.steps.len() {
                 sequencer.steps[step_index].scene_index = scene_index;
                 println!("Updated step in sequencer '{}'", sequencer.name);
+                self.save_state();
             }
         }
     }
@@ -158,6 +178,7 @@ impl DrumPlugin {
         if seq_index < self.sequencers.len() {
             self.sequencers[seq_index].midi_notes = midi_notes;
             println!("Updated MIDI notes for sequencer '{}'", self.sequencers[seq_index].name);
+            self.save_state();
         }
     }
 
@@ -166,6 +187,38 @@ impl DrumPlugin {
             let old_name = self.sequencers[seq_index].name.clone();
             self.sequencers[seq_index].name = new_name.clone();
             println!("Renamed sequencer '{}' to '{}'", old_name, new_name);
+            self.save_state();
+        }
+    }
+
+    fn save_state(&self) {
+        let state = PluginState {
+            sequencers: self.sequencers.iter().map(|seq| SequencerState {
+                name: seq.name.clone(),
+                steps: seq.steps.iter().map(|s| s.scene_index).collect(),
+                midi_notes: seq.midi_notes.clone(),
+                current_step_index: seq.current_step_index,
+            }).collect(),
+            selected_device_index: self.selected_device_index,
+        };
+        
+        if let Ok(json) = serde_json::to_string(&state) {
+            bpf::save_plugin_state(&json);
+        }
+    }
+
+    fn load_state(&mut self) {
+        if let Some(json) = bpf::load_plugin_state() {
+            if let Ok(state) = serde_json::from_str::<PluginState>(&json) {
+                self.sequencers = state.sequencers.iter().map(|seq_state| Sequencer {
+                    name: seq_state.name.clone(),
+                    steps: seq_state.steps.iter().map(|&idx| SceneStep { scene_index: idx }).collect(),
+                    midi_notes: seq_state.midi_notes.clone(),
+                    current_step_index: seq_state.current_step_index,
+                }).collect();
+                self.selected_device_index = state.selected_device_index;
+                println!("Loaded {} sequencers from saved state", self.sequencers.len());
+            }
         }
     }
 
@@ -186,6 +239,7 @@ impl DrumPlugin {
                     }
                     PluginUiEvent::Button { id } if id == 3 => {
                         self.connect_to_selected_device();
+                        self.save_state();
                     }
                     PluginUiEvent::Button { id } if id == 4 => {
                         self.refresh_devices();
@@ -630,8 +684,12 @@ impl Plugin for DrumPlugin {
 
         self.refresh_devices();
         
-        self.sequencers = Self::create_demo_sequencers();
-        println!("Initialized {} sequencers", self.sequencers.len());
+        self.load_state();
+        
+        if self.sequencers.is_empty() {
+            self.sequencers = Self::create_demo_sequencers();
+            println!("Initialized {} demo sequencers", self.sequencers.len());
+        }
     }
 
     fn run(&mut self, input: TickInput) {

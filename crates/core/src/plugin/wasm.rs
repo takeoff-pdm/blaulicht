@@ -984,6 +984,75 @@ impl PluginManager {
             },
         )?;
 
+        let state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        let system_out = self.system_out.clone();
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "bl_save_plugin_state",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, data_ptr: i32, data_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                
+                let mut buf = vec![0u8; data_len as usize];
+                memory
+                    .read(&caller, data_ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                
+                let state_data = String::from_utf8_lossy(&buf).to_string();
+                let plugin_name = format!("plugin_{}", plugin_id);
+                
+                println!("Saving plugin state for {}: {} bytes", plugin_name, state_data.len());
+                
+                {
+                    let mut storage = state_storage.lock().unwrap();
+                    storage.insert(plugin_name.clone(), state_data.clone());
+                }
+                
+                system_out.send(SystemMessage::SavePluginState {
+                    plugin_name,
+                    state_data,
+                }).unwrap_or_else(|e| {
+                    error!("Failed to send save plugin state message: {}", e);
+                });
+            },
+        )?;
+
+        let state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_load_plugin_state",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
+                let plugin_name = format!("plugin_{}", plugin_id);
+                
+                println!("Loading plugin state for {}", plugin_name);
+                
+                let storage = state_storage.lock().unwrap();
+                let state_data = storage.get(&plugin_name);
+                
+                if let Some(data) = state_data {
+                    let memory = caller
+                        .get_export("memory")
+                        .and_then(|export| export.into_memory())
+                        .expect("failed to find memory");
+                    
+                    let bytes = data.as_bytes();
+                    let write_len = bytes.len().min(buffer_len as usize);
+                    
+                    memory
+                        .write(&mut caller, buffer_ptr as usize, &bytes[..write_len])
+                        .expect("failed to write memory");
+                    
+                    println!("Loaded {} bytes of plugin state for {}", write_len, plugin_name);
+                    write_len as u32
+                } else {
+                    println!("No saved state found for {}", plugin_name);
+                    0u32
+                }
+            },
+        )?;
+
         Ok(())
     }
 }

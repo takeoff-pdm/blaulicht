@@ -17,10 +17,12 @@ incremental = true
 members = [
     "./crates/core",
     "./crates/shared",
-    "./crates/plugins/midi_korg_nano_kontrol/",
+]
+exclude = [
+    "./crates/plugins/drums",
     "./crates/plugins/sample_egui_plugin",
-    "./crates/plugins/drums/",
-    "./crates/plugin_framework/"
+    "./crates/plugins/midi_korg_nano_kontrol",
+    "./crates/plugin_framework",
 ]
 resolver = "2"
 

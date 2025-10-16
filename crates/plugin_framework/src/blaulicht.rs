@@ -17,6 +17,9 @@ extern "C" {
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
 
+    fn bl_save_plugin_state(plugin_id: u8, data_ptr: *const u8, data_len: usize);
+    fn bl_load_plugin_state(plugin_id: u8, buffer_ptr: *mut u8, buffer_len: usize) -> u32;
+
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
     fn controls_config(x: u8, y: u8);
@@ -109,6 +112,28 @@ pub fn system(cmd: &str) {
 pub fn send_event(event: ControlEvent) {
     let serialized = event.serialize();
     unsafe { bl_send_event(serialized.as_ptr(), serialized.len()) };
+}
+
+pub fn save_plugin_state(data: &str) {
+    unsafe {
+        bl_save_plugin_state(PLUGIN_ID, data.as_ptr(), data.len())
+    }
+}
+
+pub fn load_plugin_state() -> Option<String> {
+    const MAX_BUFFER_SIZE: usize = 1024 * 100;
+    let mut buffer = vec![0u8; MAX_BUFFER_SIZE];
+    
+    let written_len = unsafe {
+        bl_load_plugin_state(PLUGIN_ID, buffer.as_mut_ptr(), MAX_BUFFER_SIZE)
+    };
+    
+    if written_len == 0 {
+        return None;
+    }
+    
+    let data = &buffer[..written_len as usize];
+    Some(String::from_utf8_lossy(data).into_owned())
 }
 
 pub fn send_udp(addr: &str, body: &[u8]) {

@@ -102,6 +102,11 @@ impl PluginManager {
         }
     }
 
+    pub fn load_plugin_states(&mut self, plugin_state: HashMap<String, String>) {
+        let mut storage = self.state_ref.plugin_state_storage.lock().unwrap();
+        *storage = plugin_state;
+    }
+
     // pub fn set_plugin_rnabl(&mut self, id: u8, flag: PluginFlag) {
     //     let mut plugins = self.state_ref.plugins.write().unwrap();
     //     let plugin = plugins.get_mut(&id).unwrap();

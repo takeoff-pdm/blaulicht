@@ -340,6 +340,7 @@ impl Default for EngineState {
             current_scene_focus: 0,
             current_overlay_scenes: vec![],
             overrides: BTreeMap::new(),
+            plugin_state: std::collections::HashMap::new(),
         };
 
         Self(state)

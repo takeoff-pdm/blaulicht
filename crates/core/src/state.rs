@@ -55,6 +55,7 @@ pub struct AppState {
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     pub plugin_ui_visibility: RwLock<HashMap<u8, bool>>, // per-plugin UI window visibility
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>, // (plugin_id, tabs_id) -> tab_id
+    pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
 }
 
 pub struct DmxBuffer {
@@ -98,6 +99,7 @@ impl AppState {
             plugin_ui_ops: RwLock::new(HashMap::new()),
             plugin_ui_visibility: RwLock::new(plugin_ui_visibility),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
+            plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

@@ -393,50 +393,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blaulicht-plugin-drums"
-version = "0.2.0"
-dependencies = [
- "blaulicht-plugin-framework",
- "blaulicht-shared",
- "interpolate",
- "map-range",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "blaulicht-plugin-framework"
-version = "0.2.0"
-dependencies = [
- "blaulicht-shared",
- "interpolate",
- "map-range",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "blaulicht-plugin-midi-korg-nano-kontrol"
-version = "0.2.0"
-dependencies = [
- "blaulicht-plugin-framework",
- "blaulicht-shared",
- "interpolate",
- "map-range",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "blaulicht-plugin-sample-egui"
-version = "0.1.0"
-dependencies = [
- "blaulicht-plugin-framework",
- "blaulicht-shared",
- "serde",
-]
-
-[[package]]
 name = "blaulicht-shared"
 version = "0.2.0"
 dependencies = [
@@ -2016,12 +1972,6 @@ checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
 ]
-
-[[package]]
-name = "interpolate"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77f79bd4b23cf80e87800201b67003726fb10b954c68a7e09dc54a340ca8e1fb"
 
 [[package]]
 name = "io-kit-sys"

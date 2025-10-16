@@ -1,8 +1,9 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::RwLockWriteGuard,
+    sync::{Arc, Mutex, RwLockWriteGuard},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -19,6 +20,8 @@ pub struct Config {
     pub stream: StreamConfig,
     pub plugins: Vec<PluginConfig>,
     pub last_open_showfile: Option<PathBuf>,
+    #[serde(default)]
+    pub plugin_state: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -31,6 +34,7 @@ pub struct PluginConfig {
 pub fn read_showfile(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<()> {
     debug!("Attempting to read showfile from {file:?}...");
 
@@ -39,8 +43,12 @@ pub fn read_showfile(
     let mut buffer = vec![0; metadata.len() as usize];
     f.read(&mut buffer)?;
 
-    match postcard::from_bytes(&buffer) {
+    match postcard::from_bytes::<blaulicht_shared::EngineState>(&buffer) {
         Ok(de) => {
+            {
+                let mut storage = plugin_state_storage.lock().unwrap();
+                *storage = de.plugin_state.clone();
+            }
             dmx.load_showfile(de);
             Ok(())
         }
@@ -65,6 +73,7 @@ impl Default for Config {
                 enable_watcher: false,
             }],
             last_open_showfile: None,
+            plugin_state: HashMap::new(),
         }
     }
 }
