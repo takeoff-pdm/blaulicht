@@ -4,6 +4,7 @@ use blaulicht_plugin_framework::{MidiConnection, MidiEvent, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 use serde::{Deserialize, Serialize};
 
+/// UI mode for the drum plugin interface
 #[derive(Debug, Clone, PartialEq)]
 enum UiMode {
     Overview,
@@ -14,11 +15,13 @@ enum UiMode {
     RenamingSequencer(usize),
 }
 
+/// Represents a single step in a sequencer that triggers a scene
 #[derive(Debug, Clone)]
 struct SceneStep {
     scene_index: u8,
 }
 
+/// Serializable state for a sequencer
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SequencerState {
     name: String,
@@ -27,12 +30,14 @@ struct SequencerState {
     current_step_index: usize,
 }
 
+/// Serializable plugin state for persistence
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PluginState {
     sequencers: Vec<SequencerState>,
     selected_device_index: usize,
 }
 
+/// Runtime state for a MIDI-triggered scene sequencer
 #[derive(Debug, Clone)]
 struct Sequencer {
     name: String,
@@ -41,6 +46,18 @@ struct Sequencer {
     current_step_index: usize,
 }
 
+/// MIDI Drum Sequencer Plugin
+/// 
+/// A MIDI-controlled scene sequencer that advances through sequences of DMX scenes
+/// when specific MIDI notes are received. Designed for live performance control with
+/// drum pads, keyboards, or other MIDI controllers.
+/// 
+/// Features:
+/// - Multiple independent sequencers, each triggered by different MIDI notes
+/// - Step-by-step scene progression
+/// - Persistent state across plugin reloads
+/// - Real-time MIDI device management
+/// - Visual feedback of current step and scene
 pub struct DrumPlugin {
     midi_handle: Option<MidiConnection>,
     available_devices: Vec<String>,
@@ -74,6 +91,7 @@ impl Default for DrumPlugin {
 }
 
 impl DrumPlugin {
+    /// Parses a comma-separated string of MIDI note numbers into a Vec<u8>
     fn parse_midi_notes(input: &str) -> Vec<u8> {
         input
             .split(',')
@@ -82,6 +100,7 @@ impl DrumPlugin {
             .collect()
     }
 
+    /// Retrieves the name of a scene by index, or returns a default name
     fn get_scene_name(scene_index: u8) -> String {
         bpf::get_dmx()
             .scenes
@@ -90,6 +109,7 @@ impl DrumPlugin {
             .unwrap_or_else(|| format!("Scene {}", scene_index))
     }
 
+    /// Creates demo sequencers for initial setup
     fn create_demo_sequencers() -> Vec<Sequencer> {
         let mut sequencers = Vec::new();
 
@@ -119,6 +139,7 @@ impl DrumPlugin {
         sequencers
     }
 
+    /// Adds a new sequencer with the given name
     fn add_sequencer(&mut self, name: String) {
         let sequencer = Sequencer {
             name,
@@ -191,6 +212,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Saves the current plugin state to persistent storage
     fn save_state(&self) {
         let state = PluginState {
             sequencers: self.sequencers.iter().map(|seq| SequencerState {
@@ -207,6 +229,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Loads the plugin state from persistent storage
     fn load_state(&mut self) {
         if let Some(json) = bpf::load_plugin_state() {
             if let Ok(state) = serde_json::from_str::<PluginState>(&json) {
@@ -222,6 +245,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Processes UI events from the plugin interface
     fn handle_events(&mut self, events: &[ControlEventMessage]) {
         for e in events {
             if let ControlEvent::PluginUi(ui_ev) = e.body() {
@@ -382,6 +406,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Processes MIDI events and advances sequencers when trigger notes are received
     fn process_midi_for_sequencers(&mut self, midi_events: &[MidiEvent]) {
         for midi_event in midi_events {
             let status_upper = midi_event.status & 0xF0;
@@ -423,6 +448,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Refreshes the list of available MIDI devices
     fn refresh_devices(&mut self) {
         self.available_devices = bpf::midi::enumerate_devices();
         println!("Found {} MIDI devices", self.available_devices.len());
@@ -431,6 +457,7 @@ impl DrumPlugin {
         }
     }
 
+    /// Connects to the currently selected MIDI device
     fn connect_to_selected_device(&mut self) {
         if self.available_devices.is_empty() {
             self.connection_error = Some("No MIDI devices available".to_string());
@@ -656,6 +683,7 @@ impl DrumPlugin {
         bpf::ui::end_horizontal();
     }
 
+    /// Renders the main UI including all mode-specific views
     fn draw_ui(&self) {
         bpf::ui::begin();
         bpf::ui::begin_frame_styled(10, "Drum Plugin", 8, 8, 4, 4);

@@ -47,7 +47,8 @@ build_noopt:
 	mkdir -p bundle_debug
 	@for crate in $(CRATES); do \
 		echo "Building $$crate..."; \
-		(cd $$crate && RUSTFLAGS=-Awarnings cargo build --message-format short --target=$(TARGET_TRIPLE) --target-dir=target && cp ./target/$(TARGET_TRIPLE)/debug/*.wasm ../bundle_debug/$$crate.wasm) \
+		crate_name=$$(cd $$crate && cargo metadata --no-deps --format-version 1 | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 | tr '-' '_'); \
+		(cd $$crate && RUSTFLAGS=-Awarnings cargo build --message-format short --target=$(TARGET_TRIPLE) --target-dir=target && cp ./target/$(TARGET_TRIPLE)/debug/$$crate_name.wasm ../bundle_debug/$$crate.wasm) \
 	done
 	@echo "All crates built successfully!"
 
@@ -55,7 +56,8 @@ build_opt:
 	mkdir -p bundle_release
 	@for crate in $(CRATES); do \
 		echo "Building $$crate..."; \
-		(cd $$crate && RUSTFLAGS=-Awarnings cargo build --message-format short --target=$(TARGET_TRIPLE) --release --target-dir=target && cp ./target/$(TARGET_TRIPLE)/release/*.wasm ../bundle_release/$$crate.wasm) \
+		crate_name=$$(cd $$crate && cargo metadata --no-deps --format-version 1 | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 | tr '-' '_'); \
+		(cd $$crate && RUSTFLAGS=-Awarnings cargo build --message-format short --target=$(TARGET_TRIPLE) --release --target-dir=target && cp ./target/$(TARGET_TRIPLE)/release/$$crate_name.wasm ../bundle_release/$$crate.wasm) \
 	done
 	@echo "All crates built successfully!"
 

@@ -791,16 +791,26 @@ fn render_plugin_ops(
             Op::PainterBegin { id, width, height } => {
                 *idx += 1;
                 let available_size = ui.available_size();
+                println!("[Host] PainterBegin: canvas_id={}, requested={}x{}, available={:?}", id, width, height, available_size);
+                
+                // Use the requested dimensions if available_size is too small or zero
+                let effective_available = egui::vec2(
+                    available_size.x.max(*width as f32),
+                    available_size.y.max(*height as f32)
+                );
+                
                 let aspect_ratio = *width as f32 / *height as f32;
-                let scaled_size = if available_size.x / available_size.y > aspect_ratio {
-                    egui::vec2(available_size.y * aspect_ratio, available_size.y)
+                let scaled_size = if effective_available.x / effective_available.y > aspect_ratio {
+                    egui::vec2(effective_available.y * aspect_ratio, effective_available.y)
                 } else {
-                    egui::vec2(available_size.x, available_size.x / aspect_ratio)
+                    egui::vec2(effective_available.x, effective_available.x / aspect_ratio)
                 };
+                println!("[Host] PainterBegin: scaled_size={:?}, rect will be allocated", scaled_size);
                 let (rect, resp) = ui.allocate_exact_size(
                     scaled_size,
                     egui::Sense::click_and_drag(),
                 );
+                println!("[Host] PainterBegin: allocated rect={:?}", rect);
                 
                 let scale_x = *width as f32 / scaled_size.x;
                 let scale_y = *height as f32 / scaled_size.y;

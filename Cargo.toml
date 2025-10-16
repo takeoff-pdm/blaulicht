@@ -22,7 +22,7 @@ exclude = [
     "./crates/plugins/drums",
     "./crates/plugins/sample_egui_plugin",
     "./crates/plugins/midi_korg_nano_kontrol",
-    "./crates/plugins/bevy_visualizer",
+    "./crates/plugins/visualizer",
     "./crates/plugin_framework",
 ]
 resolver = "2"
