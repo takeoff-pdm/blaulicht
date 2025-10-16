@@ -19,6 +19,11 @@ position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
 [[plugins]]
+file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/bevy_visualizer.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
 file_path = "/Users/martintaraz/Downloads/blaulicht/crates/plugins/bundle_debug/drums.wasm"
 enabled = true
 enable_watcher = true

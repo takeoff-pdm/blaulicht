@@ -461,6 +461,7 @@ impl BlaulichtApp {
                         let pos = Position {
                             x: self.add_fixture_pos_x,
                             y: self.add_fixture_pos_y,
+                            z: 0,
                         };
 
                         // Build fixture type
