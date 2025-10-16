@@ -690,6 +690,9 @@ impl BlaulichtApp {
                                         self.new_fixture_name = fix.name.to_string();
                                         self.new_fixture_addr = fix.start_addr;
                                         self.new_fixture_uni = fix.universe_no;
+                                        self.new_fixture_pos_x = fix.pos.x;
+                                        self.new_fixture_pos_y = fix.pos.y;
+                                        self.new_fixture_pos_z = fix.pos.z;
                                     }
                                 }
 
@@ -766,6 +769,51 @@ impl BlaulichtApp {
                                                 );
                                             });
 
+                                            ui.horizontal(|ui| {
+                                                ui.add_sized(
+                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                    Label::new("Position X:"),
+                                                );
+                                                ui.add_sized(
+                                                    [140.0, ButtonSize::Medium.dim().0.y],
+                                                    egui::widgets::DragValue::new(
+                                                        &mut self.new_fixture_pos_x,
+                                                    )
+                                                    .speed(1)
+                                                    .range(0..=1000),
+                                                );
+                                            });
+
+                                            ui.horizontal(|ui| {
+                                                ui.add_sized(
+                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                    Label::new("Position Y:"),
+                                                );
+                                                ui.add_sized(
+                                                    [140.0, ButtonSize::Medium.dim().0.y],
+                                                    egui::widgets::DragValue::new(
+                                                        &mut self.new_fixture_pos_y,
+                                                    )
+                                                    .speed(1)
+                                                    .range(0..=1000),
+                                                );
+                                            });
+
+                                            ui.horizontal(|ui| {
+                                                ui.add_sized(
+                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                    Label::new("Position Z:"),
+                                                );
+                                                ui.add_sized(
+                                                    [140.0, ButtonSize::Medium.dim().0.y],
+                                                    egui::widgets::DragValue::new(
+                                                        &mut self.new_fixture_pos_z,
+                                                    )
+                                                    .speed(1)
+                                                    .range(0..=1000),
+                                                );
+                                            });
+
                                             ui.add_space(6.0);
 
                                             //mem::drop(engine);
@@ -797,6 +845,9 @@ impl BlaulichtApp {
                                                                 self.new_fixture_addr;
                                                             fix_mut.universe_no =
                                                                 self.new_fixture_uni;
+                                                            fix_mut.pos.x = self.new_fixture_pos_x;
+                                                            fix_mut.pos.y = self.new_fixture_pos_y;
+                                                            fix_mut.pos.z = self.new_fixture_pos_z;
                                                         }
                                                     }
                                                 }

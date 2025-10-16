@@ -271,6 +271,9 @@ pub enum PluginUiEvent {
     Text { id: u8, text: String },
     Color { id: u8, r: u8, g: u8, b: u8, a: u8 },
     TabChanged { tabs_id: u8, tab_id: u8 },
+    CanvasClick { id: u8, x: i32, y: i32 },
+    CanvasDrag { id: u8, x: i32, y: i32, dx: i32, dy: i32 },
+    CanvasPinch { id: u8, x: i32, y: i32, delta: f32 },
 }
 
 #[macro_export]
