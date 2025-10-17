@@ -416,6 +416,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "blaulicht-plugin-sample-egui"
+version = "0.1.0"
+dependencies = [
+ "blaulicht-plugin-framework",
+ "blaulicht-shared",
+ "serde",
+]
+
+[[package]]
 name = "blaulicht-shared"
 version = "0.2.0"
 dependencies = [
