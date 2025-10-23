@@ -49,6 +49,8 @@ pub struct AppState {
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
+    // Back buffer for plugin UI ops. Plugins write here; UI reads from `plugin_ui_ops`.
+    pub plugin_ui_ops_back: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     pub plugin_ui_visibility: RwLock<HashMap<u8, bool>>, // per-plugin UI window visibility
     pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>, // (plugin_id, tabs_id) -> tab_id
@@ -96,6 +98,7 @@ impl AppState {
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
             plugin_ui_ops: RwLock::new(HashMap::new()),
+            plugin_ui_ops_back: RwLock::new(HashMap::new()),
             plugin_ui_visibility: RwLock::new(plugin_ui_visibility),
             plugin_ui_popped_out: RwLock::new(plugin_ui_popped_out),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
