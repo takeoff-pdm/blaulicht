@@ -139,78 +139,7 @@ impl BlaulichtApp {
                             Color32::GRAY,
                         );
                     } else {
-                        let bins = spec.bin_count.max(1);
-                        let cols = spec.columns.len();
-                        let refresh_hz = {
-                            self.data
-                                .config
-                                .lock()
-                                .unwrap()
-                                .spectrogram_refresh_hz
-                                .max(1) as usize
-                        };
-                        let want_cols = refresh_hz * 60; // last 60 seconds
-                        let draw_cols = cols.min(want_cols).max(1);
-                        let col_w = (spec_rect.width() / draw_cols as f32).max(1.0);
-                        let row_h = (spec_rect.height() / bins as f32).max(1.0);
-
-                        let start_idx = cols.saturating_sub(draw_cols);
-                        for (j, col) in spec.columns.iter().skip(start_idx).enumerate() {
-                            let x0 = spec_rect.left() + j as f32 * col_w;
-                            let x1 = x0 + col_w;
-                            let mut y = spec_rect.bottom();
-                            for v in col.iter().take(bins) {
-                                let y1 = y;
-                                let y0 = (y1 - row_h).max(spec_rect.top());
-                                let intensity = *v as f32 / 255.0;
-                                let color = if intensity <= 0.25 {
-                                    // dark blue -> cyan
-                                    let t = (intensity / 0.25).clamp(0.0, 1.0);
-                                    let r: u8 = 0;
-                                    let g = (180.0 * t) as u8;
-                                    let b = (70.0 + 185.0 * t) as u8;
-                                    Color32::from_rgb(r, g, b)
-                                } else if intensity <= 0.5 {
-                                    // cyan -> green
-                                    let t = ((intensity - 0.25) / 0.25).clamp(0.0, 1.0);
-                                    let r: u8 = 0;
-                                    let g = (180.0 + 75.0 * t) as u8;
-                                    let b = (255.0 * (1.0 - t)) as u8;
-                                    Color32::from_rgb(r, g, b)
-                                } else if intensity <= 0.75 {
-                                    // green -> yellow
-                                    let t = ((intensity - 0.5) / 0.25).clamp(0.0, 1.0);
-                                    let r = (255.0 * t) as u8;
-                                    let g = 255;
-                                    let b = 0;
-                                    Color32::from_rgb(r, g, b)
-                                } else {
-                                    // yellow -> red/white
-                                    let t = ((intensity - 0.75) / 0.25).clamp(0.0, 1.0);
-                                    let r = 255;
-                                    let g = (255.0 * (1.0 - 0.6 * t)) as u8;
-                                    let b = (64.0 * (1.0 - t)) as u8;
-                                    Color32::from_rgb(r, g, b)
-                                };
-                                let rct = egui::Rect::from_min_max(
-                                    egui::pos2(x0, y0),
-                                    egui::pos2(x1, y1),
-                                );
-                                spec_painter.rect_filled(rct, 0.0, color);
-                                y = y0;
-                                if y <= spec_rect.top() {
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Border
-                        spec_painter.rect_stroke(
-                            spec_rect,
-                            0.0,
-                            Stroke::new(1.0, Color32::from_gray(50)),
-                            egui::StrokeKind::Middle,
-                        );
+                        // TODO: this
                     }
 
                     // Set larger graph height

@@ -4,14 +4,19 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use blaulicht_shared::{CollectedAudioSnapshot};
+use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    audio::defs::AudioThreadControlSignal, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
-};
 use crate::ui_ops::WasmUiOp;
+use crate::{
+    audio::defs::AudioThreadControlSignal,
+    config::{Config, PluginConfig},
+    dmx::EngineState,
+    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage},
+    plugin::Plugin,
+};
 
 #[derive(Clone)]
 pub struct AppStateWrapper {
@@ -63,6 +68,8 @@ impl AudioSpectrogram {
     pub fn push_column(&mut self, mut col: Vec<u8>) {
         // Ensure correct height; pad or truncate as needed.
         if col.len() != self.bin_count {
+            // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
+            // This can happen due to rounding issues.
             col.resize(self.bin_count, 0);
         }
         self.columns.push_back(col);
