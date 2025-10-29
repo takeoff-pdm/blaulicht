@@ -1,6 +1,8 @@
 port = 1234
-default_audio_device = "pipewire"
+default_audio_device = "default"
 last_open_showfile = "/home/mik/BL2.txt"
+spectrogram_window_seconds = 10
+spectrogram_refresh_hz = 60
 
 [stream]
 fft_resolution = 4096
@@ -32,3 +34,10 @@ enable_watcher = true
 file_path = "../plugins/bundle_debug/drums.wasm"
 enabled = true
 enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/visualizer.wasm"
+enabled = true
+enable_watcher = true
+
+[plugin_state]

@@ -5,7 +5,9 @@ use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
-use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent};
+use blaulicht_shared::{
+    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
+};
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
@@ -198,7 +200,15 @@ impl BlaulichtApp {
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        theme::set_theme(ctx, theme::MACCHIATO);
+        theme::set_theme(ctx, theme::REKORDBOX);
+
+        if self.debug_open {
+            egui::Window::new("Egui Settings").show(ctx, |ui| {
+                let dt = ctx.input(|i| i.stable_dt);
+                let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+                ui.label(format!("FPS: {:.1}", fps));
+            });
+        }
 
         self.render_popup(ctx);
         // for i in 0..1000 {
@@ -326,8 +336,10 @@ impl eframe::App for BlaulichtApp {
                         //     "DMX".to_string(),
                         // );
                     }
-                    SystemMessage::SavePluginState { plugin_name, state_data } => {
-                    }
+                    SystemMessage::SavePluginState {
+                        plugin_name,
+                        state_data,
+                    } => {}
                 },
                 Err(TryRecvError::Empty) => {
                     empty += 1;
@@ -403,7 +415,7 @@ impl eframe::App for BlaulichtApp {
                     self.system_ui(ui, ctx);
                 }
                 AppPage::Audio => {
-                    self.main_ui(ui, ctx);
+                    self.audio_ui(ui, ctx);
                 }
                 AppPage::FixturesSetup => {
                     self.fixtures_ui_setup(ui, ctx);
@@ -432,20 +444,8 @@ impl eframe::App for BlaulichtApp {
         // Render per-plugin UI windows (visible across pages)
         {
             let ops_map = self.data.state.plugin_ui_ops.read().unwrap().clone();
-            let visibility_map = self
-                .data
-                .state
-                .plugin_ui_visibility
-                .read()
-                .unwrap()
-                .clone();
-            let popped_out_map = self
-                .data
-                .state
-                .plugin_ui_popped_out
-                .read()
-                .unwrap()
-                .clone();
+            let visibility_map = self.data.state.plugin_ui_visibility.read().unwrap().clone();
+            let popped_out_map = self.data.state.plugin_ui_popped_out.read().unwrap().clone();
 
             for (plugin_id, visible) in visibility_map.iter() {
                 let mut is_open = *visible;
@@ -455,13 +455,14 @@ impl eframe::App for BlaulichtApp {
 
                 let title = format!("Plugin UI #{plugin_id}");
                 let is_popped_out = *popped_out_map.get(plugin_id).unwrap_or(&false);
-                
+
                 if is_popped_out {
-                    let viewport_id = egui::ViewportId::from_hash_of(format!("plugin_{}", plugin_id));
+                    let viewport_id =
+                        egui::ViewportId::from_hash_of(format!("plugin_{}", plugin_id));
                     let plugin_id_copy = *plugin_id;
                     let ops_copy = ops_map.get(plugin_id).cloned();
                     let data_clone = self.data.clone();
-                    
+
                     ctx.show_viewport_immediate(
                         viewport_id,
                         egui::ViewportBuilder::default()
@@ -477,7 +478,7 @@ impl eframe::App for BlaulichtApp {
                                     }
                                 });
                                 ui.separator();
-                                
+
                                 egui::ScrollArea::both()
                                     .auto_shrink([false, false])
                                     .stick_to_bottom(false)
@@ -490,16 +491,18 @@ impl eframe::App for BlaulichtApp {
                                         }
                                     });
                             });
-                            
+
                             if pop_in_clicked {
-                                let mut map = data_clone.state.plugin_ui_popped_out.write().unwrap();
+                                let mut map =
+                                    data_clone.state.plugin_ui_popped_out.write().unwrap();
                                 if let Some(v) = map.get_mut(&plugin_id_copy) {
                                     *v = false;
                                 }
                             }
-                            
+
                             if ctx.input(|i| i.viewport().close_requested()) {
-                                let mut map = data_clone.state.plugin_ui_visibility.write().unwrap();
+                                let mut map =
+                                    data_clone.state.plugin_ui_visibility.write().unwrap();
                                 if let Some(v) = map.get_mut(&plugin_id_copy) {
                                     *v = false;
                                 }
@@ -518,20 +521,20 @@ impl eframe::App for BlaulichtApp {
                                 }
                             });
                             ui.separator();
-                            
+
                             egui::ScrollArea::both()
                                 .auto_shrink([false, false])
                                 .stick_to_bottom(false)
                                 .show(ui, |ui| {
                                     if let Some(ops) = ops_map.get(plugin_id) {
-                                    let mut idx = 0usize;
-                                    render_plugin_ops(ui, ops, &mut idx, &self.data);
-                                } else {
-                                    ui.label("No UI generated by plugin yet.");
-                                }
-                            });
+                                        let mut idx = 0usize;
+                                        render_plugin_ops(ui, ops, &mut idx, &self.data);
+                                    } else {
+                                        ui.label("No UI generated by plugin yet.");
+                                    }
+                                });
                         });
-                    
+
                     if pop_out_clicked {
                         let mut map = self.data.state.plugin_ui_popped_out.write().unwrap();
                         if let Some(v) = map.get_mut(plugin_id) {
@@ -571,35 +574,38 @@ fn render_plugin_ops(
             Op::Button { label, id } => {
                 if ui.button(label).clicked() {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Button { id: *id });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
             Op::Checkbox { label, id, checked } => {
                 let mut c = *checked;
                 if ui.checkbox(&mut c, label).changed() {
-                    let evt = ControlEvent::PluginUi(PluginUiEvent::Checkbox { id: *id, checked: c });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    let evt = ControlEvent::PluginUi(PluginUiEvent::Checkbox {
+                        id: *id,
+                        checked: c,
+                    });
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
-            Op::Slider { label, id, min, max, value } => {
+            Op::Slider {
+                label,
+                id,
+                min,
+                max,
+                value,
+            } => {
                 let mut v = *value;
                 if ui
                     .add(egui::Slider::new(&mut v, (*min)..=(*max)).text(label))
                     .changed()
                 {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Slider { id: *id, value: v });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -609,17 +615,15 @@ fn render_plugin_ops(
                     d.get_temp::<String>(edit_id)
                         .unwrap_or_else(|| text.clone())
                 });
-                
+
                 let response = ui.text_edit_singleline(&mut s);
-                
+
                 ui.data_mut(|d| d.insert_temp(edit_id, s.clone()));
-                
+
                 if response.changed() {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Text { id: *id, text: s });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 } else if !response.has_focus() {
                     ui.label(label);
                 }
@@ -627,13 +631,15 @@ fn render_plugin_ops(
             }
             Op::TextEditMultiline { label: _, id, text } => {
                 let mut s = text.clone();
-                let resp = ui.add(egui::TextEdit::multiline(&mut s).desired_rows(3).desired_width(300.0));
+                let resp = ui.add(
+                    egui::TextEdit::multiline(&mut s)
+                        .desired_rows(3)
+                        .desired_width(300.0),
+                );
                 if resp.changed() {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Text { id: *id, text: s });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -641,11 +647,15 @@ fn render_plugin_ops(
                 let mut color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                 if ui.color_edit_button_srgba(&mut color).changed() {
                     let [r, g, b, a] = color.to_array();
-                    let evt = ControlEvent::PluginUi(PluginUiEvent::Color { id: *id, r, g, b, a });
-                    data.event_bus_connection.send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        evt,
-                    ));
+                    let evt = ControlEvent::PluginUi(PluginUiEvent::Color {
+                        id: *id,
+                        r,
+                        g,
+                        b,
+                        a,
+                    });
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -655,35 +665,54 @@ fn render_plugin_ops(
                     render_plugin_ops(ui, ops, idx, data);
                 });
             }
-            Op::BeginFrameStyled { id: _, title, pad_x, pad_y, margin_x, margin_y } => {
+            Op::BeginFrameStyled {
+                id: _,
+                title,
+                pad_x,
+                pad_y,
+                margin_x,
+                margin_y,
+            } => {
                 *idx += 1;
                 let px = (*pad_x).max(0) as f32;
                 let py = (*pad_y).max(0) as f32;
                 let mx = (*margin_x).max(0) as f32;
                 let my = (*margin_y).max(0) as f32;
                 // Outer margins (vertical)
-                if my > 0.0 { ui.add_space(my); }
+                if my > 0.0 {
+                    ui.add_space(my);
+                }
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     // Inner padding via spaces
                     ui.add_space(py);
                     ui.horizontal(|ui| {
-                        if px > 0.0 { ui.add_space(px); }
+                        if px > 0.0 {
+                            ui.add_space(px);
+                        }
                         ui.vertical(|ui| {
                             ui.label(egui::RichText::new(title).strong());
                             ui.separator();
                             render_plugin_ops(ui, ops, idx, data);
                         });
-                        if px > 0.0 { ui.add_space(px); }
+                        if px > 0.0 {
+                            ui.add_space(px);
+                        }
                     });
                     ui.add_space(py);
                 });
-                if my > 0.0 { ui.add_space(my); }
+                if my > 0.0 {
+                    ui.add_space(my);
+                }
             }
             Op::EndFrame => {
                 *idx += 1;
                 return;
             }
-            Op::BeginCollapsing { id: _, title, default_open } => {
+            Op::BeginCollapsing {
+                id: _,
+                title,
+                default_open,
+            } => {
                 *idx += 1;
                 egui::CollapsingHeader::new(title)
                     .default_open(*default_open)
@@ -703,14 +732,22 @@ fn render_plugin_ops(
                 let mut scan = start;
                 while scan < ops.len() {
                     match &ops[scan] {
-                        Op::BeginTab { tabs_id, tab_id, title } if tabs_id == id => {
+                        Op::BeginTab {
+                            tabs_id,
+                            tab_id,
+                            title,
+                        } if tabs_id == id => {
                             let tab_start = scan + 1;
                             // find EndTab
                             scan += 1;
                             let mut depth = 1;
                             while scan < ops.len() && depth > 0 {
                                 match &ops[scan] {
-                                    Op::BeginTab { tabs_id: _, tab_id: _, title: _ } => depth += 1,
+                                    Op::BeginTab {
+                                        tabs_id: _,
+                                        tab_id: _,
+                                        title: _,
+                                    } => depth += 1,
                                     Op::EndTab => depth -= 1,
                                     _ => {}
                                 }
@@ -726,17 +763,19 @@ fn render_plugin_ops(
 
                 // Current selection
                 let mut sel_map = data.state.plugin_ui_tabs_selected.write().unwrap();
-                let current = sel_map.entry((0, *id)).or_insert_with(|| tabs.get(0).map(|t| t.0).unwrap_or(0));
+                let current = sel_map
+                    .entry((0, *id))
+                    .or_insert_with(|| tabs.get(0).map(|t| t.0).unwrap_or(0));
 
                 // Render tab header
                 let mut selection_changed = false;
                 ui.horizontal(|ui| {
                     for (tab_id, title, _, _) in &tabs {
-                            let clicked = ui.selectable_label(*current == *tab_id, title).clicked();
-                            if clicked && *current != *tab_id {
-                                *current = *tab_id;
-                                selection_changed = true;
-                            }
+                        let clicked = ui.selectable_label(*current == *tab_id, title).clicked();
+                        if clicked && *current != *tab_id {
+                            *current = *tab_id;
+                            selection_changed = true;
+                        }
                     }
                 });
 
@@ -744,7 +783,10 @@ fn render_plugin_ops(
 
                 // Emit selection change event
                 if selection_changed {
-                    let evt = ControlEvent::PluginUi(PluginUiEvent::TabChanged { tabs_id: *id, tab_id: *current });
+                    let evt = ControlEvent::PluginUi(PluginUiEvent::TabChanged {
+                        tabs_id: *id,
+                        tab_id: *current,
+                    });
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
@@ -760,7 +802,10 @@ fn render_plugin_ops(
 
                 // Advance idx to after EndTabs
                 while *idx < ops.len() {
-                    if matches!(ops[*idx], Op::EndTabs) { *idx += 1; break; }
+                    if matches!(ops[*idx], Op::EndTabs) {
+                        *idx += 1;
+                        break;
+                    }
                     *idx += 1;
                 }
             }
@@ -791,30 +836,34 @@ fn render_plugin_ops(
             Op::PainterBegin { id, width, height } => {
                 *idx += 1;
                 let available_size = ui.available_size();
-                println!("[Host] PainterBegin: canvas_id={}, requested={}x{}, available={:?}", id, width, height, available_size);
-                
+                println!(
+                    "[Host] PainterBegin: canvas_id={}, requested={}x{}, available={:?}",
+                    id, width, height, available_size
+                );
+
                 // Use the requested dimensions if available_size is too small or zero
                 let effective_available = egui::vec2(
                     available_size.x.max(*width as f32),
-                    available_size.y.max(*height as f32)
+                    available_size.y.max(*height as f32),
                 );
-                
+
                 let aspect_ratio = *width as f32 / *height as f32;
                 let scaled_size = if effective_available.x / effective_available.y > aspect_ratio {
                     egui::vec2(effective_available.y * aspect_ratio, effective_available.y)
                 } else {
                     egui::vec2(effective_available.x, effective_available.x / aspect_ratio)
                 };
-                println!("[Host] PainterBegin: scaled_size={:?}, rect will be allocated", scaled_size);
-                let (rect, resp) = ui.allocate_exact_size(
-                    scaled_size,
-                    egui::Sense::click_and_drag(),
+                println!(
+                    "[Host] PainterBegin: scaled_size={:?}, rect will be allocated",
+                    scaled_size
                 );
+                let (rect, resp) =
+                    ui.allocate_exact_size(scaled_size, egui::Sense::click_and_drag());
                 println!("[Host] PainterBegin: allocated rect={:?}", rect);
-                
+
                 let scale_x = *width as f32 / scaled_size.x;
                 let scale_y = *height as f32 / scaled_size.y;
-                
+
                 if resp.clicked() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let local_pos = pos - rect.min;
@@ -823,10 +872,11 @@ fn render_plugin_ops(
                             x: (local_pos.x * scale_x) as i32,
                             y: (local_pos.y * scale_y) as i32,
                         });
-                        data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, evt));
+                        data.event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
-                
+
                 if resp.dragged() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let local_pos = pos - rect.min;
@@ -838,10 +888,11 @@ fn render_plugin_ops(
                             dx: (delta.x * scale_x) as i32,
                             dy: (delta.y * scale_y) as i32,
                         });
-                        data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, evt));
+                        data.event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
-                
+
                 let multi_touch = ui.input(|i| i.multi_touch());
                 if let Some(zoom_delta) = multi_touch {
                     let zoom = zoom_delta.zoom_delta;
@@ -854,53 +905,112 @@ fn render_plugin_ops(
                                 y: (local_pos.y * scale_y) as i32,
                                 delta: zoom - 1.0,
                             });
-                            data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, evt));
+                            data.event_bus_connection
+                                .send(ControlEventMessage::new(EventOriginator::Web, evt));
                         }
                     }
                 }
-                
+
                 let painter = ui.painter_at(rect);
                 let render_scale_x = scaled_size.x / *width as f32;
                 let render_scale_y = scaled_size.y / *height as f32;
-                
+
                 while *idx < ops.len() {
                     match &ops[*idx] {
-                        Op::PainterRect { x, y, w, h, r, g, b, a } => {
+                        Op::PainterRect {
+                            x,
+                            y,
+                            w,
+                            h,
+                            r,
+                            g,
+                            b,
+                            a,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             let rct = egui::Rect::from_min_size(
-                                rect.min + egui::vec2(*x as f32 * render_scale_x, *y as f32 * render_scale_y),
+                                rect.min
+                                    + egui::vec2(
+                                        *x as f32 * render_scale_x,
+                                        *y as f32 * render_scale_y,
+                                    ),
                                 egui::vec2(*w as f32 * render_scale_x, *h as f32 * render_scale_y),
                             );
                             painter.rect_filled(rct, 0.0, color);
                             *idx += 1;
                         }
-                        Op::PainterCircle { x, y, radius, r, g, b, a } => {
+                        Op::PainterCircle {
+                            x,
+                            y,
+                            radius,
+                            r,
+                            g,
+                            b,
+                            a,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             painter.circle_filled(
-                                rect.min + egui::vec2(*x as f32 * render_scale_x, *y as f32 * render_scale_y),
+                                rect.min
+                                    + egui::vec2(
+                                        *x as f32 * render_scale_x,
+                                        *y as f32 * render_scale_y,
+                                    ),
                                 *radius as f32 * render_scale_x.min(render_scale_y),
                                 color,
                             );
                             *idx += 1;
                         }
-                        Op::PainterLine { x1, y1, x2, y2, r, g, b, a, thickness } => {
+                        Op::PainterLine {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            r,
+                            g,
+                            b,
+                            a,
+                            thickness,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             painter.line_segment(
                                 [
-                                    rect.min + egui::vec2(*x1 as f32 * render_scale_x, *y1 as f32 * render_scale_y),
-                                    rect.min + egui::vec2(*x2 as f32 * render_scale_x, *y2 as f32 * render_scale_y),
+                                    rect.min
+                                        + egui::vec2(
+                                            *x1 as f32 * render_scale_x,
+                                            *y1 as f32 * render_scale_y,
+                                        ),
+                                    rect.min
+                                        + egui::vec2(
+                                            *x2 as f32 * render_scale_x,
+                                            *y2 as f32 * render_scale_y,
+                                        ),
                                 ],
                                 egui::Stroke::new((*thickness).max(1) as f32, color),
                             );
                             *idx += 1;
                         }
-                        Op::PainterText { x, y, size, r, g, b, a, text } => {
+                        Op::PainterText {
+                            x,
+                            y,
+                            size,
+                            r,
+                            g,
+                            b,
+                            a,
+                            text,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             painter.text(
-                                rect.min + egui::vec2(*x as f32 * render_scale_x, *y as f32 * render_scale_y),
+                                rect.min
+                                    + egui::vec2(
+                                        *x as f32 * render_scale_x,
+                                        *y as f32 * render_scale_y,
+                                    ),
                                 egui::Align2::LEFT_TOP,
                                 text,
-                                egui::FontId::proportional((*size).max(8) as f32 * render_scale_x.min(render_scale_y)),
+                                egui::FontId::proportional(
+                                    (*size).max(8) as f32 * render_scale_x.min(render_scale_y),
+                                ),
                                 color,
                             );
                             *idx += 1;
@@ -909,10 +1019,24 @@ fn render_plugin_ops(
                             *idx += 1;
                             break;
                         }
-                        Op::PainterRectStroke { x, y, w, h, r, g, b, a, thickness } => {
+                        Op::PainterRectStroke {
+                            x,
+                            y,
+                            w,
+                            h,
+                            r,
+                            g,
+                            b,
+                            a,
+                            thickness,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             let rct = egui::Rect::from_min_size(
-                                rect.min + egui::vec2(*x as f32 * render_scale_x, *y as f32 * render_scale_y),
+                                rect.min
+                                    + egui::vec2(
+                                        *x as f32 * render_scale_x,
+                                        *y as f32 * render_scale_y,
+                                    ),
                                 egui::vec2(*w as f32 * render_scale_x, *h as f32 * render_scale_y),
                             );
                             painter.rect_stroke(
@@ -923,27 +1047,73 @@ fn render_plugin_ops(
                             );
                             *idx += 1;
                         }
-                        Op::PainterCircleStroke { x, y, radius, r, g, b, a, thickness } => {
+                        Op::PainterCircleStroke {
+                            x,
+                            y,
+                            radius,
+                            r,
+                            g,
+                            b,
+                            a,
+                            thickness,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             painter.circle_stroke(
-                                rect.min + egui::vec2(*x as f32 * render_scale_x, *y as f32 * render_scale_y),
+                                rect.min
+                                    + egui::vec2(
+                                        *x as f32 * render_scale_x,
+                                        *y as f32 * render_scale_y,
+                                    ),
                                 *radius as f32 * render_scale_x.min(render_scale_y),
                                 egui::Stroke::new((*thickness).max(1) as f32, color),
                             );
                             *idx += 1;
                         }
-                        Op::PainterCubicBezier { x1, y1, cx1, cy1, cx2, cy2, x2, y2, r, g, b, a, thickness } => {
+                        Op::PainterCubicBezier {
+                            x1,
+                            y1,
+                            cx1,
+                            cy1,
+                            cx2,
+                            cy2,
+                            x2,
+                            y2,
+                            r,
+                            g,
+                            b,
+                            a,
+                            thickness,
+                        } => {
                             let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
                             let shape = egui::epaint::CubicBezierShape {
                                 points: [
-                                    rect.min + egui::vec2(*x1 as f32 * render_scale_x, *y1 as f32 * render_scale_y),
-                                    rect.min + egui::vec2(*cx1 as f32 * render_scale_x, *cy1 as f32 * render_scale_y),
-                                    rect.min + egui::vec2(*cx2 as f32 * render_scale_x, *cy2 as f32 * render_scale_y),
-                                    rect.min + egui::vec2(*x2 as f32 * render_scale_x, *y2 as f32 * render_scale_y),
+                                    rect.min
+                                        + egui::vec2(
+                                            *x1 as f32 * render_scale_x,
+                                            *y1 as f32 * render_scale_y,
+                                        ),
+                                    rect.min
+                                        + egui::vec2(
+                                            *cx1 as f32 * render_scale_x,
+                                            *cy1 as f32 * render_scale_y,
+                                        ),
+                                    rect.min
+                                        + egui::vec2(
+                                            *cx2 as f32 * render_scale_x,
+                                            *cy2 as f32 * render_scale_y,
+                                        ),
+                                    rect.min
+                                        + egui::vec2(
+                                            *x2 as f32 * render_scale_x,
+                                            *y2 as f32 * render_scale_y,
+                                        ),
                                 ],
                                 closed: false,
                                 fill: egui::Color32::TRANSPARENT,
-                                stroke: egui::epaint::PathStroke::new((*thickness).max(1) as f32, color),
+                                stroke: egui::epaint::PathStroke::new(
+                                    (*thickness).max(1) as f32,
+                                    color,
+                                ),
                             };
                             painter.add(shape);
                             *idx += 1;
@@ -955,7 +1125,14 @@ fn render_plugin_ops(
                     }
                 }
             }
-            Op::PainterRect { .. } | Op::PainterCircle { .. } | Op::PainterLine { .. } | Op::PainterText { .. } | Op::PainterRectStroke { .. } | Op::PainterCircleStroke { .. } | Op::PainterCubicBezier { .. } | Op::PainterEnd => {
+            Op::PainterRect { .. }
+            | Op::PainterCircle { .. }
+            | Op::PainterLine { .. }
+            | Op::PainterText { .. }
+            | Op::PainterRectStroke { .. }
+            | Op::PainterCircleStroke { .. }
+            | Op::PainterCubicBezier { .. }
+            | Op::PainterEnd => {
                 // These should be consumed within PainterBegin; skip to avoid infinite loop
                 *idx += 1;
             }
@@ -964,168 +1141,6 @@ fn render_plugin_ops(
 }
 
 impl BlaulichtApp {
-    fn main_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Main content area with graphs panel
-        ui.horizontal(|ui| {
-            // Left content area (3/4 width)
-            let total_width = ui.available_width();
-            let graph_panel_width = total_width / 3.0;
-            // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
-
-            // ui.vertical(|ui| {
-            //     ui.set_width(main_panel_width);
-            //     ui.heading("Main Content");
-            //     ui.label("This is the main content area taking up 3/4 of the width.");
-            //     ui.add_space(20.0);
-            //     ui.label("You can put your main application content here.");
-            // });
-
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), ui.available_height()),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    let mut selected_device =
-                        self.data.state.audio.read().unwrap().device_name.clone();
-
-                    let selected_device_label =
-                        selected_device.clone().unwrap_or_else(|| "N/A".to_string());
-
-                    let before = selected_device.clone();
-
-                    ui.horizontal_centered(|ui| {
-                        ui.set_min_height(ButtonSize::Medium.dim().0.y);
-
-                        ui.label("Audio");
-
-                        ui.separator();
-
-                        if components::button(ui, false, "Change Device", ButtonSize::Medium) {
-                            self.set_audio_device_popup_open = true;
-                        }
-
-                        ui.separator();
-
-                        ui.label(RichText::new("Current Input:").size(ButtonSize::Medium.dim().1));
-                        ui.label(
-                            RichText::new(selected_device_label)
-                                .size(ButtonSize::Medium.dim().1)
-                                .color(Color32::LIGHT_RED),
-                        );
-                    });
-
-                    if self.set_audio_device_popup_open {
-                        const NONE_LABEL: &str = "None";
-
-                        let mut options = self.available_audio_devices.clone();
-                        debug_assert!(!options.contains(&NONE_LABEL.to_string()));
-                        options.push(NONE_LABEL.to_string());
-
-                        let (new_device, changed) = components::selection_dialog(
-                            ctx,
-                            options,
-                            match selected_device.clone() {
-                                Some(val) => val,
-                                None => NONE_LABEL.to_string(),
-                            },
-                            &mut self.set_audio_device_popup_open,
-                        );
-
-                        if changed {
-                            selected_device = match new_device.as_str() {
-                                NONE_LABEL => None,
-                                other => Some(other.to_string()),
-                            };
-                        }
-                    }
-
-                    if selected_device != before {
-                        let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
-                        self.data
-                            .from_frontend_sender
-                            .send(FromFrontend::SelectInputDevice(new_dev.clone()))
-                            .unwrap();
-
-                        let mut config_mut = self.data.config.lock().unwrap();
-
-                        config_mut.default_audio_device = new_dev.map(|d| d.name().unwrap());
-
-                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
-                        config::write_config(path, config_mut.clone()).unwrap();
-                    }
-
-                    // Set larger graph height
-                    let graph_height = 125.0;
-                    let graph_width = graph_panel_width - 5.0;
-                    let padding = 10.0;
-
-                    debug_assert!(graph_width > 0.0);
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            let (response, painter) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.volume_graph.draw(painter, response.rect);
-
-                            ui.add_space(padding);
-                            let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.beat_volume_graph
-                                .draw(painter_beat_volume, response_beat_volume.rect);
-
-                            ui.add_space(padding);
-                            let (response_bass, painter_bass) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bass_graph.draw(painter_bass, response_bass.rect);
-                        });
-
-                        ui.vertical(|ui| {
-                            let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bass_avg_graph
-                                .draw(painter_bass_avg, response_bass_avg.rect);
-
-                            ui.add_space(padding);
-                            let (response_bass_avg_short, painter_bass_avg_short) = ui
-                                .allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                            self.bass_avg_short_graph
-                                .draw(painter_bass_avg_short, response_bass_avg_short.rect);
-                        });
-
-                        ui.vertical(|ui| {
-                            let (response_bpm, painter_bpm) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bpm_graph.draw(painter_bpm, response_bpm.rect);
-
-                            ui.add_space(padding);
-                            let (response_time_between_beats, painter_time_between_beats) = ui
-                                .allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                            self.time_between_beats_graph
-                                .draw(painter_time_between_beats, response_time_between_beats.rect);
-                        })
-                    });
-                },
-            );
-        });
-    }
-
     fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         self.log_window.draw(ctx, ui);
 
@@ -1144,12 +1159,12 @@ impl BlaulichtApp {
         match config_mut.last_open_showfile.clone() {
             Some(ref path) => {
                 let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                
+
                 {
                     let plugin_state = self.data.state.plugin_state_storage.lock().unwrap();
                     dmx.0.plugin_state = plugin_state.clone();
                 }
-                
+
                 let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
                 std::fs::write(&path, serialized).unwrap();
 
@@ -1232,12 +1247,13 @@ impl BlaulichtApp {
 
                             let decoded: blaulicht_shared::EngineState =
                                 postcard::from_bytes(&buffer).unwrap();
-                            
+
                             {
-                                let mut plugin_state = self.data.state.plugin_state_storage.lock().unwrap();
+                                let mut plugin_state =
+                                    self.data.state.plugin_state_storage.lock().unwrap();
                                 *plugin_state = decoded.plugin_state.clone();
                             }
-                            
+
                             let mut dmx = self.data.state.dmx_engine.write().unwrap();
                             // dmx.overwrite(decoded);
                             dmx.load_showfile(decoded);
@@ -1368,6 +1384,10 @@ impl BlaulichtApp {
                 if components::button(ui, false, "Shutdown", button_size) {
                     self.confirm_shutdown_open = true;
                 }
+
+                if components::button(ui, self.debug_open, "Debug", button_size) {
+                    self.debug_open = !self.debug_open;
+                }
             });
 
             // ui.horizontal(|ui| {
@@ -1437,13 +1457,8 @@ impl BlaulichtApp {
 
                 {
                     let plugins = self.data.state.plugins.read().unwrap();
-                    let current_visibility = self
-                        .data
-                        .state
-                        .plugin_ui_visibility
-                        .read()
-                        .unwrap()
-                        .clone();
+                    let current_visibility =
+                        self.data.state.plugin_ui_visibility.read().unwrap().clone();
 
                     for (i, (id, plugin)) in plugins.iter().enumerate() {
                         let box_size = egui::vec2(ui.available_width(), 42.0);

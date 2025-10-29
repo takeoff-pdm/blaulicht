@@ -40,6 +40,38 @@ impl AudioState {
     }
 }
 
+/// Rolling buffer of recent spectra for a live spectrogram.
+pub struct AudioSpectrogram {
+    /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
+    /// Contains bins. A bin is just a averaged part of the frequency space.
+    pub columns: VecDeque<Vec<u8>>,
+    /// Maximum number of time columns to keep.
+    pub max_columns: usize,
+    /// Number of frequency bins per column.
+    pub bin_count: usize,
+}
+
+impl AudioSpectrogram {
+    pub fn new(max_columns: usize, bin_count: usize) -> Self {
+        Self {
+            columns: VecDeque::with_capacity(max_columns),
+            max_columns,
+            bin_count,
+        }
+    }
+
+    pub fn push_column(&mut self, mut col: Vec<u8>) {
+        // Ensure correct height; pad or truncate as needed.
+        if col.len() != self.bin_count {
+            col.resize(self.bin_count, 0);
+        }
+        self.columns.push_back(col);
+        if self.columns.len() > self.max_columns {
+            self.columns.pop_front();
+        }
+    }
+}
+
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
@@ -47,6 +79,7 @@ pub struct AppState {
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; 2],
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
+    pub audio_spectrogram: RwLock<AudioSpectrogram>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     // Back buffer for plugin UI ops. Plugins write here; UI reads from `plugin_ui_ops`.
@@ -96,6 +129,8 @@ impl AppState {
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            // Default: ~6.6 seconds history at 60 FPS if filled every frame; actual fill rate ~20 Hz.
+            audio_spectrogram: RwLock::new(AudioSpectrogram::new(400, 128)),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
             plugin_ui_ops: RwLock::new(HashMap::new()),
             plugin_ui_ops_back: RwLock::new(HashMap::new()),

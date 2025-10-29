@@ -18,10 +18,22 @@ pub struct Config {
     pub port: u16,
     pub default_audio_device: Option<String>,
     pub stream: StreamConfig,
+    #[serde(default = "default_spectrogram_window_seconds")]
+    pub spectrogram_window_seconds: u64,
+    #[serde(default = "default_spectrogram_refresh_hz")]
+    pub spectrogram_refresh_hz: u32,
     pub plugins: Vec<PluginConfig>,
     pub last_open_showfile: Option<PathBuf>,
     #[serde(default)]
     pub plugin_state: HashMap<String, String>,
+}
+
+fn default_spectrogram_window_seconds() -> u64 {
+    120
+}
+
+fn default_spectrogram_refresh_hz() -> u32 {
+    60
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -67,6 +79,8 @@ impl Default for Config {
                 gravity: Some(100.0),
                 ..Default::default()
             },
+            spectrogram_window_seconds: default_spectrogram_window_seconds(),
+            spectrogram_refresh_hz: default_spectrogram_refresh_hz(),
             plugins: vec![PluginConfig {
                 file_path: "./plugins/hello_world.wasm".to_string(),
                 enabled: false,

@@ -145,6 +145,35 @@ pub const MOCHA: Theme = Theme {
     crust: Color32::from_rgb(17, 17, 27),
 };
 
+pub const REKORDBOX: Theme = Theme {
+    rosewater: Color32::from_rgb(255, 140, 168),
+    flamingo: Color32::from_rgb(255, 110, 132),
+    pink: Color32::from_rgb(255, 95, 195),
+    mauve: Color32::from_rgb(182, 142, 255),
+    red: Color32::from_rgb(255, 83, 94),
+    maroon: Color32::from_rgb(220, 70, 120),
+    peach: Color32::from_rgb(255, 160, 90),
+    yellow: Color32::from_rgb(255, 196, 110),
+    green: Color32::from_rgb(140, 225, 135),
+    teal: Color32::from_rgb(80, 210, 200),
+    sky: Color32::from_rgb(60, 180, 255),
+    sapphire: Color32::from_rgb(40, 135, 255),
+    blue: Color32::from_rgb(0, 118, 255),
+    lavender: Color32::from_rgb(196, 220, 255),
+    text: Color32::from_rgb(219, 227, 255),
+    subtext1: Color32::from_rgb(188, 198, 223),
+    subtext0: Color32::from_rgb(152, 162, 187),
+    overlay2: Color32::from_rgb(76, 92, 125),
+    overlay1: Color32::from_rgb(64, 78, 107),
+    overlay0: Color32::from_rgb(54, 66, 91),
+    surface2: Color32::from_rgb(34, 44, 66),
+    surface1: Color32::from_rgb(29, 37, 55),
+    surface0: Color32::from_rgb(23, 30, 45),
+    base: Color32::from_rgb(17, 22, 36),
+    mantle: Color32::from_rgb(13, 17, 28),
+    crust: Color32::from_rgb(9, 12, 20),
+};
+
 //
 // END THEME LIST.
 //

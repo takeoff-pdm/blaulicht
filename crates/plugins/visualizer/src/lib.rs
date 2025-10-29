@@ -11,6 +11,7 @@ struct VisualizationConfig {
     canvas_height: i32,
     show_labels: bool,
     show_grid: bool,
+    brightness: f32,
     camera_rotation_x: f32,
     camera_rotation_y: f32,
     camera_distance: f32,
@@ -39,10 +40,11 @@ enum CameraDragMode {
 impl Default for VisualizationConfig {
     fn default() -> Self {
         Self {
-            canvas_width: 800,
-            canvas_height: 600,
+            canvas_width: 1200,
+            canvas_height: 800,
             show_labels: true,
             show_grid: true,
+            brightness: 1.15,
             camera_rotation_x: 30.0,
             camera_rotation_y: 45.0,
             camera_distance: 500.0,
@@ -372,6 +374,10 @@ impl VisualizerPlugin {
                     PluginUiEvent::Checkbox { id, checked } if id == 2 => {
                         self.config.show_grid = checked;
                     }
+                    PluginUiEvent::Slider { id, value } if id == 11 => {
+                        // Brightness slider: range 80..200 -> 0.8..2.0
+                        self.config.brightness = (value as f32 / 100.0).clamp(0.5, 3.0);
+                    }
                     PluginUiEvent::Button { id } if id == 10 => {
                         self.autoframe();
                     }
@@ -489,6 +495,12 @@ impl VisualizerPlugin {
         
         bpf::ui::checkbox("Show Labels", 1, self.config.show_labels);
         bpf::ui::checkbox("Show Grid", 2, self.config.show_grid);
+
+        bpf::ui::begin_horizontal();
+        bpf::ui::label("Brightness");
+        let brightness_val = (self.config.brightness * 100.0) as u8;
+        bpf::ui::slider("brightness", 11, 80, 200, brightness_val);
+        bpf::ui::end_horizontal();
         
         bpf::ui::separator();
         
@@ -507,11 +519,12 @@ impl VisualizerPlugin {
         
         bpf::ui::painter_begin(canvas_id, self.config.canvas_width, self.config.canvas_height);
 
-        bpf::ui::painter_rect(
-            0, 0,
-            self.config.canvas_width, self.config.canvas_height,
-            5, 5, 10, 255
-        );
+        // Slightly brighten background with global brightness factor
+        let br = self.config.brightness;
+        let bg_r = ((5.0 * br).min(255.0)) as u8;
+        let bg_g = ((5.0 * br).min(255.0)) as u8;
+        let bg_b = ((10.0 * br).min(255.0)) as u8;
+        bpf::ui::painter_rect(0, 0, self.config.canvas_width, self.config.canvas_height, bg_r, bg_g, bg_b, 255);
 
         self.render_floor();
         
@@ -552,14 +565,22 @@ impl VisualizerPlugin {
                 self.project_3d_to_2d(start_x, 0.0, offset),
                 self.project_3d_to_2d(end_x, 0.0, offset)
             ) {
-                bpf::ui::painter_line(x1, y1, x2, y2, 60, 60, 70, 80, 1);
+                let br = self.config.brightness;
+                let lr = ((60.0 * br).min(255.0)) as u8;
+                let lg = ((60.0 * br).min(255.0)) as u8;
+                let lb = ((70.0 * br).min(255.0)) as u8;
+                bpf::ui::painter_line(x1, y1, x2, y2, lr, lg, lb, 80, 1);
             }
             
             if let (Some((x1, y1, _)), Some((x2, y2, _))) = (
                 self.project_3d_to_2d(offset, 0.0, start_x),
                 self.project_3d_to_2d(offset, 0.0, end_x)
             ) {
-                bpf::ui::painter_line(x1, y1, x2, y2, 60, 60, 70, 80, 1);
+                let br = self.config.brightness;
+                let lr = ((60.0 * br).min(255.0)) as u8;
+                let lg = ((60.0 * br).min(255.0)) as u8;
+                let lb = ((70.0 * br).min(255.0)) as u8;
+                bpf::ui::painter_line(x1, y1, x2, y2, lr, lg, lb, 80, 1);
             }
         }
     }
@@ -590,9 +611,10 @@ impl VisualizerPlugin {
                         z1 + floor_size / segments as f32 / 2.0
                     );
                     
-                    let r = (base_color as f32 + light_intensity * 200.0).min(255.0) as u8;
-                    let g = (base_color as f32 + light_intensity * 200.0).min(255.0) as u8;
-                    let b = ((base_color + 5) as f32 + light_intensity * 200.0).min(255.0) as u8;
+                    let br = self.config.brightness;
+                    let r = ((base_color as f32 + light_intensity * 200.0) * br).min(255.0) as u8;
+                    let g = ((base_color as f32 + light_intensity * 200.0) * br).min(255.0) as u8;
+                    let b = (((base_color + 5) as f32 + light_intensity * 200.0) * br).min(255.0) as u8;
                     
                     bpf::ui::painter_line(p1.0, p1.1, p2.0, p2.1, r, g, b, 255, 1);
                     bpf::ui::painter_line(p2.0, p2.1, p3.0, p3.1, r, g, b, 255, 1);
@@ -702,7 +724,7 @@ impl VisualizerPlugin {
         
         let ao = self.calculate_ambient_occlusion(fixture.x, fixture.y, fixture.z);
         
-        let ambient = 0.15 * ao;
+        let ambient = 0.18 * ao * self.config.brightness.max(1.0);
         let light_dir = (0.3_f32, -0.7_f32, 0.2_f32);
         
         let base_r = 30;
@@ -751,11 +773,11 @@ impl VisualizerPlugin {
             
             if dot_view > 0.0 {
                 let diffuse = (final_nx * light_dir.0 + final_ny * light_dir.1 + final_nz * light_dir.2).max(0.0) * ao;
-                let lighting = ambient + diffuse * 0.8;
+                let lighting = (ambient + diffuse * 0.8) * self.config.brightness;
                 
-                let face_r = (base_r as f32 * lighting) as u8;
-                let face_g = (base_g as f32 * lighting) as u8;
-                let face_b = (base_b as f32 * lighting) as u8;
+                let face_r = (base_r as f32 * lighting).min(255.0) as u8;
+                let face_g = (base_g as f32 * lighting).min(255.0) as u8;
+                let face_b = (base_b as f32 * lighting).min(255.0) as u8;
                 
                 let avg_z = (rotated_corners[face_indices[0]].2 + rotated_corners[face_indices[1]].2 + 
                             rotated_corners[face_indices[2]].2 + rotated_corners[face_indices[3]].2) / 4.0;
@@ -794,10 +816,13 @@ impl VisualizerPlugin {
                 face.color.0, face.color.1, face.color.2, 255
             );
             
-            bpf::ui::painter_line(p0.0, p0.1, p1.0, p1.1, 20, 20, 25, 255, 1);
-            bpf::ui::painter_line(p1.0, p1.1, p2.0, p2.1, 20, 20, 25, 255, 1);
-            bpf::ui::painter_line(p2.0, p2.1, p3.0, p3.1, 20, 20, 25, 255, 1);
-            bpf::ui::painter_line(p3.0, p3.1, p0.0, p0.1, 20, 20, 25, 255, 1);
+            let er = ((20.0 * self.config.brightness).min(255.0)) as u8;
+            let eg = ((20.0 * self.config.brightness).min(255.0)) as u8;
+            let eb = ((25.0 * self.config.brightness).min(255.0)) as u8;
+            bpf::ui::painter_line(p0.0, p0.1, p1.0, p1.1, er, eg, eb, 255, 1);
+            bpf::ui::painter_line(p1.0, p1.1, p2.0, p2.1, er, eg, eb, 255, 1);
+            bpf::ui::painter_line(p2.0, p2.1, p3.0, p3.1, er, eg, eb, 255, 1);
+            bpf::ui::painter_line(p3.0, p3.1, p0.0, p0.1, er, eg, eb, 255, 1);
         }
         
         let is_selected = self.selected_fixture == Some((fixture.group_id, fixture.fixture_id));
@@ -875,10 +900,11 @@ impl VisualizerPlugin {
                 let fog = 1.0 - (-fog_density * distance).exp();
                 let fog = fog.min(0.9);
                 
-                let brightness = (1.0 - t * 0.7) * (1.0 - fog * 0.5);
-                let intensity = (fixture.alpha as f32 / 255.0) * brightness;
+                let brightness_curve = (1.0 - t * 0.7) * (1.0 - fog * 0.5);
+                let mut intensity = (fixture.alpha as f32 / 255.0) * brightness_curve * self.config.brightness;
+                if intensity > 1.0 { intensity = 1.0; }
                 
-                let base_alpha = (intensity * 120.0) as u8;
+                let base_alpha = ((intensity * 120.0).min(255.0)) as u8;
                 
                 let ambient_r = (5.0 * fog) as u8;
                 let ambient_g = (5.0 * fog) as u8;

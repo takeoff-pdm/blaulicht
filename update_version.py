@@ -7,7 +7,7 @@ makefile_path = "Makefile"
 cargo_toml_paths = [
         "./crates/core/Cargo.toml",
         "./crates/shared/Cargo.toml",
-        "./crates/plugins/Cargo.toml",
+        "./crates/plugin_framework/Cargo.toml",
 ]
 
 path = cargo_toml_paths[0]

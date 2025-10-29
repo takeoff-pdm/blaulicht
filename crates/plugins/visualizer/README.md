@@ -56,7 +56,7 @@ A 3D visualization plugin for Blaulicht that provides real-time rendering of DMX
 ## Configuration
 
 The plugin provides default settings for:
-- Canvas size: 800x600
+- Canvas size: 1200x800
 - Camera rotation: 30° horizontal, 45° vertical
 - Camera distance: 500 units
 - Default fixture pan/tilt: 0°

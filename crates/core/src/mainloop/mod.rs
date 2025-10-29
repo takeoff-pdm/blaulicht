@@ -1,5 +1,6 @@
 pub mod supervisor;
 use blaulicht_shared::LogLevel;
+use itertools::Itertools;
 use std::{
     collections::VecDeque,
     mem,
@@ -34,6 +35,18 @@ use crossbeam_channel::Sender;
 const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
+
+/// Needs to "summarize" the entire frequency spectrum into chunks
+fn bin_spectrum_to_u8(values: &Vec<audioviz::spectrum::Frequency>, bins: usize) -> Vec<u8> {
+    debug_assert!(bins > 0);
+
+    let chunk_size = match values % bins == 0 {
+        true => values.len() / bins,
+        false => todo!(),
+    };
+    let chunk_size = values.len() as f32 / bins;
+    let chunks: Vec<Vec<u8>> = values.iter().chunks(3).map(|c| c.to_vec()).collect();
+}
 
 pub fn run(
     device: Device,
@@ -86,6 +99,23 @@ pub fn run(
     //
     // Audio signal collector.
     //
+    // Configure spectrogram window to keep configured seconds based on spectrogram refresh rate.
+    // Fall back to at least 1 Hz; default configured to 60 Hz.
+    let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
+    let window_secs = config.spectrogram_window_seconds.max(1) as usize;
+    let desired_columns = spec_refresh_hz * window_secs;
+    {
+        let mut spec = app_state.audio_spectrogram.write().unwrap();
+        spec.max_columns = desired_columns;
+        // Trim if we already exceed
+        while spec.columns.len() > spec.max_columns {
+            spec.columns.pop_front();
+            println!("popping front");
+        }
+    }
+    let mut last_spec_push = Instant::now();
+    let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
+
     let mut collector = capture::SignalCollector::new();
     let (mut converter, capture) = capture::init_converter(device, config.stream)
         .with_context(|| "Failed to initialize audio converter")?;
@@ -244,6 +274,15 @@ pub fn run(
 
         let values = converter.freqs();
         // println!("freqs: {:?}", values);
+
+        // Update live spectrogram buffer at ~refresh_rate
+        if now.duration_since(last_spec_push) >= spec_period {
+            let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
+            let col = bin_spectrum_to_u8(&values, bins);
+            let mut spec = app_state.audio_spectrogram.write().unwrap();
+            spec.push_column(col);
+            last_spec_push = now;
+        }
 
         //
         // Update volume signal.

@@ -23,8 +23,8 @@ impl Default for VisualizationConfig {
             scale: 1.0,
             camera_x: 0.0,
             camera_y: 0.0,
-            canvas_width: 800,
-            canvas_height: 600,
+            canvas_width: 1200,
+            canvas_height: 800,
         }
     }
 }
