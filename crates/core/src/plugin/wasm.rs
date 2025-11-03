@@ -26,6 +26,7 @@ use wasmtime::*;
 
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
+use crate::ui_ops::WasmUiOp;
 use crate::{
     config::PluginConfig,
     msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
@@ -34,7 +35,6 @@ use crate::{
         Plugin, PluginManager,
     },
 };
-use crate::ui_ops::WasmUiOp;
 
 // TODO: optimize this module:
 // Load multiple plugins at once, not just one.
@@ -160,12 +160,17 @@ impl PluginManager {
                 },
                 midi_buffers: AddrDescriptor::dummy(),
                 state_buffers: AddrDescriptor::dummy(),
+                serial_buffers: AddrDescriptor::dummy(),
                 last_dmx_engine_sync: Instant::now(),
             };
 
             plugin
                 .acquire_midi_buffer_addresses()
                 .map_err(|e| anyhow!("failed to acquire midi buffer addresses: {e}"))?;
+
+            plugin
+                .acquire_serial_buffer_addresses()
+                .map_err(|e| anyhow!("failed to acquire serial buffer addresses: {e}"))?;
 
             plugin
                 .acquire_state_buffer_address()
@@ -416,28 +421,24 @@ impl PluginManager {
 
         // ---- egui UI bridging ----
         let state_ref = Arc::clone(&self.state_ref);
-        linker.func_wrap::<_, ()>(
-            "blaulicht",
-            "ui_begin",
-            move |plugin_id: i32| {
-                // Double-buffer swap: move completed back-buffer ops to the front buffer atomically,
-                // then clear the back buffer to start recording the next frame.
-                let pid = plugin_id as u8;
-                let mut back_map = state_ref.plugin_ui_ops_back.write().unwrap();
-                let mut front_map = state_ref.plugin_ui_ops.write().unwrap();
+        linker.func_wrap::<_, ()>("blaulicht", "ui_begin", move |plugin_id: i32| {
+            // Double-buffer swap: move completed back-buffer ops to the front buffer atomically,
+            // then clear the back buffer to start recording the next frame.
+            let pid = plugin_id as u8;
+            let mut back_map = state_ref.plugin_ui_ops_back.write().unwrap();
+            let mut front_map = state_ref.plugin_ui_ops.write().unwrap();
 
-                if let Some(back_vec) = back_map.get_mut(&pid) {
-                    let completed = std::mem::take(back_vec);
-                    front_map.insert(pid, completed);
-                } else {
-                    // No back buffer yet: ensure a front entry exists (empty) for UI to read
-                    front_map.entry(pid).or_default();
-                }
+            if let Some(back_vec) = back_map.get_mut(&pid) {
+                let completed = std::mem::take(back_vec);
+                front_map.insert(pid, completed);
+            } else {
+                // No back buffer yet: ensure a front entry exists (empty) for UI to read
+                front_map.entry(pid).or_default();
+            }
 
-                // Start a fresh back buffer for recording
-                back_map.insert(pid, Vec::new());
-            },
-        )?;
+            // Start a fresh back buffer for recording
+            back_map.insert(pid, Vec::new());
+        })?;
 
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
@@ -463,22 +464,22 @@ impl PluginManager {
         )?;
 
         let state_ref = Arc::clone(&self.state_ref);
-        linker.func_wrap::<_, ()>(
-            "blaulicht",
-            "ui_separator",
-            move |plugin_id: i32| {
-                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8)
-                    .or_default()
-                    .push(WasmUiOp::Separator);
-            },
-        )?;
+        linker.func_wrap::<_, ()>("blaulicht", "ui_separator", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::Separator);
+        })?;
 
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_button",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32, id: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  id: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -493,7 +494,10 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::Button { label, id: id as u8 });
+                    .push(WasmUiOp::Button {
+                        label,
+                        id: id as u8,
+                    });
             },
         )?;
 
@@ -502,7 +506,12 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_checkbox",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32, id: i32, checked: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  id: i32,
+                  checked: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -515,11 +524,13 @@ impl PluginManager {
                 let label = String::from_utf8_lossy(&buffer).to_string();
 
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::Checkbox {
-                    label,
-                    id: id as u8,
-                    checked: checked != 0,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::Checkbox {
+                        label,
+                        id: id as u8,
+                        checked: checked != 0,
+                    });
             },
         )?;
 
@@ -528,7 +539,14 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_slider",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32, id: i32, min: i32, max: i32, value: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  id: i32,
+                  min: i32,
+                  max: i32,
+                  value: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -545,13 +563,15 @@ impl PluginManager {
                 let value = value.clamp(0, 255) as u8;
 
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::Slider {
-                    label,
-                    id: id as u8,
-                    min,
-                    max,
-                    value,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::Slider {
+                        label,
+                        id: id as u8,
+                        min,
+                        max,
+                        value,
+                    });
             },
         )?;
 
@@ -560,7 +580,13 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_text_edit",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, label_ptr: i32, label_len: i32, id: i32, text_ptr: i32, text_len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  label_ptr: i32,
+                  label_len: i32,
+                  id: i32,
+                  text_ptr: i32,
+                  text_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -581,7 +607,11 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::TextEdit { label, id: id as u8, text });
+                    .push(WasmUiOp::TextEdit {
+                        label,
+                        id: id as u8,
+                        text,
+                    });
             },
         )?;
 
@@ -590,7 +620,13 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_text_edit_multiline",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, label_ptr: i32, label_len: i32, id: i32, text_ptr: i32, text_len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  label_ptr: i32,
+                  label_len: i32,
+                  id: i32,
+                  text_ptr: i32,
+                  text_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -611,7 +647,11 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::TextEditMultiline { label, id: id as u8, text });
+                    .push(WasmUiOp::TextEditMultiline {
+                        label,
+                        id: id as u8,
+                        text,
+                    });
             },
         )?;
 
@@ -619,22 +659,30 @@ impl PluginManager {
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_begin_vertical", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginVertical);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::BeginVertical);
         })?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_vertical", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndVertical);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndVertical);
         })?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_begin_horizontal", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginHorizontal);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::BeginHorizontal);
         })?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_horizontal", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndHorizontal);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndHorizontal);
         })?;
 
         // Painter: begin/rect/circle/end
@@ -644,11 +692,13 @@ impl PluginManager {
             "ui_painter_begin",
             move |plugin_id: i32, id: i32, width: i32, height: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterBegin {
-                    id: id as u8,
-                    width,
-                    height,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterBegin {
+                        id: id as u8,
+                        width,
+                        height,
+                    });
             },
         )?;
 
@@ -656,18 +706,28 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_rect",
-            move |plugin_id: i32, x: i32, y: i32, w: i32, h: i32, r: i32, g: i32, b: i32, a: i32| {
+            move |plugin_id: i32,
+                  x: i32,
+                  y: i32,
+                  w: i32,
+                  h: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterRect {
-                    x,
-                    y,
-                    w,
-                    h,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterRect {
+                        x,
+                        y,
+                        w,
+                        h,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                    });
             },
         )?;
 
@@ -677,22 +737,26 @@ impl PluginManager {
             "ui_painter_circle",
             move |plugin_id: i32, x: i32, y: i32, radius: i32, r: i32, g: i32, b: i32, a: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCircle {
-                    x,
-                    y,
-                    radius,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterCircle {
+                        x,
+                        y,
+                        radius,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                    });
             },
         )?;
 
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_painter_end", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterEnd);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::PainterEnd);
         })?;
 
         // Painter line
@@ -700,19 +764,30 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_line",
-            move |plugin_id: i32, x1: i32, y1: i32, x2: i32, y2: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+            move |plugin_id: i32,
+                  x1: i32,
+                  y1: i32,
+                  x2: i32,
+                  y2: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32,
+                  thickness: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterLine {
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                    thickness,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterLine {
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                        thickness,
+                    });
             },
         )?;
 
@@ -721,7 +796,17 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_text",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, x: i32, y: i32, size: i32, r: i32, g: i32, b: i32, a: i32, ptr: i32, len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  x: i32,
+                  y: i32,
+                  size: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32,
+                  ptr: i32,
+                  len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -734,16 +819,18 @@ impl PluginManager {
                 let text = String::from_utf8_lossy(&buf).to_string();
 
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterText {
-                    x,
-                    y,
-                    size,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                    text,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterText {
+                        x,
+                        y,
+                        size,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                        text,
+                    });
             },
         )?;
 
@@ -752,16 +839,30 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_rect_stroke",
-            move |plugin_id: i32, x: i32, y: i32, w: i32, h: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+            move |plugin_id: i32,
+                  x: i32,
+                  y: i32,
+                  w: i32,
+                  h: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32,
+                  thickness: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterRectStroke {
-                    x, y, w, h,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                    thickness,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterRectStroke {
+                        x,
+                        y,
+                        w,
+                        h,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                        thickness,
+                    });
             },
         )?;
 
@@ -769,16 +870,28 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_circle_stroke",
-            move |plugin_id: i32, x: i32, y: i32, radius: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+            move |plugin_id: i32,
+                  x: i32,
+                  y: i32,
+                  radius: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32,
+                  thickness: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCircleStroke {
-                    x, y, radius,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                    thickness,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterCircleStroke {
+                        x,
+                        y,
+                        radius,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                        thickness,
+                    });
             },
         )?;
 
@@ -787,16 +900,38 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_cubic_bezier",
-            move |plugin_id: i32, x1: i32, y1: i32, cx1: i32, cy1: i32, cx2: i32, cy2: i32, x2: i32, y2: i32, r: i32, g: i32, b: i32, a: i32, thickness: i32| {
+            move |plugin_id: i32,
+                  x1: i32,
+                  y1: i32,
+                  cx1: i32,
+                  cy1: i32,
+                  cx2: i32,
+                  cy2: i32,
+                  x2: i32,
+                  y2: i32,
+                  r: i32,
+                  g: i32,
+                  b: i32,
+                  a: i32,
+                  thickness: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::PainterCubicBezier {
-                    x1, y1, cx1, cy1, cx2, cy2, x2, y2,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                    thickness,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::PainterCubicBezier {
+                        x1,
+                        y1,
+                        cx1,
+                        cy1,
+                        cx2,
+                        cy2,
+                        x2,
+                        y2,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                        thickness,
+                    });
             },
         )?;
 
@@ -807,26 +942,36 @@ impl PluginManager {
             "ui_color_picker",
             move |plugin_id: i32, id: i32, r: i32, g: i32, b: i32, a: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-                map.entry(plugin_id as u8).or_default().push(WasmUiOp::ColorPicker {
-                    id: id as u8,
-                    r: r as u8,
-                    g: g as u8,
-                    b: b as u8,
-                    a: a as u8,
-                });
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::ColorPicker {
+                        id: id as u8,
+                        r: r as u8,
+                        g: g as u8,
+                        b: b as u8,
+                        a: a as u8,
+                    });
             },
         )?;
 
         // Frames
         let state_ref = Arc::clone(&self.state_ref);
-        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_frame", move |plugin_id: i32, id: i32| {
-            let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginFrame { id: id as u8 });
-        })?;
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_frame",
+            move |plugin_id: i32, id: i32| {
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginFrame { id: id as u8 });
+            },
+        )?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_frame", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndFrame);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndFrame);
         })?;
 
         // Frame styled
@@ -834,7 +979,15 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_frame_styled",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, id: i32, ptr: i32, len: i32, pad_x: i32, pad_y: i32, margin_x: i32, margin_y: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  id: i32,
+                  ptr: i32,
+                  len: i32,
+                  pad_x: i32,
+                  pad_y: i32,
+                  margin_x: i32,
+                  margin_y: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -847,7 +1000,14 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::BeginFrameStyled { id: id as u8, title, pad_x, pad_y, margin_x, margin_y });
+                    .push(WasmUiOp::BeginFrameStyled {
+                        id: id as u8,
+                        title,
+                        pad_x,
+                        pad_y,
+                        margin_x,
+                        margin_y,
+                    });
             },
         )?;
 
@@ -856,7 +1016,12 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_collapsing",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, id: i32, ptr: i32, len: i32, default_open: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  id: i32,
+                  ptr: i32,
+                  len: i32,
+                  default_open: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -869,26 +1034,43 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::BeginCollapsing { id: id as u8, title, default_open: default_open != 0 });
+                    .push(WasmUiOp::BeginCollapsing {
+                        id: id as u8,
+                        title,
+                        default_open: default_open != 0,
+                    });
             },
         )?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_collapsing", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndCollapsing);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndCollapsing);
         })?;
 
         // Tabs
         let state_ref = Arc::clone(&self.state_ref);
-        linker.func_wrap::<_, ()>("blaulicht", "ui_begin_tabs", move |plugin_id: i32, id: i32| {
-            let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::BeginTabs { id: id as u8 });
-        })?;
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_tabs",
+            move |plugin_id: i32, id: i32| {
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginTabs { id: id as u8 });
+            },
+        )?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_tab",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, tabs_id: i32, tab_id: i32, ptr: i32, len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  tabs_id: i32,
+                  tab_id: i32,
+                  ptr: i32,
+                  len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -901,18 +1083,26 @@ impl PluginManager {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
-                    .push(WasmUiOp::BeginTab { tabs_id: tabs_id as u8, tab_id: tab_id as u8, title });
+                    .push(WasmUiOp::BeginTab {
+                        tabs_id: tabs_id as u8,
+                        tab_id: tab_id as u8,
+                        title,
+                    });
             },
         )?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_tab", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndTab);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndTab);
         })?;
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_end_tabs", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
-            map.entry(plugin_id as u8).or_default().push(WasmUiOp::EndTabs);
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndTabs);
         })?;
 
         let mo = self.to_midi_devices.clone();
@@ -976,27 +1166,67 @@ impl PluginManager {
             "bl_enumerate_midi_devices",
             move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
                 use crate::plugin::midi::MidiManager;
-                
+
                 let devices = MidiManager::enumerate_devices().unwrap_or_else(|_| Vec::new());
                 let json = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".to_string());
                 let json_bytes = json.as_bytes();
-                
+
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
-                
+
                 let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
-                
+
                 if write_len > 0 {
                     memory
                         .write(&mut caller, buffer_ptr as usize, &json_bytes[..write_len])
                         .expect("failed to write memory");
                 }
-                
+
                 write_len as u32
             },
         )?;
+
+        //
+        // Serial interface.
+        //
+
+        let serial_manager = Arc::clone(&self.serial_manager_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_open_serial_device",
+            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32, baud_rate: u32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+
+                let device_name = String::from_utf8_lossy(&buffer).to_string();
+
+                println!("open serial device: {}", device_name);
+
+                let mut serial_manager = serial_manager.lock().unwrap();
+                serial_manager
+                    .request_device(&device_name, baud_rate)
+                    .unwrap_or(u8::MAX) as u32
+            },
+        )?;
+
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_enumerate_serial_devices",
+            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| todo!(""),
+        )?;
+
+        //
+        // End serial interface.
+        //
 
         let state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
         let system_out = self.system_out.clone();
@@ -1008,28 +1238,34 @@ impl PluginManager {
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
-                
+
                 let mut buf = vec![0u8; data_len as usize];
                 memory
                     .read(&caller, data_ptr as usize, &mut buf)
                     .expect("failed to read memory");
-                
+
                 let state_data = String::from_utf8_lossy(&buf).to_string();
                 let plugin_name = format!("plugin_{}", plugin_id);
-                
-                println!("Saving plugin state for {}: {} bytes", plugin_name, state_data.len());
-                
+
+                println!(
+                    "Saving plugin state for {}: {} bytes",
+                    plugin_name,
+                    state_data.len()
+                );
+
                 {
                     let mut storage = state_storage.lock().unwrap();
                     storage.insert(plugin_name.clone(), state_data.clone());
                 }
-                
-                system_out.send(SystemMessage::SavePluginState {
-                    plugin_name,
-                    state_data,
-                }).unwrap_or_else(|e| {
-                    error!("Failed to send save plugin state message: {}", e);
-                });
+
+                system_out
+                    .send(SystemMessage::SavePluginState {
+                        plugin_name,
+                        state_data,
+                    })
+                    .unwrap_or_else(|e| {
+                        error!("Failed to send save plugin state message: {}", e);
+                    });
             },
         )?;
 
@@ -1039,26 +1275,29 @@ impl PluginManager {
             "bl_load_plugin_state",
             move |mut caller: Caller<'_, ()>, plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
                 let plugin_name = format!("plugin_{}", plugin_id);
-                
+
                 println!("Loading plugin state for {}", plugin_name);
-                
+
                 let storage = state_storage.lock().unwrap();
                 let state_data = storage.get(&plugin_name);
-                
+
                 if let Some(data) = state_data {
                     let memory = caller
                         .get_export("memory")
                         .and_then(|export| export.into_memory())
                         .expect("failed to find memory");
-                    
+
                     let bytes = data.as_bytes();
                     let write_len = bytes.len().min(buffer_len as usize);
-                    
+
                     memory
                         .write(&mut caller, buffer_ptr as usize, &bytes[..write_len])
                         .expect("failed to write memory");
-                    
-                    println!("Loaded {} bytes of plugin state for {}", write_len, plugin_name);
+
+                    println!(
+                        "Loaded {} bytes of plugin state for {}",
+                        write_len, plugin_name
+                    );
                     write_len as u32
                 } else {
                     println!("No saved state found for {}", plugin_name);
@@ -1468,8 +1707,46 @@ impl Plugin {
         Ok(())
     }
 
+    fn acquire_serial_buffer_addresses(&mut self) -> anyhow::Result<()> {
+        use crate::plugin::serial;
+
+        debug!(
+            "Acquiring SERIAL buffer addresses for plugin: {}",
+            self.path
+        );
+        //
+        // Get serial buffer start address.
+        //
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_serial_buffer_start_addr", // TODO: external type and name constants.
+        )?;
+
+        let serial_buffer_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        //
+        // Get serial buffer length start address.
+        //
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_serial_buffer_length_start_addr", // TODO: external type and name constants.
+        )?;
+
+        let serial_buffer_length_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        let addrs = AddrDescriptor {
+            start_addr: serial_buffer_start_addr,
+            length_start_addr: serial_buffer_length_start_addr,
+        };
+
+        debug!("Acquired SERIAL buffer addresses: {:?}", addrs);
+
+        self.serial_buffers = addrs;
+        Ok(())
+    }
+
     fn acquire_state_buffer_address(&mut self) -> anyhow::Result<()> {
-        debug!("Acquiring State buffer address for plugin: {}", self.path);
+        debug!("Acquiring state buffer address for plugin: {}", self.path);
         //
         // Get state buffer start address.
         //

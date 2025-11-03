@@ -17,3 +17,6 @@ pub mod scene;
 
 mod animation;
 pub use animation::*;
+
+mod serial;
+pub use serial::*;

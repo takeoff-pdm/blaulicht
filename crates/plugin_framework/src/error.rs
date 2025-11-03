@@ -6,33 +6,34 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
-    Midi(MidiError)
-
+    Connection(IoError),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Midi(midi_error) => write!(f, "MIDI error: {}", midi_error),
+            Error::Connection(midi_error) => write!(f, "IO error: {}", midi_error),
         }
     }
 }
 
-impl From<MidiError> for Error {
-    fn from(err: MidiError) -> Self {
-        Error::Midi(err)
+impl From<IoError> for Error {
+    fn from(err: IoError) -> Self {
+        Error::Connection(err)
     }
 }
 
 #[derive(Debug)]
-pub enum MidiError {
-    DeviceNotFound(String),
+pub enum IoError {
+    MidiDeviceNotFound(String),
+    SerialDeviceNotFound(String),
 }
 
-impl Display for MidiError {
+impl Display for IoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MidiError::DeviceNotFound(dev) => write!(f, "Device '{dev}' not found"),
+            IoError::MidiDeviceNotFound(dev) => write!(f, "MIDI device '{dev}' not found"),
+            IoError::SerialDeviceNotFound(dev) => write!(f, "SERIAL device '{dev}' not found"),
         }
     }
 }

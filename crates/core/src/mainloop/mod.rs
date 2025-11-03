@@ -10,7 +10,7 @@ use crate::{
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::signal_mainloop,
     msg::{Signal, SystemMessage},
-    plugin::{midi::MidiManager, PluginManager},
+    plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
     state::AppState,
     system_message,
 };
@@ -47,24 +47,33 @@ fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize)
             // }
 
             let new = values.len() / bins;
-            println!("new len: {new}");
+            // println!("new len: {new}");
             new
         }
     };
 
-    println!("chunk size: {chunk_size}");
+    // println!("chunk size: {chunk_size}");
 
     // let chunk_size = values.len() as f32 / bins as f32;
     let chunks: Vec<u8> = values
         .chunks(chunk_size)
         .map(|c| {
+            // let mut max = 0.0;
+            // for f in c {
+            //     if f.volume > max {
+            //         max = f.volume;
+            //     }
+            // }
+
+            // println!("MAX: {max}");
+
             c.iter()
-                .map(|datapoint| datapoint.volume as u32)
-                .sum::<u32>()
-                / c.len() as u32
+                .map(|datapoint| datapoint.volume * 10.0)
+                .sum::<f32>()
+                / c.len() as f32
         })
         .map(|v| {
-            debug_assert!(v <= u8::MAX as u32);
+            // debug_assert!(if v > u8::MAX as f32 { panic!("V too large: {v}") } else { true });
             v as u8
         })
         .collect();
@@ -98,6 +107,7 @@ pub fn run(
         midi_out_receiver,
         to_plugins_sender,
     )));
+    let serial_manager = Arc::new(Mutex::new(SerialManager::new()));
 
     //
     // Plugin system.
@@ -109,6 +119,7 @@ pub fn run(
         to_plugins_receiver,
         system_out.clone(),
         Arc::clone(&midi_manager),
+        Arc::clone(&serial_manager),
         event_bus_plugins,
         p_app_state,
     );
@@ -134,6 +145,8 @@ pub fn run(
     // Fall back to at least 1 Hz; default configured to 60 Hz.
     let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
     let window_secs = config.spectrogram_window_seconds.max(1) as usize;
+    let spec_refresh_hz = 120;
+    let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
     {
         let mut spec = app_state.audio_spectrogram.write().unwrap();
@@ -261,6 +274,12 @@ pub fn run(
                     .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?
             };
 
+            let serial_manager = Arc::clone(&serial_manager);
+            let serial = {
+                let mut serial_manager = serial_manager.lock().unwrap();
+                serial_manager.tick().map_err(|e|anyhow!("Failed to tick serial manager: {e:?}"))?
+            };
+
             //
             // Collect control events.
             //
@@ -268,6 +287,7 @@ pub fn run(
             let dmx_tick_duration = match plugin_manager.tick(
                 collector.take_snapshot(),
                 &midi,
+                serial,
                 Some(Arc::clone(&app_state)),
             ) {
                 Ok(dur) => {
@@ -312,6 +332,7 @@ pub fn run(
             // const BINS: usize = 10;
             if !values.is_empty() {
                 let new_column = bin_spectrum_to_u8(&values, bins);
+                // println!("COL: {:?}", new_column);
                 {
                     let mut spec = app_state.audio_spectrogram.write().unwrap();
                     spec.push_column(new_column);

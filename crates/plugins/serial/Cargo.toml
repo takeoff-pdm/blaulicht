@@ -1,5 +1,5 @@
 [package]
-name = "blaulicht-plugin-spectrogram"
+name = "blaulicht-plugin-sample-egui"
 version = "0.1.0"
 edition = "2021"
 

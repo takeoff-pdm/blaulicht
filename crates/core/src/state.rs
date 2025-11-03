@@ -72,10 +72,12 @@ impl AudioSpectrogram {
             // This can happen due to rounding issues.
             col.resize(self.bin_count, 0);
         }
-        self.columns.push_back(col);
-        if self.columns.len() > self.max_columns {
+        // println!("{} vs {}", self.columns.len(), self.max_columns);
+        if self.columns.len() >= self.max_columns {
             self.columns.pop_front();
+            // println!("too many columns, reducing...");
         }
+        self.columns.push_back(col);
     }
 }
 
@@ -137,7 +139,7 @@ impl AppState {
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             // Default: ~6.6 seconds history at 60 FPS if filled every frame; actual fill rate ~20 Hz.
-            audio_spectrogram: RwLock::new(AudioSpectrogram::new(400, 128)),
+            audio_spectrogram: RwLock::new(AudioSpectrogram::new(4, 128)),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
             plugin_ui_ops: RwLock::new(HashMap::new()),
             plugin_ui_ops_back: RwLock::new(HashMap::new()),

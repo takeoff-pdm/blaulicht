@@ -44,6 +44,7 @@ dependencies = [
 name = "blaulicht-plugin-framework"
 version = "0.2.0"
 dependencies = [
+ "bincode",
  "blaulicht-shared",
  "interpolate",
  "map-range",

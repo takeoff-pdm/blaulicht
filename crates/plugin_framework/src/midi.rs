@@ -2,7 +2,7 @@ use std::u8;
 
 use crate::{
     blaulicht::{self},
-    error::{MidiError, Result},
+    error::{IoError, Result},
     BufferSource,
 };
 
@@ -57,7 +57,7 @@ impl MidiConnection {
         let device_id_or_error_code = blaulicht::bl_open_midi_device_safe(device_name);
 
         if device_id_or_error_code == MIDI_DEVICE_NOT_FOUND {
-            return Err(MidiError::DeviceNotFound(device_name.to_string()).into());
+            return Err(IoError::MidiDeviceNotFound(device_name.to_string()).into());
         }
 
         Ok(Self {

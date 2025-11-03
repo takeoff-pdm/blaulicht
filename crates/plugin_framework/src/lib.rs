@@ -1,14 +1,12 @@
-use std::mem::MaybeUninit;
-
 use blaulicht_shared::{LogLevel, TickInput};
-
+use std::mem::MaybeUninit;
 pub mod blaulicht;
 mod error;
 pub mod midi;
+pub mod serial;
 mod state;
-
-pub use midi::*;
 pub use blaulicht::*;
+pub use midi::*;
 pub use state::*;
 
 pub struct BufferSource<T, const N: usize> {
@@ -37,7 +35,6 @@ pub fn hook_plugin(plugin: Box<dyn Plugin>) {
 //
 // END PLUGIN
 //
-
 
 extern "C" {
     fn main();

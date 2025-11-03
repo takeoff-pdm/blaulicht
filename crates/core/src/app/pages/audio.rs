@@ -140,6 +140,36 @@ impl BlaulichtApp {
                         );
                     } else {
                         // TODO: this
+
+                        let total_cols = spec.columns.len();
+                        let col_width = spec_width / total_cols as f32;
+
+                        for (idx, col) in spec.columns.iter().enumerate() {
+                            // Draw col rect
+                            let col_start_x = idx as f32 * col_width;
+
+                            let small_rect = Rect::from_min_size(
+                                spec_rect.min + egui::vec2(col_start_x, 0.0),
+                                egui::vec2(col_width, spectro_height),
+                            );
+
+                            let bucket_height = spectro_height / col.len() as f32;
+
+                            for (bidx, bucket) in col.iter().enumerate() {
+                                let bucket_rect = Rect::from_min_size(
+                                    spec_rect.min
+                                        + egui::vec2(col_start_x, bidx as f32 * bucket_height),
+                                    egui::vec2(col_width, bucket_height),
+                                );
+
+                                // let bucket_color = match bucket {
+
+                                // };
+                                let bucket_color = Color32::from_rgb(*bucket, *bucket, *bucket);
+
+                                spec_painter.rect_filled(bucket_rect, 0.0, bucket_color);
+                            }
+                        }
                     }
 
                     // Set larger graph height
