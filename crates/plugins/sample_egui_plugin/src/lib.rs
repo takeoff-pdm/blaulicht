@@ -26,9 +26,12 @@ impl Default for SamplePlugin {
 }
 
 impl SamplePlugin {
-    fn handle_events(&mut self, events: &[ControlEventMessage]) {
+    fn handle_events(&mut self, events: &[ControlEventMessage], id: u8) {
         for e in events {
-            if let ControlEvent::PluginUi(ui_ev) = e.body() {
+            if let ControlEvent::PluginUi(ui_ev, pid) = e.body() {
+                if pid != id {
+                    continue;
+                }
                 match ui_ev {
                     PluginUiEvent::Button { id } if id == 1 => {
                         self.clicks = self.clicks.saturating_add(1);
@@ -106,7 +109,7 @@ impl Plugin for SamplePlugin {
 
     fn run(&mut self, input: TickInput) {
         // Process events (e.g., button clicks from host UI)
-        self.handle_events(&input.events.events);
+        self.handle_events(&input.events.events, input.id);
 
         // Queue UI elements for host rendering
         self.draw_ui();

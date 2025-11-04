@@ -21,9 +21,9 @@ members = [
 exclude = [
     "./crates/plugins/drums",
     "./crates/plugins/sample_egui_plugin",
-    "./crates/plugins/midi_korg_nano_kontrol",
+    "./crates/plugins/midi_all",
     "./crates/plugins/visualizer",
-    "./crates/plugins/serial",
+    "./crates/plugins/433mhz_antenna",
     "./crates/plugin_framework",
 ]
 resolver = "2"

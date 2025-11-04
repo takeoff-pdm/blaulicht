@@ -246,9 +246,13 @@ impl DrumPlugin {
     }
 
     /// Processes UI events from the plugin interface
-    fn handle_events(&mut self, events: &[ControlEventMessage]) {
+    fn handle_events(&mut self, events: &[ControlEventMessage], id: u8) {
         for e in events {
-            if let ControlEvent::PluginUi(ui_ev) = e.body() {
+            if let ControlEvent::PluginUi(ui_ev, pid) = e.body() {
+                if pid != id {
+                    continue;
+                }
+                
                 println!("Drum Plugin received UI event: {:?}", ui_ev);
                 match ui_ev {
                     PluginUiEvent::Button { id } if id == 1 => {
@@ -721,7 +725,7 @@ impl Plugin for DrumPlugin {
     }
 
     fn run(&mut self, input: TickInput) {
-        self.handle_events(&input.events.events);
+        self.handle_events(&input.events.events, input.id);
 
         if let Some(ref handle) = self.midi_handle {
             let res = handle.poll();

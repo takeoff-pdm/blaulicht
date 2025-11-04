@@ -530,7 +530,7 @@ impl DmxEngine {
                 }
             }
             // UI-only plugin events: ignore in DMX engine
-            ControlEvent::PluginUi(_) => {
+            ControlEvent::PluginUi(_, _) => {
                 (None, None)
             }
             // Other

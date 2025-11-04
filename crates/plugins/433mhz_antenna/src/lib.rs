@@ -33,7 +33,7 @@ impl Default for SamplePlugin {
     fn default() -> Self {
         Self {
             conn: unsafe { SerialConnection::dummy() },
-            remote_disable_list: [false; REMOTES.len()],
+            remote_disable_list: [true; REMOTES.len()],
             log: VecDeque::new(),
         }
     }
@@ -72,7 +72,7 @@ impl SamplePlugin {
         }
     }
 
-    fn draw_ui(&mut self, events: &[ControlEventMessage]) {
+    fn draw_ui(&mut self, events: &[ControlEventMessage], pid: u8) {
         ui::begin();
 
         for idx in 0..REMOTES.len() {
@@ -88,9 +88,12 @@ impl SamplePlugin {
         }
 
         for e in events {
-            if let ControlEvent::PluginUi(ui_ev) = e.body() {
+            if let ControlEvent::PluginUi(ui_ev, pid) = e.body() {
                 match ui_ev {
                     PluginUiEvent::Checkbox { checked, id } => {
+                        if id != pid {
+                            continue;
+                        }
                         println!("checked ({id}): {checked}");
                         self.remote_disable_list[id as usize] = checked;
                     }
@@ -103,9 +106,17 @@ impl SamplePlugin {
 
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
-        let serial = SerialConnection::open("/dev/ttyUSB0", 115200).unwrap();
+        let port = 2;
+        let port_path = format!("/dev/ttyUSB{port}");
+        println!("Open {port_path}...");
+        let serial = match SerialConnection::open(&port_path, 115200) {
+            Ok(p) => p,
+            Err(e) => {
+                panic!("Port error: {e}");
+            }
+        };
         self.conn = serial;
-        println!("Sample SERIAL plugin initialized");
+        println!("Antenna SERIAL plugin initialized");
     }
 
     fn run(&mut self, input: TickInput) {
@@ -123,7 +134,7 @@ impl Plugin for SamplePlugin {
             println!("EV: {str} | {:?}", &ev.body);
         }
 
-        self.draw_ui(&input.events.events);
+        self.draw_ui(&input.events.events, input.id);
     }
 }
 

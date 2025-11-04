@@ -260,20 +260,55 @@ pub enum ControlEvent {
     SetChannelOverride(u16, u16, u8), // Universe, Channel and value.
     RemoveChannelOverride(u16, u16),  // Universe, Channel
     // Plugin UI interaction events (ignored by DMX engine; for plugins only)
-    PluginUi(PluginUiEvent),
+    PluginUi(PluginUiEvent, u8), // UI event and the Plugin-ID.
 }
 
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]
 pub enum PluginUiEvent {
-    Button { id: u8 },
-    Checkbox { id: u8, checked: bool },
-    Slider { id: u8, value: u8 },
-    Text { id: u8, text: String },
-    Color { id: u8, r: u8, g: u8, b: u8, a: u8 },
-    TabChanged { tabs_id: u8, tab_id: u8 },
-    CanvasClick { id: u8, x: i32, y: i32 },
-    CanvasDrag { id: u8, x: i32, y: i32, dx: i32, dy: i32 },
-    CanvasPinch { id: u8, x: i32, y: i32, delta: f32 },
+    Button {
+        id: u8,
+    },
+    Checkbox {
+        id: u8,
+        checked: bool,
+    },
+    Slider {
+        id: u8,
+        value: u8,
+    },
+    Text {
+        id: u8,
+        text: String,
+    },
+    Color {
+        id: u8,
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    },
+    TabChanged {
+        tabs_id: u8,
+        tab_id: u8,
+    },
+    CanvasClick {
+        id: u8,
+        x: i32,
+        y: i32,
+    },
+    CanvasDrag {
+        id: u8,
+        x: i32,
+        y: i32,
+        dx: i32,
+        dy: i32,
+    },
+    CanvasPinch {
+        id: u8,
+        x: i32,
+        y: i32,
+        delta: f32,
+    },
 }
 
 #[macro_export]
@@ -323,7 +358,7 @@ impl ControlEvent {
             ControlEvent::Transaction(_) => false,
             ControlEvent::SetChannelOverride(_, _, _) => false,
             ControlEvent::RemoveChannelOverride(_, _) => false,
-            ControlEvent::PluginUi(_) => false,
+            ControlEvent::PluginUi(_, _) => false,
         }
     }
 }

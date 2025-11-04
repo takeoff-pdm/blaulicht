@@ -91,9 +91,12 @@ impl PluginManager {
                 let plugin = self.plugins.get_mut(&plugin_key).unwrap();
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
-                if let Err(err) =
-                    plugin.tick(input, midi_events, serial_received.clone(), app_state.clone())
-                {
+                if let Err(err) = plugin.tick(
+                    input,
+                    midi_events,
+                    serial_received.clone(),
+                    app_state.clone(),
+                ) {
                     let path = plugin_key;
                     err_res.insert(
                         path,

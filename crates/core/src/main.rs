@@ -26,6 +26,9 @@ fn main() -> anyhow::Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
+    let version = env!("CARGO_PKG_VERSION");
+    info!("[INIT] Starting BLAULICHT {version}");
+
     //
     // Audio.
     //
@@ -250,7 +253,8 @@ fn main() -> anyhow::Result<()> {
     let initial_popup = match cfg.last_open_showfile {
         Some(showfile) => {
             let mut dmx = app_state.dmx_engine.write().unwrap();
-            match config::read_showfile(showfile.clone(), &mut dmx, &app_state.plugin_state_storage) {
+            match config::read_showfile(showfile.clone(), &mut dmx, &app_state.plugin_state_storage)
+            {
                 Ok(_) => Some(PopupSpec::with_duration(
                     Duration::from_secs(5),
                     "Loaded Showfile".to_string(),
