@@ -21,7 +21,7 @@ position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
 [[plugins]]
-file_path = "../plugins/bundle_debug/midi_korg_nano_kontrol.wasm"
+file_path = "../plugins/bundle_debug/midi_all.wasm"
 enabled = true
 enable_watcher = true
 
@@ -36,7 +36,7 @@ enabled = true
 enable_watcher = true
 
 [[plugins]]
-file_path = "../plugins/bundle_debug/serial.wasm"
+file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
 enabled = true
 enable_watcher = true
 
