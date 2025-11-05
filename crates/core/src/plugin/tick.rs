@@ -1,16 +1,18 @@
 use crate::state::AppState;
+use crate::{
+    msg::{MidiEvent, SystemMessage},
+    plugin::{Plugin, PluginManager},
+    system_message,
+};
 use blaulicht_shared::EngineState;
+#[cfg(feature = "wasmtime")]
+use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
 use log::warn;
 use std::sync::{Arc, RwLock, RwLockWriteGuard};
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
-};
-use crate::{
-    msg::{MidiEvent, SystemMessage},
-    plugin::{Plugin, PluginManager},
-    system_message,
 };
 
 // #[cfg(feature = "wasmtime")]
@@ -51,6 +53,7 @@ impl PluginManager {
         &mut self,
         audio_data: CollectedAudioSnapshot,
         midi_events: &[MidiEvent],
+        serial_received: Vec<SerialReceived>,
         // If present and enough (WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES) time has passed, write engine state into plugin.
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
@@ -88,7 +91,12 @@ impl PluginManager {
                 let plugin = self.plugins.get_mut(&plugin_key).unwrap();
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
-                if let Err(err) = plugin.tick(input, midi_events, app_state.clone()) {
+                if let Err(err) = plugin.tick(
+                    input,
+                    midi_events,
+                    serial_received.clone(),
+                    app_state.clone(),
+                ) {
                     let path = plugin_key;
                     err_res.insert(
                         path,
@@ -152,13 +160,14 @@ impl Plugin {
         &mut self,
         input: TickInput,
         midi_events: &[MidiEvent],
+        serial_received: Vec<SerialReceived>,
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<()> {
         //
         // Tick function.
         //
 
-        use blaulicht_shared::EngineState;
+        // use blaulicht_shared::EngineState;
         let func = self.wasm_state.instance.get_typed_func::<(i32, i32), ()>(
             &mut self.wasm_state.store,
             "internal_tick", // TODO: external type and name constants.
@@ -262,6 +271,38 @@ impl Plugin {
             }
         }
 
+        ////////////////// Serial /////////////////////
+
+        {
+            let serial_bytes = {
+                use blaulicht_shared::SerialCollector;
+
+                let collector = SerialCollector::new(serial_received);
+                collector.serialize()
+            };
+
+            let serial_array_len = serial_bytes.len() as u32;
+
+            // Write the state array to memory.
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.serial_buffers.buffer_addr(),
+                &serial_bytes,
+            )?;
+
+            // Write the length of the state array to memory.
+            let mut serial_length_bytes = Vec::new();
+            serial_length_bytes.extend_from_slice(&serial_array_len.to_le_bytes());
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.serial_buffers.buffer_len_addr(),
+                &serial_length_bytes,
+            )?;
+
+            // debug!("SYNCED ENGINE STATE");
+        }
+
+        /// END
         // for &num in &self.dmx {
         //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
         // }
@@ -283,7 +324,6 @@ impl Plugin {
         // let dmx_array_offset = 0x20000; // TODO: make this offset a const.
 
         // Call the function with the pointer and length
-
         func.call(
             &mut self.wasm_state.store,
             (

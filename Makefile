@@ -1,5 +1,5 @@
 DIR := ${CURDIR}
-VERSION = 0.2.0
+VERSION = 0.3.0
 BUILD_OUTPUT_DIR = blaulicht-dist
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \

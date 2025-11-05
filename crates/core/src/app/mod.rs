@@ -132,6 +132,10 @@ pub struct BlaulichtApp {
 
     animation_time: f32,
 
+    // Spectrogram smooth scrolling
+    spectro_scroll_px_offset: f32,
+    spectro_last_instant: Instant,
+
     pub data: AppStateWrapper,
 
     // recv: Receiver<UnifiedMessage>,
@@ -176,6 +180,7 @@ pub struct BlaulichtApp {
     reload_dialog_open: bool,
 
     confirm_shutdown_open: bool,
+    debug_open: bool,
 
     add_dmx_override_open: bool,
     add_dmx_override_uni: u16,
@@ -204,6 +209,9 @@ pub struct BlaulichtApp {
     new_fixture_name: String,
     new_fixture_uni: usize,
     new_fixture_addr: usize,
+    new_fixture_pos_x: usize,
+    new_fixture_pos_y: usize,
+    new_fixture_pos_z: usize,
 
     add_group_open: bool,
     delete_group_open: bool,
@@ -260,6 +268,8 @@ impl BlaulichtApp {
             ),
             frame_count: 0,
             animation_time: 0.0,
+            spectro_scroll_px_offset: 0.0,
+            spectro_last_instant: Instant::now(),
             data,
             // recv,
             // collector,
@@ -291,6 +301,7 @@ impl BlaulichtApp {
             add_animations_dialog_open: false,
             add_selected_animation: None,
             confirm_shutdown_open: false,
+            debug_open: false,
             popup: None,
             popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
@@ -318,6 +329,9 @@ impl BlaulichtApp {
             new_fixture_name: String::new(),
             new_fixture_addr: 0,
             new_fixture_uni: 0,
+            new_fixture_pos_x: 0,
+            new_fixture_pos_y: 0,
+            new_fixture_pos_z: 0,
             add_group_open: false,
             delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),

@@ -1,8 +1,9 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::RwLockWriteGuard,
+    sync::{Arc, Mutex, RwLockWriteGuard},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -17,8 +18,22 @@ pub struct Config {
     pub port: u16,
     pub default_audio_device: Option<String>,
     pub stream: StreamConfig,
+    #[serde(default = "default_spectrogram_window_seconds")]
+    pub spectrogram_window_seconds: u64,
+    #[serde(default = "default_spectrogram_refresh_hz")]
+    pub spectrogram_refresh_hz: u32,
     pub plugins: Vec<PluginConfig>,
     pub last_open_showfile: Option<PathBuf>,
+    #[serde(default)]
+    pub plugin_state: HashMap<String, String>,
+}
+
+fn default_spectrogram_window_seconds() -> u64 {
+    120
+}
+
+fn default_spectrogram_refresh_hz() -> u32 {
+    60
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -31,6 +46,7 @@ pub struct PluginConfig {
 pub fn read_showfile(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<()> {
     debug!("Attempting to read showfile from {file:?}...");
 
@@ -39,8 +55,12 @@ pub fn read_showfile(
     let mut buffer = vec![0; metadata.len() as usize];
     f.read(&mut buffer)?;
 
-    match postcard::from_bytes(&buffer) {
+    match postcard::from_bytes::<blaulicht_shared::EngineState>(&buffer) {
         Ok(de) => {
+            {
+                let mut storage = plugin_state_storage.lock().unwrap();
+                *storage = de.plugin_state.clone();
+            }
             dmx.load_showfile(de);
             Ok(())
         }
@@ -59,12 +79,15 @@ impl Default for Config {
                 gravity: Some(100.0),
                 ..Default::default()
             },
+            spectrogram_window_seconds: default_spectrogram_window_seconds(),
+            spectrogram_refresh_hz: default_spectrogram_refresh_hz(),
             plugins: vec![PluginConfig {
                 file_path: "./plugins/hello_world.wasm".to_string(),
                 enabled: false,
                 enable_watcher: false,
             }],
             last_open_showfile: None,
+            plugin_state: HashMap::new(),
         }
     }
 }

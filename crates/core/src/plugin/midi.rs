@@ -36,7 +36,7 @@ pub struct MidiManager {
 struct MidiDeviceHandle {
     device_name: String,
     device_id: u8,
-    output: MidiOutputConnection,
+    output: Option<MidiOutputConnection>,
     input: MidiInputConnection<()>,
 }
 
@@ -55,6 +55,22 @@ impl MidiManager {
             to_manager_receiver: midi_out_receiver,
             to_plugins_sender,
         }
+    }
+
+    pub fn enumerate_devices() -> Result<Vec<String>, MidiError> {
+        let midi_in = MidiInput::new("device_enumerator")
+            .map_err(|e| MidiError::Other(e.to_string()))?;
+        
+        let in_ports = midi_in.ports();
+        let mut device_names = Vec::new();
+        
+        for port in &in_ports {
+            if let Ok(name) = midi_in.port_name(port) {
+                device_names.push(name);
+            }
+        }
+        
+        Ok(device_names)
     }
 
     pub fn request_device(&mut self, device_name: &str) -> Option<u8> {
@@ -118,6 +134,7 @@ impl MidiManager {
                 .map_err(|e| MidiError::Other(e.to_string()))?
         );
 
+        info!("[MIDI-IN] About to call midi_in.connect()...");
         let send = self.midi_in_sender.clone();
 
         let _conn_in = midi_in
@@ -125,17 +142,23 @@ impl MidiManager {
                 in_port,
                 format!("{device_name}_listener").as_str(),
                 move |_, message, _| {
-                    // println!("MIDI received: {message:?}");
-                    if message.len() != 3 {
-                        // TODO: handle this more gracefully.
-                        panic!("BUG: weird message: {message:?}");
-                    }
+                    // Handle different MIDI message lengths
+                    // 2-byte messages: Program Change (0xC0-0xCF), Channel Pressure (0xD0-0xDF)
+                    // 3-byte messages: Note On/Off, Control Change, Pitch Bend, etc.
+                    let (data0, data1) = match message.len() {
+                        2 => (message[1], 0),
+                        3 => (message[1], message[2]),
+                        _ => {
+                            warn!("Unexpected MIDI message length: {}, message: {:?}", message.len(), message);
+                            return;
+                        }
+                    };
 
                     send.send(MidiEvent {
                         device: device_id as u8,
                         status: message[0],
-                        data0: message[1],
-                        data1: message[2],
+                        data0,
+                        data1,
                     })
                     .map_err(|e| MidiError::Other(e.to_string()))
                     .unwrap();
@@ -144,25 +167,43 @@ impl MidiManager {
             )
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
-        let midi_out = MidiOutput::new("midi-sender").unwrap();
-        // midi_out.ignore(Ignore::None);
-        let out_ports = midi_out.ports();
-        let out_port = out_ports
-            .iter()
-            .find(|p| midi_out.port_name(p).unwrap().contains(device_name))
-            .ok_or("MIDI device not found")
-            .map_err(|_| MidiError::DeviceNotFound)?;
+        info!("[MIDI-IN] Successfully connected input!");
 
-        trace!(
-            "[MIDI-OUT] Connecting to: {}",
-            midi_out
-                .port_name(out_port)
-                .map_err(|e| MidiError::Other(e.to_string()))?
-        );
+        let conn_out = match MidiOutput::new("midi-sender") {
+            Ok(midi_out) => {
+                let out_ports = midi_out.ports();
+                let out_port = out_ports
+                    .iter()
+                    .find(|p| midi_out.port_name(p).unwrap().contains(device_name));
 
-        let conn_out = midi_out
-            .connect(out_port, "midi-sender")
-            .map_err(|e| MidiError::Other(e.to_string()))?;
+                match out_port {
+                    Some(port) => {
+                        trace!(
+                            "[MIDI-OUT] Connecting to: {}",
+                            midi_out
+                                .port_name(port)
+                                .map_err(|e| MidiError::Other(e.to_string()))?
+                        );
+
+                        match midi_out.connect(port, "midi-sender") {
+                            Ok(conn) => Some(conn),
+                            Err(e) => {
+                                warn!("[MIDI-OUT] Failed to connect: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    None => {
+                        debug!("[MIDI-OUT] No output port found for device: {}", device_name);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("[MIDI-OUT] Failed to create MIDI output: {}", e);
+                None
+            }
+        };
 
         self.connection_map.insert(
             device_name.to_string(),
@@ -210,10 +251,13 @@ impl MidiManager {
                         return Err(MidiError::DeviceNotFound);
                     };
 
-                    output_device
-                        .output
-                        .send(&[sig.status, sig.data0, sig.data1])
-                        .unwrap();
+                    if let Some(ref mut output) = output_device.output {
+                        output
+                            .send(&[sig.status, sig.data0, sig.data1])
+                            .unwrap();
+                    } else {
+                        debug!("MIDI output not available for device {}", sig.device);
+                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {

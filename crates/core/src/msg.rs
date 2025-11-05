@@ -58,6 +58,11 @@ pub enum SystemMessage {
     AudioDevicesView(Vec<(HostId, Device)>),
     // DMX.
     DMX(Box<[u8; 513]>),
+    // Plugin state.
+    SavePluginState {
+        plugin_name: String,
+        state_data: String,
+    },
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -80,6 +85,7 @@ pub struct MatrixEvent {
     pub y: u8,
     pub value: bool,
 }
+
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct MidiEvent {

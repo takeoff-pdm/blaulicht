@@ -90,6 +90,7 @@ impl Fixture {
 pub struct Position {
     pub x: usize,
     pub y: usize,
+    pub z: usize,
 }
 
 impl From<(usize, usize)> for Position {
@@ -97,6 +98,7 @@ impl From<(usize, usize)> for Position {
         Self {
             x: value.0,
             y: value.1,
+            z: 0,
         }
     }
 }

@@ -2,9 +2,13 @@ use std::u8;
 
 use crate::{
     blaulicht::{self},
-    error::{MidiError, Result},
+    error::{IoError, Result},
     BufferSource,
 };
+
+pub fn enumerate_devices() -> Vec<String> {
+    blaulicht::bl_enumerate_midi_devices_safe()
+}
 
 const MIDI_BUFFER_LEN: usize = 256;
 type MidiBufferT = u32;
@@ -53,7 +57,7 @@ impl MidiConnection {
         let device_id_or_error_code = blaulicht::bl_open_midi_device_safe(device_name);
 
         if device_id_or_error_code == MIDI_DEVICE_NOT_FOUND {
-            return Err(MidiError::DeviceNotFound(device_name.to_string()).into());
+            return Err(IoError::MidiDeviceNotFound(device_name.to_string()).into());
         }
 
         Ok(Self {

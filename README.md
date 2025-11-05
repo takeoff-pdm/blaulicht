@@ -1,89 +1,155 @@
-# eframe template
+# Blaulicht
 
-[![dependency status](https://deps.rs/repo/github/emilk/eframe_template/status.svg)](https://deps.rs/repo/github/emilk/eframe_template)
-[![Build Status](https://github.com/emilk/eframe_template/workflows/CI/badge.svg)](https://github.com/emilk/eframe_template/actions?workflow=CI)
+A real-time DMX lighting control system with plugin support, built in Rust.
 
-This is a template repo for [eframe](https://github.com/emilk/egui/tree/master/crates/eframe), a framework for writing apps using [egui](https://github.com/emilk/egui/).
+## Features
 
-The goal is for this to be the simplest way to get started writing a GUI app in Rust.
+### Core Functionality
+- **DMX512 control** via Art-Net or USB interfaces
+- **Real-time audio analysis** with FFT for reactive lighting
+- **Scene management** with smooth transitions
+- **WebSocket API** for external control
+- **Plugin system** with WASM-based plugins
+- **Web-based UI** for remote control
 
-You can compile your app natively or for the web, and share it using Github Pages.
+### Built-in Plugins
 
-## Getting started
+#### 3D Visualizer
+Real-time 3D visualization of your lighting rig:
+- Interactive 3D scene with perspective camera
+- Solid fixture rendering with volumetric beams
+- 6-axis control: translate (X/Y/Z) and rotate (X/Y/Z)
+- Real-time pan/tilt and color visualization
+- Dynamic floor lighting from fixture beams
+- See [Visualizer README](crates/plugins/visualizer/README.md)
 
-Start by clicking "Use this template" at https://github.com/emilk/eframe_template/ or follow [these instructions](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template).
+#### Drums Sequencer
+MIDI-triggered scene sequencer:
+- Connect to any MIDI device
+- Multiple sequencers with custom names
+- Scene-based step sequencing
+- Multi-note triggers per sequencer
+- See [Drums Plugin README](crates/plugins/drums/README.md)
 
-Change the name of the crate: Choose a good name for your project, and change the name to it in:
-* `Cargo.toml`
-    * Change the `package.name` from `eframe_template` to `your_crate`.
-    * Change the `package.authors`
-* `main.rs`
-    * Change `eframe_template::TemplateApp` to `your_crate::TemplateApp`
-* `index.html`
-    * Change the `<title>eframe template</title>` to `<title>your_crate</title>`. optional.
-* `assets/sw.js`
-  * Change the `'./eframe_template.js'` to `./your_crate.js` (in `filesToCache` array)
-  * Change the `'./eframe_template_bg.wasm'` to `./your_crate_bg.wasm` (in `filesToCache` array)
+#### MIDI Controllers
+- **Korg nanoKONTROL** mapping plugin for fader/knob control
 
-Alternatively, you can run `fill_template.sh` which will ask for the needed names and email and perform the above patches for you. This is particularly useful if you clone this repository outside GitHub and hence cannot make use of its
-templating function.
+### Fixture Support
+- Moving heads with pan/tilt
+- RGB/RGBW lights
+- Dimmers
+- Extensible fixture definitions
 
-### Learning about egui
+## Architecture
 
-`src/app.rs` contains a simple example app. This is just to give some inspiration - most of it can be removed if you like.
+```
+blaulicht/
+├── crates/
+│   ├── core/          # Main engine and UI
+│   ├── shared/        # Common types and fixtures
+│   ├── plugin_framework/  # WASM plugin API
+│   └── plugins/       # Plugin implementations
+│       ├── visualizer/       # 3D visualization
+│       ├── drums/            # MIDI sequencer
+│       └── midi_korg_nano_kontrol/  # Controller mapping
+```
 
-The official egui docs are at <https://docs.rs/egui>. If you prefer watching a video introduction, check out <https://www.youtube.com/watch?v=NtUkr_z7l84>. For inspiration, check out the [the egui web demo](https://emilk.github.io/egui/index.html) and follow the links in it to its source code.
+## Building
 
-### Testing locally
+### Prerequisites
+- Rust nightly toolchain
+- For WASM plugins: `wasm32-unknown-unknown` target
 
-Make sure you are using the latest version of stable rust by running `rustup update`.
+### Build Steps
 
-`cargo run --release`
+```bash
+# Install WASM target
+rustup target add wasm32-unknown-unknown
 
-On Linux you need to first run:
+# Build main application
+cargo build --release
 
-`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
+# Build all plugins
+cd crates/plugins
+make
+```
 
-On Fedora Rawhide you need to run:
+## Running
 
-`dnf install clang clang-devel clang-tools-extra libxkbcommon-devel pkg-config openssl-devel libxcb-devel gtk3-devel atk fontconfig-devel`
+```bash
+# Start the application
+cargo run --release
 
-### Web Locally
+# Or run the built binary
+./target/release/blaulicht
+```
 
-You can compile your app to [WASM](https://en.wikipedia.org/wiki/WebAssembly) and publish it as a web page.
+The web UI will be available at the configured port (default: http://localhost:8080).
 
-We use [Trunk](https://trunkrs.dev/) to build for web target.
-1. Install the required target with `rustup target add wasm32-unknown-unknown`.
-2. Install Trunk with `cargo install --locked trunk`.
-3. Run `trunk serve` to build and serve on `http://127.0.0.1:8080`. Trunk will rebuild automatically if you edit the project.
-4. Open `http://127.0.0.1:8080/index.html#dev` in a browser. See the warning below.
+## Configuration
 
-> `assets/sw.js` script will try to cache our app, and loads the cached version when it cannot connect to server allowing your app to work offline (like PWA).
-> appending `#dev` to `index.html` will skip this caching, allowing us to load the latest builds during development.
+Edit `config.toml` to configure:
+- DMX output (Art-Net address, universe)
+- Audio input device
+- Network settings
+- Default scenes
+- Plugin paths
 
-### Web Deploy
-1. Just run `trunk build --release`.
-2. It will generate a `dist` directory as a "static html" website
-3. Upload the `dist` directory to any of the numerous free hosting websites including [GitHub Pages](https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
-4. we already provide a workflow that auto-deploys our app to GitHub pages if you enable it.
-> To enable Github Pages, you need to go to Repository -> Settings -> Pages -> Source -> set to `gh-pages` branch and `/` (root).
->
-> If `gh-pages` is not available in `Source`, just create and push a branch called `gh-pages` and it should be available.
->
-> If you renamed the `main` branch to something else (say you re-initialized the repository with `master` as the initial branch), be sure to edit the github workflows `.github/workflows/pages.yml` file to reflect the change
-> ```yml
-> on:
->   push:
->     branches:
->       - <branch name>
-> ```
+## Plugin Development
 
-You can test the template app at <https://emilk.github.io/eframe_template/>.
+Plugins are built as WASM modules using the Blaulicht plugin framework.
 
-## Updating egui
+See the [plugin framework documentation](crates/plugin_framework/) and example plugins for details.
 
-As of 2023, egui is in active development with frequent releases with breaking changes. [eframe_template](https://github.com/emilk/eframe_template/) will be updated in lock-step to always use the latest version of egui.
+### Basic Plugin Structure
 
-When updating `egui` and `eframe` it is recommended you do so one version at the time, and read about the changes in [the egui changelog](https://github.com/emilk/egui/blob/master/CHANGELOG.md) and [eframe changelog](https://github.com/emilk/egui/blob/master/crates/eframe/CHANGELOG.md).
-# rave
-# blaulicht
+```rust
+use blaulicht_plugin_framework::prelude::*;
+
+pub struct MyPlugin {
+    // plugin state
+}
+
+impl Plugin for MyPlugin {
+    fn tick(&mut self, input: &TickInput) {
+        // Called every frame
+    }
+    
+    fn ui(&mut self) {
+        // Render UI using egui-style API
+    }
+    
+    fn control_event(&mut self, event: &ControlEvent) {
+        // Handle UI and MIDI events
+    }
+}
+```
+
+## API
+
+### WebSocket API
+Connect to `ws://localhost:8080/ws` for real-time control:
+- Scene activation
+- Fixture control
+- State queries
+- Event streaming
+
+### REST API
+- `GET /api/state` - Current system state
+- `POST /api/scene/{id}` - Activate scene
+- `GET /api/fixtures` - List fixtures
+
+## License
+
+Dual licensed under MIT or Apache-2.0.
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+Areas for contribution:
+- New fixture definitions
+- Plugin development
+- UI improvements
+- Documentation
+- Bug fixes

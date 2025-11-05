@@ -4,30 +4,31 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use blaulicht_shared::{CollectedAudioSnapshot};
+use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    audio::defs::AudioThreadControlSignal, config::{Config, PluginConfig}, dmx::EngineState, event::{SystemEventBusConnection, SystemEventBusConnectionInst}, msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage}, plugin::Plugin
-};
 use crate::ui_ops::WasmUiOp;
+use crate::{
+    audio::defs::AudioThreadControlSignal,
+    config::{Config, PluginConfig},
+    dmx::EngineState,
+    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage},
+    plugin::Plugin,
+};
 
+#[derive(Clone)]
 pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
 
     pub system_message_receiver: Receiver<SystemMessage>,
     pub system_message_sender: Sender<SystemMessage>,
-    // pub signal_receiver: Receiver<Signal>,
 
-    // pub to_frontend_consumers:
-    //     Arc<Mutex<HashMap<String, crossbeam_channel::Sender<UnifiedMessage>>>>,
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
-    // System event bus connection.
     pub event_bus_connection: SystemEventBusConnectionInst,
 
-    // Real state.
     pub state: Arc<AppState>,
 }
 
@@ -44,6 +45,42 @@ impl AudioState {
     }
 }
 
+/// Rolling buffer of recent spectra for a live spectrogram.
+pub struct AudioSpectrogram {
+    /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
+    /// Contains bins. A bin is just a averaged part of the frequency space.
+    pub columns: VecDeque<Vec<u8>>,
+    /// Maximum number of time columns to keep.
+    pub max_columns: usize,
+    /// Number of frequency bins per column.
+    pub bin_count: usize,
+}
+
+impl AudioSpectrogram {
+    pub fn new(max_columns: usize, bin_count: usize) -> Self {
+        Self {
+            columns: VecDeque::with_capacity(max_columns),
+            max_columns,
+            bin_count,
+        }
+    }
+
+    pub fn push_column(&mut self, mut col: Vec<u8>) {
+        // Ensure correct height; pad or truncate as needed.
+        if col.len() != self.bin_count {
+            // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
+            // This can happen due to rounding issues.
+            col.resize(self.bin_count, 0);
+        }
+        // println!("{} vs {}", self.columns.len(), self.max_columns);
+        if self.columns.len() >= self.max_columns {
+            self.columns.pop_front();
+            // println!("too many columns, reducing...");
+        }
+        self.columns.push_back(col);
+    }
+}
+
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
@@ -51,10 +88,15 @@ pub struct AppState {
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; 2],
     pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
+    pub audio_spectrogram: RwLock<AudioSpectrogram>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
+    // Back buffer for plugin UI ops. Plugins write here; UI reads from `plugin_ui_ops`.
+    pub plugin_ui_ops_back: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     pub plugin_ui_visibility: RwLock<HashMap<u8, bool>>, // per-plugin UI window visibility
+    pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>, // (plugin_id, tabs_id) -> tab_id
+    pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
 }
 
 pub struct DmxBuffer {
@@ -83,8 +125,10 @@ impl AppState {
             .collect();
 
         let mut plugin_ui_visibility = HashMap::new();
+        let mut plugin_ui_popped_out = HashMap::new();
         for (i, _) in plugins.iter().enumerate() {
             plugin_ui_visibility.insert(i as u8, false);
+            plugin_ui_popped_out.insert(i as u8, false);
         }
 
         Self {
@@ -94,10 +138,15 @@ impl AppState {
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            // Default: ~6.6 seconds history at 60 FPS if filled every frame; actual fill rate ~20 Hz.
+            audio_spectrogram: RwLock::new(AudioSpectrogram::new(4, 128)),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
             plugin_ui_ops: RwLock::new(HashMap::new()),
+            plugin_ui_ops_back: RwLock::new(HashMap::new()),
             plugin_ui_visibility: RwLock::new(plugin_ui_visibility),
+            plugin_ui_popped_out: RwLock::new(plugin_ui_popped_out),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
+            plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

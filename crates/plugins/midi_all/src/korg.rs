@@ -1,18 +1,79 @@
 use std::collections::HashSet;
-use std::{fmt::Display, mem::MaybeUninit};
-
-use blaulicht_plugin_framework as bpf;
-use blaulicht_plugin_framework::prelude::println;
-use blaulicht_plugin_framework::{MidiConnection, MidiEvent, Plugin};
-use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventMessage, TickInput};
-use map_range::MapRange;
+use blaulicht_plugin_framework::MidiEvent;
+use blaulicht_plugin_framework::{self as bpf, MidiConnection, println};
+use blaulicht_shared::{ControlEvent, ControlEventMessage, TickInput};
 
 const SELECT_BUTTON_STARTER: u8 = 46;
 const COUNT_SELECT_BUTTONS: u8 = 8;
 
 const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 12];
 
-impl KorgPlugin {
+//
+// Korg State.
+//
+
+pub struct KorgSubSystem {
+    last_state_render: u32,
+    midi_handle: MidiConnection,
+    active_groups: HashSet<u8>,
+    last_sync: u32,
+
+    fader_vals: [u8; COUNT_SELECT_BUTTONS as usize],
+    knob_vals: [u8; COUNT_SELECT_BUTTONS as usize],
+}
+
+impl Default for KorgSubSystem {
+    fn default() -> Self {
+        Self {
+            last_state_render: 0,
+            midi_handle: unsafe { MidiConnection::dummy() },
+            active_groups: HashSet::new(),
+            last_sync: 0,
+            fader_vals: [0; COUNT_SELECT_BUTTONS as usize],
+            knob_vals: [0; COUNT_SELECT_BUTTONS as usize],
+        }
+    }
+}
+
+//
+// Begin public impls.
+//
+
+impl KorgSubSystem {
+    pub fn init(&mut self) {
+        println!("[KORG] initializing...");
+
+        let name = "nanoKONTROL Studio";
+        let midi_handle = MidiConnection::open(&name).unwrap();
+        println!(
+            "Got MIDI handle to device! HANDLE ID: {}",
+            midi_handle.get_meta().device_id
+        );
+
+        self.midi_handle = midi_handle;
+
+        self.nano_init();
+        println!("[KORG] done.");
+    }
+
+    pub fn run(&mut self, input: TickInput) {
+        self.sync(input.clock);
+
+        let res = self.midi_handle.poll();
+        self.nano_in(res);
+        self.nano_out(&input.events.events);
+
+        for ev in &input.events.events {
+            println!("---> KORG EVENT: {ev:?}");
+        }
+    }
+}
+
+//
+// Begin private impls.
+//
+
+impl KorgSubSystem {
     fn nano_in(&mut self, ev: Vec<MidiEvent>) {
         // self.midi_handle.send(0x90, 46, 127);
 
@@ -50,7 +111,7 @@ impl KorgPlugin {
                     bpf::send_event(msg);
                 }
                 // Faders
-                (176, fader_byte, value) if FADER_BYTES.contains(&fader_byte)  => {
+                (176, fader_byte, value) if FADER_BYTES.contains(&fader_byte) => {
                     let index = FADER_BYTES.iter().position(|b| *b == fader_byte).unwrap();
                     self.fader_vals[index] = value;
                     println!("Fader values: {:?}", self.fader_vals);
@@ -129,69 +190,3 @@ impl KorgPlugin {
         }
     }
 }
-
-pub struct KorgPlugin {
-    last_state_render: u32,
-    midi_handle: MidiConnection,
-    active_groups: HashSet<u8>,
-    last_sync: u32,
-
-    fader_vals: [u8; COUNT_SELECT_BUTTONS as usize],
-    knob_vals: [u8; COUNT_SELECT_BUTTONS as usize],
-}
-
-impl Default for KorgPlugin {
-    fn default() -> Self {
-        Self {
-            last_state_render: 0,
-            midi_handle: unsafe { MidiConnection::dummy() },
-            active_groups: HashSet::new(),
-            last_sync: 0,
-            fader_vals: [0; COUNT_SELECT_BUTTONS as usize],
-            knob_vals: [0; COUNT_SELECT_BUTTONS as usize],
-        }
-    }
-}
-
-impl Plugin for KorgPlugin {
-    fn initialize(&mut self, input: TickInput) {
-        println!("Initializing...");
-
-        // // Get state dump.
-        let state = bpf::get_dmx();
-        println!("STATE: {state:?}");
-
-        //
-        // Get MIDI handle.
-        //
-
-        let name = "nanoKONTROL Studio";
-        let midi_handle = MidiConnection::open(&name).unwrap();
-        println!(
-            "Got MIDI handle to device! HANDLE ID: {}",
-            midi_handle.get_meta().device_id
-        );
-
-        self.midi_handle = midi_handle;
-
-        self.nano_init();
-    }
-
-    fn run(&mut self, input: TickInput) {
-        self.sync(input.clock);
-
-        let res = self.midi_handle.poll();
-        self.nano_in(res);
-        self.nano_out(&input.events.events);
-
-        for ev in &input.events.events {
-            println!("---> KORG EVENT: {ev:?}");
-        }
-    }
-}
-
-#[no_mangle]
-extern "C" fn main() {
-    bpf::hook_plugin(Box::new(KorgPlugin::default()));
-}
-

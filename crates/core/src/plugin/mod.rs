@@ -1,3 +1,11 @@
+use anyhow::{anyhow, Context};
+use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, EngineState, LogLevel};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
+use log::{debug, info, trace};
+use notify::{
+    event::{DataChange, ModifyKind},
+    Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use std::{
     borrow::Cow,
     cell::{RefCell, UnsafeCell},
@@ -10,28 +18,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context};
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, EngineState, LogLevel};
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use log::{debug, info, trace};
-use notify::{
-    event::{DataChange, ModifyKind},
-    Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-};
-
 #[cfg(feature = "wasmtime")]
 use wasmtime::{Instance, Memory, Store};
 
 use crate::{
     config::PluginConfig,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::SystemMessage,
-    msg::{FromFrontend, MidiEvent},
-    plugin::{midi::MidiManager, wasm::AddrDescriptor},
+    msg::{FromFrontend, MidiEvent, SystemMessage},
+    plugin::{midi::MidiManager, serial::SerialManager, wasm::AddrDescriptor},
     state::{AppState, PluginFlags},
 };
 
 pub mod midi;
+pub mod serial;
 mod tick;
 mod wasm;
 
@@ -47,6 +46,7 @@ pub struct PluginManager {
 
     // todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
     midi_manager_ref: Arc<Mutex<MidiManager>>,
+    serial_manager_ref: Arc<Mutex<SerialManager>>,
 
     event_bus: SystemEventBusConnectionInst,
 
@@ -68,6 +68,7 @@ pub struct Plugin {
 
     // DANGER: this is not always populated.
     midi_buffers: AddrDescriptor,
+    serial_buffers: AddrDescriptor,
     state_buffers: AddrDescriptor,
 
     // When was the last time the engine state was written into that plugin?
@@ -85,6 +86,7 @@ impl PluginManager {
         from_midi_manager: Receiver<MidiEvent>,
         system_out: Sender<SystemMessage>,
         midi_manager_ref: Arc<Mutex<MidiManager>>,
+        serial_manager_ref: Arc<Mutex<SerialManager>>,
         event_bus: SystemEventBusConnectionInst,
         app_state_ref: Arc<AppState>,
     ) -> Self {
@@ -97,9 +99,15 @@ impl PluginManager {
             from_midi_manager,
             system_out,
             midi_manager_ref,
+            serial_manager_ref,
             event_bus,
             state_ref: app_state_ref,
         }
+    }
+
+    pub fn load_plugin_states(&mut self, plugin_state: HashMap<String, String>) {
+        let mut storage = self.state_ref.plugin_state_storage.lock().unwrap();
+        *storage = plugin_state;
     }
 
     // pub fn set_plugin_rnabl(&mut self, id: u8, flag: PluginFlag) {
@@ -139,7 +147,7 @@ impl PluginManager {
         // Only return on serious errors.
         println!("initial tick");
         if self
-            .tick(CollectedAudioSnapshot::default(), &[], None)
+            .tick(CollectedAudioSnapshot::default(), &[], vec![], None)
             .is_err()
         {
             self.system_out
