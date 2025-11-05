@@ -1,5 +1,5 @@
 use anyhow::{bail, Context};
-use blaulicht_core::app::{BlaulichtApp, PopupButtonSpec, PopupSpec};
+use blaulicht_core::app::{BlaulichtApp, PopupSpec};
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::msg::{FromFrontend, SystemMessage};

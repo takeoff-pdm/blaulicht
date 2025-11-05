@@ -2,6 +2,7 @@ use crate::{RGBColor, fixture::state::FixtureState};
 
 use super::Fixture;
 use bincode::{Decode, Encode};
+use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
@@ -55,6 +56,24 @@ pub enum Light {
     // 2: Cold White
     //
     VaryTechVP1,
+    //
+    // 0: Master Dimmer
+    // 1: Strobe
+    // 2: Macro
+    // 3: Macro Speed
+    // 4: Red
+    // 5: Green
+    // 6: Blue
+    // 7: White
+    //
+    LightMaxxVegaSilentPar2Quad,
+    //
+    // 0: Red
+    // 1: Green
+    // 2: Blue
+    // 3: Dimmer
+    // 4: Strobe (value 011-255)
+    LEDPar64RGBSpot5Chan,
 }
 
 impl Display for Light {
@@ -72,6 +91,8 @@ impl Light {
             Light::AdjMegaHexPar => 7,
             Light::LiteCraftMiniParAT10 => 8,
             Light::VaryTechVP1 => 4,
+            Light::LightMaxxVegaSilentPar2Quad => 8,
+            Light::LEDPar64RGBSpot5Chan => 5,
         }
     }
 
@@ -113,9 +134,34 @@ impl Light {
             }
             Light::VaryTechVP1 => {
                 dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = 0; // strobe
+                dmx[this.start_addr + 1] = state.strobe_speed; // strobe
                 dmx[this.start_addr + 2] = 127; // warm white
                 dmx[this.start_addr + 3] = 127; // cold white
+            }
+            Light::LightMaxxVegaSilentPar2Quad => {
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = state.strobe_speed;
+                dmx[this.start_addr + 2] = 0;
+                dmx[this.start_addr + 3] = 0; // MACRO
+                dmx[this.start_addr + 4] = color.r;
+                dmx[this.start_addr + 5] = color.g;
+                dmx[this.start_addr + 6] = color.b;
+                // WHITE override.
+                dmx[this.start_addr + 7] = if color.r == 255 && color.g == 255 && color.b == 255 {
+                    255
+                } else {
+                    0
+                };
+            }
+            Light::LEDPar64RGBSpot5Chan => {
+                dmx[this.start_addr + 0] = color.r;
+                dmx[this.start_addr + 1] = color.g;
+                dmx[this.start_addr + 2] = color.b;
+                dmx[this.start_addr + 3] = state.alpha;
+                dmx[this.start_addr + 4] = match state.strobe_speed {
+                    0 => 0,
+                    v => v.map_range(0..255, 11..255),
+                };
             }
         }
     }
