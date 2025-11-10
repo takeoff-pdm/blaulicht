@@ -364,9 +364,12 @@ impl VisualizerPlugin {
     }
 
     /// Processes UI interaction events (clicks, drags, pinches)
-    fn handle_events(&mut self, events: &[ControlEventMessage]) {
+    fn handle_events(&mut self, events: &[ControlEventMessage], pid:u8) {
         for e in events {
-            if let ControlEvent::PluginUi(ui_ev) = e.body() {
+            if let ControlEvent::PluginUi(ui_ev, id) = e.body() {
+                if id != pid {
+                    continue;
+                }
                 match ui_ev {
                     PluginUiEvent::Checkbox { id, checked } if id == 1 => {
                         self.config.show_labels = checked;
@@ -1026,7 +1029,7 @@ impl Plugin for VisualizerPlugin {
         let state = bpf::get_dmx();
         self.update_fixtures(&state);
         
-        self.handle_events(&input.events.events);
+        self.handle_events(&input.events.events, input.id);
         self.draw_ui();
     }
 }

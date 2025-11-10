@@ -34,6 +34,43 @@ pub struct ActiveAnimation {
     pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
 }
 
+impl ActiveAnimation {
+    pub fn reset(&mut self) {
+        for t in self.fixture_timers.iter_mut() {
+            *t.1 = AnimationTimerState::default()
+        }
+    }
+
+    pub fn set_timers(&mut self, animation_sync: SyncMode) {
+        self.enabled = true;
+
+        // TIMING mode: spread or sync the timing.
+        let amount = self.fixture_timers.len();
+        match animation_sync {
+            SyncMode::Synced => {
+                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
+                    timer_state.last_tick_time = 0;
+                    timer_state.timer = 0;
+                }
+            }
+            SyncMode::StretchedEven => {
+                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
+                    timer_state.last_tick_time = 0;
+                    timer_state.timer = ((360.0 / amount as f32) * counter as f32) as u64;
+
+                    println!("timer: {}", timer_state.timer);
+                }
+            }
+            SyncMode::StretchedHalfHalf => {
+                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
+                    timer_state.last_tick_time = 0;
+                    timer_state.timer = (180 * (counter % 2)) as u64;
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq, Eq, EnumIter)]
 pub enum SyncMode {
     Synced,

@@ -8,11 +8,12 @@ use crate::{
 use blaulicht_shared::{FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode};
 use egui::Color32;
 use egui_file::FileDialog;
+use pages::ShowUI;
 use std::time::{Duration, Instant};
 use strum::EnumIter;
 
 mod components;
-mod pages;
+pub mod pages;
 mod theme;
 mod ui;
 
@@ -40,6 +41,7 @@ pub enum AppPage {
     System,
     Audio,
     FixturesSetup,
+    Show,
     FixturesPerformance,
     Animations,
 }
@@ -51,6 +53,7 @@ impl AppPage {
             AppPage::System => egui_phosphor::regular::CPU,
             AppPage::Audio => egui_phosphor::regular::MICROPHONE,
             AppPage::FixturesSetup => egui_phosphor::regular::WRENCH,
+            AppPage::Show => egui_phosphor::regular::FILM_REEL,
             AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,
             AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
         }
@@ -62,6 +65,7 @@ impl AppPage {
             AppPage::System => "Sys",
             AppPage::Audio => "Audio",
             AppPage::FixturesSetup => "F. Setup",
+            AppPage::Show => "F. Show",
             AppPage::FixturesPerformance => "F. Perf",
             AppPage::Animations => "Anim",
         }
@@ -159,6 +163,9 @@ pub struct BlaulichtApp {
     new_scene_name: String,
     new_scene_dialog_open: bool,
     clone_scene_dialog_open: bool,
+    rename_scene_dialog_open: bool,
+    rename_scene_name: String,
+    delete_scene_dialog_open: bool,
     current_scene_changeset_dialog_open: bool,
     current_scene_animations_dialog_open: bool,
     add_animations_dialog_open: bool,
@@ -216,6 +223,8 @@ pub struct BlaulichtApp {
     add_group_open: bool,
     delete_group_open: bool,
     new_group_name: String,
+
+    show_ui: ShowUI,
 }
 
 impl BlaulichtApp {
@@ -296,6 +305,9 @@ impl BlaulichtApp {
             new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
             new_scene_dialog_open: false,
             clone_scene_dialog_open: false,
+            rename_scene_dialog_open: false,
+            rename_scene_name: String::new(),
+            delete_scene_dialog_open: false,
             current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
             add_animations_dialog_open: false,
@@ -336,6 +348,7 @@ impl BlaulichtApp {
             delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             reload_dialog_open: false,
+            show_ui: ShowUI::default(),
         }
     }
 }

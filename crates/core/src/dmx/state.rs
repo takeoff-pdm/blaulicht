@@ -6,6 +6,7 @@ use blaulicht_shared::{
         FixtureType,
     },
     scene::{EngineSink, FixtureSelection, Scene},
+    view::View,
     ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser,
     AnimationSpeedModifier, AnimationTimerState, EngineGroups, EngineSelection, FixtureProperty,
     MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, RGBColor, SyncMode,
@@ -222,6 +223,14 @@ impl<'engine> EngineState {
     pub fn clone_scene(&mut self, name: String) {
         self.0.clone_scene(name)
     }
+
+    pub fn rename_scene(&mut self, scene_id: u8, name: String) -> bool {
+        self.0.rename_scene(scene_id, name)
+    }
+
+    pub fn delete_scene(&mut self, scene_id: u8) -> bool {
+        self.0.delete_scene(scene_id)
+    }
 }
 
 // #[derive(Serialize, Deserialize, Debug)]
@@ -328,7 +337,15 @@ impl Default for EngineState {
             selection: Default::default(),
             selection_stack: VecDeque::new(),
             control_buffer: FixtureState::default(),
-            // active_animations: HashMap::new(),
+            views: hashmap! {
+                0 => View {
+                    name: "Default View".to_string(),
+                    base_scene: 0,
+                    overlays: vec![],
+                }
+            }
+            .into_iter()
+            .collect(),
             scenes: hashmap! {
                0 => Scene{
                    name: "Default Scene".to_string(),

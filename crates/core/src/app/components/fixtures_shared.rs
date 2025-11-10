@@ -366,6 +366,113 @@ impl BlaulichtApp {
         }
     }
 
+    pub fn render_rename_scene_dialog(&mut self, ctx: &Context) {
+        if self.rename_scene_dialog_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const SPACING: f32 = 16.0;
+            let size = egui::vec2(220.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+
+            if self.rename_scene_name.is_empty() {
+                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+                if let Some(scene) = dmx_engine.0.scenes.get(&dmx_engine.0.current_scene_focus) {
+                    self.rename_scene_name = scene.name.clone();
+                }
+            }
+
+            components::dialog(ctx, "Rename Scene", size, false, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::singleline(&mut self.rename_scene_name)
+                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                        );
+                    });
+
+                ui.add_space(SPACING);
+
+                let mut confirm_pressed = false;
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "OK", BUTTON_SIZE) {
+                        confirm_pressed = true;
+                    }
+
+                    if components::button(ui, true, "Cancel", BUTTON_SIZE) {
+                        self.rename_scene_dialog_open = false;
+                        self.rename_scene_name.clear();
+                    }
+                });
+
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        confirm_pressed = true;
+                    }
+                });
+
+                if confirm_pressed {
+                    let trimmed = self.rename_scene_name.trim();
+
+                    if !trimmed.is_empty() {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                        let scene_id = dmx_engine.0.current_scene_focus;
+
+                        if dmx_engine.rename_scene(scene_id, trimmed.to_string()) {
+                            self.rename_scene_name.clear();
+                            self.rename_scene_dialog_open = false;
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    pub fn render_delete_scene_dialog(&mut self, ctx: &Context) {
+        if self.delete_scene_dialog_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const WIDTH: f32 = 240.0;
+            const HEIGHT: f32 = 130.0;
+
+            let can_delete = {
+                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+                dmx_engine.0.scenes.len() > 1
+            };
+
+            components::dialog(
+                ctx,
+                "Delete Scene",
+                egui::vec2(WIDTH, HEIGHT),
+                false,
+                |ui| {
+                    ui.heading(RichText::new("Delete this scene?").strong());
+                    ui.add_space(12.0);
+
+                    if !can_delete {
+                        ui.label("At least one scene must remain.");
+                        ui.add_space(12.0);
+                    }
+
+                    ui.horizontal(|ui| {
+                        if can_delete {
+                            if components::button(ui, false, "Confirm", BUTTON_SIZE) {
+                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                                let scene_id = dmx_engine.0.current_scene_focus;
+
+                                if dmx_engine.delete_scene(scene_id) {
+                                    self.delete_scene_dialog_open = false;
+                                }
+                            }
+                        }
+
+                        if components::button(ui, true, "Cancel", BUTTON_SIZE) {
+                            self.delete_scene_dialog_open = false;
+                        }
+                    });
+                },
+            );
+        }
+    }
+
     pub fn group_selection(
         &mut self,
         groups: &EngineGroups,
@@ -792,6 +899,24 @@ impl BlaulichtApp {
                     ui.separator();
                     ui.add_space(3.0);
 
+                    // Focus slider.
+                    {
+                        let mut focus = buf.focus as f32;
+                        if ui
+                            .add(HFader::new(&mut focus, 0.0..=255.0).with_label("Focus"))
+                            .changed()
+                        {
+                            event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetFocus(focus as u8),
+                            ));
+                        };
+                    }
+
+                    ui.add_space(3.0);
+                    ui.separator();
+                    ui.add_space(3.0);
+
                     // Tilt slider.
                     {
                         let mut tilt = buf.orientation.tilt as f32;
@@ -920,7 +1045,7 @@ impl BlaulichtApp {
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
                 let number_of_items_total = dmx_engine.0.scenes.len();
-                const ITEMS_PER_PAGE: usize = 7;
+                const ITEMS_PER_PAGE: usize = 5;
                 let total_pages = number_of_items_total / ITEMS_PER_PAGE;
 
                 ui.set_min_width(panel_width);

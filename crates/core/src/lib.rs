@@ -11,6 +11,6 @@ pub mod msg;
 pub mod plugin;
 pub mod routes;
 pub mod state;
+pub mod ui_ops;
 pub mod util;
 pub mod utils;
-pub mod ui_ops;

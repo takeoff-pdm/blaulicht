@@ -110,6 +110,7 @@ pub struct FixtureState {
     pub alpha: u8,
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
+    pub focus: u8,
     // ... todo
 }
 
@@ -120,6 +121,7 @@ impl Default for FixtureState {
             alpha: 0,
             orientation: FixtureOrientation::default(),
             strobe_speed: 0,
+            focus: 0,
         }
     }
 }
@@ -149,6 +151,7 @@ impl FixtureState {
         match property {
             FixtureProperty::Alpha => self.alpha = value as u8,
             FixtureProperty::Strobe => self.strobe_speed = value as u8,
+            FixtureProperty::Focus => self.focus = value as u8,
             FixtureProperty::ColorHue => {
                 self.color.h = value as f64;
             }
@@ -167,6 +170,7 @@ impl FixtureState {
         match property {
             FixtureProperty::Alpha => self.alpha as u16,
             FixtureProperty::Strobe => self.strobe_speed as u16,
+            FixtureProperty::Focus => self.focus as u16,
             FixtureProperty::ColorHue => self.color.h as u16,
             FixtureProperty::ColorSaturation => self.color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
             FixtureProperty::ColorValue => self.color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
@@ -188,6 +192,10 @@ impl FixtureState {
             ControlEvent::SetStrobeSpeed(speed) => {
                 self.strobe_speed = speed;
                 vec![FixtureProperty::Strobe]
+            }
+            ControlEvent::SetFocus(v) => {
+                self.focus = v;
+                vec![FixtureProperty::Focus]
             }
             ControlEvent::SetPan(pan) => {
                 self.orientation.pan = pan;

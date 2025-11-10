@@ -54,6 +54,9 @@ pub struct AudioSpectrogram {
     pub max_columns: usize,
     /// Number of frequency bins per column.
     pub bin_count: usize,
+
+    // other signals
+    snapshot: CollectedAudioSnapshot,
 }
 
 impl AudioSpectrogram {
@@ -62,7 +65,12 @@ impl AudioSpectrogram {
             columns: VecDeque::with_capacity(max_columns),
             max_columns,
             bin_count,
+            snapshot: CollectedAudioSnapshot::default(),
         }
+    }
+
+    pub fn audio_snapshot(&mut self, snapshot: CollectedAudioSnapshot) {
+        self.snapshot = snapshot;
     }
 
     pub fn push_column(&mut self, mut col: Vec<u8>) {

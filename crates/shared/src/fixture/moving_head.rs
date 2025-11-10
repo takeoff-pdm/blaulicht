@@ -9,7 +9,20 @@ use strum::EnumIter;
 
 #[derive(Serialize, Deserialize, Debug, Clone, EnumIter, Encode, Decode)]
 pub enum MovingHead {
+    //
+    // Channel map is complicated, look below.
+    //
     MartinMac250E,
+    //
+    // 0: Pan (mid 128)
+    // 1: Tilt (mid 128)
+    // 3: Pan / Tilt Speed
+    // 4: Alpha
+    // 5: Strobe (0 = open | 10..250 = strobe)
+    // 6: Focus
+    // 7: Gobos
+    //
+    VaryTechHeroSpot60,
 }
 
 impl Display for MovingHead {
@@ -22,6 +35,7 @@ impl MovingHead {
     pub fn footprint(&self) -> usize {
         match self {
             MovingHead::MartinMac250E => 18,
+            MovingHead::VaryTechHeroSpot60 => 8,
         }
     }
 
@@ -73,6 +87,18 @@ impl MovingHead {
                 dmx[this.start_addr + 14] = state.orientation.tilt;
                 dmx[this.start_addr + 15] = 0;
             }
+            MovingHead::VaryTechHeroSpot60 => {
+                dmx[this.start_addr + 0] = state.orientation.pan;
+                dmx[this.start_addr + 1] = state.orientation.tilt;
+                dmx[this.start_addr + 2] = 0;
+                dmx[this.start_addr + 3] = state.alpha;
+                dmx[this.start_addr + 4] = match state.strobe_speed {
+                    0 => 0,
+                    v => v.map_range(1..255, 10..250),
+                };
+                dmx[this.start_addr + 5] = state.focus;
+                dmx[this.start_addr + 6] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+            }
         }
         // match self {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
@@ -102,6 +128,7 @@ impl MovingHead {
                     }
                 }
             }
+            MovingHead::VaryTechHeroSpot60 => {}
         }
         // TODO: just call write.
         // self.write(this, dmx);

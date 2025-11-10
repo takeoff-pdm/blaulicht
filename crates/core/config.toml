@@ -40,4 +40,9 @@ file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
 enabled = true
 enable_watcher = true
 
+[[plugins]]
+file_path = "../plugins/bundle_debug/visualizer.wasm"
+enabled = false
+enable_watcher = true
+
 [plugin_state]

@@ -56,8 +56,14 @@ impl<'a> Widget for Fader<'a> {
 
                 let t = (pointer_x - track_rect.left()) / track_rect.width();
                 let value = self.range.start() + t * (self.range.end() - self.range.start());
+
+                let value_before = *self.value as u32;
                 *self.value = value.clamp(*self.range.start(), *self.range.end());
-                response.mark_changed();
+
+                // Patch: do not spam change events.
+                if (*self.value as u32) != value_before {
+                    response.mark_changed();
+                }
             }
         }
 
@@ -163,8 +169,14 @@ impl<'a> Widget for HFader<'a> {
         if response.dragged() {
             if let Some(pointer) = response.interact_pointer_pos() {
                 let t = ((pointer.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+
+                let value_before = *self.value as u32;
                 *self.value = self.range.start() + t * (self.range.end() - self.range.start());
-                response.mark_changed();
+
+                // Patch: do not spam change events.
+                if (*self.value as u32) != value_before {
+                    response.mark_changed();
+                }
             }
         }
 

@@ -3,6 +3,7 @@ use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
+use crate::state::AudioSpectrogram;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
@@ -12,10 +13,11 @@ use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{
-    Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense, Stroke,
-    ThemePreference, Ui, Vec2,
+    vec2, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense,
+    Stroke, TextStyle, ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
+use noise::utils::Color;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::Read;
@@ -27,7 +29,122 @@ use std::sync::RwLockReadGuard;
 use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
+TODO: include snapshot in graphs
+
 impl BlaulichtApp {
+    // Create texture once when data changes (not every frame!)
+    fn create_spectrogram_texture(
+        ctx: &egui::Context,
+        spec: RwLockReadGuard<'_, AudioSpectrogram>,
+        width: usize,
+        height: usize,
+    ) -> egui::TextureHandle {
+        let mut pixels = vec![Color32::BLACK; width * height];
+        let start = Instant::now();
+
+        let total_cols = spec.max_columns;
+        let current_cols = spec.columns.len();
+
+        // How many screen pixels should each logical column get?
+        let pixels_per_column = width as f32 / total_cols as f32;
+
+        println!(
+            "w = {width} | current {} / max {} | pixels_per_col = {}",
+            current_cols, total_cols, pixels_per_column
+        );
+
+        let mut chunks_cont = spec.columns.clone();
+        let columns_data = chunks_cont.make_contiguous();
+
+        // Downsample if we have more columns than pixels
+        let columns: Vec<Vec<u8>> = if pixels_per_column >= 1.0 {
+            // Stretching: each column gets multiple pixels
+            columns_data.iter().cloned().collect()
+        } else {
+            // Compressing: multiple columns per pixel - need to average
+            let cols_per_pixel = (1.0 / pixels_per_column).ceil() as usize;
+
+            columns_data
+                .chunks(cols_per_pixel)
+                .map(|chunks| {
+                    if chunks.is_empty() {
+                        return vec![];
+                    }
+                    let bucket_count = chunks[0].len();
+                    let mut averaged = Vec::with_capacity(bucket_count);
+
+                    for bucket_idx in 0..bucket_count {
+                        let sum: u32 = chunks.iter().map(|col| col[bucket_idx] as u32).sum();
+                        let avg = (sum / chunks.len() as u32) as u8;
+                        averaged.push(avg);
+                    }
+                    averaged
+                })
+                .collect()
+        };
+
+        // Now draw with proper scaling
+        let col_width = if pixels_per_column >= 1.0 {
+            pixels_per_column.floor() as usize
+        } else {
+            1 // One pixel per averaged column
+        };
+
+        for (idx, col) in columns.iter().enumerate() {
+            let col_start_x = idx * col_width;
+            let col_end_x = ((idx + 1) * col_width).min(width);
+
+            let bucket_height = height as f32 / col.len() as f32;
+
+            for (bidx, &bucket) in col.iter().rev().enumerate() {
+                let y_min = (bidx as f32 * bucket_height) as usize;
+                let y_max = ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
+
+                let bucket_color = Self::spectrogram_color(bucket);
+
+                for x in col_start_x..col_end_x {
+                    for y in y_min..y_max {
+                        if x < width && y < height {
+                            pixels[y * width + x] = bucket_color;
+                        }
+                    }
+                }
+            }
+        }
+
+        let image = egui::ColorImage::new([width, height], pixels);
+        ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
+    }
+
+    // Classic spectrogram: black -> purple -> blue -> cyan -> green -> yellow -> red -> white
+    fn spectrogram_color(intensity: u8) -> Color32 {
+        let t = (intensity as f32 / 255.0).powf(0.5); // Gamma correction
+
+        let (r, g, b) = if t < 0.2 {
+            // Black to Purple
+            let local_t = t / 0.2;
+            (local_t * 0.5, 0.0, local_t)
+        } else if t < 0.4 {
+            // Purple to Blue
+            let local_t = (t - 0.2) / 0.2;
+            (0.5 - local_t * 0.5, 0.0, 1.0)
+        } else if t < 0.6 {
+            // Blue to Cyan/Green
+            let local_t = (t - 0.4) / 0.2;
+            (0.0, local_t, 1.0)
+        } else if t < 0.8 {
+            // Cyan to Yellow
+            let local_t = (t - 0.6) / 0.2;
+            (local_t, 1.0, 1.0 - local_t)
+        } else {
+            // Yellow to Red to White
+            let local_t = (t - 0.8) / 0.2;
+            (1.0, 1.0 - local_t * 0.5, local_t * 0.3)
+        };
+
+        Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+    }
+
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // Main content area with graphs panel
         ui.horizontal(|ui| {
@@ -119,57 +236,33 @@ impl BlaulichtApp {
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---
                     ui.add_space(6.0);
-                    let spectro_height = 180.0; // compact height
+                    let spec_height = 180.0; // compact height
                     let spec_width = ui.available_width();
-                    let (spec_resp, spec_painter) = ui.allocate_painter(
-                        egui::vec2(spec_width, spectro_height),
-                        egui::Sense::hover(),
-                    );
-                    let spec_rect = spec_resp.rect;
+                    // let (spec_resp, spec_painter) = ui.allocate_painter(
+                    //     egui::vec2(spec_width, spec_height),
+                    //     egui::Sense::hover(),
+                    // );
+                    // let spec_rect = spec_resp.rect;
                     // Background
-                    spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
+                    // spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
                     if spec.columns.is_empty() {
-                        spec_painter.text(
-                            spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                            egui::Align2::CENTER_TOP,
-                            "Waiting for audio…",
-                            egui::FontId::proportional(12.0),
-                            Color32::GRAY,
-                        );
+                        // spec_painter.text(
+                        //     spec_rect.center_top() + egui::vec2(0.0, 6.0),
+                        //     egui::Align2::CENTER_TOP,
+                        //     "Waiting for audio…",
+                        //     egui::FontId::proportional(12.0),
+                        //     Color32::GRAY,
+                        // );
                     } else {
-                        // TODO: this
-
-                        let total_cols = spec.columns.len();
-                        let col_width = spec_width / total_cols as f32;
-
-                        for (idx, col) in spec.columns.iter().enumerate() {
-                            // Draw col rect
-                            let col_start_x = idx as f32 * col_width;
-
-                            let small_rect = Rect::from_min_size(
-                                spec_rect.min + egui::vec2(col_start_x, 0.0),
-                                egui::vec2(col_width, spectro_height),
-                            );
-
-                            let bucket_height = spectro_height / col.len() as f32;
-
-                            for (bidx, bucket) in col.iter().enumerate() {
-                                let bucket_rect = Rect::from_min_size(
-                                    spec_rect.min
-                                        + egui::vec2(col_start_x, bidx as f32 * bucket_height),
-                                    egui::vec2(col_width, bucket_height),
-                                );
-
-                                // let bucket_color = match bucket {
-
-                                // };
-                                let bucket_color = Color32::from_rgb(*bucket, *bucket, *bucket);
-
-                                spec_painter.rect_filled(bucket_rect, 0.0, bucket_color);
-                            }
-                        }
+                        let texture = Self::create_spectrogram_texture(
+                            ctx,
+                            spec,
+                            spec_width as usize,
+                            spec_height as usize,
+                        );
+                        ui.image(&texture);
                     }
 
                     // Set larger graph height

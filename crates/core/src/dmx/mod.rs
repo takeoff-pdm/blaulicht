@@ -530,9 +530,7 @@ impl DmxEngine {
                 }
             }
             // UI-only plugin events: ignore in DMX engine
-            ControlEvent::PluginUi(_, _) => {
-                (None, None)
-            }
+            ControlEvent::PluginUi(_, _) => (None, None),
             // Other
             ControlEvent::SelectGroup(group_id) => {
                 if !state.groups().contains_key(&group_id) {
@@ -629,8 +627,33 @@ impl DmxEngine {
                 (None, None)
             }
             ControlEvent::SetSceneFocus(id) => {
-                debug_assert!(state.0.scenes.get(&id).is_some());
+                if !state.0.scenes.get(&id).is_some() {
+                    return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
+                }
+                // PATCH: reset all animations in that scene
                 state.0.current_scene_focus = id;
+
+                let animations = state.0.animations.clone();
+
+                let mut anim = &mut state.curr_scene_mut().sink.active_animations;
+                for (selec, anim_set) in anim.iter_mut() {
+                    for (anim_id, anim) in anim_set.iter_mut() {
+                        // anim.reset();
+                        let animation_sync = {
+                            let anim = match animations.get(&*anim_id) {
+                                Some(a) => a,
+                                None => {
+                                    println!("WARN: animation not found");
+                                    continue
+                                },
+                            };
+                            let anim = anim.clone();
+                            anim.sync
+                        };
+                        anim.set_timers(animation_sync);
+                        println!("Reset animation: {anim_id}");
+                    }
+                }
                 (None, None)
             }
             CONTROLS_REQUIRING_SELECTION!() => {
@@ -789,40 +812,7 @@ impl DmxEngine {
 
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
-                                anim.enabled = true;
-
-                                // TIMING mode: spread or sync the timing.
-                                let amount = anim.fixture_timers.len();
-                                match animation_sync {
-                                    SyncMode::Synced => {
-                                        for (counter, (_, timer_state)) in
-                                            anim.fixture_timers.iter_mut().enumerate()
-                                        {
-                                            timer_state.last_tick_time = 0;
-                                            timer_state.timer = 0;
-                                        }
-                                    }
-                                    SyncMode::StretchedEven => {
-                                        for (counter, (_, timer_state)) in
-                                            anim.fixture_timers.iter_mut().enumerate()
-                                        {
-                                            timer_state.last_tick_time = 0;
-                                            timer_state.timer =
-                                                ((360.0 / amount as f32) * counter as f32) as u64;
-
-                                            println!("timer: {}", timer_state.timer);
-                                        }
-                                    }
-                                    SyncMode::StretchedHalfHalf => {
-                                        for (counter, (_, timer_state)) in
-                                            anim.fixture_timers.iter_mut().enumerate()
-                                        {
-                                            timer_state.last_tick_time = 0;
-                                            timer_state.timer = (180 * (counter % 2)) as u64;
-                                        }
-                                    }
-                                }
-
+                                anim.set_timers(animation_sync);
                                 (None, None, Some(vec![anim_prop]))
                             }
                             None => (

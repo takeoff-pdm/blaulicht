@@ -1,7 +1,7 @@
 use crate::{
     AnimationSpeedModifier, FixtureProperty, SyncMode,
     fixture::state::{FixtureGroup, FixtureState},
-    scene::{EngineSink, Scene},
+    scene::{EngineSink, Scene}, view::View,
 };
 use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,10 @@ impl EngineSelection {
 
 pub type EngineGroups = BTreeMap<u8, FixtureGroup>;
 
+fn next_scene_id(scenes: &BTreeMap<u8, Scene>) -> Option<u8> {
+    (0..=u8::MAX).find(|id| !scenes.contains_key(id))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
 pub struct EngineState {
     // Strores the actual output state of all fixtures.
@@ -62,6 +66,8 @@ pub struct EngineState {
     // fixtures, this is mainly useful for UI.
     // TODO: will be migrated to hashmap from selection -> control buffer maybe
     pub control_buffer: FixtureState,
+
+    pub views: BTreeMap<u8, View>,
 
     // ID 0 is reserved for the 'empty' scene.
     pub scenes: BTreeMap<u8, Scene>,
@@ -80,33 +86,64 @@ pub struct EngineState {
 
 impl EngineState {
     pub fn new_scene(&mut self, name: String) {
-        // TODO: this fails when there are too many scenes.
-        let new_id = self.scenes.len();
-        debug_assert!(new_id == new_id as u8 as usize);
-
-        self.scenes.insert(
-            new_id as u8,
-            Scene {
-                sink: EngineSink::from_groups(&self.groups),
-                name: name.clone(),
-            },
-        );
+        if let Some(new_id) = next_scene_id(&self.scenes) {
+            self.scenes.insert(
+                new_id,
+                Scene {
+                    sink: EngineSink::from_groups(&self.groups),
+                    name,
+                },
+            );
+        }
     }
 
     pub fn clone_scene(&mut self, name: String) {
-        // TODO: this fails when there are too many scenes.
-        let new_id = self.scenes.len();
-        debug_assert!(new_id == new_id as u8 as usize);
+        if let Some(new_id) = next_scene_id(&self.scenes) {
+            if let Some(curr_scene) = self.scenes.get(&self.current_scene_focus) {
+                self.scenes.insert(
+                    new_id,
+                    Scene {
+                        sink: curr_scene.sink.clone(),
+                        name,
+                    },
+                );
+            }
+        }
+    }
 
-        let curr_scene = self.scenes.get(&self.current_scene_focus).unwrap();
+    pub fn rename_scene(&mut self, scene_id: u8, name: String) -> bool {
+        if let Some(scene) = self.scenes.get_mut(&scene_id) {
+            scene.name = name;
+            true
+        } else {
+            false
+        }
+    }
 
-        self.scenes.insert(
-            new_id as u8,
-            Scene {
-                sink: curr_scene.sink.clone(),
-                name: name.clone(),
-            },
-        );
+    pub fn delete_scene(&mut self, scene_id: u8) -> bool {
+        if self.scenes.len() <= 1 {
+            return false;
+        }
+
+        let removed = self.scenes.remove(&scene_id);
+        if removed.is_none() {
+            return false;
+        }
+
+        self.current_overlay_scenes
+            .retain(|overlay_id| *overlay_id != scene_id);
+
+        if self.current_scene_focus == scene_id {
+            if let Some((&new_focus, _)) = self.scenes.iter().next() {
+                self.current_scene_focus = new_focus;
+            }
+        } else if !self.scenes.contains_key(&self.current_scene_focus) {
+            if let Some((&new_focus, _)) = self.scenes.iter().next() {
+                self.current_scene_focus = new_focus;
+            }
+        }
+
+        true
     }
 
     pub fn serialize(&self) -> Vec<u8> {

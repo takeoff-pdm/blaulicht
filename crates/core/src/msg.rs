@@ -86,7 +86,6 @@ pub struct MatrixEvent {
     pub value: bool,
 }
 
-
 #[derive(Deserialize, Clone, Debug)]
 pub struct MidiEvent {
     pub device: u8,

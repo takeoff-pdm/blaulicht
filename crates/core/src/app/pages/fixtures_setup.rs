@@ -99,6 +99,8 @@ impl BlaulichtApp {
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_add_scene_dialog(ctx);
         self.render_clone_scene_dialog(ctx);
+        self.render_rename_scene_dialog(ctx);
+        self.render_delete_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
 
@@ -470,6 +472,7 @@ impl BlaulichtApp {
                                 // MovingHead
                                 let model = match self.add_fixture_model_index {
                                     0 => MovingHead::MartinMac250E,
+                                    1 => MovingHead::VaryTechHeroSpot60,
                                     _ => unreachable!("Not possible"),
                                 };
                                 FixtureType::from(model)
@@ -483,6 +486,11 @@ impl BlaulichtApp {
                                     3 => Light::AdjMegaHexPar,
                                     4 => Light::LiteCraftMiniParAT10,
                                     5 => Light::VaryTechVP1,
+                                    6 => Light::LightMaxxVegaSilentPar2Quad,
+                                    7 => Light::LEDPar64RGBSpot5Chan,
+                                    8 => Light::CameoQSpot40RGBW_4Chan,
+                                    9 => Light::LightMaxxTripleDerbyHP,
+                                    10 => Light::EuroLiteLEDMultiFX_10Chan,
                                     _ => unreachable!("not possible"),
                                 };
                                 FixtureType::from(model)
@@ -570,9 +578,21 @@ impl BlaulichtApp {
                                 self.new_scene_dialog_open = true;
                             }
 
-                            if components::button(ui, false, "Clone Sc.", ButtonSize::Medium)
-                            {
+                            if components::button(ui, false, "Clone Sc.", ButtonSize::Medium) {
                                 self.clone_scene_dialog_open = true;
+                            }
+
+                            if components::button(ui, false, "Ren. Sc.", ButtonSize::Medium) {
+                                if !dmx_engine.0.scenes.is_empty() {
+                                    self.rename_scene_name = dmx_engine.curr_scene().name.clone();
+                                } else {
+                                    self.rename_scene_name.clear();
+                                }
+                                self.rename_scene_dialog_open = true;
+                            }
+
+                            if components::button(ui, false, "Del. Sc.", ButtonSize::Medium) {
+                                self.delete_scene_dialog_open = true;
                             }
 
                             if components::button(
@@ -593,21 +613,6 @@ impl BlaulichtApp {
                             ) {
                                 self.current_scene_animations_dialog_open =
                                     !self.current_scene_animations_dialog_open;
-                            }
-
-                            ui.separator();
-
-                            for (universe, open) in
-                                self.show_dmx_simulation_universes.iter_mut().enumerate()
-                            {
-                                if components::button(
-                                    ui,
-                                    *open,
-                                    &format!("Sim. DMX {universe}"),
-                                    ButtonSize::Medium,
-                                ) {
-                                    *open = !*open;
-                                }
                             }
                         });
 
@@ -661,6 +666,21 @@ impl BlaulichtApp {
                                 ButtonSize::Medium,
                             ) {
                                 self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
+                            }
+
+                            ui.separator();
+
+                            for (universe, open) in
+                                self.show_dmx_simulation_universes.iter_mut().enumerate()
+                            {
+                                if components::button(
+                                    ui,
+                                    *open,
+                                    &format!("Sim. DMX {universe}"),
+                                    ButtonSize::Medium,
+                                ) {
+                                    *open = !*open;
+                                }
                             }
                         });
 

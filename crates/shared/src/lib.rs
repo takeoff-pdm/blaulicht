@@ -15,6 +15,8 @@ pub use state::*;
 
 pub mod scene;
 
+pub mod view;
+
 mod animation;
 pub use animation::*;
 

@@ -27,6 +27,8 @@ pub struct SamplePlugin {
     conn: SerialConnection,
     remote_disable_list: [bool; REMOTES.len()],
     log: VecDeque<String>,
+    intensity_mapping: Vec<u8>,
+    drums_toggle_time: u32,
 }
 
 impl Default for SamplePlugin {
@@ -35,12 +37,28 @@ impl Default for SamplePlugin {
             conn: unsafe { SerialConnection::dummy() },
             remote_disable_list: [true; REMOTES.len()],
             log: VecDeque::new(),
+            intensity_mapping: vec![],
+            drums_toggle_time: 0,
         }
     }
 }
 
 impl SamplePlugin {
-    fn process(&mut self, sig: u32) {
+    fn process(&mut self, sig: u32, now: u32) {
+        if sig == 10194868 || sig == 11973508 {
+            let elapsed = now - self.drums_toggle_time;
+            if (elapsed) > 500 {
+                send_event(ControlEvent::MiscEvent {
+                    descriptor: 43,
+                    value: 0,
+                });
+                self.drums_toggle_time = now;
+            } else {
+                println!("DEBOUNCE: {elapsed} elapsed");
+            }
+            return;
+        }
+
         let mut button_descriptor = None;
 
         for (remote_index, remote) in REMOTES.iter().enumerate() {
@@ -60,11 +78,19 @@ impl SamplePlugin {
 
         if let Some((remote, btn)) = button_descriptor {
             if self.remote_disable_list[remote] {
-                bpf::send_event(ControlEvent::SetSceneFocus(btn as u8));
+                let new_index = self.intensity_mapping.get(btn as usize);
+                match new_index {
+                    Some(scene_index) => {
+                        bpf::send_event(ControlEvent::SetSceneFocus(*scene_index as u8));
 
-                self.log.push_back(format!("R: [{remote}]: {btn}"));
-                while self.log.len() > 3 {
-                    self.log.pop_front();
+                        self.log.push_back(format!("R: [{remote}]: {btn}"));
+                        while self.log.len() > 3 {
+                            self.log.pop_front();
+                        }
+                    }
+                    None => {
+                        println!("NO MAPPED INDEX.");
+                    }
                 }
             } else {
                 println!("WTF");
@@ -120,6 +146,34 @@ impl Plugin for SamplePlugin {
     }
 
     fn run(&mut self, input: TickInput) {
+        let state = bpf::get_dmx();
+        if state.scenes.len() > 0 && self.intensity_mapping.is_empty() {
+            println!("RUNNING INIT for intensity");
+            self.intensity_mapping = vec![];
+
+            let mut index = 0;
+
+            for _ in 0..state.scenes.len() {
+                for (scene_id, scene) in state.scenes.iter() {
+                    let char_to_test = index.to_string().chars().nth(0).unwrap();
+                    let name_char = scene.name.chars().nth(0).unwrap();
+                    // println!("TESTING INDEX {index} and scene {scene_id} | CHAR: {char_to_test} vs {name_char}");
+                    if scene.name.len() > 0 && name_char == char_to_test {
+                        self.intensity_mapping.push(*scene_id);
+                        println!("added intensity {index} --> Scene {scene_id}");
+                        index += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if self.intensity_mapping.is_empty() {
+                self.intensity_mapping.push(0)
+            }
+
+            println!("INTENSITY: {:?}", self.intensity_mapping);
+        }
+
         for ev in self.conn.poll() {
             let str = String::from_utf8_lossy(&ev.body);
 
@@ -128,7 +182,7 @@ impl Plugin for SamplePlugin {
                 println!("P: `{num}`: {:?}", num.as_bytes());
                 let n: u32 = num.parse().expect("could not parse");
 
-                self.process(n);
+                self.process(n, input.clock);
             }
 
             println!("EV: {str} | {:?}", &ev.body);

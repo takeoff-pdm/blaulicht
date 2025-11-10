@@ -31,7 +31,7 @@ use std::{
 };
 pub use supervisor::supervisor_thread;
 
-const DMX_TICK_TIME: Duration = Duration::from_millis(25);
+pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
@@ -145,7 +145,7 @@ pub fn run(
     // Fall back to at least 1 Hz; default configured to 60 Hz.
     let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
     let window_secs = config.spectrogram_window_seconds.max(1) as usize;
-    let spec_refresh_hz = 120;
+    let spec_refresh_hz = 60;
     let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
     {
@@ -264,7 +264,7 @@ pub fn run(
         loop_begin_time = now;
 
         // Constant tick.
-        if now.duration_since(time_of_last_dmx_tick) > DMX_TICK_TIME {
+        if now.duration_since(time_of_last_dmx_tick) >= DMX_TICK_TIME {
             // TODO: does this even work?
             let midi_manager = Arc::clone(&midi_manager);
             let midi = {
@@ -277,7 +277,9 @@ pub fn run(
             let serial_manager = Arc::clone(&serial_manager);
             let serial = {
                 let mut serial_manager = serial_manager.lock().unwrap();
-                serial_manager.tick().map_err(|e|anyhow!("Failed to tick serial manager: {e:?}"))?
+                serial_manager
+                    .tick()
+                    .map_err(|e| anyhow!("Failed to tick serial manager: {e:?}"))?
             };
 
             //
@@ -326,22 +328,6 @@ pub fn run(
         let values = converter.freqs();
         // println!("freqs: {:?}", values);
 
-        // Update live spectrogram buffer at ~refresh_rate
-        if now.duration_since(last_spec_push) >= spec_period {
-            let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
-            // const BINS: usize = 10;
-            if !values.is_empty() {
-                let new_column = bin_spectrum_to_u8(&values, bins);
-                // println!("COL: {:?}", new_column);
-                {
-                    let mut spec = app_state.audio_spectrogram.write().unwrap();
-                    spec.push_column(new_column);
-                }
-            }
-
-            last_spec_push = now;
-        }
-
         //
         // Update volume signal.
         //
@@ -359,7 +345,7 @@ pub fn run(
         // Update Bass.
         //
 
-        analysis::bass(
+         analysis::bass(
             now,
             time_of_last_beat_publish,
             &signal_out_0,
@@ -385,6 +371,23 @@ pub fn run(
             long_historic_frames,
             &mut last_index,
         )?;
+
+        // Update live spectrogram buffer at ~refresh_rate
+        if now.duration_since(last_spec_push) >= spec_period {
+            let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
+            // const BINS: usize = 10;
+            if !values.is_empty() {
+                let new_column = bin_spectrum_to_u8(&values, bins);
+                // println!("COL: {:?}", new_column);
+                {
+                    let mut spec = app_state.audio_spectrogram.write().unwrap();
+                    spec.push_column(new_column);
+                    spec.audio_snapshot(collector.take_snapshot())
+                }
+            }
+
+            last_spec_push = now;
+        }
     }
 
     mem::drop(capture);

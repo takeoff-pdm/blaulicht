@@ -1,5 +1,7 @@
-use blaulicht_plugin_framework as bpf;
+use std::time::Duration;
+
 use blaulicht_plugin_framework::prelude::println;
+use blaulicht_plugin_framework::{self as bpf, send_event};
 use blaulicht_plugin_framework::{MidiConnection, MidiEvent, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 use serde::{Deserialize, Serialize};
@@ -42,16 +44,18 @@ struct PluginState {
 struct Sequencer {
     name: String,
     steps: Vec<SceneStep>,
+    return_to: u8,
+    scene_lifetime: Duration,
     midi_notes: Vec<u8>,
     current_step_index: usize,
 }
 
 /// MIDI Drum Sequencer Plugin
-/// 
+///
 /// A MIDI-controlled scene sequencer that advances through sequences of DMX scenes
 /// when specific MIDI notes are received. Designed for live performance control with
 /// drum pads, keyboards, or other MIDI controllers.
-/// 
+///
 /// Features:
 /// - Multiple independent sequencers, each triggered by different MIDI notes
 /// - Step-by-step scene progression
@@ -70,6 +74,13 @@ pub struct DrumPlugin {
     temp_rename_name: String,
     temp_scene_index: u8,
     temp_midi_note_input: String,
+    // TIME WHEN THE SCENE WAS SET.
+    scene_changed: u32,
+    scene_lifetime: u32,
+    // Return tu
+    return_to: u8,
+
+    enabled: bool,
 }
 
 impl Default for DrumPlugin {
@@ -86,6 +97,10 @@ impl Default for DrumPlugin {
             temp_rename_name: String::new(),
             temp_scene_index: 0,
             temp_midi_note_input: String::new(),
+            scene_changed: 0,
+            return_to: 0,
+            scene_lifetime: 0,
+            enabled: false,
         }
     }
 }
@@ -115,21 +130,19 @@ impl DrumPlugin {
 
         let kick_sequencer = Sequencer {
             name: "Kick Drum".to_string(),
-            midi_notes: vec![38, 40],
-            steps: vec![
-                SceneStep { scene_index: 0 },
-                SceneStep { scene_index: 1 },
-            ],
+            midi_notes: vec![36],
+            steps: vec![SceneStep { scene_index: 3 }],
+            return_to: 2,
+            scene_lifetime: Duration::from_millis(120),
             current_step_index: 0,
         };
 
         let snare_sequencer = Sequencer {
             name: "Snare Drum".to_string(),
-            midi_notes: vec![42, 44, 46],
-            steps: vec![
-                SceneStep { scene_index: 2 },
-                SceneStep { scene_index: 3 },
-            ],
+            midi_notes: vec![38, 40],
+            steps: vec![SceneStep { scene_index: 4 }, SceneStep { scene_index: 5 }],
+            return_to: 2,
+            scene_lifetime: Duration::from_millis(500),
             current_step_index: 0,
         };
 
@@ -144,20 +157,24 @@ impl DrumPlugin {
         let sequencer = Sequencer {
             name,
             steps: Vec::new(),
+            return_to: 0,
+            scene_lifetime: Duration::from_secs(100),
             midi_notes: Vec::new(),
             current_step_index: 0,
         };
         self.sequencers.push(sequencer);
         println!("Added sequencer. Total: {}", self.sequencers.len());
-        self.save_state();
     }
 
     fn delete_sequencer(&mut self, index: usize) {
         if index < self.sequencers.len() {
             let name = self.sequencers[index].name.clone();
             self.sequencers.remove(index);
-            println!("Deleted sequencer '{}'. Total: {}", name, self.sequencers.len());
-            self.save_state();
+            println!(
+                "Deleted sequencer '{}'. Total: {}",
+                name,
+                self.sequencers.len()
+            );
         }
     }
 
@@ -165,8 +182,10 @@ impl DrumPlugin {
         if seq_index < self.sequencers.len() {
             let step = SceneStep { scene_index };
             self.sequencers[seq_index].steps.push(step);
-            println!("Added step to sequencer '{}'", self.sequencers[seq_index].name);
-            self.save_state();
+            println!(
+                "Added step to sequencer '{}'",
+                self.sequencers[seq_index].name
+            );
         }
     }
 
@@ -175,22 +194,25 @@ impl DrumPlugin {
             let sequencer = &mut self.sequencers[seq_index];
             if step_index < sequencer.steps.len() {
                 sequencer.steps.remove(step_index);
-                if sequencer.current_step_index >= sequencer.steps.len() && !sequencer.steps.is_empty() {
+                if sequencer.current_step_index >= sequencer.steps.len()
+                    && !sequencer.steps.is_empty()
+                {
                     sequencer.current_step_index = sequencer.steps.len() - 1;
                 }
                 println!("Deleted step from sequencer '{}'", sequencer.name);
-                self.save_state();
             }
         }
     }
 
-    fn update_step(&mut self, seq_index: usize, step_index: usize, scene_index: u8) {
+    fn update_step(&mut self, seq_index: usize, step_index: usize, scene_index: u8, now: u32) {
         if seq_index < self.sequencers.len() {
             let sequencer = &mut self.sequencers[seq_index];
             if step_index < sequencer.steps.len() {
                 sequencer.steps[step_index].scene_index = scene_index;
-                println!("Updated step in sequencer '{}'", sequencer.name);
-                self.save_state();
+                println!(
+                    "Updated step in sequencer '{}' | {}, {}, {}",
+                    sequencer.name, self.scene_lifetime, self.scene_changed, self.return_to
+                );
             }
         }
     }
@@ -198,8 +220,10 @@ impl DrumPlugin {
     fn update_sequencer_midi_notes(&mut self, seq_index: usize, midi_notes: Vec<u8>) {
         if seq_index < self.sequencers.len() {
             self.sequencers[seq_index].midi_notes = midi_notes;
-            println!("Updated MIDI notes for sequencer '{}'", self.sequencers[seq_index].name);
-            self.save_state();
+            println!(
+                "Updated MIDI notes for sequencer '{}'",
+                self.sequencers[seq_index].name
+            );
         }
     }
 
@@ -208,51 +232,24 @@ impl DrumPlugin {
             let old_name = self.sequencers[seq_index].name.clone();
             self.sequencers[seq_index].name = new_name.clone();
             println!("Renamed sequencer '{}' to '{}'", old_name, new_name);
-            self.save_state();
-        }
-    }
-
-    /// Saves the current plugin state to persistent storage
-    fn save_state(&self) {
-        let state = PluginState {
-            sequencers: self.sequencers.iter().map(|seq| SequencerState {
-                name: seq.name.clone(),
-                steps: seq.steps.iter().map(|s| s.scene_index).collect(),
-                midi_notes: seq.midi_notes.clone(),
-                current_step_index: seq.current_step_index,
-            }).collect(),
-            selected_device_index: self.selected_device_index,
-        };
-        
-        if let Ok(json) = serde_json::to_string(&state) {
-            bpf::save_plugin_state(&json);
-        }
-    }
-
-    /// Loads the plugin state from persistent storage
-    fn load_state(&mut self) {
-        if let Some(json) = bpf::load_plugin_state() {
-            if let Ok(state) = serde_json::from_str::<PluginState>(&json) {
-                self.sequencers = state.sequencers.iter().map(|seq_state| Sequencer {
-                    name: seq_state.name.clone(),
-                    steps: seq_state.steps.iter().map(|&idx| SceneStep { scene_index: idx }).collect(),
-                    midi_notes: seq_state.midi_notes.clone(),
-                    current_step_index: seq_state.current_step_index,
-                }).collect();
-                self.selected_device_index = state.selected_device_index;
-                println!("Loaded {} sequencers from saved state", self.sequencers.len());
-            }
         }
     }
 
     /// Processes UI events from the plugin interface
-    fn handle_events(&mut self, events: &[ControlEventMessage], id: u8) {
-        for e in events {
+    fn handle_events(&mut self, input: &TickInput, id: u8) {
+        for e in &input.events.events {
+            if let ControlEvent::MiscEvent { descriptor, value } = e.body() {
+                if descriptor == 42 {
+                    self.enabled = value != 0;
+                    println!("DRUMS ENABLED: {}", self.enabled);
+                }
+            }
+
             if let ControlEvent::PluginUi(ui_ev, pid) = e.body() {
                 if pid != id {
                     continue;
                 }
-                
+
                 println!("Drum Plugin received UI event: {:?}", ui_ev);
                 match ui_ev {
                     PluginUiEvent::Button { id } if id == 1 => {
@@ -267,7 +264,6 @@ impl DrumPlugin {
                     }
                     PluginUiEvent::Button { id } if id == 3 => {
                         self.connect_to_selected_device();
-                        self.save_state();
                     }
                     PluginUiEvent::Button { id } if id == 4 => {
                         self.refresh_devices();
@@ -294,12 +290,16 @@ impl DrumPlugin {
                     PluginUiEvent::Button { id } if id >= 20 && id < 40 => {
                         let seq_idx = ((id - 20) / 4) as usize;
                         let action = (id - 20) % 4;
-                        
+
                         match action {
                             0 => {
                                 if seq_idx < self.sequencers.len() {
                                     let sequencer = &self.sequencers[seq_idx];
-                                    let notes_str: Vec<String> = sequencer.midi_notes.iter().map(|n| n.to_string()).collect();
+                                    let notes_str: Vec<String> = sequencer
+                                        .midi_notes
+                                        .iter()
+                                        .map(|n| n.to_string())
+                                        .collect();
                                     self.temp_midi_note_input = notes_str.join(", ");
                                     self.ui_mode = UiMode::EditingSequencer(seq_idx);
                                 }
@@ -326,7 +326,7 @@ impl DrumPlugin {
                         let offset = (id - 40) as usize;
                         let seq_idx = offset / 20;
                         let step_idx = offset % 20;
-                        
+
                         if seq_idx < self.sequencers.len() {
                             let sequencer = &self.sequencers[seq_idx];
                             if step_idx < sequencer.steps.len() {
@@ -340,12 +340,12 @@ impl DrumPlugin {
                         let offset = (id - 60) as usize;
                         let seq_idx = offset / 20;
                         let step_idx = offset % 20;
-                        
+
                         self.delete_step(seq_idx, step_idx);
                     }
                     PluginUiEvent::Button { id } if id == 100 => {
                         if let UiMode::EditingStep(seq_idx, step_idx) = self.ui_mode {
-                            self.update_step(seq_idx, step_idx, self.temp_scene_index);
+                            self.update_step(seq_idx, step_idx, self.temp_scene_index, input.clock);
                             self.ui_mode = UiMode::EditingSequencer(seq_idx);
                         }
                     }
@@ -361,7 +361,9 @@ impl DrumPlugin {
                         }
                     }
                     PluginUiEvent::Button { id } if id == 103 => {
-                        if let UiMode::EditingStep(seq_idx, _) | UiMode::AddingStep(seq_idx) = self.ui_mode {
+                        if let UiMode::EditingStep(seq_idx, _) | UiMode::AddingStep(seq_idx) =
+                            self.ui_mode
+                        {
                             self.ui_mode = UiMode::EditingSequencer(seq_idx);
                         }
                     }
@@ -411,15 +413,19 @@ impl DrumPlugin {
     }
 
     /// Processes MIDI events and advances sequencers when trigger notes are received
-    fn process_midi_for_sequencers(&mut self, midi_events: &[MidiEvent]) {
+    fn process_midi_for_sequencers(&mut self, midi_events: &[MidiEvent], now: u32) {
         for midi_event in midi_events {
             let status_upper = midi_event.status & 0xF0;
             if status_upper != 0x90 {
                 continue;
             }
-            
+
             if midi_event.value == 0 {
                 continue;
+            }
+
+            if !self.enabled {
+                return;
             }
 
             let note = midi_event.kind;
@@ -430,22 +436,32 @@ impl DrumPlugin {
                 }
 
                 if sequencer.midi_notes.contains(&note) {
-                    println!("Sequencer '{}': Note {} triggered transition from step {} to next", 
-                             sequencer.name, note, sequencer.current_step_index);
-                    
-                    sequencer.current_step_index = (sequencer.current_step_index + 1) % sequencer.steps.len();
-                    
+                    println!(
+                        "Sequencer '{}': Note {} triggered transition from step {} to next",
+                        sequencer.name, note, sequencer.current_step_index
+                    );
+
+                    sequencer.current_step_index =
+                        (sequencer.current_step_index + 1) % sequencer.steps.len();
+
                     let scene_index = sequencer.steps[sequencer.current_step_index].scene_index;
-                    
+
                     let dmx_state = bpf::get_dmx();
-                    let scene_name = dmx_state.scenes
+                    let scene_name = dmx_state
+                        .scenes
                         .get(&scene_index)
                         .map(|s| s.name.as_str())
                         .unwrap_or("Unknown");
-                    
-                    println!("Sequencer '{}': Now at step {} (scene: {})", 
-                             sequencer.name, sequencer.current_step_index, scene_name);
-                    
+
+                    self.return_to = sequencer.return_to;
+                    self.scene_changed = now;
+                    self.scene_lifetime = sequencer.scene_lifetime.as_millis() as u32;
+
+                    println!(
+                        "Sequencer '{}': Now at step {} (scene: {})",
+                        sequencer.name, sequencer.current_step_index, scene_name
+                    );
+
                     bpf::send_event(ControlEvent::SetSceneFocus(scene_index));
                 }
             }
@@ -469,10 +485,10 @@ impl DrumPlugin {
             return;
         }
 
-        let device_name = &self.available_devices[self.selected_device_index];
-        println!("Connecting to MIDI device: {}", device_name);
+        let name = "USB MIDI Interface";
+        println!("Connecting to MIDI device: {}", name);
 
-        match MidiConnection::open(device_name) {
+        match MidiConnection::open(name) {
             Ok(handle) => {
                 println!("Connected! Device ID: {}", handle.get_meta().device_id);
                 self.midi_handle = Some(handle);
@@ -496,7 +512,10 @@ impl DrumPlugin {
         let is_connected = self.midi_handle.is_some();
 
         if let Some(ref handle) = self.midi_handle {
-            bpf::ui::label(&format!("Connected to device ID: {}", handle.get_meta().device_id));
+            bpf::ui::label(&format!(
+                "Connected to device ID: {}",
+                handle.get_meta().device_id
+            ));
         } else {
             bpf::ui::label("Not connected");
         }
@@ -508,7 +527,11 @@ impl DrumPlugin {
             bpf::ui::label("No devices found");
         } else {
             let device_name = &self.available_devices[self.selected_device_index];
-            bpf::ui::label(&format!("Device {}/{}", self.selected_device_index + 1, self.available_devices.len()));
+            bpf::ui::label(&format!(
+                "Device {}/{}",
+                self.selected_device_index + 1,
+                self.available_devices.len()
+            ));
             bpf::ui::label(device_name);
 
             if !is_connected {
@@ -545,21 +568,23 @@ impl DrumPlugin {
     fn draw_overview_ui(&self) {
         bpf::ui::separator();
         bpf::ui::label(&format!("Sequencers ({})", self.sequencers.len()));
-        
+
         bpf::ui::button("+ Add Sequencer", 10);
 
         for (seq_idx, sequencer) in self.sequencers.iter().enumerate() {
             bpf::ui::separator();
             bpf::ui::label(&format!("{}. {}", seq_idx + 1, sequencer.name));
             bpf::ui::label(&format!("  Steps: {}", sequencer.steps.len()));
-            
+
             if !sequencer.steps.is_empty() {
                 let current_step = &sequencer.steps[sequencer.current_step_index];
                 let scene_name = Self::get_scene_name(current_step.scene_index);
-                bpf::ui::label(&format!("  Current: {} (step {}/{})", 
+                bpf::ui::label(&format!(
+                    "  Current: {} (step {}/{})",
                     scene_name,
                     sequencer.current_step_index + 1,
-                    sequencer.steps.len()));
+                    sequencer.steps.len()
+                ));
             }
 
             bpf::ui::begin_horizontal();
@@ -576,12 +601,11 @@ impl DrumPlugin {
     fn draw_adding_sequencer_ui(&self) {
         bpf::ui::separator();
         bpf::ui::label("Add New Sequencer");
-        
+
         bpf::ui::label("Name:");
         bpf::ui::text_edit("", 120, &self.temp_sequencer_name);
-        
+
         bpf::ui::begin_horizontal();
-        bpf::ui::button("Save", 11);
         bpf::ui::button("Cancel", 12);
         bpf::ui::end_horizontal();
     }
@@ -592,26 +616,26 @@ impl DrumPlugin {
         }
 
         let sequencer = &self.sequencers[seq_idx];
-        
+
         bpf::ui::separator();
         bpf::ui::label(&format!("Editing: {}", sequencer.name));
-        
+
         bpf::ui::separator();
         bpf::ui::label("MIDI Notes (comma-separated):");
         bpf::ui::text_edit("", 121, &self.temp_midi_note_input);
         bpf::ui::button("Update MIDI Notes", 104);
-        
+
         bpf::ui::separator();
         bpf::ui::label("Steps:");
         bpf::ui::button("+ Add Step", (22 + seq_idx * 4) as u8);
 
         for (step_idx, step) in sequencer.steps.iter().enumerate() {
             bpf::ui::separator();
-            
+
             let scene_name = Self::get_scene_name(step.scene_index);
             let is_current = step_idx == sequencer.current_step_index;
             let marker = if is_current { "→ " } else { "  " };
-            
+
             bpf::ui::label(&format!("{}Step {}: {}", marker, step_idx + 1, scene_name));
 
             bpf::ui::begin_horizontal();
@@ -632,18 +656,18 @@ impl DrumPlugin {
         }
 
         let sequencer = &self.sequencers[seq_idx];
-        
+
         if step_idx >= sequencer.steps.len() {
             return;
         }
-        
+
         bpf::ui::separator();
         bpf::ui::label(&format!("Edit Step {} in {}", step_idx + 1, sequencer.name));
-        
+
         bpf::ui::label(&format!("Scene Index: {}", self.temp_scene_index));
         bpf::ui::label(&Self::get_scene_name(self.temp_scene_index));
         bpf::ui::slider("Scene", 110, 0, 255, self.temp_scene_index);
-        
+
         bpf::ui::begin_horizontal();
         bpf::ui::button("Save", 100);
         bpf::ui::button("Cancel", 101);
@@ -656,14 +680,14 @@ impl DrumPlugin {
         }
 
         let sequencer = &self.sequencers[seq_idx];
-        
+
         bpf::ui::separator();
         bpf::ui::label(&format!("Add Step to {}", sequencer.name));
-        
+
         bpf::ui::label(&format!("Scene Index: {}", self.temp_scene_index));
         bpf::ui::label(&Self::get_scene_name(self.temp_scene_index));
         bpf::ui::slider("Scene", 110, 0, 255, self.temp_scene_index);
-        
+
         bpf::ui::begin_horizontal();
         bpf::ui::button("Add", 102);
         bpf::ui::button("Cancel", 103);
@@ -677,10 +701,10 @@ impl DrumPlugin {
 
         bpf::ui::separator();
         bpf::ui::label(&format!("Rename Sequencer"));
-        
+
         bpf::ui::label("New Name:");
         bpf::ui::text_edit("", 122, &self.temp_rename_name);
-        
+
         bpf::ui::begin_horizontal();
         bpf::ui::button("Save", 105);
         bpf::ui::button("Cancel", 106);
@@ -698,7 +722,9 @@ impl DrumPlugin {
             UiMode::Overview => self.draw_overview_ui(),
             UiMode::AddingSequencer => self.draw_adding_sequencer_ui(),
             UiMode::EditingSequencer(seq_idx) => self.draw_editing_sequencer_ui(*seq_idx),
-            UiMode::EditingStep(seq_idx, step_idx) => self.draw_editing_step_ui(*seq_idx, *step_idx),
+            UiMode::EditingStep(seq_idx, step_idx) => {
+                self.draw_editing_step_ui(*seq_idx, *step_idx)
+            }
             UiMode::AddingStep(seq_idx) => self.draw_adding_step_ui(*seq_idx),
             UiMode::RenamingSequencer(seq_idx) => self.draw_renaming_sequencer_ui(*seq_idx),
         }
@@ -711,13 +737,9 @@ impl Plugin for DrumPlugin {
     fn initialize(&mut self, _input: TickInput) {
         println!("Initializing Drum Plugin...");
 
-        let state = bpf::get_dmx();
-        println!("STATE: {state:?}");
-
         self.refresh_devices();
-        
-        self.load_state();
-        
+        self.connect_to_selected_device();
+
         if self.sequencers.is_empty() {
             self.sequencers = Self::create_demo_sequencers();
             println!("Initialized {} demo sequencers", self.sequencers.len());
@@ -725,20 +747,29 @@ impl Plugin for DrumPlugin {
     }
 
     fn run(&mut self, input: TickInput) {
-        self.handle_events(&input.events.events, input.id);
+        self.handle_events(&input, input.id);
+
+        // Return to.
+        let elapsed = input.clock - self.scene_changed;
+        if self.scene_lifetime > 0 && elapsed > self.scene_lifetime {
+            send_event(ControlEvent::SetSceneFocus(self.return_to));
+            self.scene_lifetime = 0;
+            self.scene_changed = 0;
+            println!("return to | {elapsed}");
+        }
 
         if let Some(ref handle) = self.midi_handle {
             let res = handle.poll();
 
-            self.process_midi_for_sequencers(&res);
+            self.process_midi_for_sequencers(&res, input.clock);
 
             for midi_event in res {
                 let msg = format!(
                     "status: 0x{:02X}, kind: {}, value: {}",
                     midi_event.status, midi_event.kind, midi_event.value
                 );
-                println!("MIDI: {}", msg);
-                
+                // println!("MIDI: {}", msg);
+
                 self.recent_midi_messages.insert(0, msg);
                 if self.recent_midi_messages.len() > 5 {
                     self.recent_midi_messages.truncate(5);
@@ -760,4 +791,3 @@ extern "C" fn main() {
     __wasm_bp();
     bpf::hook_plugin(Box::new(DrumPlugin::default()));
 }
-

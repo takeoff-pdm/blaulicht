@@ -74,6 +74,32 @@ pub enum Light {
     // 3: Dimmer
     // 4: Strobe (value 011-255)
     LEDPar64RGBSpot5Chan,
+    //
+    // 0: Red
+    // 1: Green
+    // 2: Blue
+    // 3: White
+    //
+    CameoQSpot40RGBW_4Chan,
+    //
+    // 0: Hue
+    // 1: Rotation
+    // 2: Strobe
+    // 3: Alpha
+    //
+    LightMaxxTripleDerbyHP,
+    //
+    // 0: UV Dimmer
+    // 1: UV Dimmer
+    // 2: Strobe (0-250)
+    // 3: Matrix (maps from hue)
+    // 5: Laser (maps from hue)
+    // 4: Speed
+    // 6: Laser Strobe (06-250)
+    // 7: Laser Rotation (maps from tilt)
+    // 8: White SMDS
+    // 9: Speed
+    EuroLiteLEDMultiFX_10Chan,
 }
 
 impl Display for Light {
@@ -93,6 +119,9 @@ impl Light {
             Light::VaryTechVP1 => 4,
             Light::LightMaxxVegaSilentPar2Quad => 8,
             Light::LEDPar64RGBSpot5Chan => 5,
+            Light::CameoQSpot40RGBW_4Chan => 4,
+            Light::LightMaxxTripleDerbyHP => 4,
+            Light::EuroLiteLEDMultiFX_10Chan => 10,
         }
     }
 
@@ -162,6 +191,45 @@ impl Light {
                     0 => 0,
                     v => v.map_range(0..255, 11..255),
                 };
+            }
+            Light::CameoQSpot40RGBW_4Chan => {
+                let (r, g, b) = color.tup();
+                let alpha = state.alpha;
+
+                dmx[this.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
+                dmx[this.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
+                // WHITE override.
+                dmx[this.start_addr + 3] = if color.r == 255 && color.g == 255 && color.b == 255 {
+                    255
+                } else {
+                    0
+                };
+            }
+            Light::LightMaxxTripleDerbyHP => {
+                //
+                // 0: Hue
+                // 1: Rotation
+                // 2: Strobe
+                // 3: Alpha
+                //
+                dmx[this.start_addr + 0] = (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
+                dmx[this.start_addr + 1] = state.orientation.pan;
+                dmx[this.start_addr + 2] = state.strobe_speed;
+                dmx[this.start_addr + 3] = state.alpha;
+            }
+            Light::EuroLiteLEDMultiFX_10Chan => {
+                let hue_u8 = (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = state.alpha;
+                dmx[this.start_addr + 2] = state.strobe_speed;
+                dmx[this.start_addr + 3] = hue_u8;
+                dmx[this.start_addr + 4] = hue_u8;
+                dmx[this.start_addr + 5] = state.orientation.pan;
+                dmx[this.start_addr + 6] = state.strobe_speed;
+                dmx[this.start_addr + 7] = state.orientation.tilt;
+                dmx[this.start_addr + 8] = state.focus;
+                dmx[this.start_addr + 9] = state.orientation.pan;
             }
         }
     }

@@ -1,5 +1,5 @@
 [package]
-name = "blaulicht-plugin-433mhz-antenna"
+name = "blaulicht-plugin-visualizer"
 version = "0.1.0"
 edition = "2021"
 

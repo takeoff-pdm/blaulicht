@@ -58,18 +58,18 @@ impl MidiManager {
     }
 
     pub fn enumerate_devices() -> Result<Vec<String>, MidiError> {
-        let midi_in = MidiInput::new("device_enumerator")
-            .map_err(|e| MidiError::Other(e.to_string()))?;
-        
+        let midi_in =
+            MidiInput::new("device_enumerator").map_err(|e| MidiError::Other(e.to_string()))?;
+
         let in_ports = midi_in.ports();
         let mut device_names = Vec::new();
-        
+
         for port in &in_ports {
             if let Ok(name) = midi_in.port_name(port) {
                 device_names.push(name);
             }
         }
-        
+
         Ok(device_names)
     }
 
@@ -149,7 +149,11 @@ impl MidiManager {
                         2 => (message[1], 0),
                         3 => (message[1], message[2]),
                         _ => {
-                            warn!("Unexpected MIDI message length: {}, message: {:?}", message.len(), message);
+                            warn!(
+                                "Unexpected MIDI message length: {}, message: {:?}",
+                                message.len(),
+                                message
+                            );
                             return;
                         }
                     };
@@ -194,7 +198,10 @@ impl MidiManager {
                         }
                     }
                     None => {
-                        debug!("[MIDI-OUT] No output port found for device: {}", device_name);
+                        debug!(
+                            "[MIDI-OUT] No output port found for device: {}",
+                            device_name
+                        );
                         None
                     }
                 }
@@ -252,9 +259,7 @@ impl MidiManager {
                     };
 
                     if let Some(ref mut output) = output_device.output {
-                        output
-                            .send(&[sig.status, sig.data0, sig.data1])
-                            .unwrap();
+                        output.send(&[sig.status, sig.data0, sig.data1]).unwrap();
                     } else {
                         debug!("MIDI output not available for device {}", sig.device);
                     }
