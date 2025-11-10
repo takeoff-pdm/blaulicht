@@ -25,6 +25,9 @@ impl SignalCollector {
             Signal::BeatVolume(v) => {
                 self.current.beat_volume = v;
             }
+            Signal::BeatTrigger(is_trigger) => {
+                self.current.beat_trigger = is_trigger;
+            }
             Signal::Bass(v) => {
                 self.current.bass = v;
             }

@@ -18,6 +18,7 @@ pub enum Signal {
     BassAvgShort(u8),
     BassAvg(u8),
     Volume(u8),
+    BeatTrigger(bool),
 }
 
 #[derive(Clone, Serialize, Debug)]

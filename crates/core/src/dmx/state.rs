@@ -168,6 +168,7 @@ impl<'engine> EngineState {
                                                                     k,
                                                                     AnimationTimerState {
                                                                         last_tick_time: 0,
+                                                                        needs_reset_on_beat: false,
                                                                         timer,
                                                                     },
                                                                 )
@@ -299,6 +300,7 @@ impl Default for EngineState {
                             amplitude_max: 255
                         }),
                         time_total: PhaserDuration::Fixed(1000),
+                        pin_to_beat: false,
                     }),
                     sync: SyncMode::Synced,
                 },
@@ -313,6 +315,7 @@ impl Default for EngineState {
                             amplitude_max: 255
                         }),
                         time_total: PhaserDuration::Fixed(1000),
+                        pin_to_beat: false,
                     }),
                     sync: SyncMode::Synced,
                 },
@@ -327,6 +330,7 @@ impl Default for EngineState {
                             amplitude_max: 255
                         }),
                         time_total: PhaserDuration::Fixed(1000),
+                        pin_to_beat: false,
                     }),
                     sync: SyncMode::Synced,
                 },

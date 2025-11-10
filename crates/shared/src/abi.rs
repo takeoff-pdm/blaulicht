@@ -24,6 +24,7 @@ pub struct CollectedAudioSnapshot {
     pub bpm: u8,
     pub time_between_beats_millis: u16,
     pub initial: bool,
+    pub beat_trigger: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]

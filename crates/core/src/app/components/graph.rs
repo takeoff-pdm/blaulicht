@@ -6,7 +6,7 @@ use egui::{Color32, Context};
 
 const CAP: usize = 1000;
 const TIME_WINDOW_MS: u64 = 3000;
-const GRAPH_UPDATE_INTERVAL_MS: u64 = 5;
+const GRAPH_UPDATE_INTERVAL_MS: u64 = 1;
 
 /// Modular time series graph component
 pub struct TimeSeriesGraph {

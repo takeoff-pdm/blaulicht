@@ -49,7 +49,7 @@ pub struct DmxEngine {
     system_out: Sender<SystemMessage>,
 
     // This is not part of state_ref since this is only a cache
-    animation_base_times: BTreeMap<u8, u64>,
+    animation_base_times: BTreeMap<u8, f64>,
     start_time: Instant,
 
     dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
@@ -162,101 +162,8 @@ impl DmxEngine {
 
         // Advance animations.
         self.build_animations_cache(audio_snapshot);
+        self.animation_tick(audio_snapshot);
 
-        {
-            // // TODO: what's the plan for this?
-            // //
-            // // Go over all scenes and then over all selections for that scene.
-            //
-            let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
-            let mut state = self.state_ref.dmx_engine.write().unwrap();
-            let animations = state.0.animations.clone();
-
-            for (scene_id, scene) in state.0.scenes.iter_mut() {
-                for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
-                    // println!("scene anim: {scene_animations:?}");
-
-                    for (animation_id, animation) in scene_animations.iter_mut() {
-                        if !animation.enabled {
-                            continue;
-                        }
-
-                        for (fixture_selec, fixture_anim_state) in
-                            animation.fixture_timers.iter_mut()
-                        {
-                            let transition_time =
-                                (*self.animation_base_times.get(animation_id).unwrap()) as f64
-                                    * animation.speed_factor.as_float();
-
-                            // TODO: limited by tick speed
-
-                            // println!("{}", now - animation.last_tick_time);
-
-                            let mut num_ticks = 1;
-
-                            let millis = DMX_TICK_TIME.as_millis();
-                            if transition_time < millis as f64 {
-                                num_ticks = (millis as f64 / transition_time) as usize;
-                                // println!("NUM TICKS: {num_ticks}");
-                            }
-
-                            if transition_time == 0.0 {
-                                continue;
-                            }
-
-                            // TODO: extremely naiive implementation
-                            // FLAWS:
-                            //  - beat-timing is not considered
-                            //  - syncing between animations is also not considered
-                            //      - Different sync modes
-                            //          - No sync (when playing current animation, disregard everything and
-                            //          start it)
-                            //          - Group sync (sync with all other fixtures in the parent group that
-                            //          also use this animation)
-                            //          - Global (sync with ALL other fixtures (also from other groups)
-                            //          that also use this animation)
-                            //      - How is syncing done?
-                            //      - when sync mode is changed, timing is reset to 0 for all fixtures and
-                            //      the stepper logic uses the sync
-                            //      - Syncing shall be displayed graphically
-                            //      - Running animations shall also be displayed graphically
-                            //      - Each phaser can be absolute / relative!
-                            // println!("{}", fixture_anim_state.last_tick_time);
-                            if now - fixture_anim_state.last_tick_time >= transition_time as u64 {
-                                for _ in 0..num_ticks {
-                                    fixture_anim_state.tick(now);
-                                }
-
-                                let spec = animations.get(animation_id).unwrap();
-
-                                let v = self.generate_animation_value(
-                                    audio_snapshot,
-                                    spec,
-                                    *animation_id,
-                                    fixture_anim_state.timer,
-                                );
-
-                                let fixture_state =
-                                    scene.sink.fixture_states.get_mut(fixture_selec).unwrap();
-
-                                fixture_state.apply_value(v, spec.property);
-
-                                // println!("update animation");
-                            }
-                        }
-                    }
-                }
-            }
-
-            //
-            // let fixtures = state
-            //     .groups
-            //     .iter_mut()
-            //     .flat_map(|(_, g)| g.fixtures.values_mut());
-            //
-            // for fixture in fixtures {
-            // }
-        }
         // let mut state = self.state_ref.dmx_engine.write().unwrap();
         // state.groups().iter().flat_map(|g|g.values());
 
@@ -302,56 +209,6 @@ impl DmxEngine {
             // self.system_out
             //     .send(SystemMessage::DMX(Box::new(self.dmx)))
             //     .unwrap();
-        }
-    }
-
-    fn generate_animation_value(
-        &self,
-        audio_snapshot: CollectedAudioSnapshot,
-        spec: &AnimationSpec,
-        id: u8,
-        time: u64,
-    ) -> u16 {
-        // let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
-        // let animation = animations.get(&id).unwrap();
-
-        match &spec.body {
-            AnimationSpecBody::Phaser(body) => phaser::generate(body, time as f32),
-            AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
-                audio_snapshot.volume as u16
-            }
-            AnimationSpecBody::Beat(animation_spec_body_beat) => {
-                audio_snapshot.bass_avg_short as u16
-            }
-            AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
-        }
-    }
-
-    fn build_animations_cache(&mut self, audio_snapshot: CollectedAudioSnapshot) {
-        // Only build every 100ms or so?
-
-        let animations = &self.state_ref.dmx_engine.read().unwrap().0.animations;
-
-        for (anim_id, anim) in animations {
-            let total_speed_raw = {
-                let animation_spec = animations.get(anim_id).unwrap();
-                match &animation_spec.body {
-                    AnimationSpecBody::Phaser(body) => match body.time_total {
-                        PhaserDuration::Fixed(time) => time,
-                        PhaserDuration::Beat(beats) => {
-                            (audio_snapshot.time_between_beats_millis as f64 * beats.as_float())
-                                as u64
-                        }
-                    },
-                    AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => 0,
-                    AnimationSpecBody::Beat(animation_spec_body_beat) => 0,
-                    AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
-                }
-            };
-
-            let speed_per_step = total_speed_raw / 360;
-
-            self.animation_base_times.insert(*anim_id, speed_per_step);
         }
     }
 
@@ -644,8 +501,8 @@ impl DmxEngine {
                                 Some(a) => a,
                                 None => {
                                     println!("WARN: animation not found");
-                                    continue
-                                },
+                                    continue;
+                                }
                             };
                             let anim = anim.clone();
                             anim.sync

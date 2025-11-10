@@ -3,11 +3,12 @@ use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
-use crate::state::AudioSpectrogram;
+use crate::state::{AudioSpectrogram, AudioSpectrogramColumn};
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
+    CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
+    PluginUiEvent,
 };
 use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
@@ -29,7 +30,7 @@ use std::sync::RwLockReadGuard;
 use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
-TODO: include snapshot in graphs
+// TODO: include snapshot in graphs
 
 impl BlaulichtApp {
     // Create texture once when data changes (not every frame!)
@@ -48,39 +49,62 @@ impl BlaulichtApp {
         // How many screen pixels should each logical column get?
         let pixels_per_column = width as f32 / total_cols as f32;
 
-        println!(
-            "w = {width} | current {} / max {} | pixels_per_col = {}",
-            current_cols, total_cols, pixels_per_column
-        );
+        // println!(
+        //     "w = {width} | current {} / max {} | pixels_per_col = {}",
+        //     current_cols, total_cols, pixels_per_column
+        // );
 
         let mut chunks_cont = spec.columns.clone();
         let columns_data = chunks_cont.make_contiguous();
 
         // Downsample if we have more columns than pixels
-        let columns: Vec<Vec<u8>> = if pixels_per_column >= 1.0 {
+        let columns: Vec<AudioSpectrogramColumn> = if pixels_per_column >= 1.0 {
             // Stretching: each column gets multiple pixels
             columns_data.iter().cloned().collect()
         } else {
             // Compressing: multiple columns per pixel - need to average
             let cols_per_pixel = (1.0 / pixels_per_column).ceil() as usize;
 
-            columns_data
+            let coll: Vec<_> = columns_data
                 .chunks(cols_per_pixel)
                 .map(|chunks| {
                     if chunks.is_empty() {
-                        return vec![];
+                        return AudioSpectrogramColumn {
+                            samples: vec![],
+                            snapshot: CollectedAudioSnapshot::default(),
+                        };
                     }
-                    let bucket_count = chunks[0].len();
-                    let mut averaged = Vec::with_capacity(bucket_count);
+                    let bucket_count = chunks[0].samples.len();
+                    let mut averaged = AudioSpectrogramColumn {
+                        samples: Vec::with_capacity(bucket_count),
+                        snapshot: CollectedAudioSnapshot::default(),
+                    };
+
+                    let mut bass_avg_short_AVG = 0;
+                    for c in chunks {
+                        bass_avg_short_AVG += averaged.snapshot.bass_avg_short as u16;
+                    }
+
+                    bass_avg_short_AVG /= chunks.len() as u16;
+
+                    averaged.snapshot.bass_avg_short = bass_avg_short_AVG as u8;
 
                     for bucket_idx in 0..bucket_count {
-                        let sum: u32 = chunks.iter().map(|col| col[bucket_idx] as u32).sum();
+                        let sum: u32 = chunks
+                            .iter()
+                            .map(|col| col.samples[bucket_idx] as u32)
+                            .sum();
                         let avg = (sum / chunks.len() as u32) as u8;
-                        averaged.push(avg);
+                        averaged.samples.push(avg);
                     }
+
+                    // average the snapshot
+
                     averaged
                 })
-                .collect()
+                .collect();
+
+            coll
         };
 
         // Now draw with proper scaling
@@ -90,13 +114,15 @@ impl BlaulichtApp {
             1 // One pixel per averaged column
         };
 
+        let last_bpm_marker_time = 0;
+
         for (idx, col) in columns.iter().enumerate() {
             let col_start_x = idx * col_width;
             let col_end_x = ((idx + 1) * col_width).min(width);
 
-            let bucket_height = height as f32 / col.len() as f32;
+            let bucket_height = height as f32 / col.samples.len() as f32;
 
-            for (bidx, &bucket) in col.iter().rev().enumerate() {
+            for (bidx, &bucket) in col.samples.iter().rev().enumerate() {
                 let y_min = (bidx as f32 * bucket_height) as usize;
                 let y_max = ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
 
@@ -107,6 +133,20 @@ impl BlaulichtApp {
                         if x < width && y < height {
                             pixels[y * width + x] = bucket_color;
                         }
+                    }
+                }
+
+                if col.snapshot.bass_avg_short == 255 {
+                    for y in 0..10 {
+                        pixels[y * width + col_start_x] = Color32::MAGENTA;
+                    }
+                }
+
+                // IF there should be a beat marker, insert it here.
+                // if idx % 10 == 0 {
+                if col.snapshot.beat_trigger {
+                    for y in 0..height {
+                        pixels[y * width + col_start_x] = Color32::RED;
                     }
                 }
             }
@@ -238,23 +278,22 @@ impl BlaulichtApp {
                     ui.add_space(6.0);
                     let spec_height = 180.0; // compact height
                     let spec_width = ui.available_width();
-                    // let (spec_resp, spec_painter) = ui.allocate_painter(
-                    //     egui::vec2(spec_width, spec_height),
-                    //     egui::Sense::hover(),
-                    // );
-                    // let spec_rect = spec_resp.rect;
-                    // Background
-                    // spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
                     if spec.columns.is_empty() {
-                        // spec_painter.text(
-                        //     spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                        //     egui::Align2::CENTER_TOP,
-                        //     "Waiting for audio…",
-                        //     egui::FontId::proportional(12.0),
-                        //     Color32::GRAY,
-                        // );
+                        let (spec_resp, spec_painter) = ui.allocate_painter(
+                            egui::vec2(spec_width, spec_height),
+                            egui::Sense::hover(),
+                        );
+                        let spec_rect = spec_resp.rect;
+                        spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
+                        spec_painter.text(
+                            spec_rect.center_top() + egui::vec2(0.0, 6.0),
+                            egui::Align2::CENTER_TOP,
+                            "Waiting for audio…",
+                            egui::FontId::proportional(12.0),
+                            Color32::GRAY,
+                        );
                     } else {
                         let texture = Self::create_spectrogram_texture(
                             ctx,
@@ -266,9 +305,9 @@ impl BlaulichtApp {
                     }
 
                     // Set larger graph height
-                    let graph_height = 125.0;
+                    let graph_height = 115.0;
                     let graph_width = graph_panel_width - 5.0;
-                    let padding = 10.0;
+                    let padding = 0.0;
 
                     debug_assert!(graph_width > 0.0);
 
@@ -281,14 +320,6 @@ impl BlaulichtApp {
                                 egui::Sense::hover(),
                             );
                             self.volume_graph.draw(painter, response.rect);
-
-                            ui.add_space(padding);
-                            let (response_beat_volume, painter_beat_volume) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.beat_volume_graph
-                                .draw(painter_beat_volume, response_beat_volume.rect);
 
                             ui.add_space(padding);
                             let (response_bass, painter_bass) = ui.allocate_painter(
@@ -331,7 +362,7 @@ impl BlaulichtApp {
                                 );
                             self.time_between_beats_graph
                                 .draw(painter_time_between_beats, response_time_between_beats.rect);
-                        })
+                        });
                     });
                 },
             );

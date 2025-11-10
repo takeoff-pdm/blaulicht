@@ -1,7 +1,8 @@
 use crate::{
     AnimationSpeedModifier, FixtureProperty, SyncMode,
     fixture::state::{FixtureGroup, FixtureState},
-    scene::{EngineSink, Scene}, view::View,
+    scene::{EngineSink, Scene},
+    view::View,
 };
 use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
@@ -173,12 +174,27 @@ pub struct AnimationSpec {
     pub sync: SyncMode,
 }
 
+impl AnimationSpec {
+    pub fn is_beat_pinned(&self) -> bool {
+        match &self.body {
+            AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
+                return animation_spec_body_phaser.pin_to_beat;
+            }
+            AnimationSpecBody::AudioVolume(_)
+            | AnimationSpecBody::AudioBeat(_)
+            | AnimationSpecBody::BeatClock(_)
+            | AnimationSpecBody::Wasm(_) => false,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub enum AnimationSpecBody {
     /// Phaser operates on a degree (0-360 DEG) an the amount is increased in time steps.
     Phaser(AnimationSpecBodyPhaser),
     AudioVolume(AnimationSpecBodyAudioVolume),
-    Beat(AnimationSpecBodyBeat),
+    AudioBeat(AnimationSpecBodyBeat),
+    BeatClock(AnimationSpecBodyBeat),
     Wasm(AnimationSpecBodyWasm), // TODO: not currently supported.
 }
 
@@ -187,6 +203,7 @@ pub struct AnimationSpecBodyPhaser {
     pub kind: PhaserKind,
     // Time to complete a complete cycle: cycle step time is calculated from this.
     pub time_total: PhaserDuration,
+    pub pin_to_beat: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode)]

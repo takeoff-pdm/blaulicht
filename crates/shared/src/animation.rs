@@ -13,6 +13,7 @@ use crate::AnimationSpeedModifier;
 pub struct AnimationTimerState {
     pub last_tick_time: u64,
     pub timer: u64, // Counts up continously
+    pub needs_reset_on_beat: bool,
 }
 
 impl AnimationTimerState {

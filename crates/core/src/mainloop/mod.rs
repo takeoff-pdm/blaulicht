@@ -16,6 +16,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_shared::LogLevel;
+use core::num;
 use cpal::Device;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
@@ -192,6 +193,12 @@ pub fn run(
     let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(BASS_PEAK_FRAMES);
     let bass_modifier = 65;
 
+    let mut time_of_last_bpm_marker = Instant::now();
+    let mut is_on_beat = false;
+    let mut num_beat_mismatches = 0;
+    let mut beat_needs_sync = true;
+    let mut is_on_beat_memo = 0;
+
     // Dmx last tick.
     let mut time_of_last_dmx_tick = time::Instant::now();
 
@@ -305,6 +312,12 @@ pub fn run(
                 }
             };
 
+            // Update the collector one last time to include the beat trigger.
+            if is_on_beat_memo == 2 {
+                collector.signal(Signal::BeatTrigger(true));
+                is_on_beat_memo -= 1;
+            }
+
             // TODO: maybe feed with audio signals.
             dmx_engine.tick(collector.take_snapshot());
 
@@ -345,7 +358,7 @@ pub fn run(
         // Update Bass.
         //
 
-         analysis::bass(
+        analysis::bass(
             now,
             time_of_last_beat_publish,
             &signal_out_0,
@@ -354,6 +367,10 @@ pub fn run(
             &mut bass_samples,
             bass_modifier,
             &mut bass_peaks,
+            &mut time_of_last_bpm_marker,
+            &mut is_on_beat,
+            &mut num_beat_mismatches,
+            &mut beat_needs_sync,
         )?;
 
         //
@@ -372,8 +389,13 @@ pub fn run(
             &mut last_index,
         )?;
 
-        // Update live spectrogram buffer at ~refresh_rate
+        if is_on_beat {
+            is_on_beat = false;
+            is_on_beat_memo = 2;
+        }
+
         if now.duration_since(last_spec_push) >= spec_period {
+            // Update live spectrogram buffer at ~refresh_rate
             let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
             // const BINS: usize = 10;
             if !values.is_empty() {
@@ -381,8 +403,12 @@ pub fn run(
                 // println!("COL: {:?}", new_column);
                 {
                     let mut spec = app_state.audio_spectrogram.write().unwrap();
-                    spec.push_column(new_column);
-                    spec.audio_snapshot(collector.take_snapshot())
+                    if is_on_beat_memo == 1 {
+                        collector.signal(Signal::BeatTrigger(true));
+                        is_on_beat_memo -= 1;
+                    }
+                    // spec.audio_snapshot(collector.take_snapshot())
+                    spec.push_data(new_column, collector.take_snapshot());
                 }
             }
 

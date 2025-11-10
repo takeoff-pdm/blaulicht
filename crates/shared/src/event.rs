@@ -66,6 +66,8 @@ pub enum AnimationSpeedModifier {
     _2,
     _4,
     _8,
+    _16,
+    _32,
 }
 
 impl TryFrom<f64> for AnimationSpeedModifier {
@@ -80,6 +82,8 @@ impl TryFrom<f64> for AnimationSpeedModifier {
         const _2: f64 = 1.0 / 2.0;
         const _4: f64 = 1.0 / 4.0;
         const _8: f64 = 1.0 / 8.0;
+        const _16: f64 = 1.0 / 16.0;
+        const _32: f64 = 1.0 / 32.0;
 
         Ok(match value {
             _1_16 => Self::_1_16,
@@ -90,13 +94,15 @@ impl TryFrom<f64> for AnimationSpeedModifier {
             _2 => Self::_2,
             _4 => Self::_4,
             _8 => Self::_8,
+            _16 => Self::_16,
+            _32 => Self::_32,
             _ => return Err(()),
         })
     }
 }
 
 impl AnimationSpeedModifier {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 10] = [
         Self::_1_16,
         Self::_1_8,
         Self::_1_4,
@@ -105,6 +111,8 @@ impl AnimationSpeedModifier {
         Self::_2,
         Self::_4,
         Self::_8,
+        Self::_16,
+        Self::_32,
     ];
 
     pub fn as_index(&self) -> usize {
@@ -125,6 +133,8 @@ impl AnimationSpeedModifier {
             Self::_2 => "2",
             Self::_4 => "4",
             Self::_8 => "8",
+            Self::_16 => "16",
+            Self::_32 => "32",
         }
     }
 
@@ -138,6 +148,8 @@ impl AnimationSpeedModifier {
             AnimationSpeedModifier::_2 => 1.0 / 2.0,
             AnimationSpeedModifier::_4 => 1.0 / 4.0,
             AnimationSpeedModifier::_8 => 1.0 / 8.0,
+            AnimationSpeedModifier::_16 => 1.0 / 16.0,
+            AnimationSpeedModifier::_32 => 1.0 / 32.0,
         }
     }
 }

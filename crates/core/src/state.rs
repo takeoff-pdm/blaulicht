@@ -45,18 +45,23 @@ impl AudioState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AudioSpectrogramColumn {
+    pub samples: Vec<u8>,
+    pub snapshot: CollectedAudioSnapshot,
+}
+
 /// Rolling buffer of recent spectra for a live spectrogram.
 pub struct AudioSpectrogram {
     /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
     /// Contains bins. A bin is just a averaged part of the frequency space.
-    pub columns: VecDeque<Vec<u8>>,
+    pub columns: VecDeque<AudioSpectrogramColumn>,
     /// Maximum number of time columns to keep.
     pub max_columns: usize,
     /// Number of frequency bins per column.
     pub bin_count: usize,
-
     // other signals
-    snapshot: CollectedAudioSnapshot,
+    // pub snapshot: CollectedAudioSnapshot,
 }
 
 impl AudioSpectrogram {
@@ -65,27 +70,33 @@ impl AudioSpectrogram {
             columns: VecDeque::with_capacity(max_columns),
             max_columns,
             bin_count,
-            snapshot: CollectedAudioSnapshot::default(),
+            // snapshot: CollectedAudioSnapshot::default(),
         }
     }
 
-    pub fn audio_snapshot(&mut self, snapshot: CollectedAudioSnapshot) {
-        self.snapshot = snapshot;
-    }
+    // pub fn audio_snapshot(&mut self, snapshot: CollectedAudioSnapshot) {
+    //     self.snapshot = snapshot;
+    // }
 
-    pub fn push_column(&mut self, mut col: Vec<u8>) {
-        // Ensure correct height; pad or truncate as needed.
-        if col.len() != self.bin_count {
-            // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
-            // This can happen due to rounding issues.
-            col.resize(self.bin_count, 0);
+    pub fn push_data(&mut self, mut col: Vec<u8>, snapshot: CollectedAudioSnapshot) {
+        // Column
+        {
+            // Ensure correct height; pad or truncate as needed.
+            if col.len() != self.bin_count {
+                // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
+                // This can happen due to rounding issues.
+                col.resize(self.bin_count, 0);
+            }
+            // println!("{} vs {}", self.columns.len(), self.max_columns);
+            if self.columns.len() >= self.max_columns {
+                self.columns.pop_front();
+                // println!("too many columns, reducing...");
+            }
+            self.columns.push_back(AudioSpectrogramColumn {
+                samples: col,
+                snapshot,
+            });
         }
-        // println!("{} vs {}", self.columns.len(), self.max_columns);
-        if self.columns.len() >= self.max_columns {
-            self.columns.pop_front();
-            // println!("too many columns, reducing...");
-        }
-        self.columns.push_back(col);
     }
 }
 

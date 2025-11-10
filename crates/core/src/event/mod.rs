@@ -12,7 +12,7 @@ use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, TrySelectErro
 use log::debug;
 use std::fmt::Debug;
 
-use crate::audio::SIGNAL_SPEED;
+// use crate::audio::SIGNAL_SPEED;
 
 pub type SystemEventBusConnectionInst = SystemEventBusConnection<ControlEventMessage>;
 
