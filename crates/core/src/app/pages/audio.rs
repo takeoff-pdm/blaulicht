@@ -1,9 +1,10 @@
 use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::audio::collector::CollectorOutput;
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
-use crate::state::{AudioSpectrogram, AudioSpectrogramColumn};
+use crate::state::AudioSpectrogram;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
@@ -60,7 +61,7 @@ impl BlaulichtApp {
         let columns_data = chunks_cont.make_contiguous();
 
         // Downsample if we have more columns than pixels
-        let columns: Vec<AudioSpectrogramColumn> = if pixels_per_column >= 1.0 {
+        let columns: Vec<CollectorOutput> = if pixels_per_column >= 1.0 {
             // Stretching: each column gets multiple pixels
             columns_data.iter().cloned().collect()
         } else {
@@ -71,13 +72,10 @@ impl BlaulichtApp {
                 .chunks(cols_per_pixel)
                 .map(|chunks| {
                     if chunks.is_empty() {
-                        return AudioSpectrogramColumn {
-                            samples: vec![],
-                            snapshot: CollectedAudioSnapshot::default(),
-                        };
+                        return CollectorOutput::default();
                     }
-                    let bucket_count = chunks[0].samples.len();
-                    let mut averaged = AudioSpectrogramColumn {
+                    let bucket_count = chunks[0].current_audio_colunn.len();
+                    let mut averaged = CollectorOutput {
                         samples: Vec::with_capacity(bucket_count),
                         snapshot: CollectedAudioSnapshot::default(),
                     };

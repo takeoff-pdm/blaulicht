@@ -26,19 +26,15 @@ pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = 100;
 pub const ROLLING_AVERAGE_FRAMES: usize = 100;
 pub const LONG_HISTORIC_FRAMES: usize = ROLLING_AVERAGE_FRAMES * 1000;
 
-impl SignalCollector {
+impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     #[inline(always)]
-    pub fn bass(
-        &mut self,
-        values: &[Frequency],
-        now: Instant,
-    ) -> anyhow::Result<()> {
+    pub fn bass(&mut self, now: Instant) -> anyhow::Result<()> {
         signal!(self, {
             const USES_BASS: bool = true;
 
             let (v, lower_volume_limit) = match USES_BASS {
                 true => (
-                    values
+                    self.freqs
                         .iter()
                         .filter(|f| f.freq > 20.0 && f.freq < 250.0)
                         .map(|f| f.volume as usize)
@@ -46,7 +42,7 @@ impl SignalCollector {
                     100.0,
                 ),
                 false => (
-                    values
+                    self.freqs
                         .iter()
                         .map(|f| f.volume as usize)
                         .collect::<Vec<usize>>(),
@@ -64,8 +60,13 @@ impl SignalCollector {
                 self.scratch.bass_samples.pop_front();
             }
 
-            let bass_moving_average =
-                self.scratch.bass_samples.iter().map(|v| *v as f64).sum::<f64>() / BASS_FRAMES as f64;
+            let bass_moving_average = self
+                .scratch
+                .bass_samples
+                .iter()
+                .map(|v| *v as f64)
+                .sum::<f64>()
+                / BASS_FRAMES as f64;
 
             let elapsed_since_last_peak = match self.scratch.bass_peaks.iter().last() {
                 Some(last) => last.elapsed().as_millis(),
@@ -155,7 +156,7 @@ impl SignalCollector {
 
             let is_bass_avg_short = peaked || elapsed_since_last_peak < 50; // cross-tick mitigation
             if self.scratch.is_on_beat && !is_bass_avg_short {
-               self.scratch.num_beat_mismatches += 1;
+                self.scratch.num_beat_mismatches += 1;
                 // println!("drift = {}", *num_beat_mismatches);
             } else if self.scratch.is_on_beat && is_bass_avg_short {
                 self.scratch.num_beat_mismatches = 0;
@@ -201,19 +202,20 @@ impl SignalCollector {
     }
 
     #[inline(always)]
-    pub fn beat_volume(
-        &mut self,
-        values: &[Frequency],
-        now: Instant,
-    ) -> anyhow::Result<()> {
-        let curr: Vec<usize> = values
+    pub fn beat_volume(&mut self) -> anyhow::Result<()> {
+        let curr: Vec<usize> = self
+            .freqs
             .chunks(2)
             // TODO: only look at the bass line?
             .map(|f| f.iter().map(|e| e.volume as usize).max().unwrap())
             .collect();
 
-        let curr_unfiltered: usize = values.iter().map(|f| f.volume as usize).sum();
-        shift_push!(self.scratch.long_historic, LONG_HISTORIC_FRAMES, curr_unfiltered);
+        let curr_unfiltered: usize = self.freqs.iter().map(|f| f.volume as usize).sum();
+        shift_push!(
+            self.scratch.long_historic,
+            LONG_HISTORIC_FRAMES,
+            curr_unfiltered
+        );
 
         let curr = curr.iter().max().unwrap_or(&0);
         shift_push!(self.scratch.historic, ROLLING_AVERAGE_FRAMES, *curr);
@@ -242,11 +244,7 @@ impl SignalCollector {
     }
 
     #[inline(always)]
-    pub fn volume(
-        &mut self,
-        values: &[Frequency],
-        now: Instant,
-    ) -> anyhow::Result<()> {
+    pub fn volume(&mut self) -> anyhow::Result<()> {
         signal!(self, {
             let volume_mean = ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
                 / (self.scratch.volume_samples.len() as f32)
@@ -256,7 +254,8 @@ impl SignalCollector {
             &[Signal::Volume(volume)]
         });
 
-        let curr_avg = values
+        let curr_avg = self
+            .freqs
             .iter()
             .max_by_key(|f| (f.volume * 10.0) as usize)
             .unwrap_or(&Frequency {

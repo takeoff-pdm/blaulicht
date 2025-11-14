@@ -2,7 +2,9 @@ pub mod supervisor;
 use crate::{
     audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE},
-        collector,
+        collector::{
+            self, CollectorOutput, CollectorOutputSpec, SignalCollector, SignalCollectorParams,
+        },
         defs::AudioThreadControlSignal,
     },
     config::Config,
@@ -109,7 +111,25 @@ pub fn run(
     let mut last_spec_push = Instant::now();
     let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
 
-    let mut sig_collector = collector::SignalCollector::default();
+    let mut collector_outputs = [CollectorOutputSpec::default(); 2];
+
+    const COLLECTOR_DMX: usize = 0;
+    const COLLECTOR_SPECTROGRAM: usize = 1;
+
+    collector_outputs[COLLECTOR_DMX] = CollectorOutputSpec {
+        bins_p_column: None,
+    };
+    collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
+        bins_p_column: Some(5),
+    };
+
+    let mut sig_collector = SignalCollector::new(
+        device,
+        config.stream,
+        SignalCollectorParams::default(),
+        collector_outputs,
+    )
+    .with_context(|| "Failed to open audio input")?;
 
     //
     // State for the analyzers.
@@ -144,9 +164,11 @@ pub fn run(
     // let mut num_beat_mismatches = 0;
     // let mut beat_needs_sync = true;
     // let mut is_on_beat_memo = 0;
+    //
 
     // Dmx last tick.
-    let mut time_of_last_dmx_tick = time::Instant::now();
+    let mut time_of_last_dmx_tick = Instant::now();
+    let mut last_spectrogram_tick = Instant::now();
 
     let mut plugin_wasm_engine_crashed = false;
 
@@ -259,13 +281,14 @@ pub fn run(
             };
 
             // Update the collector one last time to include the beat trigger.
-            if is_on_beat_memo == 2 {
-                sig_collector.signal(Signal::BeatTrigger(true));
-                is_on_beat_memo -= 1;
-            }
+            // if is_on_beat_memo == 2 {
+            //     sig_collector.signal(Signal::BeatTrigger(true));
+            //     is_on_beat_memo -= 1;
+            // }
 
             // TODO: maybe feed with audio signals.
-            dmx_engine.tick(sig_collector.take_snapshot());
+            let out = sig_collector.tick_output::<COLLECTOR_DMX>();
+            dmx_engine.tick(out.snapshot);
 
             time_of_last_dmx_tick = now;
 
@@ -284,6 +307,28 @@ pub fn run(
             *audio_sig = sig_collector.take_snapshot();
         }
 
+        let (spec_tick_period, spec_bins) = {
+            let spec = app_state.audio_spectrogram.read().unwrap();
+            (spec.tick_period, spec.bin_count)
+        };
+
+        if now.duration_since(last_spectrogram_tick) >= spec_tick_period {
+            let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
+
+            // let new_column = bin_spectrum_to_u8(output.current_audio_colunn, bins);
+            // {
+                // let mut snapshot = self.take_snapshot();
+                // if self.scratch.is_on_beat_pending_updates > 0 {
+                //     snapshot.beat_trigger = true;
+                //     self.scratch.is_on_beat_pending_updates -= 1;
+                // }
+                // spec.audio_snapshot(collector.take_snapshot())
+                // self.output_spectrogram.push_data(new_column, snapshot);
+                //
+            // }
+
+            app_state.audio_spectrogram.write().unwrap().push_data(col, snapshot);
+        }
         // println!("freqs: {:?}", values);
     }
 

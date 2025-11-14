@@ -2,13 +2,14 @@ use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
 
 use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
-use crate::ui_ops::WasmUiOp;
+use crate::{audio::collector::CollectorOutput, ui_ops::WasmUiOp};
 use crate::{
     audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
@@ -45,35 +46,32 @@ impl AudioState {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AudioSpectrogramColumn {
-    pub samples: Vec<u8>,
-    pub snapshot: CollectedAudioSnapshot,
-}
+// #[derive(Debug, Clone)]
+// pub struct AudioSpectrogramColumn {
+//     pub samples: Vec<u8>,
+//     pub snapshot: CollectedAudioSnapshot,
+// }
 
 /// Rolling buffer of recent spectra for a live spectrogram.
 pub struct AudioSpectrogram {
     /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
     /// Contains bins. A bin is just a averaged part of the frequency space.
-    pub columns: VecDeque<AudioSpectrogramColumn>,
+    pub columns: VecDeque<CollectorOutput>,
     /// Maximum number of time columns to keep.
     pub max_columns: usize,
     /// Number of frequency bins per column.
     pub bin_count: usize,
-    // other signals
-    // pub snapshot: CollectedAudioSnapshot,
-    pub gate: Option<u8>,
-    pub boost: Option<u8>,
+    // Time to wait between ticks of the spectrogram.
+    pub tick_period: Duration,
 }
 
 impl AudioSpectrogram {
-    pub fn new(max_columns: usize, bin_count: usize) -> Self {
+    pub fn new(max_columns: usize, bin_count: usize, tick_period: Duration) -> Self {
         Self {
             columns: VecDeque::with_capacity(max_columns),
             max_columns,
             bin_count,
-            gate: None,
-            boost: None,
+            tick_period,
         }
     }
 
@@ -81,24 +79,21 @@ impl AudioSpectrogram {
     //     self.snapshot = snapshot;
     // }
 
-    pub fn push_data(&mut self, mut col: Vec<u8>, snapshot: CollectedAudioSnapshot) {
+    pub fn push_data(&mut self, mut data: CollectorOutput) {
         // Column
         {
             // Ensure correct height; pad or truncate as needed.
-            if col.len() != self.bin_count {
+            if data.current_audio_colunn.len() != self.bin_count {
                 // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
                 // This can happen due to rounding issues.
-                col.resize(self.bin_count, 0);
+                data.current_audio_colunn.resize(self.bin_count, 0);
             }
             // println!("{} vs {}", self.columns.len(), self.max_columns);
             if self.columns.len() >= self.max_columns {
                 self.columns.pop_front();
                 // println!("too many columns, reducing...");
             }
-            self.columns.push_back(AudioSpectrogramColumn {
-                samples: col,
-                snapshot,
-            });
+            self.columns.push_back(data);
         }
     }
 }
@@ -160,8 +155,11 @@ impl AppState {
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),
             audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
-            // Default: ~6.6 seconds history at 60 FPS if filled every frame; actual fill rate ~20 Hz.
-            audio_spectrogram: RwLock::new(AudioSpectrogram::new(4, 128)),
+            audio_spectrogram: RwLock::new(AudioSpectrogram::new(
+                4,
+                128,
+                Duration::from_millis(20),
+            )),
             mainloop_state: RwLock::new(AudioThreadControlSignal::ABORTED),
             plugin_ui_ops: RwLock::new(HashMap::new()),
             plugin_ui_ops_back: RwLock::new(HashMap::new()),

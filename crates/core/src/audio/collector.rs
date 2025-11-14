@@ -1,14 +1,10 @@
 //
 // Provides class for capturing audio.
-//du bdu bdu bdu bdu b
-use std::collections::VecDeque;
-use std::time::Instant;
-
+//
 use crate::audio::analysis::{
-    self, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
+    BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
     ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
-use crate::state::AudioSpectrogram;
 use crate::{audio::defs::AudioConverter, msg::Signal};
 use anyhow::{anyhow, Context};
 use audioviz::spectrum::Frequency;
@@ -18,6 +14,34 @@ use audioviz::{
 };
 use blaulicht_shared::CollectedAudioSnapshot;
 use cpal::{traits::DeviceTrait, Device};
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
+
+// Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
+// The problem is: both run at different refresh rates.
+// Could just use the faster refresh rate for both; but this is more general.
+#[derive(Debug, Clone, Copy)]
+pub struct CollectorOutputSpec {
+    // update_every: Duration,
+    // last_update: Instant,
+    pub(crate) bins_p_column: Option<usize>, // If None, no columns will be included
+}
+
+impl Default for CollectorOutputSpec {
+    fn default() -> Self {
+        Self {
+            // update_every: Default::default(),
+            // last_update: Instant::now(),
+            bins_p_column: Default::default(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct CollectorOutput {
+    pub(crate) snapshot: CollectedAudioSnapshot,
+    pub(crate) current_audio_colunn: AudioColumn,
+}
 
 pub struct CollectorScratch {
     // Volume.
@@ -34,19 +58,18 @@ pub struct CollectorScratch {
 
     pub(crate) bass_samples: VecDeque<u8>,
     pub(crate) bass_peaks: VecDeque<Instant>,
-du b
     pub(crate) time_of_last_bpm_marker: Instant,
     pub(crate) num_beat_mismatches: usize,
-    pub(crate) is_on_beat: bool,
     pub(crate) beat_needs_sync: bool,
-    pub(crate) is_on_beat_memo: usize,
+
+    pub(crate) is_on_beat: bool,
 }
 
 impl CollectorScratch {
     fn new() -> Self {
         let now = Instant::now();
 
-        Self {du b
+        Self {
             time_of_last_volume_publish: now,
             volume_samples: VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE),
             time_of_last_beat_publish: now,
@@ -59,33 +82,33 @@ impl CollectorScratch {
             num_beat_mismatches: 0,
             is_on_beat: false,
             beat_needs_sync: false,
-            is_on_beat_memo: 0,
         }
     }
 }
 
-pub struct SignalCollectorParams {du b
+#[derive(Default)]
+pub struct SignalCollectorParams {
     pub(crate) gate: Option<u8>,
     pub(crate) boost: Option<u8>,
 }
 
-pub struct SignalCollector {
-    pub(crate) current: CollectedAudioSnapshot,du b
+pub struct SignalCollector<const NUM_OUTPUTS: usize> {
+    pub(crate) freqs: Vec<Frequency>,
+    pub(crate) current: CollectedAudioSnapshot,
     pub(crate) converter: AudioConverter,
     pub(crate) params: SignalCollectorParams,
     pub(crate) scratch: CollectorScratch,
-    // // Outputs.
-    pub(crate) output_spectrogram: AudioSpectrogram,
-    pub(crate) output_raw: CollectedAudioSnapshot,du b
+    pub(crate) outputs: [CollectorOutputSpec; NUM_OUTPUTS],
+    pub(crate) need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
 }
 
-impl SignalCollector {
+impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     //
     // NOTE: not idempotent.
     // If the audio snapshot includes the beat-trigger flag, it WILL BE cleared after a call to
     // this function.
     //
-    pub fn take_snapshot(&mut self) -> CollectedAudioSnapshot {
+    pub fn take_snapshot(&self) -> CollectedAudioSnapshot {
         self.current
     }
 
@@ -120,27 +143,23 @@ impl SignalCollector {
         device: Device,
         config: StreamConfig,
         params: SignalCollectorParams,
+        outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     ) -> anyhow::Result<Self> {
-        let (converter, capture) = init_converter(device, config)
+        let (converter, _capture) = init_converter(device, config)
             .with_context(|| "Failed to initialize audio converter")?;
 
         Ok(Self {
             params,
+            freqs: vec![],
             converter,
             current: CollectedAudioSnapshot::default(),
             scratch: CollectorScratch::new(),
-            // // Outputs
-            // output_spectrogram: AudioSpectrogram {
-            //     columns: (),
-            //     max_columns: (),
-            //     bin_count: (),
-            //     gate: (),
-            //     boost: (),
-            // },
+            outputs,
+            need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
         })
     }
 
-    fn get_frequencies(&mut self) -> Vec<Frequency> {
+    fn get_frequencies(&mut self) {
         let values = {
             let values_raw = self.converter.freqs();
 
@@ -167,51 +186,80 @@ impl SignalCollector {
             }
         };
 
-        values
+        self.freqs = values;
     }
 
     //
     // DOES NOT run every ~20 ms. This runs as often as possible.
     //
     pub fn tick(&mut self, now: Instant) -> anyhow::Result<()> {
-        let freqs = self.get_frequencies();
+        self.get_frequencies();
 
         // Volume
-        self.volume(&freqs, now)?;
-du b
+        self.volume()?;
         // Bass
-        self.bass(&freqs, now)?;
+        self.bass(now)?;
 
         // Beat Volume
-        self.beat_volume(&freqs, now)?;
+        self.beat_volume()?;
 
         if self.scratch.is_on_beat {
             self.scratch.is_on_beat = false;
-            self.scratch.is_on_beat_memo = 2;
+            // NOTE: this will cause a missing update if the consumer takes too long.
+            self.need_to_update_output_beat_trigger.fill(true);
         }
+
+        Ok(())
     }
 
-    fn spectrogram_tick() {
-        if now.duration_since(last_spec_push) >= spec_period {
-            // Update live spectrogram buffer at ~refresh_rate
-            let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
-            // const BINS: usize = 10;
-            if !values.is_empty() {
-                let new_column = bin_spectrum_to_u8(&values, bins);
-                // println!("COL: {:?}", new_column);
-                {
-                    let mut spec = app_state.audio_spectrogram.write().unwrap();
-                    if is_on_beat_memo == 1 {
-                        sig_collector.signal(Signal::BeatTrigger(true));
-                        is_on_beat_memo -= 1;
-                    }
-                    // spec.audio_snapshot(collector.take_snapshot())
-                    spec.push_data(new_column, sig_collector.take_snapshot());
-                }
-            }
+    // fn tick_outputs(&mut self, freqs: &[Frequency], now: Instant) {
+    //     let snapshot = self.take_snapshot();
+    //
+    //     for (output_spec, output) in self.outputs.iter_mut() {
+    //         if output_spec.last_update.elapsed() < output_spec.update_every {
+    //             continue;
+    //         }
+    //
+    //         output_spec.last_update = now;
+    //
+    //         match output_spec.bins_p_column {
+    //             Some(num_bins) => {
+    //                 let new_column = bin_spectrum_to_u8(&freqs, num_bins);
+    //                 output.current_audio_colunn = new_column;
+    //             }
+    //             None => {}
+    //         }
+    //
+    //         output.snapshot = snapshot;
+    //
+    //         // Ensure time-critical flags are set.
+    //         if self.scratch.is_on_beat_pending_updates > 0 {
+    //             output.snapshot.beat_trigger = true;
+    //             self.scratch.is_on_beat_pending_updates -= 1;
+    //         }
+    //     }
+    // }
 
-            last_spec_push = now;
+    pub fn tick_output<const OUTPUT_INDEX: usize>(&mut self) -> CollectorOutput {
+        let output_spec = self.outputs[OUTPUT_INDEX];
+
+        let current_audio_colunn = match output_spec.bins_p_column {
+            Some(num_bins) => bin_spectrum_to_u8(&self.freqs, num_bins),
+            None => vec![],
+        };
+
+        let mut output = CollectorOutput {
+            snapshot: self.take_snapshot(),
+            current_audio_colunn,
+        };
+
+        // Ensure time-critical flags are set.
+        if self.need_to_update_output_beat_trigger[OUTPUT_INDEX] {
+            output.snapshot.beat_trigger = true;
+            self.need_to_update_output_beat_trigger[OUTPUT_INDEX] = false;
         }
+
+        output
     }
 }
 
@@ -251,8 +299,10 @@ fn init_converter(
 // Spectrogram utils.
 //
 
+pub type AudioColumn = Vec<u8>;
+
 /// Needs to "summarize" the entire frequency spectrum into chunks
-fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize) -> Vec<u8> {
+fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize) -> AudioColumn {
     debug_assert!(bins > 0);
 
     let chunk_size = match values.len() % bins == 0 {
