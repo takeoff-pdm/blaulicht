@@ -62,6 +62,8 @@ pub struct AudioSpectrogram {
     pub bin_count: usize,
     // other signals
     // pub snapshot: CollectedAudioSnapshot,
+    pub gate: Option<u8>,
+    pub boost: Option<u8>,
 }
 
 impl AudioSpectrogram {
@@ -70,7 +72,8 @@ impl AudioSpectrogram {
             columns: VecDeque::with_capacity(max_columns),
             max_columns,
             bin_count,
-            // snapshot: CollectedAudioSnapshot::default(),
+            gate: None,
+            boost: None,
         }
     }
 

@@ -2,7 +2,7 @@ pub mod supervisor;
 use crate::{
     audio::{
         analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE},
-        capture,
+        collector,
         defs::AudioThreadControlSignal,
     },
     config::Config,
@@ -15,8 +15,9 @@ use crate::{
     system_message,
 };
 use anyhow::{anyhow, Context};
+use audioviz::spectrum::Frequency;
 use blaulicht_shared::LogLevel;
-use core::num;
+use core::{f32, num};
 use cpal::Device;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
@@ -35,59 +36,6 @@ pub use supervisor::supervisor_thread;
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
-
-/// Needs to "summarize" the entire frequency spectrum into chunks
-fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize) -> Vec<u8> {
-    debug_assert!(bins > 0);
-
-    let chunk_size = match values.len() % bins == 0 {
-        true => values.len() / bins,
-        false => {
-            // while values.len() % bins != 0 {
-            //     bins -= 1
-            // }
-
-            let new = values.len() / bins;
-            // println!("new len: {new}");
-            new
-        }
-    };
-
-    // println!("chunk size: {chunk_size}");
-
-    // let chunk_size = values.len() as f32 / bins as f32;
-    let chunks: Vec<u8> = values
-        .chunks(chunk_size)
-        .map(|c| {
-            // let mut max = 0.0;
-            // for f in c {
-            //     if f.volume > max {
-            //         max = f.volume;
-            //     }
-            // }
-
-            // println!("MAX: {max}");
-
-            c.iter()
-                .map(|datapoint| datapoint.volume * 10.0)
-                .sum::<f32>()
-                / c.len() as f32
-        })
-        .map(|v| {
-            // debug_assert!(if v > u8::MAX as f32 { panic!("V too large: {v}") } else { true });
-            v as u8
-        })
-        .collect();
-
-    // let data = [1, 2, 3, 4, 5, 6, 7];
-
-    // let sums: Vec<i32> = data
-    //     .chunks(3)
-    //     .map(|chunk| chunk.iter().sum()) // map each chunk to its sum
-    //     .collect();
-
-    chunks
-}
 
 pub fn run(
     device: Device,
@@ -161,9 +109,7 @@ pub fn run(
     let mut last_spec_push = Instant::now();
     let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
 
-    let mut collector = capture::SignalCollector::new();
-    let (mut converter, capture) = capture::init_converter(device, config.stream)
-        .with_context(|| "Failed to initialize audio converter")?;
+    let mut sig_collector = collector::SignalCollector::default();
 
     //
     // State for the analyzers.
@@ -173,31 +119,31 @@ pub fn run(
     let mut time_of_last_system_publish = time::Instant::now();
     let mut loop_begin_time = time::Instant::now();
 
-    // Volume.
-    let mut time_of_last_volume_publish = time::Instant::now();
-    let time_of_last_volume_publish = &mut time_of_last_volume_publish;
-
-    let mut volume_samples: VecDeque<usize> =
-        VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE);
-
-    // Beat
-    let mut time_of_last_beat_publish = time::Instant::now();
-    let time_of_last_beat_publish = &mut time_of_last_beat_publish;
-    let mut last_index = 0;
-    let rolling_average_frames = 100;
-    let long_historic_frames = rolling_average_frames * 1000;
-    let mut long_historic = VecDeque::with_capacity(long_historic_frames);
-    let mut historic = VecDeque::with_capacity(rolling_average_frames);
-
-    let mut bass_samples = VecDeque::with_capacity(BASS_FRAMES);
-    let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(BASS_PEAK_FRAMES);
-    let bass_modifier = 65;
-
-    let mut time_of_last_bpm_marker = Instant::now();
-    let mut is_on_beat = false;
-    let mut num_beat_mismatches = 0;
-    let mut beat_needs_sync = true;
-    let mut is_on_beat_memo = 0;
+    // // Volume.
+    // let mut time_of_last_volume_publish = time::Instant::now();
+    // let time_of_last_volume_publish = &mut time_of_last_volume_publish;
+    //
+    // let mut volume_samples: VecDeque<usize> =
+    //     VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE);
+    //
+    // // Beat
+    // let mut time_of_last_beat_publish = time::Instant::now();
+    // let time_of_last_beat_publish = &mut time_of_last_beat_publish;
+    // let mut last_index = 0;
+    // let rolling_average_frames = 100;
+    // let long_historic_frames = rolling_average_frames * 1000;
+    // let mut long_historic = VecDeque::with_capacity(long_historic_frames);
+    // let mut historic = VecDeque::with_capacity(rolling_average_frames);
+    //
+    // let mut bass_samples = VecDeque::with_capacity(BASS_FRAMES);
+    // let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(BASS_PEAK_FRAMES);
+    // let bass_modifier = 65;
+    //
+    // let mut time_of_last_bpm_marker = Instant::now();
+    // let mut is_on_beat = false;
+    // let mut num_beat_mismatches = 0;
+    // let mut beat_needs_sync = true;
+    // let mut is_on_beat_memo = 0;
 
     // Dmx last tick.
     let mut time_of_last_dmx_tick = time::Instant::now();
@@ -294,7 +240,7 @@ pub fn run(
             //
 
             let dmx_tick_duration = match plugin_manager.tick(
-                collector.take_snapshot(),
+                sig_collector.take_snapshot(),
                 &midi,
                 serial,
                 Some(Arc::clone(&app_state)),
@@ -314,12 +260,12 @@ pub fn run(
 
             // Update the collector one last time to include the beat trigger.
             if is_on_beat_memo == 2 {
-                collector.signal(Signal::BeatTrigger(true));
+                sig_collector.signal(Signal::BeatTrigger(true));
                 is_on_beat_memo -= 1;
             }
 
             // TODO: maybe feed with audio signals.
-            dmx_engine.tick(collector.take_snapshot());
+            dmx_engine.tick(sig_collector.take_snapshot());
 
             time_of_last_dmx_tick = now;
 
@@ -335,87 +281,12 @@ pub fn run(
 
         {
             let mut audio_sig = app_state.audio_snapshot.write().unwrap();
-            *audio_sig = collector.take_snapshot();
+            *audio_sig = sig_collector.take_snapshot();
         }
 
-        let values = converter.freqs();
         // println!("freqs: {:?}", values);
-
-        //
-        // Update volume signal.
-        //
-
-        analysis::volume(
-            now,
-            time_of_last_volume_publish,
-            &signal_out_0,
-            &mut collector,
-            &values,
-            &mut volume_samples,
-        )?;
-
-        //
-        // Update Bass.
-        //
-
-        analysis::bass(
-            now,
-            time_of_last_beat_publish,
-            &signal_out_0,
-            &mut collector,
-            &values,
-            &mut bass_samples,
-            bass_modifier,
-            &mut bass_peaks,
-            &mut time_of_last_bpm_marker,
-            &mut is_on_beat,
-            &mut num_beat_mismatches,
-            &mut beat_needs_sync,
-        )?;
-
-        //
-        // Update signals.
-        //
-
-        analysis::beat_volume(
-            &values,
-            time_of_last_beat_publish,
-            &signal_out_0,
-            &mut collector,
-            &mut historic,
-            &mut long_historic,
-            rolling_average_frames,
-            long_historic_frames,
-            &mut last_index,
-        )?;
-
-        if is_on_beat {
-            is_on_beat = false;
-            is_on_beat_memo = 2;
-        }
-
-        if now.duration_since(last_spec_push) >= spec_period {
-            // Update live spectrogram buffer at ~refresh_rate
-            let bins = app_state.audio_spectrogram.read().unwrap().bin_count;
-            // const BINS: usize = 10;
-            if !values.is_empty() {
-                let new_column = bin_spectrum_to_u8(&values, bins);
-                // println!("COL: {:?}", new_column);
-                {
-                    let mut spec = app_state.audio_spectrogram.write().unwrap();
-                    if is_on_beat_memo == 1 {
-                        collector.signal(Signal::BeatTrigger(true));
-                        is_on_beat_memo -= 1;
-                    }
-                    // spec.audio_snapshot(collector.take_snapshot())
-                    spec.push_data(new_column, collector.take_snapshot());
-                }
-            }
-
-            last_spec_push = now;
-        }
     }
 
-    mem::drop(capture);
+    mem::drop(sig_collector);
     Ok(())
 }

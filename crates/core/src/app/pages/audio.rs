@@ -1,4 +1,4 @@
-use crate::app::components::ButtonSize;
+use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
@@ -38,9 +38,11 @@ impl BlaulichtApp {
         ctx: &egui::Context,
         spec: RwLockReadGuard<'_, AudioSpectrogram>,
         width: usize,
-        height: usize,
+        height_outer: usize,
     ) -> egui::TextureHandle {
-        let mut pixels = vec![Color32::BLACK; width * height];
+        let pad_btm = 25;
+        let height = height_outer - pad_btm;
+        let mut pixels = vec![Color32::BLACK; width * height_outer];
         let start = Instant::now();
 
         let total_cols = spec.max_columns;
@@ -137,22 +139,23 @@ impl BlaulichtApp {
                 }
 
                 if col.snapshot.bass_avg_short == 255 {
-                    for y in 0..10 {
-                        pixels[y * width + col_start_x] = Color32::MAGENTA;
+                    let dot_size = 5;
+                    for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
+                        pixels[y * width + col_start_x] = Color32::GREEN;
                     }
                 }
 
                 // IF there should be a beat marker, insert it here.
                 // if idx % 10 == 0 {
                 if col.snapshot.beat_trigger {
-                    for y in 0..height {
+                    for y in 0..height_outer {
                         pixels[y * width + col_start_x] = Color32::RED;
                     }
                 }
             }
         }
 
-        let image = egui::ColorImage::new([width, height], pixels);
+        let image = egui::ColorImage::new([width, height_outer], pixels);
         ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
     }
 
@@ -280,28 +283,59 @@ impl BlaulichtApp {
                     let spec_width = ui.available_width();
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
-                    if spec.columns.is_empty() {
-                        let (spec_resp, spec_painter) = ui.allocate_painter(
-                            egui::vec2(spec_width, spec_height),
-                            egui::Sense::hover(),
-                        );
-                        let spec_rect = spec_resp.rect;
-                        spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
-                        spec_painter.text(
-                            spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                            egui::Align2::CENTER_TOP,
-                            "Waiting for audio…",
-                            egui::FontId::proportional(12.0),
-                            Color32::GRAY,
-                        );
-                    } else {
-                        let texture = Self::create_spectrogram_texture(
-                            ctx,
-                            spec,
-                            spec_width as usize,
-                            spec_height as usize,
-                        );
-                        ui.image(&texture);
+                    let mut gate_value = spec.gate.unwrap_or(0) as f32;
+                    let mut boost_value = spec.boost.unwrap_or(0) as f32;
+
+                    {
+                        if spec.columns.is_empty() {
+                            let (spec_resp, spec_painter) = ui.allocate_painter(
+                                egui::vec2(spec_width, spec_height),
+                                egui::Sense::hover(),
+                            );
+                            let spec_rect = spec_resp.rect;
+                            spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
+                            spec_painter.text(
+                                spec_rect.center_top() + egui::vec2(0.0, 6.0),
+                                egui::Align2::CENTER_TOP,
+                                "Waiting for audio…",
+                                egui::FontId::proportional(12.0),
+                                Color32::GRAY,
+                            );
+                        } else {
+                            let texture = Self::create_spectrogram_texture(
+                                ctx,
+                                spec,
+                                spec_width as usize,
+                                spec_height as usize,
+                            );
+                            ui.image(&texture);
+                        }
+                    }
+
+                    {
+                        if ui
+                            .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
+                            .changed()
+                        {
+                            let mut spec = self.data.state.audio_spectrogram.write().unwrap();
+                            let v = gate_value as u8;
+                            spec.gate = match v {
+                                0 => None,
+                                v => Some(v),
+                            };
+                        }
+
+                        if ui
+                            .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
+                            .changed()
+                        {
+                            let mut spec = self.data.state.audio_spectrogram.write().unwrap();
+                            let v = boost_value as u8;
+                            spec.boost = match v {
+                                0 => None,
+                                v => Some(v),
+                            };
+                        }
                     }
 
                     // Set larger graph height
