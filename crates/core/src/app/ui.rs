@@ -357,7 +357,8 @@ impl eframe::App for BlaulichtApp {
 
         // Update all graphs with current data
         {
-            let audio_data = self.data.state.audio_snapshot.read().unwrap();
+            let audio_data = self.data.state.audio_spectrogram.read().unwrap();
+            let audio_data = audio_data.current_snapshot();
             self.volume_graph.update(audio_data.volume as i32);
             self.volume_graph.update(audio_data.volume as i32);
             self.beat_volume_graph.update(audio_data.beat_volume as i32);

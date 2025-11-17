@@ -76,7 +76,7 @@ impl BlaulichtApp {
                     }
                     let bucket_count = chunks[0].current_audio_colunn.len();
                     let mut averaged = CollectorOutput {
-                        samples: Vec::with_capacity(bucket_count),
+                        current_audio_colunn: Vec::with_capacity(bucket_count),
                         snapshot: CollectedAudioSnapshot::default(),
                     };
 
@@ -92,10 +92,10 @@ impl BlaulichtApp {
                     for bucket_idx in 0..bucket_count {
                         let sum: u32 = chunks
                             .iter()
-                            .map(|col| col.samples[bucket_idx] as u32)
+                            .map(|col| col.current_audio_colunn[bucket_idx] as u32)
                             .sum();
                         let avg = (sum / chunks.len() as u32) as u8;
-                        averaged.samples.push(avg);
+                        averaged.current_audio_colunn.push(avg);
                     }
 
                     // average the snapshot
@@ -120,9 +120,9 @@ impl BlaulichtApp {
             let col_start_x = idx * col_width;
             let col_end_x = ((idx + 1) * col_width).min(width);
 
-            let bucket_height = height as f32 / col.samples.len() as f32;
+            let bucket_height = height as f32 / col.current_audio_colunn.len() as f32;
 
-            for (bidx, &bucket) in col.samples.iter().rev().enumerate() {
+            for (bidx, &bucket) in col.current_audio_colunn.iter().rev().enumerate() {
                 let y_min = (bidx as f32 * bucket_height) as usize;
                 let y_max = ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
 
@@ -281,8 +281,9 @@ impl BlaulichtApp {
                     let spec_width = ui.available_width();
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
-                    let mut gate_value = spec.gate.unwrap_or(0) as f32;
-                    let mut boost_value = spec.boost.unwrap_or(0) as f32;
+                    let params = self.data.state.audio_params.read().unwrap();
+                    let mut gate_value = params.gate.unwrap_or(0) as f32;
+                    let mut boost_value = params.boost.unwrap_or(0) as f32;
 
                     {
                         if spec.columns.is_empty() {
@@ -315,9 +316,9 @@ impl BlaulichtApp {
                             .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
                             .changed()
                         {
-                            let mut spec = self.data.state.audio_spectrogram.write().unwrap();
+                            let mut params = self.data.state.audio_params.write().unwrap();
                             let v = gate_value as u8;
-                            spec.gate = match v {
+                            params.gate = match v {
                                 0 => None,
                                 v => Some(v),
                             };
@@ -327,9 +328,9 @@ impl BlaulichtApp {
                             .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
                             .changed()
                         {
-                            let mut spec = self.data.state.audio_spectrogram.write().unwrap();
+                            let mut params = self.data.state.audio_params.write().unwrap();
                             let v = boost_value as u8;
-                            spec.boost = match v {
+                            params.boost = match v {
                                 0 => None,
                                 v => Some(v),
                             };

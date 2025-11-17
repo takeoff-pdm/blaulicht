@@ -306,13 +306,23 @@ fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize)
     debug_assert!(bins > 0);
 
     let chunk_size = match values.len() % bins == 0 {
-        true => values.len() / bins,
+        true => {
+            let primitive = values.len() / bins;
+            if primitive == 0 {
+                1
+            } else {
+                primitive
+            }
+        }
         false => {
             // while values.len() % bins != 0 {
             //     bins -= 1
             // }
 
             let new = values.len() / bins;
+
+            debug_assert!(new > 0);
+
             // println!("new len: {new}");
             new
         }

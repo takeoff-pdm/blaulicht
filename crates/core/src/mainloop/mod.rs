@@ -302,10 +302,10 @@ pub fn run(
 
         /////////////////// Signal Begin ///////////////
 
-        {
-            let mut audio_sig = app_state.audio_snapshot.write().unwrap();
-            *audio_sig = sig_collector.take_snapshot();
-        }
+        // {
+        //     // let mut audio_sig = app_state.audio_snapshot.write().unwrap();
+        //     // *audio_sig = sig_collector.take_snapshot();
+        // }
 
         let (spec_tick_period, spec_bins) = {
             let spec = app_state.audio_spectrogram.read().unwrap();
@@ -327,7 +327,7 @@ pub fn run(
                 //
             // }
 
-            app_state.audio_spectrogram.write().unwrap().push_data(col, snapshot);
+            app_state.audio_spectrogram.write().unwrap().push_data(output);
         }
         // println!("freqs: {:?}", values);
     }

@@ -9,7 +9,10 @@ use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
-use crate::{audio::collector::CollectorOutput, ui_ops::WasmUiOp};
+use crate::{
+    audio::collector::{CollectorOutput, SignalCollectorParams},
+    ui_ops::WasmUiOp,
+};
 use crate::{
     audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
@@ -96,6 +99,14 @@ impl AudioSpectrogram {
             self.columns.push_back(data);
         }
     }
+
+    pub fn current_snapshot(&self) -> CollectedAudioSnapshot {
+        self.columns
+            .iter()
+            .last()
+            .unwrap_or(&CollectorOutput::default())
+            .snapshot
+    }
 }
 
 pub struct AppState {
@@ -104,7 +115,8 @@ pub struct AppState {
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; 2],
-    pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
+    // pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
+    pub audio_params: RwLock<SignalCollectorParams>,
     pub audio_spectrogram: RwLock<AudioSpectrogram>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
@@ -154,7 +166,8 @@ impl AppState {
             dmx_engine: RwLock::new(EngineState::default()),
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),
-            audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            audio_params: RwLock::new(SignalCollectorParams::default()),
             audio_spectrogram: RwLock::new(AudioSpectrogram::new(
                 4,
                 128,
