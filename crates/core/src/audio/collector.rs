@@ -86,7 +86,7 @@ impl CollectorScratch {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct SignalCollectorParams {
     pub(crate) gate: Option<u8>,
     pub(crate) boost: Option<u8>,

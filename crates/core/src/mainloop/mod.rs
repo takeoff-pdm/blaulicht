@@ -303,6 +303,8 @@ pub fn run(
 
         /////////////////// Signal Begin ///////////////
 
+        sig_collector.params = *app_state.audio_params.read().unwrap();
+
         sig_collector
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;

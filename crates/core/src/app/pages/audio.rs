@@ -1,5 +1,5 @@
 use crate::app::components::{ButtonSize, HFader};
-use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{components, BlaulichtApp};
 use crate::audio::collector::CollectorOutput;
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
@@ -15,8 +15,8 @@ use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{
-    vec2, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense,
-    Stroke, TextStyle, ThemePreference, Ui, Vec2,
+    vec2, Checkbox, Color32, ComboBox, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect,
+    RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
 use noise::utils::Color;
@@ -284,6 +284,9 @@ impl BlaulichtApp {
                     let params = self.data.state.audio_params.read().unwrap();
                     let mut gate_value = params.gate.unwrap_or(0) as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
+                    // let mut filterbank_value = params.filterbank;
+                    // let mut use_dp_tracking = params.use_dynamic_programming_beat;
+                    drop(params);
 
                     {
                         if spec.columns.is_empty() {
