@@ -102,7 +102,7 @@ impl DmxEngine {
                         let millis = DMX_TICK_TIME.as_millis();
                         if transition_time < millis as f64 {
                             num_ticks = (millis as f64 / transition_time) as usize;
-                            println!("NUM TICKS: {num_ticks} | millis = {millis} | trans = {transition_time} | factor = {}", animation.speed_factor.as_float());
+                            // println!("NUM TICKS: {num_ticks} | millis = {millis} | trans = {transition_time} | factor = {}", animation.speed_factor.as_float());
                         }
 
                         let spec = animations.get(animation_id).unwrap();

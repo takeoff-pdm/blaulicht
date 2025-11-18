@@ -22,22 +22,22 @@ interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"
-enabled = true
+enabled = false
 enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/sample_egui_plugin.wasm"
-enabled = true
+enabled = false
 enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/drums.wasm"
-enabled = true
+enabled = false
 enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
-enabled = true
+enabled = false
 enable_watcher = true
 
 [[plugins]]

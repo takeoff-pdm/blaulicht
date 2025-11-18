@@ -99,9 +99,11 @@ pub fn run(
     let spec_refresh_hz = 60;
     let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
+    let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
     {
         let mut spec = app_state.audio_spectrogram.write().unwrap();
         spec.max_columns = desired_columns;
+        println!("set spec max columns {desired_columns}");
         // Trim if we already exceed
         while spec.columns.len() > spec.max_columns {
             spec.columns.pop_front();
@@ -109,7 +111,6 @@ pub fn run(
         }
     }
     let mut last_spec_push = Instant::now();
-    let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
 
     let mut collector_outputs = [CollectorOutputSpec::default(); 2];
 
@@ -120,7 +121,7 @@ pub fn run(
         bins_p_column: None,
     };
     collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
-        bins_p_column: Some(5),
+        bins_p_column: Some(128),
     };
 
     let mut sig_collector = SignalCollector::new(
@@ -302,34 +303,22 @@ pub fn run(
 
         /////////////////// Signal Begin ///////////////
 
-        // {
-        //     // let mut audio_sig = app_state.audio_snapshot.write().unwrap();
-        //     // *audio_sig = sig_collector.take_snapshot();
-        // }
+        sig_collector
+            .tick(now)
+            .with_context(|| "Failed to tick audio input")?;
 
-        let (spec_tick_period, spec_bins) = {
-            let spec = app_state.audio_spectrogram.read().unwrap();
-            (spec.tick_period, spec.bin_count)
-        };
-
-        if now.duration_since(last_spectrogram_tick) >= spec_tick_period {
+        if now.duration_since(last_spectrogram_tick) >= spec_period {
+            println!("spec period: {:?}", spec_period);
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
 
-            // let new_column = bin_spectrum_to_u8(output.current_audio_colunn, bins);
-            // {
-                // let mut snapshot = self.take_snapshot();
-                // if self.scratch.is_on_beat_pending_updates > 0 {
-                //     snapshot.beat_trigger = true;
-                //     self.scratch.is_on_beat_pending_updates -= 1;
-                // }
-                // spec.audio_snapshot(collector.take_snapshot())
-                // self.output_spectrogram.push_data(new_column, snapshot);
-                //
-            // }
+            app_state
+                .audio_spectrogram
+                .write()
+                .unwrap()
+                .push_data(output);
 
-            app_state.audio_spectrogram.write().unwrap().push_data(output);
+            last_spectrogram_tick = Instant::now();
         }
-        // println!("freqs: {:?}", values);
     }
 
     mem::drop(sig_collector);

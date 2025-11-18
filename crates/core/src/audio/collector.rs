@@ -81,7 +81,7 @@ impl CollectorScratch {
             time_of_last_bpm_marker: now,
             num_beat_mismatches: 0,
             is_on_beat: false,
-            beat_needs_sync: false,
+            beat_needs_sync: true,
         }
     }
 }
@@ -96,6 +96,7 @@ pub struct SignalCollector<const NUM_OUTPUTS: usize> {
     pub(crate) freqs: Vec<Frequency>,
     pub(crate) current: CollectedAudioSnapshot,
     pub(crate) converter: AudioConverter,
+    capture: Capture,
     pub(crate) params: SignalCollectorParams,
     pub(crate) scratch: CollectorScratch,
     pub(crate) outputs: [CollectorOutputSpec; NUM_OUTPUTS],
@@ -145,13 +146,14 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         params: SignalCollectorParams,
         outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     ) -> anyhow::Result<Self> {
-        let (converter, _capture) = init_converter(device, config)
+        let (converter, capture) = init_converter(device, config)
             .with_context(|| "Failed to initialize audio converter")?;
 
         Ok(Self {
             params,
             freqs: vec![],
             converter,
+            capture,
             current: CollectedAudioSnapshot::default(),
             scratch: CollectorScratch::new(),
             outputs,
@@ -204,9 +206,12 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         self.beat_volume()?;
 
         if self.scratch.is_on_beat {
-            self.scratch.is_on_beat = false;
+            println!("activate on beat flag");
+            // self.scratch.is_on_beat = false;
             // NOTE: this will cause a missing update if the consumer takes too long.
+            // self.need_to_update_output_beat_trigger = [true; NUM_OUTPUTS];
             self.need_to_update_output_beat_trigger.fill(true);
+            self.scratch.is_on_beat = false;
         }
 
         Ok(())
@@ -257,6 +262,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         if self.need_to_update_output_beat_trigger[OUTPUT_INDEX] {
             output.snapshot.beat_trigger = true;
             self.need_to_update_output_beat_trigger[OUTPUT_INDEX] = false;
+            println!("included beat trigger")
         }
 
         output

@@ -133,11 +133,12 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                 .duration_since(self.scratch.time_of_last_bpm_marker)
                 .as_millis() as u32;
 
-            if self.scratch.is_on_beat
+            if !self.scratch.is_on_beat
                 && bpm > 0
                 && (beat_marker_elapsed >= time_between_beats_millis as u32
                     || self.scratch.beat_needs_sync)
             {
+                println!("beat detection logic called");
                 // Is initial beat: Wait for actual beat.
                 if beat_marker_elapsed > 1000 || self.scratch.beat_needs_sync {
                     if peaked {
@@ -157,7 +158,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
             let is_bass_avg_short = peaked || elapsed_since_last_peak < 50; // cross-tick mitigation
             if self.scratch.is_on_beat && !is_bass_avg_short {
                 self.scratch.num_beat_mismatches += 1;
-                // println!("drift = {}", *num_beat_mismatches);
+                // println!("drift = {}", self.scratch.num_beat_mismatches);
             } else if self.scratch.is_on_beat && is_bass_avg_short {
                 self.scratch.num_beat_mismatches = 0;
             }
@@ -250,27 +251,34 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                 / (self.scratch.volume_samples.len() as f32)
                 * 10.0) as usize;
 
+            // let volume_sum = self.freqs.iter().map(|f| f.volume).sum::<f32>() * 10.0;
+            // let volume_avg = volume_sum / self.freqs.len() as f32;
+
             let volume = volume_mean as u8;
             &[Signal::Volume(volume)]
         });
 
-        let curr_avg = self
+        let curr_max = (self
             .freqs
             .iter()
-            .max_by_key(|f| (f.volume * 10.0) as usize)
-            .unwrap_or(&Frequency {
-                volume: 0f32,
-                freq: 0f32,
-                position: 0f32,
-            })
-            .volume as usize;
+            // .max_by_key(|f| (f.volume * 10.0) as usize)
+            // .unwrap_or(&Frequency {
+            //     volume: 0f32,
+            //     freq: 0f32,
+            //     position: 0f32,
+            // })
+            .map(|f| f.volume)
+            .sum::<f32>()
+            * 10.0
+            / self.freqs.len() as f32) as usize;
+        // .volume as usize;
 
         // TODO: this is fake, this is not even the average.
 
         shift_push!(
             self.scratch.volume_samples,
             ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
-            curr_avg
+            curr_max
         );
 
         Ok(())
