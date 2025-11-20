@@ -1,9 +1,12 @@
 use crate::{
     app::{
-        components::{LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME, DEFAULT_NEW_SCENE_NAME},
+        components::{
+            DmxSimulator, LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
+            DEFAULT_NEW_SCENE_NAME,
+        },
         ui::FileDialogOpenOrigin,
     },
-    state::AppStateWrapper,
+    state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode};
 use egui::Color32;
@@ -172,8 +175,6 @@ pub struct BlaulichtApp {
     add_animations_dialog_open: bool,
     add_selected_animation: Option<u8>,
 
-    show_dmx_simulation_universes: [bool; 2],
-
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
 
@@ -226,6 +227,8 @@ pub struct BlaulichtApp {
     new_group_name: String,
 
     show_ui: ShowUI,
+
+    universe_simulations: [DmxSimulator; NUM_DMX_UNIVERSES],
 }
 
 impl BlaulichtApp {
@@ -339,7 +342,6 @@ impl BlaulichtApp {
             add_fixture_count: 1,
             setup_fixture_id: 0,
             add_fixture_universe_no: 0,
-            show_dmx_simulation_universes: [false; 2],
             new_fixture_name: String::new(),
             new_fixture_addr: 0,
             new_fixture_uni: 0,
@@ -351,6 +353,7 @@ impl BlaulichtApp {
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             reload_dialog_open: false,
             show_ui: ShowUI::default(),
+            universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
         }
     }
 }

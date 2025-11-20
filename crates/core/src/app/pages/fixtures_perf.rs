@@ -5,10 +5,7 @@ use crate::{
     },
     dmx::EngineState,
 };
-use blaulicht_shared::{
-    AnimationSpecBody, AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
-    PhaserDuration,
-};
+use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, RichText};
 
 impl BlaulichtApp {

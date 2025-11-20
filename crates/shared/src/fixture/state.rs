@@ -51,35 +51,9 @@ impl Fixture {
         self.type_.write(self, state, dmx)
     }
 
-    // pub fn set_color(&mut self, color: (u8, u8, u8)) {
-    //     self.state.color = color.into();
-    //     // self.type_.write(self, dmx)
-    // }
-    //
-    // pub fn set_alpha(&mut self, alpha: u8) {
-    //     self.state.alpha = alpha;
-    //     // self.type_.write(self, dmx)
-    // }
-
-    //
-    // Begin rotation.
-    //
-
-    // pub fn set_tilt(&mut self, tilt: u8) {
-    //     self.state.orientation.tilt = tilt;
-    // }
-    //
-    // pub fn set_pan(&mut self, pan: u8) {
-    //     self.state.orientation.pan = pan;
-    // }
-    //
-    // pub fn set_rotation(&mut self, rotation: u8) {
-    //     self.state.orientation.rotation = rotation;
-    // }
-
-    //
-    // End rotation.
-    //
+    pub fn state_from_dmx(&self, dmx: &[u8]) -> FixtureState {
+        self.type_.state_from_dmx(self, dmx)
+    }
 
     pub fn setup(&self, time: i32, state: &FixtureState, dmx: &mut [u8]) {
         self.type_.setup(self, time, state, dmx);

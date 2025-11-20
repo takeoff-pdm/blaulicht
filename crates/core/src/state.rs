@@ -109,12 +109,14 @@ impl AudioSpectrogram {
     }
 }
 
+pub const NUM_DMX_UNIVERSES: usize = 2;
+
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
-    pub dmx_universes: [RwLock<DmxBuffer>; 2],
+    pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     // pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub audio_params: RwLock<SignalCollectorParams>,
     pub audio_spectrogram: RwLock<AudioSpectrogram>,

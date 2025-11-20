@@ -1,4 +1,7 @@
-use crate::{RGBColor, fixture::state::FixtureState};
+use crate::{
+    HSVColor, RGBColor,
+    fixture::state::{FixtureOrientation, FixtureState},
+};
 
 use super::Fixture;
 use bincode::{Decode, Encode};
@@ -104,6 +107,45 @@ impl MovingHead {
         //     MovingHead::Generic3ChanNoAlpha => todo!(),
         //     MovingHead::Generic4ChanWithAlpha => todo!(),
         // }
+    }
+
+    pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
+        match self {
+            MovingHead::MartinMac250E => {
+                let strobe_speed = dmx[this.start_addr + 0];
+                let alpha = dmx[this.start_addr + 1];
+                let hue = (dmx[this.start_addr + 3] as u16).map_range(0..255, 0..360);
+                let pan = dmx[this.start_addr + 12];
+                let tilt = dmx[this.start_addr + 14];
+
+                FixtureState {
+                    color: HSVColor {
+                        h: hue as f64,
+                        s: 1.0,
+                        v: 1.0,
+                    },
+                    alpha,
+                    orientation: FixtureOrientation { pan, tilt },
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            MovingHead::VaryTechHeroSpot60 => {
+                let pan = dmx[this.start_addr + 0];
+                let tilt = dmx[this.start_addr + 1];
+                let alpha = dmx[this.start_addr + 3];
+                let strobe = dmx[this.start_addr + 4];
+                let focus = dmx[this.start_addr + 5];
+
+                FixtureState {
+                    color: HSVColor::BLACK,
+                    alpha,
+                    orientation: FixtureOrientation { pan, tilt },
+                    strobe_speed: strobe,
+                    focus,
+                }
+            }
+        }
     }
 
     pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {

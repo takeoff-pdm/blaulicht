@@ -55,6 +55,14 @@ impl FixtureType {
         }
     }
 
+    pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
+        match self {
+            FixtureType::MovingHead(moving_head) => moving_head.state_from_dmx(this, dmx),
+            FixtureType::Light(light) => light.state_from_dmx(this, dmx),
+            FixtureType::Dimmer(dimmer) => dimmer.state_from_dmx(this, dmx),
+        }
+    }
+
     pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             FixtureType::MovingHead(moving_head) => moving_head.blackout(this, state, dmx),

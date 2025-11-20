@@ -5,7 +5,7 @@ use crate::{
     },
     dmx::EngineState,
 };
-use blaulicht_shared::view::View;
+use blaulicht_shared::{view::View, ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Context, FontId, Frame, Key, Margin, RichText, ScrollArea, TextEdit, Vec2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
@@ -586,6 +586,20 @@ impl BlaulichtApp {
                     if let Some(idx) = dmx_engine.0.views.keys().position(|vid| *vid == view_id) {
                         self.show_ui.view_page = idx / VIEW_OVERVIEW_PAGE_SIZE;
                     }
+
+                    let (_, entry) = view_entries[view_id as usize];
+
+                    let transaction = vec![
+                        ControlEvent::SetSceneFocus(entry.base_scene),
+                        ControlEvent::SetOverlays(entry.overlays.clone()),
+                    ];
+
+                    self.data
+                        .event_bus_connection
+                        .send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::Transaction(transaction),
+                        ));
                 }
             }
         });

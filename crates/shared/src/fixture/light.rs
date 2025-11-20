@@ -1,4 +1,7 @@
-use crate::{RGBColor, fixture::state::FixtureState};
+use crate::{
+    HSVColor, RGBColor,
+    fixture::state::{FixtureOrientation, FixtureState},
+};
 
 use super::Fixture;
 use bincode::{Decode, Encode};
@@ -231,6 +234,34 @@ impl Light {
                 dmx[this.start_addr + 8] = state.focus;
                 dmx[this.start_addr + 9] = state.orientation.pan;
             }
+        }
+    }
+
+    pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
+        match self {
+            Light::Generic3ChanNoAlpha => FixtureState {
+                color: RGBColor::parse_dmx(dmx, this.start_addr).into(),
+                alpha: 255,
+                orientation: FixtureOrientation::default(),
+                strobe_speed: 0,
+                focus: 0,
+            },
+            Light::Generic4ChanWithAlpha => FixtureState {
+                color: RGBColor::parse_dmx(dmx, this.start_addr + 1).into(),
+                alpha: dmx[this.start_addr + 0],
+                orientation: FixtureOrientation::default(),
+                strobe_speed: 0,
+                focus: 0,
+            },
+            Light::LEDPartyTCLSpot => todo!(),
+            Light::AdjMegaHexPar => todo!(),
+            Light::LiteCraftMiniParAT10 => todo!(),
+            Light::VaryTechVP1 => todo!(),
+            Light::LightMaxxVegaSilentPar2Quad => todo!(),
+            Light::LEDPar64RGBSpot5Chan => todo!(),
+            Light::CameoQSpot40RGBW_4Chan => todo!(),
+            Light::LightMaxxTripleDerbyHP => todo!(),
+            Light::EuroLiteLEDMultiFX_10Chan => todo!(),
         }
     }
 

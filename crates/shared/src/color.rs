@@ -1,6 +1,7 @@
 use bincode::{Decode, Encode};
 use color_space::{FromColor, FromRgb};
 use core::{f32, f64};
+use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, Encode, Decode)]
@@ -8,6 +9,14 @@ pub struct HSVColor {
     pub h: f64,
     pub s: f64,
     pub v: f64,
+}
+
+impl HSVColor {
+    pub const BLACK: Self = Self {
+        h: 0.0,
+        s: 0.0,
+        v: 0.0,
+    };
 }
 
 impl From<RGBColor> for HSVColor {
@@ -31,6 +40,26 @@ pub struct RGBColor {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+impl RGBColor {
+    pub fn parse_dmx(dmx: &[u8], start_addr: usize) -> Self {
+        Self {
+            r: dmx[start_addr + 0],
+            g: dmx[start_addr + 1],
+            b: dmx[start_addr + 2],
+        }
+    }
+
+    pub fn with_alpha(&self, alpha: u8) -> Self {
+        let alpha_percent = (alpha as f64).map_range(0.0..255.0, 0.0..1.0);
+
+        Self {
+            r: (self.r as f64 * alpha_percent) as u8,
+            g: (self.g as f64 * alpha_percent) as u8,
+            b: (self.b as f64 * alpha_percent) as u8,
+        }
+    }
 }
 
 impl From<HSVColor> for RGBColor {

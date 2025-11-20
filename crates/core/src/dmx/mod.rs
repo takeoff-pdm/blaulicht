@@ -513,6 +513,49 @@ impl DmxEngine {
                 }
                 (None, None)
             }
+            ControlEvent::SetOverlays(overlays) => {
+                // if !state.0.scenes.get(&id).is_some() {
+                //     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
+                // }
+
+                // PATCH: reset all animations in that scene
+                // state.0.current_scene_focus = id;
+
+                state.0.current_overlay_scenes.clear();
+
+                for scene in &overlays {
+                    let animations = state.0.animations.clone();
+
+                    let anim = &mut state
+                        .0
+                        .scenes
+                        .get_mut(scene)
+                        .unwrap()
+                        .sink
+                        .active_animations;
+                    for (selec, anim_set) in anim.iter_mut() {
+                        for (anim_id, anim) in anim_set.iter_mut() {
+                            // anim.reset();
+                            let animation_sync = {
+                                let anim = match animations.get(&*anim_id) {
+                                    Some(a) => a,
+                                    None => {
+                                        println!("WARN: animation not found");
+                                        continue;
+                                    }
+                                };
+                                let anim = anim.clone();
+                                anim.sync
+                            };
+                            anim.set_timers(animation_sync);
+                            println!("Reset animation: {anim_id}");
+                        }
+                    }
+
+                    state.0.current_overlay_scenes.push(*scene);
+                }
+                (None, None)
+            }
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)

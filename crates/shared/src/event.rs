@@ -270,6 +270,10 @@ pub enum ControlEvent {
     //
     // Focusses the scene with the given ID.
     SetSceneFocus(u8),
+    // SetOverlay(u8),
+    // RemoveOverlay(u8),
+    // ClearOverlays(u8),
+    SetOverlays(Vec<u8>),
 
     // Other stuff,
     SetChannelOverride(u16, u16, u8), // Universe, Channel and value.
@@ -370,7 +374,8 @@ impl ControlEvent {
             | ControlEvent::MiscEvent { .. }
             | ControlEvent::PopSelection
             | ControlEvent::PushSelection
-            | ControlEvent::SetSceneFocus(_) => false,
+            | ControlEvent::SetSceneFocus(_)
+            | ControlEvent::SetOverlays(_) => false,
             ControlEvent::Transaction(_) => false,
             ControlEvent::SetChannelOverride(_, _, _) => false,
             ControlEvent::RemoveChannelOverride(_, _) => false,

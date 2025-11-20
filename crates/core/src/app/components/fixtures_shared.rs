@@ -13,6 +13,7 @@ use blaulicht_shared::{
 };
 use egui::{
     Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Vec2,
+    Widget,
 };
 use map_range::MapRange;
 use std::{collections::BTreeMap, sync::RwLockReadGuard};
@@ -20,77 +21,266 @@ use std::{collections::BTreeMap, sync::RwLockReadGuard};
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 
-pub fn simulate_dmx(
-    ui: &mut egui::Ui,
-    _groups: &EngineGroups,
-    dmx: RwLockReadGuard<'_, DmxBuffer>,
-) {
-    let len = dmx.dmx_buffer.len() as f32;
-    let dimensions = len.sqrt() as usize + 1;
+#[derive(Default, Clone, Copy)]
+pub struct DmxSimulator {
+    pub open: bool,
+    pub map_fixtures: bool,
+}
 
-    let base_height = 16.0;
-    let padding = 1.0;
+impl DmxSimulator {
+    pub fn simulate_dmx(
+        &mut self,
+        ui: &mut egui::Ui,
+        groups: &EngineGroups,
+        dmx: RwLockReadGuard<'_, DmxBuffer>,
+        universe_no: usize,
+    ) {
+        ui.vertical(|ui| {
+            if components::Switch::new(&mut self.map_fixtures)
+                .ui(ui)
+                .changed()
+            {
+                println!("changed map fixtures");
+            }
 
-    let dim_pixels = dimensions as f32 * (base_height + padding);
+            match self.map_fixtures {
+                true => Self::render_mapped_ui(ui, groups, dmx, universe_no),
+                false => Self::render_dmx(ui, dmx),
+            }
+        });
+    }
 
-    let dmx_buffer = dmx.dmx_buffer;
+    fn render_mapped_ui(
+        ui: &mut egui::Ui,
+        groups: &EngineGroups,
+        dmx: RwLockReadGuard<'_, DmxBuffer>,
+        universe_no: usize,
+    ) {
+        struct FixtureVisual {
+            group_id: u8,
+            fixture_id: u8,
+            name: String,
+            start_addr: usize,
+            state: FixtureState,
+        }
 
-    ui.horizontal(|ui| {
-        // Remove spacing in this container
-        ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+        ui.set_min_height(300.0);
 
-        // Allocate fixed square space for the matrix
-        let (rect, _response) =
-            ui.allocate_exact_size(egui::vec2(dim_pixels, dim_pixels), egui::Sense::hover());
-        let painter = ui.painter();
+        let mut fixtures: Vec<FixtureVisual> = Vec::new();
+        for (group_id, group) in groups {
+            for (fixture_id, fixture) in &group.fixtures {
+                if fixture.universe_no != universe_no {
+                    continue;
+                }
 
-        // Draw the cells manually
-        for row in 0..dimensions {
-            for col in 0..dimensions {
-                let value = dmx_buffer.get(row * dimensions + col);
+                let state = fixture.state_from_dmx(&dmx.dmx_buffer);
+                fixtures.push(FixtureVisual {
+                    group_id: *group_id,
+                    fixture_id: *fixture_id,
+                    name: fixture.name.clone(),
+                    start_addr: fixture.start_addr,
+                    state,
+                });
+            }
+        }
 
-                // Calculate top-left corner of this cell
-                let x = rect.min.x + col as f32 * (base_height + padding);
-                let y = rect.min.y + row as f32 * (base_height + padding);
+        fixtures.sort_by(|a, b| {
+            a.start_addr
+                .cmp(&b.start_addr)
+                .then_with(|| a.group_id.cmp(&b.group_id))
+                .then_with(|| a.fixture_id.cmp(&b.fixture_id))
+        });
 
-                let cell_rect = egui::Rect::from_min_size(
-                    egui::pos2(x, y),
-                    egui::vec2(base_height, base_height),
-                );
+        if fixtures.is_empty() {
+            ui.label("No fixtures mapped yet.");
+            return;
+        }
 
-                // Color based on value
-                let (bg_color, fg_color) = match value {
-                    Some(0) => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
-                    Some(1..=85) => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
-                    Some(86..=170) => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
-                    Some(171..=255) => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
-                    None => (Color32::TRANSPARENT, Color32::TRANSPARENT),
-                };
+        const CARD_SIZE: Vec2 = Vec2::new(112.0, 88.0);
+        const CARD_ROUNDING: f32 = 5.0;
+        const CARD_MARGIN: f32 = 5.0;
 
-                painter.rect_filled(cell_rect, 0.0, bg_color);
-                if let Some(value) = value {
-                    if *value > 0 {
-                        painter.text(
-                            egui::Pos2 { x, y },
-                            Align2::LEFT_TOP,
-                            value.to_string(),
-                            egui::FontId {
-                                size: 9.0,
-                                family: egui::FontFamily::Monospace,
-                            },
-                            fg_color,
-                        );
+        egui::ScrollArea::vertical()
+            .id_source(("dmx_fixture_map", universe_no))
+            .show(ui, |ui| {
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        for fixture in &fixtures {
+                            let (rect, _) = ui.allocate_exact_size(CARD_SIZE, egui::Sense::hover());
+                            let painter = ui.painter_at(rect);
+
+                            let card_bg = Color32::from_rgb(28, 28, 36);
+                            let border_color = Color32::from_rgb(68, 68, 82);
+                            painter.rect_filled(rect, CARD_ROUNDING, card_bg);
+                            painter.rect_stroke(
+                                rect,
+                                CARD_ROUNDING,
+                                egui::Stroke::new(1.0, border_color),
+                                egui::StrokeKind::Middle,
+                            );
+
+                            let title_font = FontId::proportional(12.0);
+                            painter.text(
+                                egui::pos2(rect.center().x, rect.top() + 3.0),
+                                Align2::CENTER_TOP,
+                                &fixture.name,
+                                title_font.clone(),
+                                Color32::from_rgb(220, 220, 230),
+                            );
+
+                            let inner_rect = egui::Rect::from_min_max(
+                                egui::pos2(rect.min.x + CARD_MARGIN, rect.top() + 18.0),
+                                egui::pos2(rect.max.x - CARD_MARGIN, rect.bottom() - CARD_MARGIN),
+                            );
+
+                            let color_rect_height = inner_rect.height() * 0.42;
+                            let color_rect = egui::Rect::from_min_max(
+                                inner_rect.min,
+                                egui::pos2(inner_rect.max.x, inner_rect.min.y + color_rect_height),
+                            );
+
+                            let intensity = (fixture.state.alpha as f32 / 255.0).clamp(0.0, 1.0);
+                            let color: RGBColor = fixture.state.color.into();
+                            let color = color.with_alpha(fixture.state.alpha);
+                            let color = Color32::from_rgb(color.r, color.g, color.b);
+
+                            painter.rect_filled(color_rect, 3.0, color);
+                            painter.rect_stroke(
+                                color_rect,
+                                3.0,
+                                egui::Stroke::new(1.0, Color32::from_rgb(20, 20, 26)),
+                                egui::StrokeKind::Middle,
+                            );
+
+                            if fixture.state.strobe_speed > 0 {
+                                let strobe_alpha =
+                                    (fixture.state.strobe_speed as f32 / 255.0 * 120.0) as u8;
+                                painter.rect_filled(
+                                    color_rect,
+                                    3.0,
+                                    Color32::from_rgba_premultiplied(255, 255, 255, strobe_alpha),
+                                );
+                            }
+
+                            let alpha_bar_rect = egui::Rect::from_min_max(
+                                egui::pos2(inner_rect.min.x, color_rect.max.y + 4.0),
+                                egui::pos2(inner_rect.max.x, color_rect.max.y + 8.5),
+                            );
+                            painter.rect_filled(alpha_bar_rect, 3.0, Color32::from_rgb(36, 36, 44));
+
+                            if intensity > 0.0 {
+                                let filled_width = alpha_bar_rect.width() * intensity;
+                                let filled_rect = egui::Rect::from_min_max(
+                                    alpha_bar_rect.min,
+                                    egui::pos2(
+                                        alpha_bar_rect.min.x + filled_width,
+                                        alpha_bar_rect.max.y,
+                                    ),
+                                );
+                                painter.rect_filled(
+                                    filled_rect,
+                                    3.0,
+                                    Color32::from_rgb(124, 208, 244),
+                                );
+                            }
+
+                            let detail_font = FontId::monospace(10.0);
+                            let detail_text = format!(
+                                "Addr {:>3} | G{} F{}",
+                                fixture.start_addr, fixture.group_id, fixture.fixture_id
+                            );
+                            painter.text(
+                                egui::pos2(rect.center().x, rect.bottom() - 18.0),
+                                Align2::CENTER_TOP,
+                                detail_text,
+                                detail_font.clone(),
+                                Color32::from_rgb(200, 200, 208),
+                            );
+
+                            let orientation_text = format!(
+                                "Pan {:>3}  Tilt {:>3}",
+                                fixture.state.orientation.pan, fixture.state.orientation.tilt
+                            );
+                            painter.text(
+                                egui::pos2(rect.center().x, rect.bottom() - 32.0),
+                                Align2::CENTER_TOP,
+                                orientation_text,
+                                detail_font,
+                                Color32::from_rgb(170, 170, 180),
+                            );
+                        }
+                    });
+                });
+            });
+    }
+
+    fn render_dmx(ui: &mut egui::Ui, dmx: RwLockReadGuard<'_, DmxBuffer>) {
+        let len = dmx.dmx_buffer.len() as f32;
+        let dimensions = len.sqrt() as usize + 1;
+
+        let base_height = 16.0;
+        let padding = 1.0;
+        let dim_pixels = dimensions as f32 * (base_height + padding);
+        let dmx_buffer = dmx.dmx_buffer;
+
+        ui.horizontal(|ui| {
+            // Remove spacing in this container
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+
+            // Allocate fixed square space for the matrix
+            let (rect, _response) =
+                ui.allocate_exact_size(egui::vec2(dim_pixels, dim_pixels), egui::Sense::hover());
+            let painter = ui.painter();
+
+            // Draw the cells manually
+            for row in 0..dimensions {
+                for col in 0..dimensions {
+                    let value = dmx_buffer.get(row * dimensions + col);
+
+                    // Calculate top-left corner of this cell
+                    let x = rect.min.x + col as f32 * (base_height + padding);
+                    let y = rect.min.y + row as f32 * (base_height + padding);
+
+                    let cell_rect = egui::Rect::from_min_size(
+                        egui::pos2(x, y),
+                        egui::vec2(base_height, base_height),
+                    );
+
+                    // Color based on value
+                    let (bg_color, fg_color) = match value {
+                        Some(0) => (Color32::from_rgb(10, 10, 10), Color32::WHITE),
+                        Some(1..=85) => (Color32::from_rgb(255, 0, 0), Color32::WHITE),
+                        Some(86..=170) => (Color32::from_rgb(255, 255, 0), Color32::BLACK),
+                        Some(171..=255) => (Color32::from_rgb(0, 255, 0), Color32::MAGENTA),
+                        None => (Color32::TRANSPARENT, Color32::TRANSPARENT),
+                    };
+
+                    painter.rect_filled(cell_rect, 0.0, bg_color);
+                    if let Some(value) = value {
+                        if *value > 0 {
+                            painter.text(
+                                egui::Pos2 { x, y },
+                                Align2::LEFT_TOP,
+                                value.to_string(),
+                                egui::FontId {
+                                    size: 9.0,
+                                    family: egui::FontFamily::Monospace,
+                                },
+                                fg_color,
+                            );
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    }
 }
 
 impl BlaulichtApp {
-    pub fn render_dmx_simulation_dialog(&self, ctx: &Context, groups: &EngineGroups) {
-        for (universe, open) in self.show_dmx_simulation_universes.iter().enumerate() {
-            if *open {
+    pub fn render_dmx_simulation_dialog(&mut self, ctx: &Context, groups: &EngineGroups) {
+        for (universe, simulator) in self.universe_simulations.iter_mut().enumerate() {
+            if simulator.open {
                 components::dialog(
                     ctx,
                     &format!("DMX Universe {universe}"),
@@ -98,7 +288,7 @@ impl BlaulichtApp {
                     true,
                     |ui| {
                         let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
-                        simulate_dmx(ui, groups, dmx_buffer);
+                        simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
                     },
                 );
             }

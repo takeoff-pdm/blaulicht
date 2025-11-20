@@ -29,6 +29,7 @@ impl Dimmer {
             Dimmer::DimmerWStrobe => 2,
         }
     }
+
     pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             Dimmer::FogMachineSingle => dmx[this.start_addr + 0] = state.alpha,
@@ -39,6 +40,23 @@ impl Dimmer {
             }
         }
     }
+
+    pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
+        let mut state = FixtureState {
+            alpha: dmx[this.start_addr + 0],
+            ..Default::default()
+        };
+
+        match self {
+            Dimmer::FogMachineSingle | Dimmer::DimmerSingle => {}
+            Dimmer::DimmerWStrobe => {
+                state.strobe_speed = dmx[this.start_addr + 1];
+            }
+        }
+
+        state
+    }
+
     pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {}
     pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {}
 }

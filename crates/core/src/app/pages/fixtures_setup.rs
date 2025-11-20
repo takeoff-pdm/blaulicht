@@ -670,16 +670,16 @@ impl BlaulichtApp {
 
                             ui.separator();
 
-                            for (universe, open) in
-                                self.show_dmx_simulation_universes.iter_mut().enumerate()
+                            for (universe, simulator) in
+                                self.universe_simulations.iter_mut().enumerate()
                             {
                                 if components::button(
                                     ui,
-                                    *open,
+                                    simulator.open,
                                     &format!("Sim. DMX {universe}"),
                                     ButtonSize::Medium,
                                 ) {
-                                    *open = !*open;
+                                    simulator.open = !simulator.open;
                                 }
                             }
                         });
