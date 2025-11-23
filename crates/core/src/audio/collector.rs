@@ -96,7 +96,7 @@ pub struct SignalCollector<const NUM_OUTPUTS: usize> {
     pub(crate) freqs: Vec<Frequency>,
     pub(crate) current: CollectedAudioSnapshot,
     pub(crate) converter: AudioConverter,
-    capture: Capture,
+    _capture: Capture, // Cant be dropped or the converter dies.
     pub(crate) params: SignalCollectorParams,
     pub(crate) scratch: CollectorScratch,
     pub(crate) outputs: [CollectorOutputSpec; NUM_OUTPUTS],
@@ -146,14 +146,14 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         params: SignalCollectorParams,
         outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     ) -> anyhow::Result<Self> {
-        let (converter, capture) = init_converter(device, config)
+        let (converter, _capture) = init_converter(device, config)
             .with_context(|| "Failed to initialize audio converter")?;
 
         Ok(Self {
             params,
             freqs: vec![],
             converter,
-            capture,
+            _capture,
             current: CollectedAudioSnapshot::default(),
             scratch: CollectorScratch::new(),
             outputs,
@@ -213,6 +213,8 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
             self.need_to_update_output_beat_trigger.fill(true);
             self.scratch.is_on_beat = false;
         }
+
+        self.current.time += 1;
 
         Ok(())
     }

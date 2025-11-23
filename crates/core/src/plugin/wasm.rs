@@ -365,59 +365,59 @@ impl PluginManager {
             },
         )?;
 
-        let so = self.system_out.clone();
-        linker.func_wrap::<_, ()>(
-            "blaulicht",
-            "controls_log",
-            move |mut caller: Caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
-                let memory = caller
-                    .get_export("memory")
-                    .and_then(|export| export.into_memory())
-                    .expect("failed to find memory");
-
-                let mut buffer = vec![0u8; str_len as usize];
-                memory
-                    .read(&caller, str_pointer as usize, &mut buffer)
-                    .expect("failed to read memory");
-
-                let received_string = String::from_utf8_lossy(&buffer).to_string();
-
-                so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
-                    x: x as u8,
-                    y: y as u8,
-                    value: received_string,
-                }))
-                .expect("failed to send controls log message");
-            },
-        )?;
-
-        let so = self.system_out.clone();
-        linker.func_wrap::<_, ()>(
-            "blaulicht",
-            "controls_set",
-            move |mut _caller: Caller<'_, ()>, x: i32, y: i32, value: i32| {
-                so.send(SystemMessage::WasmControlsSet(WasmControlsSet {
-                    x: x as u8,
-                    y: y as u8,
-                    value: value != 0,
-                }))
-                .expect("failed to send controls set message");
-            },
-        )?;
-
-        let so = self.system_out.clone();
-        linker.func_wrap::<_, ()>(
-            "blaulicht",
-            "controls_config",
-            move |mut _caller: Caller<'_, ()>, x: i32, y: i32| {
-                so.send(SystemMessage::WasmControlsConfig(WasmControlsConfig {
-                    x: x as u8,
-                    y: y as u8,
-                }))
-                .expect("failed to send controls config message");
-                log::debug!("[wasm] controls_config: {x} {y}");
-            },
-        )?;
+        // let so = self.system_out.clone();
+        // linker.func_wrap::<_, ()>(
+        //     "blaulicht",
+        //     "controls_log",
+        //     move |mut caller: Caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
+        //         let memory = caller
+        //             .get_export("memory")
+        //             .and_then(|export| export.into_memory())
+        //             .expect("failed to find memory");
+        //
+        //         let mut buffer = vec![0u8; str_len as usize];
+        //         memory
+        //             .read(&caller, str_pointer as usize, &mut buffer)
+        //             .expect("failed to read memory");
+        //
+        //         let received_string = String::from_utf8_lossy(&buffer).to_string();
+        //
+        //         so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
+        //             x: x as u8,
+        //             y: y as u8,
+        //             value: received_string,
+        //         }))
+        //         .expect("failed to send controls log message");
+        //     },
+        // )?;
+        //
+        // let so = self.system_out.clone();
+        // linker.func_wrap::<_, ()>(
+        //     "blaulicht",
+        //     "controls_set",
+        //     move |mut _caller: Caller<'_, ()>, x: i32, y: i32, value: i32| {
+        //         so.send(SystemMessage::WasmControlsSet(WasmControlsSet {
+        //             x: x as u8,
+        //             y: y as u8,
+        //             value: value != 0,
+        //         }))
+        //         .expect("failed to send controls set message");
+        //     },
+        // )?;
+        //
+        // let so = self.system_out.clone();
+        // linker.func_wrap::<_, ()>(
+        //     "blaulicht",
+        //     "controls_config",
+        //     move |mut _caller: Caller<'_, ()>, x: i32, y: i32| {
+        //         so.send(SystemMessage::WasmControlsConfig(WasmControlsConfig {
+        //             x: x as u8,
+        //             y: y as u8,
+        //         }))
+        //         .expect("failed to send controls config message");
+        //         log::debug!("[wasm] controls_config: {x} {y}");
+        //     },
+        // )?;
 
         // ---- egui UI bridging ----
         let state_ref = Arc::clone(&self.state_ref);

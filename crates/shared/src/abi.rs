@@ -15,7 +15,7 @@ pub struct TickInput {
 
 #[derive(Debug, Clone, Copy, Default, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
-    pub time: i32,
+    pub time: u64,
     pub volume: u8,
     pub beat_volume: u8,
     pub bass: u8,
@@ -140,7 +140,7 @@ impl TickInput {
 // }
 // }
 
+//
+//
+//
 
-//
-//
-//

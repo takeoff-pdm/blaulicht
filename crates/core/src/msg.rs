@@ -47,10 +47,6 @@ pub enum SystemMessage {
     Heartbeat(usize),
     Log(String, LogLevel),
     WasmLog(WasmLogBody),
-    // Controls.
-    WasmControlsLog(WasmControlsLog),
-    WasmControlsSet(WasmControlsSet),
-    WasmControlsConfig(WasmControlsConfig),
     // Performance.
     LoopSpeed(Duration),
     TickSpeed(Duration),
@@ -80,14 +76,6 @@ pub enum UnifiedMessage {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-pub struct MatrixEvent {
-    pub device: u8,
-    pub x: u8,
-    pub y: u8,
-    pub value: bool,
-}
-
-#[derive(Deserialize, Clone, Debug)]
 pub struct MidiEvent {
     pub device: u8,
     pub status: u8,
@@ -99,6 +87,4 @@ pub struct MidiEvent {
 pub enum FromFrontend {
     Reload,
     SelectInputDevice(Option<Device>),
-    SelectSerialDevice(Option<String>),
-    MatrixControl(MatrixEvent),
 }

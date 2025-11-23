@@ -8,6 +8,7 @@ mod graph;
 mod log;
 mod selection_dialog;
 mod switch;
+mod spectrogram;
 
 pub use button::*;
 pub use clickable::*;
@@ -19,3 +20,4 @@ pub use graph::*;
 pub use log::*;
 pub use selection_dialog::*;
 pub use switch::*;
+pub use spectrogram::*;

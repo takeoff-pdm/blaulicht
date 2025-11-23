@@ -15,7 +15,7 @@ use pages::ShowUI;
 use std::time::{Duration, Instant};
 use strum::EnumIter;
 
-mod components;
+pub mod components;
 pub mod pages;
 mod theme;
 mod ui;

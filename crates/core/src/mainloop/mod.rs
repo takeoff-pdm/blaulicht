@@ -1,10 +1,9 @@
+pub mod bg_worker;
 pub mod supervisor;
+
 use crate::{
     audio::{
-        analysis::{self, BASS_FRAMES, BASS_PEAK_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE},
-        collector::{
-            self, CollectorOutput, CollectorOutputSpec, SignalCollector, SignalCollectorParams,
-        },
+        collector::{CollectorOutputSpec, SignalCollector, SignalCollectorParams},
         defs::AudioThreadControlSignal,
     },
     config::Config,
@@ -17,14 +16,10 @@ use crate::{
     system_message,
 };
 use anyhow::{anyhow, Context};
-use audioviz::spectrum::Frequency;
 use blaulicht_shared::LogLevel;
-use core::{f32, num};
 use cpal::Device;
 use crossbeam_channel::Sender;
-use itertools::Itertools;
 use std::{
-    collections::VecDeque,
     mem,
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -36,8 +31,8 @@ use std::{
 pub use supervisor::supervisor_thread;
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
+// pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
-pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 
 pub fn run(
     device: Device,
@@ -99,7 +94,7 @@ pub fn run(
     let spec_refresh_hz = 60;
     let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
-    let spec_period = Duration::from_millis((1000usize / spec_refresh_hz) as u64);
+    let spec_period = Duration::from_millis((1000f32 / spec_refresh_hz as f32) as u64);
     {
         let mut spec = app_state.audio_spectrogram.write().unwrap();
         spec.max_columns = desired_columns;
@@ -310,7 +305,7 @@ pub fn run(
             .with_context(|| "Failed to tick audio input")?;
 
         if now.duration_since(last_spectrogram_tick) >= spec_period {
-            println!("spec period: {:?}", spec_period);
+            // println!("spec period: {:?}", spec_period);
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
 
             app_state

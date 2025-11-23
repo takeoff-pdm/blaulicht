@@ -1,211 +1,24 @@
-use anyhow::bail;
-use blaulicht_shared::LogLevel;
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use enttecopendmx::EnttecOpenDMX;
-use std::{
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc, Mutex,
-    },
-    thread,
-    time::{Duration, Instant},
-};
-
 use crate::{
     audio::defs::AudioThreadControlSignal,
     config::Config,
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    mainloop,
-    msg::MidiEvent,
+    event::SystemEventBusConnectionInst,
+    mainloop::{self, bg_worker},
     msg::{Signal, SystemMessage},
-    plugin::midi,
     state::AppState,
 };
-
+use crate::{msg::FromFrontend, utils};
+use blaulicht_shared::LogLevel;
 use cpal::{traits::DeviceTrait, Device};
-use log::{debug, error, info, warn, Log};
-
-use crate::{
-    audio::{self},
-    msg::FromFrontend,
-    utils,
+use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use log::{error, info, warn};
+use std::{
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
 };
-
-// pub struct DmxUniverseBasic {
-//     tick_engine: TickEngine,
-//     channels: [u8; 513],
-//     tick_input: TickInput,
-//     system_out: Sender<SystemMessage>,
-// }
-
-// impl DmxUniverseBasic {
-//     fn new(
-//         midi_out: Sender<MidiEvent>,
-//         system_out: Sender<SystemMessage>,
-//     ) -> wasmtime::Result<Self> {
-//         let tick_engine = wasm::TickEngine::create(midi_out, system_out.clone())?;
-
-//         Ok(Self {
-//             tick_engine,
-//             channels: [0; 513],
-//             tick_input: CollectedAudioSnapshot::default(),
-//             system_out,
-//         })
-//     }
-
-//     fn signal(&mut self, signal: Signal) {
-//         match signal {
-//             Signal::Volume(v) => {
-//                 self.tick_input.volume = v;
-//             }
-//             Signal::BeatVolume(v) => {
-//                 self.tick_input.beat_volume = v;
-//             }
-//             Signal::Bass(v) => {
-//                 self.tick_input.bass = v;
-//             }
-//             Signal::BassAvgShort(v) => {
-//                 self.tick_input.bass_avg_short = v;
-//             }
-//             Signal::BassAvg(v) => {
-//                 self.tick_input.bass_avg = v;
-//             }
-//             Signal::Bpm(v) => {
-//                 self.tick_input.bpm = v.bpm;
-//                 self.tick_input.time_between_beats_millis = v.time_between_beats_millis;
-//             }
-//         }
-//     }
-
-//     fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
-//         let start = Instant::now();
-//         self.tick_engine.tick(self.tick_input, midi, false)?;
-
-//         for (index, value) in self.tick_engine.dmx().iter().enumerate() {
-//             self.channels[index] = *value;
-//         }
-
-//         let elapsed = Instant::now().duration_since(start);
-//         Ok(elapsed)
-//     }
-
-//     fn reload(&mut self) -> wasmtime::Result<()> {
-//         self.tick_engine.reload()
-//     }
-// }
-
-// pub struct DmxUniverseDummy {
-//     basic: DmxUniverseBasic,
-//     last_state: [u8; 513],
-// }
-
-// pub enum DmxUniverse {
-//     Dummy(DmxUniverseDummy),
-//     Real(DmxUniverseReal),
-// }
-
-// impl DmxUniverse {
-//     pub fn new(
-//         midi_out: Sender<MidiEvent>,
-//         system_out: Sender<SystemMessage>,
-//     ) -> anyhow::Result<Self> {
-//         let base = DmxUniverseBasic::new(midi_out, system_out)?;
-//         let real_universe = DmxUniverseReal::new(base)?;
-//         Ok(Self::Real(real_universe))
-//     }
-
-//     pub fn new_dummy(
-//         midi_out: Sender<MidiEvent>,
-//         system_out: Sender<SystemMessage>,
-//     ) -> wasmtime::Result<Self> {
-//         let base = DmxUniverseBasic::new(midi_out, system_out)?;
-//         Ok(Self::Dummy(DmxUniverseDummy {
-//             basic: base,
-//             last_state: [0; 513],
-//         }))
-//     }
-
-//     pub fn signal(&mut self, signal: Signal) {
-//         match self {
-//             DmxUniverse::Dummy(dummy) => dummy.basic.signal(signal),
-//             DmxUniverse::Real(dmx_universe_real) => dmx_universe_real.signal(signal),
-//         }
-//     }
-
-//     pub fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
-//         match self {
-//             DmxUniverse::Dummy(ref mut dummy) => {
-//                 let dur = dummy.basic.tick(midi)?;
-
-//                 let mut modified = false;
-//                 for (a, b) in dummy.basic.channels.iter().zip(dummy.last_state.iter()) {
-//                     if a != b {
-//                         modified = true;
-//                         break;
-//                     }
-//                 }
-
-//                 if modified {
-//                     dummy
-//                         .basic
-//                         .system_out
-//                         .send(SystemMessage::DMX(dummy.basic.channels.into()))
-//                         .unwrap();
-
-//                     dummy.last_state = dummy.basic.channels;
-//                 }
-
-//                 Ok(dur)
-//             }
-//             DmxUniverse::Real(dmx_universe_real) => dmx_universe_real.tick(midi),
-//         }
-//     }
-
-//     pub fn reload(&mut self) -> wasmtime::Result<()> {
-//         match self {
-//             DmxUniverse::Dummy(dummy) => dummy.basic.reload(),
-//             DmxUniverse::Real(dmx_universe_real) => dmx_universe_real.reload(),
-//         }
-//     }
-// }
-
-// pub struct DmxUniverseReal {
-//     pub dmx: EnttecOpenDMX,
-//     pub base: DmxUniverseBasic,
-// }
-
-// impl DmxUniverseReal {
-//     fn new(base: DmxUniverseBasic) -> anyhow::Result<Self> {
-//         let mut interface = enttecopendmx::EnttecOpenDMX::new()?;
-//         interface.open().unwrap();
-
-//         let this = Self {
-//             dmx: interface,
-//             base,
-//         };
-
-//         Ok(this)
-//     }
-
-//     fn reload(&mut self) -> wasmtime::Result<()> {
-//         self.base.reload()
-//     }
-
-//     fn signal(&mut self, signal: Signal) {
-//         self.base.signal(signal)
-//     }
-
-//     pub fn tick(&mut self, midi: &[MidiEvent]) -> anyhow::Result<Duration> {
-//         let duration = self.base.tick(midi)?;
-//         self.write_to_serial();
-//         Ok(duration)
-//     }
-
-//     fn write_to_serial(&mut self) {
-//         self.dmx.set_buffer(self.base.channels);
-//         self.dmx.render().unwrap();
-//     }
-// }
 
 pub fn signal_mainloop(
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -227,6 +40,14 @@ pub fn supervisor_thread(
     app_state: Arc<AppState>,
 ) {
     log::info!("[SUPERVISOR] Thread started!");
+
+    // Start background worker.
+    {
+        let app_state_b = Arc::clone(&app_state);
+        thread::spawn(move || {
+            bg_worker::spawn_bg_worker(Arc::clone(&app_state_b));
+        });
+    }
 
     let heartbeat_delay = Duration::from_millis(1000);
 
@@ -268,26 +89,10 @@ pub fn supervisor_thread(
                     );
                 }
             }
-            Ok(FromFrontend::SelectSerialDevice(dev)) => {
-                // TODO: maybe implement this
-                // Get device by name.
-            }
             Ok(FromFrontend::SelectInputDevice(dev)) => {
                 // Get device by name.
                 audio_device = dev;
                 device_changed = true;
-            }
-            Ok(FromFrontend::MatrixControl(control)) => {
-                // 255 is for the builtin device.
-                // midi_in_sender
-                //     .send(MidiEvent {
-                //         device: control.device,
-                //         status: control.y,
-                //         data0: control.x,
-                //         data1: control.value as u8,
-                //     })
-                //     .unwrap();
-                todo!("no longer supported");
             }
             Err(TryRecvError::Disconnected) => {
                 log::warn!("[SUPERVISOR] Shutting down.");
@@ -363,6 +168,7 @@ pub fn supervisor_thread(
                 let bus_connection_dmx = event_bus_connection_dmx.clone();
 
                 let app_state = Arc::clone(&app_state);
+
                 thread::spawn(move || {
                     signal_mainloop(
                         Arc::clone(&audio_thread_control_signal),

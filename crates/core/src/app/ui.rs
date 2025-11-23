@@ -252,11 +252,6 @@ impl eframe::App for BlaulichtApp {
                 Ok(sys) => match sys {
                     SystemMessage::Heartbeat(_) => {
                         self.last_heartbeat_frame = self.frame_count;
-                        // self.log_window.add_log(
-                        //     LogLevel::Debug,
-                        //     "Heartbeat received".to_string(),
-                        //     "System".to_string(),
-                        // );
                     }
                     SystemMessage::Log(log_msg, level) => {
                         self.log_window
@@ -269,42 +264,11 @@ impl eframe::App for BlaulichtApp {
                             "WASM".to_string(),
                         );
                     }
-                    SystemMessage::WasmControlsLog(wasm_controls_log) => {
-                        self.log_window.add_log(
-                            LogLevel::Debug,
-                            format!("WASM Controls: {:?}", wasm_controls_log),
-                            "WASM".to_string(),
-                        );
-                    }
-                    SystemMessage::WasmControlsSet(wasm_controls_set) => {
-                        self.log_window.add_log(
-                            LogLevel::Info,
-                            format!("WASM Controls Set: {:?}", wasm_controls_set),
-                            "WASM".to_string(),
-                        );
-                    }
-                    SystemMessage::WasmControlsConfig(wasm_controls_config) => {
-                        self.log_window.add_log(
-                            LogLevel::Info,
-                            format!("WASM Controls Config: {:?}", wasm_controls_config),
-                            "WASM".to_string(),
-                        );
-                    }
                     SystemMessage::LoopSpeed(duration) => {
                         self.loop_speed = duration.as_micros() as usize;
-                        // self.log_window.add_log(
-                        //     LogLevel::Debug,
-                        //     format!("Loop speed: {} μs", duration.as_micros()),
-                        //     "Performance".to_string(),
-                        // );
                     }
                     SystemMessage::TickSpeed(duration) => {
                         self.tick_speed = duration.as_micros() as usize;
-                        // self.log_window.add_log(
-                        //     LogLevel::Debug,
-                        //     format!("Tick speed: {} μs", duration.as_micros()),
-                        //     "Performance".to_string(),
-                        // );
                     }
                     SystemMessage::AudioSelected(device) => {
                         // self.log_window.add_log(
