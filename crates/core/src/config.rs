@@ -66,7 +66,7 @@ pub fn read_showfile(
     //     Err(e) => {},
     // }
     //
-    match ron::from_str::<dmx::EngineState>(&string) {
+    match serde_json::from_str::<dmx::EngineState>(&string) {
         Ok(de) => {
             let mut storage = plugin_state_storage.lock().unwrap();
             *storage = de.0.plugin_state.clone();

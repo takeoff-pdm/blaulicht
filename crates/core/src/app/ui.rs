@@ -1167,11 +1167,14 @@ impl BlaulichtApp {
                 }
 
                 // let string = ron::to_string(&dmx.clone()).unwrap();
-                let pretty = PrettyConfig::new()
-                    .indentor("    ".to_owned())
-                    .new_line("\n".to_owned());
+                // let pretty = PrettyConfig::new()
+                //     .indentor("    ".to_owned())
+                //     .new_line("\n".to_owned());
 
-                let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
+                
+                let string =serde_json::to_string_pretty(&dmx.clone()).unwrap();
+                
+                // let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
                 // let string = ron::to_string(&dmx.clone()).unwrap();
                 // let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();
                 println!("STRING: {string}");
