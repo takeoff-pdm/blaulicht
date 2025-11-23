@@ -26,9 +26,8 @@ use crate::{
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
     scene::FixtureSelection,
-    ActiveAnimation, AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, ControlEvent,
-    ControlEventMessage, EventOriginator, FixtureProperty, LogLevel, PhaserDuration, RGBColor,
-    SyncMode, CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator,
+    LogLevel, RGBColor, SyncMode, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{

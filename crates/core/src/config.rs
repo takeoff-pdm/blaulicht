@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use audioviz::spectrum::config::StreamConfig;
+// use blaulicht_shared::EngineState;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 
@@ -50,18 +51,27 @@ pub fn read_showfile(
 ) -> anyhow::Result<()> {
     debug!("Attempting to read showfile from {file:?}...");
 
-    let mut f = File::open(&file)?;
-    let metadata = fs::metadata(&file)?;
-    let mut buffer = vec![0; metadata.len() as usize];
-    f.read(&mut buffer)?;
+    // let mut f = File::open(&file)?;
+    // let metadata = fs::metadata(&file)?;
+    // let mut buffer = vec![0; metadata.len() as usize];
+    // f.read(&mut buffer)?;
 
-    match postcard::from_bytes::<blaulicht_shared::EngineState>(&buffer) {
+    let string = fs::read_to_string(&file)?;
+
+    // match {
+    //     Ok(de) => {
+    //             let mut storage = plugin_state_storage.lock().unwrap();
+    //             *storage = de.plugin_state.clone();
+    //     },
+    //     Err(e) => {},
+    // }
+    //
+    match ron::from_str::<dmx::EngineState>(&string) {
         Ok(de) => {
-            {
-                let mut storage = plugin_state_storage.lock().unwrap();
-                *storage = de.plugin_state.clone();
-            }
-            dmx.load_showfile(de);
+            let mut storage = plugin_state_storage.lock().unwrap();
+            *storage = de.0.plugin_state.clone();
+
+            dmx.load_showfile(de.0);
             Ok(())
         }
         Err(e) => Err(anyhow!(e)),

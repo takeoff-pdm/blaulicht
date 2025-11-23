@@ -28,34 +28,6 @@ use std::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineState(pub blaulicht_shared::EngineState);
 
-// {
-//     // Strores the actual output state of all fixtures.
-//     pub groups: EngineGroups,
-//
-//     // These are the reusable base animations.
-//     pub animations: BTreeMap<u8, AnimationSpec>,
-//
-//     // Selection.
-//     pub selection: EngineSelection,
-//     pub selection_stack: VecDeque<EngineSelection>,
-//
-//     // This is a buffer where control events are also being written into before they get applied on
-//     // fixtures, this is mainly useful for UI.
-//     // TODO: will be migrated to hashmap from selection -> control buffer maybe
-//     pub control_buffer: FixtureState,
-//
-//     // ID 0 is reserved for the 'empty' scene.
-//     pub scenes: BTreeMap<u8, Scene>,
-//
-//     pub current_scene_focus: u8,
-//
-//     // First scene is the least-significant.
-//     pub current_overlay_scenes: Vec<u8>,
-//
-//     // Overrides a (universe, channel) -> value
-//     pub overrides: BTreeMap<(usize, usize), u8>,
-// }
-
 impl<'engine> EngineState {
     pub fn get_selection(&self) -> FixtureSelection {
         let group_ids = self.0.selection.group_ids.clone();

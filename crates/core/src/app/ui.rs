@@ -1,7 +1,7 @@
 use crate::app::components::ButtonSize;
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::audio::defs::{AudioThreadControlSignal, DMX_TICK_TIME};
-use crate::dmx::{DmxEngine, EngineState};
+use crate::dmx::DmxEngine;
 use crate::msg::FromFrontend;
 use crate::{config, plugin, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
@@ -16,6 +16,7 @@ use egui::{
     ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
+use ron::ser::PrettyConfig;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::Read;
@@ -1165,8 +1166,18 @@ impl BlaulichtApp {
                     dmx.0.plugin_state = plugin_state.clone();
                 }
 
-                let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                std::fs::write(&path, serialized).unwrap();
+                // let string = ron::to_string(&dmx.clone()).unwrap();
+                let pretty = PrettyConfig::new()
+                    .indentor("    ".to_owned())
+                    .new_line("\n".to_owned());
+
+                let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
+                // let string = ron::to_string(&dmx.clone()).unwrap();
+                // let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();
+                println!("STRING: {string}");
+
+                // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                std::fs::write(path, &string).unwrap();
 
                 config_mut.last_open_showfile = Some(path.clone());
 

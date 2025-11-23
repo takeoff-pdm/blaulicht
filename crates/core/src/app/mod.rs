@@ -8,7 +8,7 @@ use crate::{
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
-use blaulicht_shared::{FixtureProperty, MathematicalBaseFunction, PhaserDuration, SyncMode};
+use blaulicht_shared::{FixtureProperty, MathematicalBaseFunction, SyncMode, engine::PhaserDuration};
 use egui::Color32;
 use egui_file::FileDialog;
 use pages::ShowUI;

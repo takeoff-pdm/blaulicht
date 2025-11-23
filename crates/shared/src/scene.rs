@@ -101,8 +101,6 @@ pub struct EngineSink {
     // These are the current active animations.
     // The BTreeMap maps an animation ID to an animation state.
     pub active_animations: HashMap<FixtureSelection, BTreeMap<u8, ActiveAnimation>>,
-
-    // pub log: Vec<AtomicInstruction>,
     pub changeset: HashSet<FixtureSelector>,
 }
 

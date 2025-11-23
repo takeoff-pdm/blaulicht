@@ -1,5 +1,6 @@
+use blaulicht_shared::engine::EngineState;
+
 use crate::BufferSource;
-use blaulicht_shared::EngineState;
 
 const STATE_BUFFER_LEN: usize = 1024 * 100; // Big Ass!
 type StateBufferT = u8;
