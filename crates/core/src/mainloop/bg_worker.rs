@@ -4,9 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use blaulicht_audio_engine::SpectrogramDisplayOptions;
 use log::{info, warn};
 
-use crate::{app::components::SpectrogramDisplayOptions, state::AppState};
+use crate::state::AppState;
+
+// use crate::{app::components::SpectrogramDisplayOptions, state::AppState};
 
 const BG_WORKER_TICK_DURATION: Duration = Duration::from_millis(33); // 60fps
 

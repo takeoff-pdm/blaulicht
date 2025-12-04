@@ -3,10 +3,11 @@ use crate::{
     config::Config,
     event::SystemEventBusConnectionInst,
     mainloop::{self, bg_worker},
-    msg::{Signal, SystemMessage},
+    msg::{SystemMessage},
     state::AppState,
 };
 use crate::{msg::FromFrontend, utils};
+use blaulicht_audio_engine::Signal;
 use blaulicht_shared::LogLevel;
 use cpal::{traits::DeviceTrait, Device};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};

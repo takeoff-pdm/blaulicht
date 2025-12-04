@@ -421,11 +421,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6099cdc01846bc367c4e7dd630dc5966dccf36b652fae7a74e17b640411a91b2"
 
 [[package]]
+name = "blaulicht-audio-engine"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "audioviz",
+ "blaulicht-shared",
+ "cpal 0.15.3",
+ "crossbeam-channel",
+ "egui",
+ "itertools 0.14.0",
+ "libc",
+ "log",
+ "mach",
+ "map-range",
+ "serde",
+]
+
+[[package]]
 name = "blaulicht-core"
 version = "0.3.0"
 dependencies = [
  "anyhow",
  "audioviz",
+ "blaulicht-audio-engine",
  "blaulicht-shared",
  "chrono",
  "color_space",

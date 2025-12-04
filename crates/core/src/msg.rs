@@ -1,25 +1,9 @@
 use std::{borrow::Cow, time::Duration};
 
+use blaulicht_audio_engine::Signal;
 use blaulicht_shared::LogLevel;
 use cpal::{Device, HostId};
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Serialize, Debug)]
-pub struct BpmInfo {
-    pub bpm: u8,
-    pub time_between_beats_millis: u16,
-}
-
-#[derive(Clone, Serialize, Debug)]
-pub enum Signal {
-    Bpm(BpmInfo),
-    BeatVolume(u8),
-    Bass(u8),
-    BassAvgShort(u8),
-    BassAvg(u8),
-    Volume(u8),
-    BeatTrigger(bool),
-}
 
 #[derive(Clone, Serialize, Debug)]
 pub struct WasmControlsLog {

@@ -5,12 +5,13 @@ use std::{
     time::Duration,
 };
 
+use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
 use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio::collector::{CollectorOutput, SignalCollectorParams},
+    // audio::collector::{CollectorOutput, SignalCollectorParams},
     ui_ops::WasmUiOp,
 };
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::{FromFrontend, Signal, SystemMessage, UnifiedMessage},
+    msg::{FromFrontend, SystemMessage, UnifiedMessage},
     plugin::Plugin,
 };
 
@@ -55,59 +56,6 @@ impl AudioState {
 //     pub snapshot: CollectedAudioSnapshot,
 // }
 
-/// Rolling buffer of recent spectra for a live spectrogram.
-pub struct AudioSpectrogram {
-    /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
-    /// Contains bins. A bin is just a averaged part of the frequency space.
-    pub columns: VecDeque<CollectorOutput>,
-    /// Maximum number of time columns to keep.
-    pub max_columns: usize,
-    /// Number of frequency bins per column.
-    pub bin_count: usize,
-    // Time to wait between ticks of the spectrogram.
-    pub tick_period: Duration,
-}
-
-impl AudioSpectrogram {
-    pub fn new(max_columns: usize, bin_count: usize, tick_period: Duration) -> Self {
-        Self {
-            columns: VecDeque::with_capacity(max_columns),
-            max_columns,
-            bin_count,
-            tick_period,
-        }
-    }
-
-    // pub fn audio_snapshot(&mut self, snapshot: CollectedAudioSnapshot) {
-    //     self.snapshot = snapshot;
-    // }
-
-    pub fn push_data(&mut self, mut data: CollectorOutput) {
-        // Column
-        {
-            // Ensure correct height; pad or truncate as needed.
-            if data.current_audio_colunn.len() != self.bin_count {
-                // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
-                // This can happen due to rounding issues.
-                data.current_audio_colunn.resize(self.bin_count, 0);
-            }
-            // println!("{} vs {}", self.columns.len(), self.max_columns);
-            if self.columns.len() >= self.max_columns {
-                self.columns.pop_front();
-                // println!("too many columns, reducing...");
-            }
-            self.columns.push_back(data);
-        }
-    }
-
-    pub fn current_snapshot(&self) -> CollectedAudioSnapshot {
-        self.columns
-            .iter()
-            .last()
-            .unwrap_or(&CollectorOutput::default())
-            .snapshot
-    }
-}
 
 pub const NUM_DMX_UNIVERSES: usize = 2;
 

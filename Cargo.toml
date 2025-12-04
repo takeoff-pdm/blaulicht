@@ -18,6 +18,7 @@ members = [
     "./crates/core",
     "./crates/shared",
     "./crates/plugin_framework",
+    "./crates/audio_engine",
 ]
 exclude = [
     "./crates/plugins/drums",

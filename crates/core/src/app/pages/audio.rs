@@ -1,12 +1,11 @@
-use crate::app::components::{ButtonSize, HFader, SpectrogramDisplayOptions};
+use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
-use crate::audio::collector::CollectorOutput;
 use crate::audio::defs::AudioThreadControlSignal;
 use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
-use crate::state::AudioSpectrogram;
 use crate::{config, utils};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
+use blaulicht_audio_engine::SpectrogramDisplayOptions;
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
     PluginUiEvent,

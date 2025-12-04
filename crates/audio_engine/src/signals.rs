@@ -1,20 +1,23 @@
 //
 // Provides analysis on the audio.
 //
-use crate::{
-    audio::collector::{CollectorScratch, SignalCollector},
-    msg::{BpmInfo, Signal},
-    shift_push, signal, util,
-};
+// use crate::{
+//     audio::collector::{CollectorScratch, SignalCollector},
+//     msg::{BpmInfo, Signal},
+//     shift_push, signal, util,
+// };
 use audioviz::spectrum::Frequency;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
+use map_range::MapRange;
 use std::{
     cmp::Ordering,
     collections::VecDeque,
     time::{self, Instant},
     u8,
 };
+
+use crate::{BpmInfo, Signal, SignalCollector};
 
 // Constants.
 pub const BASS_FRAMES: usize = 10000;
@@ -26,10 +29,24 @@ pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = 100;
 pub const ROLLING_AVERAGE_FRAMES: usize = 100;
 pub const LONG_HISTORIC_FRAMES: usize = ROLLING_AVERAGE_FRAMES * 1000;
 
+///
+/// Vector push operations.
+///
+
+#[macro_export]
+macro_rules! shift_push {
+    ($vector:expr,$capacity:ident,$item:expr) => {
+        $vector.push_back($item);
+        if $vector.len() > $capacity {
+            $vector.pop_front();
+        }
+    };
+}
+
 impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     #[inline(always)]
     pub fn bass(&mut self, now: Instant) -> anyhow::Result<()> {
-        signal!(self, {
+        let signals = {
             const USES_BASS: bool = true;
 
             let (v, lower_volume_limit) = match USES_BASS {
@@ -197,7 +214,9 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                 },
                 Signal::BassAvg(bass_moving_average as u8),
             ]
-        });
+        };
+
+        self.send_signals(signals);
 
         Ok(())
     }
@@ -221,24 +240,46 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         let curr = curr.iter().max().unwrap_or(&0);
         shift_push!(self.scratch.historic, ROLLING_AVERAGE_FRAMES, *curr);
 
-        let max = self.scratch.historic.iter().max().unwrap_or(&usize::MAX);
-        let min = self.scratch.historic.iter().min().unwrap_or(&usize::MIN);
+        let min = self
+            .scratch
+            .historic
+            .iter()
+            .min()
+            .unwrap_or(&usize::MIN)
+            .to_owned();
+
+        let max = self
+            .scratch
+            .historic
+            .iter()
+            .max()
+            .unwrap_or(&usize::MAX)
+            .to_owned()
+            .max(min + 1);
 
         const MAX_BEAT_VOLUME: u8 = 255;
+
         // TODO: use map range crate.
-        let index_mapped = util::map(
-            *curr as isize,
-            *min as isize,
-            *max as isize,
-            0,
-            MAX_BEAT_VOLUME as isize,
-        );
+
+        println!("map range: min: {min} | max: {max}, max: {MAX_BEAT_VOLUME}");
+
+        // if *min == 0 || *max == 0 {
+        //     return Ok(());
+        // }
+
+        let index_mapped = curr.map_range(min..max, 0..MAX_BEAT_VOLUME as usize);
+
+        // let index_mapped = util::map(
+        //     *curr as isize,
+        //     *min as isize,
+        //     *max as isize,
+        //     0,
+        //     MAX_BEAT_VOLUME as isize,
+        // );
 
         if self.scratch.last_index != index_mapped {
-            signal!(self, {
-                self.scratch.last_index = index_mapped;
-                &[Signal::BeatVolume(index_mapped as u8)]
-            });
+            self.scratch.last_index = index_mapped;
+            self.send_signals(&[Signal::BeatVolume(index_mapped as u8)]);
         }
 
         Ok(())
@@ -246,7 +287,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
 
     #[inline(always)]
     pub fn volume(&mut self) -> anyhow::Result<()> {
-        signal!(self, {
+        self.send_signals({
             let volume_mean = ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
                 / (self.scratch.volume_samples.len() as f32)
                 * 10.0) as usize;

@@ -1,0 +1,31 @@
+[package]
+name = "blaulicht-audio-engine"
+version = "0.3.0"
+authors = ["MikMuellerDev"]
+edition = "2021"
+include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
+rust-version = "1.76"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+
+[dependencies]
+log = "0.4"
+audioviz = { version = "0.4.4", features = ["serde"] }
+crossbeam-channel = "0.5.15"
+itertools = "0.14.0"
+blaulicht-shared = { path = "../shared" }
+egui = "0.32"
+anyhow = "1.0.100"
+cpal = "0.15.3"
+serde = { version = "1", features = ["derive"] }
+map-range = "0.1.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mach = "0.3"
+libc = "0.2"
+
+# [profile.release]
+# opt-level = 3
+

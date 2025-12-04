@@ -10,15 +10,15 @@ macro_rules! system_message {
     };
 }
 
-#[macro_export]
-macro_rules! signal {
-    ($sink:ident,$tx_signal:expr) => {
-        let signal_res = $tx_signal;
-        for signal in signal_res {
-            $sink.signal(signal.clone());
-        }
-    };
-}
+// #[macro_export]
+// macro_rules! signal {
+//     ($sink:ident,$tx_signal:expr) => {
+//         let signal_res = $tx_signal;
+//         for signal in signal_res {
+//             $sink.signal(signal.clone());
+//         }
+//     };
+// }
 
 ///
 /// Vector push operations.

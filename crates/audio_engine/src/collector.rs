@@ -1,11 +1,11 @@
 //
 // Provides class for capturing audio.
 //
-use crate::audio::analysis::{
-    BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
-    ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
-};
-use crate::{audio::defs::AudioConverter, msg::Signal};
+// use crate::audio::analysis::{
+//     BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
+//     ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+// };
+// use crate::{audio::defs::AudioConverter, msg::Signal};
 use anyhow::{anyhow, Context};
 use audioviz::spectrum::Frequency;
 use audioviz::{
@@ -15,7 +15,9 @@ use audioviz::{
 use blaulicht_shared::CollectedAudioSnapshot;
 use cpal::{traits::DeviceTrait, Device};
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+use crate::{AudioConverter, Signal};
 
 // Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
 // The problem is: both run at different refresh rates.
@@ -24,7 +26,7 @@ use std::time::{Duration, Instant};
 pub struct CollectorOutputSpec {
     // update_every: Duration,
     // last_update: Instant,
-    pub(crate) bins_p_column: Option<usize>, // If None, no columns will be included
+    pub bins_p_column: Option<usize>, // If None, no columns will be included
 }
 
 impl Default for CollectorOutputSpec {
@@ -39,8 +41,8 @@ impl Default for CollectorOutputSpec {
 
 #[derive(Default, Debug, Clone)]
 pub struct CollectorOutput {
-    pub(crate) snapshot: CollectedAudioSnapshot,
-    pub(crate) current_audio_colunn: AudioColumn,
+    pub snapshot: CollectedAudioSnapshot,
+    pub current_audio_colunn: AudioColumn,
 }
 
 pub struct CollectorScratch {
@@ -65,19 +67,27 @@ pub struct CollectorScratch {
     pub(crate) is_on_beat: bool,
 }
 
+pub struct CollectorScratchParameters {
+    pub volume_frames: usize,
+    pub long_historic_frames: usize,
+    pub rolling_frames: usize,
+    pub bass_frames: usize,
+    pub bass_peak_frames: usize,
+}
+
 impl CollectorScratch {
-    fn new() -> Self {
+    fn new(params: CollectorScratchParameters) -> Self {
         let now = Instant::now();
 
         Self {
             time_of_last_volume_publish: now,
-            volume_samples: VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE),
+            volume_samples: VecDeque::with_capacity(params.volume_frames),
             time_of_last_beat_publish: now,
             last_index: 0,
-            long_historic: VecDeque::with_capacity(LONG_HISTORIC_FRAMES),
-            historic: VecDeque::with_capacity(ROLLING_AVERAGE_FRAMES),
-            bass_samples: VecDeque::with_capacity(BASS_FRAMES),
-            bass_peaks: VecDeque::with_capacity(BASS_PEAK_FRAMES),
+            long_historic: VecDeque::with_capacity(params.long_historic_frames),
+            historic: VecDeque::with_capacity(params.rolling_frames),
+            bass_samples: VecDeque::with_capacity(params.bass_frames),
+            bass_peaks: VecDeque::with_capacity(params.bass_peak_frames),
             time_of_last_bpm_marker: now,
             num_beat_mismatches: 0,
             is_on_beat: false,
@@ -88,19 +98,19 @@ impl CollectorScratch {
 
 #[derive(Default, Clone, Copy)]
 pub struct SignalCollectorParams {
-    pub(crate) gate: Option<u8>,
-    pub(crate) boost: Option<u8>,
+    pub gate: Option<u8>,
+    pub boost: Option<u8>,
 }
 
 pub struct SignalCollector<const NUM_OUTPUTS: usize> {
-    pub(crate) freqs: Vec<Frequency>,
-    pub(crate) current: CollectedAudioSnapshot,
-    pub(crate) converter: AudioConverter,
+    pub freqs: Vec<Frequency>,
+    pub current: CollectedAudioSnapshot,
+    pub converter: AudioConverter,
     _capture: Capture, // Cant be dropped or the converter dies.
-    pub(crate) params: SignalCollectorParams,
-    pub(crate) scratch: CollectorScratch,
-    pub(crate) outputs: [CollectorOutputSpec; NUM_OUTPUTS],
-    pub(crate) need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
+    pub params: SignalCollectorParams,
+    pub scratch: CollectorScratch,
+    pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
+    pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
 }
 
 impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
@@ -111,6 +121,12 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     //
     pub fn take_snapshot(&self) -> CollectedAudioSnapshot {
         self.current
+    }
+
+    pub fn send_signals(&mut self, signals: &[Signal]) {
+        for s in signals {
+            self.signal(*s);
+        }
     }
 
     pub fn signal(&mut self, signal: Signal) {
@@ -145,6 +161,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         config: StreamConfig,
         params: SignalCollectorParams,
         outputs: [CollectorOutputSpec; NUM_OUTPUTS],
+        scratch_params: CollectorScratchParameters,
     ) -> anyhow::Result<Self> {
         let (converter, _capture) = init_converter(device, config)
             .with_context(|| "Failed to initialize audio converter")?;
@@ -155,7 +172,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
             converter,
             _capture,
             current: CollectedAudioSnapshot::default(),
-            scratch: CollectorScratch::new(),
+            scratch: CollectorScratch::new(scratch_params),
             outputs,
             need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
         })

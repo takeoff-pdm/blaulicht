@@ -2,20 +2,22 @@ pub mod bg_worker;
 pub mod supervisor;
 
 use crate::{
-    audio::{
-        collector::{CollectorOutputSpec, SignalCollector, SignalCollectorParams},
-        defs::AudioThreadControlSignal,
-    },
+    audio::defs::AudioThreadControlSignal,
     config::Config,
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::signal_mainloop,
-    msg::{Signal, SystemMessage},
+    msg::SystemMessage,
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
     state::AppState,
     system_message,
 };
 use anyhow::{anyhow, Context};
+use blaulicht_audio_engine::{
+    CollectorOutputSpec, CollectorScratchParameters, Signal, SignalCollector,
+    SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+};
 use blaulicht_shared::LogLevel;
 use cpal::Device;
 use crossbeam_channel::Sender;
@@ -124,6 +126,13 @@ pub fn run(
         config.stream,
         SignalCollectorParams::default(),
         collector_outputs,
+        CollectorScratchParameters {
+            volume_frames: ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+            long_historic_frames: LONG_HISTORIC_FRAMES,
+            rolling_frames: ROLLING_AVERAGE_FRAMES,
+            bass_frames: BASS_FRAMES,
+            bass_peak_frames: BASS_PEAK_FRAMES,
+        },
     )
     .with_context(|| "Failed to open audio input")?;
 
