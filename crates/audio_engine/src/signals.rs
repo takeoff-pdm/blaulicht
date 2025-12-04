@@ -45,7 +45,7 @@ macro_rules! shift_push {
 
 impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     #[inline(always)]
-    pub fn bass(&mut self, now: Instant) -> anyhow::Result<()> {
+    pub fn bass(&mut self, now: usize) -> anyhow::Result<()> {
         let signals = {
             const USES_BASS: bool = true;
 
@@ -86,7 +86,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                 / BASS_FRAMES as f64;
 
             let elapsed_since_last_peak = match self.scratch.bass_peaks.iter().last() {
-                Some(last) => last.elapsed().as_millis(),
+                Some(last) => now - last,
                 None => 10000,
             };
 
@@ -100,7 +100,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                 if bass_sig >= bass_signal_threshold_for_a_peak as u8
                     && elapsed_since_last_peak > 200
                 {
-                    self.scratch.bass_peaks.push_back(Instant::now());
+                    self.scratch.bass_peaks.push_back(now);
                     peaked = true;
                 }
             }
@@ -121,7 +121,8 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                     .iter()
                     .tuple_windows()
                     .filter_map(|(a, b)| {
-                        let d = (b.duration_since(*a).as_millis() as f64) / 1000.0;
+                        // panic!("a = {a} | b = {b}");
+                        let d = (*b as f64 - *a as f64) / 1000.0;
                         if d > MIN_BPM_TIME_BETWEEN_SECS && d < MAX_BPM_TIME_BETWEEN_SECS {
                             Some(d)
                         } else {
@@ -146,57 +147,40 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
             let bpm = bpm as u8;
             let time_between_beats_millis = ((avg_bass_peak_durations * 1000.0) as i16) as u16;
 
-            let beat_marker_elapsed = now
-                .duration_since(self.scratch.time_of_last_bpm_marker)
-                .as_millis() as u32;
+            let beat_marker_elapsed = (now - self.scratch.time_of_last_bpm_marker) as u32;
+            // now
+            // .duration_since(self.scratch.time_of_last_bpm_marker)
+            // .as_millis() as u32;
 
             if !self.scratch.is_on_beat
                 && bpm > 0
                 && (beat_marker_elapsed >= time_between_beats_millis as u32
                     || self.scratch.beat_needs_sync)
             {
-                println!("beat detection logic called");
+                // println!("beat detection logic called");
                 // Is initial beat: Wait for actual beat.
                 if beat_marker_elapsed > 1000 || self.scratch.beat_needs_sync {
                     if peaked {
                         self.scratch.is_on_beat = true;
-                        self.scratch.time_of_last_bpm_marker = Instant::now();
+                        self.scratch.time_of_last_bpm_marker = now;
                         self.scratch.beat_needs_sync = false;
                     } else {
                         // println!("waiting for first actual beat for sync.");
                     }
                 } else {
                     self.scratch.is_on_beat = true;
-                    self.scratch.time_of_last_bpm_marker = Instant::now();
-                    // println!("is_on_beat = {is_on_beat}");
+                    self.scratch.time_of_last_bpm_marker = now;
                 }
             }
 
             let is_bass_avg_short = peaked || elapsed_since_last_peak < 50; // cross-tick mitigation
             if self.scratch.is_on_beat && !is_bass_avg_short {
                 self.scratch.num_beat_mismatches += 1;
-                // println!("drift = {}", self.scratch.num_beat_mismatches);
             } else if self.scratch.is_on_beat && is_bass_avg_short {
                 self.scratch.num_beat_mismatches = 0;
             }
 
             if self.scratch.num_beat_mismatches > 3 && bpm > 0 {
-                // println!("Mismatch drift, resetting...");
-
-                // Check if we are too early or too late.
-
-                // let time_of_last_actual_peak = bass_peaks.iter().last().unwrap();
-
-                // let diff_ms: i64 = if time_of_last_actual_peak > time_of_last_bpm_marker {
-                //     time_of_last_actual_peak
-                //         .duration_since(*time_of_last_bpm_marker)
-                //         .as_millis() as i64
-                // } else {
-                //     -(time_of_last_bpm_marker
-                //         .duration_since(*time_of_last_actual_peak)
-                //         .as_millis() as i64)
-                // };
-
                 self.scratch.beat_needs_sync = true;
             }
 
@@ -259,23 +243,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
 
         const MAX_BEAT_VOLUME: u8 = 255;
 
-        // TODO: use map range crate.
-
-        println!("map range: min: {min} | max: {max}, max: {MAX_BEAT_VOLUME}");
-
-        // if *min == 0 || *max == 0 {
-        //     return Ok(());
-        // }
-
         let index_mapped = curr.map_range(min..max, 0..MAX_BEAT_VOLUME as usize);
-
-        // let index_mapped = util::map(
-        //     *curr as isize,
-        //     *min as isize,
-        //     *max as isize,
-        //     0,
-        //     MAX_BEAT_VOLUME as isize,
-        // );
 
         if self.scratch.last_index != index_mapped {
             self.scratch.last_index = index_mapped;

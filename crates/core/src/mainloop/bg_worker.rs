@@ -1,6 +1,5 @@
 use std::{
     sync::Arc,
-    thread,
     time::{Duration, Instant},
 };
 
@@ -21,6 +20,8 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
     let dim = (480, 100);
     let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
 
+    // panic!("HESSEN");
+
     loop {
         let start = Instant::now();
         //
@@ -28,7 +29,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
         //
         let spec = app_state.audio_spectrogram.read().unwrap();
         let image = crate::app::components::create_spectrogram_image(
-            spec,
+            &spec,
             dim.0 as usize,
             dim.1 as usize,
             &SpectrogramDisplayOptions {

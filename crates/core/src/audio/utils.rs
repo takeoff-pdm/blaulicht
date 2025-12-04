@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! system_message {
     ($now:ident,$last_publish:ident,$system_out:ident,$tx_signal:expr) => {
-        if $now - $last_publish > SYSTEM_MESSAGE_SPEED {
+        if $now - $last_publish > SYSTEM_MESSAGE_SPEED.as_millis() as usize {
             for signal in $tx_signal {
                 $system_out.send(signal.clone()).unwrap();
             }

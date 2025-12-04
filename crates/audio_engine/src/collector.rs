@@ -1,12 +1,6 @@
 //
 // Provides class for capturing audio.
-//
-// use crate::audio::analysis::{
-//     BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
-//     ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
-// };
-// use crate::{audio::defs::AudioConverter, msg::Signal};
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use audioviz::spectrum::Frequency;
 use audioviz::{
     audio_capture::{capture::Capture, config::Config as CaptureConfig},
@@ -17,7 +11,7 @@ use cpal::{traits::DeviceTrait, Device};
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use crate::{AudioConverter, Signal};
+use crate::{AudioConverter, AudioSource, Signal};
 
 // Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
 // The problem is: both run at different refresh rates.
@@ -47,11 +41,11 @@ pub struct CollectorOutput {
 
 pub struct CollectorScratch {
     // Volume.
-    pub(crate) time_of_last_volume_publish: Instant,
+    pub(crate) time_of_last_volume_publish: usize, // Time marker
     pub(crate) volume_samples: VecDeque<usize>,
 
     // Beat
-    pub(crate) time_of_last_beat_publish: Instant,
+    pub(crate) time_of_last_beat_publish: usize, // Time marker
     pub(crate) last_index: usize,
     // rolling_average_frames = 100;
     // let long_historic_frames = rolling_average_frames * 1000;
@@ -59,8 +53,8 @@ pub struct CollectorScratch {
     pub(crate) historic: VecDeque<usize>,
 
     pub(crate) bass_samples: VecDeque<u8>,
-    pub(crate) bass_peaks: VecDeque<Instant>,
-    pub(crate) time_of_last_bpm_marker: Instant,
+    pub(crate) bass_peaks: VecDeque<usize>,
+    pub(crate) time_of_last_bpm_marker: usize, // Time marker
     pub(crate) num_beat_mismatches: usize,
     pub(crate) beat_needs_sync: bool,
 
@@ -76,8 +70,8 @@ pub struct CollectorScratchParameters {
 }
 
 impl CollectorScratch {
-    fn new(params: CollectorScratchParameters) -> Self {
-        let now = Instant::now();
+    fn new(params: CollectorScratchParameters, now: usize) -> Self {
+        // let now = Instant::now();
 
         Self {
             time_of_last_volume_publish: now,
@@ -103,10 +97,9 @@ pub struct SignalCollectorParams {
 }
 
 pub struct SignalCollector<const NUM_OUTPUTS: usize> {
+    pub audio_source: Box<dyn AudioSource>,
     pub freqs: Vec<Frequency>,
     pub current: CollectedAudioSnapshot,
-    pub converter: AudioConverter,
-    _capture: Capture, // Cant be dropped or the converter dies.
     pub params: SignalCollectorParams,
     pub scratch: CollectorScratch,
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
@@ -157,52 +150,48 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     }
 
     pub fn new(
-        device: Device,
-        config: StreamConfig,
         params: SignalCollectorParams,
         outputs: [CollectorOutputSpec; NUM_OUTPUTS],
         scratch_params: CollectorScratchParameters,
+        audio_source: Box<dyn AudioSource>,
+        now: usize,
     ) -> anyhow::Result<Self> {
-        let (converter, _capture) = init_converter(device, config)
-            .with_context(|| "Failed to initialize audio converter")?;
-
         Ok(Self {
             params,
             freqs: vec![],
-            converter,
-            _capture,
+            // converter,
+            // _capture,
             current: CollectedAudioSnapshot::default(),
-            scratch: CollectorScratch::new(scratch_params),
+            scratch: CollectorScratch::new(scratch_params, now),
             outputs,
             need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
+            audio_source,
         })
     }
 
-    fn get_frequencies(&mut self) {
-        let values = {
-            let values_raw = self.converter.freqs();
+    fn get_frequencies(&mut self, now: usize) {
+        let values_raw = self.audio_source.get_frequencies(now);
 
-            match self.params.gate {
-                Some(gate_min) => values_raw
-                    .into_iter()
-                    .map(|freq| match (freq.volume * 10.0) >= gate_min as f32 {
-                        true => match self.params.boost {
-                            Some(b) => Frequency {
-                                volume: freq.volume + ((b as f32) / 10.0),
-                                freq: freq.freq,
-                                position: freq.position,
-                            },
-                            None => freq,
-                        },
-                        false => Frequency {
-                            volume: 0.0,
+        let values = match self.params.gate {
+            Some(gate_min) => values_raw
+                .into_iter()
+                .map(|freq| match (freq.volume * 10.0) >= gate_min as f32 {
+                    true => match self.params.boost {
+                        Some(b) => Frequency {
+                            volume: freq.volume + ((b as f32) / 10.0),
                             freq: freq.freq,
                             position: freq.position,
                         },
-                    })
-                    .collect(),
-                None => values_raw,
-            }
+                        None => freq,
+                    },
+                    false => Frequency {
+                        volume: 0.0,
+                        freq: freq.freq,
+                        position: freq.position,
+                    },
+                })
+                .collect(),
+            None => values_raw,
         };
 
         self.freqs = values;
@@ -211,11 +200,12 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     //
     // DOES NOT run every ~20 ms. This runs as often as possible.
     //
-    pub fn tick(&mut self, now: Instant) -> anyhow::Result<()> {
-        self.get_frequencies();
+    pub fn tick(&mut self, now: usize) -> anyhow::Result<()> {
+        self.get_frequencies(now);
 
         // Volume
         self.volume()?;
+
         // Bass
         self.bass(now)?;
 
@@ -223,7 +213,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         self.beat_volume()?;
 
         if self.scratch.is_on_beat {
-            println!("activate on beat flag");
+            // println!("activate on beat flag");
             // self.scratch.is_on_beat = false;
             // NOTE: this will cause a missing update if the consumer takes too long.
             // self.need_to_update_output_beat_trigger = [true; NUM_OUTPUTS];
@@ -281,7 +271,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         if self.need_to_update_output_beat_trigger[OUTPUT_INDEX] {
             output.snapshot.beat_trigger = true;
             self.need_to_update_output_beat_trigger[OUTPUT_INDEX] = false;
-            println!("included beat trigger")
+            // println!("included beat trigger")
         }
 
         output
@@ -292,7 +282,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
 // Converter.
 //
 
-fn init_converter(
+pub fn init_converter(
     device: Device,
     config: StreamConfig,
 ) -> anyhow::Result<(AudioConverter, Capture)> {

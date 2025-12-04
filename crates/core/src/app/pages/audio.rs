@@ -152,7 +152,7 @@ impl BlaulichtApp {
                             );
                         } else {
                             let image = components::create_spectrogram_image(
-                                spec,
+                                &spec,
                                 spec_width as usize,
                                 spec_height as usize,
                                 &SpectrogramDisplayOptions {

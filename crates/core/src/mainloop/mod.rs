@@ -14,8 +14,8 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    CollectorOutputSpec, CollectorScratchParameters, Signal, SignalCollector,
-    SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    audio_source, AudioSourceMicrophone, CollectorOutputSpec, CollectorScratchParameters, Signal,
+    SignalCollector, SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use blaulicht_shared::LogLevel;
@@ -28,7 +28,7 @@ use std::{
         Arc, Mutex,
     },
     thread,
-    time::{self, Duration, Instant},
+    time::{Duration, Instant},
 };
 pub use supervisor::supervisor_thread;
 
@@ -97,10 +97,12 @@ pub fn run(
     let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
     let spec_period = Duration::from_millis((1000f32 / spec_refresh_hz as f32) as u64);
+    println!("set spec period: {spec_period:?}");
     {
         let mut spec = app_state.audio_spectrogram.write().unwrap();
         spec.max_columns = desired_columns;
         println!("set spec max columns {desired_columns}");
+        println!("set spec bin count {}", spec.bin_count);
         // Trim if we already exceed
         while spec.columns.len() > spec.max_columns {
             spec.columns.pop_front();
@@ -121,9 +123,9 @@ pub fn run(
         bins_p_column: Some(128),
     };
 
+    let audio_source = AudioSourceMicrophone::new(device, config.stream).unwrap();
+
     let mut sig_collector = SignalCollector::new(
-        device,
-        config.stream,
         SignalCollectorParams::default(),
         collector_outputs,
         CollectorScratchParameters {
@@ -133,6 +135,8 @@ pub fn run(
             bass_frames: BASS_FRAMES,
             bass_peak_frames: BASS_PEAK_FRAMES,
         },
+        Box::new(audio_source),
+        0,
     )
     .with_context(|| "Failed to open audio input")?;
 
@@ -141,39 +145,15 @@ pub fn run(
     //
 
     // Loop speed.
-    let mut time_of_last_system_publish = time::Instant::now();
-    let mut loop_begin_time = time::Instant::now();
+    let mut time_of_last_system_publish = 0;
 
-    // // Volume.
-    // let mut time_of_last_volume_publish = time::Instant::now();
-    // let time_of_last_volume_publish = &mut time_of_last_volume_publish;
-    //
-    // let mut volume_samples: VecDeque<usize> =
-    //     VecDeque::with_capacity(ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE);
-    //
-    // // Beat
-    // let mut time_of_last_beat_publish = time::Instant::now();
-    // let time_of_last_beat_publish = &mut time_of_last_beat_publish;
-    // let mut last_index = 0;
-    // let rolling_average_frames = 100;
-    // let long_historic_frames = rolling_average_frames * 1000;
-    // let mut long_historic = VecDeque::with_capacity(long_historic_frames);
-    // let mut historic = VecDeque::with_capacity(rolling_average_frames);
-    //
-    // let mut bass_samples = VecDeque::with_capacity(BASS_FRAMES);
-    // let mut bass_peaks: VecDeque<Instant> = VecDeque::with_capacity(BASS_PEAK_FRAMES);
-    // let bass_modifier = 65;
-    //
-    // let mut time_of_last_bpm_marker = Instant::now();
-    // let mut is_on_beat = false;
-    // let mut num_beat_mismatches = 0;
-    // let mut beat_needs_sync = true;
-    // let mut is_on_beat_memo = 0;
-    //
+    // let mut loop_begin_time = Instant::now();
+
+    let mut mainloop_begin_time = Instant::now();
 
     // Dmx last tick.
-    let mut time_of_last_dmx_tick = Instant::now();
-    let mut last_spectrogram_tick = Instant::now();
+    let mut time_of_last_dmx_tick = 0;
+    let mut last_spectrogram_tick = 0;
 
     let mut plugin_wasm_engine_crashed = false;
 
@@ -182,7 +162,12 @@ pub fn run(
     // TODO: enable again.
     // util::increase_thread_priority();
 
+    let loop_begin_instant = Instant::now();
+
     loop {
+        let now = mainloop_begin_time.elapsed().as_millis() as usize;
+        let loop_begin_time = now;
+
         //
         // Loop control.
         //
@@ -239,12 +224,12 @@ pub fn run(
         //
         // Measure loop speed.
         //
-        let now = time::Instant::now();
-        let loop_speed = now - loop_begin_time;
-        loop_begin_time = now;
+
+        let now = mainloop_begin_time.elapsed().as_millis() as usize;
+        let loop_speed: usize = now - loop_begin_time;
 
         // Constant tick.
-        if now.duration_since(time_of_last_dmx_tick) >= DMX_TICK_TIME {
+        if now - time_of_last_dmx_tick >= DMX_TICK_TIME.as_millis() as usize {
             // TODO: does this even work?
             let midi_manager = Arc::clone(&midi_manager);
             let midi = {
@@ -300,7 +285,7 @@ pub fn run(
             system_message!(now, time_of_last_system_publish, system_out, {
                 &[
                     SystemMessage::TickSpeed(dmx_tick_duration),
-                    SystemMessage::LoopSpeed(loop_speed),
+                    SystemMessage::LoopSpeed(Duration::from_millis(loop_speed as u64)),
                 ]
             });
         }
@@ -313,7 +298,7 @@ pub fn run(
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;
 
-        if now.duration_since(last_spectrogram_tick) >= spec_period {
+        if now - last_spectrogram_tick >= spec_period.as_millis() as usize {
             // println!("spec period: {:?}", spec_period);
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
 
@@ -323,7 +308,7 @@ pub fn run(
                 .unwrap()
                 .push_data(output);
 
-            last_spectrogram_tick = Instant::now();
+            last_spectrogram_tick = now;
         }
     }
 

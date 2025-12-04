@@ -68,7 +68,7 @@ pub struct SpectrogramDisplayOptions {
 
 // Create texture once when data changes (not every frame!)
 pub fn create_spectrogram_image(
-    spec: RwLockReadGuard<'_, AudioSpectrogram>,
+    spec: &AudioSpectrogram,
     width: usize,
     height_outer: usize,
     options: &SpectrogramDisplayOptions,
