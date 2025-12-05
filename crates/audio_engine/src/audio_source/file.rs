@@ -13,6 +13,7 @@ use symphonia::core::probe::Hint;
 
 use crate::AudioSource;
 
+#[derive(Clone)]
 pub struct AudioSourceSoundfile {
     samples: Vec<f32>,
     sample_rate: u32,
@@ -81,7 +82,7 @@ impl AudioSourceSoundfile {
             }
         }
 
-        println!("Decoded {} samples at {} Hz", samples.len(), sample_rate);
+        // println!("Decoded {} samples at {} Hz", samples.len(), sample_rate);
 
         let length_millis = (samples.len() as f32 / sample_rate as f32 * 1000.0) as usize;
 

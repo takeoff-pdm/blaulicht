@@ -1,6 +1,7 @@
 DIR := ${CURDIR}
 VERSION = 0.3.0
 BUILD_OUTPUT_DIR = blaulicht-dist
+PACKAGE = blaulicht-core
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \
 		build-web build-archives build-archive-armhf build-archive-armel \
@@ -12,7 +13,14 @@ cargo-build-x64:
 	-v $(DIR)/target:/build \
 	-v `pwd`:/root/project \
 	blaulicht-cross \
-	cargo build --release --target x86_64-unknown-linux-gnu
+	cargo build --package $(PACKAGE) --release --target x86_64-unknown-linux-gnu
+
+# audio-cargo-build-x64:
+# 	docker run -it \
+# 	-v $(DIR)/target:/build \
+# 	-v `pwd`:/root/project \
+# 	blaulicht-cross \
+# 	cargo build --release --target x86_64-unknown-linux-gnu
 
 cargo-build-x64-debug:
 	docker run -it \
