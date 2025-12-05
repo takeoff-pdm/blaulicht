@@ -19,6 +19,7 @@ members = [
     "./crates/shared",
     "./crates/plugin_framework",
     "./crates/audio_engine",
+    "./blaulicht-analyzer",
 ]
 exclude = [
     "./crates/plugins/drums",

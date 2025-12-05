@@ -61,6 +61,7 @@ pub struct CollectorScratch {
     pub(crate) is_on_beat: bool,
 }
 
+#[derive(Clone, Copy)]
 pub struct CollectorScratchParameters {
     pub volume_frames: usize,
     pub long_historic_frames: usize,
@@ -101,6 +102,7 @@ pub struct SignalCollector<const NUM_OUTPUTS: usize> {
     pub freqs: Vec<Frequency>,
     pub current: CollectedAudioSnapshot,
     pub params: SignalCollectorParams,
+    pub scratch_params: CollectorScratchParameters,
     pub scratch: CollectorScratch,
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
@@ -158,6 +160,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     ) -> anyhow::Result<Self> {
         Ok(Self {
             params,
+            scratch_params,
             freqs: vec![],
             // converter,
             // _capture,
@@ -195,6 +198,12 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         };
 
         self.freqs = values;
+    }
+
+    pub fn clear(&mut self) {
+        self.freqs = vec![];
+        self.scratch = CollectorScratch::new(self.scratch_params, 0);
+        self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS]
     }
 
     //

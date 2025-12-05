@@ -1,5 +1,8 @@
-use audioviz::spectrum::Frequency;
-use rustfft::{num_complex::Complex, FftPlanner};
+use audioviz::spectrum::{
+    config::ProcessorConfig,
+    processor::Processor,
+    Frequency,
+};
 use std::fs::File;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
@@ -95,6 +98,11 @@ impl AudioSourceSoundfile {
         self.length_millis
     }
 
+    /// Return the sample rate of the decoded audio stream.
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
     /// Get frequencies at a specific time in seconds
     pub fn get_frequencies_at_time(&self, time_millis: usize) -> Vec<Frequency> {
         let sample_index = (time_millis as f32 / 1000.0 * self.sample_rate as f32) as usize;
@@ -152,36 +160,20 @@ impl AudioSourceSoundfile {
     }
 
     fn compute_frequencies(&self, samples: &[f32]) -> Vec<Frequency> {
-        let magnitudes = Self::compute_fft(samples);
+        if samples.is_empty() {
+            return Vec::new();
+        }
 
-        magnitudes
-            .iter()
-            .enumerate()
-            .map(|(i, &magnitude)| {
-                let freq = (i as f32 * self.sample_rate as f32) / samples.len() as f32;
-                Frequency {
-                    volume: magnitude,
-                    freq,
-                    position: 0.0,
-                }
-            })
-            .collect()
-    }
+        let mut processor = Processor::from_raw_data(
+            ProcessorConfig {
+                sample_rate: self.sample_rate,
+                resolution: Some(samples.len() / 2),
+                ..ProcessorConfig::default()
+            },
+            samples.to_vec(),
+        );
 
-    fn compute_fft(samples: &[f32]) -> Vec<f32> {
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(samples.len());
-
-        // Convert samples to complex numbers
-        let mut buffer: Vec<Complex<f32>> = samples.iter().map(|&s| Complex::new(s, 0.0)).collect();
-
-        fft.process(&mut buffer);
-
-        // Calculate magnitudes
-        buffer
-            .iter()
-            .take(buffer.len() / 2) // Only need first half (Nyquist)
-            .map(|c| (c.re * c.re + c.im * c.im).sqrt())
-            .collect()
+        processor.compute_all();
+        processor.freq_buffer
     }
 }

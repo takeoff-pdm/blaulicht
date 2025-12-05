@@ -421,6 +421,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6099cdc01846bc367c4e7dd630dc5966dccf36b652fae7a74e17b640411a91b2"
 
 [[package]]
+name = "blaulicht-analyzer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "audioviz",
+ "blaulicht-audio-engine",
+]
+
+[[package]]
 name = "blaulicht-audio-engine"
 version = "0.3.0"
 dependencies = [
@@ -436,7 +445,6 @@ dependencies = [
  "log",
  "mach",
  "map-range",
- "rustfft",
  "serde",
  "spin_sleep",
  "symphonia",

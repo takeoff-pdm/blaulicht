@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    env, thread,
+    time::{Duration, Instant},
+};
 
 use blaulicht_audio_engine::{
     file::AudioSourceSoundfile, spectrogram::create_spectrogram_image, AudioSpectrogram,
@@ -38,55 +41,73 @@ fn render_spec(spec: AudioSpectrogram, count: usize) {
 }
 
 fn main() {
+    let input_song = env::args().nth(1).unwrap();
+    let offsets: usize = env::args().nth(2).unwrap().parse().unwrap();
+    let chunk_sizes: usize = env::args().nth(3).unwrap().parse().unwrap();
+
     let output = [CollectorOutputSpec {
         bins_p_column: Some(128),
     }];
 
-    let audio_source =
-        AudioSourceSoundfile::new("/home/mik/Documents/met.mp3")
-            .unwrap();
-
-    let length_millis = audio_source.duration();
-
-    let mut collector = SignalCollector::new(
-        blaulicht_audio_engine::SignalCollectorParams {
-            gate: None,
-            boost: None,
-        },
-        output,
-        blaulicht_audio_engine::CollectorScratchParameters {
-            volume_frames: 1200,
-            long_historic_frames: 1200,
-            rolling_frames: 1200,
-            bass_frames: 1200,
-            bass_peak_frames: 1200,
-        },
-        Box::new(audio_source),
-        0,
-    )
-    .unwrap();
-
-    let mut last_spec_time = 0;
+    let audio_source_ = AudioSourceSoundfile::new(&input_song).unwrap();
+    let length_millis = audio_source_.duration();
 
     let spec_period = 16;
-    let mut spectrogram =
-        AudioSpectrogram::new(600, 128, Duration::from_millis(spec_period as u64));
+    let chunks = length_millis as f32 / offsets as f32;
 
-    for i in 0..10000 {
-        for _ in 0..5 {
-            collector.tick(i).unwrap();
-        }
-        // println!("OUT: {out:?}");
-        //
+    let mut threads = vec![];
 
-        if (i - last_spec_time) > spec_period as usize {
-            last_spec_time = i;
-            let out = collector.tick_output::<0>();
-            spectrogram.push_data(out);
-        }
+    for chunk in 0..chunks as usize {
+        let song = input_song.clone();
+        let handle = thread::spawn(move || {
+            let mut last_spec_time = 0;
+
+            let audio_source = AudioSourceSoundfile::new(&song).unwrap();
+
+            // let length_millis = audio_source.duration();
+
+            let mut collector = SignalCollector::new(
+                blaulicht_audio_engine::SignalCollectorParams {
+                    gate: None,
+                    boost: None,
+                },
+                output,
+                blaulicht_audio_engine::CollectorScratchParameters {
+                    volume_frames: 1200,
+                    long_historic_frames: 1200,
+                    rolling_frames: 1200,
+                    bass_frames: 1200,
+                    bass_peak_frames: 1200,
+                },
+                Box::new(audio_source),
+                0,
+            )
+            .unwrap();
+
+            let mut spectrogram =
+                AudioSpectrogram::new(600, 128, Duration::from_millis(spec_period as u64));
+
+            let start = offsets * chunk;
+            let end = start + offsets;
+
+            for i in start..end {
+                collector.tick(i).unwrap();
+
+                if (i - last_spec_time) > spec_period as usize {
+                    last_spec_time = i;
+                    let out = collector.tick_output::<0>();
+                    spectrogram.push_data(out);
+                }
+            }
+
+            println!("Processed chunk [{chunk}] {start}ms - {end}ms");
+            render_spec(spectrogram, chunk);
+        });
+
+        threads.push(handle);
     }
 
-    render_spec(spectrogram, 4269);
-
-    println!("Hallo Audio: {VAR}")
+    for t in threads {
+        t.join();
+    }
 }

@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0"
+blaulicht-audio-engine = { path = "../crates/audio_engine" }
+audioviz = { version = "0.4.4", default-features = false }
