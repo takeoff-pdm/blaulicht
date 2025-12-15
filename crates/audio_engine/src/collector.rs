@@ -1,6 +1,6 @@
 //
 // Provides class for capturing audio.
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use audioviz::spectrum::Frequency;
 use audioviz::{
     audio_capture::{capture::Capture, config::Config as CaptureConfig},
@@ -304,15 +304,23 @@ pub fn init_converter(
 
     println!("config: {config:?}");
 
+    let default_input_config = device
+        .default_input_config()
+        .context("Failed to query default input config for input device")?;
+    let device_name = device
+        .name()
+        .context("Failed to query audio input device name")?;
+
     let audio_capture_config = CaptureConfig {
-        sample_rate: Some(device.default_input_config().unwrap().sample_rate().0),
+        sample_rate: Some(default_input_config.sample_rate().0),
         latency: None,
-        device: device.name().unwrap(),
+        device: device_name.clone(),
         buffer_size: CaptureConfig::default().buffer_size,
         max_buffer_size: CaptureConfig::default().max_buffer_size,
     };
 
-    let capture = Capture::init(audio_capture_config.clone()).map_err(|err| anyhow!("{err:?}"))?;
+    let capture = Capture::init(audio_capture_config.clone())
+        .map_err(|err| anyhow!("Failed to initialize audio capture for {device_name}: {err:?}"))?;
     let stream = Stream::init_with_capture(&capture, config.clone());
     let converter = AudioConverter::from_stream(stream, config.clone());
 

@@ -1,4 +1,7 @@
 use std::{
+    env,
+    fs,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -16,6 +19,31 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
     info!("[BACKGROUND] Started worker");
 
     let mut count = 0u64;
+    let mut output_dir = match env::var_os("BLAULICHT_SPECTROGRAM_DIR") {
+        Some(path) => {
+            let dir = PathBuf::from(path);
+            match fs::create_dir_all(&dir) {
+                Ok(_) => {
+                    info!(
+                        "[BACKGROUND] Writing spectrogram snapshots to {}",
+                        dir.display()
+                    );
+                    Some(dir)
+                }
+                Err(err) => {
+                    warn!(
+                        "[BACKGROUND] Unable to create spectrogram output directory {}: {err}",
+                        dir.display()
+                    );
+                    None
+                }
+            }
+        }
+        None => {
+            info!("[BACKGROUND] Spectrogram output directory not set; skipping disk writes.");
+            None
+        }
+    };
 
     let dim = (480, 100);
     let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
@@ -43,12 +71,17 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
             *pixel = image::Rgb([source_pixel.r(), source_pixel.g(), source_pixel.b()]);
         }
 
-        imgbuf
-            .save_with_format(
-                format!("/home/mik/blaulicht-spec/{count}.bmp"),
-                image::ImageFormat::Bmp,
-            )
-            .unwrap();
+        if let Some(dir) = &output_dir {
+            let path = dir.join(format!("{count}.bmp"));
+            if let Err(err) = imgbuf.save_with_format(&path, image::ImageFormat::Bmp) {
+                warn!(
+                    "[BACKGROUND] Failed to write spectrogram frame {}: {err}",
+                    path.display()
+                );
+                // Disable further writes if the error is persistent (e.g. permission denied)
+                output_dir = None;
+            }
+        }
 
         count += 1;
 

@@ -36,7 +36,7 @@ impl AudioSourceMicrophone {
 }
 
 impl AudioSource for AudioSourceMicrophone {
-    fn get_frequencies(&mut self, now: usize) -> Vec<Frequency> {
+    fn get_frequencies(&mut self, _now: usize) -> Vec<Frequency> {
         self.converter.freqs()
     }
 }

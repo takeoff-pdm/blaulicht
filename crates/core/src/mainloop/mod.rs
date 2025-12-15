@@ -123,7 +123,8 @@ pub fn run(
         bins_p_column: Some(128),
     };
 
-    let audio_source = AudioSourceMicrophone::new(device, config.stream).unwrap();
+    let audio_source = AudioSourceMicrophone::new(device, config.stream)
+        .with_context(|| "Failed to initialize microphone audio source")?;
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),
