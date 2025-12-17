@@ -85,8 +85,6 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
 
         count += 1;
 
-        spin_sleep::sleep(BG_WORKER_TICK_DURATION);
-
         if start.elapsed() > BG_WORKER_TICK_DURATION {
             warn!(
                 "[BACKGROUND] Tick took: {:?}, but tick period is {:?}",
@@ -94,5 +92,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 BG_WORKER_TICK_DURATION
             );
         }
+
+        spin_sleep::sleep(BG_WORKER_TICK_DURATION - start.elapsed()); // Account for diff
     }
 }
