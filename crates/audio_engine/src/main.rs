@@ -127,6 +127,7 @@ fn main() {
                     blaulicht_audio_engine::SignalCollectorParams {
                         gate: None,
                         boost: None,
+                        volume: 100,
                     },
                     output,
                     blaulicht_audio_engine::CollectorScratchParameters {
@@ -136,7 +137,7 @@ fn main() {
                         bass_frames: 1200,
                         bass_peak_frames: 1200,
                     },
-                    Box::new(audio_source),
+                    audio_source,
                     0,
                 )
                 .unwrap();

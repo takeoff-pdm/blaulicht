@@ -13,7 +13,7 @@ use crate::state::AppState;
 
 // use crate::{app::components::SpectrogramDisplayOptions, state::AppState};
 
-const BG_WORKER_TICK_DURATION: Duration = Duration::from_millis(33); // 60fps
+const BG_WORKER_TICK_DURATION: Duration = Duration::from_millis(16); // 60fps
 
 pub fn spawn_bg_worker(app_state: Arc<AppState>) {
     info!("[BACKGROUND] Started worker");
@@ -55,7 +55,12 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
         //
         // Save spectrogram
         //
-        let spec = app_state.audio_spectrogram.read().unwrap();
+
+        let spec = {
+            let s = app_state.audio_spectrogram.read().unwrap();
+            (*s).clone()
+        };
+
         let image = crate::app::components::create_spectrogram_image(
             &spec,
             dim.0 as usize,

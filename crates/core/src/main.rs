@@ -34,7 +34,6 @@ fn main() -> anyhow::Result<()> {
     //
 
     let (from_frontend_sender, from_frontend_receiver) = crossbeam_channel::unbounded();
-    let (app_signal_out, app_signal_receiver) = crossbeam_channel::unbounded();
 
     let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
     let audio_thread_control_signal =
@@ -72,38 +71,6 @@ fn main() -> anyhow::Result<()> {
         event_bus.run();
     });
 
-    // let send = midi_in_sender.clone();
-    // TODO: use every midi device available on the system?
-    // OR: have a midi pool which is dynamic and each plugin can request a midi device?
-    // -> this seems reasonable
-
-    // thread::spawn(move || {
-    // match plugin::midi::midi(send, midi_out_receiver.clone()) {
-    //     Ok(_) => panic!("Unreachable."),
-    //     Err(err) => {
-    //         let msg = format!("MIDI thread crashed! {err:?}");
-    //         sys_out.send(SystemMessage::Log(msg)).unwrap();
-    //     }
-    // }
-
-    // Debug midi thread.
-    // Allows the dev to se what MIDI messages are sent to the device.
-    // loop {
-    //     thread::sleep(Duration::from_millis(50));
-    //     match midi_out_receiver.try_recv() {
-    //         Ok(_midi) => {
-    //             // TODO: include if required
-    //             // println!("MIDI to dev: {_midi:?}")
-    //         }
-    //         Err(TryRecvError::Empty) => {}
-    //         Err(TryRecvError::Disconnected) => {
-    //             log::warn!("[MIDI] Shutting down.");
-    //             break;
-    //         }
-    //     }
-    // }
-    // });
-
     let app_state = Arc::new(AppState::new(&cfg.plugins));
 
     {
@@ -116,7 +83,6 @@ fn main() -> anyhow::Result<()> {
             mainloop::supervisor_thread(
                 from_frontend_receiver,
                 audio_thread_control_signal,
-                app_signal_out,
                 system_out,
                 cfg,
                 event_bus_connection_mainloop,
@@ -125,70 +91,6 @@ fn main() -> anyhow::Result<()> {
             )
         });
     }
-
-    //
-    // End audio.
-    //
-
-    // TODO: SLOOOWW DISTRIBUTOR LOGIC!
-
-    // let consumers: Arc<Mutex<HashMap<String, Sender<UnifiedMessage>>>> =
-    //     Arc::new(Mutex::new(HashMap::new()));
-
-    // let consumers2 = consumers.clone();
-    // let app_state_temp = Arc::clone(&app_state);
-    // thread::spawn(move || {
-    //     loop {
-    //         //
-    //         // System messages.
-    //         //
-    //         let system_res = app_system_receiver.try_recv();
-    //         match system_res {
-    //             Ok(res) => {
-    //                 match &res {
-    //                     SystemMessage::Log(msg) => {
-    //                         app_state_temp.log(msg.clone().into()); // TODO: GRR, clone!
-    //                     }
-    //                     SystemMessage::WasmLog(body) => {
-    //                         println!("{}", body.msg);
-    //                         app_state_temp.log_plugin(body.plugin_id, body.msg.clone());
-    //                         // TODO: GRR, clone!
-    //                     }
-    //                     _ => {}
-    //                 }
-
-    //                 let consumers = consumers2.lock().unwrap();
-    //                 for c in consumers.values() {
-    //                     if c.send(UnifiedMessage::System(res.clone())).is_err() {
-    //                         continue;
-    //                     }
-    //                 }
-    //             }
-    //             Err(crossbeam_channel::TryRecvError::Empty) => {}
-    //             Err(crossbeam_channel::TryRecvError::Disconnected) => unreachable!(),
-    //         }
-
-    //         //
-    //         // Signal messages.
-    //         //
-    //         let signal_res = app_signal_receiver.try_recv();
-    //         match signal_res {
-    //             Ok(res) => {
-    //                 let consumers = consumers2.lock().unwrap();
-    //                 for c in consumers.values() {
-    //                     if c.send(UnifiedMessage::Signal(res.clone())).is_err() {
-    //                         continue;
-    //                     }
-    //                 }
-    //             }
-    //             Err(crossbeam_channel::TryRecvError::Empty) => {}
-    //             Err(crossbeam_channel::TryRecvError::Disconnected) => {
-    //                 log::warn!("[BROADCAST] Shutting down.");
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // });
 
     //
     // Filesystem plugin watcher.
@@ -201,9 +103,6 @@ fn main() -> anyhow::Result<()> {
             .unwrap();
     });
 
-    // Spawn UI thread.
-    // thread::spawn(|| {});
-
     let state_wrapper = AppStateWrapper {
         from_frontend_sender,
         config: Arc::new(Mutex::new(cfg.clone())),
@@ -212,7 +111,6 @@ fn main() -> anyhow::Result<()> {
         state: Arc::clone(&app_state),
         system_message_receiver: app_system_receiver,
         system_message_sender: system_out.clone(),
-        // signal_receiver: app_signal_receiver,
     };
     // let data = Data::new(state_wrapper);
 

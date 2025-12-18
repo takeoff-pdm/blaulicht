@@ -323,17 +323,17 @@ impl eframe::App for BlaulichtApp {
         // Update all graphs with current data
         {
             let audio_data = self.data.state.audio_spectrogram.read().unwrap();
-            let audio_data = audio_data.current_snapshot();
-            self.volume_graph.update(audio_data.volume as i32);
-            self.volume_graph.update(audio_data.volume as i32);
-            self.beat_volume_graph.update(audio_data.beat_volume as i32);
-            self.bass_graph.update(audio_data.bass as i32);
-            self.bass_avg_graph.update(audio_data.bass_avg as i32);
+            let audio_snapshot = audio_data.current_snapshot();
+
+            self.volume_graph.update(audio_snapshot.volume as i32);
+            self.volume_graph.update(audio_snapshot.volume as i32);
+            self.beat_volume_graph
+                .update(audio_snapshot.beat_volume as i32);
+            self.bass_graph.update(audio_snapshot.bass as i32);
+            self.bass_avg_graph.update(audio_snapshot.bass_avg as i32);
             self.bass_avg_short_graph
-                .update(audio_data.bass_avg_short as i32);
-            self.bpm_graph.update(audio_data.bpm as i32);
-            self.time_between_beats_graph
-                .update(audio_data.time_between_beats_millis as i32);
+                .update(audio_snapshot.bass_avg_short as i32);
+            self.collector_snapshot = audio_snapshot;
         }
 
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
@@ -1171,9 +1171,8 @@ impl BlaulichtApp {
                 //     .indentor("    ".to_owned())
                 //     .new_line("\n".to_owned());
 
-                
-                let string =serde_json::to_string_pretty(&dmx.clone()).unwrap();
-                
+                let string = serde_json::to_string_pretty(&dmx.clone()).unwrap();
+
                 // let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
                 // let string = ron::to_string(&dmx.clone()).unwrap();
                 // let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();

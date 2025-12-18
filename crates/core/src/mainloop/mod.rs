@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    audio_source, AudioSourceMicrophone, CollectorOutputSpec, CollectorScratchParameters, Signal,
+    AudioSourceMicrophone, CollectorOutputSpec, CollectorScratchParameters, Signal,
     SignalCollector, SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
@@ -38,7 +38,6 @@ const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 
 pub fn run(
     device: Device,
-    signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
@@ -109,7 +108,6 @@ pub fn run(
             println!("popping front");
         }
     }
-    let mut last_spec_push = Instant::now();
 
     let mut collector_outputs = [CollectorOutputSpec::default(); 2];
 
@@ -124,7 +122,7 @@ pub fn run(
     };
 
     let audio_source = AudioSourceMicrophone::new(device, config.stream)
-        .with_context(|| "Failed to initialize microphone audio source")?;
+        .with_context(|| "Failed to initialize audio stream")?;
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),
@@ -136,10 +134,10 @@ pub fn run(
             bass_frames: BASS_FRAMES,
             bass_peak_frames: BASS_PEAK_FRAMES,
         },
-        Box::new(audio_source),
+        audio_source,
         0,
     )
-    .with_context(|| "Failed to open audio input")?;
+    .with_context(|| "Failed to create signal collector")?;
 
     //
     // State for the analyzers.
@@ -148,9 +146,7 @@ pub fn run(
     // Loop speed.
     let mut time_of_last_system_publish = 0;
 
-    // let mut loop_begin_time = Instant::now();
-
-    let mut mainloop_begin_time = Instant::now();
+    let mainloop_begin_time = Instant::now();
 
     // Dmx last tick.
     let mut time_of_last_dmx_tick = 0;
@@ -159,11 +155,6 @@ pub fn run(
     let mut plugin_wasm_engine_crashed = false;
 
     // Boost the current thread.
-
-    // TODO: enable again.
-    // util::increase_thread_priority();
-
-    let loop_begin_instant = Instant::now();
 
     loop {
         let now = mainloop_begin_time.elapsed().as_millis() as usize;
@@ -200,7 +191,6 @@ pub fn run(
                     ))
                     .unwrap();
 
-                // dmx_universe.reload()?;
                 plugin_manager.reload()?;
 
                 system_out

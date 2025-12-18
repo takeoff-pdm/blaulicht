@@ -14,8 +14,8 @@ use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{
-    vec2, Checkbox, Color32, ComboBox, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect,
-    RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2,
+    vec2, Checkbox, Color32, ComboBox, Context, CornerRadius, FontId, Frame, Margin, Painter, Pos2,
+    Rect, RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
 use noise::utils::Color;
@@ -34,20 +34,9 @@ use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Main content area with graphs panel
         ui.horizontal(|ui| {
-            // Left content area (3/4 width)
             let total_width = ui.available_width();
             let graph_panel_width = total_width / 3.0;
-            // let main_panel_width = total_width - graph_panel_width - 16.0; // 16px for separator
-
-            // ui.vertical(|ui| {
-            //     ui.set_width(main_panel_width);
-            //     ui.heading("Main Content");
-            //     ui.label("This is the main content area taking up 3/4 of the width.");
-            //     ui.add_space(20.0);
-            //     ui.label("You can put your main application content here.");
-            // });
 
             ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), ui.available_height()),
@@ -63,10 +52,6 @@ impl BlaulichtApp {
 
                     ui.horizontal_centered(|ui| {
                         ui.set_min_height(ButtonSize::Medium.dim().0.y);
-
-                        ui.label("Audio");
-
-                        ui.separator();
 
                         if components::button(ui, false, "Change Device", ButtonSize::Medium) {
                             self.set_audio_device_popup_open = true;
@@ -124,11 +109,12 @@ impl BlaulichtApp {
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---
                     ui.add_space(6.0);
-                    let spec_height = 180.0; // compact height
+                    let spec_height = 150.0; // compact height
                     let spec_width = ui.available_width();
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
                     let params = self.data.state.audio_params.read().unwrap();
+                    let mut volume_value = params.volume as f32;
                     let mut gate_value = params.gate.unwrap_or(0) as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
                     // let mut filterbank_value = params.filterbank;
@@ -174,29 +160,48 @@ impl BlaulichtApp {
                     }
 
                     {
-                        if ui
-                            .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            let v = gate_value as u8;
-                            params.gate = match v {
-                                0 => None,
-                                v => Some(v),
-                            };
-                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(5.0);
 
-                        if ui
-                            .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            let v = boost_value as u8;
-                            params.boost = match v {
-                                0 => None,
-                                v => Some(v),
-                            };
-                        }
+                            if ui
+                                .add(
+                                    HFader::new(&mut volume_value, 1.0..=200.0)
+                                        .with_label("Volume"),
+                                )
+                                .changed()
+                            {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                params.volume = volume_value as u8;
+                            }
+
+                            ui.add_space(50.0);
+
+                            if ui
+                                .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
+                                .changed()
+                            {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                let v = gate_value as u8;
+                                params.gate = match v {
+                                    0 => None,
+                                    v => Some(v),
+                                };
+                            }
+
+                            ui.add_space(50.0);
+
+                            if ui
+                                .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
+                                .changed()
+                            {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                let v = boost_value as u8;
+                                params.boost = match v {
+                                    0 => None,
+                                    v => Some(v),
+                                };
+                            }
+                        });
                     }
 
                     // Set larger graph height
@@ -243,20 +248,78 @@ impl BlaulichtApp {
                         });
 
                         ui.vertical(|ui| {
-                            let (response_bpm, painter_bpm) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bpm_graph.draw(painter_bpm, response_bpm.rect);
+                            let bg_color = egui::Color32::from_rgb(20, 20, 25);
 
-                            ui.add_space(padding);
-                            let (response_time_between_beats, painter_time_between_beats) = ui
-                                .allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                            self.time_between_beats_graph
-                                .draw(painter_time_between_beats, response_time_between_beats.rect);
+                            const BPM_FONT_SIZE: f32 = 30.0;
+                            
+                            Frame::NONE
+                                .fill(bg_color)
+                                .outer_margin(Margin {
+                                    left: 0,
+                                    right: 0,
+                                    top: 15,
+                                    bottom: 0,
+                                })
+                                .inner_margin(Margin::same(8))
+                                .show(ui, |ui| {
+                                    ui.set_height(graph_height);
+                                    ui.set_width(graph_width);
+
+                                    ui.horizontal(|ui| {
+                                        ui.heading(
+                                            RichText::new(format!(
+                                                "{: >3} BPM",
+                                                self.collector_snapshot.bpm
+                                            ))
+                                            .strong()
+                                            .color(Color32::LIGHT_GREEN)
+                                            .font(FontId::monospace(BPM_FONT_SIZE)),
+                                        );
+
+                                        ui.add_space(20.0);
+
+                                        {
+                                            let (bpm_rect, painter_bpm_indicator) = ui
+                                                .allocate_painter(
+                                                    egui::vec2(20.0, 20.0),
+                                                    egui::Sense::empty(),
+                                                );
+
+                                            let color = if self.collector_snapshot.beat_trigger {
+                                                Color32::LIGHT_GREEN
+                                            } else {
+                                                Color32::BLACK
+                                            };
+
+                                            let center = bpm_rect.rect.center();
+                                            let radius =
+                                                bpm_rect.rect.width().min(bpm_rect.rect.height())
+                                                    * 0.5;
+
+                                            painter_bpm_indicator
+                                                .circle_filled(center, radius, color);
+                                        }
+                                    });
+
+                                    ui.add_space(1.0);
+
+                                    ui.heading(
+                                        RichText::new(format!(
+                                            "{: >3} MS",
+                                            self.collector_snapshot.time_between_beats_millis
+                                        ))
+                                        .color(Color32::GRAY)
+                                        .strong()
+                                        .font(FontId::monospace(BPM_FONT_SIZE)),
+                                    );
+                                });
+                            // ui.set_height(graph_height);
+                            // ui.set_width(graph_width);
+                            //
+                            // let rect = ui.max_rect();
+                            // let painter = ui.painter();
+                            //
+                            // painter.rect_filled(rect, 0.0, bg_color);
                         });
                     });
                 },

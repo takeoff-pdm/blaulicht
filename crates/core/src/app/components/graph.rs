@@ -127,6 +127,7 @@ impl TimeSeriesGraph {
             );
             return;
         }
+
         // Use real time for smooth scrolling, but convert to relative time for filtering
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

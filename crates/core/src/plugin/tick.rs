@@ -5,6 +5,8 @@ use crate::{
     system_message,
 };
 use blaulicht_shared::EngineState;
+#[cfg(not(feature = "wasmtime"))]
+use blaulicht_shared::SerialReceived;
 #[cfg(feature = "wasmtime")]
 use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
@@ -34,6 +36,7 @@ impl PluginManager {
         &mut self,
         _: CollectedAudioSnapshot,
         _: &[MidiEvent],
+        _: Vec<SerialReceived>,
         _: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
         Ok(Duration::from_millis(42))

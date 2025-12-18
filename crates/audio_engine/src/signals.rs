@@ -17,7 +17,7 @@ use std::{
     u8,
 };
 
-use crate::{BpmInfo, Signal, SignalCollector};
+use crate::{AudioSource, BpmInfo, Signal, SignalCollector};
 
 // Constants.
 pub const BASS_FRAMES: usize = 10000;
@@ -43,7 +43,10 @@ macro_rules! shift_push {
     };
 }
 
-impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
+impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
+where
+    SourceT: AudioSource,
+{
     #[inline(always)]
     pub fn bass(&mut self, now: usize) -> anyhow::Result<()> {
         let signals = {

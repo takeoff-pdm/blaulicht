@@ -8,7 +8,11 @@ use crate::{
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
-use blaulicht_shared::{FixtureProperty, MathematicalBaseFunction, SyncMode, engine::PhaserDuration};
+use blaulicht_audio_engine::{CollectorOutput, SignalCollectorParams};
+use blaulicht_shared::{
+    engine::PhaserDuration, CollectedAudioSnapshot, FixtureProperty, MathematicalBaseFunction,
+    SyncMode,
+};
 use egui::Color32;
 use egui_file::FileDialog;
 use pages::ShowUI;
@@ -132,8 +136,9 @@ pub struct BlaulichtApp {
     bass_graph: TimeSeriesGraph,
     bass_avg_graph: TimeSeriesGraph,
     bass_avg_short_graph: TimeSeriesGraph,
-    bpm_graph: TimeSeriesGraph,
-    time_between_beats_graph: TimeSeriesGraph,
+    collector_snapshot: CollectedAudioSnapshot,
+    // bpm_graph: TimeSeriesGraph,
+    // time_between_beats_graph: TimeSeriesGraph,
 
     // For continuous rendering
     frame_count: u64,
@@ -267,18 +272,7 @@ impl BlaulichtApp {
                 255,
                 egui::Color32::from_rgb(0, 200, 255),
             ),
-            bpm_graph: TimeSeriesGraph::new(
-                "BPM".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            time_between_beats_graph: TimeSeriesGraph::new(
-                "Time Between Beats".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
+            collector_snapshot: CollectedAudioSnapshot::default(),
             frame_count: 0,
             animation_time: 0.0,
             spectro_scroll_px_offset: 0.0,

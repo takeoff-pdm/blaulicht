@@ -91,14 +91,28 @@ impl CollectorScratch {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SignalCollectorParams {
+    pub volume: u8,
     pub gate: Option<u8>,
     pub boost: Option<u8>,
 }
 
-pub struct SignalCollector<const NUM_OUTPUTS: usize> {
-    pub audio_source: Box<dyn AudioSource>,
+impl Default for SignalCollectorParams {
+    fn default() -> Self {
+        Self {
+            volume: 100,
+            gate: None,
+            boost: None,
+        }
+    }
+}
+
+pub struct SignalCollector<const NUM_OUTPUTS: usize, SourceT>
+where
+    SourceT: AudioSource,
+{
+    pub audio_source: SourceT,
     pub freqs: Vec<Frequency>,
     pub current: CollectedAudioSnapshot,
     pub params: SignalCollectorParams,
@@ -108,7 +122,10 @@ pub struct SignalCollector<const NUM_OUTPUTS: usize> {
     pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
 }
 
-impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
+impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
+where
+    SourceT: AudioSource,
+{
     //
     // NOTE: not idempotent.
     // If the audio snapshot includes the beat-trigger flag, it WILL BE cleared after a call to
@@ -155,7 +172,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
         params: SignalCollectorParams,
         outputs: [CollectorOutputSpec; NUM_OUTPUTS],
         scratch_params: CollectorScratchParameters,
-        audio_source: Box<dyn AudioSource>,
+        audio_source: SourceT,
         now: usize,
     ) -> anyhow::Result<Self> {
         Ok(Self {
@@ -175,8 +192,23 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
     fn get_frequencies(&mut self, now: usize) {
         let values_raw = self.audio_source.get_frequencies(now);
 
+        let values_vol_adjusted = match self.params.volume {
+            100 => values_raw,
+            adjust_percent => values_raw
+                .into_iter()
+                .map(|freq| {
+                    let adjust_percent_float = adjust_percent as f32 / 100.0;
+                    Frequency {
+                        volume: freq.volume * adjust_percent_float,
+                        freq: freq.freq,
+                        position: freq.position,
+                    }
+                })
+                .collect(),
+        };
+
         let values = match self.params.gate {
-            Some(gate_min) => values_raw
+            Some(gate_min) => values_vol_adjusted
                 .into_iter()
                 .map(|freq| match (freq.volume * 10.0) >= gate_min as f32 {
                     true => match self.params.boost {
@@ -194,7 +226,7 @@ impl<const NUM_OUTPUTS: usize> SignalCollector<NUM_OUTPUTS> {
                     },
                 })
                 .collect(),
-            None => values_raw,
+            None => values_vol_adjusted,
         };
 
         self.freqs = values;

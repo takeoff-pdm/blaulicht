@@ -10,7 +10,7 @@ gravity = 100.0
 [stream.processor]
 sample_rate = 44100
 frequency_bounds = [
-    40,
+    10,
     20000,
 ]
 volume = 1.0

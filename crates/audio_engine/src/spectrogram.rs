@@ -8,6 +8,7 @@ use crate::CollectorOutput;
 // use crate::{::collector::CollectorOutput, state::AudioSpectrogram};
 
 /// Rolling buffer of recent spectra for a live spectrogram.
+#[derive(Clone)]
 pub struct AudioSpectrogram {
     /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
     /// Contains bins. A bin is just a averaged part of the frequency space.

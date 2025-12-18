@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     event::SystemEventBusConnectionInst,
     mainloop::{self, bg_worker},
-    msg::{SystemMessage},
+    msg::SystemMessage,
     state::AppState,
 };
 use crate::{msg::FromFrontend, utils};
@@ -33,7 +33,6 @@ pub fn signal_mainloop(
 pub fn supervisor_thread(
     from_frontend: Receiver<FromFrontend>,
     audio_thread_control_signal: Arc<AtomicU8>,
-    signal_out_0: Sender<Signal>,
     system_out: Sender<SystemMessage>,
     config: Config,
     event_bus_connection_plugins: SystemEventBusConnectionInst,
@@ -104,7 +103,7 @@ pub fn supervisor_thread(
 
         // Check if the thread crashed and attempt to restart it.
         if AudioThreadControlSignal::from(audio_thread_control_signal.load(Ordering::Relaxed))
-            == AudioThreadControlSignal::CRASHED.into()
+            == AudioThreadControlSignal::CRASHED
             && audio_device.is_some()
         {
             thread::sleep(Duration::from_secs(2));
@@ -115,10 +114,9 @@ pub fn supervisor_thread(
             // Update state.
             {
                 let mut audio = app_state.audio.write().unwrap();
-                audio.device_name = match audio_device {
-                    Some(ref dev) => Some(dev.name().unwrap().to_string()),
-                    None => None,
-                };
+                audio.device_name = audio_device
+                    .as_ref()
+                    .map(|dev| dev.name().unwrap().to_string());
             }
         }
 
@@ -144,7 +142,7 @@ pub fn supervisor_thread(
             device_changed = false;
 
             if AudioThreadControlSignal::from(audio_thread_control_signal.load(Ordering::Relaxed))
-                == AudioThreadControlSignal::CONTINUE.into()
+                == AudioThreadControlSignal::CONTINUE
             {
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
@@ -158,7 +156,7 @@ pub fn supervisor_thread(
                 .send(SystemMessage::AudioSelected(audio_device.clone()))
                 .unwrap();
 
-            let (sig_0, sys) = (signal_out_0.clone(), system_out.clone());
+            let sys = system_out.clone();
             {
                 let audio_input_device = audio_device.clone().unwrap();
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
@@ -179,7 +177,6 @@ pub fn supervisor_thread(
 
                     if let Err(err) = mainloop::run(
                         audio_input_device,
-                        sig_0,
                         sys.clone(),
                         audio_thread_control_signal.clone(),
                         config,
@@ -187,7 +184,6 @@ pub fn supervisor_thread(
                         bus_connection_dmx,
                         Arc::clone(&app_state),
                     ) {
-                        // TODO: handle the audio backend error.
                         error!("[audio] THREAD CRASH: {err}");
                         sys.send(SystemMessage::Log(format!("[audio] {err}"), LogLevel::Err))
                             .unwrap();
@@ -221,24 +217,3 @@ pub fn supervisor_thread(
         }
     }
 }
-
-// fn init_dmx(
-//     midi_out_sender: Sender<MidiEvent>,
-//     system_out: Sender<SystemMessage>,
-// ) -> anyhow::Result<DmxUniverse> {
-//     debug!("[DMX] Trying to establish hardware link...");
-//     let res = DmxUniverse::new(midi_out_sender.clone(), system_out.clone());
-//     let dmx_universe = match res {
-//         Ok(universe) => universe,
-//         Err(e) => {
-//             info!("[DMX] Failed to establish hardware link: {e}, using dummy...");
-//             let Ok(universe) = DmxUniverse::new_dummy(midi_out_sender, system_out.clone()) else {
-//                 bail!("[DMX] Failed to create dummy universe, exiting.");
-//             };
-
-//             universe
-//         }
-//     };
-
-//     Ok(dmx_universe)
-// }
