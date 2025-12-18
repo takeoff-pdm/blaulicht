@@ -1,15 +1,15 @@
 pub const VAR: usize = 42;
 
+pub mod audio_source;
 pub mod collector;
+pub mod converter;
 pub mod signals;
 pub mod spectrogram;
 pub mod types;
-pub mod converter;
-pub mod audio_source;
 
+pub use audio_source::*;
 pub use collector::*;
+pub use converter::*;
 pub use signals::*;
 pub use spectrogram::*;
 pub use types::*;
-pub use converter::*;
-pub use audio_source::*;

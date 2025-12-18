@@ -1,10 +1,9 @@
 use std::{
-    cmp,
-    fs,
+    cmp, fs,
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use audioviz::spectrum::Frequency;
 use blaulicht_audio_engine::file::AudioSourceSoundfile;
 
@@ -40,8 +39,8 @@ fn run() -> Result<()> {
 }
 
 fn collect_audio_files(dir: &Path) -> Result<Vec<PathBuf>> {
-    let entries = fs::read_dir(dir)
-        .with_context(|| format!("failed to read directory {}", dir.display()))?;
+    let entries =
+        fs::read_dir(dir).with_context(|| format!("failed to read directory {}", dir.display()))?;
 
     let mut files = Vec::new();
     for entry in entries {

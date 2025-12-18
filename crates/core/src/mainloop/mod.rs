@@ -282,14 +282,13 @@ pub fn run(
         }
 
         /////////////////// Signal Begin ///////////////
-
-        sig_collector.params = *app_state.audio_params.read().unwrap();
-
         sig_collector
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;
 
         if now - last_spectrogram_tick >= spec_period.as_millis() as usize {
+            sig_collector.params = *app_state.audio_params.read().unwrap();
+
             // println!("spec period: {:?}", spec_period);
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
 

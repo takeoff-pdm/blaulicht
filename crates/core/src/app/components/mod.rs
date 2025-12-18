@@ -7,8 +7,8 @@ mod fixtures_shared;
 mod graph;
 mod log;
 mod selection_dialog;
-mod switch;
 mod spectrogram;
+mod switch;
 
 pub use button::*;
 pub use clickable::*;
@@ -19,5 +19,5 @@ pub use fixtures_shared::*;
 pub use graph::*;
 pub use log::*;
 pub use selection_dialog::*;
-pub use switch::*;
 pub use spectrogram::*;
+pub use switch::*;

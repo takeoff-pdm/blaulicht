@@ -15,7 +15,11 @@ extern "C" {
     fn bl_transmit_midi(device_id: u8, status: u8, data0: u8, data1: u8);
     fn bl_report_panic();
 
-    fn bl_open_serial_device(device_name_ptr: *const u8, device_name_len: usize, baud_rate: u32) -> u8;
+    fn bl_open_serial_device(
+        device_name_ptr: *const u8,
+        device_name_len: usize,
+        baud_rate: u32,
+    ) -> u8;
     fn bl_enumerate_serial_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);

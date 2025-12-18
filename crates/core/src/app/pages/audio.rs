@@ -15,7 +15,7 @@ use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{
     vec2, Checkbox, Color32, ComboBox, Context, CornerRadius, FontId, Frame, Margin, Painter, Pos2,
-    Rect, RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2,
+    Rect, RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2, Widget,
 };
 use egui_file::FileDialog;
 use noise::utils::Color;
@@ -117,6 +117,7 @@ impl BlaulichtApp {
                     let mut volume_value = params.volume as f32;
                     let mut gate_value = params.gate.unwrap_or(0) as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
+                    let mut auto_calibrate = params.auto_calibrate;
                     // let mut filterbank_value = params.filterbank;
                     // let mut use_dp_tracking = params.use_dynamic_programming_beat;
                     drop(params);
@@ -201,6 +202,16 @@ impl BlaulichtApp {
                                     v => Some(v),
                                 };
                             }
+
+                            ui.add_space(50.0);
+
+                            if components::Switch::new(&mut auto_calibrate)
+                                .ui(ui)
+                                .changed()
+                            {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                params.auto_calibrate = auto_calibrate;
+                            }
                         });
                     }
 
@@ -251,7 +262,7 @@ impl BlaulichtApp {
                             let bg_color = egui::Color32::from_rgb(20, 20, 25);
 
                             const BPM_FONT_SIZE: f32 = 30.0;
-                            
+
                             Frame::NONE
                                 .fill(bg_color)
                                 .outer_margin(Margin {

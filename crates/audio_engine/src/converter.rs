@@ -1,4 +1,11 @@
-use audioviz::{audio_capture::capture::{Capture, CaptureReceiver}, spectrum::{Frequency, config::StreamConfig, stream::{Stream, StreamController}}};
+use audioviz::{
+    audio_capture::capture::{Capture, CaptureReceiver},
+    spectrum::{
+        config::StreamConfig,
+        stream::{Stream, StreamController},
+        Frequency,
+    },
+};
 
 pub enum ConverterType {
     Stream(Stream),

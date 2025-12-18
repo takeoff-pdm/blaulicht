@@ -10,9 +10,9 @@ use crate::{
 };
 use blaulicht_shared::{
     AnimationSpec, AnimationSpecBody, AnimationSpecBodyAudioVolume, AnimationSpecBodyBeat,
-    AnimationSpecBodyPhaser, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
-    EventOriginator, FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration,
-    PhaserKind, SyncMode,
+    AnimationSpecBodyFrequencies, AnimationSpecBodyPhaser, AnimationSpeedModifier, ControlEvent,
+    ControlEventMessage, EventOriginator, FixtureProperty, MathematicalBaseFunction,
+    MathematicalPhaser, PhaserDuration, PhaserKind, SyncMode,
 };
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{Line, Plot, PlotPoints};
@@ -399,6 +399,9 @@ impl BlaulichtApp {
                                 AnimationSpecBody::AudioVolume(audio) => {
                                     self.anim_audio_ui(audio, ui)
                                 }
+                                AnimationSpecBody::AudioFrequencies(freq) => {
+                                    self.anim_freq_ui(freq, ui)
+                                }
                                 AnimationSpecBody::AudioBeat(beat) => self.anim_beat_ui(beat, ui),
                                 AnimationSpecBody::BeatClock(beat) => {
                                     self.anim_beat_clock_ui(beat, ui)
@@ -579,6 +582,10 @@ impl BlaulichtApp {
 
     fn anim_audio_ui(&mut self, audio: &AnimationSpecBodyAudioVolume, ui: &mut egui::Ui) {
         ui.label("[AUDIO]");
+    }
+
+    fn anim_freq_ui(&mut self, beat: &AnimationSpecBodyFrequencies, ui: &mut egui::Ui) {
+        ui.label("[AUDIO-FREQ]");
     }
 
     fn anim_beat_ui(&mut self, beat: &AnimationSpecBodyBeat, ui: &mut egui::Ui) {

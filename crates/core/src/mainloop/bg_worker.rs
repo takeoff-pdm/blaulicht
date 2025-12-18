@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},

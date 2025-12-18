@@ -1,8 +1,4 @@
-use audioviz::spectrum::{
-    config::ProcessorConfig,
-    processor::Processor,
-    Frequency,
-};
+use audioviz::spectrum::{config::ProcessorConfig, processor::Processor, Frequency};
 use std::fs::File;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;

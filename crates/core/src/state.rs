@@ -11,16 +11,16 @@ use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    // audio::collector::{CollectorOutput, SignalCollectorParams},
-    ui_ops::WasmUiOp,
-};
-use crate::{
     audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::{SystemEventBusConnection, SystemEventBusConnectionInst},
     msg::{FromFrontend, SystemMessage, UnifiedMessage},
     plugin::Plugin,
+};
+use crate::{
+    // audio::collector::{CollectorOutput, SignalCollectorParams},
+    ui_ops::WasmUiOp,
 };
 
 #[derive(Clone)]
@@ -55,7 +55,6 @@ impl AudioState {
 //     pub samples: Vec<u8>,
 //     pub snapshot: CollectedAudioSnapshot,
 // }
-
 
 pub const NUM_DMX_UNIVERSES: usize = 2;
 

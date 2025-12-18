@@ -59,6 +59,8 @@ pub struct CollectorScratch {
     pub(crate) beat_needs_sync: bool,
 
     pub(crate) is_on_beat: bool,
+
+    pub(crate) last_calibrate_time: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -87,6 +89,7 @@ impl CollectorScratch {
             num_beat_mismatches: 0,
             is_on_beat: false,
             beat_needs_sync: true,
+            last_calibrate_time: now,
         }
     }
 }
@@ -96,6 +99,7 @@ pub struct SignalCollectorParams {
     pub volume: u8,
     pub gate: Option<u8>,
     pub boost: Option<u8>,
+    pub auto_calibrate: bool,
 }
 
 impl Default for SignalCollectorParams {
@@ -104,6 +108,7 @@ impl Default for SignalCollectorParams {
             volume: 100,
             gate: None,
             boost: None,
+            auto_calibrate: false,
         }
     }
 }
@@ -189,6 +194,26 @@ where
         })
     }
 
+    fn calibrate(&mut self, now: usize) {
+        if now - self.scratch.last_calibrate_time > 100 {
+            println!("Calibration is new.")
+        }
+
+        // Progressively decrement the gate until we get a BPM.
+        if self.current.bpm == 0 {
+            let mut last_gate = self.params.gate.unwrap_or(101);
+
+            if last_gate == 0 {
+                println!("UNDERRUN CALIB.");
+                last_gate = 101;
+            }
+
+            self.params.gate = Some(last_gate - 1)
+        }
+
+        self.scratch.last_calibrate_time = now;
+    }
+
     fn get_frequencies(&mut self, now: usize) {
         let values_raw = self.audio_source.get_frequencies(now);
 
@@ -242,6 +267,10 @@ where
     // DOES NOT run every ~20 ms. This runs as often as possible.
     //
     pub fn tick(&mut self, now: usize) -> anyhow::Result<()> {
+        if self.params.auto_calibrate {
+            self.calibrate(now);
+        }
+
         self.get_frequencies(now);
 
         // Volume

@@ -23,8 +23,7 @@ pub struct SavedMapEntry<K, V> {
     value: V,
 }
 
-impl<K, V> SavedMapEntry<K, V>
-{
+impl<K, V> SavedMapEntry<K, V> {
     pub fn from_btree_map(from: BTreeMap<K, V>) -> Vec<Self> {
         from.into_iter()
             .map(|(key, value)| Self { key, value })
@@ -297,9 +296,9 @@ mod tests {
         ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat,
         AnimationSpeedModifier, AnimationTimerState, FixtureProperty, SaveEngineState, SyncMode,
         fixture::{
+            FixtureType,
             dimmer::Dimmer,
             state::{Fixture, FixtureGroup, FixtureState},
-            FixtureType,
         },
         scene::{EngineSink, FixtureSelection, FixtureSelector, Scene},
         view::View,
@@ -397,7 +396,9 @@ mod tests {
         engine.current_scene_focus = 1;
         engine.current_overlay_scenes = vec![1];
         engine.overrides.insert((0, 1), 42);
-        engine.plugin_state.insert("plugin".to_string(), "state".to_string());
+        engine
+            .plugin_state
+            .insert("plugin".to_string(), "state".to_string());
 
         engine
     }
@@ -418,7 +419,10 @@ mod tests {
         assert_eq!(restored.views.len(), engine.views.len());
         assert_eq!(restored.scenes.len(), engine.scenes.len());
         assert_eq!(restored.current_scene_focus, engine.current_scene_focus);
-        assert_eq!(restored.current_overlay_scenes, engine.current_overlay_scenes);
+        assert_eq!(
+            restored.current_overlay_scenes,
+            engine.current_overlay_scenes
+        );
         assert_eq!(restored.overrides, engine.overrides);
         assert_eq!(restored.plugin_state, engine.plugin_state);
     }

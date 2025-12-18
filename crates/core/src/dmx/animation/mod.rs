@@ -34,6 +34,9 @@ impl DmxEngine {
                         // }
                         speed_per_step
                     }
+                    AnimationSpecBody::AudioFrequencies(freq) => {
+                        panic!("TODO: not supported")
+                    }
                     AnimationSpecBody::AudioVolume(_)
                     | AnimationSpecBody::BeatClock(_)
                     | AnimationSpecBody::AudioBeat(_) => DMX_TICK_TIME.as_millis() as f64,
@@ -59,6 +62,9 @@ impl DmxEngine {
             AnimationSpecBody::Phaser(body) => phaser::generate(body, time as f32),
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
                 audio_snapshot.volume as u16
+            }
+            AnimationSpecBody::AudioFrequencies(freqs) => {
+                panic!("UNSUPPORTED")
             }
             AnimationSpecBody::AudioBeat(animation_spec_body_beat) => {
                 audio_snapshot.bass_avg_short as u16

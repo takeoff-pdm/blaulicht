@@ -74,8 +74,9 @@ pub fn create_spectrogram_image(
     height_outer: usize,
     options: &SpectrogramDisplayOptions,
 ) -> egui::ColorImage {
-    let pad_btm = 25;
-    let height = height_outer - pad_btm;
+    let pad_btm = 20;
+    let pad_top = 5;
+    let height = height_outer - pad_btm - pad_top;
     let mut pixels = vec![Color32::BLACK; width * height_outer];
 
     let total_cols = spec.max_columns;
@@ -146,8 +147,8 @@ pub fn create_spectrogram_image(
         let bucket_height = height as f32 / col.current_audio_colunn.len() as f32;
 
         for (bidx, &bucket) in col.current_audio_colunn.iter().rev().enumerate() {
-            let y_min = (bidx as f32 * bucket_height) as usize;
-            let y_max = ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
+            let y_min = pad_top + (bidx as f32 * bucket_height) as usize;
+            let y_max = pad_top + ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
 
             let bucket_color = spectrogram_color(bucket);
 

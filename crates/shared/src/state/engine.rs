@@ -182,6 +182,7 @@ impl AnimationSpec {
             }
             AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::AudioBeat(_)
+            | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
             | AnimationSpecBody::Wasm(_) => false,
         }
@@ -194,6 +195,7 @@ pub enum AnimationSpecBody {
     Phaser(AnimationSpecBodyPhaser),
     AudioVolume(AnimationSpecBodyAudioVolume),
     AudioBeat(AnimationSpecBodyBeat),
+    AudioFrequencies(AnimationSpecBodyFrequencies),
     BeatClock(AnimationSpecBodyBeat),
     Wasm(AnimationSpecBodyWasm), // TODO: not currently supported.
 }
@@ -263,6 +265,9 @@ pub struct AnimationSpecBodyAudioVolume {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub struct AnimationSpecBodyBeat {}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+pub struct AnimationSpecBodyFrequencies {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub struct AnimationSpecBodyWasm {}
