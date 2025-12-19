@@ -287,7 +287,18 @@ pub fn run(
             .with_context(|| "Failed to tick audio input")?;
 
         if now - last_spectrogram_tick >= spec_period.as_millis() as usize {
-            sig_collector.params = *app_state.audio_params.read().unwrap();
+            // deadlock issues here!
+
+            {
+                let mut ui_params = app_state.audio_params.write().unwrap();
+                if ui_params.changed {
+                    sig_collector.params = *ui_params;
+                    ui_params.changed = false;
+                } else if sig_collector.params.changed {
+                    *ui_params = sig_collector.params;
+                    sig_collector.params.changed = false;
+                }
+            }
 
             // println!("spec period: {:?}", spec_period);
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();

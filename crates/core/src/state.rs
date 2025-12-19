@@ -65,7 +65,8 @@ pub struct AppState {
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     // pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
-    pub audio_params: RwLock<SignalCollectorParams>,
+    pub audio_params: RwLock<SignalCollectorParams>, // Boolean stores if something has
+    // changed
     pub audio_spectrogram: RwLock<AudioSpectrogram>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,

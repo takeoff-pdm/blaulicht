@@ -97,18 +97,20 @@ impl CollectorScratch {
 #[derive(Clone, Copy)]
 pub struct SignalCollectorParams {
     pub volume: u8,
-    pub gate: Option<u8>,
+    pub gate: u8,
     pub boost: Option<u8>,
     pub auto_calibrate: bool,
+    pub changed: bool,
 }
 
 impl Default for SignalCollectorParams {
     fn default() -> Self {
         Self {
             volume: 100,
-            gate: None,
+            gate: 0,
             boost: None,
             auto_calibrate: false,
+            changed: false,
         }
     }
 }
@@ -195,23 +197,30 @@ where
     }
 
     fn calibrate(&mut self, now: usize) {
-        if now - self.scratch.last_calibrate_time > 100 {
-            println!("Calibration is new.")
+        if now - self.scratch.last_calibrate_time > 1000 {
+            println!("Calibration is new.");
+            self.params.gate = 60;
+            self.params.changed = true;
         }
 
         // Progressively decrement the gate until we get a BPM.
-        if self.current.bpm == 0 {
-            let mut last_gate = self.params.gate.unwrap_or(101);
+        if now - self.scratch.last_calibrate_time > 100 {
+            if self.current.bpm == 0 && self.current.bass_avg > 50 {
+                let last_gate = match self.params.gate {
+                    0 => 60,
+                    v => v,
+                };
 
-            if last_gate == 0 {
-                println!("UNDERRUN CALIB.");
-                last_gate = 101;
+                println!("Gate: {last_gate}");
+
+                self.params.gate = last_gate - 1;
+                self.params.changed = true;
+            } else if self.current.bpm > 0 {
+                self.params.auto_calibrate = false;
             }
 
-            self.params.gate = Some(last_gate - 1)
+            self.scratch.last_calibrate_time = now;
         }
-
-        self.scratch.last_calibrate_time = now;
     }
 
     fn get_frequencies(&mut self, now: usize) {
@@ -233,7 +242,8 @@ where
         };
 
         let values = match self.params.gate {
-            Some(gate_min) => values_vol_adjusted
+            0 => values_vol_adjusted,
+            gate_min => values_vol_adjusted
                 .into_iter()
                 .map(|freq| match (freq.volume * 10.0) >= gate_min as f32 {
                     true => match self.params.boost {
@@ -251,7 +261,6 @@ where
                     },
                 })
                 .collect(),
-            None => values_vol_adjusted,
         };
 
         self.freqs = values;

@@ -115,7 +115,7 @@ impl BlaulichtApp {
                     let spec = self.data.state.audio_spectrogram.read().unwrap();
                     let params = self.data.state.audio_params.read().unwrap();
                     let mut volume_value = params.volume as f32;
-                    let mut gate_value = params.gate.unwrap_or(0) as f32;
+                    let mut gate_value = params.gate as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
                     let mut auto_calibrate = params.auto_calibrate;
                     // let mut filterbank_value = params.filterbank;
@@ -173,6 +173,7 @@ impl BlaulichtApp {
                             {
                                 let mut params = self.data.state.audio_params.write().unwrap();
                                 params.volume = volume_value as u8;
+                                params.changed = true;
                             }
 
                             ui.add_space(50.0);
@@ -182,11 +183,8 @@ impl BlaulichtApp {
                                 .changed()
                             {
                                 let mut params = self.data.state.audio_params.write().unwrap();
-                                let v = gate_value as u8;
-                                params.gate = match v {
-                                    0 => None,
-                                    v => Some(v),
-                                };
+                                params.gate = gate_value as u8;
+                                params.changed = true;
                             }
 
                             ui.add_space(50.0);
@@ -201,6 +199,7 @@ impl BlaulichtApp {
                                     0 => None,
                                     v => Some(v),
                                 };
+                                params.changed = true;
                             }
 
                             ui.add_space(50.0);
@@ -211,12 +210,13 @@ impl BlaulichtApp {
                             {
                                 let mut params = self.data.state.audio_params.write().unwrap();
                                 params.auto_calibrate = auto_calibrate;
+                                params.changed = true;
                             }
                         });
                     }
 
                     // Set larger graph height
-                    let graph_height = 115.0;
+                    let graph_height = 105.0;
                     let graph_width = graph_panel_width - 5.0;
                     let padding = 0.0;
 
