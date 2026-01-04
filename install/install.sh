@@ -1,3 +1,14 @@
+# TODO: lightdm do not use gnome!
+
+
+# Source - https://stackoverflow.com/q
+# Posted by Aleksandr Murashov
+# Retrieved 2026-01-03, License - CC BY-SA 3.0
+set -o errexit
+set -o nounset
+set -o pipefail
+
+
 if [ "$USER" = "root" ]; then
     echo "Please dont run this installer as root."
     exit 1
@@ -27,10 +38,14 @@ fi
 # Session login.
 #
 
+# Delete old session files.
+sudo find /usr/share/xsessions/ ! -name openbox.desktop ! -name blaulicht.desktop ! -name lightdm-xsession.desktop -maxdepth 1 -type f -delete
+
 sudo apt install -y lightdm || exit 1
 # sed "s/USER-PLACEHOLDER/${USER}/g" gdm3.conf | sudo tee /etc/gdm3/daemon.conf || exit 1
 sudo cp ./lightdm.conf /etc/lightdm/lightdm.conf || exit 1
 
+sudo dpkg-reconfigure -fnoninteractive lightdm
 sudo systemctl enable lightdm || exit  1
 
 #

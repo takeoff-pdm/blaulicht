@@ -115,7 +115,7 @@ pub fn run(
     const COLLECTOR_SPECTROGRAM: usize = 1;
 
     collector_outputs[COLLECTOR_DMX] = CollectorOutputSpec {
-        bins_p_column: None,
+        bins_p_column: Some(128), // TODO: maybe this needs some tweaking.
     };
     collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
         bins_p_column: Some(128),
@@ -269,7 +269,7 @@ pub fn run(
 
             // TODO: maybe feed with audio signals.
             let out = sig_collector.tick_output::<COLLECTOR_DMX>();
-            dmx_engine.tick(out.snapshot);
+            dmx_engine.tick(&out);
 
             time_of_last_dmx_tick = now;
 

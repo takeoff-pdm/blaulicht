@@ -32,6 +32,10 @@ impl FixtureSelection {
         Self { fixtures: sorted }
     }
 
+    pub fn len(&self) -> usize {
+        self.fixtures.len()
+    }
+
     pub fn generate_instructions(&self) -> VecDeque<ControlEvent> {
         let mut gids = HashSet::new();
         let mut fids = HashSet::new(); // Maps fixture to a group.

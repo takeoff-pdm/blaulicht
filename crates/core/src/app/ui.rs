@@ -1171,11 +1171,11 @@ impl BlaulichtApp {
                 //     .indentor("    ".to_owned())
                 //     .new_line("\n".to_owned());
 
-                let string = serde_json::to_string_pretty(&dmx.clone()).unwrap();
+                // let string = serde_json::to_string_pretty(&dmx.clone()).unwrap();
 
                 // let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
                 // let string = ron::to_string(&dmx.clone()).unwrap();
-                // let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();
+                let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();
                 println!("STRING: {string}");
 
                 // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
@@ -1253,23 +1253,32 @@ impl BlaulichtApp {
                         FileDialogOpenOrigin::Load => {
                             config.last_open_showfile = Some(file.to_path_buf());
 
-                            let mut f = File::open(file).expect("no file found");
-                            let metadata = fs::metadata(file).expect("unable to read metadata");
-                            let mut buffer = vec![0; metadata.len() as usize];
-                            f.read(&mut buffer).expect("buffer overflow");
-
-                            let decoded: blaulicht_shared::EngineState =
-                                postcard::from_bytes(&buffer).unwrap();
-
-                            {
-                                let mut plugin_state =
-                                    self.data.state.plugin_state_storage.lock().unwrap();
-                                *plugin_state = decoded.plugin_state.clone();
-                            }
+                            // let mut f = File::open(file).expect("no file found");
+                            // let metadata = fs::metadata(file).expect("unable to read metadata");
+                            // let mut buffer = vec![0; metadata.len() as usize];
+                            // f.read(&mut buffer).expect("buffer overflow");
+                            //
+                            // let decoded: blaulicht_shared::EngineState =
+                            //     postcard::from_bytes(&buffer).unwrap();
+                            //
+                            // {
+                            //     let mut plugin_state =
+                            //         self.data.state.plugin_state_storage.lock().unwrap();
+                            //     *plugin_state = decoded.plugin_state.clone();
+                            // }
+                            //
+                            // let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                            // // dmx.overwrite(decoded);
+                            // dmx.load_showfile(decoded);
+                            // mem::drop(dmx);
 
                             let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                            // dmx.overwrite(decoded);
-                            dmx.load_showfile(decoded);
+                            config::read_showfile(
+                                file.to_path_buf(),
+                                &mut dmx,
+                                &self.data.state.plugin_state_storage,
+                            )
+                            .unwrap();
                             mem::drop(dmx);
 
                             config.last_open_showfile = Some(file.to_path_buf());

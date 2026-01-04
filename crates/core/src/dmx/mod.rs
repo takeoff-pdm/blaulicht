@@ -3,6 +3,7 @@ mod clock;
 mod management;
 mod state;
 
+use blaulicht_audio_engine::CollectorOutput;
 use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
@@ -130,7 +131,7 @@ impl DmxEngine {
     }
 
     /// Returns whether the DMX buffer changed.
-    fn tick_internal(&mut self, audio_snapshot: CollectedAudioSnapshot) -> bool {
+    fn tick_internal(&mut self, audio_output: &CollectorOutput) -> bool {
         // Read back events.
         let mut events = vec![];
         while let Some(ev) = self.event_bus_connection.try_recv() {
@@ -160,8 +161,8 @@ impl DmxEngine {
         }
 
         // Advance animations.
-        self.build_animations_cache(audio_snapshot);
-        self.animation_tick(audio_snapshot);
+        self.build_animations_cache(audio_output.snapshot);
+        self.animation_tick(audio_output);
 
         // let mut state = self.state_ref.dmx_engine.write().unwrap();
         // state.groups().iter().flat_map(|g|g.values());
@@ -202,7 +203,7 @@ impl DmxEngine {
         true
     }
 
-    pub fn tick(&mut self, audio_snapshot: CollectedAudioSnapshot) {
+    pub fn tick(&mut self, audio_snapshot: &CollectorOutput) {
         if self.tick_internal(audio_snapshot) {
             // TODO: THIS might be too heavy.
             // self.system_out

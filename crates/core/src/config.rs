@@ -6,8 +6,9 @@ use std::{
     sync::{Arc, Mutex, RwLockWriteGuard},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use audioviz::spectrum::config::StreamConfig;
+use blaulicht_shared::{EngineState, SaveEngineState};
 // use blaulicht_shared::EngineState;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
@@ -66,12 +67,17 @@ pub fn read_showfile(
     //     Err(e) => {},
     // }
     //
-    match serde_json::from_str::<dmx::EngineState>(&string) {
+    match serde_json::from_str::<SaveEngineState>(&string) {
         Ok(de) => {
-            let mut storage = plugin_state_storage.lock().unwrap();
-            *storage = de.0.plugin_state.clone();
+            let core_format: EngineState = de
+                .try_into()
+                .map_err(|e| anyhow!("{e}"))
+                .with_context(|| "Failed to parse")?;
 
-            dmx.load_showfile(de.0);
+            let mut storage = plugin_state_storage.lock().unwrap();
+            *storage = core_format.plugin_state.clone();
+
+            dmx.load_showfile(core_format);
             Ok(())
         }
         Err(e) => Err(anyhow!(e)),

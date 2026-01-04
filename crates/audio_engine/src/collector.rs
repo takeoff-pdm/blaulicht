@@ -264,6 +264,7 @@ where
         };
 
         self.freqs = values;
+        // self.current.initialized = true;
     }
 
     pub fn clear(&mut self) {
@@ -404,7 +405,10 @@ pub fn init_converter(
 pub type AudioColumn = Vec<u8>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
-fn bin_spectrum_to_u8(values: &[audioviz::spectrum::Frequency], mut bins: usize) -> AudioColumn {
+pub fn bin_spectrum_to_u8(
+    values: &[audioviz::spectrum::Frequency],
+    mut bins: usize,
+) -> AudioColumn {
     debug_assert!(bins > 0);
 
     let chunk_size = match values.len() % bins == 0 {

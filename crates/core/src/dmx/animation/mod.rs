@@ -1,6 +1,7 @@
 pub mod state;
 use std::time::Instant;
 
+use blaulicht_audio_engine::{bin_spectrum_to_u8, CollectorOutput};
 use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
 pub use state::*;
 pub mod phaser;
@@ -34,12 +35,10 @@ impl DmxEngine {
                         // }
                         speed_per_step
                     }
-                    AnimationSpecBody::AudioFrequencies(freq) => {
-                        panic!("TODO: not supported")
-                    }
                     AnimationSpecBody::AudioVolume(_)
                     | AnimationSpecBody::BeatClock(_)
-                    | AnimationSpecBody::AudioBeat(_) => DMX_TICK_TIME.as_millis() as f64,
+                    | AnimationSpecBody::AudioBeat(_)
+                    | AnimationSpecBody::AudioFrequencies(_) => DMX_TICK_TIME.as_millis() as f64,
                     AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
                 }
             };
@@ -50,33 +49,62 @@ impl DmxEngine {
 
     fn generate_animation_value(
         &self,
-        audio_snapshot: CollectedAudioSnapshot,
+        audio_snapshot: &CollectorOutput,
         spec: &AnimationSpec,
-        id: u8,
-        time: u64,
+        animation_id: u8,
+        fixture_time: u64,
+        // When having a synced / offsetted animation 'group'
+        fixture_index_in_selection: usize,
+        fixtures_in_selection: usize,
     ) -> u16 {
         // let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
         // let animation = animations.get(&id).unwrap();
 
         match &spec.body {
-            AnimationSpecBody::Phaser(body) => phaser::generate(body, time as f32),
+            AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time as f32),
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
-                audio_snapshot.volume as u16
+                audio_snapshot.snapshot.volume as u16
             }
             AnimationSpecBody::AudioFrequencies(freqs) => {
-                panic!("UNSUPPORTED")
+                // Create bins of size `fixtures_in_selection`
+                // let bins = bin_spectrum_to_u8(&audio_snapshot.current_audio_colunn, fixtures_in_selection);
+
+                // HACK: Give audio engine time to start.
+                if audio_snapshot.current_audio_colunn.is_empty() {
+                    return 0;
+                }
+
+                // Quantize to reduce dimension of the audio column
+                debug_assert!(audio_snapshot.current_audio_colunn.len() > fixtures_in_selection);
+
+                let chunk_size = audio_snapshot.current_audio_colunn.len() / fixtures_in_selection;
+                let quantized_audio_bins: Vec<usize> = audio_snapshot
+                    .current_audio_colunn
+                    .chunks(chunk_size)
+                    .map(|chunk| {
+                        // Compute average
+                        let max = chunk.iter().copied().map(|v| v as usize).max();
+                        // sum / chunk.len()
+                        max.unwrap_or(0)
+                    })
+                    .collect();
+
+                debug_assert!(fixtures_in_selection <= quantized_audio_bins.len());
+
+                let fixture_value = quantized_audio_bins[fixture_index_in_selection];
+                fixture_value as u16
             }
             AnimationSpecBody::AudioBeat(animation_spec_body_beat) => {
-                audio_snapshot.bass_avg_short as u16
+                audio_snapshot.snapshot.bass_avg_short as u16
             }
             AnimationSpecBody::BeatClock(animation_spec_body_beat) => {
-                (audio_snapshot.beat_trigger as u16) * 255
+                (audio_snapshot.snapshot.beat_trigger as u16) * 255
             }
             AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
         }
     }
 
-    pub fn animation_tick(&mut self, audio_snapshot: CollectedAudioSnapshot) {
+    pub fn animation_tick(&mut self, audio_snapshot: &CollectorOutput) {
         // // TODO: what's the plan for this?
         // //
         // // Go over all scenes and then over all selections for that scene.
@@ -89,12 +117,16 @@ impl DmxEngine {
             for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
                 // println!("scene anim: {scene_animations:?}");
 
+                let fixtures_in_selection = selection.len();
+
                 for (animation_id, animation) in scene_animations.iter_mut() {
                     if !animation.enabled {
                         continue;
                     }
 
-                    for (fixture_selec, fixture_anim_state) in animation.fixture_timers.iter_mut() {
+                    for (fixture_index_in_selection, (fixture_selec, fixture_anim_state)) in
+                        animation.fixture_timers.iter_mut().enumerate()
+                    {
                         let transition_time =
                             (*self.animation_base_times.get(animation_id).unwrap()) as f64
                                 * animation.speed_factor.as_float();
@@ -117,7 +149,9 @@ impl DmxEngine {
                             fixture_anim_state.needs_reset_on_beat = true;
                         }
 
-                        if fixture_anim_state.needs_reset_on_beat && audio_snapshot.beat_trigger {
+                        if fixture_anim_state.needs_reset_on_beat
+                            && audio_snapshot.snapshot.beat_trigger
+                        {
                             fixture_anim_state.timer = 0;
                             fixture_anim_state.needs_reset_on_beat = false;
                         }
@@ -144,7 +178,9 @@ impl DmxEngine {
                         //      - Running animations shall also be displayed graphically
                         //      - Each phaser can be absolute / relative!
                         // println!("{}", fixture_anim_state.last_tick_time);
-                        if now - fixture_anim_state.last_tick_time >= transition_time as u64 {
+                        if now.saturating_sub(fixture_anim_state.last_tick_time)
+                            >= transition_time as u64
+                        {
                             for _ in 0..num_ticks {
                                 fixture_anim_state.tick(now);
                             }
@@ -158,6 +194,8 @@ impl DmxEngine {
                                 spec,
                                 *animation_id,
                                 fixture_anim_state.timer,
+                                fixture_index_in_selection,
+                                fixtures_in_selection,
                             );
 
                             let fixture_state =

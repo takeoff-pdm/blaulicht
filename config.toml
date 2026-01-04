@@ -5,7 +5,7 @@ last_open_showfile = "/Users/martintaraz/Downloads/blaulicht/showfile.txt"
 [stream]
 fft_resolution = 4096
 refresh_rate = 60
-gravity = 100.0
+# gravity = 100.0
 
 [stream.processor]
 sample_rate = 44100
@@ -14,7 +14,7 @@ frequency_bounds = [
     20000,
 ]
 volume = 1.0
-volume_normalisation = "Mixture"
+volume_normalisation = "Exponential"
 position_normalisation = "Harmonic"
 interpolation = "Cubic"
 

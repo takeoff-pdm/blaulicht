@@ -162,7 +162,13 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
 
-                        let kinds = ["PhaserMath", "AudioVolume", "AudioBeat", "BeatClock"]; // TODO: replace with enum iter.
+                        let kinds = [
+                            "PhaserMath",
+                            "AudioVolume",
+                            "AudioBeat",
+                            "AudioFrequencies",
+                            "BeatClock",
+                        ]; // TODO: replace with enum iter.
                         egui::ComboBox::from_id_source("add_anim_kind_combo")
                             .width(140.0)
                             .selected_text(self.animation_page.new_mode)
@@ -252,6 +258,9 @@ impl BlaulichtApp {
                                 "BeatClock" => {
                                     AnimationSpecBody::BeatClock(AnimationSpecBodyBeat {})
                                 }
+                                "AudioFrequencies" => AnimationSpecBody::AudioFrequencies(
+                                    AnimationSpecBodyFrequencies {},
+                                ),
                                 "PhaserMath" | _ => {
                                     AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
                                         kind: PhaserKind::Mathematical(MathematicalPhaser {
