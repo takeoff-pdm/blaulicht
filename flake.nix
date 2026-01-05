@@ -10,43 +10,47 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         libraries = with pkgs;[
-         libudev-zero
-         wayland
-         libxkbcommon
-         fontconfig
-         libGL
-         alsa-lib
-         xorg.libxcb
-  wayland
-  xorg.libX11
-  xorg.libXcursor
-  xorg.libXi
-  xorg.libXrandr
-    libclang
-    clang
+            libudev-zero
+            wayland
+            libxkbcommon
+            fontconfig
+            libGL
+            alsa-lib
+            xorg.libxcb
+            wayland
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXi
+            xorg.libXrandr
+            libclang
+            clang
             pkgs.stdenv.cc.cc.lib
-        clangStdenv
-        openssl
+            clangStdenv
+            openssl
+            glibc.dev
+            gcc 
+            mold
         ];
 
         packages = with pkgs; [
-         libGL
-         libudev-zero
-         pkg-config
-         alsa-lib
-         xorg.libxcb
-  libxkbcommon
-  wayland
-  xorg.libX11
-  xorg.libXcursor
-  xorg.libXi
-  xorg.libXrandr
-    libclang
-    clang
-        clangStdenv
+            libGL
+            libudev-zero
+            pkg-config
+            alsa-lib
+            mold
+            xorg.libxcb
+            libxkbcommon
+            wayland
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXi
+            xorg.libXrandr
+            libclang
+            clang
+            clangStdenv
             pkgs.stdenv.cc.cc.lib
-        openssl
-    pkgs.binaryen
+            openssl
+            pkgs.binaryen
         ];
       in
       {

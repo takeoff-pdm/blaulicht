@@ -45,4 +45,9 @@ file_path = "../plugins/bundle_debug/visualizer.wasm"
 enabled = false
 enable_watcher = true
 
+[[plugins]]
+file_path = "../plugins/bundle_debug/test.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]

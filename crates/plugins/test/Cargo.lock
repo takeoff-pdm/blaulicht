@@ -41,7 +41,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "blaulicht-plugin-sample-egui"
+name = "blaulicht-plugin-test"
 version = "0.1.0"
 dependencies = [
  "blaulicht-plugin-framework",

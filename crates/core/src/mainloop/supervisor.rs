@@ -217,7 +217,7 @@ pub fn supervisor_thread(
                         .unwrap()
                         .device_name
                         .clone()
-                        .unwrap_or_else(||"None".to_string())
+                        .unwrap_or_else(|| "None".to_string())
                 ),
                 LogLevel::Info,
             ))

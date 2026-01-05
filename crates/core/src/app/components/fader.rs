@@ -1,6 +1,4 @@
-// use egui::*;
-
-use egui::{vec2, Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
+use egui::{Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
 
 /// A vertical fader widget, like a MIDI/DMX control.
 /// - Draws a track with tick marks

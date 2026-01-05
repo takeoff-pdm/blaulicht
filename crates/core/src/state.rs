@@ -13,7 +13,7 @@ use crate::{
     audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
     dmx::EngineState,
-    event::{SystemEventBusConnectionInst},
+    event::SystemEventBusConnectionInst,
     msg::{FromFrontend, SystemMessage},
 };
 use crate::{

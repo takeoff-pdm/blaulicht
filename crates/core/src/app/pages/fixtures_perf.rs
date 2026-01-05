@@ -1,16 +1,16 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, HFader},
+        components::{self, ButtonSize, HFader, Knob},
         BlaulichtApp,
     },
     dmx::EngineState,
 };
-use blaulicht_shared::{AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator};
+use blaulicht_shared::{
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+};
 use egui::{Color32, Context, RichText};
 
-pub struct FixturePerfUi {
-    
-}
+pub struct FixturePerfUi {}
 
 impl BlaulichtApp {
     pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
@@ -221,7 +221,7 @@ impl BlaulichtApp {
 
                             let mut master_alpha = scene.sink.master_alpha_fader as f32;
                             if ui
-                                .add(HFader::new(&mut master_alpha, 0.0..=100.0).with_label("MSTR Alpha"))
+                                .add(Knob::new(&mut master_alpha, 0.0..=100.0).with_label("MSTR Alpha"))
                                 .changed()
                             {
                                 scene.sink.master_alpha_fader = master_alpha as u8;
@@ -232,7 +232,7 @@ impl BlaulichtApp {
                             let mut index = scene.sink.master_alpha_speed.as_index() as f32;
                             let max_index = AnimationSpeedModifier::ALL.len() - 1;
                             if ui
-                                .add(HFader::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed"))
+                                .add(Knob::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed"))
                                 .changed()
                             {
                                 scene.sink.master_alpha_speed = AnimationSpeedModifier::from_index(index as usize);

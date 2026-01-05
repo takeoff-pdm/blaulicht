@@ -57,6 +57,7 @@ dependencies = [
  "color_space",
  "map-range",
  "serde",
+ "serde_json",
  "strum",
 ]
 

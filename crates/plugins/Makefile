@@ -48,7 +48,7 @@ build_noopt:
 	@for crate in $(CRATES); do \
 		echo "Building $$crate..."; \
 		crate_name=$$(cd $$crate && cargo metadata --no-deps --format-version 1 | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 | tr '-' '_'); \
-		(cd $$crate && RUSTFLAGS=-Awarnings cargo build --message-format short --target=$(TARGET_TRIPLE) --target-dir=target && cp ./target/$(TARGET_TRIPLE)/debug/$$crate_name.wasm ../bundle_debug/$$crate.wasm) \
+		(cd $$crate && cargo build --target=$(TARGET_TRIPLE) --target-dir=target && cp ./target/$(TARGET_TRIPLE)/debug/$$crate_name.wasm ../bundle_debug/$$crate.wasm) \
 	done
 	@echo "All crates built successfully!"
 
