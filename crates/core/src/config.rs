@@ -1,19 +1,17 @@
+use crate::{dmx, msg::SystemMessage};
+use anyhow::{anyhow, Context, Result};
+use audioviz::spectrum::config::StreamConfig;
+use blaulicht_shared::{EngineState, LogLevel, SaveEngineState};
+use crossbeam_channel::Sender;
+use log::debug;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLockWriteGuard},
 };
-
-use anyhow::{anyhow, bail, Context, Result};
-use audioviz::spectrum::config::StreamConfig;
-use blaulicht_shared::{EngineState, SaveEngineState};
-// use blaulicht_shared::EngineState;
-use log::{debug, error};
-use serde::{Deserialize, Serialize};
-
-use crate::dmx;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
@@ -49,6 +47,32 @@ pub fn read_showfile(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
+    system_message_sender: Sender<SystemMessage>,
+) {
+    match read_showfile_logic(file.clone(), dmx, plugin_state_storage) {
+        Ok(_) => {
+            system_message_sender
+                .send(SystemMessage::Log(
+                    format!("Loaded showfile from {file:?}"),
+                    LogLevel::Info,
+                ))
+                .unwrap();
+        }
+        Err(e) => {
+            system_message_sender
+                .send(SystemMessage::Log(
+                    format!("Read showfile <{file:?}> ERR: {e}"),
+                    LogLevel::Err,
+                ))
+                .unwrap();
+        }
+    }
+}
+
+fn read_showfile_logic(
+    file: PathBuf,
+    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<()> {
     debug!("Attempting to read showfile from {file:?}...");
 
@@ -78,6 +102,7 @@ pub fn read_showfile(
             *storage = core_format.plugin_state.clone();
 
             dmx.load_showfile(core_format);
+
             Ok(())
         }
         Err(e) => Err(anyhow!(e)),

@@ -148,32 +148,20 @@ fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let initial_popup = match cfg.last_open_showfile {
-        Some(showfile) => {
-            let mut dmx = app_state.dmx_engine.write().unwrap();
-            match config::read_showfile(showfile.clone(), &mut dmx, &app_state.plugin_state_storage)
-            {
-                Ok(_) => Some(PopupSpec::with_duration(
-                    Duration::from_secs(5),
-                    "Loaded Showfile".to_string(),
-                )),
-                Err(e) => {
-                    system_out
-                        .send(SystemMessage::Log(
-                            format!("Read showfile <{showfile:?}> ERR: {e}"),
-                            LogLevel::Err,
-                        ))
-                        .unwrap();
-
-                    Some(PopupSpec::with_duration(
-                        Duration::from_secs(5),
-                        "Showfile Error".to_string(),
-                    ))
-                }
-            }
-        }
-        None => None,
+    if let Some(showfile) = cfg.last_open_showfile {
+        let mut dmx = app_state.dmx_engine.write().unwrap();
+        config::read_showfile(
+            showfile.clone(),
+            &mut dmx,
+            &app_state.plugin_state_storage,
+            system_out.clone(),
+        );
     };
+
+    let initial_popup = Some(PopupSpec::with_duration(
+        Duration::from_secs(2),
+        "Initializing...".to_string(),
+    ));
 
     eframe::run_native(
         "blaulicht",
@@ -187,29 +175,6 @@ fn main() -> anyhow::Result<()> {
         }),
     )
     .unwrap();
-
-    // TODO: what is this?
-    // let sig = audio_thread_control_signal.load(Ordering::Relaxed);
-    // let start_shutdown = Instant::now();
-    // if sig == AudioThreadControlSignal::CONTINUE {
-    //     audio_thread_control_signal.store(AudioThreadControlSignal::ABORT, Ordering::Relaxed);
-    //     loop {
-    //         thread::sleep(Duration::from_secs(1));
-
-    //         let sig = audio_thread_control_signal.load(Ordering::Relaxed);
-
-    //         log::trace!("Waiting for audio thread to die: {sig}");
-
-    //         if start_shutdown.elapsed() > Duration::from_secs(5) {
-    //             log::warn!("Shutdown timeout");
-    //             break;
-    //         }
-
-    //         if sig == AudioThreadControlSignal::ABORTED {
-    //             break;
-    //         }
-    //     }
-    // }
 
     Ok(())
 }

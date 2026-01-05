@@ -386,8 +386,8 @@ impl eframe::App for BlaulichtApp {
                 AppPage::FixturesSetup => {
                     self.fixtures_ui_setup(ui, ctx);
                 }
-                AppPage::Show => {
-                    self.show_ui(ui, ctx);
+                AppPage::View => {
+                    self.view_ui(ui, ctx);
                 }
                 AppPage::FixturesPerformance => {
                     self.fixtures_ui(ui, ctx);
@@ -1277,8 +1277,8 @@ impl BlaulichtApp {
                                 file.to_path_buf(),
                                 &mut dmx,
                                 &self.data.state.plugin_state_storage,
-                            )
-                            .unwrap();
+                                self.data.system_message_sender.clone(),
+                            );
                             mem::drop(dmx);
 
                             config.last_open_showfile = Some(file.to_path_buf());

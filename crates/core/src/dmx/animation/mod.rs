@@ -1,9 +1,8 @@
 pub mod state;
 use std::time::Instant;
 
-use blaulicht_audio_engine::{bin_spectrum_to_u8, CollectorOutput};
+use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
-pub use state::*;
 pub mod phaser;
 pub use phaser::*;
 
@@ -209,14 +208,5 @@ impl DmxEngine {
                 }
             }
         }
-
-        //
-        // let fixtures = state
-        //     .groups
-        //     .iter_mut()
-        //     .flat_map(|(_, g)| g.fixtures.values_mut());
-        //
-        // for fixture in fixtures {
-        // }
     }
 }

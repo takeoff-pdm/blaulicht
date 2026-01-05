@@ -97,6 +97,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
             );
         }
 
-        spin_sleep::sleep(BG_WORKER_TICK_DURATION - start.elapsed()); // Account for diff
+        spin_sleep::sleep(BG_WORKER_TICK_DURATION.saturating_sub(start.elapsed()));
+        // Account for diff
     }
 }

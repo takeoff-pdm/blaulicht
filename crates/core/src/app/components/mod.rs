@@ -6,7 +6,9 @@ mod fader;
 mod fixtures_shared;
 mod graph;
 mod log;
+mod pagination;
 mod selection_dialog;
+mod id_selection_dialog;
 mod spectrogram;
 mod switch;
 
@@ -18,6 +20,8 @@ pub use fader::*;
 pub use fixtures_shared::*;
 pub use graph::*;
 pub use log::*;
+pub use pagination::*;
 pub use selection_dialog::*;
+pub use id_selection_dialog::*;
 pub use spectrogram::*;
 pub use switch::*;

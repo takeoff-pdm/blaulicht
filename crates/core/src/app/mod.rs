@@ -15,7 +15,7 @@ use blaulicht_shared::{
 };
 use egui::Color32;
 use egui_file::FileDialog;
-use pages::ShowUI;
+use pages::ViewUI;
 use std::time::{Duration, Instant};
 use strum::EnumIter;
 
@@ -48,7 +48,7 @@ pub enum AppPage {
     System,
     Audio,
     FixturesSetup,
-    Show,
+    View,
     FixturesPerformance,
     Animations,
 }
@@ -60,7 +60,7 @@ impl AppPage {
             AppPage::System => egui_phosphor::regular::CPU,
             AppPage::Audio => egui_phosphor::regular::MICROPHONE,
             AppPage::FixturesSetup => egui_phosphor::regular::WRENCH,
-            AppPage::Show => egui_phosphor::regular::FILM_REEL,
+            AppPage::View => egui_phosphor::regular::FILM_REEL,
             AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,
             AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
         }
@@ -72,7 +72,7 @@ impl AppPage {
             AppPage::System => "Sys",
             AppPage::Audio => "Audio",
             AppPage::FixturesSetup => "F. Setup",
-            AppPage::Show => "F. Show",
+            AppPage::View => "F. Show",
             AppPage::FixturesPerformance => "F. Perf",
             AppPage::Animations => "Anim",
         }
@@ -231,9 +231,9 @@ pub struct BlaulichtApp {
     delete_group_open: bool,
     new_group_name: String,
 
-    show_ui: ShowUI,
-
     universe_simulations: [DmxSimulator; NUM_DMX_UNIVERSES],
+
+    view_ui_state: ViewUI,
 }
 
 impl BlaulichtApp {
@@ -346,7 +346,7 @@ impl BlaulichtApp {
             delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             reload_dialog_open: false,
-            show_ui: ShowUI::default(),
+            view_ui_state: ViewUI::default(),
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
         }
     }

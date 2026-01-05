@@ -12,7 +12,7 @@ use blaulicht_shared::{
     EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
 use egui::{
-    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Vec2,
+    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Vec2,
     Widget,
 };
 use map_range::MapRange;

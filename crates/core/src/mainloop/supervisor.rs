@@ -209,7 +209,16 @@ pub fn supervisor_thread(
             );
 
             sys.send(SystemMessage::Log(
-                "[audio] Thread started.".to_string(),
+                format!(
+                    "[audio] Using device \"{}\"",
+                    app_state
+                        .audio
+                        .read()
+                        .unwrap()
+                        .device_name
+                        .clone()
+                        .unwrap_or_else(||"None".to_string())
+                ),
                 LogLevel::Info,
             ))
             .unwrap();

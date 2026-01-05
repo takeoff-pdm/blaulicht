@@ -6,7 +6,6 @@ use std::{
 };
 
 use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
-use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +13,8 @@ use crate::{
     audio::defs::AudioThreadControlSignal,
     config::{Config, PluginConfig},
     dmx::EngineState,
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
-    msg::{FromFrontend, SystemMessage, UnifiedMessage},
-    plugin::Plugin,
+    event::{SystemEventBusConnectionInst},
+    msg::{FromFrontend, SystemMessage},
 };
 use crate::{
     // audio::collector::{CollectorOutput, SignalCollectorParams},

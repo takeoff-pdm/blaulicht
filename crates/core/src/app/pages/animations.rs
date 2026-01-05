@@ -20,112 +20,112 @@ use std::{time::Duration, u16};
 use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
-    fn animation_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
-        let panel_width = 100.0;
-        let panel_padding = 2.0;
-
-        ui.allocate_ui_with_layout(
-            egui::vec2(panel_width, ui.available_height()), // fixed width, max height
-            egui::Layout::top_down(egui::Align::Center),
-            |ui| {
-                let number_of_items_total = dmx_engine.0.scenes.len();
-                const ITEMS_PER_PAGE: usize = 7;
-                let total_pages = number_of_items_total / ITEMS_PER_PAGE;
-
-                ui.set_min_width(panel_width);
-
-                ui.vertical_centered(|ui| {
-                    let scene_panel_page_button_sizes =
-                        ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "◀", scene_panel_page_button_sizes)
-                            && self.scene_page_index > 0
-                        {
-                            self.scene_page_index -= 1;
-                        }
-
-                        if components::button(ui, false, "▶", scene_panel_page_button_sizes)
-                            && self.scene_page_index < total_pages
-                        {
-                            self.scene_page_index += 1;
-                        }
-                    });
-
-                    ui.add_space(5.0);
-
-                    ui.label(format!("Page {} / {total_pages}", self.scene_page_index));
-                    ui.label(format!("Scenes: {number_of_items_total}"));
-                });
-
-                ui.add_space(5.0);
-
-                let start = self.scene_page_index * ITEMS_PER_PAGE;
-                let page_items = dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
-
-                for (scene_id, scene) in page_items {
-                    let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
-
-                    let label = format!("{scene_id} | {}", scene.name);
-                    if components::button(
-                        ui,
-                        is_selected,
-                        &label,
-                        ButtonSize::Large
-                            .with_width(panel_width - 2.0 * panel_padding)
-                            .with_font_size(12.0),
-                    ) {
-                        // Toggle group selection
-                        if !is_selected {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetSceneFocus(*scene_id),
-                                ));
-                        };
-                    }
-
-                    // let rect =
-                    //     ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
-                    // let painter = ui.painter();
-                    // let bg_color = if is_selected {
-                    //     egui::Color32::from_rgb(60, 120, 200)
-                    // } else {
-                    //     egui::Color32::from_gray(40)
-                    // };
-                    // painter.rect_filled(rect.0, 6.0, bg_color);
-                    //
-                    // // let fixture_count = group.fixtures.len();
-                    // painter.text(
-                    //     rect.0.left_top() + egui::vec2(12.0, 8.0),
-                    //     egui::Align2::LEFT_TOP,
-                    //     &name,
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::WHITE,
-                    // );
-                    //
-                    // painter.text(
-                    //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
-                    //     egui::Align2::LEFT_CENTER,
-                    //     format!("TODO: overlay or not"),
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::GRAY,
-                    // );
-                    // painter.text(
-                    //     rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                    //     egui::Align2::LEFT_BOTTOM,
-                    //     format!("Changes: {}", scene.sink.changeset.len()),
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::GRAY,
-                    // );
-
-                    // if rect.1.clicked() {}
-                    ui.add_space(5.0);
-                }
-            },
-        );
-    }
+    // fn animation_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
+    //     let panel_width = 100.0;
+    //     let panel_padding = 2.0;
+    //
+    //     ui.allocate_ui_with_layout(
+    //         egui::vec2(panel_width, ui.available_height()), // fixed width, max height
+    //         egui::Layout::top_down(egui::Align::Center),
+    //         |ui| {
+    //             let number_of_items_total = dmx_engine.0.scenes.len();
+    //             const ITEMS_PER_PAGE: usize = 7;
+    //             let total_pages = number_of_items_total / ITEMS_PER_PAGE;
+    //
+    //             ui.set_min_width(panel_width);
+    //
+    //             ui.vertical_centered(|ui| {
+    //                 let scene_panel_page_button_sizes =
+    //                     ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
+    //
+    //                 ui.horizontal(|ui| {
+    //                     if components::button(ui, false, "◀", scene_panel_page_button_sizes)
+    //                         && self.scene_page_index > 0
+    //                     {
+    //                         self.scene_page_index -= 1;
+    //                     }
+    //
+    //                     if components::button(ui, false, "▶", scene_panel_page_button_sizes)
+    //                         && self.scene_page_index < total_pages
+    //                     {
+    //                         self.scene_page_index += 1;
+    //                     }
+    //                 });
+    //
+    //                 ui.add_space(5.0);
+    //
+    //                 ui.label(format!("Page {} / {total_pages}", self.scene_page_index));
+    //                 ui.label(format!("Scenes: {number_of_items_total}"));
+    //             });
+    //
+    //             ui.add_space(5.0);
+    //
+    //             let start = self.scene_page_index * ITEMS_PER_PAGE;
+    //             let page_items = dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
+    //
+    //             for (scene_id, scene) in page_items {
+    //                 let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
+    //
+    //                 let label = format!("{scene_id} | {}", scene.name);
+    //                 if components::button(
+    //                     ui,
+    //                     is_selected,
+    //                     &label,
+    //                     ButtonSize::Large
+    //                         .with_width(panel_width - 2.0 * panel_padding)
+    //                         .with_font_size(12.0),
+    //                 ) {
+    //                     // Toggle group selection
+    //                     if !is_selected {
+    //                         self.data
+    //                             .event_bus_connection
+    //                             .send(ControlEventMessage::new(
+    //                                 EventOriginator::Web,
+    //                                 ControlEvent::SetSceneFocus(*scene_id),
+    //                             ));
+    //                     };
+    //                 }
+    //
+    //                 // let rect =
+    //                 //     ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
+    //                 // let painter = ui.painter();
+    //                 // let bg_color = if is_selected {
+    //                 //     egui::Color32::from_rgb(60, 120, 200)
+    //                 // } else {
+    //                 //     egui::Color32::from_gray(40)
+    //                 // };
+    //                 // painter.rect_filled(rect.0, 6.0, bg_color);
+    //                 //
+    //                 // // let fixture_count = group.fixtures.len();
+    //                 // painter.text(
+    //                 //     rect.0.left_top() + egui::vec2(12.0, 8.0),
+    //                 //     egui::Align2::LEFT_TOP,
+    //                 //     &name,
+    //                 //     egui::FontId::proportional(12.0),
+    //                 //     egui::Color32::WHITE,
+    //                 // );
+    //                 //
+    //                 // painter.text(
+    //                 //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
+    //                 //     egui::Align2::LEFT_CENTER,
+    //                 //     format!("TODO: overlay or not"),
+    //                 //     egui::FontId::proportional(12.0),
+    //                 //     egui::Color32::GRAY,
+    //                 // );
+    //                 // painter.text(
+    //                 //     rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
+    //                 //     egui::Align2::LEFT_BOTTOM,
+    //                 //     format!("Changes: {}", scene.sink.changeset.len()),
+    //                 //     egui::FontId::proportional(12.0),
+    //                 //     egui::Color32::GRAY,
+    //                 // );
+    //
+    //                 // if rect.1.clicked() {}
+    //                 ui.add_space(5.0);
+    //             }
+    //         },
+    //     );
+    // }
 
     pub fn animations_ui(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         ui.heading("Animations");
