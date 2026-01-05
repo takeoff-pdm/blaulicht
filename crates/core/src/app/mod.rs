@@ -58,10 +58,12 @@ impl AppPage {
     fn icon(&self) -> &'static str {
         match self {
             AppPage::Logs => egui_phosphor::regular::TERMINAL_WINDOW,
-            AppPage::System => egui_phosphor::regular::CPU,
-            AppPage::Audio => egui_phosphor::regular::MICROPHONE,
+            AppPage::System => egui_phosphor::regular::GEAR,
+            AppPage::Audio => egui_phosphor::regular::WAVEFORM,
             AppPage::FixturesSetup => egui_phosphor::regular::WRENCH,
-            AppPage::View => egui_phosphor::regular::FILM_REEL,
+            AppPage::View => egui_phosphor::regular::STACK,
+            // AppPage::View => egui_phosphor::regular::FILM_REEL,
+            // GAME CONTROLLER
             AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,
             AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
         }

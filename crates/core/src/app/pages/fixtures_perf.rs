@@ -8,7 +8,8 @@ use crate::{
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
-use egui::{Color32, Context, RichText};
+use egui::{ecolor, Color32, Context, RichText};
+// use egui_knob::{Knob, KnobStyle, LabelPosition};
 
 pub struct FixturePerfUi {}
 
@@ -231,8 +232,21 @@ impl BlaulichtApp {
 
                             let mut index = scene.sink.master_alpha_speed.as_index() as f32;
                             let max_index = AnimationSpeedModifier::ALL.len() - 1;
+
+                            // let mut knob = Knob::new(&mut index, 0.0, max_index as f32, KnobStyle::Wiper)
+                            //     .with_label("Speed", LabelPosition::Bottom)
+                            //     .with_background_arc(true)
+                            //     .with_show_filled_segments(true)
+                            //     .with_colors(ecolor::Color32::RED, Color32::GREEN, Color32::WHITE);
+                                // .with_step(0.02));
+ 
+
+
+                            // ui.add(knob)
+                            // ui.add(knob);
+
                             if ui
-                                .add(Knob::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed"))
+                                .add(Knob::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed").with_step(1.0))
                                 .changed()
                             {
                                 scene.sink.master_alpha_speed = AnimationSpeedModifier::from_index(index as usize);

@@ -6,6 +6,7 @@ pub struct Knob<'a> {
     range: std::ops::RangeInclusive<f32>,
     label: Option<String>,
     show_value: bool,
+    step: Option<f32>,
 }
 
 impl<'a> Knob<'a> {
@@ -15,6 +16,7 @@ impl<'a> Knob<'a> {
             range,
             label: None,
             show_value: true,
+            step: None,
         }
     }
 
@@ -27,11 +29,16 @@ impl<'a> Knob<'a> {
         self.show_value = yes;
         self
     }
+
+    pub fn with_step(mut self, step: f32) -> Self {
+        self.step = Some(step);
+        self
+    }
 }
 
 impl<'a> Widget for Knob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(30.0, 120.0);
+        let desired_size = vec2(80.0, 120.0);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
         let start_raw = *self.range.start();
@@ -41,17 +48,18 @@ impl<'a> Widget for Knob<'a> {
         let range_max = start_raw.max(end_raw);
         let range_span = range_max - range_min;
         let is_flat_range = range_span.abs() < f32::EPSILON;
+        let step = self.step.filter(|s| *s > 0.0 && s.is_finite());
 
-        let mut normalized_value = if is_flat_range {
-            0.0
-        } else if reversed {
-            (range_max - (*self.value).clamp(range_min, range_max)) / range_span
-        } else {
-            ((*self.value).clamp(range_min, range_max) - range_min) / range_span
-        }
-        .clamp(0.0, 1.0);
+        let mut value = (*self.value).clamp(range_min, range_max);
 
         if !is_flat_range && response.dragged() {
+            let mut normalized_value = if reversed {
+                (range_max - value) / range_span
+            } else {
+                (value - range_min) / range_span
+            }
+            .clamp(0.0, 1.0);
+
             let (pointer_delta, modifiers) = ui.input(|i| (i.pointer.delta(), i.modifiers));
             if pointer_delta.y.abs() > f32::EPSILON {
                 let drag_speed = if modifiers.shift { 0.0015 } else { 0.005 };
@@ -59,18 +67,40 @@ impl<'a> Widget for Knob<'a> {
                 normalized_value =
                     (normalized_value - pointer_delta.y * drag_speed).clamp(0.0, 1.0);
                 if (normalized_value - previous).abs() > f32::EPSILON {
-                    let new_value = if reversed {
+                    let mut new_value = if reversed {
                         range_max - normalized_value * range_span
                     } else {
                         range_min + normalized_value * range_span
                     };
+
+                    if let Some(step) = step {
+                        let snapped =
+                            range_min + ((new_value - range_min) / step).round() * step;
+                        new_value = snapped.clamp(range_min, range_max);
+                        normalized_value = if reversed {
+                            (range_max - new_value) / range_span
+                        } else {
+                            (new_value - range_min) / range_span
+                        };
+                    }
+
                     if (new_value - *self.value).abs() > f32::EPSILON {
                         *self.value = new_value;
+                        value = new_value;
                         response.mark_changed();
                     }
                 }
             }
         }
+
+        value = value.clamp(range_min, range_max);
+        let normalized_value = if is_flat_range {
+            0.0
+        } else if reversed {
+            (range_max - value) / range_span
+        } else {
+            (value - range_min) / range_span
+        };
 
         if !is_flat_range && response.hovered() && response.ctx.input(|i| i.pointer.any_click()) {
             response.request_focus();
@@ -113,9 +143,11 @@ impl<'a> Widget for Knob<'a> {
             Stroke::new(2.0, visuals.widgets.noninteractive.fg_stroke.color),
         );
         // Marker indicating current value
-        const START_ANGLE: f32 = std::f32::consts::TAU * 0.75; // 270° (top)
-        const SWEEP: f32 = std::f32::consts::TAU * 0.8; // ~288°
-        let marker_angle = START_ANGLE - normalized_value * SWEEP;
+        const BOTTOM_GAP_FRACTION: f32 = 0.1;
+        let half_gap_angle = std::f32::consts::TAU * BOTTOM_GAP_FRACTION * 0.5;
+        let sweep = std::f32::consts::TAU * (1.0 - BOTTOM_GAP_FRACTION);
+        let start_angle = std::f32::consts::FRAC_PI_2 - half_gap_angle; // just left of bottom
+        let marker_angle = start_angle + normalized_value * sweep;
         let marker_inner = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.25);
         let marker_outer = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.9);
         painter.line_segment(
@@ -128,9 +160,9 @@ impl<'a> Widget for Knob<'a> {
         let mut baseline_y = knob_rect.bottom() + spacing;
         if self.show_value {
             let value_text = if range_span.abs() > 10.0 {
-                format!("{:.0}", *self.value)
+                format!("{:.0}", value)
             } else {
-                format!("{:.2}", *self.value)
+                format!("{:.2}", value)
             };
             let galley = painter.layout_no_wrap(
                 value_text,

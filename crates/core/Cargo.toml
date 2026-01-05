@@ -65,6 +65,7 @@ egui-phosphor = "0.10.0"
 image = "0.25.6"
 serde_with = "3.16.0"
 ron = "0.12.0"
+egui_knob = "0.3.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"
