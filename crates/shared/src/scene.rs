@@ -4,7 +4,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActiveAnimation, ControlEvent, FixtureProperty,
+    ActiveAnimation, AnimationSpeedModifier, ControlEvent, FixtureProperty,
     fixture::state::{FixtureGroup, FixtureState},
 };
 
@@ -106,6 +106,10 @@ pub struct EngineSink {
     // The BTreeMap maps an animation ID to an animation state.
     pub active_animations: HashMap<FixtureSelection, BTreeMap<u8, ActiveAnimation>>,
     pub changeset: HashSet<FixtureSelector>,
+    // Between 0-100 to multiply the alpha values of the scene's fixtures.
+    pub master_alpha_fader: u8,
+    // Multiply the speeds of all animations in this scene.
+    pub master_alpha_speed: AnimationSpeedModifier,
 }
 
 impl EngineSink {
@@ -169,6 +173,8 @@ impl EngineSink {
             fixture_states,
             active_animations: HashMap::new(),
             changeset: HashSet::new(),
+            master_alpha_fader: 100,
+            master_alpha_speed: AnimationSpeedModifier::_1,
         }
     }
 }

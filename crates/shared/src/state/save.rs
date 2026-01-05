@@ -131,6 +131,8 @@ impl From<Scene> for SavedScene {
                 fixture_states: SavedMapEntry::from_btree_map(value.sink.fixture_states),
                 active_animations,
                 changeset: value.sink.changeset.into_iter().collect(),
+                master_alpha_fader: value.sink.master_alpha_fader,
+                master_alpha_speed: value.sink.master_alpha_speed,
             },
             name: value.name,
         }
@@ -156,6 +158,8 @@ pub struct SavedEngineSink {
     pub active_animations:
         Vec<SavedMapEntry<FixtureSelection, Vec<SavedMapEntry<u8, SavedActiveAnimation>>>>,
     pub changeset: Vec<FixtureSelector>,
+    pub master_alpha_fader: u8,
+    pub master_alpha_speed: AnimationSpeedModifier,
 }
 
 impl TryFrom<SavedEngineSink> for EngineSink {
@@ -180,6 +184,8 @@ impl TryFrom<SavedEngineSink> for EngineSink {
             fixture_states,
             active_animations,
             changeset,
+            master_alpha_fader: value.master_alpha_fader,
+            master_alpha_speed: value.master_alpha_speed,
         })
     }
 }
@@ -394,6 +400,8 @@ mod tests {
                     fixture_states,
                     active_animations,
                     changeset,
+                    master_alpha_fader: 100,
+                    master_alpha_speed: AnimationSpeedModifier::_1,
                 },
                 name: "Scene 1".to_string(),
             },

@@ -1,12 +1,16 @@
 use crate::{
     app::{
-        components::{self, ButtonSize},
+        components::{self, ButtonSize, HFader},
         BlaulichtApp,
     },
     dmx::EngineState,
 };
-use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
+use blaulicht_shared::{AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, RichText};
+
+pub struct FixturePerfUi {
+    
+}
 
 impl BlaulichtApp {
     pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
@@ -111,7 +115,7 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                self.scene_overview(ui, ctx, &dmx_engine);
+                self.scene_overview(ui, &dmx_engine);
 
                 ui.separator();
 
@@ -156,13 +160,6 @@ impl BlaulichtApp {
 
                                 self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
                                     ControlEvent::Transaction(instr)));
-
-                                // self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
-                                //     ControlEvent::Transaction(vec![
-                                //         ControlEvent::RemoveAllSelection,
-                                //         ControlEvent::SelectGroup(curr_group),
-                                //     ])));
-                                //     
                                 }
                             }
 
@@ -212,6 +209,33 @@ impl BlaulichtApp {
                                         //     ])));
                                     }
                                 }
+                            };
+
+                        });
+
+                        ui.separator();
+
+                        ui.horizontal(|ui| {
+                            let mut dmx_engine_mut = self.data.state.dmx_engine.write().unwrap();
+                            let scene = dmx_engine_mut.curr_scene_mut();
+
+                            let mut master_alpha = scene.sink.master_alpha_fader as f32;
+                            if ui
+                                .add(HFader::new(&mut master_alpha, 0.0..=100.0).with_label("MSTR Alpha"))
+                                .changed()
+                            {
+                                scene.sink.master_alpha_fader = master_alpha as u8;
+                            }
+
+                            ui.add_space(95.0);
+
+                            let mut index = scene.sink.master_alpha_speed.as_index() as f32;
+                            let max_index = AnimationSpeedModifier::ALL.len() - 1;
+                            if ui
+                                .add(HFader::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed"))
+                                .changed()
+                            {
+                                scene.sink.master_alpha_speed = AnimationSpeedModifier::from_index(index as usize);
                             }
                         });
 

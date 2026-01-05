@@ -1,6 +1,3 @@
-use std::mem;
-use std::time::Duration;
-
 use crate::app::components::DEFAULT_NEW_GROUP_NAME;
 use crate::app::{
     components::{self, ButtonSize, HFader},
@@ -13,10 +10,9 @@ use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::fixture::state::{Fixture, Position};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
-use egui::{
-    Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit, TextStyle, Vec2,
-};
-use log::warn;
+use egui::{Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit, Vec2};
+use std::mem;
+use std::time::Duration;
 use strum::IntoEnumIterator;
 
 impl BlaulichtApp {
@@ -565,7 +561,7 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                self.scene_overview(ui, ctx, &dmx_engine);
+                self.scene_overview(ui, &dmx_engine);
 
                 ui.separator();
 

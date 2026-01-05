@@ -5,9 +5,8 @@ use crate::{
     },
     dmx::EngineState,
 };
-use blaulicht_shared::{view::View, ControlEvent, ControlEventMessage, EventOriginator};
-use eframe::glow::components_per_format;
-use egui::{Context, FontId, Frame, Key, Margin, RichText, ScrollArea, TextEdit, Ui, Vec2};
+use blaulicht_shared::view::View;
+use egui::{Context, FontId, Frame, Key, Margin, RichText, TextEdit, Vec2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
@@ -390,6 +389,33 @@ impl BlaulichtApp {
 
                                         ui.vertical(|ui| {
                                             ui.label("Overlay Scenes");
+
+                                            let available_overlay_count = dmx_engine
+                                                .0
+                                                .scenes
+                                                .keys()
+                                                .filter(|scene_id| {
+                                                    **scene_id != view_snapshot.base_scene
+                                                        && !view_snapshot
+                                                            .overlays
+                                                            .contains(scene_id)
+                                                })
+                                                .count();
+
+                                            let add_enabled = available_overlay_count > 0;
+
+                                            if components::button(
+                                                ui,
+                                                add_enabled,
+                                                "Add Overlay",
+                                                ButtonSize::Medium,
+                                            ) && add_enabled
+                                            {
+                                                self.view_ui_state.overlay_picker_open = true;
+                                                self.view_ui_state.scene_picker_view_id =
+                                                    Some(view_id);
+                                            }
+
                                             ui.add_space(4.0);
 
                                             if view_snapshot.overlays.is_empty() {
@@ -408,11 +434,12 @@ impl BlaulichtApp {
                                                             "{} ({overlay_id})",
                                                             overlay_name
                                                         ));
+
                                                         if components::button(
                                                             ui,
                                                             false,
                                                             "Remove",
-                                                            ButtonSize::Small,
+                                                            ButtonSize::Medium,
                                                         ) {
                                                             let mut dmx_engine = {
                                                                 self.data
@@ -440,32 +467,6 @@ impl BlaulichtApp {
                                                         }
                                                     });
                                                 }
-                                            }
-
-                                            let available_overlay_count = dmx_engine
-                                                .0
-                                                .scenes
-                                                .keys()
-                                                .filter(|scene_id| {
-                                                    **scene_id != view_snapshot.base_scene
-                                                        && !view_snapshot
-                                                            .overlays
-                                                            .contains(scene_id)
-                                                })
-                                                .count();
-
-                                            let add_enabled = available_overlay_count > 0;
-
-                                            if components::button(
-                                                ui,
-                                                add_enabled,
-                                                "Add Overlay",
-                                                ButtonSize::Medium,
-                                            ) && add_enabled
-                                            {
-                                                self.view_ui_state.overlay_picker_open = true;
-                                                self.view_ui_state.scene_picker_view_id =
-                                                    Some(view_id);
                                             }
                                         });
                                     });

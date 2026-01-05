@@ -1050,8 +1050,8 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 ui.set_max_width(200.0);
                 ui.vertical(|ui| {
-                    ui.label("Fixture Controls");
-                    ui.add_space(8.0);
+                    // ui.label("Fixture Controls");
+                    // ui.add_space(8.0);
 
                     // Alpha slider.
                     {
@@ -1226,7 +1226,7 @@ impl BlaulichtApp {
             });
     }
 
-    pub fn scene_overview(&mut self, ui: &mut egui::Ui, ctx: &Context, dmx_engine: &EngineState) {
+    pub fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let panel_width = 100.0;
         let panel_padding = 2.0;
 
@@ -1292,41 +1292,6 @@ impl BlaulichtApp {
                         };
                     }
 
-                    // let rect =
-                    //     ui.allocate_exact_size(egui::vec2(180.0, 60.0), egui::Sense::click());
-                    // let painter = ui.painter();
-                    // let bg_color = if is_selected {
-                    //     egui::Color32::from_rgb(60, 120, 200)
-                    // } else {
-                    //     egui::Color32::from_gray(40)
-                    // };
-                    // painter.rect_filled(rect.0, 6.0, bg_color);
-                    //
-                    // // let fixture_count = group.fixtures.len();
-                    // painter.text(
-                    //     rect.0.left_top() + egui::vec2(12.0, 8.0),
-                    //     egui::Align2::LEFT_TOP,
-                    //     &name,
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::WHITE,
-                    // );
-                    //
-                    // painter.text(
-                    //     rect.0.left_center() - egui::vec2(-12.0, 8.0),
-                    //     egui::Align2::LEFT_CENTER,
-                    //     format!("TODO: overlay or not"),
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::GRAY,
-                    // );
-                    // painter.text(
-                    //     rect.0.left_bottom() - egui::vec2(-12.0, 8.0),
-                    //     egui::Align2::LEFT_BOTTOM,
-                    //     format!("Changes: {}", scene.sink.changeset.len()),
-                    //     egui::FontId::proportional(12.0),
-                    //     egui::Color32::GRAY,
-                    // );
-
-                    // if rect.1.clicked() {}
                     ui.add_space(5.0);
                 }
             },
