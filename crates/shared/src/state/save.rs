@@ -292,7 +292,7 @@ impl TryFrom<SaveEngineState> for EngineState {
 pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {
     let converted = SaveEngineState::from(from);
     println!("conv: {:?}", converted);
-    serde_json::to_string(&converted)
+    serde_json::to_string_pretty(&converted)
 }
 
 // pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {

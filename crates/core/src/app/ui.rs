@@ -12,8 +12,8 @@ use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{
-    Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense, Stroke,
-    ThemePreference, Ui, Vec2,
+    vec2, Color32, Context, CornerRadius, FontId, Frame, Margin, Painter, Rect, RichText, Sense,
+    Stroke, ThemePreference, Ui, Vec2,
 };
 use egui_file::FileDialog;
 use ron::ser::PrettyConfig;
@@ -204,10 +204,10 @@ impl eframe::App for BlaulichtApp {
         theme::set_theme(ctx, theme::REKORDBOX);
 
         if self.debug_open {
-            egui::Window::new("Egui Settings").show(ctx, |ui| {
+            egui::Window::new("Debug").show(ctx, |ui| {
                 let dt = ctx.input(|i| i.stable_dt);
                 let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-                ui.label(format!("FPS: {:.1}", fps));
+                ui.label(RichText::new(format!("FPS: {:.1}", fps)).font(FontId::monospace(24.0)));
             });
         }
 
@@ -1326,9 +1326,8 @@ impl BlaulichtApp {
 
             ui.horizontal(|ui| {
                 if components::button(ui, false, "Load Showfile", button_size) {
-                    // Show only files with the extension "txt".
                     let filter = Box::new({
-                        let ext = Some(OsStr::new("txt"));
+                        let ext = Some(OsStr::new("json"));
                         move |path: &Path| -> bool { path.extension() == ext }
                     });
 
@@ -1343,9 +1342,8 @@ impl BlaulichtApp {
                 }
 
                 if components::button(ui, false, "Save to Showfile", button_size) {
-                    // Show only files with the extension "txt".
                     let filter = Box::new({
-                        let ext = Some(OsStr::new("txt"));
+                        let ext = Some(OsStr::new("json"));
                         move |path: &Path| -> bool { path.extension() == ext }
                     });
 
@@ -1412,151 +1410,8 @@ impl BlaulichtApp {
                 }
             });
 
-            // ui.horizontal(|ui| {
-            //     if components::button(ui, false, "SETUP", button_size) {
-            //         // self.confirm_shutdown_open = true;
-            //         // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-            //         // dmx_engine.start_setup();
-            //     }
-            // });
-        });
-
-        if self.confirm_shutdown_open {
-            components::dialog(
-                ctx,
-                "Confirm Shutdown",
-                egui::vec2(200.0, 100.0),
-                false,
-                |ui| {
-                    let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
-
-                    ui.heading(
-                        RichText::new("Confirm Shutdown")
-                            .color(if blink {
-                                Color32::RED
-                            } else {
-                                ui.visuals().text_color()
-                            })
-                            .strong(),
-                    );
-
-                    ui.add_space(12.0);
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "Confirm", ButtonSize::Large) {
-                            let status = Command::new("/usr/bin/shutdown.sh")
-                                .status()
-                                .expect("Failed to execute shutdown command");
-
-                            if status.success() {
-                                println!("Shutdown command executed successfully.");
-                            } else {
-                                eprintln!("Shutdown command failed!");
-                            }
-
-                            self.confirm_shutdown_open = false;
-                        }
-
-                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
-                            self.confirm_shutdown_open = false;
-                        }
-                    });
-                },
-            );
-        }
-
-        ui.separator();
-
-        egui::SidePanel::right("right_panel")
-            .resizable(true)
-            .default_width(250.0)
-            .width_range(200.0..=400.0)
-            .show(ctx, |ui| {
-                // --- Plugin Overview ---
-                ui.label("Plugins");
-
-                ui.add_space(4.0);
-
-                {
-                    let plugins = self.data.state.plugins.read().unwrap();
-                    let current_visibility =
-                        self.data.state.plugin_ui_visibility.read().unwrap().clone();
-
-                    for (i, (id, plugin)) in plugins.iter().enumerate() {
-                        let box_size = egui::vec2(ui.available_width(), 42.0);
-                        ui.allocate_ui_with_layout(
-                            box_size,
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                let (rect, _response) =
-                                    ui.allocate_exact_size(box_size, egui::Sense::hover());
-                                let painter = ui.painter();
-
-                                // State color and blinking logic
-                                let mut show_border = true;
-                                let border_color = match (plugin.has_errored(), plugin.is_enabled())
-                                {
-                                    // Alive and healthy.
-                                    (false, true) => egui::Color32::from_rgb(0, 200, 0),
-                                    // Dead, crashed.
-                                    (true, true) => {
-                                        let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 0, 0)
-                                    }
-                                    // Disabled
-                                    (_, false) => {
-                                        let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 200, 0)
-                                    }
-                                };
-
-                                // Draw the main box
-                                painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
-
-                                // Draw the left border if needed
-                                if show_border {
-                                    let border_width = 6.0;
-                                    let border_rect = egui::Rect::from_min_max(
-                                        rect.left_top(),
-                                        rect.left_bottom() + egui::vec2(border_width, 0.0),
-                                    );
-                                    painter.rect_filled(border_rect, 0.0, border_color);
-                                }
-
-                                // Plugin name
-                                let name = format!("P:{} ({})", plugin.path, i + 1);
-                                painter.text(
-                                    rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    name,
-                                    egui::FontId::monospace(10.0),
-                                    if plugin.has_errored() {
-                                        Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_gray(90)
-                                    },
-                                );
-                            },
-                        );
-                        ui.horizontal(|ui| {
-                            let is_open = *current_visibility.get(id).unwrap_or(&false);
-                            let label = if is_open { "Hide UI" } else { "Show UI" };
-                            if ui.small_button(label).clicked() {
-                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-                                let entry = map.entry(*id).or_insert(false);
-                                *entry = !*entry;
-                            }
-                        });
-                        ui.add_space(8.0);
-                    }
-                    ui.separator();
-
-                    mem::drop(plugins)
-                }
-
-                // --- Loop Speed & Tick Speed Graphs ---
+            // --- Loop Speed & Tick Speed Graphs ---
+            ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     let graph_width = (ui.available_width() - 16.0) / 2.0;
                     let graph_height = 36.0;
@@ -1690,6 +1545,149 @@ impl BlaulichtApp {
                             "Reload in progress...".to_string(),
                         ));
                     }
+                }
+            });
+        });
+
+        if self.confirm_shutdown_open {
+            components::dialog(
+                ctx,
+                "Confirm Shutdown",
+                egui::vec2(200.0, 100.0),
+                false,
+                |ui| {
+                    let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
+
+                    ui.heading(
+                        RichText::new("Confirm Shutdown")
+                            .color(if blink {
+                                Color32::RED
+                            } else {
+                                ui.visuals().text_color()
+                            })
+                            .strong(),
+                    );
+
+                    ui.add_space(12.0);
+
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                            let status = Command::new("/usr/bin/shutdown.sh")
+                                .status()
+                                .expect("Failed to execute shutdown command");
+
+                            if status.success() {
+                                println!("Shutdown command executed successfully.");
+                            } else {
+                                eprintln!("Shutdown command failed!");
+                            }
+
+                            self.confirm_shutdown_open = false;
+                        }
+
+                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                            self.confirm_shutdown_open = false;
+                        }
+                    });
+                },
+            );
+        }
+
+        ui.separator();
+
+        egui::SidePanel::right("right_panel")
+            .resizable(true)
+            .default_width(250.0)
+            .width_range(200.0..=400.0)
+            .show(ctx, |ui| {
+                // --- Plugin Overview ---
+                ui.label("Plugins");
+
+                ui.add_space(4.0);
+
+                {
+                    let plugins = self.data.state.plugins.read().unwrap();
+                    let current_visibility =
+                        self.data.state.plugin_ui_visibility.read().unwrap().clone();
+
+                    for (i, (id, plugin)) in plugins.iter().enumerate() {
+                        let box_size = egui::vec2(ui.available_width(), 42.0);
+                        ui.allocate_ui_with_layout(
+                            box_size,
+                            egui::Layout::top_down(egui::Align::Center),
+                            |ui| {
+                                let (rect, _response) =
+                                    ui.allocate_exact_size(box_size, egui::Sense::empty());
+                                let painter = ui.painter();
+
+                                // State color and blinking logic
+                                let mut show_border = true;
+                                let border_color = match (plugin.has_errored(), plugin.is_enabled())
+                                {
+                                    // Alive and healthy.
+                                    (false, true) => egui::Color32::from_rgb(0, 200, 0),
+                                    // Dead, crashed.
+                                    (true, true) => {
+                                        let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
+                                        show_border = blink;
+                                        egui::Color32::from_rgb(200, 0, 0)
+                                    }
+                                    // Disabled.
+                                    (_, false) => {
+                                        let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
+                                        show_border = blink;
+                                        egui::Color32::from_rgb(200, 200, 0)
+                                    }
+                                };
+
+                                // Draw the main box
+                                painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
+
+                                // Draw the left border if needed
+                                let border_width = 6.0;
+                                if show_border {
+                                    let border_rect = egui::Rect::from_min_max(
+                                        rect.left_top(),
+                                        rect.left_bottom() + egui::vec2(border_width, 0.0),
+                                    );
+                                    painter.rect_filled(border_rect, 0.0, border_color);
+                                }
+
+                                // Plugin name
+                                let path_str = plugin.path.to_string().to_string();
+                                let basename =
+                                    Path::new(&path_str).file_name().unwrap().to_string_lossy();
+                                let name = format!("P:{basename} ({})", i + 1);
+
+                                let text_padding = 5.0;
+
+                                painter.text(
+                                    rect.left_center() + vec2(border_width + text_padding, 0.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    name,
+                                    egui::FontId::monospace(12.0),
+                                    if plugin.has_errored() {
+                                        Color32::WHITE
+                                    } else {
+                                        egui::Color32::from_gray(90)
+                                    },
+                                );
+                            },
+                        );
+                        ui.horizontal(|ui| {
+                            let is_open = *current_visibility.get(id).unwrap_or(&false);
+                            let label = if is_open { "Hide UI" } else { "Show UI" };
+                            if ui.small_button(label).clicked() {
+                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+                                let entry = map.entry(*id).or_insert(false);
+                                *entry = !*entry;
+                            }
+                        });
+                        ui.add_space(8.0);
+                    }
+                    ui.separator();
+
+                    mem::drop(plugins)
                 }
             });
 

@@ -213,7 +213,7 @@ impl<'a> Widget for SpeedKnob<'a> {
         // Value + label text beneath the knob
         let mut baseline_y = knob_rect.bottom() + spacing + 5.0;
         if self.show_value {
-            let value_text = format!("{}", preview_value.as_str());
+            let value_text = preview_value.as_str();
             let galley = painter.layout_no_wrap(
                 value_text.to_string(),
                 text_style.resolve(ui.style()),

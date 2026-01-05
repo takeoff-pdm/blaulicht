@@ -2,7 +2,7 @@ port = 1234
 default_audio_device = "pipewire"
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/BL2.txt"
+last_open_showfile = "/home/mik/a.json"
 
 [stream]
 fft_resolution = 4096
