@@ -38,7 +38,7 @@ impl<'a> Knob<'a> {
 
 impl<'a> Widget for Knob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(80.0, 120.0);
+        let desired_size = vec2(30.0, 120.0);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
         let start_raw = *self.range.start();
@@ -142,11 +142,45 @@ impl<'a> Widget for Knob<'a> {
             knob_radius,
             Stroke::new(2.0, visuals.widgets.noninteractive.fg_stroke.color),
         );
-        // Marker indicating current value
         const BOTTOM_GAP_FRACTION: f32 = 0.1;
         let half_gap_angle = std::f32::consts::TAU * BOTTOM_GAP_FRACTION * 0.5;
         let sweep = std::f32::consts::TAU * (1.0 - BOTTOM_GAP_FRACTION);
         let start_angle = std::f32::consts::FRAC_PI_2 + half_gap_angle; // just left of bottom
+
+        let tick_color = visuals.widgets.noninteractive.fg_stroke.color.gamma_multiply(0.6);
+        let end_angle = start_angle + sweep;
+
+        // Line markers for the start and end of travel
+        let start_inner = knob_center + egui::Vec2::angled(start_angle) * (knob_radius * 1.08);
+        let start_outer = knob_center + egui::Vec2::angled(start_angle) * (knob_radius * 1.24);
+        painter.line_segment(
+            [start_inner, start_outer],
+            Stroke::new(3.0, visuals.widgets.active.fg_stroke.color),
+        );
+
+        let end_inner = knob_center + egui::Vec2::angled(end_angle) * (knob_radius * 1.08);
+        let end_outer = knob_center + egui::Vec2::angled(end_angle) * (knob_radius * 1.24);
+        painter.line_segment(
+            [end_inner, end_outer],
+            Stroke::new(3.0, visuals.widgets.active.fg_stroke.color),
+        );
+
+        // Tick markers along the travel arc
+        let dot_steps = 8;
+        for i in 1..dot_steps {
+            let frac = i as f32 / dot_steps as f32;
+            let angle = start_angle + frac * sweep;
+            let (inner_scale, outer_scale, width) = if i == dot_steps / 2 {
+                (1.06, 1.27, 1.6)
+            } else {
+                (1.1, 1.22, 1.1)
+            };
+            let inner = knob_center + egui::Vec2::angled(angle) * (knob_radius * inner_scale);
+            let outer = knob_center + egui::Vec2::angled(angle) * (knob_radius * outer_scale);
+            painter.line_segment([inner, outer], Stroke::new(width, tick_color));
+        }
+
+        // Marker indicating current value
         let marker_angle = start_angle + normalized_value * sweep;
         let marker_inner = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.25);
         let marker_outer = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.9);

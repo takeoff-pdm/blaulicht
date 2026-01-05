@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, HFader, Knob},
+        components::{self, ButtonSize, HFader, Knob, SpeedKnob},
         BlaulichtApp,
     },
     dmx::EngineState,
@@ -230,26 +230,15 @@ impl BlaulichtApp {
 
                             ui.add_space(95.0);
 
-                            let mut index = scene.sink.master_alpha_speed.as_index() as f32;
-                            let max_index = AnimationSpeedModifier::ALL.len() - 1;
-
-                            // let mut knob = Knob::new(&mut index, 0.0, max_index as f32, KnobStyle::Wiper)
-                            //     .with_label("Speed", LabelPosition::Bottom)
-                            //     .with_background_arc(true)
-                            //     .with_show_filled_segments(true)
-                            //     .with_colors(ecolor::Color32::RED, Color32::GREEN, Color32::WHITE);
-                                // .with_step(0.02));
- 
-
-
-                            // ui.add(knob)
-                            // ui.add(knob);
-
+                            let mut speed = scene.sink.master_alpha_speed;
                             if ui
-                                .add(Knob::new(&mut index, 0.0..=(max_index as f32)).with_label("MSTR Speed").with_step(1.0))
+                                .add(
+                                    SpeedKnob::new(&mut speed)
+                                        .with_label("MSTR Speed")
+                                )
                                 .changed()
                             {
-                                scene.sink.master_alpha_speed = AnimationSpeedModifier::from_index(index as usize);
+                                scene.sink.master_alpha_speed = speed;
                             }
                         });
 
