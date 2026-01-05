@@ -159,7 +159,7 @@ impl BlaulichtApp {
                                     ControlEvent::SelectGroup(curr_group),
                                 ];
 
-                                self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
+                                self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
                                     ControlEvent::Transaction(instr)));
                                 }
                             }
@@ -183,7 +183,7 @@ impl BlaulichtApp {
                                             instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id));
                                         }
 
-                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
+                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
                                     }
                                     else {
@@ -200,7 +200,7 @@ impl BlaulichtApp {
                                             }
                                         }
 
-                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
+                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
 
                                         // self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
@@ -216,52 +216,52 @@ impl BlaulichtApp {
 
                         ui.separator();
 
-                        ui.horizontal(|ui| {
-                            let mut dmx_engine_mut = self.data.state.dmx_engine.write().unwrap();
-                            let scene = dmx_engine_mut.curr_scene_mut();
-
-                            let mut master_alpha = scene.sink.master_alpha_fader as f32;
-                            if ui
-                                .add(Knob::new(&mut master_alpha, 0.0..=100.0).with_label("MSTR Alpha"))
-                                .changed()
-                            {
-                                scene.sink.master_alpha_fader = master_alpha as u8;
-                            }
-
-                            ui.add_space(95.0);
-
-                            let mut speed = scene.sink.master_alpha_speed;
-                            if ui
-                                .add(
-                                    SpeedKnob::new(&mut speed)
-                                        .with_label("MSTR Speed")
-                                )
-                                .changed()
-                            {
-                                scene.sink.master_alpha_speed = speed;
-                            }
-                        });
-
-                        ui.separator();
-
                         ui.allocate_ui_with_layout(
                             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
                             egui::Layout::left_to_right(egui::Align::Min),
                             |ui| {
                                 self.fixture_selection(groups, ui);
 
-                                // TODO: Show animation groups.
+                                ui.separator();
 
                                 ui.vertical(|ui| {
-                                    // Scene stats.
-                                    //
-
                                     ui.horizontal(|ui| {
                                         let scene = dmx_engine.curr_scene();
 
-                                        ui.separator();
-
+                                        // ui.separator();
                                         ui.vertical(|ui| {
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                ui.add_space(22.5);
+                                                let mut dmx_engine_mut = self.data.state.dmx_engine.write().unwrap();
+                                                let scene = dmx_engine_mut.curr_scene_mut();
+
+                                                let mut master_alpha = scene.sink.master_alpha_fader as f32;
+                                                if ui
+                                                    .add(Knob::new(&mut master_alpha, 0.0..=100.0).with_label("M. Alpha"))
+                                                    .changed()
+                                                {
+                                                    scene.sink.master_alpha_fader = master_alpha as u8;
+                                                }
+
+                                                ui.add_space(25.0);
+
+                                                let mut speed = scene.sink.master_alpha_speed;
+                                                if ui
+                                                    .add(
+                                                        SpeedKnob::new(&mut speed)
+                                                            .with_label("M. Speed")
+                                                    )
+                                                    .changed()
+                                                {
+                                                    scene.sink.master_alpha_speed = speed;
+                                                }
+                                            });
+
+                                            ui.separator();
+
                                             for (selection, animations) in
                                                 &scene.sink.active_animations
                                             {

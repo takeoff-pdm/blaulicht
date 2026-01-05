@@ -30,7 +30,7 @@ impl<'a> SpeedKnob<'a> {
 
 impl<'a> Widget for SpeedKnob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(80.0, 120.0);
+        let desired_size = vec2(30.0, 80.0);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
         let id = response.id;
 
@@ -48,20 +48,28 @@ impl<'a> Widget for SpeedKnob<'a> {
         } else {
             current_index as f32 / max_index as f32
         };
-        let pointer_down_primary =
-            ui.input(|i| i.pointer.button_down(PointerButton::Primary));
+        let pointer_down_primary = ui.input(|i| i.pointer.button_down(PointerButton::Primary));
         let mut temp_norm = ui.ctx().data(|d| d.get_temp::<f32>(id));
         let mut display_norm = temp_norm.unwrap_or(base_norm);
+        let mut preview_value = *self.value;
 
         if response.dragged() && max_index > 0 {
             let (pointer_delta, modifiers) = ui.input(|i| (i.pointer.delta(), i.modifiers));
             if pointer_delta.y.abs() > f32::EPSILON {
-                let drag_speed = if modifiers.shift { 0.0015 } else { 0.005 };
+                let mut drag_speed = if modifiers.shift { 0.0015 } else { 0.005 };
                 if temp_norm.is_none() {
                     display_norm = base_norm;
                 }
-                display_norm =
-                    (display_norm - pointer_delta.y * drag_speed).clamp(0.0, 1.0);
+                // Increase resistance near snap points for a tactile feel.
+                let step = 1.0 / max_index as f32;
+                let nearest_target = (display_norm * max_index as f32).round() / max_index as f32;
+                let snap_band = step * 0.4;
+                let proximity = (display_norm - nearest_target).abs();
+                if proximity < snap_band {
+                    let resistance = (proximity / snap_band).max(0.1);
+                    drag_speed *= resistance;
+                }
+                display_norm = (display_norm - pointer_delta.y * drag_speed).clamp(0.0, 1.0);
                 temp_norm = Some(display_norm);
                 ui.ctx().data_mut(|d| d.insert_temp(id, display_norm));
             }
@@ -71,11 +79,18 @@ impl<'a> Widget for SpeedKnob<'a> {
             response.request_focus();
         }
 
+        if let Some(current_norm) = temp_norm {
+            if max_index > 0 {
+                let scaled = (current_norm * max_index as f32).clamp(0.0, max_index as f32);
+                let nearest_index = scaled.round() as usize;
+                preview_value = options[nearest_index];
+            }
+        }
+
         if !pointer_down_primary {
             if let Some(current_norm) = temp_norm {
                 if max_index > 0 {
-                    let scaled =
-                        (current_norm * max_index as f32).clamp(0.0, max_index as f32);
+                    let scaled = (current_norm * max_index as f32).clamp(0.0, max_index as f32);
                     let nearest_index = scaled.round() as usize;
                     let snapped_norm = nearest_index as f32 / max_index as f32;
                     display_norm = snapped_norm;
@@ -86,9 +101,11 @@ impl<'a> Widget for SpeedKnob<'a> {
                         *self.value = new_value;
                         response.mark_changed();
                     }
+                    preview_value = new_value;
                 } else {
                     display_norm = 0.0;
                     base_norm = 0.0;
+                    preview_value = options[0];
                 }
             } else {
                 display_norm = base_norm;
@@ -194,15 +211,15 @@ impl<'a> Widget for SpeedKnob<'a> {
         painter.circle_filled(marker_outer, 3.0, visuals.widgets.active.fg_stroke.color);
 
         // Value + label text beneath the knob
-        let mut baseline_y = knob_rect.bottom() + spacing;
+        let mut baseline_y = knob_rect.bottom() + spacing + 5.0;
         if self.show_value {
-            let value_text = format!("{}", self.value.as_str());
+            let value_text = format!("{}", preview_value.as_str());
             let galley = painter.layout_no_wrap(
                 value_text.to_string(),
                 text_style.resolve(ui.style()),
                 visuals.text_color(),
             );
-            let pos = egui::pos2(knob_center.x - galley.size().x / 2.0, baseline_y + 5.0);
+            let pos = egui::pos2(knob_center.x - galley.size().x / 2.0, baseline_y);
             painter.galley(pos, galley, visuals.text_color());
             baseline_y += line_height + spacing;
         }

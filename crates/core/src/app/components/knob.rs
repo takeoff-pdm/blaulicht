@@ -38,7 +38,7 @@ impl<'a> Knob<'a> {
 
 impl<'a> Widget for Knob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(30.0, 120.0);
+        let desired_size = vec2(30.0, 80.0);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
         let start_raw = *self.range.start();
@@ -74,8 +74,7 @@ impl<'a> Widget for Knob<'a> {
                     };
 
                     if let Some(step) = step {
-                        let snapped =
-                            range_min + ((new_value - range_min) / step).round() * step;
+                        let snapped = range_min + ((new_value - range_min) / step).round() * step;
                         new_value = snapped.clamp(range_min, range_max);
                         normalized_value = if reversed {
                             (range_max - new_value) / range_span
@@ -147,7 +146,12 @@ impl<'a> Widget for Knob<'a> {
         let sweep = std::f32::consts::TAU * (1.0 - BOTTOM_GAP_FRACTION);
         let start_angle = std::f32::consts::FRAC_PI_2 + half_gap_angle; // just left of bottom
 
-        let tick_color = visuals.widgets.noninteractive.fg_stroke.color.gamma_multiply(0.6);
+        let tick_color = visuals
+            .widgets
+            .noninteractive
+            .fg_stroke
+            .color
+            .gamma_multiply(0.6);
         let end_angle = start_angle + sweep;
 
         // Line markers for the start and end of travel
@@ -191,7 +195,7 @@ impl<'a> Widget for Knob<'a> {
         painter.circle_filled(marker_outer, 3.0, visuals.widgets.active.fg_stroke.color);
 
         // Value + label text beneath the knob
-        let mut baseline_y = knob_rect.bottom() + spacing;
+        let mut baseline_y = knob_rect.bottom() + spacing + 5.0;
         if self.show_value {
             let value_text = if range_span.abs() > 10.0 {
                 format!("{:.0}", value)
