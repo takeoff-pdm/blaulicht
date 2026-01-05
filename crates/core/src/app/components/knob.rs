@@ -146,7 +146,7 @@ impl<'a> Widget for Knob<'a> {
         const BOTTOM_GAP_FRACTION: f32 = 0.1;
         let half_gap_angle = std::f32::consts::TAU * BOTTOM_GAP_FRACTION * 0.5;
         let sweep = std::f32::consts::TAU * (1.0 - BOTTOM_GAP_FRACTION);
-        let start_angle = std::f32::consts::FRAC_PI_2 - half_gap_angle; // just left of bottom
+        let start_angle = std::f32::consts::FRAC_PI_2 + half_gap_angle; // just left of bottom
         let marker_angle = start_angle + normalized_value * sweep;
         let marker_inner = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.25);
         let marker_outer = knob_center + egui::Vec2::angled(marker_angle) * (knob_radius * 0.9);
