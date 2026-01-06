@@ -132,8 +132,7 @@ impl SamplePlugin {
 
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
-        let port = 2;
-        let port_path = format!("/dev/ttyUSB{port}");
+        let port_path = "/dev/antenna";
         println!("Open {port_path}...");
         let serial = match SerialConnection::open(&port_path, 115200) {
             Ok(p) => p,

@@ -113,6 +113,8 @@ impl DmxEngine {
         let animations = state.0.animations.clone();
 
         for (scene_id, scene) in state.0.scenes.iter_mut() {
+            let animation_speed_factor = scene.sink.master_speed;
+
             for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
                 // println!("scene anim: {scene_animations:?}");
 
@@ -127,8 +129,9 @@ impl DmxEngine {
                         animation.fixture_timers.iter_mut().enumerate()
                     {
                         let transition_time =
-                            (*self.animation_base_times.get(animation_id).unwrap()) as f64
-                                * animation.speed_factor.as_float();
+                            (*self.animation_base_times.get(animation_id).unwrap())
+                                * animation.speed_factor.as_float()
+                                * animation_speed_factor.as_float();
 
                         // TODO: limited by tick speed
 

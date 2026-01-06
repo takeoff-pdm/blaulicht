@@ -248,7 +248,7 @@ impl BlaulichtApp {
 
                                                 ui.add_space(25.0);
 
-                                                let mut speed = scene.sink.master_alpha_speed;
+                                                let mut speed = scene.sink.master_speed;
                                                 if ui
                                                     .add(
                                                         SpeedKnob::new(&mut speed)
@@ -256,7 +256,7 @@ impl BlaulichtApp {
                                                     )
                                                     .changed()
                                                 {
-                                                    scene.sink.master_alpha_speed = speed;
+                                                    scene.sink.master_speed = speed;
                                                 }
                                             });
 

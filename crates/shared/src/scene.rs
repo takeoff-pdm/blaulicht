@@ -109,7 +109,7 @@ pub struct EngineSink {
     // Between 0-100 to multiply the alpha values of the scene's fixtures.
     pub master_alpha_fader: u8,
     // Multiply the speeds of all animations in this scene.
-    pub master_alpha_speed: AnimationSpeedModifier,
+    pub master_speed: AnimationSpeedModifier,
 }
 
 impl EngineSink {
@@ -174,7 +174,7 @@ impl EngineSink {
             active_animations: HashMap::new(),
             changeset: HashSet::new(),
             master_alpha_fader: 100,
-            master_alpha_speed: AnimationSpeedModifier::_1,
+            master_speed: AnimationSpeedModifier::_1,
         }
     }
 }

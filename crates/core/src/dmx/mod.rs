@@ -263,28 +263,42 @@ impl DmxEngine {
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
             for fixture in &group.1.fixtures {
+                let curr_scene = state.curr_scene();
+
                 // Apply base scene state.
-                let mut merged_state = state
-                    .curr_scene()
+                let mut merged_state = curr_scene
                     .sink
                     .fixture_states
                     .get(&(*group.0, *fixture.0))
                     .unwrap()
                     .clone();
 
+                // Apply master alpha of this scene on the scene fixture state.
+                //  0-255                         / 0 - 100
+                merged_state.alpha = (merged_state.alpha as f32 / 100.0
+                    * curr_scene.sink.master_alpha_fader as f32)
+                    as u8;
+
                 for overlay_id in &state.0.current_overlay_scenes {
                     let this_scene = state.0.scenes.get(overlay_id).unwrap();
-                    let scene_fixture_state = this_scene
+                    let mut scene_fixture_state = this_scene
                         .sink
                         .fixture_states
                         .get(&(*group.0, *fixture.0))
-                        .unwrap();
+                        .unwrap()
+                        .clone();
+
+                    // Apply master alpha of this scene on the scene fixture state.
+                    //  0-255                         / 0 - 100
+                    scene_fixture_state.alpha = (scene_fixture_state.alpha as f32 / 100.0
+                        * this_scene.sink.master_alpha_fader as f32)
+                        as u8;
 
                     let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
                     for change in changeset {
                         // TODO: pull change into merged state.
                         merged_state.merge_from(
-                            scene_fixture_state,
+                            &scene_fixture_state,
                             change,
                             MergeStrategy::Latest, // WAS HIGHEST ONCE
                         );

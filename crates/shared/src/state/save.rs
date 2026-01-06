@@ -132,7 +132,7 @@ impl From<Scene> for SavedScene {
                 active_animations,
                 changeset: value.sink.changeset.into_iter().collect(),
                 master_alpha_fader: value.sink.master_alpha_fader,
-                master_alpha_speed: value.sink.master_alpha_speed,
+                master_alpha_speed: value.sink.master_speed,
             },
             name: value.name,
         }
@@ -185,7 +185,7 @@ impl TryFrom<SavedEngineSink> for EngineSink {
             active_animations,
             changeset,
             master_alpha_fader: value.master_alpha_fader,
-            master_alpha_speed: value.master_alpha_speed,
+            master_speed: value.master_alpha_speed,
         })
     }
 }
@@ -401,7 +401,7 @@ mod tests {
                     active_animations,
                     changeset,
                     master_alpha_fader: 100,
-                    master_alpha_speed: AnimationSpeedModifier::_1,
+                    master_speed: AnimationSpeedModifier::_1,
                 },
                 name: "Scene 1".to_string(),
             },
