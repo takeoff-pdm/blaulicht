@@ -16,6 +16,7 @@ use std::{
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub port: u16,
+    pub dmx_out_devices: [String; 2],
     pub default_audio_device: Option<String>,
     pub stream: StreamConfig,
     #[serde(default = "default_spectrogram_window_seconds")]
@@ -113,6 +114,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 1234,
+            dmx_out_devices: ["/dev/dmx_out0".to_string(), "/dev/dmx_out1".to_string()],
             default_audio_device: None,
             stream: StreamConfig {
                 // TODO: also experiment with fft resolution

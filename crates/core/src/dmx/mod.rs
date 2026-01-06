@@ -98,7 +98,7 @@ impl DmxEngine {
             }
             Err(err) => {
                 sys.send(SystemMessage::Log(
-                format!("[DMX] Could not establish link to interface {port_path} (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
+                format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
                 None
             }
         }
@@ -108,12 +108,13 @@ impl DmxEngine {
         state_ref: Arc<AppState>,
         event_bus_connection: SystemEventBusConnectionInst,
         system_out: Sender<SystemMessage>,
+        universe_dmx_out_devices: [String; 2],
     ) -> Self {
         let mut dmx_universe_ports = [None, None];
 
         for (universe, port) in dmx_universe_ports.iter_mut().enumerate() {
             let dmx_port =
-                Self::open_hw_interface(&format!("/dev/ttyUSB{universe}"), system_out.clone());
+                Self::open_hw_interface(&universe_dmx_out_devices[universe], system_out.clone());
             *port = dmx_port
         }
 

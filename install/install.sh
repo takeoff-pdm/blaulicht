@@ -1,13 +1,11 @@
 # TODO: lightdm do not use gnome!
 
-
 # Source - https://stackoverflow.com/q
 # Posted by Aleksandr Murashov
 # Retrieved 2026-01-03, License - CC BY-SA 3.0
 set -o errexit
 set -o nounset
 set -o pipefail
-
 
 if [ "$USER" = "root" ]; then
     echo "Please dont run this installer as root."
@@ -39,14 +37,18 @@ fi
 #
 
 # Delete old session files.
+sudo mkdir -p /usr/share/xsessions/ || echo "" 
 sudo find /usr/share/xsessions/ ! -name openbox.desktop ! -name blaulicht.desktop ! -name lightdm-xsession.desktop -maxdepth 1 -type f -delete
+
+# Delete gnome if installed.
+sudo apt purge gnome-session gnome-shell -y || echo "Gnome removal completed with error"
 
 sudo apt install -y lightdm || exit 1
 # sed "s/USER-PLACEHOLDER/${USER}/g" gdm3.conf | sudo tee /etc/gdm3/daemon.conf || exit 1
 sudo cp ./lightdm.conf /etc/lightdm/lightdm.conf || exit 1
 
 sudo dpkg-reconfigure -fnoninteractive lightdm
-sudo systemctl enable lightdm || exit  1
+sudo systemctl enable lightdm || exit 1
 
 #
 # Install terminal
@@ -72,9 +74,10 @@ rm blaulicht-latest.tar.gz || echo "No junk yet"
 rm blaulicht || echo "No junk yet..."
 rm -r ./blaulicht-dist || echo "No junk yet..."
 
-wget -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest \
-  | jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' \
-  | xargs wget -O blaulicht-latest.tar.gz
+wget --no-check-certificate -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest |
+    jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' |
+    xargs wget -O blaulicht-latest.tar.gz || echo "WARNING: Download"
+
 # wget 'http://.edu/mik/crav/releases/download/latest/crav' || exit 1
 # sudo killall crav || echo "Crav is not running..."
 tar xvf blaulicht-latest.tar.gz
@@ -105,7 +108,6 @@ sudo chmod +x /usr/bin/blaulicht.sh || exit 1
 # Rescue
 #
 
-
 sudo apt install lm-sensors -y
 sudo sensors-detect --auto
 
@@ -120,22 +122,21 @@ sudo chmod +x /usr/bin/shutdown.sh || exit 1
 # NOTE: this is to be installed after the gnome software so that gnome does not remove pulseaudio in favour of pipewire.
 #
 
+# sudo apt install -y pulseaudio pulseaudio-module-zeroconf pulseaudio-utils
+sudo apt install -y pipewire pipewire-pulse wireplumber 
 
-sudo apt install -y pulseaudio pulseaudio-module-zeroconf pulseaudio-utils
-
-SYSTEMD_BASE_PATH=~/.config/systemd/user
-mkdir -p "${SYSTEMD_BASE_PATH}"
-sudo cp ./pulse.sh "/usr/bin/pulse.sh" || exit 1
-sudo chmod +x "/usr/bin/pulse.sh" || exit 1
-cp ./pulse.service "${SYSTEMD_BASE_PATH}/pulse.service" || exit 1
-systemctl --user enable pulse || exit 1
+# SYSTEMD_BASE_PATH=~/.config/systemd/user
+# mkdir -p "${SYSTEMD_BASE_PATH}"
+# sudo cp ./pulse.sh "/usr/bin/pulse.sh" || exit 1
+# sudo chmod +x "/usr/bin/pulse.sh" || exit 1
+# cp ./pulse.service "${SYSTEMD_BASE_PATH}/pulse.service" || exit 1
+# systemctl --user enable pulse || exit 1
 
 echo "blaulicht ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/reboot" | sudo tee /etc/sudoers.d/blaulicht-shutdown
 echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/fans" | sudo tee /etc/sudoers.d/blaulicht-fans
 
 sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown
 sudo chmod 440 /etc/sudoers.d/blaulicht-fans
-
 
 #
 #
@@ -146,4 +147,9 @@ sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 sudo apt-get update
 sudo apt-get install x2goserver x2goserver-xsession tmux -y
 
+# Cleanup.
+sudo apt autoremove -y
+
+echo "######################################"
 echo "Installation succeeded, please reboot."
+echo "######################################"
