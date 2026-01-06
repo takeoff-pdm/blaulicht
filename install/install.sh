@@ -7,37 +7,58 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# NOTE: should be changed
+VNC_PASSWORD="blaulicht"
+
 if [ "$USER" = "root" ]; then
     echo "Please dont run this installer as root."
     exit 1
 fi
 
-# #
-# # BT-audio setup.
-# #
-#
-# if [ -d bt-audio ]; then
-#     cd bt-audio && git pull && cd ../
-# else
-#     git clone https://github.com/MikMuellerDev/bt-audio.git || exit 1
-# fi
-#
-# cd bt-audio && sudo ./install.sh && cd ../ || exit 1
+blaulicht_binary() {
+    sudo killall blaulicht || echo "Blaulicht not running"
 
-# #
-# # Udev / ESP32 Setup.
-# #
+    rm blaulicht-latest.tar.gz || echo "No junk yet"
+    rm blaulicht || echo "No junk yet..."
+    rm -r ./blaulicht-dist || echo "No junk yet..."
+
+    wget --no-check-certificate -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest |
+        jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' |
+        xargs wget -O blaulicht-latest.tar.gz || echo "WARNING: Download"
+
+    tar xvf blaulicht-latest.tar.gz
+    mv ./blaulicht-dist/blaulicht ./blaulicht
+    sudo cp blaulicht /usr/bin/blaulicht || exit 1
+    sudo chmod +x /usr/bin/blaulicht || exit 1
+}
+
 #
-# sudo cp udev.rules /etc/udev/rules.d/99-ttyACM0.rules || exit 1
-# sudo udevadm trigger || exit 1
-# sudo udevadm control --reload  || exit 1
+# Check if we need to install or update
+#
+
+subcommand="${1:-}"
+
+case "$subcommand" in
+install)
+    echo "Running install..."
+    ;;
+upgrade)
+    echo "Running upgrade..."
+    blaulicht_binary
+    exit 0
+    ;;
+*)
+    echo "Usage: $0 {install|upgrade}" >&2
+    exit 1
+    ;;
+esac
 
 #
 # Session login.
 #
 
 # Delete old session files.
-sudo mkdir -p /usr/share/xsessions/ || echo "" 
+sudo mkdir -p /usr/share/xsessions/ || echo ""
 sudo find /usr/share/xsessions/ ! -name openbox.desktop ! -name blaulicht.desktop ! -name lightdm-xsession.desktop -maxdepth 1 -type f -delete
 
 # Delete gnome if installed.
@@ -68,22 +89,8 @@ sudo cp ./fans.sh /usr/bin/fans
 #
 
 sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
-sudo killall blaulicht || echo "Blaulicht not running"
 
-rm blaulicht-latest.tar.gz || echo "No junk yet"
-rm blaulicht || echo "No junk yet..."
-rm -r ./blaulicht-dist || echo "No junk yet..."
-
-wget --no-check-certificate -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest |
-    jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' |
-    xargs wget -O blaulicht-latest.tar.gz || echo "WARNING: Download"
-
-# wget 'http://.edu/mik/crav/releases/download/latest/crav' || exit 1
-# sudo killall crav || echo "Crav is not running..."
-tar xvf blaulicht-latest.tar.gz
-mv ./blaulicht-dist/blaulicht ./blaulicht
-sudo cp blaulicht /usr/bin/blaulicht || exit 1
-sudo chmod +x /usr/bin/blaulicht || exit 1
+blaulicht_binary
 
 mkdir -p ~/.config/openbox
 cp ./openbox-autostart ~/.config/openbox/autostart || exit 1
@@ -123,7 +130,7 @@ sudo chmod +x /usr/bin/shutdown.sh || exit 1
 #
 
 # sudo apt install -y pulseaudio pulseaudio-module-zeroconf pulseaudio-utils
-sudo apt install -y pipewire pipewire-pulse wireplumber 
+sudo apt install -y pipewire pipewire-pulse wireplumber
 
 # SYSTEMD_BASE_PATH=~/.config/systemd/user
 # mkdir -p "${SYSTEMD_BASE_PATH}"
@@ -145,8 +152,12 @@ sudo chmod 440 /etc/sudoers.d/blaulicht-fans
 #
 
 sudo apt-get update
-sudo apt-get install x2goserver x2goserver-xsession tmux -y
 
+sudo apt-get install tmux x11vnc -y
+
+mkdir -p ~/.vnc
+echo "$VNC_PASSWORD" >~/.vnc/passwd.txt
+chmod 600 ~/.vnc/passwd.txt
 # Cleanup.
 sudo apt autoremove -y
 

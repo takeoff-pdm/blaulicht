@@ -261,7 +261,6 @@ impl DmxEngine {
         let state = self.state_ref.dmx_engine.read().unwrap();
 
         // For each fixture, merge all scene states.
-
         for group in &state.0.groups {
             for fixture in &group.1.fixtures {
                 // Apply base scene state.
@@ -287,19 +286,13 @@ impl DmxEngine {
                         merged_state.merge_from(
                             scene_fixture_state,
                             change,
-                            MergeStrategy::Highest,
+                            MergeStrategy::Latest, // WAS HIGHEST ONCE
                         );
                     }
                 }
 
-                // merged_state.
-                // todo!();
-
-                let fix = fixture.1;
-                // let state = self.state_ref.dmx_engine.write().unwrap();
-                // let mut buffer = state.u
-
                 // TODO: we will need to use the merged fixture states here and then write them.
+                let fix = fixture.1;
                 let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
                     .write()
                     .unwrap();

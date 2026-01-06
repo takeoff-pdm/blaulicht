@@ -1,3 +1,4 @@
 devilspie2 &
+x11vnc -display :0 -passwdfile ~/.vnc/passwd.txt -forever -shared -noxdamage -repeat &
 sleep 2
 blaulicht.sh
