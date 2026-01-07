@@ -4,6 +4,8 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+use crate::MainUiEvent;
+
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
 /// Furthermore, they are also piped back into the plugin system to allow plugins to react to these events.
@@ -282,6 +284,9 @@ pub enum ControlEvent {
     // Other stuff,
     SetChannelOverride(u16, u16, u8), // Universe, Channel and value.
     RemoveChannelOverride(u16, u16),  // Universe, Channel
+
+    MainUi(MainUiEvent), // Main system UI event
+
     // Plugin UI interaction events (ignored by DMX engine; for plugins only)
     PluginUi(PluginUiEvent, u8), // UI event and the Plugin-ID.
 }
@@ -387,6 +392,7 @@ impl ControlEvent {
             ControlEvent::SetChannelOverride(_, _, _) => false,
             ControlEvent::RemoveChannelOverride(_, _) => false,
             ControlEvent::PluginUi(_, _) => false,
+            ControlEvent::MainUi(_) => false,
         }
     }
 }

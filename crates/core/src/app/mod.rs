@@ -9,11 +9,7 @@ use crate::{
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
-use blaulicht_audio_engine::{CollectorOutput, SignalCollectorParams};
-use blaulicht_shared::{
-    engine::PhaserDuration, CollectedAudioSnapshot, FixtureProperty, MathematicalBaseFunction,
-    SyncMode,
-};
+use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::Color32;
 use egui_file::FileDialog;
 use pages::ViewUI;
@@ -22,6 +18,8 @@ use strum::EnumIter;
 
 pub mod components;
 pub mod pages;
+mod plugin_ui;
+mod popup;
 mod theme;
 mod ui;
 
@@ -38,46 +36,6 @@ impl Selection {
             Selection::Off => Color32::from_gray(60),
             Selection::Limited => Color32::from_rgb(120, 180, 80),
             Selection::Cascading => Color32::from_rgb(80, 180, 120),
-        }
-    }
-}
-
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(Clone, PartialEq, EnumIter)]
-pub enum AppPage {
-    Logs,
-    System,
-    Audio,
-    FixturesSetup,
-    View,
-    FixturesPerformance,
-    Animations,
-}
-
-impl AppPage {
-    fn icon(&self) -> &'static str {
-        match self {
-            AppPage::Logs => egui_phosphor::regular::TERMINAL_WINDOW,
-            AppPage::System => egui_phosphor::regular::GEAR,
-            AppPage::Audio => egui_phosphor::regular::WAVEFORM,
-            AppPage::FixturesSetup => egui_phosphor::regular::WRENCH,
-            AppPage::View => egui_phosphor::regular::STACK,
-            // AppPage::View => egui_phosphor::regular::FILM_REEL,
-            // GAME CONTROLLER
-            AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,
-            AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
-        }
-    }
-
-    fn short(&self) -> &'static str {
-        match self {
-            AppPage::Logs => "Logs",
-            AppPage::System => "Sys",
-            AppPage::Audio => "Audio",
-            AppPage::FixturesSetup => "F. Setup",
-            AppPage::View => "F. Show",
-            AppPage::FixturesPerformance => "F. Perf",
-            AppPage::Animations => "Anim",
         }
     }
 }
@@ -115,9 +73,9 @@ impl PopupSpec {
 
 pub struct BlaulichtApp {
     // Example stuff:
-    label: String,
-
-    value: f32,
+    // label: String,
+    //
+    // value: f32,
 
     // Multiple graph instances for all audio values
     volume_graph: TimeSeriesGraph,
@@ -149,7 +107,7 @@ pub struct BlaulichtApp {
     log_window: LogWindow,
 
     // Current page
-    current_page: AppPage,
+    pub current_page: AppPage,
     last_heartbeat_frame: u64,
     selected_fixture_group: Option<u8>,
 
@@ -231,8 +189,6 @@ impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
         Self {
             // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
             volume_graph: TimeSeriesGraph::new(
                 "Volume".to_string(),
                 0,
