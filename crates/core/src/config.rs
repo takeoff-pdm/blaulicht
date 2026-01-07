@@ -110,6 +110,18 @@ fn read_showfile_logic(
     }
 }
 
+pub fn close_showfile(
+    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
+) {
+    debug!("Closing showfile...");
+
+    let mut storage = plugin_state_storage.lock().unwrap();
+    *storage = HashMap::new();
+
+    dmx.load_showfile(EngineState::default());
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {

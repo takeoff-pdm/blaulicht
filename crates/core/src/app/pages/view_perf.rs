@@ -178,6 +178,8 @@ impl BlaulichtApp {
 
     pub fn view_perf_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+        let groups = dmx_engine.groups();
+        self.render_dmx_simulation_dialog(ctx, groups);
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
@@ -187,6 +189,8 @@ impl BlaulichtApp {
                     if components::button(ui, false, "FOOBAR", ButtonSize::Medium) {}
 
                     if components::button(ui, false, "BAR BAZ", ButtonSize::Medium) {}
+
+                    ui.label("TODO: allow for boosting the brightness");
                 });
 
                 ui.separator();

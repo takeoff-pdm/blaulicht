@@ -258,6 +258,8 @@ impl BlaulichtApp {
                                                 {
                                                     scene.sink.master_speed = speed;
                                                 }
+
+                                                ui.label("TODO: list scene changes here and allow removal");
                                             });
 
                                             ui.separator();

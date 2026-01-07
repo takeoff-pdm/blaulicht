@@ -286,7 +286,7 @@ impl DmxEngine {
                         merged_state.merge_from(
                             &scene_fixture_state,
                             change,
-                            MergeStrategy::Latest, // WAS HIGHEST ONCE
+                            MergeStrategy::Highest, // WAS HIGHEST ONCE
                         );
                     }
                 }

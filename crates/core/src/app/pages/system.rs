@@ -1,10 +1,27 @@
-use std::{ffi::OsStr, mem, path::{Path, PathBuf}, process::Command, str::FromStr, time::Duration};
+use std::{
+    ffi::OsStr,
+    mem,
+    path::{Path, PathBuf},
+    process::Command,
+    str::FromStr,
+    time::Duration,
+};
 
 use blaulicht_shared::LogLevel;
-use egui::{Color32, Context, RichText, ThemePreference};
+use egui::{Color32, Context, FontId, RichText, ThemePreference};
 use egui_file::FileDialog;
 
-use crate::{app::{components::{self, ButtonSize}, ui::FileDialogOpenOrigin, BlaulichtApp, PopupSpec}, audio::defs::AudioThreadControlSignal, config, mainloop::DMX_TICK_TIME, msg::{FromFrontend, SystemMessage}};
+use crate::{
+    app::{
+        components::{self, ButtonSize},
+        ui::FileDialogOpenOrigin,
+        BlaulichtApp, PopupSpec,
+    },
+    audio::defs::AudioThreadControlSignal,
+    config,
+    mainloop::DMX_TICK_TIME,
+    msg::{FromFrontend, SystemMessage},
+};
 
 impl BlaulichtApp {
     //
@@ -162,9 +179,9 @@ impl BlaulichtApp {
             }
         }
 
-        let button_size = ButtonSize::Large.with_width(130.0);
+        let button_size = ButtonSize::Medium.with_width(110.0);
 
-        ui.vertical(|ui| {
+        ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
                 let showfile = self
                     .data
@@ -176,9 +193,16 @@ impl BlaulichtApp {
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| "N/A".to_string());
 
-                ui.label("Showfile:");
-                ui.label(showfile);
+                ui.label("showfile:");
+
+                ui.label(
+                    egui::RichText::new(showfile)
+                        .strong()
+                        .font(FontId::monospace(14.0)),
+                );
             });
+
+            ui.add_space(3.0);
 
             ui.horizontal(|ui| {
                 if components::button(ui, false, "Load Showfile", button_size) {
@@ -213,6 +237,20 @@ impl BlaulichtApp {
                     self.file_dialog_open_origin = FileDialogOpenOrigin::Save;
                 }
 
+                {
+                    let mut conf = self.data.config.lock().unwrap();
+                    let button_enabled = conf.last_open_showfile.is_some();
+                    if components::button(ui, button_enabled, "Close Showfile", button_size)
+                        && button_enabled
+                    {
+                        conf.last_open_showfile = None;
+                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
+                        config::write_config(path, conf.clone()).unwrap();
+                        let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                        config::close_showfile(&mut dmx, &self.data.state.plugin_state_storage);
+                    }
+                }
+
                 let (label, allowed) = match &self
                     .data
                     .config
@@ -222,7 +260,7 @@ impl BlaulichtApp {
                     .is_some()
                 {
                     true => ("Save Showfile", true),
-                    false => ("Sace Showfile", false),
+                    false => ("Save Showfile", false),
                 };
                 if components::button(ui, allowed, label, button_size) {
                     self.save_showfile();
@@ -518,7 +556,8 @@ impl BlaulichtApp {
                                 let text_padding = 5.0;
 
                                 painter.text(
-                                    rect.left_center() + egui::vec2(border_width + text_padding, 0.0),
+                                    rect.left_center()
+                                        + egui::vec2(border_width + text_padding, 0.0),
                                     egui::Align2::LEFT_CENTER,
                                     name,
                                     egui::FontId::monospace(12.0),
