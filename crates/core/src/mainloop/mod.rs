@@ -81,9 +81,15 @@ pub fn run(
         .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
 
     let dmx_appstate = Arc::clone(&app_state);
-    let mut dmx_engine = DmxEngine::new(dmx_appstate, event_bus_dmx, system_out.clone(), config.dmx_out_devices);
+    let mut dmx_engine = DmxEngine::new(
+        dmx_appstate,
+        event_bus_dmx,
+        system_out.clone(),
+        config.dmx_out_devices,
+    );
 
-    dmx_engine.start_setup();
+    // TODO: add a command for starting + stopping setup.
+    // dmx_engine.start_setup();
 
     //
     // Audio signal collector.

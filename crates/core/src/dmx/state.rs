@@ -184,6 +184,10 @@ impl<'engine> EngineState {
         self.0.scenes.get(&curr_scene_id).unwrap()
     }
 
+    pub fn get_scene(&'engine self, id: u8) -> Option<&'engine Scene> {
+        self.0.scenes.get(&id)
+    }
+
     pub fn curr_scene_mut(&'engine mut self) -> &'engine mut Scene {
         let curr_scene_id = self.0.current_scene_focus;
         self.0.scenes.get_mut(&curr_scene_id).unwrap()

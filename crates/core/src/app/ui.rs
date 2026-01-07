@@ -192,7 +192,7 @@ impl eframe::App for BlaulichtApp {
                     self.view_ui(ui, ctx);
                 }
                 AppPage::ViewPerformance => {
-                    todo!()
+                    self.view_perf_ui(ui, ctx);
                 }
                 AppPage::FixturesPerformance => {
                     self.fixtures_ui(ui, ctx);

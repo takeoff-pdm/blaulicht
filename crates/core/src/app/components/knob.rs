@@ -38,7 +38,8 @@ impl<'a> Knob<'a> {
 
 impl<'a> Widget for Knob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(30.0, 80.0);
+        let height = if self.label.is_some() { 80.0 } else { 40.0 };
+        let desired_size = vec2(30.0, height);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
         let start_raw = *self.range.start();
@@ -51,6 +52,26 @@ impl<'a> Widget for Knob<'a> {
         let step = self.step.filter(|s| *s > 0.0 && s.is_finite());
 
         let mut value = (*self.value).clamp(range_min, range_max);
+
+        if response.hovered() {
+            let scroll = ui.ctx().input(|i| i.raw_scroll_delta.y);
+
+            if scroll != 0.0 {
+                let absvalue = if scroll.abs() < 10.0 {
+                    step.unwrap_or(1f32)
+                } else {
+                    range_span / 100.0 * 5.0
+                };
+
+                let to_add = match scroll > 0.0 {
+                    true => absvalue,
+                    false => -absvalue,
+                };
+                *self.value = (*self.value + to_add).clamp(range_min, range_max);
+                response.mark_changed();
+                // handle scroll
+            }
+        }
 
         if !is_flat_range && response.dragged() {
             let mut normalized_value = if reversed {

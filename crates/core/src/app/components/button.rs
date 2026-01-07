@@ -52,7 +52,7 @@ impl ButtonSize {
 
 pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool {
     const RADIUS: f32 = 1.0;
-    const BORDER_WIDTH: f32 = 6.0;
+    // const BORDER_WIDTH: f32 = 6.0;
 
     let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
 

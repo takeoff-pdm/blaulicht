@@ -5,7 +5,7 @@ use crate::{
     },
     dmx::EngineState,
 };
-use blaulicht_shared::view::View;
+use blaulicht_shared::{view::View, ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Context, FontId, Frame, Key, Margin, RichText, TextEdit, Vec2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
@@ -346,135 +346,144 @@ impl BlaulichtApp {
 
                         ui.separator();
 
+                        let Some(view_id) = self.view_ui_state.selected_view_id else {
+                            return;
+                        };
+
+                        let view_snapshot = dmx_engine.0.views.get(&view_id).cloned().unwrap();
+
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {
                                 ui.heading("View Details");
                                 ui.add_space(4.0);
 
-                                if let Some(view_id) = self.view_ui_state.selected_view_id {
-                                    let view_snapshot =
-                                        dmx_engine.0.views.get(&view_id).cloned().unwrap();
+                                ui.horizontal(|ui| {
+                                    ui.label(format!("Name: {}", view_snapshot.name));
 
-                                    ui.horizontal(|ui| {
-                                        ui.label(format!("Name: {}", view_snapshot.name));
-
-                                        ui.vertical(|ui| {
-                                            let scene_name = |scene_id: u8| {
-                                                dmx_engine
-                                                    .0
-                                                    .scenes
-                                                    .get(&scene_id)
-                                                    .map(|scene| scene.name.as_str())
-                                                    .unwrap_or("Unknown")
-                                            };
-
-                                            ui.label(format!(
-                                                "Base: {}",
-                                                scene_name(view_snapshot.base_scene)
-                                            ));
-
-                                            if components::button(
-                                                ui,
-                                                true,
-                                                "Set Base",
-                                                ButtonSize::Medium,
-                                            ) {
-                                                self.view_ui_state.base_picker_open = true;
-                                                self.view_ui_state.scene_picker_view_id =
-                                                    Some(view_id);
-                                            }
-                                        });
-
-                                        ui.add_space(8.0);
-
-                                        ui.vertical(|ui| {
-                                            ui.label("Overlay Scenes");
-
-                                            let available_overlay_count = dmx_engine
+                                    ui.vertical(|ui| {
+                                        let scene_name = |scene_id: u8| {
+                                            dmx_engine
                                                 .0
                                                 .scenes
-                                                .keys()
-                                                .filter(|scene_id| {
-                                                    **scene_id != view_snapshot.base_scene
-                                                        && !view_snapshot
-                                                            .overlays
-                                                            .contains(scene_id)
-                                                })
-                                                .count();
+                                                .get(&scene_id)
+                                                .map(|scene| scene.name.as_str())
+                                                .unwrap_or("Unknown")
+                                        };
 
-                                            let add_enabled = available_overlay_count > 0;
+                                        ui.label(format!(
+                                            "Base: {}",
+                                            scene_name(view_snapshot.base_scene)
+                                        ));
 
-                                            if components::button(
-                                                ui,
-                                                add_enabled,
-                                                "Add Overlay",
-                                                ButtonSize::Medium,
-                                            ) && add_enabled
-                                            {
-                                                self.view_ui_state.overlay_picker_open = true;
-                                                self.view_ui_state.scene_picker_view_id =
-                                                    Some(view_id);
-                                            }
-
-                                            ui.add_space(4.0);
-
-                                            if view_snapshot.overlays.is_empty() {
-                                                ui.label("No overlay scenes.");
-                                            } else {
-                                                for overlay_id in &view_snapshot.overlays {
-                                                    let overlay_name = dmx_engine
-                                                        .0
-                                                        .scenes
-                                                        .get(overlay_id)
-                                                        .map(|scene| scene.name.as_str())
-                                                        .unwrap_or("Unknown");
-
-                                                    ui.horizontal(|ui| {
-                                                        ui.label(format!(
-                                                            "{} ({overlay_id})",
-                                                            overlay_name
-                                                        ));
-
-                                                        if components::button(
-                                                            ui,
-                                                            false,
-                                                            "Remove",
-                                                            ButtonSize::Medium,
-                                                        ) {
-                                                            let mut dmx_engine = {
-                                                                self.data
-                                                                    .state
-                                                                    .dmx_engine
-                                                                    .write()
-                                                                    .unwrap()
-                                                            };
-
-                                                            if let Some(local_view) =
-                                                                dmx_engine.0.views.get_mut(&view_id)
-                                                            {
-                                                                local_view
-                                                                    .overlays
-                                                                    .retain(|id| id != overlay_id);
-                                                            }
-
-                                                            if let Some(state_view) =
-                                                                dmx_engine.0.views.get_mut(&view_id)
-                                                            {
-                                                                state_view
-                                                                    .overlays
-                                                                    .retain(|id| id != overlay_id);
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                            }
-                                        });
+                                        if components::button(
+                                            ui,
+                                            true,
+                                            "Set Base",
+                                            ButtonSize::Medium,
+                                        ) {
+                                            self.view_ui_state.base_picker_open = true;
+                                            self.view_ui_state.scene_picker_view_id = Some(view_id);
+                                        }
                                     });
-                                } else {
-                                    ui.label("No views available.");
-                                }
+
+                                    ui.add_space(8.0);
+
+                                    ui.vertical(|ui| {
+                                        ui.label("Overlay Scenes");
+
+                                        let available_overlay_count = dmx_engine
+                                            .0
+                                            .scenes
+                                            .keys()
+                                            .filter(|scene_id| {
+                                                **scene_id != view_snapshot.base_scene
+                                                    && !view_snapshot.overlays.contains(scene_id)
+                                            })
+                                            .count();
+
+                                        let add_enabled = available_overlay_count > 0;
+
+                                        if components::button(
+                                            ui,
+                                            add_enabled,
+                                            "Add Overlay",
+                                            ButtonSize::Medium,
+                                        ) && add_enabled
+                                        {
+                                            self.view_ui_state.overlay_picker_open = true;
+                                            self.view_ui_state.scene_picker_view_id = Some(view_id);
+                                        }
+
+                                        ui.add_space(4.0);
+
+                                        if view_snapshot.overlays.is_empty() {
+                                            ui.label("No overlay scenes.");
+                                        } else {
+                                            for overlay_id in &view_snapshot.overlays {
+                                                let overlay_name = dmx_engine
+                                                    .0
+                                                    .scenes
+                                                    .get(overlay_id)
+                                                    .map(|scene| scene.name.as_str())
+                                                    .unwrap_or("Unknown");
+
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!(
+                                                        "{} ({overlay_id})",
+                                                        overlay_name
+                                                    ));
+
+                                                    if components::button(
+                                                        ui,
+                                                        false,
+                                                        "Remove",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        let mut dmx_engine = {
+                                                            self.data
+                                                                .state
+                                                                .dmx_engine
+                                                                .write()
+                                                                .unwrap()
+                                                        };
+
+                                                        if let Some(local_view) =
+                                                            dmx_engine.0.views.get_mut(&view_id)
+                                                        {
+                                                            local_view
+                                                                .overlays
+                                                                .retain(|id| id != overlay_id);
+                                                        }
+
+                                                        if let Some(state_view) =
+                                                            dmx_engine.0.views.get_mut(&view_id)
+                                                        {
+                                                            state_view
+                                                                .overlays
+                                                                .retain(|id| id != overlay_id);
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    });
+                                });
                             });
                         });
+
+                        ui.separator();
+
+                        if components::button(ui, true, "Apply", ButtonSize::Medium) {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::Transaction(vec![
+                                        ControlEvent::SetSceneFocus(view_snapshot.base_scene),
+                                        ControlEvent::SetOverlays(view_snapshot.overlays.clone()),
+                                    ]),
+                                ));
+                        }
                     },
                 );
             },

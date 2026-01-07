@@ -533,6 +533,25 @@ impl DmxEngine {
                 }
                 (None, None)
             }
+            ControlEvent::RemoveOverlayScene(scene_id) => {
+                match state
+                    .0
+                    .current_overlay_scenes
+                    .iter()
+                    .position(|s| *s == scene_id)
+                {
+                    Some(index) => {
+                        state.0.current_overlay_scenes.remove(index);
+                        (None, None)
+                    }
+                    None => (
+                        Some("Scene is not an overlay"),
+                        Some(ControlEvent::SetOverlays(
+                            state.0.current_overlay_scenes.clone(),
+                        )),
+                    ),
+                }
+            }
             ControlEvent::SetOverlays(overlays) => {
                 // if !state.0.scenes.get(&id).is_some() {
                 //     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
@@ -542,6 +561,8 @@ impl DmxEngine {
                 // state.0.current_scene_focus = id;
 
                 state.0.current_overlay_scenes.clear();
+
+                println!("SET OVERLAYS: {overlays:?}");
 
                 for scene in &overlays {
                     let animations = state.0.animations.clone();

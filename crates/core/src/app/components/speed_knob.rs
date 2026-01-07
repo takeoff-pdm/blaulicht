@@ -30,7 +30,8 @@ impl<'a> SpeedKnob<'a> {
 
 impl<'a> Widget for SpeedKnob<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let desired_size = vec2(30.0, 80.0);
+        let height = if self.label.is_some() { 80.0 } else { 40.0 };
+        let desired_size = vec2(30.0, height);
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
         let id = response.id;
 
@@ -52,6 +53,26 @@ impl<'a> Widget for SpeedKnob<'a> {
         let mut temp_norm = ui.ctx().data(|d| d.get_temp::<f32>(id));
         let mut display_norm = temp_norm.unwrap_or(base_norm);
         let mut preview_value = *self.value;
+
+        let mut scrolled = false;
+        if response.hovered() {
+            let scroll = ui.ctx().input(|i| i.raw_scroll_delta.y);
+
+            if scroll != 0.0 {
+                let to_add: isize = match scroll > 0.0 {
+                    true => 1,
+                    false => -1,
+                };
+
+                *self.value = options[(current_index as isize + to_add)
+                    .clamp(0, options.len() as isize - 1)
+                    as usize];
+
+                response.mark_changed();
+                scrolled = true;
+                // handle scroll
+            }
+        }
 
         if response.dragged() && max_index > 0 {
             let (pointer_delta, modifiers) = ui.input(|i| (i.pointer.delta(), i.modifiers));
@@ -87,7 +108,7 @@ impl<'a> Widget for SpeedKnob<'a> {
             }
         }
 
-        if !pointer_down_primary {
+        if !pointer_down_primary || scrolled {
             if let Some(current_norm) = temp_norm {
                 if max_index > 0 {
                     let scaled = (current_norm * max_index as f32).clamp(0.0, max_index as f32);
