@@ -189,7 +189,7 @@ impl AnimationSpec {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, EnumIter)]
 pub enum AnimationSpecBody {
     /// Phaser operates on a degree (0-360 DEG) an the amount is increased in time steps.
     Phaser(AnimationSpecBodyPhaser),
@@ -200,7 +200,53 @@ pub enum AnimationSpecBody {
     Wasm(AnimationSpecBodyWasm), // TODO: not currently supported.
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+impl From<AnimationSpecBodyKind> for AnimationSpecBody {
+    fn from(value: AnimationSpecBodyKind) -> Self {
+        match value {
+            AnimationSpecBodyKind::Phaser => Self::Phaser(AnimationSpecBodyPhaser::default()),
+            AnimationSpecBodyKind::AudioVolume => {
+                Self::AudioVolume(AnimationSpecBodyAudioVolume::default())
+            }
+            AnimationSpecBodyKind::AudioBeat => Self::AudioBeat(AnimationSpecBodyBeat::default()),
+            AnimationSpecBodyKind::AudioFrequencies => {
+                Self::AudioFrequencies(AnimationSpecBodyFrequencies::default())
+            }
+            AnimationSpecBodyKind::BeatClock => Self::BeatClock(AnimationSpecBodyBeat::default()),
+            AnimationSpecBodyKind::Wasm => Self::Wasm(AnimationSpecBodyWasm::default()),
+        }
+    }
+}
+
+impl AnimationSpecBody {
+    pub fn kind(&self) -> AnimationSpecBodyKind {
+        match self {
+            AnimationSpecBody::Phaser(_) => AnimationSpecBodyKind::Phaser,
+            AnimationSpecBody::AudioVolume(_) => AnimationSpecBodyKind::AudioVolume,
+            AnimationSpecBody::AudioBeat(_) => AnimationSpecBodyKind::AudioBeat,
+            AnimationSpecBody::AudioFrequencies(_) => AnimationSpecBodyKind::AudioFrequencies,
+            AnimationSpecBody::BeatClock(_) => AnimationSpecBodyKind::BeatClock,
+            AnimationSpecBody::Wasm(_) => AnimationSpecBodyKind::Wasm,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, EnumIter, PartialEq, Eq)]
+pub enum AnimationSpecBodyKind {
+    Phaser,
+    AudioVolume,
+    AudioBeat,
+    AudioFrequencies,
+    BeatClock,
+    Wasm,
+}
+
+impl Display for AnimationSpecBodyKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyPhaser {
     pub kind: PhaserKind,
     // Time to complete a complete cycle: cycle step time is calculated from this.
@@ -212,6 +258,12 @@ pub struct AnimationSpecBodyPhaser {
 pub enum PhaserDuration {
     Fixed(u64),                   // Total millis.
     Beat(AnimationSpeedModifier), // How many beats.
+}
+
+impl Default for PhaserDuration {
+    fn default() -> Self {
+        Self::Fixed(1000)
+    }
 }
 
 impl Display for PhaserDuration {
@@ -229,7 +281,13 @@ pub enum PhaserKind {
     Keyframed(KeyframedPhaser),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+impl Default for PhaserKind {
+    fn default() -> Self {
+        Self::Mathematical(MathematicalPhaser::default())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct MathematicalPhaser {
     pub base: MathematicalBaseFunction,
     // TODO: this should actually be deprecated!
@@ -251,23 +309,29 @@ pub enum MathematicalBaseFunction {
     EaseInOut,
 }
 
+impl Default for MathematicalBaseFunction {
+    fn default() -> Self {
+        Self::Sin
+    }
+}
+
 impl Display for MathematicalBaseFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct KeyframedPhaser {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyAudioVolume {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyBeat {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyFrequencies {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyWasm {}

@@ -305,7 +305,7 @@ pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {
 mod tests {
     use super::*;
     use crate::{
-        ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat,
+        ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeatClock,
         AnimationSpeedModifier, AnimationTimerState, FixtureProperty, SaveEngineState, SyncMode,
         fixture::{
             FixtureType,
@@ -345,7 +345,7 @@ mod tests {
             1,
             AnimationSpec {
                 name: "Anim".to_string(),
-                body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
+                body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeatClock {}),
                 property: FixtureProperty::Alpha,
                 sync: SyncMode::Synced,
             },

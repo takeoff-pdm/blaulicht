@@ -4,35 +4,21 @@ mod management;
 mod state;
 
 use blaulicht_audio_engine::CollectorOutput;
-use map_range::MapRange;
-use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 pub use state::*;
 pub mod animation;
-// pub use fixture::*;
 pub mod scene;
-
-use log::{debug, error, warn};
-
-use crate::{
-    audio::defs::DMX_TICK_TIME,
-    dmx::{
-        animation::{generate, phaser},
-        clock::Time,
-    },
-    event::SystemEventBusConnectionInst,
-    msg::SystemMessage,
-    state::AppState,
-};
+use crate::{event::SystemEventBusConnectionInst, msg::SystemMessage, state::AppState};
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
     scene::FixtureSelection,
-    ActiveAnimation, CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator,
-    LogLevel, RGBColor, SyncMode, CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
+    CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
+use log::{debug, error, warn};
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::BTreeMap,
     mem,
     sync::{Arc, RwLockWriteGuard},
     time::{Duration, Instant},
@@ -491,21 +477,46 @@ impl DmxEngine {
                 println!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
                 (None, None)
             }
+            ControlEvent::SetSceneMasterAlpha(scene_id, value_percent) => {
+                let Some(scene) = state.0.scenes.get_mut(&scene_id) else {
+                    return (Some("Illegal scene id"), None);
+                };
+
+                if value_percent > 100 {
+                    return (Some("Percent value out of range"), None);
+                }
+
+                scene.sink.master_alpha_fader = value_percent;
+
+                (None, None)
+            }
+            ControlEvent::SetSceneMasterSpeed(scene_id, speed) => {
+                let Some(scene) = state.0.scenes.get_mut(&scene_id) else {
+                    return (Some("Illegal scene id"), None);
+                };
+
+                scene.sink.master_speed = speed;
+
+                (None, None)
+            }
             ControlEvent::SetSceneFocus(id) => {
-                if !state.0.scenes.get(&id).is_some() {
+                if !state.0.scenes.contains_key(&id) {
                     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
                 }
+
                 // PATCH: reset all animations in that scene
+                // BUG: this also starts all animations that were manually paused.
+                // HOW TO FIX: ADD A SWITCH TO ANIMATIONS THAT DISABLE THEM.
                 state.0.current_scene_focus = id;
 
                 let animations = state.0.animations.clone();
 
-                let mut anim = &mut state.curr_scene_mut().sink.active_animations;
-                for (selec, anim_set) in anim.iter_mut() {
+                let anim = &mut state.curr_scene_mut().sink.active_animations;
+                for (_selec, anim_set) in anim.iter_mut() {
                     for (anim_id, anim) in anim_set.iter_mut() {
                         // anim.reset();
                         let animation_sync = {
-                            let anim = match animations.get(&*anim_id) {
+                            let anim = match animations.get(anim_id) {
                                 Some(a) => a,
                                 None => {
                                     println!("WARN: animation not found");
@@ -541,11 +552,11 @@ impl DmxEngine {
                         .unwrap()
                         .sink
                         .active_animations;
-                    for (selec, anim_set) in anim.iter_mut() {
+                    for (_selec, anim_set) in anim.iter_mut() {
                         for (anim_id, anim) in anim_set.iter_mut() {
                             // anim.reset();
                             let animation_sync = {
-                                let anim = match animations.get(&*anim_id) {
+                                let anim = match animations.get(anim_id) {
                                     Some(a) => a,
                                     None => {
                                         println!("WARN: animation not found");

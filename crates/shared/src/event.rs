@@ -275,6 +275,10 @@ pub enum ControlEvent {
     // ClearOverlays(u8),
     SetOverlays(Vec<u8>),
 
+    // Scene masters.
+    SetSceneMasterAlpha(u8, u8),
+    SetSceneMasterSpeed(u8, AnimationSpeedModifier),
+
     // Other stuff,
     SetChannelOverride(u16, u16, u8), // Universe, Channel and value.
     RemoveChannelOverride(u16, u16),  // Universe, Channel
@@ -376,6 +380,9 @@ impl ControlEvent {
             | ControlEvent::PushSelection
             | ControlEvent::SetSceneFocus(_)
             | ControlEvent::SetOverlays(_) => false,
+            ControlEvent::SetSceneMasterAlpha(_, _) | ControlEvent::SetSceneMasterSpeed(_, _) => {
+                false
+            }
             ControlEvent::Transaction(_) => false,
             ControlEvent::SetChannelOverride(_, _, _) => false,
             ControlEvent::RemoveChannelOverride(_, _) => false,

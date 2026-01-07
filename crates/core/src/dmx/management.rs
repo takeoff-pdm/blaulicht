@@ -7,6 +7,11 @@ use blaulicht_shared::{
 use log::debug;
 
 impl EngineState {
+    pub fn delete_animation(&mut self, id: u8) {
+        // Find all dependent animations.
+        todo!("Not implemented")
+    }
+
     pub fn delete_group(&mut self, id: u8) {
         self.0.groups.remove(&id);
         self.0.selection.clear();

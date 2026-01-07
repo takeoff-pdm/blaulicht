@@ -4,7 +4,7 @@ use crate::{
             DmxSimulator, LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
-        pages::FixturePerfUi,
+        pages::{AnimationUI, FixturePerfUi},
         ui::FileDialogOpenOrigin,
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
@@ -113,20 +113,6 @@ impl PopupSpec {
     }
 }
 
-pub struct AnimationPageState {
-    pub selected_animation: Option<u8>,
-    pub clamp_min: u16,
-    pub clamp_max: u16,
-    pub base_function: MathematicalBaseFunction,
-    pub sync_mode: SyncMode,
-    pub timing: PhaserDuration,
-    pub timing_pin_to_beat: bool,
-    pub create_open: bool,
-    pub new_name: String,
-    pub new_mode: &'static str,
-    pub new_prop: FixtureProperty,
-}
-
 pub struct BlaulichtApp {
     // Example stuff:
     label: String,
@@ -170,8 +156,7 @@ pub struct BlaulichtApp {
     // Audio devices.
     available_audio_devices: Vec<String>,
 
-    animation_page: AnimationPageState,
-
+    // animation_page: AnimationPageState,
     new_scene_name: String,
     new_scene_dialog_open: bool,
     clone_scene_dialog_open: bool,
@@ -239,6 +224,7 @@ pub struct BlaulichtApp {
     fixture_perf_ui: FixturePerfUi,
 
     view_ui_state: ViewUI,
+    animation_ui_state: AnimationUI,
 }
 
 impl BlaulichtApp {
@@ -293,19 +279,19 @@ impl BlaulichtApp {
             last_heartbeat_frame: 0,
             selected_fixture_group: None,
             available_audio_devices: vec![],
-            animation_page: AnimationPageState {
-                selected_animation: None,
-                clamp_min: 0,
-                clamp_max: 255,
-                base_function: MathematicalBaseFunction::Sin,
-                timing: PhaserDuration::Fixed(1000),
-                sync_mode: SyncMode::Synced,
-                create_open: false,
-                new_mode: "PhaserMath",
-                new_name: "ANIM".to_string(),
-                new_prop: FixtureProperty::Alpha,
-                timing_pin_to_beat: false,
-            },
+            // animation_page: AnimationPageState {
+            //     selected_animation: None,
+            //     clamp_min: 0,
+            //     clamp_max: 255,
+            //     base_function: MathematicalBaseFunction::Sin,
+            //     timing: PhaserDuration::Fixed(1000),
+            //     sync_mode: SyncMode::Synced,
+            //     create_open: false,
+            //     new_mode: "PhaserMath",
+            //     new_name: "ANIM".to_string(),
+            //     new_prop: FixtureProperty::Alpha,
+            //     timing_pin_to_beat: false,
+            // },
             new_scene_name: DEFAULT_NEW_SCENE_NAME.to_string(),
             new_scene_dialog_open: false,
             clone_scene_dialog_open: false,
@@ -352,6 +338,7 @@ impl BlaulichtApp {
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             reload_dialog_open: false,
             view_ui_state: ViewUI::default(),
+            animation_ui_state: AnimationUI::default(),
             fixture_perf_ui: FixturePerfUi {},
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
         }
