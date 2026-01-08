@@ -549,8 +549,9 @@ impl BlaulichtApp {
 
                                 // Plugin name
                                 let path_str = plugin.path.to_string().to_string();
-                                let basename =
-                                    Path::new(&path_str).file_name().unwrap().to_string_lossy();
+                                let path = Path::new(&path_str);
+                                let basename = path.file_stem().unwrap().to_string_lossy();
+                                // let basename = path.file_name().unwrap().to_string_lossy();
                                 let name = format!("P:{basename} ({})", i + 1);
 
                                 let text_padding = 5.0;

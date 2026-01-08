@@ -51,7 +51,9 @@ impl BlaulichtApp {
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        theme::set_theme(ctx, theme::REKORDBOX);
+        if ctx.style().visuals.dark_mode {
+            theme::set_theme(ctx, theme::REKORDBOX);
+        }
 
         self.render_popup(ctx);
 

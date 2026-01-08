@@ -186,7 +186,7 @@ impl BlaulichtApp {
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "FOOBAR", ButtonSize::Medium) {}
+                    if components::button(ui, false, "ADD OVERLAY", ButtonSize::Medium) {}
 
                     if components::button(ui, false, "BAR BAZ", ButtonSize::Medium) {}
 
@@ -227,6 +227,7 @@ impl BlaulichtApp {
                                 egui::Grid::new("scene_grid")
                                     .spacing(egui::vec2(padding, padding)) // Space between cards
                                     .show(ui, |ui| {
+                                        ui.set_min_width(500.0);
                                         for (i, (id, is_base)) in scenes.iter().enumerate() {
                                             if i > 0 && i % cols == 0 {
                                                 ui.end_row();

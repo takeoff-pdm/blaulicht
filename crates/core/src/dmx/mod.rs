@@ -553,6 +553,10 @@ impl DmxEngine {
                 }
             }
             ControlEvent::SetOverlays(overlays) => {
+                if overlays.contains(&state.0.current_scene_focus) {
+                    return (Some("Base scene cannot appear in overlays"), None);
+                }
+
                 // if !state.0.scenes.get(&id).is_some() {
                 //     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
                 // }
