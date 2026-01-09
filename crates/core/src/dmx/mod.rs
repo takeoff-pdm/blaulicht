@@ -3,12 +3,17 @@ mod clock;
 mod management;
 mod state;
 
+use artnet_protocol::ArtCommand;
 use blaulicht_audio_engine::CollectorOutput;
 use serialport::SerialPort;
 pub use state::*;
 pub mod animation;
 pub mod scene;
-use crate::{event::SystemEventBusConnectionInst, msg::SystemMessage, state::AppState};
+use crate::{
+    event::SystemEventBusConnectionInst,
+    msg::SystemMessage,
+    state::{AppState, NUM_DMX_UNIVERSES},
+};
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
     scene::FixtureSelection,
@@ -20,11 +25,17 @@ use log::{debug, error, warn};
 use std::{
     collections::BTreeMap,
     mem,
+    net::UdpSocket,
     sync::{Arc, RwLockWriteGuard},
     time::{Duration, Instant},
 };
 
 // TODO: maybe fuse this together?
+
+pub struct DmxEngineArtnetOutput {
+    universe_buffers: [Vec<u8>; NUM_DMX_UNIVERSES],
+    socket: Option<UdpSocket>,
+}
 
 pub struct DmxEngine {
     // TODO: check if this is too slow.
@@ -39,6 +50,7 @@ pub struct DmxEngine {
     start_time: Instant,
 
     pub dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
+    artnet_output: DmxEngineArtnetOutput,
 
     running_setup: bool,
     setup_start_time: Instant,
@@ -96,6 +108,9 @@ impl DmxEngine {
         system_out: Sender<SystemMessage>,
         universe_dmx_out_devices: [String; 2],
     ) -> Self {
+        //
+        // Initialize DMX.
+        //
         let mut dmx_universe_ports = [None, None];
 
         for (universe, port) in dmx_universe_ports.iter_mut().enumerate() {
@@ -103,6 +118,35 @@ impl DmxEngine {
                 Self::open_hw_interface(&universe_dmx_out_devices[universe], system_out.clone());
             *port = dmx_port
         }
+
+        //
+        // Initialize ArtNet.
+        //
+        let socket = {
+            let mut artnet_state = state_ref.artnet_output.write().unwrap();
+
+            match UdpSocket::bind("0.0.0.0:0") {
+                Ok(s) => {
+                    artnet_state.health_state = false;
+                    Some(s)
+                }
+                Err(err) => {
+                    artnet_state.health_state = false;
+
+                    system_out
+                        .send(SystemMessage::Log(
+                            format!("Could not create ARTNET socket: {err}"),
+                            LogLevel::Err,
+                        ))
+                        .unwrap();
+                    None
+                }
+            }
+        };
+        let artnet_output = DmxEngineArtnetOutput {
+            universe_buffers: std::array::from_fn(|_| vec![0; 512]),
+            socket,
+        };
 
         Self {
             state_ref,
@@ -112,6 +156,7 @@ impl DmxEngine {
             animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
             dmx_universe_ports,
+            artnet_output,
             running_setup: false,
             setup_start_time: Instant::now(),
         }
@@ -199,7 +244,49 @@ impl DmxEngine {
         }
     }
 
-    fn write_to_hw(&mut self) {
+    fn write_to_artnet(&mut self) {
+        let Some(ref mut socket) = self.artnet_output.socket else {
+            return;
+        };
+
+        let artnet_out = self.state_ref.artnet_output.read().unwrap();
+
+        for (universe_no, universe_lock) in self.state_ref.dmx_universes.iter().enumerate() {
+            let buffer = universe_lock.read().unwrap();
+
+            // NOTE: removing the first element since internally, we use a length of 513.
+            self.artnet_output.universe_buffers[universe_no]
+                .copy_from_slice(&buffer.dmx_buffer[1..]);
+
+            let command = ArtCommand::Output(artnet_protocol::Output {
+                port_address: (universe_no as u8).into(),
+                sequence: 0, // 3. Disable sequence checking for stability
+                physical: (universe_no as u8).into(),
+                // TODO: this is evil.
+                data: self.artnet_output.universe_buffers[universe_no]
+                    .clone()
+                    .into(),
+                ..artnet_protocol::Output::default()
+            });
+
+            let bytes = command.write_to_buffer().unwrap();
+
+            for destination in &artnet_out.receivers {
+                if let Err(err) = socket.send_to(&bytes, destination) {
+                    log::error!("Send ArtNet UDP to {destination}: {err:?}");
+                }
+            }
+        }
+    }
+
+    fn write_to_output(&mut self) {
+        let start = Instant::now();
+        self.write_to_artnet();
+        self.write_to_serial();
+        log::debug!("DMX HW OUTPUT TIME: {:?}", start.elapsed());
+    }
+
+    fn write_to_serial(&mut self) {
         for (universe_no, mut port) in self.dmx_universe_ports.iter_mut().enumerate() {
             let buffer = self.state_ref.dmx_universes[universe_no].read().unwrap();
 
@@ -240,7 +327,7 @@ impl DmxEngine {
 
         mem::drop(state);
 
-        self.write_to_hw();
+        self.write_to_output();
     }
 
     fn update_dmx_buffer(&mut self) {
@@ -313,7 +400,7 @@ impl DmxEngine {
 
         mem::drop(state);
 
-        self.write_to_hw();
+        self.write_to_output();
     }
 
     pub fn apply(

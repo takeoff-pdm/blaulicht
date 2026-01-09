@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
+    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
@@ -52,6 +53,11 @@ pub const NUM_DMX_UNIVERSES: usize = 2;
 
 pub struct AppHealthState {
     pub dmx_universes_healthy: [bool; NUM_DMX_UNIVERSES],
+    pub health_state: bool,
+}
+
+pub struct ArtNetOutput {
+    pub receivers: Vec<SocketAddr>,
 }
 
 pub struct AppState {
@@ -61,6 +67,7 @@ pub struct AppState {
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
+    pub artnet_output: RwLock<ArtNetOutput>,
     // pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
     pub audio_params: RwLock<SignalCollectorParams>, // Boolean stores if something has
     // changed
