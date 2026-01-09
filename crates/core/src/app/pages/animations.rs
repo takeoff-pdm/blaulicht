@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, button, ButtonSize, HFader, Pagination},
+        components::{self, button, ButtonSize, Dialog, HFader, Pagination},
         BlaulichtApp,
     },
     dmx::{animation::phaser, EngineState},
@@ -61,12 +61,9 @@ impl BlaulichtApp {
             return;
         }
 
-        components::dialog(
-            ctx,
-            "Confirm Deletion",
-            egui::vec2(200.0, 100.0),
-            false,
-            |ui| {
+        Dialog::new("Confirm Deletion".to_string(), egui::vec2(200.0, 100.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
                 ui.heading(RichText::new("Confirm Deletion").strong());
 
                 ui.add_space(12.0);
@@ -84,8 +81,7 @@ impl BlaulichtApp {
                         self.animation_ui_state.delete_confirm_open = false;
                     }
                 });
-            },
-        );
+            });
     }
 
     fn render_add_animation_dialog(&mut self, ctx: &Context, ui: &mut egui::Ui) {
@@ -98,108 +94,107 @@ impl BlaulichtApp {
             let dialog_width = 570.0;
             let dialog_height = 330.0;
 
-            components::dialog(
-                ctx,
-                "Add Animation",
+            Dialog::new(
+                "Add Animation".to_string(),
                 egui::vec2(dialog_width, dialog_height),
-                false,
-                |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+            )
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
 
-                    // Name
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
+                // Name
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
 
-                        ui.add(
-                            TextEdit::singleline(&mut self.animation_ui_state.new_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
-                    });
+                    ui.add(
+                        TextEdit::singleline(&mut self.animation_ui_state.new_name)
+                            .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                            .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                    );
+                });
 
-                    ui.separator();
+                ui.separator();
 
-                    // Body selector
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
+                // Body selector
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
 
-                        egui::ComboBox::from_id_salt("add_anim_kind_combo")
-                            .width(140.0)
-                            .selected_text(self.animation_ui_state.new_mode.to_string())
-                            .show_ui(ui, |ui| {
-                                for animation_spec in AnimationSpecBodyKind::iter() {
-                                    if components::button(
-                                        ui,
-                                        animation_spec == self.animation_ui_state.new_mode,
-                                        &animation_spec.to_string(),
-                                        ButtonSize::Medium.with_width(140.0),
-                                    ) {
-                                        self.animation_ui_state.new_mode = animation_spec;
-                                    }
+                    egui::ComboBox::from_id_salt("add_anim_kind_combo")
+                        .width(140.0)
+                        .selected_text(self.animation_ui_state.new_mode.to_string())
+                        .show_ui(ui, |ui| {
+                            for animation_spec in AnimationSpecBodyKind::iter() {
+                                if components::button(
+                                    ui,
+                                    animation_spec == self.animation_ui_state.new_mode,
+                                    &animation_spec.to_string(),
+                                    ButtonSize::Medium.with_width(140.0),
+                                ) {
+                                    self.animation_ui_state.new_mode = animation_spec;
                                 }
-                            });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
-
-                        let kinds: Vec<_> = FixtureProperty::iter().collect();
-                        egui::ComboBox::from_id_salt("add_anim_prop_combo")
-                            .width(140.0)
-                            .selected_text(format!("{}", self.animation_ui_state.new_prop))
-                            .show_ui(ui, |ui| {
-                                for prop in &kinds {
-                                    if components::button(
-                                        ui,
-                                        self.animation_ui_state.new_prop == *prop,
-                                        &format!("{prop}"),
-                                        ButtonSize::Medium.with_width(140.0), // TODO: uniform
-                                                                              // width
-                                    ) {
-                                        self.animation_ui_state.new_prop = *prop;
-                                    }
-                                }
-                            });
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                            self.add_fixture_open = false;
-                        }
-
-                        let mut button_pressed =
-                            components::button(ui, true, "Create", ButtonSize::Medium);
-
-                        ctx.input(|input| {
-                            if input.key_pressed(Key::Enter) {
-                                button_pressed = true;
                             }
                         });
+                });
 
-                        if button_pressed {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
 
-                            let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
-                            let body = AnimationSpecBody::from(self.animation_ui_state.new_mode);
+                    let kinds: Vec<_> = FixtureProperty::iter().collect();
+                    egui::ComboBox::from_id_salt("add_anim_prop_combo")
+                        .width(140.0)
+                        .selected_text(format!("{}", self.animation_ui_state.new_prop))
+                        .show_ui(ui, |ui| {
+                            for prop in &kinds {
+                                if components::button(
+                                    ui,
+                                    self.animation_ui_state.new_prop == *prop,
+                                    &format!("{prop}"),
+                                    ButtonSize::Medium.with_width(140.0), // TODO: uniform
+                                                                          // width
+                                ) {
+                                    self.animation_ui_state.new_prop = *prop;
+                                }
+                            }
+                        });
+                });
 
-                            let len = dmx_engine.0.animations.len();
-                            dmx_engine.0.animations.insert(
-                                len as u8,
-                                AnimationSpec {
-                                    name: base_name,
-                                    body,
-                                    property: self.animation_ui_state.new_prop,
-                                    sync: SyncMode::Synced,
-                                },
-                            );
+                ui.separator();
 
-                            self.animation_ui_state.create_open = false;
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                        self.animation_ui_state.create_open = false;
+                    }
+
+                    let mut button_pressed =
+                        components::button(ui, true, "Create", ButtonSize::Medium);
+
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            button_pressed = true;
                         }
                     });
-                },
-            );
+
+                    if button_pressed {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+
+                        let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
+                        let body = AnimationSpecBody::from(self.animation_ui_state.new_mode);
+
+                        let len = dmx_engine.0.animations.len();
+                        dmx_engine.0.animations.insert(
+                            len as u8,
+                            AnimationSpec {
+                                name: base_name,
+                                body,
+                                property: self.animation_ui_state.new_prop,
+                                sync: SyncMode::Synced,
+                            },
+                        );
+
+                        self.animation_ui_state.create_open = false;
+                    }
+                });
+            });
         }
     }
 
@@ -249,6 +244,7 @@ impl BlaulichtApp {
 
     pub fn animations_ui(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         self.render_add_animation_dialog(ctx, ui);
+        self.render_delete_animation_dialog(ctx, ui);
 
         let animations = {
             let dmx_engine = self.data.state.dmx_engine.read().unwrap().clone();

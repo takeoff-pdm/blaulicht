@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, Pagination},
+        components::{self, ButtonSize, Dialog, Pagination},
         BlaulichtApp,
     },
     dmx::EngineState,
@@ -48,12 +48,9 @@ impl BlaulichtApp {
                 return;
             };
 
-            components::dialog(
-                ctx,
-                "View Deletion",
-                egui::vec2(220.0, 120.0),
-                false,
-                |ui| {
+            Dialog::new("View Deletion".to_string(), egui::vec2(220.0, 120.0))
+                .with_backdrop()
+                .show(ctx, |ui| {
                     ui.heading(RichText::new("Delete this view?").strong());
                     ui.add_space(12.0);
 
@@ -103,8 +100,7 @@ impl BlaulichtApp {
                             self.view_ui_state.delete_view_id = None;
                         }
                     });
-                },
-            );
+                });
         }
     }
 
@@ -138,6 +134,7 @@ impl BlaulichtApp {
             options,
             &current_selection,
             &mut self.view_ui_state.base_picker_open,
+            "Base Scene".to_string(),
         );
 
         if changed {
@@ -187,6 +184,7 @@ impl BlaulichtApp {
             available_scenes,
             255,
             &mut self.view_ui_state.base_picker_open,
+            "Select Overlay".to_string(),
         );
 
         if changed {
@@ -208,58 +206,60 @@ impl BlaulichtApp {
             const SPACING: f32 = 16.0;
             let size = egui::vec2(260.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING + 8.0);
 
-            components::dialog(ctx, "Create View", size, false, |ui| {
-                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::singleline(&mut self.view_ui_state.new_view_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
+            Dialog::new("Create View".to_string(), size)
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut self.view_ui_state.new_view_name)
+                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                            );
+                        });
+
+                    ui.add_space(SPACING);
+
+                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            button_pressed = true;
+                        }
                     });
 
-                ui.add_space(SPACING);
+                    if button_pressed {
+                        let mut engine = self.data.state.dmx_engine.write().unwrap();
 
-                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        button_pressed = true;
+                        let mut new_name = self.view_ui_state.new_view_name.trim().to_string();
+                        if new_name.is_empty() {
+                            new_name = DEFAULT_NEW_VIEW_NAME.to_string();
+                        }
+
+                        let base_scene = engine.0.current_scene_focus;
+                        let new_id = (0..=u8::MAX)
+                            .find(|candidate| !engine.0.views.contains_key(candidate))
+                            .expect("view id overflow");
+
+                        engine.0.views.insert(
+                            new_id,
+                            View {
+                                name: new_name.clone(),
+                                base_scene,
+                                overlays: vec![],
+                            },
+                        );
+
+                        drop(engine);
+
+                        self.view_ui_state.selected_view_id = Some(new_id);
+                        // TODO: can we focus this?
+                        // self.view_ui_state.current_page = new_page;
+                        self.view_ui_state.new_view_name = DEFAULT_NEW_VIEW_NAME.to_string();
+                        self.view_ui_state.add_view_open = false;
                     }
                 });
-
-                if button_pressed {
-                    let mut engine = self.data.state.dmx_engine.write().unwrap();
-
-                    let mut new_name = self.view_ui_state.new_view_name.trim().to_string();
-                    if new_name.is_empty() {
-                        new_name = DEFAULT_NEW_VIEW_NAME.to_string();
-                    }
-
-                    let base_scene = engine.0.current_scene_focus;
-                    let new_id = (0..=u8::MAX)
-                        .find(|candidate| !engine.0.views.contains_key(candidate))
-                        .expect("view id overflow");
-
-                    engine.0.views.insert(
-                        new_id,
-                        View {
-                            name: new_name.clone(),
-                            base_scene,
-                            overlays: vec![],
-                        },
-                    );
-
-                    drop(engine);
-
-                    self.view_ui_state.selected_view_id = Some(new_id);
-                    // TODO: can we focus this?
-                    // self.view_ui_state.current_page = new_page;
-                    self.view_ui_state.new_view_name = DEFAULT_NEW_VIEW_NAME.to_string();
-                    self.view_ui_state.add_view_open = false;
-                }
-            });
         }
     }
 

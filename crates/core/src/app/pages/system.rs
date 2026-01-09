@@ -7,13 +7,14 @@ use std::{
     time::Duration,
 };
 
+use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
 use egui::{Color32, Context, FontId, Frame, Margin, RichText, ThemePreference};
 use egui_file::FileDialog;
 
 use crate::{
     app::{
-        components::{self, ButtonSize},
+        components::{self, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
@@ -94,90 +95,141 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        if let Some(dialog) = &mut self.open_file_dialog {
-            if dialog.show(ctx).selected() {
-                let mut config = self.data.config.lock().unwrap();
+    fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
+        if !self.confirm_shutdown_open {
+            return;
+        }
 
-                if let Some(file) = dialog.path() {
-                    match self.file_dialog_open_origin {
-                        FileDialogOpenOrigin::Save => {
-                            // let dmx = self.data.state.dmx_engine.read().unwrap();
-                            // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                            // std::fs::write(file, serialized).unwrap();
+        Dialog::new("Confirm Shutdown".to_string(), egui::vec2(200.0, 100.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
 
-                            config.last_open_showfile = Some(file.to_path_buf());
-                            //
-                            // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                            // config::write_config(config_path, config.clone()).unwrap();
-                            //
-                            // self.data
-                            //     .system_message_sender
-                            //     .send(SystemMessage::Log(
-                            //         format!("Saved showfile to {file:?}"),
-                            //         LogLevel::Info,
-                            //     ))
-                            //     .unwrap();
+                ui.heading(
+                    RichText::new("Confirm Shutdown")
+                        .color(if blink {
+                            Color32::RED
+                        } else {
+                            ui.visuals().text_color()
+                        })
+                        .strong(),
+                );
 
-                            mem::drop(config);
+                ui.add_space(12.0);
 
-                            self.save_showfile();
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                        let status = Command::new("/usr/bin/shutdown.sh")
+                            .status()
+                            .expect("Failed to execute shutdown command");
+
+                        if status.success() {
+                            println!("Shutdown command executed successfully.");
+                        } else {
+                            eprintln!("Shutdown command failed!");
                         }
-                        FileDialogOpenOrigin::Load => {
-                            config.last_open_showfile = Some(file.to_path_buf());
 
-                            // let mut f = File::open(file).expect("no file found");
-                            // let metadata = fs::metadata(file).expect("unable to read metadata");
-                            // let mut buffer = vec![0; metadata.len() as usize];
-                            // f.read(&mut buffer).expect("buffer overflow");
-                            //
-                            // let decoded: blaulicht_shared::EngineState =
-                            //     postcard::from_bytes(&buffer).unwrap();
-                            //
-                            // {
-                            //     let mut plugin_state =
-                            //         self.data.state.plugin_state_storage.lock().unwrap();
-                            //     *plugin_state = decoded.plugin_state.clone();
-                            // }
-                            //
-                            // let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                            // // dmx.overwrite(decoded);
-                            // dmx.load_showfile(decoded);
-                            // mem::drop(dmx);
+                        self.confirm_shutdown_open = false;
+                    }
 
-                            let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                            config::read_showfile(
-                                file.to_path_buf(),
-                                &mut dmx,
-                                &self.data.state.plugin_state_storage,
-                                self.data.system_message_sender.clone(),
-                            );
-                            mem::drop(dmx);
+                    if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                        self.confirm_shutdown_open = false;
+                    }
+                });
+            });
+    }
 
-                            config.last_open_showfile = Some(file.to_path_buf());
+    fn render_showfile_dialog(&mut self, ctx: &Context) {
+        let Some(dialog) = &mut self.open_file_dialog else {
+            return;
+        };
 
-                            let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                            config::write_config(config_path, config.clone()).unwrap();
+        if dialog.show(ctx).selected() {
+            let mut config = self.data.config.lock().unwrap();
 
-                            self.data
-                                .system_message_sender
-                                .send(SystemMessage::Log(
-                                    format!("Loaded showfile from {file:?}"),
-                                    LogLevel::Info,
-                                ))
-                                .unwrap();
+            if let Some(file) = dialog.path() {
+                match self.file_dialog_open_origin {
+                    FileDialogOpenOrigin::Save => {
+                        // let dmx = self.data.state.dmx_engine.read().unwrap();
+                        // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                        // std::fs::write(file, serialized).unwrap();
 
-                            mem::drop(config);
+                        config.last_open_showfile = Some(file.to_path_buf());
+                        //
+                        // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                        // config::write_config(config_path, config.clone()).unwrap();
+                        //
+                        // self.data
+                        //     .system_message_sender
+                        //     .send(SystemMessage::Log(
+                        //         format!("Saved showfile to {file:?}"),
+                        //         LogLevel::Info,
+                        //     ))
+                        //     .unwrap();
 
-                            self.show_popup(PopupSpec::with_duration(
-                                Duration::from_secs(2),
-                                "Loaded Showfile".to_string(),
-                            ));
-                        }
+                        mem::drop(config);
+
+                        self.save_showfile();
+                    }
+                    FileDialogOpenOrigin::Load => {
+                        config.last_open_showfile = Some(file.to_path_buf());
+
+                        // let mut f = File::open(file).expect("no file found");
+                        // let metadata = fs::metadata(file).expect("unable to read metadata");
+                        // let mut buffer = vec![0; metadata.len() as usize];
+                        // f.read(&mut buffer).expect("buffer overflow");
+                        //
+                        // let decoded: blaulicht_shared::EngineState =
+                        //     postcard::from_bytes(&buffer).unwrap();
+                        //
+                        // {
+                        //     let mut plugin_state =
+                        //         self.data.state.plugin_state_storage.lock().unwrap();
+                        //     *plugin_state = decoded.plugin_state.clone();
+                        // }
+                        //
+                        // let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                        // // dmx.overwrite(decoded);
+                        // dmx.load_showfile(decoded);
+                        // mem::drop(dmx);
+
+                        let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                        config::read_showfile(
+                            file.to_path_buf(),
+                            &mut dmx,
+                            &self.data.state.plugin_state_storage,
+                            self.data.system_message_sender.clone(),
+                        );
+                        mem::drop(dmx);
+
+                        config.last_open_showfile = Some(file.to_path_buf());
+
+                        let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                        config::write_config(config_path, config.clone()).unwrap();
+
+                        self.data
+                            .system_message_sender
+                            .send(SystemMessage::Log(
+                                format!("Loaded showfile from {file:?}"),
+                                LogLevel::Info,
+                            ))
+                            .unwrap();
+
+                        mem::drop(config);
+
+                        self.show_popup(PopupSpec::with_duration(
+                            Duration::from_secs(2),
+                            "Loaded Showfile".to_string(),
+                        ));
                     }
                 }
             }
         }
+    }
+
+    pub fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        self.render_confirm_shutdown_dialog(ctx);
+        self.render_showfile_dialog(ctx);
 
         let button_size = ButtonSize::Medium.with_width(110.0);
 
@@ -445,101 +497,30 @@ impl BlaulichtApp {
                     let health_data = self.data.state.health_data.read().unwrap();
 
                     ui.horizontal(|ui| {
+                        // DMX outputs
                         for (universe_number, dmx_port_is_healthy) in
                             health_data.dmx_universes_healthy.iter().enumerate()
                         {
-                            let color = match dmx_port_is_healthy {
-                                true => Color32::GREEN,
-                                false => Color32::RED,
-                            };
-
-                            Frame::NONE
-                                .fill(Color32::from_gray(50))
-                                .outer_margin(Margin {
-                                    left: 0,
-                                    right: 0,
-                                    top: 15,
-                                    bottom: 0,
-                                })
-                                .inner_margin(Margin::same(8))
-                                .show(ui, |ui| {
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(60.0, 65.0),
-                                        egui::Layout::top_down(egui::Align::Center),
-                                        |ui| {
-                                            ui.label(
-                                                RichText::new(blaulicht_assets::icons::DMX)
-                                                    .size(30.0)
-                                                    .color(Color32::from_gray(200)),
-                                            );
-
-                                            ui.label(
-                                                RichText::new(format!("DMX {universe_number}"))
-                                                    .size(12.0)
-                                                    .color(Color32::from_gray(100)),
-                                            );
-
-                                            ui.label(
-                                                RichText::new(if *dmx_port_is_healthy {
-                                                    "ONLINE"
-                                                } else {
-                                                    "OFFLINE"
-                                                })
-                                                .size(9.0)
-                                                .color(color.gamma_multiply(5.0)),
-                                            );
-                                        },
-                                    );
-                                });
+                            let label = format!("DMX {universe_number}");
+                            render_dmx_or_artnet_health_box(
+                                ui,
+                                &label,
+                                icons::DMX,
+                                *dmx_port_is_healthy,
+                            )
                         }
+
+                        // Artnet output
+                        render_dmx_or_artnet_health_box(
+                            ui,
+                            "ArtNet",
+                            icons::ARTNET,
+                            health_data.artnet_health_state,
+                        )
                     })
                 }
             });
         });
-
-        if self.confirm_shutdown_open {
-            components::dialog(
-                ctx,
-                "Confirm Shutdown",
-                egui::vec2(200.0, 100.0),
-                false,
-                |ui| {
-                    let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
-
-                    ui.heading(
-                        RichText::new("Confirm Shutdown")
-                            .color(if blink {
-                                Color32::RED
-                            } else {
-                                ui.visuals().text_color()
-                            })
-                            .strong(),
-                    );
-
-                    ui.add_space(12.0);
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "Confirm", ButtonSize::Large) {
-                            let status = Command::new("/usr/bin/shutdown.sh")
-                                .status()
-                                .expect("Failed to execute shutdown command");
-
-                            if status.success() {
-                                println!("Shutdown command executed successfully.");
-                            } else {
-                                eprintln!("Shutdown command failed!");
-                            }
-
-                            self.confirm_shutdown_open = false;
-                        }
-
-                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
-                            self.confirm_shutdown_open = false;
-                        }
-                    });
-                },
-            );
-        }
 
         ui.separator();
 
@@ -641,4 +622,46 @@ impl BlaulichtApp {
                 }
             });
     }
+}
+
+fn render_dmx_or_artnet_health_box(ui: &mut egui::Ui, label: &str, icon: &str, is_healthy: bool) {
+    let color = match is_healthy {
+        true => Color32::GREEN,
+        false => Color32::RED,
+    };
+
+    Frame::NONE
+        .fill(Color32::from_gray(50))
+        .outer_margin(Margin {
+            left: 0,
+            right: 0,
+            top: 15,
+            bottom: 0,
+        })
+        .inner_margin(Margin::same(8))
+        .show(ui, |ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(60.0, 65.0),
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    ui.label(
+                        RichText::new(icon)
+                            .size(30.0)
+                            .color(Color32::from_gray(200)),
+                    );
+
+                    ui.label(
+                        RichText::new(label)
+                            .size(12.0)
+                            .color(Color32::from_gray(100)),
+                    );
+
+                    ui.label(
+                        RichText::new(if is_healthy { "ONLINE" } else { "OFFLINE" })
+                            .size(9.0)
+                            .color(color.gamma_multiply(5.0)),
+                    );
+                },
+            );
+        });
 }

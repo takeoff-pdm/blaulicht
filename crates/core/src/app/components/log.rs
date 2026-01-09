@@ -136,6 +136,7 @@ impl LogWindow {
                         .map(|l| l.to_string())
                         .unwrap_or_else(|| ALL_LEVELS.to_string()),
                     &mut self.select_dialog_open,
+                    "Select Log Level".to_string(),
                 );
 
                 if changed {

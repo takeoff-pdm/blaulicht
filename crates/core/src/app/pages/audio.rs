@@ -33,6 +33,40 @@ use strum::IntoEnumIterator;
 // TODO: include snapshot in graphs
 
 impl BlaulichtApp {
+    fn render_choose_audio_device_popup(
+        &mut self,
+        ctx: &egui::Context,
+        selected_device: &mut Option<String>,
+    ) {
+        if !self.set_audio_device_popup_open {
+            return;
+        }
+
+        const NONE_LABEL: &str = "None";
+
+        let mut options = self.available_audio_devices.clone();
+        debug_assert!(!options.contains(&NONE_LABEL.to_string()));
+        options.push(NONE_LABEL.to_string());
+
+        let (new_device, changed) = components::selection_dialog(
+            ctx,
+            options,
+            match selected_device.clone() {
+                Some(val) => val,
+                None => NONE_LABEL.to_string(),
+            },
+            &mut self.set_audio_device_popup_open,
+            "Select Audio Device".to_string(),
+        );
+
+        if changed {
+            *selected_device = match new_device.as_str() {
+                NONE_LABEL => None,
+                other => Some(other.to_string()),
+            };
+        }
+    }
+
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             let total_width = ui.available_width();
@@ -67,30 +101,7 @@ impl BlaulichtApp {
                         );
                     });
 
-                    if self.set_audio_device_popup_open {
-                        const NONE_LABEL: &str = "None";
-
-                        let mut options = self.available_audio_devices.clone();
-                        debug_assert!(!options.contains(&NONE_LABEL.to_string()));
-                        options.push(NONE_LABEL.to_string());
-
-                        let (new_device, changed) = components::selection_dialog(
-                            ctx,
-                            options,
-                            match selected_device.clone() {
-                                Some(val) => val,
-                                None => NONE_LABEL.to_string(),
-                            },
-                            &mut self.set_audio_device_popup_open,
-                        );
-
-                        if changed {
-                            selected_device = match new_device.as_str() {
-                                NONE_LABEL => None,
-                                other => Some(other.to_string()),
-                            };
-                        }
-                    }
+                    self.render_choose_audio_device_popup(ctx, &mut selected_device);
 
                     if selected_device != before {
                         let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());

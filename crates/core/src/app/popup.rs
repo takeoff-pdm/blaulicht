@@ -76,7 +76,7 @@ impl BlaulichtApp {
     }
 
     pub fn render_init_popup(&mut self, ctx: &egui::Context) {
-        const INIT_POPUP_DURATION: Duration = Duration::from_secs(500);
+        const INIT_POPUP_DURATION: Duration = Duration::from_secs(2);
 
         let open_elapsed = self.init_popup_open_time.elapsed();
 
@@ -84,17 +84,15 @@ impl BlaulichtApp {
             return;
         }
 
-        // let label = popup.label.clone();
-        // let button = popup.button.clone();
-        // let lifetime_duration = popup.lifetime_duration;
-
         let screen_rect = ctx.screen_rect();
-        let popup_size = egui::Vec2::new(600.0, 350.0); // desired popup size
+        let popup_size = egui::Vec2::new(370.0, 250.0); // desired popup size
 
         let center_pos = egui::Pos2::new(
             screen_rect.center().x - popup_size.x / 2.0,
             screen_rect.center().y - popup_size.y / 2.0,
         );
+
+        render_popup_backdrop(ctx);
 
         egui::Window::new("Initializing...")
             .fixed_size(popup_size)
@@ -111,7 +109,11 @@ impl BlaulichtApp {
             })
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("Initializing...").size(24.0).color(Color32::from_gray(200)));
+                    ui.label(
+                        RichText::new("Initializing...")
+                            .size(14.0)
+                            .color(Color32::from_gray(150)),
+                    );
 
                     // if let Some(ref btn) = button {
                     //     ui.add_space(8.0);
@@ -137,4 +139,31 @@ impl BlaulichtApp {
                 })
             });
     }
+}
+
+pub fn render_popup_backdrop(ctx: &egui::Context) {
+    egui::Area::new("init_modal_backdrop".into())
+        .interactable(true) // Blocks clicks from going through to the widgets behind
+        .fixed_pos(egui::pos2(0.0, 0.0))
+        .order(egui::Order::Background)
+        .show(ctx, |ui| {
+            // Get the full screen rect
+            let screen_rect = ctx.screen_rect();
+
+            // Allocate a rect that covers the whole screen to catch clicks
+            let response = ui.allocate_rect(screen_rect, egui::Sense::click());
+
+            // Optional: Close popup if user clicks the dark background
+            if response.clicked() {
+                {}
+            }
+
+            // Paint the semi-transparent black color
+            let painter = ui.painter();
+            painter.rect_filled(
+                screen_rect,
+                egui::CornerRadius::ZERO,
+                egui::Color32::from_black_alpha(180), // Adjust alpha for darkness (0-255)
+            );
+        });
 }

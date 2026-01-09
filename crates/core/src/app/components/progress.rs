@@ -21,7 +21,7 @@ impl BlaulichtApp {
             egui::Align2::CENTER_CENTER,
             text,
             FontId::proportional(12.0),
-            Color32::WHITE,
+            Color32::from_gray(200),
         );
     }
 }

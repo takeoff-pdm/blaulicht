@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonColor, ButtonSize, HFader},
+        components::{self, ButtonColor, ButtonSize, Dialog, HFader},
         BlaulichtApp, Selection,
     },
     dmx::EngineState,
@@ -11,6 +11,7 @@ use blaulicht_shared::{
     fixture::state::FixtureState, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
     EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
+use eframe::glow::components_per_format;
 use egui::{
     Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Vec2,
     Widget,
@@ -281,145 +282,142 @@ impl BlaulichtApp {
     pub fn render_dmx_simulation_dialog(&mut self, ctx: &Context, groups: &EngineGroups) {
         for (universe, simulator) in self.universe_simulations.iter_mut().enumerate() {
             if simulator.open {
-                components::dialog(
-                    ctx,
-                    &format!("DMX Universe {universe}"),
-                    egui::vec2(500.0, 500.0),
-                    true,
-                    |ui| {
+                Dialog::new(format!("DMX Universe {universe}"), egui::vec2(500.0, 500.0))
+                    .moveable()
+                    .show(ctx, |ui| {
                         let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
                         simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
-                    },
-                );
+                    });
             }
         }
     }
 
-    pub fn render_scene_animations_dialog(&self, ctx: &Context, dmx_engine: &EngineState) {
+    pub fn render_scene_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if self.current_scene_animations_dialog_open {
             const HEIGHT: f32 = 430.0;
             const WIDTH: f32 = 500.0;
 
-            components::dialog(
-                ctx,
-                "Current Scene Animations",
+            Dialog::new(
+                "Current Scene Animations".to_string(),
                 egui::vec2(WIDTH, HEIGHT),
-                true,
-                |ui| {
-                    let scene = dmx_engine.curr_scene();
+            )
+            .with_backdrop()
+            .show(ctx, |ui| {
+                let scene = dmx_engine.curr_scene();
 
-                    ui.set_min_height(HEIGHT - 100.0);
+                ui.set_min_height(HEIGHT - 100.0);
 
-                    ui.heading("Active Animations");
-                    ui.separator();
+                ui.heading("Active Animations");
+                ui.separator();
 
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if scene.sink.active_animations.is_empty() {
-                            ui.label("No Animations Yet");
-                        }
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if scene.sink.active_animations.is_empty() {
+                        ui.label("No Animations Yet");
+                    }
 
-                        for (selection, animations) in &scene.sink.active_animations {
-                            // ui.horizontal(|ui| {
+                    for (selection, animations) in &scene.sink.active_animations {
+                        // ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("Selection: {selection:?}"))
+                                .color(Color32::LIGHT_GREEN),
+                        );
+
+                        for (animation_id, animation) in animations {
+                            let spec = dmx_engine.0.animations.get(animation_id).unwrap();
+
                             ui.label(
-                                RichText::new(format!("Selection: {selection:?}"))
-                                    .color(Color32::LIGHT_GREEN),
+                                RichText::new(format!(
+                                    "[{}] {} | {}",
+                                    animation_id, spec.name, spec.property
+                                ))
+                                .color(Color32::WHITE),
                             );
 
-                            for (animation_id, animation) in animations {
-                                let spec = dmx_engine.0.animations.get(animation_id).unwrap();
+                            // Remove button
+                            if components::button(ui, false, "Remove", ButtonSize::Medium) {
+                                let mut selection_instructions = selection.generate_instructions();
 
-                                ui.label(
-                                    RichText::new(format!(
-                                        "[{}] {} | {}",
-                                        animation_id, spec.name, spec.property
-                                    ))
-                                    .color(Color32::WHITE),
-                                );
+                                selection_instructions.push_front(ControlEvent::PushSelection);
+                                selection_instructions
+                                    .push_back(ControlEvent::RemoveAnimation(*animation_id));
 
-                                // Remove button
-                                if components::button(ui, false, "Remove", ButtonSize::Medium) {
-                                    let mut selection_instructions =
-                                        selection.generate_instructions();
+                                selection_instructions.push_back(ControlEvent::PopSelection);
 
-                                    selection_instructions.push_front(ControlEvent::PushSelection);
-                                    selection_instructions
-                                        .push_back(ControlEvent::RemoveAnimation(*animation_id));
-
-                                    selection_instructions.push_back(ControlEvent::PopSelection);
-
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::Transaction(
-                                                selection_instructions.into_iter().collect(),
-                                            ),
-                                        ));
-                                }
-
-                                let (label, enabled, event) = match animation.enabled {
-                                    true => {
-                                        ("Pause", true, ControlEvent::PauseAnimation(*animation_id))
-                                    }
-                                    false => {
-                                        ("Play", false, ControlEvent::PlayAnimation(*animation_id))
-                                    }
-                                };
-
-                                if components::button(ui, enabled, label, ButtonSize::Medium) {
-                                    let mut selection_instructions =
-                                        selection.generate_instructions();
-
-                                    selection_instructions.push_front(ControlEvent::PushSelection);
-                                    selection_instructions.push_back(event);
-                                    selection_instructions.push_back(ControlEvent::PopSelection);
-
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::Transaction(
-                                                selection_instructions.into_iter().collect(),
-                                            ),
-                                        ));
-                                }
-
-                                // Speed fader (horizontal), mapped to AnimationSpeedModifier indices 0..7
-                                let mut speed_index = animation.speed_factor.as_index() as f32;
-                                let resp = ui.add(
-                                    components::HFader::new(&mut speed_index, 0.0..=7.0)
-                                        .with_label("Speed")
-                                        .show_value(false),
-                                );
-
-                                if resp.changed() {
-                                    let new_index = speed_index.round().clamp(0.0, 7.0) as usize;
-                                    let new_speed = AnimationSpeedModifier::from_index(new_index);
-
-                                    let mut selection_instructions =
-                                        selection.generate_instructions();
-                                    selection_instructions.push_front(ControlEvent::PushSelection);
-                                    selection_instructions.push_back(
-                                        ControlEvent::SetAnimationSpeed(*animation_id, new_speed),
-                                    );
-                                    selection_instructions.push_back(ControlEvent::PopSelection);
-
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::Transaction(
-                                                selection_instructions.into_iter().collect(),
-                                            ),
-                                        ));
-                                }
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::Transaction(
+                                            selection_instructions.into_iter().collect(),
+                                        ),
+                                    ));
                             }
 
-                            ui.separator();
+                            let (label, enabled, event) = match animation.enabled {
+                                true => {
+                                    ("Pause", true, ControlEvent::PauseAnimation(*animation_id))
+                                }
+                                false => {
+                                    ("Play", false, ControlEvent::PlayAnimation(*animation_id))
+                                }
+                            };
+
+                            if components::button(ui, enabled, label, ButtonSize::Medium) {
+                                let mut selection_instructions = selection.generate_instructions();
+
+                                selection_instructions.push_front(ControlEvent::PushSelection);
+                                selection_instructions.push_back(event);
+                                selection_instructions.push_back(ControlEvent::PopSelection);
+
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::Transaction(
+                                            selection_instructions.into_iter().collect(),
+                                        ),
+                                    ));
+                            }
+
+                            // Speed fader (horizontal), mapped to AnimationSpeedModifier indices 0..7
+                            let mut speed_index = animation.speed_factor.as_index() as f32;
+                            let resp = ui.add(
+                                components::HFader::new(&mut speed_index, 0.0..=7.0)
+                                    .with_label("Speed")
+                                    .show_value(false),
+                            );
+
+                            if resp.changed() {
+                                let new_index = speed_index.round().clamp(0.0, 7.0) as usize;
+                                let new_speed = AnimationSpeedModifier::from_index(new_index);
+
+                                let mut selection_instructions = selection.generate_instructions();
+                                selection_instructions.push_front(ControlEvent::PushSelection);
+                                selection_instructions.push_back(ControlEvent::SetAnimationSpeed(
+                                    *animation_id,
+                                    new_speed,
+                                ));
+                                selection_instructions.push_back(ControlEvent::PopSelection);
+
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::Transaction(
+                                            selection_instructions.into_iter().collect(),
+                                        ),
+                                    ));
+                            }
                         }
-                    });
-                },
-            );
+                    }
+                });
+
+                ui.separator();
+
+                if components::button(ui, true, "Close", ButtonSize::Medium) {
+                    self.current_scene_animations_dialog_open = false;
+                }
+            });
         }
     }
 
@@ -427,60 +425,58 @@ impl BlaulichtApp {
         if self.current_scene_changeset_dialog_open {
             const HEIGHT: f32 = 500.0;
             const WIDTH: f32 = 200.0;
-            components::dialog(
-                ctx,
-                "Current Scene Changeset",
+
+            Dialog::new(
+                "Current Scene Changeset".to_string(),
                 egui::vec2(WIDTH, HEIGHT),
-                true,
-                |ui| {
-                    let scene = dmx_engine.curr_scene();
+            )
+            .moveable()
+            .show(ctx, |ui| {
+                let scene = dmx_engine.curr_scene();
 
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(WIDTH, HEIGHT),
-                        egui::Layout::left_to_right(egui::Align::Min),
-                        |ui| {
-                            ui.vertical(|ui| {
-                                ui.heading("Scene Changeset");
-                                ui.separator();
+                ui.allocate_ui_with_layout(
+                    egui::vec2(WIDTH, HEIGHT),
+                    egui::Layout::left_to_right(egui::Align::Min),
+                    |ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("Scene Changeset");
+                            ui.separator();
 
-                                let mut changeset_organized: BTreeMap<
-                                    (u8, u8),
-                                    Vec<FixtureProperty>,
-                                > = BTreeMap::new();
+                            let mut changeset_organized: BTreeMap<(u8, u8), Vec<FixtureProperty>> =
+                                BTreeMap::new();
 
-                                for change in &scene.sink.changeset {
-                                    match changeset_organized.get_mut(&(change.gid, change.fid)) {
-                                        Some(entry) => entry.push(change.property),
-                                        None => {
-                                            changeset_organized.insert(
-                                                (change.gid, change.fid),
-                                                vec![change.property],
-                                            );
-                                        }
+                            for change in &scene.sink.changeset {
+                                match changeset_organized.get_mut(&(change.gid, change.fid)) {
+                                    Some(entry) => entry.push(change.property),
+                                    None => {
+                                        changeset_organized.insert(
+                                            (change.gid, change.fid),
+                                            vec![change.property],
+                                        );
                                     }
                                 }
+                            }
 
-                                egui::ScrollArea::vertical().show(ui, |ui| {
-                                    if changeset_organized.is_empty() {
-                                        ui.label("No Changes Yet");
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                if changeset_organized.is_empty() {
+                                    ui.label("No Changes Yet");
+                                }
+
+                                for ((gid, fid), properties) in changeset_organized {
+                                    ui.label(
+                                        RichText::new(format!("GID: {gid} | FID: {fid}"))
+                                            .color(Color32::LIGHT_GREEN),
+                                    );
+
+                                    for prop in properties {
+                                        ui.label(format!("- {prop}"));
                                     }
-
-                                    for ((gid, fid), properties) in changeset_organized {
-                                        ui.label(
-                                            RichText::new(format!("GID: {gid} | FID: {fid}"))
-                                                .color(Color32::LIGHT_GREEN),
-                                        );
-
-                                        for prop in properties {
-                                            ui.label(format!("- {prop}"));
-                                        }
-                                    }
-                                });
+                                }
                             });
-                        },
-                    );
-                },
-            );
+                        });
+                    },
+                );
+            });
         }
     }
 
@@ -490,33 +486,36 @@ impl BlaulichtApp {
             const SPACING: f32 = 16.0;
 
             let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-            components::dialog(ctx, "Clone Scene", size, false, |ui| {
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::singleline(&mut self.new_scene_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
+
+            Dialog::new("Clone Scene".to_string(), size)
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut self.new_scene_name)
+                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                            );
+                        });
+
+                    ui.add_space(SPACING);
+
+                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            button_pressed = true;
+                        }
                     });
 
-                ui.add_space(SPACING);
-
-                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        button_pressed = true;
+                    if button_pressed {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                        dmx_engine.clone_scene(self.new_scene_name.take());
+                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                        self.clone_scene_dialog_open = false;
                     }
                 });
-
-                if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.clone_scene(self.new_scene_name.take());
-                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                    self.clone_scene_dialog_open = false;
-                }
-            });
         }
     }
 
@@ -526,33 +525,36 @@ impl BlaulichtApp {
             const SPACING: f32 = 16.0;
 
             let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-            components::dialog(ctx, "Create Scene", size, false, |ui| {
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::singleline(&mut self.new_scene_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
+
+            Dialog::new("Create Scene".to_string(), size)
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut self.new_scene_name)
+                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                            );
+                        });
+
+                    ui.add_space(SPACING);
+
+                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            button_pressed = true;
+                        }
                     });
 
-                ui.add_space(SPACING);
-
-                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        button_pressed = true;
+                    if button_pressed {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                        dmx_engine.new_scene(self.new_scene_name.take());
+                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                        self.new_scene_dialog_open = false;
                     }
                 });
-
-                if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.new_scene(self.new_scene_name.take());
-                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                    self.new_scene_dialog_open = false;
-                }
-            });
         }
     }
 
@@ -569,51 +571,53 @@ impl BlaulichtApp {
                 }
             }
 
-            components::dialog(ctx, "Rename Scene", size, false, |ui| {
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::singleline(&mut self.rename_scene_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
+            Dialog::new("Rename Scene".to_string(), size)
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut self.rename_scene_name)
+                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                            );
+                        });
+
+                    ui.add_space(SPACING);
+
+                    let mut confirm_pressed = false;
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "OK", BUTTON_SIZE) {
+                            confirm_pressed = true;
+                        }
+
+                        if components::button(ui, true, "Cancel", BUTTON_SIZE) {
+                            self.rename_scene_dialog_open = false;
+                            self.rename_scene_name.clear();
+                        }
                     });
 
-                ui.add_space(SPACING);
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            confirm_pressed = true;
+                        }
+                    });
 
-                let mut confirm_pressed = false;
-                ui.horizontal(|ui| {
-                    if components::button(ui, false, "OK", BUTTON_SIZE) {
-                        confirm_pressed = true;
-                    }
+                    if confirm_pressed {
+                        let trimmed = self.rename_scene_name.trim();
 
-                    if components::button(ui, true, "Cancel", BUTTON_SIZE) {
-                        self.rename_scene_dialog_open = false;
-                        self.rename_scene_name.clear();
-                    }
-                });
+                        if !trimmed.is_empty() {
+                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                            let scene_id = dmx_engine.0.current_scene_focus;
 
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        confirm_pressed = true;
-                    }
-                });
-
-                if confirm_pressed {
-                    let trimmed = self.rename_scene_name.trim();
-
-                    if !trimmed.is_empty() {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        let scene_id = dmx_engine.0.current_scene_focus;
-
-                        if dmx_engine.rename_scene(scene_id, trimmed.to_string()) {
-                            self.rename_scene_name.clear();
-                            self.rename_scene_dialog_open = false;
+                            if dmx_engine.rename_scene(scene_id, trimmed.to_string()) {
+                                self.rename_scene_name.clear();
+                                self.rename_scene_dialog_open = false;
+                            }
                         }
                     }
-                }
-            });
+                });
         }
     }
 
@@ -628,12 +632,9 @@ impl BlaulichtApp {
                 dmx_engine.0.scenes.len() > 1
             };
 
-            components::dialog(
-                ctx,
-                "Delete Scene",
-                egui::vec2(WIDTH, HEIGHT),
-                false,
-                |ui| {
+            Dialog::new("Delete Scene".to_string(), egui::vec2(WIDTH, HEIGHT))
+                .with_backdrop()
+                .show(ctx, |ui| {
                     ui.heading(RichText::new("Delete this scene?").strong());
                     ui.add_space(12.0);
 
@@ -658,8 +659,7 @@ impl BlaulichtApp {
                             self.delete_scene_dialog_open = false;
                         }
                     });
-                },
-            );
+                });
         }
     }
 

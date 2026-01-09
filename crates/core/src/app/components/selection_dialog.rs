@@ -1,7 +1,7 @@
 use egui::{Context, Vec2};
 use std::fmt::Display;
 
-use crate::app::components::ButtonSize;
+use crate::app::components::{ButtonSize, Dialog};
 
 // Returns an option value and if it was changed.
 pub fn selection_dialog<I, T>(
@@ -9,6 +9,7 @@ pub fn selection_dialog<I, T>(
     options: I,
     current_selection: T,
     is_open: &mut bool,
+    label: String,
 ) -> (T, bool)
 where
     I: IntoIterator<Item = T>,
@@ -35,34 +36,36 @@ where
     let mut selection = current_selection.clone();
     let mut changed = false;
 
-    super::dialog(ctx, "Change Audio Device", dialog_dim, false, |ui| {
-        for (idx, option) in options.into_iter().enumerate() {
-            if super::button(
-                ui,
-                current_selection == option,
-                &option.to_string(),
-                button_size,
-            ) {
-                selection = option;
-                changed = true;
+    Dialog::new(label, dialog_dim)
+        .with_backdrop()
+        .show(ctx, |ui| {
+            for (idx, option) in options.into_iter().enumerate() {
+                if super::button(
+                    ui,
+                    current_selection == option,
+                    &option.to_string(),
+                    button_size,
+                ) {
+                    selection = option;
+                    changed = true;
+                    *is_open = false;
+                }
+
+                if idx + 1 < options_len {
+                    ui.add_space(vpadding);
+                }
+            }
+
+            ui.add_space(vpadding);
+
+            ui.separator();
+
+            ui.add_space(vpadding);
+
+            if super::button(ui, false, "Close", button_size) {
                 *is_open = false;
             }
-
-            if idx + 1 < options_len {
-                ui.add_space(vpadding);
-            }
-        }
-
-        ui.add_space(vpadding);
-
-        ui.separator();
-
-        ui.add_space(vpadding);
-
-        if super::button(ui, false, "Close", button_size) {
-            *is_open = false;
-        }
-    });
+        });
 
     (selection, changed)
 }

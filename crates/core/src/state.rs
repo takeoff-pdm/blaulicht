@@ -53,9 +53,10 @@ pub const NUM_DMX_UNIVERSES: usize = 2;
 
 pub struct AppHealthState {
     pub dmx_universes_healthy: [bool; NUM_DMX_UNIVERSES],
-    pub health_state: bool,
+    pub artnet_health_state: bool,
 }
 
+#[derive(Default)]
 pub struct ArtNetOutput {
     pub receivers: Vec<SocketAddr>,
 }
@@ -119,7 +120,9 @@ impl AppState {
             plugins: RwLock::new(plugins_map),
             health_data: RwLock::new(AppHealthState {
                 dmx_universes_healthy: [false; NUM_DMX_UNIVERSES],
+                artnet_health_state: false,
             }),
+            artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),

@@ -123,15 +123,15 @@ impl DmxEngine {
         // Initialize ArtNet.
         //
         let socket = {
-            let mut artnet_state = state_ref.artnet_output.write().unwrap();
+            let mut health_state = state_ref.health_data.write().unwrap();
 
             match UdpSocket::bind("0.0.0.0:0") {
                 Ok(s) => {
-                    artnet_state.health_state = false;
+                    health_state.artnet_health_state = false;
                     Some(s)
                 }
                 Err(err) => {
-                    artnet_state.health_state = false;
+                    health_state.artnet_health_state = false;
 
                     system_out
                         .send(SystemMessage::Log(

@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, HFader, Knob, SpeedKnob},
+        components::{self, ButtonSize, Dialog, HFader, Knob, SpeedKnob},
         BlaulichtApp,
     },
     dmx::EngineState,
@@ -19,12 +19,9 @@ impl BlaulichtApp {
             const HEIGHT: f32 = 430.0;
             const WIDTH: f32 = 500.0;
 
-            components::dialog(
-                ctx,
-                "Add Scene Animation",
-                egui::vec2(WIDTH, HEIGHT),
-                true,
-                |ui| {
+            Dialog::new("Add Scene Animation".to_string(), egui::vec2(WIDTH, HEIGHT))
+                .with_backdrop()
+                .show(ctx, |ui| {
                     // let scene = dmx_engine.curr_scene();
                     ui.separator();
 
@@ -92,8 +89,7 @@ impl BlaulichtApp {
                             }
                         },
                     );
-                },
-            );
+                });
         }
     }
 
