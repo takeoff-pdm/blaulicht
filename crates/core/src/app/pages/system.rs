@@ -43,6 +43,7 @@ pub struct SystemUI {
     dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
     new_artnet_address: String,
     new_artnet_port: String,
+    artnet_input_error: Option<String>,
 }
 
 impl Default for SystemUI {
@@ -57,6 +58,7 @@ impl Default for SystemUI {
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
             new_artnet_address: String::new(),
             new_artnet_port: String::new(),
+            artnet_input_error: None,
         }
     }
 }
@@ -285,19 +287,17 @@ impl BlaulichtApp {
                         if create_clicked {
                             let address = self.system_ui_state.new_artnet_address.trim().to_string();
                             let port_text = self.system_ui_state.new_artnet_port.trim().to_string();
+                            let mut error_message = None;
 
                             if address.is_empty() || port_text.is_empty() {
-                                self.data
-                                    .system_message_sender
-                                    .send(SystemMessage::Log(
-                                        "Address and port are required to add an ArtNet receiver."
-                                            .to_string(),
-                                        LogLevel::Err,
-                                    ))
-                                    .unwrap();
+                                error_message = Some(
+                                    "Address and port are required to add an ArtNet receiver."
+                                        .to_string(),
+                                );
                             } else {
                                 match port_text.parse::<u16>() {
-                                    Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>() {
+                                    Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>()
+                                    {
                                         Ok(socket_addr) if socket_addr.is_ipv4() => {
                                             let mut artnet_output =
                                                 self.data.state.artnet_output.write().unwrap();
@@ -307,15 +307,9 @@ impl BlaulichtApp {
                                                 .iter()
                                                 .any(|existing| existing == &socket_addr)
                                             {
-                                                self.data
-                                                    .system_message_sender
-                                                    .send(SystemMessage::Log(
-                                                        format!(
-                                                            "ArtNet receiver {socket_addr} already exists."
-                                                        ),
-                                                        LogLevel::Info,
-                                                    ))
-                                                    .unwrap();
+                                                error_message = Some(format!(
+                                                    "ArtNet receiver {socket_addr} already exists."
+                                                ));
                                             } else {
                                                 artnet_output.receivers.push(socket_addr);
 
@@ -334,41 +328,30 @@ impl BlaulichtApp {
                                             }
                                         }
                                         Ok(_) => {
-                                            self.data
-                                                .system_message_sender
-                                                .send(SystemMessage::Log(
-                                                    format!(
-                                                        "ArtNet receiver {address}:{port} must be IPv4."
-                                                    ),
-                                                    LogLevel::Err,
-                                                ))
-                                                .unwrap();
+                                            error_message = Some(format!(
+                                                "ArtNet receiver {address}:{port} must be IPv4."
+                                            ));
                                         }
                                         Err(err) => {
-                                            self.data
-                                                .system_message_sender
-                                                .send(SystemMessage::Log(
-                                                    format!(
-                                                        "Failed to parse ArtNet receiver {address}:{port}: {err}"
-                                                    ),
-                                                    LogLevel::Err,
-                                                ))
-                                                .unwrap();
+                                            error_message = Some(format!(
+                                                "Failed to parse ArtNet receiver {address}:{port}: {err}"
+                                            ));
                                         }
                                     },
                                     Err(err) => {
-                                        self.data
-                                            .system_message_sender
-                                            .send(SystemMessage::Log(
-                                                format!(
-                                                    "Invalid ArtNet port '{port_text}': {err}"
-                                                ),
-                                                LogLevel::Err,
-                                            ))
-                                            .unwrap();
+                                        error_message = Some(format!(
+                                            "Invalid ArtNet port '{port_text}': {err}"
+                                        ));
                                     }
                                 }
                             }
+
+                            self.system_ui_state.artnet_input_error = error_message;
+                        }
+
+                        if let Some(error) = &self.system_ui_state.artnet_input_error {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new(error).color(Color32::RED));
                         }
 
                         ui.add_space(10.0);
@@ -392,6 +375,7 @@ impl BlaulichtApp {
                 });
 
                 if components::button(ui, true, "Close", ButtonSize::Medium) {
+                    self.system_ui_state.artnet_input_error = None;
                     self.system_ui_state.artnet_dialog_open = false;
                 }
             });
@@ -491,8 +475,8 @@ impl BlaulichtApp {
 
         for universe in 0..NUM_DMX_UNIVERSES {
             self.render_dmx_dialog(ctx, universe);
-            self.render_artnet_dialog(ctx);
         }
+        self.render_artnet_dialog(ctx);
 
         let button_size = ButtonSize::Medium.with_width(110.0);
 
