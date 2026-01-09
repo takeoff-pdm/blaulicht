@@ -1,6 +1,7 @@
 use std::{
     ffi::OsStr,
     mem,
+    net::SocketAddr,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
@@ -10,7 +11,8 @@ use std::{
 use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
 use egui::{
-    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Vec2,
+    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
+    ThemePreference, Vec2,
 };
 use egui_file::FileDialog;
 
@@ -39,6 +41,8 @@ pub struct SystemUI {
     pub debug_open: bool,
     artnet_dialog_open: bool,
     dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
+    new_artnet_address: String,
+    new_artnet_port: String,
 }
 
 impl Default for SystemUI {
@@ -51,6 +55,8 @@ impl Default for SystemUI {
             debug_open: false,
             artnet_dialog_open: false,
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
+            new_artnet_address: String::new(),
+            new_artnet_port: String::new(),
         }
     }
 }
@@ -245,9 +251,144 @@ impl BlaulichtApp {
                         health_state.artnet_health_state,
                         false,
                         egui::vec2(60.0, 65.0),
-                    )
+                    );
 
+                    ui.add_space(16.0);
 
+                    ui.vertical(|ui| {
+                        let input_height = ButtonSize::Medium.dim().0.y;
+                        let input_font_size = ButtonSize::Medium.dim().1;
+
+                        let create_clicked = ui
+                            .horizontal(|ui| {
+                                ui.add_sized(
+                                    [170.0, input_height],
+                                    TextEdit::singleline(
+                                        &mut self.system_ui_state.new_artnet_address,
+                                    )
+                                    .hint_text("IPv4 Address")
+                                    .font(FontId::monospace(input_font_size)),
+                                );
+                                ui.add_sized(
+                                    [90.0, input_height],
+                                    TextEdit::singleline(
+                                        &mut self.system_ui_state.new_artnet_port,
+                                    )
+                                    .hint_text("Port")
+                                    .font(FontId::monospace(input_font_size)),
+                                );
+
+                                components::button(ui, true, "Create", ButtonSize::Medium)
+                            })
+                            .inner;
+
+                        if create_clicked {
+                            let address = self.system_ui_state.new_artnet_address.trim().to_string();
+                            let port_text = self.system_ui_state.new_artnet_port.trim().to_string();
+
+                            if address.is_empty() || port_text.is_empty() {
+                                self.data
+                                    .system_message_sender
+                                    .send(SystemMessage::Log(
+                                        "Address and port are required to add an ArtNet receiver."
+                                            .to_string(),
+                                        LogLevel::Err,
+                                    ))
+                                    .unwrap();
+                            } else {
+                                match port_text.parse::<u16>() {
+                                    Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>() {
+                                        Ok(socket_addr) if socket_addr.is_ipv4() => {
+                                            let mut artnet_output =
+                                                self.data.state.artnet_output.write().unwrap();
+
+                                            if artnet_output
+                                                .receivers
+                                                .iter()
+                                                .any(|existing| existing == &socket_addr)
+                                            {
+                                                self.data
+                                                    .system_message_sender
+                                                    .send(SystemMessage::Log(
+                                                        format!(
+                                                            "ArtNet receiver {socket_addr} already exists."
+                                                        ),
+                                                        LogLevel::Info,
+                                                    ))
+                                                    .unwrap();
+                                            } else {
+                                                artnet_output.receivers.push(socket_addr);
+
+                                                self.data
+                                                    .system_message_sender
+                                                    .send(SystemMessage::Log(
+                                                        format!(
+                                                            "Added ArtNet receiver {socket_addr}."
+                                                        ),
+                                                        LogLevel::Info,
+                                                    ))
+                                                    .unwrap();
+
+                                                self.system_ui_state.new_artnet_address.clear();
+                                                self.system_ui_state.new_artnet_port.clear();
+                                            }
+                                        }
+                                        Ok(_) => {
+                                            self.data
+                                                .system_message_sender
+                                                .send(SystemMessage::Log(
+                                                    format!(
+                                                        "ArtNet receiver {address}:{port} must be IPv4."
+                                                    ),
+                                                    LogLevel::Err,
+                                                ))
+                                                .unwrap();
+                                        }
+                                        Err(err) => {
+                                            self.data
+                                                .system_message_sender
+                                                .send(SystemMessage::Log(
+                                                    format!(
+                                                        "Failed to parse ArtNet receiver {address}:{port}: {err}"
+                                                    ),
+                                                    LogLevel::Err,
+                                                ))
+                                                .unwrap();
+                                        }
+                                    },
+                                    Err(err) => {
+                                        self.data
+                                            .system_message_sender
+                                            .send(SystemMessage::Log(
+                                                format!(
+                                                    "Invalid ArtNet port '{port_text}': {err}"
+                                                ),
+                                                LogLevel::Err,
+                                            ))
+                                            .unwrap();
+                                    }
+                                }
+                            }
+                        }
+
+                        ui.add_space(10.0);
+
+                        let receivers =
+                            { self.data.state.artnet_output.read().unwrap().receivers.clone() };
+
+                        ui.label(RichText::new("Configured Outputs").strong());
+
+                        if receivers.is_empty() {
+                            ui.label("No ArtNet receivers configured.");
+                        } else {
+                            for receiver in receivers {
+                                ui.label(
+                                    RichText::new(receiver.to_string())
+                                        .font(FontId::monospace(input_font_size)),
+                                );
+                            }
+                        }
+                    });
                 });
 
                 if components::button(ui, true, "Close", ButtonSize::Medium) {

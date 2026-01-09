@@ -1,7 +1,7 @@
 use bincode::{Decode, Encode};
 use map_range::MapRange;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::{ControlEvent, FixtureProperty, HSVColor, RGBColor, fixture::FixtureType};
 

@@ -98,10 +98,7 @@ impl DmxEngine {
                 let error_message = format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}");
                 sys.send(SystemMessage::Log(error_message.clone(), LogLevel::Err))
                     .unwrap();
-                (
-                    None,
-                    DmxHealth::error(port_path.to_string(), error_message),
-                )
+                (None, DmxHealth::error(port_path.to_string(), error_message))
             }
         }
     }

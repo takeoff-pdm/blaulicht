@@ -2,7 +2,10 @@ use blaulicht_shared::AppPage;
 use egui::Context;
 use strum::IntoEnumIterator;
 
-use crate::app::{components::{self, ButtonSize}, BlaulichtApp};
+use crate::app::{
+    components::{self, ButtonSize},
+    BlaulichtApp,
+};
 
 fn app_page_to_icon(from: &AppPage) -> &'static str {
     match from {
