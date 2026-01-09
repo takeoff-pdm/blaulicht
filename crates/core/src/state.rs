@@ -48,17 +48,16 @@ impl AudioState {
     }
 }
 
-// #[derive(Debug, Clone)]
-// pub struct AudioSpectrogramColumn {
-//     pub samples: Vec<u8>,
-//     pub snapshot: CollectedAudioSnapshot,
-// }
-
 pub const NUM_DMX_UNIVERSES: usize = 2;
+
+pub struct AppHealthState {
+    pub dmx_universes_healthy: [bool; NUM_DMX_UNIVERSES],
+}
 
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
+    pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
@@ -111,6 +110,9 @@ impl AppState {
         Self {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
+            health_data: RwLock::new(AppHealthState {
+                dmx_universes_healthy: [false; NUM_DMX_UNIVERSES],
+            }),
             dmx_engine: RwLock::new(EngineState::default()),
             dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
             audio: RwLock::new(AudioState::default()),

@@ -207,12 +207,6 @@ impl BlaulichtApp {
                         });
                     });
 
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), 20.0),
-                        egui::Layout::left_to_right(egui::Align::Min),
-                        |ui| {},
-                    );
-
                     ui.separator();
 
                     for ((universe, chan), value) in &dmx_engine.0.overrides {

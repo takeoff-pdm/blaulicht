@@ -39,11 +39,13 @@ enttecopendmx = "0.1.1"
 thread-priority = "1.2.0"
 notify = "7.0.0"
 blaulicht-shared = { path = "../shared" }
+blaulicht-assets = { path = "../assets" }
 blaulicht-audio-engine = { path = "../audio_engine/" }
 crossbeam-queue = "0.3.12"
 heapless = "0.8.0"
 maplit = "1.0.2"
 egui = "0.32"
+egui_extras = { version = "0.32", features = ["svg"] }
 eframe = { version = "0.32", default-features = false, features = [
     #"accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.

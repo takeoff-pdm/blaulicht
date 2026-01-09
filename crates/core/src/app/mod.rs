@@ -128,6 +128,7 @@ pub struct BlaulichtApp {
 
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
+    init_popup_open_time: Instant,
 
     set_audio_device_popup_open: bool,
 
@@ -262,6 +263,7 @@ impl BlaulichtApp {
             debug_open: false,
             popup: None,
             popup_open_time: Instant::now(),
+            init_popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
             scene_page_index: 0,
             open_file_dialog: None,

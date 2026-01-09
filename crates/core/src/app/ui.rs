@@ -41,6 +41,8 @@ impl BlaulichtApp {
 
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        blaulicht_assets::add_to_fonts(&mut fonts);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
 
         cc.egui_ctx.set_fonts(fonts);
 
@@ -55,6 +57,7 @@ impl eframe::App for BlaulichtApp {
             theme::set_theme(ctx, theme::REKORDBOX);
         }
 
+        self.render_init_popup(ctx);
         self.render_popup(ctx);
 
         if self.debug_open {
@@ -62,6 +65,15 @@ impl eframe::App for BlaulichtApp {
                 let dt = ctx.input(|i| i.stable_dt);
                 let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
                 ui.label(RichText::new(format!("FPS: {:.1}", fps)).font(FontId::monospace(24.0)));
+
+                // ui.add(
+                ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE));
+                // egui::Image::new(egui::ImageSource::from_bytes(
+                //     "bytes://my_dynamic_circle.svg", // A unique URI for caching
+                //     svg_data.to_vec(),
+                // ))
+                // .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                // );
             });
         }
 

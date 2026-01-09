@@ -141,7 +141,6 @@ fn main() -> anyhow::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            // .with_inner_size([1024.0, 600.0])
             .with_inner_size([800.0, 480.0])
             .with_resizable(false)
             .with_decorations(false),
@@ -158,10 +157,12 @@ fn main() -> anyhow::Result<()> {
         );
     };
 
-    let initial_popup = Some(PopupSpec::with_duration(
-        Duration::from_secs(2),
-        "Initializing...".to_string(),
-    ));
+    // let initial_popup = Some(PopupSpec::with_duration(
+    //     Duration::from_secs(2),
+    //     "Initializing...".to_string(),
+    // ));
+
+    let initial_popup = None;
 
     eframe::run_native(
         "blaulicht",

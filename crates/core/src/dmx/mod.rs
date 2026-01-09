@@ -38,7 +38,7 @@ pub struct DmxEngine {
     animation_base_times: BTreeMap<u8, f64>,
     start_time: Instant,
 
-    dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
+    pub dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
 
     running_setup: bool,
     setup_start_time: Instant,

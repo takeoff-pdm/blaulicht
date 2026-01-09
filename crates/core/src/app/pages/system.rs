@@ -8,7 +8,7 @@ use std::{
 };
 
 use blaulicht_shared::LogLevel;
-use egui::{Color32, Context, FontId, RichText, ThemePreference};
+use egui::{Color32, Context, FontId, Frame, Margin, RichText, ThemePreference};
 use egui_file::FileDialog;
 
 use crate::{
@@ -439,6 +439,60 @@ impl BlaulichtApp {
                             "Reload in progress...".to_string(),
                         ));
                     }
+                }
+
+                {
+                    let health_data = self.data.state.health_data.read().unwrap();
+
+                    ui.horizontal(|ui| {
+                        for (universe_number, dmx_port_is_healthy) in
+                            health_data.dmx_universes_healthy.iter().enumerate()
+                        {
+                            let color = match dmx_port_is_healthy {
+                                true => Color32::GREEN,
+                                false => Color32::RED,
+                            };
+
+                            Frame::NONE
+                                .fill(Color32::from_gray(50))
+                                .outer_margin(Margin {
+                                    left: 0,
+                                    right: 0,
+                                    top: 15,
+                                    bottom: 0,
+                                })
+                                .inner_margin(Margin::same(8))
+                                .show(ui, |ui| {
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(60.0, 65.0),
+                                        egui::Layout::top_down(egui::Align::Center),
+                                        |ui| {
+                                            ui.label(
+                                                RichText::new(blaulicht_assets::icons::DMX)
+                                                    .size(30.0)
+                                                    .color(Color32::from_gray(200)),
+                                            );
+
+                                            ui.label(
+                                                RichText::new(format!("DMX {universe_number}"))
+                                                    .size(12.0)
+                                                    .color(Color32::from_gray(100)),
+                                            );
+
+                                            ui.label(
+                                                RichText::new(if *dmx_port_is_healthy {
+                                                    "ONLINE"
+                                                } else {
+                                                    "OFFLINE"
+                                                })
+                                                .size(9.0)
+                                                .color(color.gamma_multiply(5.0)),
+                                            );
+                                        },
+                                    );
+                                });
+                        }
+                    })
                 }
             });
         });

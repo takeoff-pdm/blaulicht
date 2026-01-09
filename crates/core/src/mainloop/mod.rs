@@ -21,6 +21,7 @@ use blaulicht_audio_engine::{
 use blaulicht_shared::LogLevel;
 use cpal::Device;
 use crossbeam_channel::Sender;
+use itertools::Itertools;
 use std::{
     mem,
     sync::{
@@ -87,6 +88,18 @@ pub fn run(
         system_out.clone(),
         config.dmx_out_devices,
     );
+
+    {
+        let mut health_data = app_state.health_data.write().unwrap();
+        health_data.dmx_universes_healthy.iter_mut().set_from(
+            dmx_engine
+                .dmx_universe_ports
+                .iter()
+                .map(|port| port.is_some()),
+        );
+    }
+
+    // Check for the state of the DMX output.
 
     // TODO: add a command for starting + stopping setup.
     // dmx_engine.start_setup();

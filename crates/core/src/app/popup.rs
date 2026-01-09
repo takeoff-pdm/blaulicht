@@ -3,7 +3,7 @@ use crate::app::{
     BlaulichtApp, PopupSpec,
 };
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 impl BlaulichtApp {
     pub fn show_popup(&mut self, popup: PopupSpec) {
@@ -17,7 +17,9 @@ impl BlaulichtApp {
 
     pub fn render_popup(&mut self, ctx: &egui::Context) {
         if let Some(ref popup) = self.popup {
-            let popup = popup.clone();
+            let label = popup.label.clone();
+            let button = popup.button.clone();
+            let lifetime_duration = popup.lifetime_duration;
 
             let screen_rect = ctx.screen_rect();
             let popup_size = egui::Vec2::new(200.0, 100.0); // desired popup size
@@ -32,7 +34,7 @@ impl BlaulichtApp {
                 self.close_popup();
             }
 
-            egui::Window::new(&popup.label)
+            egui::Window::new(&label)
                 .fixed_size(popup_size)
                 .collapsible(false)
                 .resizable(false)
@@ -47,9 +49,9 @@ impl BlaulichtApp {
                 })
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new(&popup.label).size(24.0));
+                        ui.label(RichText::new(&label).size(24.0));
 
-                        if let Some(ref btn) = popup.button {
+                        if let Some(ref btn) = button {
                             ui.add_space(8.0);
 
                             if components::button(ui, false, &btn.label, ButtonSize::Large) {
@@ -59,18 +61,80 @@ impl BlaulichtApp {
                             ui.add_space(8.0);
                         }
 
-                        let progress = 1.0
-                            - elapsed.as_millis() as f32
-                                / popup.lifetime_duration.as_millis() as f32;
+                        let progress =
+                            1.0 - elapsed.as_millis() as f32 / lifetime_duration.as_millis() as f32;
 
                         let text = format!(
                             "{} seconds remaining",
-                            popup.lifetime_duration.as_secs() - elapsed.as_secs()
+                            lifetime_duration.as_secs() - elapsed.as_secs()
                         );
 
                         Self::draw_progress_bar(ui, progress, 18.0, &text);
                     })
                 });
         }
+    }
+
+    pub fn render_init_popup(&mut self, ctx: &egui::Context) {
+        const INIT_POPUP_DURATION: Duration = Duration::from_secs(500);
+
+        let open_elapsed = self.init_popup_open_time.elapsed();
+
+        if open_elapsed > INIT_POPUP_DURATION {
+            return;
+        }
+
+        // let label = popup.label.clone();
+        // let button = popup.button.clone();
+        // let lifetime_duration = popup.lifetime_duration;
+
+        let screen_rect = ctx.screen_rect();
+        let popup_size = egui::Vec2::new(600.0, 350.0); // desired popup size
+
+        let center_pos = egui::Pos2::new(
+            screen_rect.center().x - popup_size.x / 2.0,
+            screen_rect.center().y - popup_size.y / 2.0,
+        );
+
+        egui::Window::new("Initializing...")
+            .fixed_size(popup_size)
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .fixed_pos(center_pos)
+            .frame(Frame {
+                corner_radius: CornerRadius::same(1),
+                fill: Color32::from_gray(40),
+                stroke: Stroke::new(1.0, Color32::from_gray(60)),
+                inner_margin: Margin::symmetric(6, 12),
+                ..Frame::default()
+            })
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new("Initializing...").size(24.0).color(Color32::from_gray(200)));
+
+                    // if let Some(ref btn) = button {
+                    //     ui.add_space(8.0);
+                    //
+                    //     if components::button(ui, false, &btn.label, ButtonSize::Large) {
+                    //         self.close_popup();
+                    //     }
+                    //
+                    //     ui.add_space(8.0);
+                    // }
+
+                    ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE));
+
+                    let progress = 1.0
+                        - open_elapsed.as_millis() as f32 / INIT_POPUP_DURATION.as_millis() as f32;
+
+                    let text = format!(
+                        "{} seconds remaining",
+                        INIT_POPUP_DURATION.as_secs() - open_elapsed.as_secs()
+                    );
+
+                    Self::draw_progress_bar(ui, progress, 18.0, &text);
+                })
+            });
     }
 }
