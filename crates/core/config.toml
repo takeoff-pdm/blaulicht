@@ -1,12 +1,11 @@
 port = 1234
 dmx_out_devices = [
-    "a",
-    "b",
+    "/dev/dmx_out_0",
+    "/dev/dmx_out_0",
 ]
 default_audio_device = "pipewire"
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/BL_DBG.json"
 
 [stream]
 fft_resolution = 4096

@@ -1,4 +1,5 @@
 use std::{
+    array,
     borrow::Cow,
     collections::{HashMap, VecDeque},
     net::{SocketAddr, ToSocketAddrs},
@@ -51,8 +52,50 @@ impl AudioState {
 
 pub const NUM_DMX_UNIVERSES: usize = 2;
 
+pub enum DmxHealthState {
+    Healthy,
+    Error(String),
+}
+
+pub struct DmxHealth {
+    pub port: String,
+    pub state: DmxHealthState,
+}
+
+impl Default for DmxHealth {
+    fn default() -> Self {
+        Self {
+            port: "".to_string(),
+            state: DmxHealthState::Error("Not Initialized".to_string()),
+        }
+    }
+}
+
+impl DmxHealth {
+    pub fn is_healthy(&self) -> bool {
+        match self.state {
+            DmxHealthState::Healthy => true,
+            DmxHealthState::Error(_) => false,
+        }
+    }
+
+    pub fn healthy(port: String) -> Self {
+        Self {
+            state: DmxHealthState::Healthy,
+            port,
+        }
+    }
+
+    pub fn error(port: String, error: String) -> Self {
+        Self {
+            port,
+            state: DmxHealthState::Error(error),
+        }
+    }
+}
+
 pub struct AppHealthState {
-    pub dmx_universes_healthy: [bool; NUM_DMX_UNIVERSES],
+    pub dmx_universes_healthy: [DmxHealth; NUM_DMX_UNIVERSES],
     pub artnet_health_state: bool,
 }
 
@@ -119,7 +162,7 @@ impl AppState {
             logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             health_data: RwLock::new(AppHealthState {
-                dmx_universes_healthy: [false; NUM_DMX_UNIVERSES],
+                dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
                 artnet_health_state: false,
             }),
             artnet_output: RwLock::new(ArtNetOutput::default()),

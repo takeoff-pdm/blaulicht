@@ -9,12 +9,14 @@ use std::{
 
 use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
-use egui::{Color32, Context, FontId, Frame, Margin, RichText, ThemePreference};
+use egui::{
+    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Vec2,
+};
 use egui_file::FileDialog;
 
 use crate::{
     app::{
-        components::{self, ButtonSize, Dialog},
+        components::{self, clickable, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
@@ -22,7 +24,36 @@ use crate::{
     config,
     mainloop::DMX_TICK_TIME,
     msg::{FromFrontend, SystemMessage},
+    state::{ArtNetOutput, DmxHealthState, NUM_DMX_UNIVERSES},
 };
+
+const ARTNET_ICON: &str = egui_phosphor::regular::NETWORK;
+const DMX_ICON: &str = icons::DMX;
+const DMX_OR_ARTNET_HEALTH_LABEL_COLOR: Color32 = Color32::from_gray(150);
+
+pub struct SystemUI {
+    open_file_dialog: Option<FileDialog>,
+    file_dialog_open_origin: FileDialogOpenOrigin,
+    reload_dialog_open: bool,
+    confirm_shutdown_open: bool,
+    pub debug_open: bool,
+    artnet_dialog_open: bool,
+    dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
+}
+
+impl Default for SystemUI {
+    fn default() -> Self {
+        Self {
+            open_file_dialog: None,
+            file_dialog_open_origin: FileDialogOpenOrigin::Load,
+            reload_dialog_open: false,
+            confirm_shutdown_open: false,
+            debug_open: false,
+            artnet_dialog_open: false,
+            dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
+        }
+    }
+}
 
 impl BlaulichtApp {
     //
@@ -96,7 +127,7 @@ impl BlaulichtApp {
     }
 
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
-        if !self.confirm_shutdown_open {
+        if !self.system_ui_state.confirm_shutdown_open {
             return;
         }
 
@@ -129,18 +160,104 @@ impl BlaulichtApp {
                             eprintln!("Shutdown command failed!");
                         }
 
-                        self.confirm_shutdown_open = false;
+                        self.system_ui_state.confirm_shutdown_open = false;
                     }
 
                     if components::button(ui, true, "Cancel", ButtonSize::Large) {
-                        self.confirm_shutdown_open = false;
+                        self.system_ui_state.confirm_shutdown_open = false;
                     }
                 });
             });
     }
 
+    fn render_dmx_dialog(&mut self, ctx: &Context, universe_number: usize) {
+        if !self.system_ui_state.dmx_dialogs_open[universe_number] {
+            return;
+        }
+
+        let health_data = self.data.state.health_data.read().unwrap();
+        let health_state = &health_data.dmx_universes_healthy[universe_number];
+
+        Dialog::new("DMX".to_string(), egui::vec2(500.0, 200.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                let label = format!("(DMX {})", universe_number);
+                ui.heading(RichText::new(&label).strong());
+
+                ui.add_space(12.0);
+
+                ui.horizontal_top(|ui| {
+                    render_dmx_or_artnet_health_box(
+                        ui,
+                        Label::new(
+                            RichText::new(&health_state.port)
+                                .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
+                                .size(12.0),
+                        ),
+                        DMX_ICON,
+                        health_state.is_healthy(),
+                        false,
+                        egui::vec2(100.0, 65.0),
+                    );
+
+                    let label = match &health_state.state {
+                        DmxHealthState::Error(err) => Label::new(
+                            RichText::new(err)
+                                .color(Color32::RED)
+                                .family(FontFamily::Monospace),
+                        )
+                        .wrap(),
+                        DmxHealthState::Healthy => Label::new("- No Error -"),
+                    };
+
+                    ui.add_sized([350.0, 20.0], label);
+                });
+
+                if components::button(ui, true, "Close", ButtonSize::Medium) {
+                    self.system_ui_state.dmx_dialogs_open[universe_number] = false;
+                }
+            });
+    }
+
+    fn render_artnet_dialog(&mut self, ctx: &Context) {
+        if !self.system_ui_state.artnet_dialog_open {
+            return;
+        }
+
+        let health_state = self.data.state.health_data.read().unwrap();
+
+        Dialog::new("ArtNet".to_string(), egui::vec2(500.0, 400.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(RichText::new("ArtNet").strong());
+
+                ui.add_space(12.0);
+
+                ui.horizontal(|ui| {
+                    render_dmx_or_artnet_health_box(
+                        ui,
+                        Label::new(
+                            RichText::new("ArtNet")
+                                .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
+                                .size(12.0),
+                        ),
+                        ARTNET_ICON,
+                        health_state.artnet_health_state,
+                        false,
+                        egui::vec2(60.0, 65.0),
+                    )
+
+
+                });
+
+                if components::button(ui, true, "Close", ButtonSize::Medium) {
+                    self.system_ui_state.artnet_dialog_open = false;
+                }
+            });
+    }
+
     fn render_showfile_dialog(&mut self, ctx: &Context) {
-        let Some(dialog) = &mut self.open_file_dialog else {
+        let Some(dialog) = &mut self.system_ui_state.open_file_dialog else {
             return;
         };
 
@@ -148,7 +265,7 @@ impl BlaulichtApp {
             let mut config = self.data.config.lock().unwrap();
 
             if let Some(file) = dialog.path() {
-                match self.file_dialog_open_origin {
+                match self.system_ui_state.file_dialog_open_origin {
                     FileDialogOpenOrigin::Save => {
                         // let dmx = self.data.state.dmx_engine.read().unwrap();
                         // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
@@ -231,6 +348,11 @@ impl BlaulichtApp {
         self.render_confirm_shutdown_dialog(ctx);
         self.render_showfile_dialog(ctx);
 
+        for universe in 0..NUM_DMX_UNIVERSES {
+            self.render_dmx_dialog(ctx, universe);
+            self.render_artnet_dialog(ctx);
+        }
+
         let button_size = ButtonSize::Medium.with_width(110.0);
 
         ui.vertical_centered(|ui| {
@@ -269,8 +391,8 @@ impl BlaulichtApp {
                         .show_files_filter(filter);
 
                     dialog.open();
-                    self.open_file_dialog = Some(dialog);
-                    self.file_dialog_open_origin = FileDialogOpenOrigin::Load;
+                    self.system_ui_state.open_file_dialog = Some(dialog);
+                    self.system_ui_state.file_dialog_open_origin = FileDialogOpenOrigin::Load;
                 }
 
                 if components::button(ui, false, "Save to Showfile", button_size) {
@@ -285,8 +407,8 @@ impl BlaulichtApp {
                         .show_files_filter(filter);
 
                     dialog.open();
-                    self.open_file_dialog = Some(dialog);
-                    self.file_dialog_open_origin = FileDialogOpenOrigin::Save;
+                    self.system_ui_state.open_file_dialog = Some(dialog);
+                    self.system_ui_state.file_dialog_open_origin = FileDialogOpenOrigin::Save;
                 }
 
                 {
@@ -348,11 +470,11 @@ impl BlaulichtApp {
                 }
 
                 if components::button(ui, false, "Shutdown", button_size) {
-                    self.confirm_shutdown_open = true;
+                    self.system_ui_state.confirm_shutdown_open = true;
                 }
 
-                if components::button(ui, self.debug_open, "Debug", button_size) {
-                    self.debug_open = !self.debug_open;
+                if components::button(ui, self.system_ui_state.debug_open, "Debug", button_size) {
+                    self.system_ui_state.debug_open = !self.system_ui_state.debug_open;
                 }
             });
 
@@ -497,26 +619,44 @@ impl BlaulichtApp {
                     let health_data = self.data.state.health_data.read().unwrap();
 
                     ui.horizontal(|ui| {
+                        let dimensions = egui::vec2(60.0, 65.0);
+
                         // DMX outputs
-                        for (universe_number, dmx_port_is_healthy) in
+                        for (universe_number, dmx_port_health) in
                             health_data.dmx_universes_healthy.iter().enumerate()
                         {
                             let label = format!("DMX {universe_number}");
-                            render_dmx_or_artnet_health_box(
+                            if render_dmx_or_artnet_health_box(
                                 ui,
-                                &label,
-                                icons::DMX,
-                                *dmx_port_is_healthy,
-                            )
+                                Label::new(
+                                    RichText::new(label)
+                                        .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
+                                        .size(12.0),
+                                ),
+                                DMX_ICON,
+                                dmx_port_health.is_healthy(),
+                                true,
+                                dimensions,
+                            ) {
+                                self.system_ui_state.dmx_dialogs_open[universe_number] = true;
+                            }
                         }
 
                         // Artnet output
-                        render_dmx_or_artnet_health_box(
+                        if render_dmx_or_artnet_health_box(
                             ui,
-                            "ArtNet",
-                            icons::ARTNET,
+                            Label::new(
+                                RichText::new("ArtNet")
+                                    .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
+                                    .size(12.0),
+                            ),
+                            ARTNET_ICON,
                             health_data.artnet_health_state,
-                        )
+                            true,
+                            dimensions,
+                        ) {
+                            self.system_ui_state.artnet_dialog_open = true;
+                        }
                     })
                 }
             });
@@ -624,24 +764,35 @@ impl BlaulichtApp {
     }
 }
 
-fn render_dmx_or_artnet_health_box(ui: &mut egui::Ui, label: &str, icon: &str, is_healthy: bool) {
+// Returns whether it was clicked.
+fn render_dmx_or_artnet_health_box(
+    ui: &mut egui::Ui,
+    label: Label,
+    icon: &str,
+    is_healthy: bool,
+    clickable: bool,
+    dimensions: Vec2,
+) -> bool {
     let color = match is_healthy {
         true => Color32::GREEN,
         false => Color32::RED,
     };
 
-    Frame::NONE
+    let text = label.text().to_string();
+
+    // 1. Capture the frame's InnerResponse
+    let frame_inner_response = Frame::NONE
         .fill(Color32::from_gray(50))
         .outer_margin(Margin {
             left: 0,
             right: 0,
-            top: 15,
+            top: 0,
             bottom: 0,
         })
         .inner_margin(Margin::same(8))
         .show(ui, |ui| {
             ui.allocate_ui_with_layout(
-                egui::vec2(60.0, 65.0),
+                dimensions,
                 egui::Layout::top_down(egui::Align::Center),
                 |ui| {
                     ui.label(
@@ -650,11 +801,7 @@ fn render_dmx_or_artnet_health_box(ui: &mut egui::Ui, label: &str, icon: &str, i
                             .color(Color32::from_gray(200)),
                     );
 
-                    ui.label(
-                        RichText::new(label)
-                            .size(12.0)
-                            .color(Color32::from_gray(100)),
-                    );
+                    ui.add(label);
 
                     ui.label(
                         RichText::new(if is_healthy { "ONLINE" } else { "OFFLINE" })
@@ -662,6 +809,28 @@ fn render_dmx_or_artnet_health_box(ui: &mut egui::Ui, label: &str, icon: &str, i
                             .color(color.gamma_multiply(5.0)),
                     );
                 },
-            );
-        });
+            ) // This returns InnerResponse (from allocate_ui...)
+        }); // This returns InnerResponse (from Frame)
+
+    // 2. Create an interaction area over the frame's rectangle
+    // We use the label as a salt for the ID to ensure it works in lists/loops
+    let response = ui.interact(
+        frame_inner_response.response.rect, // The visual area of the frame
+        ui.make_persistent_id(text),        // Unique ID (crucial if you have multiple cards)
+        egui::Sense::click(),               // Listen for clicks
+    );
+
+    // 3. Handle the interactions
+    if response.hovered() && clickable {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        // Optional: Draw a border or lighten the color on hover
+        ui.painter().rect_stroke(
+            frame_inner_response.response.rect,
+            egui::Rounding::ZERO,
+            egui::Stroke::new(1.0, Color32::WHITE),
+            egui::StrokeKind::Middle,
+        );
+    }
+
+    response.clicked() && clickable
 }

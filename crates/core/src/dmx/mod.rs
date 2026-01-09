@@ -12,7 +12,7 @@ pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
     msg::SystemMessage,
-    state::{AppState, NUM_DMX_UNIVERSES},
+    state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
@@ -73,7 +73,7 @@ impl DmxEngine {
     fn open_hw_interface(
         port_path: &str,
         sys: Sender<SystemMessage>,
-    ) -> Option<Box<dyn SerialPort>> {
+    ) -> (Option<Box<dyn SerialPort>>, DmxHealth) {
         // TODO: use USB intrinsics for detection: look at v1 branch
 
         // Open your Enttec device (likely /dev/ttyUSB0)
@@ -92,12 +92,16 @@ impl DmxEngine {
                     LogLevel::Info,
                 ))
                 .unwrap();
-                Some(port)
+                (Some(port), DmxHealth::healthy(port_path.to_string()))
             }
             Err(err) => {
-                sys.send(SystemMessage::Log(
-                format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}"), LogLevel::Err)).unwrap();
-                None
+                let error_message = format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}");
+                sys.send(SystemMessage::Log(error_message.clone(), LogLevel::Err))
+                    .unwrap();
+                (
+                    None,
+                    DmxHealth::error(port_path.to_string(), error_message),
+                )
             }
         }
     }
@@ -108,14 +112,19 @@ impl DmxEngine {
         system_out: Sender<SystemMessage>,
         universe_dmx_out_devices: [String; 2],
     ) -> Self {
+        let mut health_state = state_ref.health_data.write().unwrap();
+
         //
         // Initialize DMX.
         //
         let mut dmx_universe_ports = [None, None];
 
         for (universe, port) in dmx_universe_ports.iter_mut().enumerate() {
-            let dmx_port =
+            let (dmx_port, port_health_state) =
                 Self::open_hw_interface(&universe_dmx_out_devices[universe], system_out.clone());
+
+            health_state.dmx_universes_healthy[universe] = port_health_state;
+
             *port = dmx_port
         }
 
@@ -123,11 +132,17 @@ impl DmxEngine {
         // Initialize ArtNet.
         //
         let socket = {
-            let mut health_state = state_ref.health_data.write().unwrap();
-
             match UdpSocket::bind("0.0.0.0:0") {
                 Ok(s) => {
-                    health_state.artnet_health_state = false;
+                    health_state.artnet_health_state = true;
+
+                    system_out
+                        .send(SystemMessage::Log(
+                            "Initialized ArtNet".to_string(),
+                            LogLevel::Debug,
+                        ))
+                        .unwrap();
+
                     Some(s)
                 }
                 Err(err) => {
@@ -147,6 +162,8 @@ impl DmxEngine {
             universe_buffers: std::array::from_fn(|_| vec![0; 512]),
             socket,
         };
+
+        mem::drop(health_state);
 
         Self {
             state_ref,
@@ -244,6 +261,13 @@ impl DmxEngine {
         }
     }
 
+    fn write_to_output(&mut self) {
+        let start = Instant::now();
+        self.write_to_artnet();
+        self.write_to_serial();
+        log::debug!("DMX HW OUTPUT TIME: {:?}", start.elapsed());
+    }
+
     fn write_to_artnet(&mut self) {
         let Some(ref mut socket) = self.artnet_output.socket else {
             return;
@@ -261,7 +285,7 @@ impl DmxEngine {
             let command = ArtCommand::Output(artnet_protocol::Output {
                 port_address: (universe_no as u8).into(),
                 sequence: 0, // 3. Disable sequence checking for stability
-                physical: (universe_no as u8).into(),
+                physical: universe_no as u8,
                 // TODO: this is evil.
                 data: self.artnet_output.universe_buffers[universe_no]
                     .clone()
@@ -277,13 +301,6 @@ impl DmxEngine {
                 }
             }
         }
-    }
-
-    fn write_to_output(&mut self) {
-        let start = Instant::now();
-        self.write_to_artnet();
-        self.write_to_serial();
-        log::debug!("DMX HW OUTPUT TIME: {:?}", start.elapsed());
     }
 
     fn write_to_serial(&mut self) {

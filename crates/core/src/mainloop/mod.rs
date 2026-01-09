@@ -9,7 +9,7 @@ use crate::{
     mainloop::supervisor::signal_mainloop,
     msg::SystemMessage,
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
-    state::AppState,
+    state::{AppState, DmxHealth},
     system_message,
 };
 use anyhow::{anyhow, Context};
@@ -89,15 +89,15 @@ pub fn run(
         config.dmx_out_devices,
     );
 
-    {
-        let mut health_data = app_state.health_data.write().unwrap();
-        health_data.dmx_universes_healthy.iter_mut().set_from(
-            dmx_engine
-                .dmx_universe_ports
-                .iter()
-                .map(|port| port.is_some()),
-        );
-    }
+    // {
+    //     let mut health_data = app_state.health_data.write().unwrap();
+    //     health_data.dmx_universes_healthy.iter_mut().set_from(
+    //         dmx_engine.dmx_universe_ports.iter().map(|port| DmxHealth {
+    //             is_healthy: ,
+    //             error: todo!(),
+    //         }),
+    //     );
+    // }
 
     // Check for the state of the DMX output.
 
