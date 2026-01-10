@@ -16,7 +16,7 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::SystemEventBusConnectionInst,
-    msg::{FromFrontend, SystemMessage},
+    msg::{FromFrontend, SystemMessage}, plugin::midi::MidiError,
 };
 use crate::{
     // audio::collector::{CollectorOutput, SignalCollectorParams},
@@ -94,14 +94,56 @@ impl DmxHealth {
     }
 }
 
+pub enum MidiHealthError {
+    NotFound { device_name: String },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum MidiDeviceState {
+    Error(MidiError),
+    Open(usize), // Number of handles on the device
+}
+
+#[derive(Default)]
+pub struct MidiHealth {
+    pub available_devices: Vec<String>,
+    // pub errors: Vec<MidiHealthError>,
+    pub devices: HashMap<String, MidiDeviceState>,
+}
+
+impl MidiHealth {
+    pub fn is_healthy(&self) -> bool {
+        !self
+            .devices
+            .iter()
+            .any(|(_, state)| matches!(state, MidiDeviceState::Error(_)))
+    }
+}
+
 pub struct AppHealthState {
     pub dmx_universes_healthy: [DmxHealth; NUM_DMX_UNIVERSES],
     pub artnet_health_state: bool,
+    pub midi_health: MidiHealth,
+}
+
+#[derive(Clone)]
+pub struct ArtNetReceiver {
+    pub address: SocketAddr,
+    pub enabled: bool,
+}
+
+impl ArtNetReceiver {
+    pub fn new(address: SocketAddr) -> Self {
+        Self {
+            address,
+            enabled: true,
+        }
+    }
 }
 
 #[derive(Default)]
 pub struct ArtNetOutput {
-    pub receivers: Vec<SocketAddr>,
+    pub receivers: Vec<ArtNetReceiver>,
 }
 
 pub struct AppState {
@@ -164,6 +206,7 @@ impl AppState {
             health_data: RwLock::new(AppHealthState {
                 dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
                 artnet_health_state: false,
+                midi_health: MidiHealth::default(),
             }),
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),

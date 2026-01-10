@@ -11,8 +11,8 @@ use std::{
 use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
 use egui::{
-    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
-    ThemePreference, Vec2,
+    Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
+    ThemePreference, Vec2, Widget,
 };
 use egui_file::FileDialog;
 
@@ -26,11 +26,12 @@ use crate::{
     config,
     mainloop::DMX_TICK_TIME,
     msg::{FromFrontend, SystemMessage},
-    state::{ArtNetOutput, DmxHealthState, NUM_DMX_UNIVERSES},
+    state::{ArtNetReceiver, DmxHealthState, NUM_DMX_UNIVERSES},
 };
 
-const ARTNET_ICON: &str = egui_phosphor::regular::NETWORK;
 const DMX_ICON: &str = icons::DMX;
+const ARTNET_ICON: &str = egui_phosphor::regular::NETWORK;
+const MIDI_ICON: &str = icons::MIDI;
 const DMX_OR_ARTNET_HEALTH_LABEL_COLOR: Color32 = Color32::from_gray(150);
 
 pub struct SystemUI {
@@ -40,6 +41,7 @@ pub struct SystemUI {
     confirm_shutdown_open: bool,
     pub debug_open: bool,
     artnet_dialog_open: bool,
+    midi_dialog_open: bool,
     dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
     new_artnet_address: String,
     new_artnet_port: String,
@@ -55,6 +57,7 @@ impl Default for SystemUI {
             confirm_shutdown_open: false,
             debug_open: false,
             artnet_dialog_open: false,
+            midi_dialog_open: false,
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
             new_artnet_address: String::new(),
             new_artnet_port: String::new(),
@@ -227,6 +230,12 @@ impl BlaulichtApp {
             });
     }
 
+    fn render_midi_dialog(&mut self, ctx: &Context) {
+        if !self.system_ui_state.midi_dialog_open {
+            return;
+        }
+    }
+
     fn render_artnet_dialog(&mut self, ctx: &Context) {
         if !self.system_ui_state.artnet_dialog_open {
             return;
@@ -258,8 +267,9 @@ impl BlaulichtApp {
                     ui.add_space(16.0);
 
                     ui.vertical(|ui| {
-                        let input_height = ButtonSize::Medium.dim().0.y;
-                        let input_font_size = ButtonSize::Medium.dim().1;
+                        let base_button = ButtonSize::Medium.dim();
+                        let input_height = base_button.0.y;
+                        let input_font_size = base_button.1 + 7.0;
 
                         let create_clicked = ui
                             .horizontal(|ui| {
@@ -269,7 +279,8 @@ impl BlaulichtApp {
                                         &mut self.system_ui_state.new_artnet_address,
                                     )
                                     .hint_text("IPv4 Address")
-                                    .font(FontId::monospace(input_font_size)),
+                                    .font(FontId::monospace(input_font_size))
+                                    .vertical_align(Align::Center),
                                 );
                                 ui.add_sized(
                                     [90.0, input_height],
@@ -277,7 +288,8 @@ impl BlaulichtApp {
                                         &mut self.system_ui_state.new_artnet_port,
                                     )
                                     .hint_text("Port")
-                                    .font(FontId::monospace(input_font_size)),
+                                    .font(FontId::monospace(input_font_size))
+                                    .vertical_align(Align::Center),
                                 );
 
                                 components::button(ui, true, "Create", ButtonSize::Medium)
@@ -305,13 +317,15 @@ impl BlaulichtApp {
                                             if artnet_output
                                                 .receivers
                                                 .iter()
-                                                .any(|existing| existing == &socket_addr)
+                                                .any(|existing| existing.address == socket_addr)
                                             {
                                                 error_message = Some(format!(
                                                     "ArtNet receiver {socket_addr} already exists."
                                                 ));
                                             } else {
-                                                artnet_output.receivers.push(socket_addr);
+                                                artnet_output
+                                                    .receivers
+                                                    .push(ArtNetReceiver::new(socket_addr));
 
                                                 self.data
                                                     .system_message_sender
@@ -364,11 +378,120 @@ impl BlaulichtApp {
                         if receivers.is_empty() {
                             ui.label("No ArtNet receivers configured.");
                         } else {
-                            for receiver in receivers {
-                                ui.label(
-                                    RichText::new(receiver.to_string())
-                                        .font(FontId::monospace(input_font_size)),
-                                );
+                            let row_height = ButtonSize::Medium.dim().0.y.max(44.0);
+
+                            for (receiver_index, receiver) in receivers.into_iter().enumerate() {
+                                let mut row_enabled = receiver.enabled;
+                                let mut toggle_changed = false;
+                                let mut delete_clicked = false;
+
+                                ui.add_space(6.0);
+
+                                Frame::none()
+                                    .fill(ui.visuals().faint_bg_color)
+                                    .inner_margin(Margin::symmetric(12, 4))
+                                    .show(ui, |ui| {
+                                        ui.set_min_height(row_height);
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(ui.available_width(), row_height),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(receiver.address.to_string())
+                                                        .font(FontId::monospace(input_font_size)),
+                                                );
+
+                                                ui.add_space(12.0);
+
+                                                let status_text = if row_enabled {
+                                                    "ENABLED"
+                                                } else {
+                                                    "DISABLED"
+                                                };
+                                                let status_color = if row_enabled {
+                                                    Color32::from_rgb(67, 209, 110)
+                                                } else {
+                                                    Color32::from_rgb(226, 69, 69)
+                                                };
+
+                                                ui.label(
+                                                    RichText::new(status_text)
+                                                        .color(status_color)
+                                                        .strong(),
+                                                );
+
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(egui::Align::Center),
+                                                    |ui| {
+                                                        let delete_color =
+                                                            Color32::from_rgb(160, 45, 45);
+                                                        if clickable(
+                                                            ui,
+                                                            false,
+                                                            delete_color,
+                                                            ButtonSize::Medium.with_width(
+                                                                row_height,
+                                                            ),
+                                                            |ui, rect, fg_color| {
+                                                                ui.painter().text(
+                                                                    rect.center(),
+                                                                    egui::Align2::CENTER_CENTER,
+                                                                    egui_phosphor::regular::TRASH,
+                                                                    FontId::monospace(
+                                                                        input_font_size,
+                                                                    ),
+                                                                    fg_color,
+                                                                );
+                                                            },
+                                                        ) {
+                                                            delete_clicked = true;
+                                                        }
+
+                                                        ui.add_space(8.0);
+
+                                                        if components::Switch::new(
+                                                            &mut row_enabled,
+                                                        )
+                                                        .ui(ui)
+                                                        .changed()
+                                                        {
+                                                            toggle_changed = true;
+                                                        }
+                                                    },
+                                                );
+                                            },
+                                        );
+                                    });
+
+                                if toggle_changed {
+                                    let mut artnet_output =
+                                        self.data.state.artnet_output.write().unwrap();
+                                    if let Some(entry) =
+                                        artnet_output.receivers.get_mut(receiver_index)
+                                    {
+                                        entry.enabled = row_enabled;
+                                    }
+                                }
+
+                                if delete_clicked {
+                                    let mut artnet_output =
+                                        self.data.state.artnet_output.write().unwrap();
+                                    if receiver_index < artnet_output.receivers.len() {
+                                        artnet_output.receivers.remove(receiver_index);
+                                    }
+                                    drop(artnet_output);
+
+                                    self.data
+                                        .system_message_sender
+                                        .send(SystemMessage::Log(
+                                            format!(
+                                                "Removed ArtNet receiver {}.",
+                                                receiver.address
+                                            ),
+                                            LogLevel::Info,
+                                        ))
+                                        .unwrap();
+                                }
                             }
                         }
                     });
@@ -777,6 +900,22 @@ impl BlaulichtApp {
                             ),
                             ARTNET_ICON,
                             health_data.artnet_health_state,
+                            true,
+                            dimensions,
+                        ) {
+                            self.system_ui_state.artnet_dialog_open = true;
+                        }
+
+                        // MIDI subsystem
+                        if render_dmx_or_artnet_health_box(
+                            ui,
+                            Label::new(
+                                RichText::new("MIDI")
+                                    .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
+                                    .size(12.0),
+                            ),
+                            MIDI_ICON,
+                            health_data.midi_health.is_healthy(),
                             true,
                             dimensions,
                         ) {

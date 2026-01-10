@@ -1,14 +1,17 @@
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use serialport::available_ports;
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 use wmidi::MidiMessage;
 
 use crate::msg::MidiEvent;
+use crate::state::{AppHealthState, AppState, MidiDeviceState, MidiHealthError};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MidiError {
     DeviceNotFound,
     Other(String),
@@ -31,6 +34,8 @@ pub struct MidiManager {
 
     // To plugins sender.
     to_plugins_sender: Sender<MidiEvent>,
+
+    app_state: Arc<AppState>,
 }
 
 struct MidiDeviceHandle {
@@ -44,6 +49,7 @@ impl MidiManager {
     pub fn new(
         midi_out_receiver: Receiver<MidiEvent>,
         to_plugins_sender: Sender<MidiEvent>,
+        app_state: Arc<AppState>,
     ) -> Self {
         let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
@@ -54,10 +60,11 @@ impl MidiManager {
             midi_in_receiver,
             to_manager_receiver: midi_out_receiver,
             to_plugins_sender,
+            app_state,
         }
     }
 
-    pub fn enumerate_devices() -> Result<Vec<String>, MidiError> {
+    pub fn enumerate_devices(&self) -> Result<Vec<String>, MidiError> {
         let midi_in =
             MidiInput::new("device_enumerator").map_err(|e| MidiError::Other(e.to_string()))?;
 
@@ -69,6 +76,9 @@ impl MidiManager {
                 device_names.push(name);
             }
         }
+
+        let mut health_state = self.app_state.health_data.write().unwrap();
+        health_state.midi_health.available_devices = device_names.clone();
 
         Ok(device_names)
     }
@@ -83,16 +93,22 @@ impl MidiManager {
             return Some(dev.device_id);
         }
 
-        let id = match self.request_device_internal(device_name) {
+        let (id, device_state) = match self.request_device_internal(device_name) {
             Ok(id) => {
                 info!("Opened MIDI device '{}' with ID {}", device_name, id);
-                Some(id)
+                (Some(id), MidiDeviceState::Open(1))
             }
             Err(err) => {
                 error!("Failed to request MIDI device '{}': {:?}", device_name, err);
-                None
+                (None, MidiDeviceState::Error(err))
             }
         };
+
+        let mut health_state = self.app_state.health_data.write().unwrap();
+        health_state
+            .midi_health
+            .devices
+            .insert(device_name.to_string(), device_state);
 
         id
     }
@@ -110,16 +126,15 @@ impl MidiManager {
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
         midi_in.ignore(Ignore::None);
+
+        let available_ports = self.enumerate_devices()?;
+
         let in_ports = midi_in.ports();
 
         // TODO: make this viewable in a different way!.
         debug!(
             "Available MIDI input ports: [\n{}\n]",
-            in_ports
-                .iter()
-                .map(|p| format!("'{}'", midi_in.port_name(p).unwrap()))
-                .collect::<Vec<_>>()
-                .join(",\n")
+            available_ports.join(",\n")
         );
 
         let in_port = in_ports
@@ -127,12 +142,7 @@ impl MidiManager {
             .find(|p| midi_in.port_name(p).unwrap().contains(device_name))
             .ok_or(MidiError::DeviceNotFound)?;
 
-        debug!(
-            "[MIDI-IN] Connecting to: {}",
-            midi_in
-                .port_name(in_port)
-                .map_err(|e| MidiError::Other(e.to_string()))?
-        );
+        debug!("[MIDI-IN] Connecting to: {device_name}");
 
         info!("[MIDI-IN] About to call midi_in.connect()...");
         let send = self.midi_in_sender.clone();

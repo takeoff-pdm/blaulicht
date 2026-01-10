@@ -54,7 +54,12 @@ pub fn run(
     let midi_manager = Arc::new(Mutex::new(MidiManager::new(
         midi_out_receiver,
         to_plugins_sender,
+        Arc::clone(&app_state),
     )));
+
+    //
+    // Serial.
+    //
     let serial_manager = Arc::new(Mutex::new(SerialManager::new()));
 
     //

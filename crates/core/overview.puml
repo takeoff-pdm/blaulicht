@@ -1,0 +1,1371 @@
+@startuml
+left to right direction
+skinparam lineType ortho
+package l__lib #lightskyblue {
+  package app #lightskyblue {
+    class app::BlaulichtApp as "BlaulichtApp" <<struct>> {
+      .. Members ..
+      volume_graph: TimeSeriesGraph
+      beat_volume_graph: TimeSeriesGraph
+      bass_graph: TimeSeriesGraph
+      bass_avg_graph: TimeSeriesGraph
+      bass_avg_short_graph: TimeSeriesGraph
+      collector_snapshot: CollectedAudioSnapshot
+      frame_count: u64
+      animation_time: f32
+      spectro_scroll_px_offset: f32
+      spectro_last_instant: Instant
+      data: AppStateWrapper
+      loop_speed: usize
+      tick_speed: usize
+      log_window: LogWindow
+      current_page: AppPage
+      last_heartbeat_frame: u64
+      selected_fixture_group: Option < u8 >
+      available_audio_devices: Vec < String >
+      new_scene_name: String
+      new_scene_dialog_open: bool
+      clone_scene_dialog_open: bool
+      rename_scene_dialog_open: bool
+      rename_scene_name: String
+      delete_scene_dialog_open: bool
+      current_scene_changeset_dialog_open: bool
+      current_scene_animations_dialog_open: bool
+      add_animations_dialog_open: bool
+      add_selected_animation: Option < u8 >
+      popup: Option < PopupSpec >
+      popup_open_time: Instant
+      init_popup_open_time: Instant
+      set_audio_device_popup_open: bool
+      scene_page_index: usize
+      system_ui_state: SystemUI
+      add_dmx_override_open: bool
+      add_dmx_override_uni: u16
+      add_dmx_override_chan: u16
+      add_dmx_override_value: u8
+      dmx_override_dialog_open: bool
+      add_fixture_open: bool
+      add_fixture_group: Option < u8 >
+      add_fixture_name: String
+      add_fixture_start_addr: u16
+      add_fixture_universe_no: u16
+      add_fixture_pos_x: usize
+      add_fixture_pos_y: usize
+      add_fixture_kind: usize
+      add_fixture_model_index: usize
+      add_fixture_count: u16
+      setup_fixture_id: u8
+      new_fixture_name: String
+      new_fixture_uni: usize
+      new_fixture_addr: usize
+      new_fixture_pos_x: usize
+      new_fixture_pos_y: usize
+      new_fixture_pos_z: usize
+      add_group_open: bool
+      delete_group_open: bool
+      new_group_name: String
+      universe_simulations: [DmxSimulator ; NUM_DMX_UNIVERSES]
+      fixture_perf_ui: FixturePerfUi
+      view_ui_state: ViewUI
+      animation_ui_state: AnimationUI
+      .. Functions ..
+    }
+    class app::PopupButtonSpec as "PopupButtonSpec" <<struct>> {
+      .. Derives ..
+      Clone
+      .. Members ..
+      label: String
+    }
+    class app::PopupSpec as "PopupSpec" <<struct>> {
+      .. Derives ..
+      Clone
+      .. Members ..
+      label: String
+      lifetime_duration: Duration
+      button: Option < PopupButtonSpec >
+      .. Functions ..
+      + default(label: String) -> Self
+      + with_duration(duration: Duration, label: String) -> Self
+    }
+    class app::Selection as "Selection" <<struct>> {
+      .. Functions ..
+    }
+    package components #lightskyblue {
+      package button #lightskyblue {
+        class button::ButtonSize as "ButtonSize" <<struct>> {
+          .. Functions ..
+          + with_width(width: f32) -> Self
+          + with_height(height: f32) -> Self
+          + with_font_size(size: f32) -> Self
+          + dim() -> (Vec2, f32)
+        }
+        class button::Color32 as "Color32" <<struct>> {
+          .. Implements ..
+          From<...>
+          .. Functions ..
+          + from(value: ButtonColor) -> Self
+        }
+        class button_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + button(ui: &Ui, active: bool, label: &str, size: ButtonSize) -> bool
+        }
+      }
+      package clickable #lightskyblue {
+        class clickable_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + clickable(ui: &Ui, active: bool, primary_color: Color32, size: ButtonSize, add_contents: impl FnOnce (& mut Ui , Rect , Color32)) -> bool
+        }
+      }
+      package color #lightskyblue {
+        class color_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + text_color_for_bg(ui: &Ui, bg: Color32) -> Color32
+        }
+      }
+      package dialog #lightskyblue {
+        class dialog::Dialog as "Dialog" <<struct>> {
+          .. Members ..
+          label: String
+          popup_size: Vec2
+          fixed_pos: Option < Vec2 >
+          moveable: bool
+          with_backdrop: bool
+          .. Functions ..
+          + new(label: String, popup_size: Vec2) -> Self
+          + moveable() -> Self
+          + with_backdrop() -> Self
+          + fixed_pos(pos: Vec2) -> Self
+          + show(ctx: &egui :: Context, add_contents: impl FnOnce (& mut Ui)) -> ()
+        }
+      }
+      package fader #lightskyblue {
+        class fader::Fader as "Fader" <<struct>> {
+          '  A vertical fader widget, like a MIDI/DMX control.  - Draws a track with tick marks  - Draws a draggable knob  - Displays the current value + optional label
+          .. Members ..
+          value: &f32
+          range: std :: ops :: RangeInclusive < f32 >
+          label: Option < String >
+          show_value: bool
+        }
+        class fader::HFader as "HFader" <<struct>> {
+          '   A horizontal fader widget (like a MIDI/DMX console strip). 
+          .. Members ..
+          value: &f32
+          range: std :: ops :: RangeInclusive < f32 >
+          label: Option < String >
+          show_value: bool
+        }
+      }
+      package fixtures_shared #lightskyblue {
+        class fixtures_shared::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + render_dmx_simulation_dialog(ctx: &Context, groups: &EngineGroups) -> ()
+          + render_scene_animations_dialog(ctx: &Context, dmx_engine: &EngineState) -> ()
+          + render_scene_changeset_dialog(ctx: &Context, dmx_engine: &EngineState) -> ()
+          + render_clone_scene_dialog(ctx: &Context) -> ()
+          + render_add_scene_dialog(ctx: &Context) -> ()
+          + render_rename_scene_dialog(ctx: &Context) -> ()
+          + render_delete_scene_dialog(ctx: &Context) -> ()
+          + group_selection(groups: &EngineGroups, selected_group: Option < u8 >, selected_fixture: u8, ui: &egui :: Ui) -> (u8, u8, bool)
+          + fixture_selection(groups: &EngineGroups, ui: &egui :: Ui) -> ()
+          + scene_overview(ui: &egui :: Ui, dmx_engine: &EngineState) -> ()
+        }
+        class fixtures_shared::DmxSimulator as "DmxSimulator" <<struct>> {
+          .. Derives ..
+          Default
+          Clone
+          Copy
+          .. Members ..
+          open: bool
+          map_fixtures: bool
+          .. Functions ..
+          + simulate_dmx(ui: &egui :: Ui, groups: &EngineGroups, dmx: RwLockReadGuard < '_ , DmxBuffer >, universe_no: usize) -> ()
+        }
+        class fixtures_shared::FixtureVisual as "FixtureVisual" <<struct>> {
+          .. Members ..
+          group_id: u8
+          fixture_id: u8
+          name: String
+          start_addr: usize
+          state: FixtureState
+        }
+      }
+      package graph #lightskyblue {
+        class graph::TimeSeriesGraph as "TimeSeriesGraph" <<struct>> {
+          '  Modular time series graph component
+          .. Members ..
+          time_series_data: Vec < (u64 , i32) >
+          start_time: u64
+          last_update: u64
+          title: String
+          min_value: i32
+          max_value: i32
+          line_color: egui :: Color32
+          shadow_color: egui :: Color32
+          .. Functions ..
+          + new(title: String, min_value: i32, max_value: i32, line_color: egui :: Color32) -> Self
+          //  Add a new data point to the time series
+          + add_data_point(value: i32) -> ()
+          //  Update the graph with new data if enough time has passed
+          + update(current_value: i32) -> ()
+          //  Draw the time series graph using a painter
+          + draw(painter: egui :: Painter, rect: egui :: Rect) -> ()
+          //  Clear all data points
+          + clear() -> ()
+          //  Get the number of data points
+          + data_points_count() -> usize
+        }
+      }
+      package id_selection_dialog #lightskyblue {
+        class id_selection_dialog_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + id_selection_dialog(ctx: &Context, options: I, current_selection: K, is_open: &bool, label: String) -> (K, bool)
+        }
+      }
+      package knob #lightskyblue {
+        class knob::Knob as "Knob" <<struct>> {
+          '  A rotary knob widget inspired by club mixers / CDJ filters.
+          .. Members ..
+          value: &f32
+          range: std :: ops :: RangeInclusive < f32 >
+          label: Option < String >
+          show_value: bool
+          step: Option < f32 >
+        }
+      }
+      package log #lightskyblue {
+        class log::LogEntry as "LogEntry" <<struct>> {
+          .. Derives ..
+          Clone
+          Debug
+          .. Members ..
+          timestamp: std :: time :: SystemTime
+          level: LogLevel
+          message: String
+          source: String
+        }
+        class log::LogWindow as "LogWindow" <<struct>> {
+          '  A log window component that displays scrolling log messages
+          .. Members ..
+          logs: VecDeque < LogEntry >
+          max_logs: usize
+          auto_scroll: bool
+          filter_text: String
+          selected_log_level: Option < LogLevel >
+          select_dialog_open: bool
+          .. Functions ..
+          + new(max_logs: usize) -> Self
+          + add_log(level: LogLevel, message: String, source: String) -> ()
+          + clear_logs() -> ()
+          + draw(ctx: &Context, ui: &egui :: Ui) -> ()
+        }
+      }
+      package navbar #lightskyblue {
+        class navbar::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + navbar_ui(ctx: &Context) -> ()
+        }
+      }
+      package pagination #lightskyblue {
+        class pagination::Pagination as "Pagination" <<struct>> {
+          .. Implements ..
+          Default
+          .. Members ..
+          items_per_page: usize
+          current_page_index: usize
+          total_pages: usize
+          total_items: usize
+          ui_width: f32
+          prepared_items: bool
+          .. Functions ..
+          + default() -> Self
+          + with_items_per_page(items_per_page: usize) -> Self
+          + width() -> f32
+          + pages() -> usize
+          + items_per_page() -> usize
+          + current_page() -> usize
+          + prepare_current_page_items(items: &[T]) -> Take < Skip < Iter < 't , T > > >
+          + ui(ui: &egui :: Ui, page_ui: impl FnOnce (& mut Ui)) -> ()
+        }
+      }
+      package progress #lightskyblue {
+        class progress::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + draw_progress_bar(ui: &Ui, progress: f32, height: f32, text: &str) -> ()
+        }
+      }
+      package selection_dialog #lightskyblue {
+        class selection_dialog_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + selection_dialog(ctx: &Context, options: I, current_selection: T, is_open: &bool, label: String) -> (T, bool)
+        }
+      }
+      package speed_knob #lightskyblue {
+        class speed_knob::SpeedKnob as "SpeedKnob" <<struct>> {
+          '  Rotary knob specialized for `AnimationSpeedModifier`.
+          .. Members ..
+          value: &AnimationSpeedModifier
+          label: Option < String >
+          show_value: bool
+        }
+      }
+      package switch #lightskyblue {
+        class switch::Switch as "Switch" <<struct>> {
+          '  A hardware-style toggle switch widget.   Draws a chunky base plate with a sliding lever that snaps between two  positions. Clicking toggles the boolean value; dragging across the plate is  also supported.
+          .. Members ..
+          state: &bool
+          label: Option < String >
+        }
+      }
+    }
+    package pages #lightskyblue {
+      package animations #lightskyblue {
+        class animations::AnimationUI as "AnimationUI" <<struct>> {
+          .. Implements ..
+          Default
+          .. Members ..
+          pagination: Pagination
+          selected_animation_id: Option < u8 >
+          create_open: bool
+          delete_confirm_open: bool
+          new_name: String
+          new_mode: AnimationSpecBodyKind
+          new_prop: FixtureProperty
+          clamp_min: u16
+          clamp_max: u16
+          base_function: MathematicalBaseFunction
+          sync_mode: SyncMode
+          timing: PhaserDuration
+          timing_pin_to_beat: bool
+          .. Functions ..
+          + default() -> Self
+        }
+        class animations::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + animations_ui(ctx: &Context, ui: &egui :: Ui) -> ()
+        }
+      }
+      package audio #lightskyblue {
+        class audio::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + audio_ui(ui: &egui :: Ui, ctx: &egui :: Context) -> ()
+        }
+        package defs #lightskyblue {
+          class defs::AudioThreadControlSignal as "AudioThreadControlSignal" <<struct>> {
+            .. Implements ..
+            From<...>
+            .. Functions ..
+            + from(value: u8) -> Self
+          }
+          class defs::u8 as "u8" <<struct>> {
+            .. Implements ..
+            From<...>
+            .. Functions ..
+            + from(value: AudioThreadControlSignal) -> Self
+          }
+        }
+        package utils #lightskyblue {
+          class utils_mod <<mod>> #lightskyblue {
+            .. Module functions ..
+            + init_logger() -> ()
+            + device_from_name(dev_id: String) -> Option < Device >
+            + device_from_names(host_id: String, dev_id: String) -> Option < Device >
+            + get_input_devices_flat() -> Vec < (cpal :: HostId , cpal :: Device) >
+          }
+        }
+      }
+      package fixtures_perf #lightskyblue {
+        class fixtures_perf::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + render_add_animations_dialog(ctx: &Context, dmx_engine: &EngineState) -> ()
+          + fixtures_ui(ui: &egui :: Ui, ctx: &Context) -> ()
+        }
+        class fixtures_perf::FixturePerfUi as "FixturePerfUi" <<struct>> {
+        }
+      }
+      package fixtures_setup #lightskyblue {
+        class fixtures_setup::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + render_delete_group(ctx: &Context) -> ()
+          + render_add_group_dialog(ctx: &Context) -> ()
+          + fixtures_ui_setup(ui: &egui :: Ui, ctx: &Context) -> ()
+        }
+      }
+      package system #lightskyblue {
+        class system::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + system_ui(ui: &egui :: Ui, ctx: &Context) -> ()
+        }
+        class system::SystemUI as "SystemUI" <<struct>> {
+          .. Implements ..
+          Default
+          .. Members ..
+          open_file_dialog: Option < FileDialog >
+          file_dialog_open_origin: FileDialogOpenOrigin
+          reload_dialog_open: bool
+          confirm_shutdown_open: bool
+          debug_open: bool
+          artnet_dialog_open: bool
+          midi_dialog_open: bool
+          dmx_dialogs_open: [bool ; NUM_DMX_UNIVERSES]
+          new_artnet_address: String
+          new_artnet_port: String
+          artnet_input_error: Option < String >
+          .. Functions ..
+          + default() -> Self
+        }
+      }
+      package view #lightskyblue {
+        class view::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + render_delete_view(ctx: &Context) -> ()
+          + render_overlay_picker_dialog(ctx: &Context) -> ()
+          + render_add_view_dialog(ctx: &Context) -> ()
+          + view_ui(ui: &egui :: Ui, ctx: &Context) -> ()
+        }
+        class view::ViewUI as "ViewUI" <<struct>> {
+          .. Implements ..
+          Default
+          .. Members ..
+          pagination: Pagination
+          add_view_open: bool
+          delete_view_open: bool
+          selected_view_id: Option < u8 >
+          delete_view_id: Option < u8 >
+          new_view_name: String
+          overlay_picker_open: bool
+          base_picker_open: bool
+          scene_picker_view_id: Option < u8 >
+          .. Functions ..
+          + default() -> Self
+        }
+      }
+      package view_perf #lightskyblue {
+        class view_perf::BlaulichtApp as "BlaulichtApp" <<struct>> {
+          .. Functions ..
+          + view_perf_ui(ui: &egui :: Ui, ctx: &Context) -> ()
+        }
+        class view_perf::ViewPerfUI as "ViewPerfUI" <<struct>> {
+          .. Implements ..
+          Default
+          .. Functions ..
+          + default() -> Self
+        }
+      }
+    }
+    package plugin_ui #lightskyblue {
+      class plugin_ui::BlaulichtApp as "BlaulichtApp" <<struct>> {
+        .. Functions ..
+        + render_plugin_ui(ctx: &Context) -> ()
+      }
+    }
+    package popup #lightskyblue {
+      class popup::BlaulichtApp as "BlaulichtApp" <<struct>> {
+        .. Functions ..
+        + show_popup(popup: PopupSpec) -> ()
+        + close_popup() -> ()
+        + render_popup(ctx: &egui :: Context) -> ()
+        + render_init_popup(ctx: &egui :: Context) -> ()
+      }
+      class popup_mod <<mod>> #lightskyblue {
+        .. Module functions ..
+        + render_popup_backdrop(ctx: &egui :: Context) -> ()
+      }
+    }
+    package theme #lightskyblue {
+      class theme::Theme as "Theme" <<struct>> {
+        '  The colors for a theme variant.
+        .. Derives ..
+        Debug
+        Clone
+        Copy
+        Hash
+        PartialEq
+        Eq
+        .. Members ..
+        rosewater: Color32
+        flamingo: Color32
+        pink: Color32
+        mauve: Color32
+        red: Color32
+        maroon: Color32
+        peach: Color32
+        yellow: Color32
+        green: Color32
+        teal: Color32
+        sky: Color32
+        sapphire: Color32
+        blue: Color32
+        lavender: Color32
+        text: Color32
+        subtext1: Color32
+        subtext0: Color32
+        overlay2: Color32
+        overlay1: Color32
+        overlay0: Color32
+        surface2: Color32
+        surface1: Color32
+        surface0: Color32
+        base: Color32
+        mantle: Color32
+        crust: Color32
+        .. Functions ..
+      }
+      class theme_mod <<mod>> #lightskyblue {
+        .. Module functions ..
+        //  Apply the given theme to a [`Context`](egui::Context).
+        + set_theme(ctx: &egui :: Context, theme: Theme) -> ()
+        //  Apply the given theme to a [`Style`](egui::Style).   # Example   ```rust  # use eframe::egui;  # use egui::__run_test_ctx;  # __run_test_ctx(|ctx| {  let mut style = (*ctx.style()).clone();  catppuccin_egui::set_style_theme(&mut style, catppuccin_egui::MACCHIATO);  ctx.set_style(style);  # });  ```
+        + set_style_theme(style: &egui :: Style, theme: Theme) -> ()
+      }
+    }
+    package ui #lightskyblue {
+      class ui::BlaulichtApp as "BlaulichtApp" <<struct>> {
+        .. Implements ..
+        Drop
+        eframe::App
+        .. Functions ..
+        + drop() -> ()
+        //  Called once before the first frame.
+        + new(cc: &eframe :: CreationContext < '_ >, state: AppStateWrapper, initial_popup: Option < PopupSpec >) -> Self
+        //  Called each time the UI needs repainting, which may be many times per second.
+        + update(ctx: &egui :: Context, _frame: &eframe :: Frame) -> ()
+      }
+    }
+  }
+  package audio #lightskyblue {
+    class audio::BlaulichtApp as "BlaulichtApp" <<struct>> {
+      .. Functions ..
+      + audio_ui(ui: &egui :: Ui, ctx: &egui :: Context) -> ()
+    }
+    package defs #lightskyblue {
+      class defs::AudioThreadControlSignal as "AudioThreadControlSignal" <<struct>> {
+        .. Implements ..
+        From<...>
+        .. Functions ..
+        + from(value: u8) -> Self
+      }
+      class defs::u8 as "u8" <<struct>> {
+        .. Implements ..
+        From<...>
+        .. Functions ..
+        + from(value: AudioThreadControlSignal) -> Self
+      }
+    }
+    package utils #lightskyblue {
+      class utils_mod <<mod>> #lightskyblue {
+        .. Module functions ..
+        + init_logger() -> ()
+        + device_from_name(dev_id: String) -> Option < Device >
+        + device_from_names(host_id: String, dev_id: String) -> Option < Device >
+        + get_input_devices_flat() -> Vec < (cpal :: HostId , cpal :: Device) >
+      }
+    }
+  }
+  package config #lightskyblue {
+    class config::Config as "Config" <<struct>> {
+      .. Derives ..
+      Serialize
+      Deserialize
+      Clone
+      Debug
+      .. Implements ..
+      Default
+      .. Members ..
+      port: u16
+      dmx_out_devices: [String ; 2]
+      default_audio_device: Option < String >
+      stream: StreamConfig
+      spectrogram_window_seconds: u64
+      spectrogram_refresh_hz: u32
+      plugins: Vec < PluginConfig >
+      last_open_showfile: Option < PathBuf >
+      plugin_state: HashMap < String , String >
+      .. Functions ..
+      + default() -> Self
+    }
+    class config::PluginConfig as "PluginConfig" <<struct>> {
+      .. Derives ..
+      Serialize
+      Deserialize
+      Clone
+      Debug
+      .. Members ..
+      file_path: String
+      enabled: bool
+      enable_watcher: bool
+    }
+    class config_mod <<mod>> #lightskyblue {
+      .. Module functions ..
+      + read_showfile(file: PathBuf, dmx: &RwLockWriteGuard < '_ , dmx :: EngineState >, plugin_state_storage: &Arc < Mutex < HashMap < String , String > > >, system_message_sender: Sender < SystemMessage >) -> ()
+      + close_showfile(dmx: &RwLockWriteGuard < '_ , dmx :: EngineState >, plugin_state_storage: &Arc < Mutex < HashMap < String , String > > >) -> ()
+      + config_path() -> Result < PathBuf >
+      + read_config(file_path: PathBuf) -> Result < Option < Config > >
+      + write_config(file_path: PathBuf, config: Config) -> Result < Option < Config > >
+    }
+  }
+  package dmx #lightskyblue {
+    class dmx::DmxEngine as "DmxEngine" <<struct>> {
+      .. Members ..
+      state_ref: Arc < AppState >
+      dmx_previous: [u8 ; 513]
+      event_bus_connection: SystemEventBusConnectionInst
+      system_out: Sender < SystemMessage >
+      animation_base_times: BTreeMap < u8 , f64 >
+      start_time: Instant
+      dmx_universe_ports: [Option < Box < dyn SerialPort > > ; 2]
+      artnet_output: DmxEngineArtnetOutput
+      running_setup: bool
+      setup_start_time: Instant
+      .. Functions ..
+      + start_setup() -> ()
+      + new(state_ref: Arc < AppState >, event_bus_connection: SystemEventBusConnectionInst, system_out: Sender < SystemMessage >, universe_dmx_out_devices: [String ; 2]) -> Self
+      + tick(audio_snapshot: &CollectorOutput) -> ()
+      + apply(state: &RwLockWriteGuard < '_ , EngineState >, ev: ControlEventMessage) -> (Option < & 'static str >, Option < ControlEvent >)
+    }
+    class dmx::DmxEngineArtnetOutput as "DmxEngineArtnetOutput" <<struct>> {
+      .. Members ..
+      universe_buffers: [Vec < u8 > ; NUM_DMX_UNIVERSES]
+      socket: Option < UdpSocket >
+    }
+    package clock #lightskyblue {
+      class clock::BeatClock as "BeatClock" <<struct>> {
+        .. Derives ..
+        Debug
+        .. Members ..
+        last_beat_tick_time: Time
+        target_time_between_ticks: Time
+        current_activation: Option < BeatClockActivation >
+        avg_drift: VecDeque < Time >
+        .. Functions ..
+        + new() -> Self
+        + tick(input: CollectedAudioSnapshot) -> ()
+        + activate(callback: fn (activation : BeatClockActivation)) -> bool
+      }
+      class clock::BeatClockActivation as "BeatClockActivation" <<struct>> {
+        .. Derives ..
+        Debug
+        .. Members ..
+        overdue_delta: Time
+        avg_drift: Time
+      }
+      class clock::Time as "Time" <<struct>> {
+        .. Derives ..
+        PartialEq
+        Eq
+        Debug
+        Default
+        Clone
+        Copy
+        .. Implements ..
+        From<...>
+        Sub<...>
+        Add<...>
+        Div<...>
+        Sum<...>
+        PartialOrd<...>
+        PartialEq<...>
+        PartialOrd<...>
+        Display
+        .. Members ..
+        <unnamed>: TIME_INNER
+        .. Functions ..
+        + from(value: TIME_INNER) -> Self
+        + sub(rhs: Time) -> Self :: Output
+        + add(rhs: Time) -> Self :: Output
+        + div(rhs: Time) -> Self :: Output
+        + sum(iter: I) -> Self
+        + partial_cmp(other: &Time) -> Option < std :: cmp :: Ordering >
+        + eq(other: &TIME_INNER) -> bool
+        + partial_cmp(other: &TIME_INNER) -> Option < std :: cmp :: Ordering >
+        + fmt(f: &std :: fmt :: Formatter < '_ >) -> std :: fmt :: Result
+        + new(value: TIME_INNER) -> Self
+        + now() -> Self
+        + elapsed() -> Self
+        + inner() -> TIME_INNER
+      }
+    }
+    package management #lightskyblue {
+      class management::EngineState as "EngineState" <<struct>> {
+        .. Functions ..
+        + delete_animation(id: u8) -> ()
+        + delete_group(id: u8) -> ()
+        + create_group(name: String) -> u8
+        + add_fixture_to_group(group_id: u8, fixture: Fixture) -> u8
+      }
+    }
+    package state #lightskyblue {
+      class state::AppHealthState as "AppHealthState" <<struct>> {
+        .. Members ..
+        dmx_universes_healthy: [DmxHealth ; NUM_DMX_UNIVERSES]
+        artnet_health_state: bool
+        midi_health: MidiHealth
+      }
+      class state::AppState as "AppState" <<struct>> {
+        .. Members ..
+        logs: Mutex < VecDeque < Cow < 'static , str > > >
+        plugins: RwLock < HashMap < u8 , PluginState > >
+        health_data: RwLock < AppHealthState >
+        dmx_engine: RwLock < EngineState >
+        audio: RwLock < AudioState >
+        dmx_universes: [RwLock < DmxBuffer > ; NUM_DMX_UNIVERSES]
+        artnet_output: RwLock < ArtNetOutput >
+        audio_params: RwLock < SignalCollectorParams >
+        audio_spectrogram: RwLock < AudioSpectrogram >
+        mainloop_state: RwLock < AudioThreadControlSignal >
+        plugin_ui_ops: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+        plugin_ui_ops_back: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+        plugin_ui_visibility: RwLock < HashMap < u8 , bool > >
+        plugin_ui_popped_out: RwLock < HashMap < u8 , bool > >
+        plugin_ui_tabs_selected: RwLock < HashMap < (u8 , u8) , u8 > >
+        plugin_state_storage: Arc < Mutex < HashMap < String , String > > >
+        .. Functions ..
+        + new(plugins: &[PluginConfig]) -> Self
+        + log(msg: Cow < 'static , str >) -> ()
+        + log_plugin(plugin_key: u8, msg: Cow < 'static , str >) -> ()
+      }
+      class state::AppStateWrapper as "AppStateWrapper" <<struct>> {
+        .. Derives ..
+        Clone
+        .. Members ..
+        from_frontend_sender: crossbeam_channel :: Sender < FromFrontend >
+        system_message_receiver: Receiver < SystemMessage >
+        system_message_sender: Sender < SystemMessage >
+        config: Arc < Mutex < Config > >
+        config_path: String
+        event_bus_connection: SystemEventBusConnectionInst
+        state: Arc < AppState >
+      }
+      class state::ArtNetOutput as "ArtNetOutput" <<struct>> {
+        .. Derives ..
+        Default
+        .. Members ..
+        receivers: Vec < ArtNetReceiver >
+      }
+      class state::ArtNetReceiver as "ArtNetReceiver" <<struct>> {
+        .. Derives ..
+        Clone
+        .. Members ..
+        address: SocketAddr
+        enabled: bool
+        .. Functions ..
+        + new(address: SocketAddr) -> Self
+      }
+      class state::AudioState as "AudioState" <<struct>> {
+        .. Derives ..
+        Serialize
+        Deserialize
+        .. Members ..
+        device_name: Option < String >
+        .. Functions ..
+        + default() -> Self
+      }
+      class state::DmxBuffer as "DmxBuffer" <<struct>> {
+        .. Members ..
+        dmx_buffer: [u8 ; 513]
+        .. Functions ..
+        + new() -> Self
+      }
+      class state::DmxHealth as "DmxHealth" <<struct>> {
+        .. Implements ..
+        Default
+        .. Members ..
+        port: String
+        state: DmxHealthState
+        .. Functions ..
+        + default() -> Self
+        + is_healthy() -> bool
+        + healthy(port: String) -> Self
+        + error(port: String, error: String) -> Self
+      }
+      class state::EngineState as "EngineState" <<struct>> {
+        .. Derives ..
+        Debug
+        Clone
+        Serialize
+        Deserialize
+        .. Implements ..
+        Default
+        .. Members ..
+        <unnamed>: blaulicht_shared :: EngineState
+        .. Functions ..
+        + get_selection() -> FixtureSelection
+        + load_showfile(other: blaulicht_shared :: EngineState) -> ()
+        + groups() -> &EngineGroups
+        + selection() -> &EngineSelection
+        + curr_scene() -> &Scene
+        + get_scene(id: u8) -> Option < & 'engine Scene >
+        + curr_scene_mut() -> &Scene
+        + new_scene(name: String) -> ()
+        + clone_scene(name: String) -> ()
+        + rename_scene(scene_id: u8, name: String) -> bool
+        + delete_scene(scene_id: u8) -> bool
+        + default() -> Self
+      }
+      class state::MidiHealth as "MidiHealth" <<struct>> {
+        .. Derives ..
+        Default
+        .. Members ..
+        available_devices: Vec < String >
+        devices: HashMap < String , MidiDeviceState >
+        .. Functions ..
+        + is_healthy() -> bool
+      }
+      class state::PluginFlags as "PluginFlags" <<struct>> {
+        .. Derives ..
+        Deserialize
+        Serialize
+        .. Members ..
+        enabled: bool
+        has_error: bool
+        .. Functions ..
+        + from_enabled(enabled: bool) -> Self
+      }
+      class state::PluginState as "PluginState" <<struct>> {
+        .. Derives ..
+        Deserialize
+        Serialize
+        .. Members ..
+        path: Cow < 'static , str >
+        flags: PluginFlags
+        logs: VecDeque < Cow < 'static , str > >
+        .. Functions ..
+        + new(path: Cow < 'static , str >, enabled: bool) -> Self
+        + set_errored(v: bool) -> ()
+        + set_enabled(v: bool) -> ()
+        + has_errored() -> bool
+        + is_enabled() -> bool
+        + log(msg: Cow < 'static , str >) -> ()
+      }
+    }
+    package animation #lightskyblue {
+      class animation::DmxEngine as "DmxEngine" <<struct>> {
+        .. Functions ..
+        + build_animations_cache(audio_snapshot: CollectedAudioSnapshot) -> ()
+        + animation_tick(audio_snapshot: &CollectorOutput) -> ()
+      }
+      package state #lightskyblue {
+        class state::AppHealthState as "AppHealthState" <<struct>> {
+          .. Members ..
+          dmx_universes_healthy: [DmxHealth ; NUM_DMX_UNIVERSES]
+          artnet_health_state: bool
+          midi_health: MidiHealth
+        }
+        class state::AppState as "AppState" <<struct>> {
+          .. Members ..
+          logs: Mutex < VecDeque < Cow < 'static , str > > >
+          plugins: RwLock < HashMap < u8 , PluginState > >
+          health_data: RwLock < AppHealthState >
+          dmx_engine: RwLock < EngineState >
+          audio: RwLock < AudioState >
+          dmx_universes: [RwLock < DmxBuffer > ; NUM_DMX_UNIVERSES]
+          artnet_output: RwLock < ArtNetOutput >
+          audio_params: RwLock < SignalCollectorParams >
+          audio_spectrogram: RwLock < AudioSpectrogram >
+          mainloop_state: RwLock < AudioThreadControlSignal >
+          plugin_ui_ops: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+          plugin_ui_ops_back: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+          plugin_ui_visibility: RwLock < HashMap < u8 , bool > >
+          plugin_ui_popped_out: RwLock < HashMap < u8 , bool > >
+          plugin_ui_tabs_selected: RwLock < HashMap < (u8 , u8) , u8 > >
+          plugin_state_storage: Arc < Mutex < HashMap < String , String > > >
+          .. Functions ..
+          + new(plugins: &[PluginConfig]) -> Self
+          + log(msg: Cow < 'static , str >) -> ()
+          + log_plugin(plugin_key: u8, msg: Cow < 'static , str >) -> ()
+        }
+        class state::AppStateWrapper as "AppStateWrapper" <<struct>> {
+          .. Derives ..
+          Clone
+          .. Members ..
+          from_frontend_sender: crossbeam_channel :: Sender < FromFrontend >
+          system_message_receiver: Receiver < SystemMessage >
+          system_message_sender: Sender < SystemMessage >
+          config: Arc < Mutex < Config > >
+          config_path: String
+          event_bus_connection: SystemEventBusConnectionInst
+          state: Arc < AppState >
+        }
+        class state::ArtNetOutput as "ArtNetOutput" <<struct>> {
+          .. Derives ..
+          Default
+          .. Members ..
+          receivers: Vec < ArtNetReceiver >
+        }
+        class state::ArtNetReceiver as "ArtNetReceiver" <<struct>> {
+          .. Derives ..
+          Clone
+          .. Members ..
+          address: SocketAddr
+          enabled: bool
+          .. Functions ..
+          + new(address: SocketAddr) -> Self
+        }
+        class state::AudioState as "AudioState" <<struct>> {
+          .. Derives ..
+          Serialize
+          Deserialize
+          .. Members ..
+          device_name: Option < String >
+          .. Functions ..
+          + default() -> Self
+        }
+        class state::DmxBuffer as "DmxBuffer" <<struct>> {
+          .. Members ..
+          dmx_buffer: [u8 ; 513]
+          .. Functions ..
+          + new() -> Self
+        }
+        class state::DmxHealth as "DmxHealth" <<struct>> {
+          .. Implements ..
+          Default
+          .. Members ..
+          port: String
+          state: DmxHealthState
+          .. Functions ..
+          + default() -> Self
+          + is_healthy() -> bool
+          + healthy(port: String) -> Self
+          + error(port: String, error: String) -> Self
+        }
+        class state::EngineState as "EngineState" <<struct>> {
+          .. Derives ..
+          Debug
+          Clone
+          Serialize
+          Deserialize
+          .. Implements ..
+          Default
+          .. Members ..
+          <unnamed>: blaulicht_shared :: EngineState
+          .. Functions ..
+          + get_selection() -> FixtureSelection
+          + load_showfile(other: blaulicht_shared :: EngineState) -> ()
+          + groups() -> &EngineGroups
+          + selection() -> &EngineSelection
+          + curr_scene() -> &Scene
+          + get_scene(id: u8) -> Option < & 'engine Scene >
+          + curr_scene_mut() -> &Scene
+          + new_scene(name: String) -> ()
+          + clone_scene(name: String) -> ()
+          + rename_scene(scene_id: u8, name: String) -> bool
+          + delete_scene(scene_id: u8) -> bool
+          + default() -> Self
+        }
+        class state::MidiHealth as "MidiHealth" <<struct>> {
+          .. Derives ..
+          Default
+          .. Members ..
+          available_devices: Vec < String >
+          devices: HashMap < String , MidiDeviceState >
+          .. Functions ..
+          + is_healthy() -> bool
+        }
+        class state::PluginFlags as "PluginFlags" <<struct>> {
+          .. Derives ..
+          Deserialize
+          Serialize
+          .. Members ..
+          enabled: bool
+          has_error: bool
+          .. Functions ..
+          + from_enabled(enabled: bool) -> Self
+        }
+        class state::PluginState as "PluginState" <<struct>> {
+          .. Derives ..
+          Deserialize
+          Serialize
+          .. Members ..
+          path: Cow < 'static , str >
+          flags: PluginFlags
+          logs: VecDeque < Cow < 'static , str > >
+          .. Functions ..
+          + new(path: Cow < 'static , str >, enabled: bool) -> Self
+          + set_errored(v: bool) -> ()
+          + set_enabled(v: bool) -> ()
+          + has_errored() -> bool
+          + is_enabled() -> bool
+          + log(msg: Cow < 'static , str >) -> ()
+        }
+      }
+      package phaser #lightskyblue {
+        class phaser_mod <<mod>> #lightskyblue {
+          .. Module functions ..
+          + generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16
+        }
+      }
+    }
+  }
+  package event #lightskyblue {
+    class event::SystemEventBus as "SystemEventBus" <<struct>> {
+      .. Members ..
+      receiver: Receiver < T >
+      sender_template: Sender < T >
+      broadcast_members_id_counter: usize
+      broadcast_members: Arc < Mutex < BroadCastMembers < T > > >
+    }
+    class event::SystemEventBusConnection as "SystemEventBusConnection" <<struct>> {
+      '  The event bus module contains the definition of the event bus and the events that are emitted by the UI or the plugin system.
+      .. Derives ..
+      Clone
+      .. Members ..
+      to_exchange_sender: Sender < T >
+      from_exchange_receiver: Receiver < T >
+    }
+  }
+  package mainloop #lightskyblue {
+    class mainloop_mod <<mod>> #lightskyblue {
+      .. Module functions ..
+      + run(device: Device, system_out: Sender < SystemMessage >, thread_control_signal: Arc < AtomicU8 >, config: Config, event_bus_plugins: SystemEventBusConnectionInst, event_bus_dmx: SystemEventBusConnectionInst, app_state: Arc < AppState >) -> anyhow :: Result < () >
+    }
+    package bg_worker #lightskyblue {
+      class bg_worker_mod <<mod>> #lightskyblue {
+        .. Module functions ..
+        + spawn_bg_worker(app_state: Arc < AppState >) -> ()
+      }
+    }
+    package supervisor #lightskyblue {
+      class supervisor_mod <<mod>> #lightskyblue {
+        .. Module functions ..
+        + signal_mainloop(audio_thread_control_signal: Arc < AtomicU8 >, app_state: Arc < AppState >, signal: AudioThreadControlSignal) -> ()
+        + supervisor_thread(from_frontend: Receiver < FromFrontend >, audio_thread_control_signal: Arc < AtomicU8 >, system_out: Sender < SystemMessage >, config: Config, event_bus_connection_plugins: SystemEventBusConnectionInst, event_bus_connection_dmx: SystemEventBusConnectionInst, app_state: Arc < AppState >) -> ()
+      }
+    }
+  }
+  package msg #lightskyblue {
+    class msg::MidiEvent as "MidiEvent" <<struct>> {
+      .. Derives ..
+      Deserialize
+      Clone
+      Debug
+      .. Members ..
+      device: u8
+      status: u8
+      data0: u8
+      data1: u8
+    }
+    class msg::WasmControlsConfig as "WasmControlsConfig" <<struct>> {
+      .. Derives ..
+      Clone
+      Serialize
+      Debug
+      .. Members ..
+      x: u8
+      y: u8
+    }
+    class msg::WasmControlsLog as "WasmControlsLog" <<struct>> {
+      .. Derives ..
+      Clone
+      Serialize
+      Debug
+      .. Members ..
+      x: u8
+      y: u8
+      value: String
+    }
+    class msg::WasmControlsSet as "WasmControlsSet" <<struct>> {
+      .. Derives ..
+      Clone
+      Serialize
+      Debug
+      .. Members ..
+      x: u8
+      y: u8
+      value: bool
+    }
+    class msg::WasmLogBody as "WasmLogBody" <<struct>> {
+      .. Derives ..
+      Clone
+      Serialize
+      Debug
+      .. Members ..
+      plugin_id: u8
+      msg: Cow < 'static , str >
+      level: LogLevel
+    }
+  }
+  package plugin #lightskyblue {
+    class plugin::Plugin as "Plugin" <<struct>> {
+      .. Members ..
+      path: Cow < 'static , str >
+      wasm_state: PluginWasmState
+      midi_buffers: AddrDescriptor
+      serial_buffers: AddrDescriptor
+      state_buffers: AddrDescriptor
+      last_dmx_engine_sync: Instant
+    }
+    class plugin::PluginManager as "PluginManager" <<struct>> {
+      .. Members ..
+      timer_start: Instant
+      is_initial_tick: bool
+      plugin_config: Vec < PluginConfig >
+      plugins: HashMap < u8 , Plugin >
+      system_out: Sender < SystemMessage >
+      to_midi_devices: Sender < MidiEvent >
+      from_midi_manager: Receiver < MidiEvent >
+      midi_manager_ref: Arc < Mutex < MidiManager > >
+      serial_manager_ref: Arc < Mutex < SerialManager > >
+      event_bus: SystemEventBusConnectionInst
+      state_ref: Arc < AppState >
+      .. Functions ..
+      + new(plugin_config: Vec < PluginConfig >, to_midi_manager: Sender < MidiEvent >, from_midi_manager: Receiver < MidiEvent >, system_out: Sender < SystemMessage >, midi_manager_ref: Arc < Mutex < MidiManager > >, serial_manager_ref: Arc < Mutex < SerialManager > >, event_bus: SystemEventBusConnectionInst, app_state_ref: Arc < AppState >) -> Self
+      + load_plugin_states(plugin_state: HashMap < String , String >) -> ()
+      + active_plugins() -> Vec < u8 >
+      + init() -> anyhow :: Result < () >
+      + reload() -> anyhow :: Result < () >
+      //  Associated method to start the watcher.  Should be started in a main thread since the actual watcher instance is re-instantiated once a change occurs.
+      + watch_plugins(from_frontend_sender: Sender < FromFrontend >, plugin_configuration_list: &[PluginConfig]) -> anyhow :: Result < ! >
+    }
+    class plugin::PluginReloadRequest as "PluginReloadRequest" <<struct>> {
+      .. Members ..
+      file_path: PathBuf
+    }
+    class plugin::PluginWasmState as "PluginWasmState" <<struct>> {
+      .. Members ..
+      memory: Memory
+      store: Store < () >
+      instance: Instance
+    }
+    package midi #lightskyblue {
+      class midi::MidiDeviceHandle as "MidiDeviceHandle" <<struct>> {
+        .. Members ..
+        device_name: String
+        device_id: u8
+        output: Option < MidiOutputConnection >
+        input: MidiInputConnection < () >
+      }
+      class midi::MidiManager as "MidiManager" <<struct>> {
+        .. Members ..
+        connection_map: HashMap < String , MidiDeviceHandle >
+        device_id_counter: u8
+        midi_in_sender: Sender < MidiEvent >
+        midi_in_receiver: Receiver < MidiEvent >
+        to_manager_receiver: Receiver < MidiEvent >
+        to_plugins_sender: Sender < MidiEvent >
+        app_state: Arc < AppState >
+        .. Functions ..
+        + new(midi_out_receiver: Receiver < MidiEvent >, to_plugins_sender: Sender < MidiEvent >, app_state: Arc < AppState >) -> Self
+        + enumerate_devices() -> Result < Vec < String > , MidiError >
+        + request_device(device_name: &str) -> Option < u8 >
+        + tick() -> Result < Vec < MidiEvent > , MidiError >
+      }
+    }
+    package serial #lightskyblue {
+      class serial::SerialDeviceHandle as "SerialDeviceHandle" <<struct>> {
+        .. Members ..
+        port_path: String
+        device_id: u8
+        serial_port: Box < dyn SerialPort >
+        buffer: Vec < u8 >
+      }
+      class serial::SerialManager as "SerialManager" <<struct>> {
+        .. Members ..
+        connection_map: HashMap < String , SerialDeviceHandle >
+        device_id_counter: u8
+        .. Functions ..
+        + new() -> Self
+        + enumerate_devices() -> Result < Vec < String > , SerialError >
+        + request_device(port_path: &str, baud_rate: u32) -> Option < u8 >
+        + tick() -> Result < Vec < SerialReceived > , SerialError >
+      }
+    }
+    package tick #lightskyblue {
+      class tick::Plugin as "Plugin" <<struct>> {
+        .. Functions ..
+      }
+      class tick::PluginManager as "PluginManager" <<struct>> {
+        .. Functions ..
+        + tick() -> anyhow :: Result < Duration >
+        + disable_errored_plugins() -> Option < anyhow :: Error >
+        + tick(audio_data: CollectedAudioSnapshot, midi_events: &[MidiEvent], serial_received: Vec < SerialReceived >, app_state: Option < Arc < AppState > >) -> anyhow :: Result < Duration >
+        + disable_errored_plugins(plugins_err: HashMap < u8 , anyhow :: Error >) -> Option < anyhow :: Error >
+      }
+    }
+    package wasm #lightskyblue {
+      class wasm::AddrDescriptor as "AddrDescriptor" <<struct>> {
+        .. Derives ..
+        Debug
+        Clone
+        .. Members ..
+        start_addr: i32
+        length_start_addr: i32
+        .. Functions ..
+        + dummy() -> Self
+        + buffer_addr() -> usize
+        + buffer_len_addr() -> usize
+      }
+      class wasm::Plugin as "Plugin" <<struct>> {
+        .. Functions ..
+      }
+      class wasm::PluginManager as "PluginManager" <<struct>> {
+        .. Functions ..
+        + instantiate_plugins() -> anyhow :: Result < () >
+        + instantiate_plugins() -> anyhow :: Result < () >
+      }
+    }
+  }
+  package state #lightskyblue {
+    class state::AppHealthState as "AppHealthState" <<struct>> {
+      .. Members ..
+      dmx_universes_healthy: [DmxHealth ; NUM_DMX_UNIVERSES]
+      artnet_health_state: bool
+      midi_health: MidiHealth
+    }
+    class state::AppState as "AppState" <<struct>> {
+      .. Members ..
+      logs: Mutex < VecDeque < Cow < 'static , str > > >
+      plugins: RwLock < HashMap < u8 , PluginState > >
+      health_data: RwLock < AppHealthState >
+      dmx_engine: RwLock < EngineState >
+      audio: RwLock < AudioState >
+      dmx_universes: [RwLock < DmxBuffer > ; NUM_DMX_UNIVERSES]
+      artnet_output: RwLock < ArtNetOutput >
+      audio_params: RwLock < SignalCollectorParams >
+      audio_spectrogram: RwLock < AudioSpectrogram >
+      mainloop_state: RwLock < AudioThreadControlSignal >
+      plugin_ui_ops: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+      plugin_ui_ops_back: RwLock < HashMap < u8 , Vec < WasmUiOp > > >
+      plugin_ui_visibility: RwLock < HashMap < u8 , bool > >
+      plugin_ui_popped_out: RwLock < HashMap < u8 , bool > >
+      plugin_ui_tabs_selected: RwLock < HashMap < (u8 , u8) , u8 > >
+      plugin_state_storage: Arc < Mutex < HashMap < String , String > > >
+      .. Functions ..
+      + new(plugins: &[PluginConfig]) -> Self
+      + log(msg: Cow < 'static , str >) -> ()
+      + log_plugin(plugin_key: u8, msg: Cow < 'static , str >) -> ()
+    }
+    class state::AppStateWrapper as "AppStateWrapper" <<struct>> {
+      .. Derives ..
+      Clone
+      .. Members ..
+      from_frontend_sender: crossbeam_channel :: Sender < FromFrontend >
+      system_message_receiver: Receiver < SystemMessage >
+      system_message_sender: Sender < SystemMessage >
+      config: Arc < Mutex < Config > >
+      config_path: String
+      event_bus_connection: SystemEventBusConnectionInst
+      state: Arc < AppState >
+    }
+    class state::ArtNetOutput as "ArtNetOutput" <<struct>> {
+      .. Derives ..
+      Default
+      .. Members ..
+      receivers: Vec < ArtNetReceiver >
+    }
+    class state::ArtNetReceiver as "ArtNetReceiver" <<struct>> {
+      .. Derives ..
+      Clone
+      .. Members ..
+      address: SocketAddr
+      enabled: bool
+      .. Functions ..
+      + new(address: SocketAddr) -> Self
+    }
+    class state::AudioState as "AudioState" <<struct>> {
+      .. Derives ..
+      Serialize
+      Deserialize
+      .. Members ..
+      device_name: Option < String >
+      .. Functions ..
+      + default() -> Self
+    }
+    class state::DmxBuffer as "DmxBuffer" <<struct>> {
+      .. Members ..
+      dmx_buffer: [u8 ; 513]
+      .. Functions ..
+      + new() -> Self
+    }
+    class state::DmxHealth as "DmxHealth" <<struct>> {
+      .. Implements ..
+      Default
+      .. Members ..
+      port: String
+      state: DmxHealthState
+      .. Functions ..
+      + default() -> Self
+      + is_healthy() -> bool
+      + healthy(port: String) -> Self
+      + error(port: String, error: String) -> Self
+    }
+    class state::EngineState as "EngineState" <<struct>> {
+      .. Derives ..
+      Debug
+      Clone
+      Serialize
+      Deserialize
+      .. Implements ..
+      Default
+      .. Members ..
+      <unnamed>: blaulicht_shared :: EngineState
+      .. Functions ..
+      + get_selection() -> FixtureSelection
+      + load_showfile(other: blaulicht_shared :: EngineState) -> ()
+      + groups() -> &EngineGroups
+      + selection() -> &EngineSelection
+      + curr_scene() -> &Scene
+      + get_scene(id: u8) -> Option < & 'engine Scene >
+      + curr_scene_mut() -> &Scene
+      + new_scene(name: String) -> ()
+      + clone_scene(name: String) -> ()
+      + rename_scene(scene_id: u8, name: String) -> bool
+      + delete_scene(scene_id: u8) -> bool
+      + default() -> Self
+    }
+    class state::MidiHealth as "MidiHealth" <<struct>> {
+      .. Derives ..
+      Default
+      .. Members ..
+      available_devices: Vec < String >
+      devices: HashMap < String , MidiDeviceState >
+      .. Functions ..
+      + is_healthy() -> bool
+    }
+    class state::PluginFlags as "PluginFlags" <<struct>> {
+      .. Derives ..
+      Deserialize
+      Serialize
+      .. Members ..
+      enabled: bool
+      has_error: bool
+      .. Functions ..
+      + from_enabled(enabled: bool) -> Self
+    }
+    class state::PluginState as "PluginState" <<struct>> {
+      .. Derives ..
+      Deserialize
+      Serialize
+      .. Members ..
+      path: Cow < 'static , str >
+      flags: PluginFlags
+      logs: VecDeque < Cow < 'static , str > >
+      .. Functions ..
+      + new(path: Cow < 'static , str >, enabled: bool) -> Self
+      + set_errored(v: bool) -> ()
+      + set_enabled(v: bool) -> ()
+      + has_errored() -> bool
+      + is_enabled() -> bool
+      + log(msg: Cow < 'static , str >) -> ()
+    }
+  }
+  package ui_ops #lightskyblue {
+  }
+  package util #lightskyblue {
+    class util_mod <<mod>> #lightskyblue {
+      .. Module functions ..
+      + increase_thread_priority() -> ()
+    }
+  }
+  package utils #lightskyblue {
+    class utils_mod <<mod>> #lightskyblue {
+      .. Module functions ..
+      + init_logger() -> ()
+      + device_from_name(dev_id: String) -> Option < Device >
+      + device_from_names(host_id: String, dev_id: String) -> Option < Device >
+      + get_input_devices_flat() -> Vec < (cpal :: HostId , cpal :: Device) >
+    }
+  }
+}
+package l__main #lightskyblue {
+}
+@enduml

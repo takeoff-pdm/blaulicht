@@ -267,6 +267,7 @@ impl DmxEngine {
 
     fn write_to_artnet(&mut self) {
         let Some(ref mut socket) = self.artnet_output.socket else {
+            println!("NO ARTNET");
             return;
         };
 
@@ -293,8 +294,12 @@ impl DmxEngine {
             let bytes = command.write_to_buffer().unwrap();
 
             for destination in &artnet_out.receivers {
-                if let Err(err) = socket.send_to(&bytes, destination) {
-                    log::error!("Send ArtNet UDP to {destination}: {err:?}");
+                if !destination.enabled {
+                    continue;
+                }
+
+                if let Err(err) = socket.send_to(&bytes, destination.address) {
+                    log::error!("Send ArtNet UDP to {}: {err:?}", destination.address);
                 }
             }
         }
