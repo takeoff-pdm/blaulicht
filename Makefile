@@ -13,7 +13,7 @@ cargo-build-x64:
 	-v $(DIR)/target:/build \
 	-v `pwd`:/root/project \
 	blaulicht-cross \
-	cargo build --package $(PACKAGE) --release --features wasmtime --target x86_64-unknown-linux-gnu
+	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
 
 # audio-cargo-build-x64:
 # 	docker run -it \
