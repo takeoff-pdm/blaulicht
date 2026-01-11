@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use wmidi::MidiMessage;
+// use wmidi::MidiMessage;
 
 use crate::msg::MidiEvent;
 use crate::state::{AppHealthState, AppState, MidiDeviceState, MidiHealthError};

@@ -9,7 +9,7 @@ use blaulicht_shared::{
 use cpal::traits::DeviceTrait;
 
 use crossbeam_channel::TryRecvError;
-use egui::{Context, FontId, RichText};
+use egui::{vec2, Context, FontId, RichText};
 use strum::IntoEnumIterator;
 
 pub enum FileDialogOpenOrigin {
@@ -64,13 +64,18 @@ impl eframe::App for BlaulichtApp {
         self.render_popup(ctx);
 
         if self.system_ui_state.debug_open {
-            egui::Window::new("Debug").show(ctx, |ui| {
-                let dt = ctx.input(|i| i.stable_dt);
-                let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-                ui.label(RichText::new(format!("FPS: {:.1}", fps)).font(FontId::monospace(24.0)));
-
-                ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE).max_height(20.0));
-            });
+            egui::Window::new("Debug")
+                .title_bar(false)
+                .fixed_size(vec2(200.0, 50.0))
+                .show(ctx, |ui| {
+                    ui.set_width(200.0);
+                    ui.set_height(50.0);
+                    let dt = ctx.input(|i| i.stable_dt);
+                    let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+                    ui.label(
+                        RichText::new(format!("FPS: {:.1}", fps)).font(FontId::monospace(24.0)),
+                    );
+                });
         }
 
         //

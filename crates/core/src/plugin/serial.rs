@@ -6,7 +6,7 @@ use serialport::SerialPort;
 use std::collections::HashMap;
 use std::time::Duration;
 use std::{mem, thread};
-use wmidi::MidiMessage;
+// use wmidi::MidiMessage;
 
 const PORT_TIMEOUT: Duration = Duration::from_millis(3);
 

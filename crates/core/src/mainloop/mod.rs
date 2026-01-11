@@ -11,6 +11,7 @@ use crate::{
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
     state::{AppState, DmxHealth},
     system_message,
+    util::increase_thread_priority,
 };
 use anyhow::{anyhow, Context};
 #[cfg(not(feature = "audio"))]
@@ -55,6 +56,8 @@ pub fn run(
     event_bus_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) -> anyhow::Result<()> {
+    increase_thread_priority(system_out.clone());
+
     //
     // MIDI.
     //

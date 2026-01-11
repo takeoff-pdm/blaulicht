@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=assets/icons/raw/");
+    println!("cargo:rerun-if-changed=icons");
     println!("cargo:rerun-if-changed=Makefile");
 
     let status = Command::new("make")
