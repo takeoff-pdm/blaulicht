@@ -10,7 +10,10 @@ use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
     PluginUiEvent,
 };
+
+#[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
+
 use crossbeam_channel::TryRecvError;
 use egui::mutex::RwLockWriteGuard;
 use egui::{

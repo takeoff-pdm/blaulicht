@@ -1,7 +1,11 @@
 #![allow(unused)]
 
-use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::{Device, HostId};
+#[cfg(feature = "audio")]
+use cpal::{
+    traits::{DeviceTrait, HostTrait},
+    Device, HostId,
+};
+
 use log::LevelFilter;
 use std::io::{Read, Write};
 use std::process::exit;

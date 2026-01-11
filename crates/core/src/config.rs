@@ -15,6 +15,44 @@ use std::{
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ProcessorConfig {
+    /// neccessary so that the Audiostream knows what the hightest frequency is. (`sampling_rate` / 2)
+    pub sampling_rate: u32,
+
+    /// range of frequencies
+    pub frequency_bounds: [usize; 2],
+
+    /// number of total frequencies in processed data, None to disable up or downscaling
+    ///
+    /// when `position_normalisation` and `resolution` is `None` no frequency information is lost
+    ///
+    /// but when `position_normalisation` is set to anything else,
+    /// information will be lost on high frequencies if no upscaling is done.
+    pub resolution: Option<usize>,
+
+    pub volume: f32,
+
+    /// to even volume of low and high frequencies
+    pub volume_normalisation: VolumeNormalisation,
+
+    /// to mimic human hearing
+    ///
+    /// might result in information loss on higher frequencies
+    pub position_normalisation: PositionNormalisation,
+
+    /// manually apply scale of frequencies
+    ///
+    /// frequencies around 50hz have double the scale: `vec![ (0, 1.0), (50, 2.0), (20000, 1.0) ]`
+    ///
+    /// this can be applied to an infinite number of frequencies: `vec![ (20, 1.0), (500, 2.0), (5000, 0.5) ... ]`
+    // pub manual_position_distribution: Option<Vec<(usize, f32)>>,
+
+    /// applies positions of frequencies
+    pub interpolation: Interpolation,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StreamConfig {
     pub processor: ProcessorConfig,
 

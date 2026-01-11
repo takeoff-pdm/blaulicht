@@ -19,7 +19,10 @@ use blaulicht_audio_engine::{
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use blaulicht_shared::LogLevel;
+
+#[cfg(feature = "audio")]
 use cpal::Device;
+
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use std::{

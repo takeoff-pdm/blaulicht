@@ -5,7 +5,10 @@ use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
 use blaulicht_shared::LogLevel;
 use blaulicht_shared::TickInput;
+
+#[cfg(feature = "audio")]
 use cpal::Device;
+
 use crossbeam_channel::Sender;
 use egui::ahash::HashMapExt;
 use log::error;

@@ -4,10 +4,12 @@ use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
 };
-use cpal::traits::DeviceTrait;
 use crossbeam_channel::TryRecvError;
 use egui::Context;
 use strum::IntoEnumIterator;
+
+#[cfg(feature = "audio")]
+use cpal::traits::DeviceTrait;
 
 impl BlaulichtApp {
     pub fn render_plugin_ui(&self, ctx: &Context) {

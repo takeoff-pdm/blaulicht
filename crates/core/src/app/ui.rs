@@ -4,7 +4,10 @@ use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
 };
+
+#[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
+
 use crossbeam_channel::TryRecvError;
 use egui::{Context, FontId, RichText};
 use strum::IntoEnumIterator;

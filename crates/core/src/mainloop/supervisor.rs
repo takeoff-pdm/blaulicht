@@ -8,7 +8,6 @@ use crate::{
 };
 use crate::{msg::FromFrontend, utils};
 use blaulicht_shared::LogLevel;
-use cpal::{traits::DeviceTrait, Device};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{error, info, warn};
 use std::{
@@ -19,6 +18,9 @@ use std::{
     thread,
     time::Duration,
 };
+
+#[cfg(feature = "audio")]
+use cpal::{traits::DeviceTrait, Device};
 
 pub fn signal_mainloop(
     audio_thread_control_signal: Arc<AtomicU8>,

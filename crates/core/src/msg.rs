@@ -1,9 +1,10 @@
 use std::{borrow::Cow, time::Duration};
-
 use blaulicht_audio_engine::Signal;
 use blaulicht_shared::LogLevel;
-use cpal::{Device, HostId};
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "audio")]
+use cpal::{Device, HostId};
 
 #[derive(Clone, Serialize, Debug)]
 pub struct WasmControlsLog {
