@@ -1,13 +1,14 @@
 use std::{time::Duration, u8};
 
-use audioviz::{audio_capture::capture::Capture, spectrum::config::StreamConfig};
-use audioviz::{
-    audio_capture::capture::CaptureReceiver,
-    spectrum::{
-        stream::{Stream, StreamController},
-        Frequency,
-    },
-};
+// // #[cfg(feature = "wasmtime")]
+// use audioviz::{audio_capture::capture::Capture, spectrum::config::StreamConfig};
+// use audioviz::{
+//     audio_capture::capture::CaptureReceiver,
+//     spectrum::{
+//         stream::{Stream, StreamController},
+//         Frequency,
+//     },
+// };
 
 const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;

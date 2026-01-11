@@ -1,6 +1,6 @@
 use crate::{dmx, msg::SystemMessage};
 use anyhow::{anyhow, Context, Result};
-use audioviz::spectrum::config::StreamConfig;
+// use audioviz::spectrum::config::StreamConfig;
 use blaulicht_shared::{EngineState, LogLevel, SaveEngineState};
 use crossbeam_channel::Sender;
 use log::debug;
@@ -12,6 +12,20 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLockWriteGuard},
 };
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct StreamConfig {
+    pub processor: ProcessorConfig,
+
+    /// with higher resolution comes better precision, that is mostly needed for lower frequencies
+    pub fft_resolution: usize,
+
+    /// should be set to match fps of output, gravity will be affected, because I have not implemented delta-time
+    pub refresh_rate: usize,
+
+    pub gravity: Option<f32>,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
