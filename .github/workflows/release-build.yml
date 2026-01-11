@@ -1,0 +1,32 @@
+name: Release Build
+
+on:
+  push:
+    branches:
+      - prod
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build release archives
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build cross-compilation Docker image
+        run: make build-docker-cargo
+
+      - name: Build release artifacts via Makefile
+        run: script -q -e -c "make build-archives" /dev/null
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: blaulicht-release-artifacts
+          path: dist/*.tar.gz
+          if-no-files-found: error
