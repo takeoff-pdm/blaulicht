@@ -1,4 +1,5 @@
-use audioviz::spectrum::{config::ProcessorConfig, processor::Processor, Frequency};
+use crate::{AudioSource, Frequency};
+use audioviz::spectrum::{config::ProcessorConfig, processor::Processor};
 use std::fs::File;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
@@ -6,8 +7,6 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-
-use crate::AudioSource;
 
 #[derive(Clone)]
 pub struct AudioSourceSoundfile {
@@ -161,16 +160,22 @@ impl AudioSourceSoundfile {
             return Vec::new();
         }
 
-        let mut processor = Processor::from_raw_data(
-            ProcessorConfig {
-                sample_rate: self.sample_rate,
-                resolution: Some(samples.len() / 2),
-                ..ProcessorConfig::default()
-            },
-            samples.to_vec(),
-        );
+        {
+            let mut processor = Processor::from_raw_data(
+                ProcessorConfig {
+                    sample_rate: self.sample_rate,
+                    resolution: Some(samples.len() / 2),
+                    ..ProcessorConfig::default()
+                },
+                samples.to_vec(),
+            );
 
-        processor.compute_all();
-        processor.freq_buffer
+            processor.compute_all();
+            processor
+                .freq_buffer
+                .iter()
+                .map(|f| Frequency::from(f))
+                .collect()
+        }
     }
 }

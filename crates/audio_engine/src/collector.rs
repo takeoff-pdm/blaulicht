@@ -1,17 +1,14 @@
 //
 // Provides class for capturing audio.
 use anyhow::{anyhow, Context};
-use audioviz::spectrum::Frequency;
-use audioviz::{
-    audio_capture::{capture::Capture, config::Config as CaptureConfig},
-    spectrum::{config::StreamConfig, stream::Stream},
-};
+// use audioviz::{
+//     audio_capture::{capture::Capture, config::Config as CaptureConfig},
+//     spectrum::{config::StreamConfig, stream::Stream},
+// };
 use blaulicht_shared::CollectedAudioSnapshot;
-use cpal::{traits::DeviceTrait, Device};
+// use cpal::{traits::DeviceTrait, Device};
+use crate::{AudioSource, Frequency, Signal};
 use std::collections::VecDeque;
-use std::time::Instant;
-
-use crate::{AudioConverter, AudioSource, Signal};
 
 // Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
 // The problem is: both run at different refresh rates.
@@ -359,56 +356,13 @@ where
 }
 
 //
-// Converter.
-//
-
-pub fn init_converter(
-    device: Device,
-    config: StreamConfig,
-) -> anyhow::Result<(AudioConverter, Capture)> {
-    // let config = StreamConfig {
-    //     // TODO: also experiment with fft resolution
-    //     // gravity: None, // OR: Some(100)
-    //     gravity: Some(100.0),
-    //     ..Default::default()
-    // };
-
-    println!("config: {config:?}");
-
-    let default_input_config = device
-        .default_input_config()
-        .context("Failed to query default input config for input device")?;
-    let device_name = device
-        .name()
-        .context("Failed to query audio input device name")?;
-
-    let audio_capture_config = CaptureConfig {
-        sample_rate: Some(default_input_config.sample_rate().0),
-        latency: None,
-        device: device_name.clone(),
-        buffer_size: CaptureConfig::default().buffer_size,
-        max_buffer_size: CaptureConfig::default().max_buffer_size,
-    };
-
-    let capture = Capture::init(audio_capture_config.clone())
-        .map_err(|err| anyhow!("Failed to initialize audio capture for {device_name}: {err:?}"))?;
-    let stream = Stream::init_with_capture(&capture, config.clone());
-    let converter = AudioConverter::from_stream(stream, config.clone());
-
-    Ok((converter, capture))
-}
-
-//
 // Spectrogram utils.
 //
 
 pub type AudioColumn = Vec<u8>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
-pub fn bin_spectrum_to_u8(
-    values: &[audioviz::spectrum::Frequency],
-    mut bins: usize,
-) -> AudioColumn {
+pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn {
     debug_assert!(bins > 0);
 
     let chunk_size = match values.len() % bins == 0 {

@@ -1,6 +1,5 @@
 use crate::{dmx, msg::SystemMessage};
 use anyhow::{anyhow, Context, Result};
-// use audioviz::spectrum::config::StreamConfig;
 use blaulicht_shared::{EngineState, LogLevel, SaveEngineState};
 use crossbeam_channel::Sender;
 use log::debug;
@@ -13,64 +12,21 @@ use std::{
     sync::{Arc, Mutex, RwLockWriteGuard},
 };
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ProcessorConfig {
-    /// neccessary so that the Audiostream knows what the hightest frequency is. (`sampling_rate` / 2)
-    pub sampling_rate: u32,
-
-    /// range of frequencies
-    pub frequency_bounds: [usize; 2],
-
-    /// number of total frequencies in processed data, None to disable up or downscaling
-    ///
-    /// when `position_normalisation` and `resolution` is `None` no frequency information is lost
-    ///
-    /// but when `position_normalisation` is set to anything else,
-    /// information will be lost on high frequencies if no upscaling is done.
-    pub resolution: Option<usize>,
-
-    pub volume: f32,
-
-    /// to even volume of low and high frequencies
-    pub volume_normalisation: VolumeNormalisation,
-
-    /// to mimic human hearing
-    ///
-    /// might result in information loss on higher frequencies
-    pub position_normalisation: PositionNormalisation,
-
-    /// manually apply scale of frequencies
-    ///
-    /// frequencies around 50hz have double the scale: `vec![ (0, 1.0), (50, 2.0), (20000, 1.0) ]`
-    ///
-    /// this can be applied to an infinite number of frequencies: `vec![ (20, 1.0), (500, 2.0), (5000, 0.5) ... ]`
-    // pub manual_position_distribution: Option<Vec<(usize, f32)>>,
-
-    /// applies positions of frequencies
-    pub interpolation: Interpolation,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StreamConfig {
-    pub processor: ProcessorConfig,
-
-    /// with higher resolution comes better precision, that is mostly needed for lower frequencies
-    pub fft_resolution: usize,
-
-    /// should be set to match fps of output, gravity will be affected, because I have not implemented delta-time
-    pub refresh_rate: usize,
-
-    pub gravity: Option<f32>,
-}
+#[cfg(feature = "audio")]
+use audioviz::spectrum::config::StreamConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub port: u16,
     pub dmx_out_devices: [String; 2],
     pub default_audio_device: Option<String>,
+
+    #[cfg(feature = "audio")]
     pub stream: StreamConfig,
+
+    #[cfg(not(feature = "audio"))]
+    stream: serde_json::Value,
+
     #[serde(default = "default_spectrogram_window_seconds")]
     pub spectrogram_window_seconds: u64,
     #[serde(default = "default_spectrogram_refresh_hz")]
@@ -180,12 +136,18 @@ impl Default for Config {
             port: 1234,
             dmx_out_devices: ["/dev/dmx_out0".to_string(), "/dev/dmx_out1".to_string()],
             default_audio_device: None,
+
+            #[cfg(not(feature = "audio"))]
+            stream: serde_json::Value::Null,
+
+            #[cfg(feature = "audio")]
             stream: StreamConfig {
                 // TODO: also experiment with fft resolution
                 // gravity: None, // OR: Some(100)
                 gravity: Some(100.0),
                 ..Default::default()
             },
+
             spectrogram_window_seconds: default_spectrogram_window_seconds(),
             spectrogram_refresh_hz: default_spectrogram_refresh_hz(),
             plugins: vec![PluginConfig {

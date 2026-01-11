@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     event::SystemEventBusConnectionInst,
     mainloop::{self, bg_worker},
-    msg::SystemMessage,
+    msg::{AudioDeviceT, SystemMessage},
     state::AppState,
 };
 use crate::{msg::FromFrontend, utils};
@@ -52,7 +52,7 @@ pub fn supervisor_thread(
 
     let heartbeat_delay = Duration::from_millis(1000);
 
-    let mut audio_device: Option<Device> = None;
+    let mut audio_device: Option<AudioDeviceT> = None;
     let mut device_changed = false;
 
     // TODO: put the DMX thread under main!

@@ -12,9 +12,9 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 
 [features]
-default = [] # ["wasmtime"]   # keep it on by default
+default = ["audio"] # ["wasmtime"]   # keep it on by default
 wasmtime = ["dep:wasmtime"]
-audio = ["dep:audioviz", "dep:cpal"]
+audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/sources"]
 wayland = ["eframe/wayland"]
 x11 = ["eframe/x11"]
 
@@ -23,6 +23,7 @@ x11 = ["eframe/x11"]
 # Audio
 audioviz = { version = "0.4.4", features = ["serde"], optional = true }
 cpal = { version = "0.15.3", optional = true }
+blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
 
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -46,7 +47,6 @@ thread-priority = "1.2.0"
 notify = "7.0.0"
 blaulicht-shared = { path = "../shared" }
 blaulicht-assets = { path = "../assets" }
-blaulicht-audio-engine = { path = "../audio_engine/" }
 crossbeam-queue = "0.3.12"
 heapless = "0.8.0"
 maplit = "1.0.2"

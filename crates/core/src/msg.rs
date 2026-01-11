@@ -1,7 +1,7 @@
-use std::{borrow::Cow, time::Duration};
 use blaulicht_audio_engine::Signal;
 use blaulicht_shared::LogLevel;
 use serde::{Deserialize, Serialize};
+use std::{borrow::Cow, time::Duration};
 
 #[cfg(feature = "audio")]
 use cpal::{Device, HostId};
@@ -36,8 +36,8 @@ pub enum SystemMessage {
     LoopSpeed(Duration),
     TickSpeed(Duration),
     // Audio.
-    AudioSelected(Option<Device>),
-    AudioDevicesView(Vec<(HostId, Device)>),
+    AudioSelected(Option<AudioDeviceT>),
+    AudioDevicesView(Vec<(AudioHostT, AudioDeviceT)>),
     // DMX.
     DMX(Box<[u8; 513]>),
     // Plugin state.
@@ -68,8 +68,30 @@ pub struct MidiEvent {
     pub data1: u8,
 }
 
+#[cfg(feature = "audio")]
+pub type AudioHostT = HostId;
+
+#[cfg(not(feature = "audio"))]
+pub type AudioHostT = ();
+
+#[cfg(feature = "audio")]
+pub type AudioDeviceT = Device;
+
+#[cfg(not(feature = "audio"))]
+pub type AudioDeviceT = MockAudioDevice;
+
+#[derive(Clone, Copy, Default)]
+pub struct MockAudioDevice {}
+
+#[cfg(not(feature = "audio"))]
+impl MockAudioDevice {
+    pub fn name(&self) -> Option<String> {
+        Some("dummy-name".to_string())
+    }
+}
+
 #[derive(Clone)]
 pub enum FromFrontend {
     Reload,
-    SelectInputDevice(Option<Device>),
+    SelectInputDevice(Option<AudioDeviceT>),
 }

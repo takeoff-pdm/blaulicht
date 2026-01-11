@@ -7,15 +7,21 @@ use crate::{
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::signal_mainloop,
-    msg::SystemMessage,
+    msg::{AudioDeviceT, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
     state::{AppState, DmxHealth},
     system_message,
 };
 use anyhow::{anyhow, Context};
+#[cfg(not(feature = "audio"))]
+use blaulicht_audio_engine::noise::AudioSourceNoise;
+
+#[cfg(feature = "audio")]
+use blaulicht_audio_engine::audio_source::microphone::AudioSourceMicrophone;
+
 use blaulicht_audio_engine::{
-    AudioSourceMicrophone, CollectorOutputSpec, CollectorScratchParameters, Signal,
-    SignalCollector, SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    CollectorOutputSpec, CollectorScratchParameters, Signal, SignalCollector,
+    SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use blaulicht_shared::LogLevel;
@@ -41,7 +47,7 @@ pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 
 pub fn run(
-    device: Device,
+    device: AudioDeviceT,
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
@@ -148,8 +154,12 @@ pub fn run(
         bins_p_column: Some(128),
     };
 
+    #[cfg(feature = "audio")]
     let audio_source = AudioSourceMicrophone::new(device, config.stream)
         .with_context(|| "Failed to initialize audio stream")?;
+
+    #[cfg(not(feature = "audio"))]
+    let audio_source = AudioSourceNoise::new(41100, 100000);
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),

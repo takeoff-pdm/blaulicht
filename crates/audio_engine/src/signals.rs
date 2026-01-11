@@ -6,7 +6,49 @@
 //     msg::{BpmInfo, Signal},
 //     shift_push, signal, util,
 // };
-use audioviz::spectrum::Frequency;
+// use audioviz::spectrum::Frequency;
+
+#[derive(Clone, Debug)]
+pub struct Frequency {
+    pub volume: f32,
+
+    /// Actual frequency in hz, can range from 0 to `config.sample_rate` / 2
+    ///
+    /// Accuracy can vary and is not guaranteed
+    pub freq: f32,
+
+    /// Relative position of single frequency in range (0..=1)
+    ///
+    /// Used to make lower freqs occupy more space than higher ones, to mimic human hearing
+    ///
+    /// Should not be Important, except when distributing freqs manually
+    ///
+    /// To do this manually set `config.interpolation` equal to `Interpolation::None`
+    pub position: f32,
+}
+
+#[cfg(feature = "sources")]
+impl From<audioviz::spectrum::Frequency> for Frequency {
+    fn from(value: audioviz::spectrum::Frequency) -> Self {
+        Self {
+            volume: value.volume,
+            freq: value.freq,
+            position: value.position,
+        }
+    }
+}
+
+#[cfg(feature = "sources")]
+impl From<&audioviz::spectrum::Frequency> for Frequency {
+    fn from(value: &audioviz::spectrum::Frequency) -> Self {
+        Self {
+            volume: value.volume,
+            freq: value.freq,
+            position: value.position,
+        }
+    }
+}
+
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use map_range::MapRange;

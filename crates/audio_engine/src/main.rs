@@ -126,7 +126,7 @@ fn main() {
                 let mut collector = SignalCollector::new(
                     blaulicht_audio_engine::SignalCollectorParams {
                         gate: 0,
-                        boost: 0,
+                        boost: None,
                         volume: 100,
                         auto_calibrate: false,
                         changed: false,
