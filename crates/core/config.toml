@@ -25,7 +25,7 @@ interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"
-enabled = false
+enabled = true
 enable_watcher = true
 
 [[plugins]]
@@ -40,7 +40,7 @@ enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
-enabled = false
+enabled = true
 enable_watcher = true
 
 [[plugins]]

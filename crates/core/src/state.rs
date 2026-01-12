@@ -16,7 +16,8 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::SystemEventBusConnectionInst,
-    msg::{FromFrontend, SystemMessage}, plugin::midi::MidiError,
+    msg::{FromFrontend, SystemMessage},
+    plugin::midi::MidiError,
 };
 use crate::{
     // audio::collector::{CollectorOutput, SignalCollectorParams},

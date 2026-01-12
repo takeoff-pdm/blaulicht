@@ -53,7 +53,7 @@ impl MidiManager {
     ) -> Self {
         let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
-        Self {
+        let manager = Self {
             device_id_counter: 0,
             connection_map: HashMap::new(),
             midi_in_sender,
@@ -61,7 +61,13 @@ impl MidiManager {
             to_manager_receiver: midi_out_receiver,
             to_plugins_sender,
             app_state,
+        };
+
+        if let Err(err) = manager.enumerate_devices() {
+            warn!("[MIDI] Initial device enumeration failed: {:?}", err);
         }
+
+        manager
     }
 
     pub fn enumerate_devices(&self) -> Result<Vec<String>, MidiError> {
@@ -81,6 +87,12 @@ impl MidiManager {
         health_state.midi_health.available_devices = device_names.clone();
 
         Ok(device_names)
+    }
+
+    pub fn reload(&mut self) {
+        if let Err(err) = self.enumerate_devices() {
+            warn!("[MIDI] Failed to refresh devices on reload: {:?}", err);
+        }
     }
 
     pub fn request_device(&mut self, device_name: &str) -> Option<u8> {

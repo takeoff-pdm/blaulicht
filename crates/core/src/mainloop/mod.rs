@@ -231,6 +231,13 @@ pub fn run(
                     ))
                     .unwrap();
 
+                match midi_manager.lock() {
+                    Ok(mut manager) => manager.reload(),
+                    Err(err) => log::warn!(
+                        "[ENGINE] Failed to acquire MIDI manager lock during reload: {err}"
+                    ),
+                }
+
                 plugin_manager.reload()?;
 
                 system_out
