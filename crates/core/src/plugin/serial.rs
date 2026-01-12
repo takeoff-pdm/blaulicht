@@ -1,24 +1,36 @@
 use blaulicht_shared::SerialReceived;
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use log::{debug, error, info, trace, warn};
-use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
-use serialport::SerialPort;
+use log::{debug, error};
+use serialport::{available_ports, ErrorKind as SerialPortErrorKind, SerialPort};
 use std::collections::HashMap;
+use std::fmt;
+use std::mem;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{mem, thread};
 // use wmidi::MidiMessage;
+
+use crate::state::{AppState, SerialDeviceState};
 
 const PORT_TIMEOUT: Duration = Duration::from_millis(3);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SerialError {
     DeviceNotFound,
     Other(String),
 }
 
+impl fmt::Display for SerialError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SerialError::DeviceNotFound => write!(f, "Device not found"),
+            SerialError::Other(err) => write!(f, "{err}"),
+        }
+    }
+}
+
 pub struct SerialManager {
     connection_map: HashMap<String, SerialDeviceHandle>,
     device_id_counter: u8,
+    app_state: Arc<AppState>,
     // // Events from a outside to the manager.
     // midi_in_sender: Sender<MidiEvent>,
     // midi_in_receiver: Receiver<MidiEvent>,
@@ -38,14 +50,13 @@ struct SerialDeviceHandle {
 }
 
 impl SerialManager {
-    pub fn new(// midi_out_receiver: Receiver<MidiEvent>,
-        // to_plugins_sender: Sender<MidiEvent>,
-    ) -> Self {
+    pub fn new(app_state: Arc<AppState>) -> Self {
         // let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
         Self {
             device_id_counter: 0,
             connection_map: HashMap::new(),
+            app_state,
             // midi_in_sender,
             // midi_in_receiver,
             // to_manager_receiver: midi_out_receiver,
@@ -53,33 +64,32 @@ impl SerialManager {
         }
     }
 
-    pub fn enumerate_devices() -> Result<Vec<String>, SerialError> {
-        todo!("not implemented")
-        // let midi_in =
-        //     MidiInput::new("device_enumerator").map_err(|e| SerialError::Other(e.to_string()))?;
+    pub fn enumerate_devices(&self) -> Result<Vec<String>, SerialError> {
+        let ports = available_ports().map_err(|e| SerialError::Other(e.to_string()))?;
+        let device_names: Vec<String> = ports.into_iter().map(|p| p.port_name).collect();
 
-        // let in_ports = midi_in.ports();
-        // let mut device_names = Vec::new();
-
-        // for port in &in_ports {
-        //     if let Ok(name) = midi_in.port_name(port) {
-        //         device_names.push(name);
-        //     }
-        // }
-
-        // Ok(device_names)
+        Ok(device_names)
     }
 
     pub fn request_device(&mut self, port_path: &str, baud_rate: u32) -> Option<u8> {
         // TODO: would normally check that this is not used by one of the DMX interfaces.
 
         // Check if there is already a handle for this device.
-        if let Some(dev) = self.connection_map.get(port_path) {
+        if let Some(device_id) = self.connection_map.get(port_path).map(|dev| dev.device_id) {
             debug!(
                 "Reusing existing SERIAL connection with id: {} for device: '{port_path}'",
-                dev.device_id
+                device_id
             );
-            return Some(dev.device_id);
+
+            {
+                let mut health_state = self.app_state.health_data.write().unwrap();
+                health_state
+                    .serial_health
+                    .devices
+                    .insert(port_path.to_string(), SerialDeviceState::Open(1));
+            }
+
+            return Some(device_id);
         }
 
         let serial_port = match serialport::new(port_path, baud_rate)
@@ -88,7 +98,20 @@ impl SerialManager {
         {
             Ok(port) => port,
             Err(err) => {
-                error!("Could not open serial port: {err}");
+                error!("Could not open serial port '{port_path}': {err}");
+
+                let serial_error = match err.kind() {
+                    SerialPortErrorKind::NoDevice => SerialError::DeviceNotFound,
+                    _ => SerialError::Other(err.to_string()),
+                };
+                {
+                    let mut health_state = self.app_state.health_data.write().unwrap();
+                    health_state.serial_health.devices.insert(
+                        port_path.to_string(),
+                        SerialDeviceState::Error(serial_error),
+                    );
+                }
+
                 return None;
             }
         };
@@ -106,11 +129,19 @@ impl SerialManager {
             },
         );
 
+        {
+            let mut health_state = self.app_state.health_data.write().unwrap();
+            health_state
+                .serial_health
+                .devices
+                .insert(port_path.to_string(), SerialDeviceState::Open(1));
+        }
+
         Some(device_id)
     }
 
     pub fn tick(&mut self) -> Result<Vec<SerialReceived>, SerialError> {
-        let mut error = None;
+        let mut error: Option<SerialError> = None;
 
         let mut incoming_events = vec![];
 
@@ -119,6 +150,14 @@ impl SerialManager {
             let mut buf = [0u8; 10_000];
             match port.serial_port.read(&mut buf) {
                 Ok(n) if n > 0 => {
+                    {
+                        let mut health_state = self.app_state.health_data.write().unwrap();
+                        health_state
+                            .serial_health
+                            .devices
+                            .insert(port.port_path.clone(), SerialDeviceState::Open(1));
+                    }
+
                     let sliced_buf = &buf[..n];
 
                     // Check for linebreaks.
@@ -170,17 +209,24 @@ impl SerialManager {
                 }
                 Err(e) => {
                     error!("Serial port error: {:?}", e);
+                    let serial_error = SerialError::Other(e.to_string());
                     if error.is_none() {
-                        error = Some(e);
+                        error = Some(serial_error.clone());
                     }
+
+                    let mut health_state = self.app_state.health_data.write().unwrap();
+                    health_state.serial_health.devices.insert(
+                        port.port_path.clone(),
+                        SerialDeviceState::Error(serial_error),
+                    );
                 }
             }
         }
 
-        // TODO: error handling.
-
-        // println!("incoming: {incoming_events:?}");
-
-        Ok(incoming_events)
+        if let Some(err) = error {
+            Err(err)
+        } else {
+            Ok(incoming_events)
+        }
     }
 }

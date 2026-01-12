@@ -72,7 +72,7 @@ pub fn run(
     //
     // Serial.
     //
-    let serial_manager = Arc::new(Mutex::new(SerialManager::new()));
+    let serial_manager = Arc::new(Mutex::new(SerialManager::new(Arc::clone(&app_state))));
 
     //
     // Plugin system.
