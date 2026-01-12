@@ -11,15 +11,15 @@ use std::{
 use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
 use egui::{
-    Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, Rounding,
-    TextEdit, ThemePreference, Vec2, Widget,
+    Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, Stroke, TextEdit,
+    ThemePreference, Vec2, Widget,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_file::FileDialog;
 
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize, Dialog},
+        components::{self, clickable, text_color_for_bg, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
@@ -425,12 +425,17 @@ impl BlaulichtApp {
                 });
 
                 ui.add_space(12.0);
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                    if components::button(ui, true, "Close", ButtonSize::Medium) {
-                        self.system_ui_state.midi_dialog_open = false;
-                    }
-                    ui.add_space(8.0);
-                });
+                let remaining_height = ui.available_height();
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), remaining_height),
+                    egui::Layout::bottom_up(egui::Align::Center),
+                    |ui| {
+                        if components::button(ui, true, "Close", ButtonSize::Medium) {
+                            self.system_ui_state.midi_dialog_open = false;
+                        }
+                        ui.add_space(8.0);
+                    },
+                );
             });
     }
 
@@ -1338,63 +1343,89 @@ fn render_dmx_or_artnet_health_box(
     clickable: bool,
     dimensions: Vec2,
 ) -> bool {
-    let color = match is_healthy {
-        true => Color32::GREEN,
-        false => Color32::RED,
+    let label_text = label.text().to_string();
+    let sense = if clickable {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(dimensions, sense);
+    let painter = ui.painter();
+
+    let base_color = if is_healthy {
+        Color32::from_rgb(67, 209, 110)
+    } else {
+        Color32::from_rgb(226, 69, 69)
     };
 
-    let text = label.text().to_string();
+    let is_pressed = response.is_pointer_button_down_on();
+    let hovered = response.hovered();
 
-    // 1. Capture the frame's InnerResponse
-    let frame_inner_response = Frame::NONE
-        .fill(Color32::from_gray(50))
-        .outer_margin(Margin {
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-        })
-        .inner_margin(Margin::same(8))
-        .show(ui, |ui| {
-            ui.allocate_ui_with_layout(
-                dimensions,
-                egui::Layout::top_down(egui::Align::Center),
-                |ui| {
-                    ui.label(
-                        RichText::new(icon)
-                            .size(30.0)
-                            .color(Color32::from_gray(200)),
-                    );
+    let bg_color = if is_pressed {
+        base_color.gamma_multiply(1.2)
+    } else if hovered {
+        base_color.gamma_multiply(1.4)
+    } else {
+        base_color
+    };
 
-                    ui.add(label);
+    let shadow_offset = if is_pressed {
+        Vec2::new(1.0, 1.0)
+    } else {
+        Vec2::new(2.0, 3.0)
+    };
+    let shadow_color = if is_pressed {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 120)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 70)
+    };
 
-                    ui.label(
-                        RichText::new(if is_healthy { "ONLINE" } else { "OFFLINE" })
-                            .size(9.0)
-                            .color(color.gamma_multiply(5.0)),
-                    );
-                },
-            ) // This returns InnerResponse (from allocate_ui...)
-        }); // This returns InnerResponse (from Frame)
+    let radius = 4.0;
+    painter.rect_filled(rect.translate(shadow_offset), radius + 1.0, shadow_color);
+    painter.rect_filled(rect, radius, bg_color);
 
-    // 2. Create an interaction area over the frame's rectangle
-    // We use the label as a salt for the ID to ensure it works in lists/loops
-    let response = ui.interact(
-        frame_inner_response.response.rect, // The visual area of the frame
-        ui.make_persistent_id(text),        // Unique ID (crucial if you have multiple cards)
-        egui::Sense::click(),               // Listen for clicks
+    if hovered {
+        painter.rect_stroke(
+            rect,
+            radius,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
+        );
+    }
+
+    let text_color = text_color_for_bg(ui, bg_color);
+    let content_rect = rect.shrink2(Vec2::splat(8.0));
+    let center_x = content_rect.center().x;
+    let mut y = content_rect.top();
+
+    painter.text(
+        egui::pos2(center_x, y),
+        egui::Align2::CENTER_TOP,
+        icon,
+        FontId::proportional(28.0),
+        text_color,
     );
 
-    // 3. Handle the interactions
-    if response.hovered() && clickable {
+    y += 30.0;
+    painter.text(
+        egui::pos2(center_x, y),
+        egui::Align2::CENTER_TOP,
+        label_text,
+        FontId::proportional(12.0),
+        text_color,
+    );
+
+    y += 18.0;
+    let status_text = if is_healthy { "ONLINE" } else { "OFFLINE" };
+    painter.text(
+        egui::pos2(center_x, y),
+        egui::Align2::CENTER_TOP,
+        status_text,
+        FontId::proportional(10.0),
+        text_color,
+    );
+
+    if clickable && response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Optional: Draw a border or lighten the color on hover
-        ui.painter().rect_stroke(
-            frame_inner_response.response.rect,
-            egui::Rounding::ZERO,
-            egui::Stroke::new(1.0, Color32::WHITE),
-            egui::StrokeKind::Middle,
-        );
     }
 
     response.clicked() && clickable
