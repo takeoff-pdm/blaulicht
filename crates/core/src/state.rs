@@ -16,7 +16,8 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::SystemEventBusConnectionInst,
-    msg::{FromFrontend, SystemMessage}, plugin::midi::MidiError,
+    msg::{FromFrontend, SystemMessage},
+    plugin::{midi::MidiError, serial::SerialError},
 };
 use crate::{
     // audio::collector::{CollectorOutput, SignalCollectorParams},
@@ -120,10 +121,31 @@ impl MidiHealth {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum SerialDeviceState {
+    Error(SerialError),
+    Open(usize),
+}
+
+#[derive(Default, Clone)]
+pub struct SerialHealth {
+    pub devices: HashMap<String, SerialDeviceState>,
+}
+
+impl SerialHealth {
+    pub fn is_healthy(&self) -> bool {
+        !self
+            .devices
+            .iter()
+            .any(|(_, state)| matches!(state, SerialDeviceState::Error(_)))
+    }
+}
+
 pub struct AppHealthState {
     pub dmx_universes_healthy: [DmxHealth; NUM_DMX_UNIVERSES],
     pub artnet_health_state: bool,
     pub midi_health: MidiHealth,
+    pub serial_health: SerialHealth,
 }
 
 #[derive(Clone)]
@@ -207,6 +229,7 @@ impl AppState {
                 dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
                 artnet_health_state: false,
                 midi_health: MidiHealth::default(),
+                serial_health: SerialHealth::default(),
             }),
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),

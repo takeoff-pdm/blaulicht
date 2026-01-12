@@ -1172,7 +1172,9 @@ impl PluginManager {
                 use crate::plugin::midi::MidiManager;
 
                 let mut midi_manager = midi_manager.lock().unwrap();
-                let devices = midi_manager.enumerate_devices().unwrap_or_else(|_| Vec::new());
+                let devices = midi_manager
+                    .enumerate_devices()
+                    .unwrap_or_else(|_| Vec::new());
                 let json = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".to_string());
                 let json_bytes = json.as_bytes();
 
