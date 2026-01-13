@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, EngineState, LogLevel};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use log::{debug, info, trace};
+use log::{debug, error, info, log, trace};
 use notify::{
     event::{DataChange, ModifyKind},
     Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
@@ -193,8 +193,11 @@ impl PluginManager {
 
         // Watch each file of the plugins to watch.
         for file in &files_to_watch {
-            watcher.watch(file, RecursiveMode::NonRecursive)?;
-            debug!("Watching file: {:?}", file);
+            if let Err(err) = watcher.watch(file, RecursiveMode::NonRecursive) {
+                error!("Watching file: {:?} failed: {}", file, err);
+            } else {
+                debug!("Watching file: {:?}", file);
+            }
         }
 
         debug!("Watching {} files...", files_to_watch.len());

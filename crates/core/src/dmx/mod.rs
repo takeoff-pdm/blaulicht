@@ -46,7 +46,7 @@ pub struct DmxEngine {
     system_out: Sender<SystemMessage>,
 
     // This is not part of state_ref since this is only a cache
-    animation_base_times: BTreeMap<u8, f64>,
+    // animation_base_times: BTreeMap<u8, f64>,
     start_time: Instant,
 
     pub dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
@@ -167,7 +167,7 @@ impl DmxEngine {
             dmx_previous: [0; 513],
             event_bus_connection,
             system_out,
-            animation_base_times: BTreeMap::new(),
+            // animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
             dmx_universe_ports,
             artnet_output,
