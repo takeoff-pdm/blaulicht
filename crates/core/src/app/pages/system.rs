@@ -11,7 +11,7 @@ use std::{
 use blaulicht_assets::icons;
 use blaulicht_shared::LogLevel;
 use egui::{
-    Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, Stroke, TextEdit,
+    Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
     ThemePreference, Vec2, Widget,
 };
 use egui_extras::{Column, TableBuilder};
@@ -19,7 +19,7 @@ use egui_file::FileDialog;
 
 use crate::{
     app::{
-        components::{self, clickable, text_color_for_bg, ButtonSize, Dialog},
+        components::{self, clickable, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
@@ -1343,89 +1343,63 @@ fn render_dmx_or_artnet_health_box(
     clickable: bool,
     dimensions: Vec2,
 ) -> bool {
-    let label_text = label.text().to_string();
-    let sense = if clickable {
-        egui::Sense::click()
-    } else {
-        egui::Sense::hover()
-    };
-    let (rect, response) = ui.allocate_exact_size(dimensions, sense);
-    let painter = ui.painter();
-
-    let base_color = if is_healthy {
+    let status_color = if is_healthy {
         Color32::from_rgb(67, 209, 110)
     } else {
         Color32::from_rgb(226, 69, 69)
     };
 
-    let is_pressed = response.is_pointer_button_down_on();
-    let hovered = response.hovered();
+    let background_color = Color32::from_rgb(52, 58, 70);
+    // let BacktraceStyle
+    let background_color = ui.visuals().widgets.active.bg_fill;
+    // a
 
-    let bg_color = if is_pressed {
-        base_color.gamma_multiply(1.2)
-    } else if hovered {
-        base_color.gamma_multiply(1.4)
-    } else {
-        base_color
-    };
+    let label_text = label.text().to_string();
 
-    let shadow_offset = if is_pressed {
-        Vec2::new(1.0, 1.0)
-    } else {
-        Vec2::new(2.0, 3.0)
-    };
-    let shadow_color = if is_pressed {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 120)
-    } else {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 70)
-    };
+    let frame_inner_response = Frame::none()
+        .fill(background_color)
+        .outer_margin(Margin::same(0))
+        .inner_margin(Margin::same(8))
+        .show(ui, |ui| {
+            ui.allocate_ui_with_layout(
+                dimensions,
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    ui.label(
+                        RichText::new(icon)
+                            .size(30.0)
+                            .color(Color32::from_gray(230)),
+                    );
 
-    let radius = 4.0;
-    painter.rect_filled(rect.translate(shadow_offset), radius + 1.0, shadow_color);
-    painter.rect_filled(rect, radius, bg_color);
+                    ui.label(
+                        RichText::new(&label_text)
+                            .size(12.0)
+                            .color(Color32::from_gray(240)),
+                    );
 
-    if hovered {
-        painter.rect_stroke(
-            rect,
-            radius,
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
-        );
-    }
+                    ui.label(
+                        RichText::new(if is_healthy { "ONLINE" } else { "OFFLINE" })
+                            .size(9.0)
+                            .color(status_color),
+                    );
+                },
+            )
+        });
 
-    let text_color = text_color_for_bg(ui, bg_color);
-    let content_rect = rect.shrink2(Vec2::splat(8.0));
-    let center_x = content_rect.center().x;
-    let mut y = content_rect.top();
-
-    painter.text(
-        egui::pos2(center_x, y),
-        egui::Align2::CENTER_TOP,
-        icon,
-        FontId::proportional(28.0),
-        text_color,
+    let response = ui.interact(
+        frame_inner_response.response.rect,
+        ui.make_persistent_id(label_text),
+        egui::Sense::click(),
     );
 
-    y += 30.0;
-    painter.text(
-        egui::pos2(center_x, y),
-        egui::Align2::CENTER_TOP,
-        label_text,
-        FontId::proportional(12.0),
-        text_color,
-    );
-
-    y += 18.0;
-    let status_text = if is_healthy { "ONLINE" } else { "OFFLINE" };
-    painter.text(
-        egui::pos2(center_x, y),
-        egui::Align2::CENTER_TOP,
-        status_text,
-        FontId::proportional(10.0),
-        text_color,
-    );
-
-    if clickable && response.hovered() {
+    if response.hovered() && clickable {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        ui.painter().rect_stroke(
+            frame_inner_response.response.rect,
+            egui::Rounding::same(2),
+            egui::Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
+            egui::StrokeKind::Middle,
+        );
     }
 
     response.clicked() && clickable
