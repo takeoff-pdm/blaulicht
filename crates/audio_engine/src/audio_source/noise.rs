@@ -1,4 +1,5 @@
-use crate::{noise, AudioSource, Frequency};
+use crate::{AudioSource, Frequency};
+use rand::Rng; // Import the trait to use .gen_range()
 
 #[derive(Clone)]
 pub struct AudioSourceNoise {
@@ -36,11 +37,15 @@ impl AudioSourceNoise {
 
     /// Get frequencies at a specific time in seconds
     pub fn get_frequencies_at_time(&self, time_millis: usize) -> Vec<Frequency> {
-        let mut base = vec![];
+        // ... inside your function ...
+
+        let mut rng = rand::rng(); // Create a local random generator
+        let mut base = Vec::with_capacity(200);
 
         for i in 0..200 {
             base.push(Frequency {
-                volume: 100.0,
+                // Generate a random f32 between 0.0 and 100.0
+                volume: rng.random_range(0.0..100.0),
                 freq: (i * 100) as f32,
                 position: 0.0,
             });

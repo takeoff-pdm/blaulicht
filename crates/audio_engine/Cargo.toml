@@ -12,16 +12,25 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 
 [features]
-default = ["sources"]
-sources = ["dep:cpal", "dep:audioviz", "dep:symphonia"]
+default = ["stream_in"]
+stream_in = ["dep:cpal", "dep:audioviz"]
+file = [ "dep:symphonia", "stream_in" ]
+noise = ["dep:rand"]
 
 [dependencies]
 log = "0.4"
+
+# stream_in, file
 audioviz = { version = "0.4.4", features = ["serde"], optional = true }
 cpal = { version = "0.15.3", optional = true }
 
+# file
 symphonia = { version = "0.5.5", features = ["mp3"], optional = true }
 
+# noise
+rand = { version = "0.9.2", optional = true }
+
+# TODO: remove all of this.
 crossbeam-channel = "0.5.15"
 itertools = "0.14.0"
 blaulicht-shared = { path = "../shared" }
@@ -32,6 +41,7 @@ map-range = "0.1.2"
 image = "0.25.6"
 kdam = "0.6.3"
 clap = { version = "4.5.21", features = ["derive"] }
+
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"
