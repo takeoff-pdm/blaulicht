@@ -348,6 +348,7 @@ pub struct AnimationEditState {
     // pub timing_pin_to_beat: bool,
     pub working_state: AnimationSpec,
     pub math_base_fn_dialog_open: bool,
+    pub sync_mode_dialog_open: bool,
 }
 
 impl Default for AnimationEditState {
@@ -365,6 +366,7 @@ impl Default for AnimationEditState {
                 property: FixtureProperty::Alpha,
             },
             math_base_fn_dialog_open: false,
+            sync_mode_dialog_open: false,
         }
     }
 }
@@ -434,21 +436,28 @@ impl AnimationEditState {
                             // TODO: why is this whole dropdown not as large as a button?
                             ui.add_sized([LABEL_W, cell_h], Label::new("Sync:"));
 
-                            egui::ComboBox::from_id_salt("anim_sync_mode")
-                                .width(140.0)
-                                .selected_text(format!("{:?}", phaser_mut.sync))
-                                .show_ui(ui, |ui| {
-                                    for mode in SyncMode::iter() {
-                                        if components::button(
-                                            ui,
-                                            false,
-                                            &mode.to_string(),
-                                            ButtonSize::Medium.with_width(140.0),
-                                        ) {
-                                            phaser_mut.sync = mode;
-                                        }
-                                    }
-                                });
+                            if components::button(
+                                ui,
+                                false,
+                                &format!("{:?}", phaser_mut.sync),
+                                ButtonSize::Medium.with_width(140.0),
+                            ) {
+                                self.sync_mode_dialog_open = true;
+                            }
+
+                            let options = SyncMode::iter();
+
+                            let (new_sync_mode, changed) = components::selection_dialog(
+                                ctx,
+                                options,
+                                phaser_mut.sync,
+                                &mut self.sync_mode_dialog_open,
+                                "Select Sync Mode".to_string(),
+                            );
+
+                            if changed {
+                                phaser_mut.sync = new_sync_mode;
+                            }
                         });
 
                         if components::button(ui, false, "Toggle Timing", ButtonSize::Medium) {
