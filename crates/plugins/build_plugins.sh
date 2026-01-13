@@ -1,2 +1,2 @@
-rm -rf bundle_debug
-make
+rm -rf bundle_debug bundle_release
+make build_opt
