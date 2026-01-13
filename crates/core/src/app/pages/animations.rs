@@ -312,7 +312,7 @@ impl BlaulichtApp {
                                         }
 
                                         if let Some(value_changed) =
-                                            self.animation_ui_state.edit_state.show(ui)
+                                            self.animation_ui_state.edit_state.show(ui, ctx)
                                         {
                                             let mut dmx_engine =
                                                 self.data.state.dmx_engine.write().unwrap();
@@ -347,6 +347,7 @@ pub struct AnimationEditState {
     // pub timing: PhaserDuration,
     // pub timing_pin_to_beat: bool,
     pub working_state: AnimationSpec,
+    pub math_base_fn_dialog_open: bool,
 }
 
 impl Default for AnimationEditState {
@@ -363,17 +364,18 @@ impl Default for AnimationEditState {
                 body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
                 property: FixtureProperty::Alpha,
             },
+            math_base_fn_dialog_open: false,
         }
     }
 }
 
 impl AnimationEditState {
-    fn load_state(&mut self, spec: AnimationSpec) {
+    pub fn load_state(&mut self, spec: AnimationSpec) {
         println!("UI load state");
         self.working_state = spec;
     }
 
-    fn show(&mut self, ui: &mut egui::Ui) -> Option<AnimationSpec> {
+    pub fn show(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> Option<AnimationSpec> {
         let mut apply_clicked = false;
 
         ui.vertical(|ui| {
@@ -384,12 +386,12 @@ impl AnimationEditState {
 
             // PATCH: sync properties of the animation that was selected.
 
-            match &mut self.working_state.body {
-                AnimationSpecBody::Phaser(phaser) => Self::anim_phaser_ui(phaser, ui),
-                AnimationSpecBody::AudioVolume(audio) => Self::anim_audio_ui(audio, ui),
-                AnimationSpecBody::AudioFrequencies(freq) => Self::anim_freq_ui(freq, ui),
-                AnimationSpecBody::AudioBeat(beat) => Self::anim_beat_ui(beat, ui),
-                AnimationSpecBody::BeatClock(beat) => Self::anim_beat_clock_ui(beat, ui),
+            match &self.working_state.body {
+                AnimationSpecBody::Phaser(phaser) => self.anim_phaser_ui(ui, ctx),
+                AnimationSpecBody::AudioVolume(audio) => self.anim_audio_ui(ui),
+                AnimationSpecBody::AudioFrequencies(freq) => self.anim_freq_ui(ui),
+                AnimationSpecBody::AudioBeat(beat) => self.anim_beat_ui(ui),
+                AnimationSpecBody::BeatClock(beat) => self.anim_beat_clock_ui(ui),
                 AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
             }
 
@@ -406,13 +408,10 @@ impl AnimationEditState {
         }
     }
 
-    fn anim_phaser_ui(
-        // &self,
-        // animation_id: u8,
-        phaser_mut: &mut AnimationSpecBodyPhaser,
-        ui: &mut egui::Ui,
-    ) {
-        // let phaser = phaser_mut.clone();
+    pub fn anim_phaser_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let AnimationSpecBody::Phaser(ref mut phaser_mut) = &mut self.working_state.body else {
+            return;
+        };
 
         const RENDER_WIDTH: usize = 3;
 
@@ -505,17 +504,43 @@ impl AnimationEditState {
                     });
 
                     ui.horizontal(|ui| {
-                        egui::ComboBox::from_label("FN")
-                            .selected_text(format!("{:?}", mathematical_phaser))
-                            .show_ui(ui, |ui| {
-                                for func in MathematicalBaseFunction::iter() {
-                                    ui.selectable_value(
-                                        &mut mathematical_phaser.base,
-                                        func,
-                                        func.to_string(),
-                                    );
-                                }
-                            });
+                        if components::button(
+                            ui,
+                            false,
+                            &format!("{:?}", mathematical_phaser.base),
+                            ButtonSize::Medium,
+                        ) {
+                            self.math_base_fn_dialog_open = true;
+                        }
+
+                        let options = MathematicalBaseFunction::iter();
+
+                        let (new_fn, changed) = components::selection_dialog(
+                            ctx,
+                            options,
+                            mathematical_phaser.base,
+                            &mut self.math_base_fn_dialog_open,
+                            "Select Base FN".to_string(),
+                        );
+
+                        if changed {
+                            mathematical_phaser.base = new_fn;
+                        }
+
+                        // egui::ComboBox::from_label("FN")
+                        //     .selected_text()
+                        //     .show_ui(ui, |ui| {
+                        //         for func in MathematicalBaseFunction::iter() {
+                        //             if components::button(
+                        //                 ui,
+                        //                 false,
+                        //                 &func.to_string(),
+                        //                 ButtonSize::Medium.with_width(140.0),
+                        //             ) {
+                        //                 mathematical_phaser.base = func;
+                        //             }
+                        //         }
+                        //     });
                     });
 
                     ui.separator();
@@ -554,19 +579,19 @@ impl AnimationEditState {
         });
     }
 
-    fn anim_audio_ui(_audio: &mut AnimationSpecBodyAudioVolume, ui: &mut egui::Ui) {
+    fn anim_audio_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("[AUDIO]");
     }
 
-    fn anim_freq_ui(_beat: &mut AnimationSpecBodyFrequencies, ui: &mut egui::Ui) {
+    fn anim_freq_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("[AUDIO-FREQ]");
     }
 
-    fn anim_beat_ui(_beat: &mut AnimationSpecBodyBeat, ui: &mut egui::Ui) {
+    fn anim_beat_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("[AUDIO-BEAT]");
     }
 
-    fn anim_beat_clock_ui(_beat: &mut AnimationSpecBodyBeat, ui: &mut egui::Ui) {
+    fn anim_beat_clock_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("[BEAT-CLOCK]");
     }
 }

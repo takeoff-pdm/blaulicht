@@ -1,11 +1,12 @@
 use crate::Frequency;
 
-#[cfg(feature = "sources")]
+#[cfg(feature = "file")]
 pub mod file;
 
-#[cfg(feature = "sources")]
+#[cfg(feature = "stream_in")]
 pub mod microphone;
 
+#[cfg(feature = "noise")]
 pub mod noise;
 
 pub trait AudioSource {

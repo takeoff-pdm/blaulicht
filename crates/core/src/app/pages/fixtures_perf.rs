@@ -1,17 +1,24 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, HFader, Knob, SpeedKnob},
+        pages::AnimationEditState,
         BlaulichtApp,
     },
     dmx::EngineState,
+    event::SystemEventBusConnectionInst,
 };
 use blaulicht_shared::{
+    scene::{FixtureSelection, Scene},
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
-use egui::{ecolor, Color32, Context, RichText};
+use egui::{Color32, Context, RichText};
 // use egui_knob::{Knob, KnobStyle, LabelPosition};
 
-pub struct FixturePerfUi {}
+pub struct FixturePerfUi {
+    pub scene_overview_animation_edit: AnimationEditState,
+    pub scene_overview_animation_selection_edit: Option<(FixtureSelection, u8)>,
+    pub scene_overview_animation_selection_edit_need_to_load: bool,
+}
 
 impl BlaulichtApp {
     pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
@@ -374,5 +381,167 @@ impl BlaulichtApp {
                 );
             },
         );
+    }
+
+    pub fn render_scene_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if self.current_scene_animations_dialog_open {
+            const HEIGHT: f32 = 430.0;
+            const WIDTH: f32 = 500.0;
+
+            Dialog::new(
+                "Current Scene Animations".to_string(),
+                egui::vec2(WIDTH, HEIGHT),
+            )
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.set_min_height(HEIGHT - 100.0);
+
+                let scene = dmx_engine.curr_scene();
+
+                if let Some((selec, anim_id)) =
+                    &self.fixture_perf_ui.scene_overview_animation_selection_edit
+                {
+                    let animation = scene
+                        .sink
+                        .active_animations()
+                        .get(selec)
+                        .unwrap()
+                        .get(anim_id)
+                        .unwrap();
+
+                    if self
+                        .fixture_perf_ui
+                        .scene_overview_animation_selection_edit_need_to_load
+                    {
+                        self.fixture_perf_ui
+                            .scene_overview_animation_edit
+                            .load_state(animation.spec_cloned.clone());
+
+                        self.fixture_perf_ui
+                            .scene_overview_animation_selection_edit_need_to_load = false;
+                    }
+
+                    self.fixture_perf_ui.scene_overview_animation_edit.show(ui, ctx);
+
+                    if components::button(ui, true, "Close", ButtonSize::Medium) {
+                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
+                    }
+                } else {
+                    self.render_normal_scene_animations(ui, scene);
+                }
+            });
+        }
+    }
+
+    fn render_normal_scene_animations(&mut self, ui: &mut egui::Ui, scene: &Scene) {
+        ui.heading("Active Animations");
+        ui.separator();
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if scene.sink.active_animations.is_empty() {
+                ui.label("No Animations Yet");
+            }
+
+            for (selection, animations) in &scene.sink.active_animations {
+                ui.label(
+                    RichText::new(format!("Selection: {selection:?}")).color(Color32::LIGHT_GREEN),
+                );
+
+                for (animation_id, animation) in animations {
+                    ui.label(
+                        RichText::new(format!(
+                            "[{}] {} | {}",
+                            animation_id,
+                            animation.spec_cloned.name,
+                            animation.spec_cloned.property
+                        ))
+                        .color(Color32::WHITE),
+                    );
+
+                    // Remove button
+                    if components::button(ui, false, "Remove", ButtonSize::Medium) {
+                        let mut selection_instructions = selection.generate_instructions();
+
+                        selection_instructions.push_front(ControlEvent::PushSelection);
+                        selection_instructions
+                            .push_back(ControlEvent::RemoveAnimation(*animation_id));
+
+                        selection_instructions.push_back(ControlEvent::PopSelection);
+
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::Transaction(
+                                    selection_instructions.into_iter().collect(),
+                                ),
+                            ));
+                    }
+
+                    let (label, enabled, event) = match animation.enabled {
+                        true => ("Pause", true, ControlEvent::PauseAnimation(*animation_id)),
+                        false => ("Play", false, ControlEvent::PlayAnimation(*animation_id)),
+                    };
+
+                    if components::button(ui, enabled, label, ButtonSize::Medium) {
+                        let mut selection_instructions = selection.generate_instructions();
+
+                        selection_instructions.push_front(ControlEvent::PushSelection);
+                        selection_instructions.push_back(event);
+                        selection_instructions.push_back(ControlEvent::PopSelection);
+
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::Transaction(
+                                    selection_instructions.into_iter().collect(),
+                                ),
+                            ));
+                    }
+
+                    // Speed fader (horizontal), mapped to AnimationSpeedModifier indices 0..7
+                    let mut speed_index = animation.speed_factor.as_index() as f32;
+                    let resp = ui.add(
+                        components::HFader::new(&mut speed_index, 0.0..=7.0)
+                            .with_label("Speed")
+                            .show_value(false),
+                    );
+
+                    if resp.changed() {
+                        let new_index = speed_index.round().clamp(0.0, 7.0) as usize;
+                        let new_speed = AnimationSpeedModifier::from_index(new_index);
+
+                        let mut selection_instructions = selection.generate_instructions();
+                        selection_instructions.push_front(ControlEvent::PushSelection);
+                        selection_instructions
+                            .push_back(ControlEvent::SetAnimationSpeed(*animation_id, new_speed));
+                        selection_instructions.push_back(ControlEvent::PopSelection);
+
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::Transaction(
+                                    selection_instructions.into_iter().collect(),
+                                ),
+                            ));
+                    }
+
+                    if components::button(ui, false, "Edit", ButtonSize::Medium) {
+                        self.fixture_perf_ui.scene_overview_animation_selection_edit =
+                            Some((selection.to_owned(), *animation_id));
+                        self.fixture_perf_ui
+                            .scene_overview_animation_selection_edit_need_to_load = true;
+                    }
+                }
+            }
+        });
+
+        ui.separator();
+
+        if components::button(ui, true, "Close", ButtonSize::Medium) {
+            self.current_scene_animations_dialog_open = false;
+        }
     }
 }

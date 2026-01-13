@@ -98,7 +98,7 @@ impl BlaulichtApp {
         self.render_rename_scene_dialog(ctx);
         self.render_delete_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
-        self.render_scene_animations_dialog(ctx, &dmx_engine);
+        // self.render_scene_animations_dialog(ctx, &dmx_engine);
 
         // mem::drop(dmx_engine);
 

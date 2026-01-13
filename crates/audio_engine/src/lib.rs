@@ -4,8 +4,11 @@ pub mod audio_source;
 
 pub mod collector;
 
-#[cfg(feature = "sources")]
+#[cfg(feature = "stream_in")]
 pub mod converter;
+
+#[cfg(feature = "stream_in")]
+pub use converter::*;
 
 pub mod signals;
 pub mod spectrogram;
@@ -13,9 +16,6 @@ pub mod types;
 
 pub use audio_source::*;
 pub use collector::*;
-
-#[cfg(feature = "sources")]
-pub use converter::*;
 
 pub use signals::*;
 pub use spectrogram::*;

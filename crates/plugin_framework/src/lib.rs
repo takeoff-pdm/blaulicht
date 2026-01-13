@@ -41,11 +41,9 @@ extern "C" {
 }
 
 #[no_mangle]
-pub extern "C" fn internal_tick(
-    // Tick input.
-    tick_input_array: *mut u8,
-    tick_input_length: usize,
-) {
+/// # Safety
+/// Only called with the correct inputs from outside.
+pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_length: usize) {
     let tick_array = unsafe { blaulicht::_get_array(tick_input_array, tick_input_length) };
 
     // Run user code
@@ -53,20 +51,19 @@ pub extern "C" fn internal_tick(
 
     match tick_input.initial {
         true => {
+            // Set plugin ID.
+            unsafe { blaulicht::PLUGIN_ID = tick_input.id };
+
+            // Set panic-hook.
             std::panic::set_hook(Box::new(|info| {
                 blaulicht::bl_log(
-                    &format!(
-                        "***PANIC***: (plugin {}): {}",
-                        unsafe { blaulicht::PLUGIN_ID },
-                        info.to_string(),
-                    ),
+                    &format!("***PANIC***: (plugin {}): {info}", unsafe {
+                        blaulicht::PLUGIN_ID
+                    },),
                     LogLevel::Err,
                 );
                 blaulicht::report_panic()
             }));
-
-            // Set plugin ID.
-            unsafe { blaulicht::PLUGIN_ID = tick_input.id };
 
             // Call user-exposed init code.
             unsafe { main() };

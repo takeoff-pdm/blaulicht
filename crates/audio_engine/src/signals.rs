@@ -27,7 +27,7 @@ pub struct Frequency {
     pub position: f32,
 }
 
-#[cfg(feature = "sources")]
+#[cfg(feature = "stream_in")]
 impl From<audioviz::spectrum::Frequency> for Frequency {
     fn from(value: audioviz::spectrum::Frequency) -> Self {
         Self {
@@ -38,7 +38,7 @@ impl From<audioviz::spectrum::Frequency> for Frequency {
     }
 }
 
-#[cfg(feature = "sources")]
+#[cfg(feature = "stream_in")]
 impl From<&audioviz::spectrum::Frequency> for Frequency {
     fn from(value: &audioviz::spectrum::Frequency) -> Self {
         Self {

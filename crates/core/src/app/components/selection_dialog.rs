@@ -19,6 +19,10 @@ where
     T: Eq,
     T: Clone,
 {
+    if !*is_open {
+        return (current_selection, false);
+    }
+
     let vpadding = 5.0;
     let options_len = options.clone().into_iter().count();
 

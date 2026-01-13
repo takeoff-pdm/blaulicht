@@ -4,7 +4,7 @@ use crate::{
             DmxSimulator, LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
-        pages::{AnimationUI, FixturePerfUi, SystemUI},
+        pages::{AnimationEditState, AnimationUI, FixturePerfUi, SystemUI},
         ui::FileDialogOpenOrigin,
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
@@ -270,7 +270,11 @@ impl BlaulichtApp {
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             view_ui_state: ViewUI::default(),
             animation_ui_state: AnimationUI::default(),
-            fixture_perf_ui: FixturePerfUi {},
+            fixture_perf_ui: FixturePerfUi {
+                scene_overview_animation_edit: AnimationEditState::default(),
+                scene_overview_animation_selection_edit: None,
+                scene_overview_animation_selection_edit_need_to_load: false,
+            },
             system_ui_state: SystemUI::default(),
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
         }
