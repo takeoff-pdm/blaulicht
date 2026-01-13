@@ -1155,7 +1155,37 @@ impl BlaulichtApp {
                 }
 
                 {
+                    let artnet_receivers_enabled = {
+                        let artnet_output = self.data.state.artnet_output.read().unwrap();
+                        artnet_output
+                            .receivers
+                            .iter()
+                            .any(|receiver| receiver.enabled)
+                    };
+
                     let health_data = self.data.state.health_data.read().unwrap();
+
+                    let midi_has_error = health_data
+                        .midi_health
+                        .devices
+                        .values()
+                        .any(|state| matches!(state, MidiDeviceState::Error(_)));
+                    let midi_active = health_data.midi_health.devices.values().any(
+                        |state| matches!(state, MidiDeviceState::Open(handles) if *handles > 0),
+                    );
+                    let midi_online = midi_active && !midi_has_error;
+
+                    let serial_has_error = health_data
+                        .serial_health
+                        .devices
+                        .values()
+                        .any(|state| matches!(state, SerialDeviceState::Error(_)));
+                    let serial_active = health_data.serial_health.devices.values().any(
+                        |state| matches!(state, SerialDeviceState::Open(handles) if *handles > 0),
+                    );
+                    let serial_online = serial_active && !serial_has_error;
+
+                    let artnet_online = health_data.artnet_health_state && artnet_receivers_enabled;
 
                     ui.horizontal(|ui| {
                         let dimensions = egui::vec2(60.0, 65.0);
@@ -1190,7 +1220,7 @@ impl BlaulichtApp {
                                     .size(12.0),
                             ),
                             ARTNET_ICON,
-                            health_data.artnet_health_state,
+                            artnet_online,
                             true,
                             dimensions,
                         ) {
@@ -1206,7 +1236,7 @@ impl BlaulichtApp {
                                     .size(12.0),
                             ),
                             MIDI_ICON,
-                            health_data.midi_health.is_healthy(),
+                            midi_online,
                             true,
                             dimensions,
                         ) {
@@ -1221,7 +1251,7 @@ impl BlaulichtApp {
                                     .size(12.0),
                             ),
                             SERIAL_ICON,
-                            health_data.serial_health.is_healthy(),
+                            serial_online,
                             true,
                             dimensions,
                         ) {

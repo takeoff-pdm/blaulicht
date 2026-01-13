@@ -57,7 +57,7 @@ pub struct EngineState {
     pub groups: EngineGroups,
 
     // These are the reusable base animations.
-    pub animations: BTreeMap<u8, AnimationSpec>,
+    pub animation_templates: BTreeMap<u8, AnimationTemplate>,
 
     // Selection.
     pub selection: EngineSelection,
@@ -167,18 +167,48 @@ impl EngineState {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+pub struct AnimationTemplate {
+    pub spec: AnimationSpec,
+}
+
+// Describes how an animation runs.
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub struct AnimationSpec {
     pub name: String,
     pub body: AnimationSpecBody,
     pub property: FixtureProperty,
-    pub sync: SyncMode,
+    // pub sync: SyncMode,
+}
+
+impl AnimationSpec {
+    pub fn empty() -> Self {
+        Self {
+            name: "EMPTY".to_string(),
+            body: AnimationSpecBody::BeatClock(AnimationSpecBodyBeat {}),
+            property: FixtureProperty::Alpha,
+            // sync: SyncMode::Synced,
+        }
+    }
+
+    pub fn sync_mode(&self) -> SyncMode {
+        match self.body {
+            AnimationSpecBody::Phaser(ref animation_spec_body_phaser) => {
+                animation_spec_body_phaser.sync
+            }
+            AnimationSpecBody::AudioVolume(_)
+            | AnimationSpecBody::AudioBeat(_)
+            | AnimationSpecBody::AudioFrequencies(_)
+            | AnimationSpecBody::BeatClock(_)
+            | AnimationSpecBody::Wasm(_) => SyncMode::Synced,
+        }
+    }
 }
 
 impl AnimationSpec {
     pub fn is_beat_pinned(&self) -> bool {
         match &self.body {
             AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
-                return animation_spec_body_phaser.pin_to_beat;
+                animation_spec_body_phaser.pin_to_beat
             }
             AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::AudioBeat(_)
@@ -252,6 +282,7 @@ pub struct AnimationSpecBodyPhaser {
     // Time to complete a complete cycle: cycle step time is calculated from this.
     pub time_total: PhaserDuration,
     pub pin_to_beat: bool,
+    pub sync: SyncMode,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode)]

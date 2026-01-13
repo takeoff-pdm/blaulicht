@@ -8,8 +8,8 @@ use crate::{
     state::DmxBuffer,
 };
 use blaulicht_shared::{
-    fixture::state::FixtureState, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
-    EngineGroups, EventOriginator, FixtureProperty, RGBColor,
+    fixture::state::FixtureState, AnimationSpec, AnimationSpeedModifier, AnimationTemplate,
+    ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
 use eframe::glow::components_per_format;
 use egui::{
@@ -323,12 +323,23 @@ impl BlaulichtApp {
                         );
 
                         for (animation_id, animation) in animations {
-                            let spec = dmx_engine.0.animations.get(animation_id).unwrap();
+                            // let templ = AnimationTemplate {
+                            //     name: "UNAVAILABLE".to_string(),
+                            //     spec: AnimationSpec::EMPTY,
+                            // };
+
+                            // let template = dmx_engine
+                            //     .0
+                            //     .animation_templates
+                            //     .get(animation_id)
+                            //     .unwrap_or_else(|| &templ);
 
                             ui.label(
                                 RichText::new(format!(
                                     "[{}] {} | {}",
-                                    animation_id, spec.name, spec.property
+                                    animation_id,
+                                    animation.spec_cloned.name,
+                                    animation.spec_cloned.property
                                 ))
                                 .color(Color32::WHITE),
                             );
@@ -1025,7 +1036,7 @@ impl BlaulichtApp {
                 None => dmx_engine.0.control_buffer.clone(),
             };
 
-            let animations: Vec<u8> = dmx_engine.0.animations.keys().copied().collect();
+            let animations: Vec<u8> = dmx_engine.0.animation_templates.keys().copied().collect();
 
             self.fixture_controls(
                 ui,

@@ -7,7 +7,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::AnimationSpeedModifier;
+use crate::{AnimationSpec, AnimationSpeedModifier};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
 pub struct AnimationTimerState {
@@ -33,6 +33,8 @@ pub struct ActiveAnimation {
     pub enabled: bool,
     // pub selection: EngineSelection,
     pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
+    // CLONE of the spec.
+    pub spec_cloned: AnimationSpec,
 }
 
 impl ActiveAnimation {
@@ -79,6 +81,12 @@ pub enum SyncMode {
     StretchedHalfHalf,
 }
 
+impl Default for SyncMode {
+    fn default() -> Self {
+        Self::Synced
+    }
+}
+
 impl Display for SyncMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -94,7 +102,7 @@ impl Display for SyncMode {
 }
 
 impl ActiveAnimation {
-    pub fn new(fixtures: &[(u8, u8)]) -> Self {
+    pub fn new(fixtures: &[(u8, u8)], spec_cloned: AnimationSpec) -> Self {
         let mut fixture_timers = BTreeMap::new();
 
         for key in fixtures {
@@ -105,6 +113,7 @@ impl ActiveAnimation {
             speed_factor: AnimationSpeedModifier::_1,
             enabled: false,
             fixture_timers,
+            spec_cloned,
         }
     }
 }

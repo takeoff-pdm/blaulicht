@@ -8,8 +8,9 @@ use blaulicht_shared::{
     scene::{EngineSink, FixtureSelection, Scene},
     view::View,
     ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser,
-    AnimationSpeedModifier, AnimationTimerState, EngineGroups, EngineSelection, FixtureProperty,
-    MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, RGBColor, SyncMode,
+    AnimationSpeedModifier, AnimationTemplate, AnimationTimerState, EngineGroups, EngineSelection,
+    FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind,
+    RGBColor, SyncMode,
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
@@ -80,7 +81,7 @@ impl<'engine> EngineState {
             }
         };
 
-        let spec_animations = other.animations.clone();
+        let spec_animations = other.animation_templates.clone();
 
         // This is actually required because the timetamps need to be reset to 0.
         let scenes = other
@@ -124,7 +125,11 @@ impl<'engine> EngineState {
                                                             .into_iter()
                                                             .enumerate()
                                                             .map(|(counter, (k, v))| {
-                                                                let timer = match anim_spec.sync {
+                                                                // TODO: is is not acceptible.
+                                                                let timer = match anim_spec
+                                                                    .spec
+                                                                    .sync_mode()
+                                                                {
                                                                     SyncMode::Synced => 0,
                                                                     SyncMode::StretchedEven => {
                                                                         ((360.0 / amount as f32)
@@ -264,7 +269,7 @@ impl Default for EngineState {
         let groups = BTreeMap::new();
 
         let state = blaulicht_shared::EngineState {
-            animations: hashmap! {
+            animation_templates: hashmap! {
                 0 => AnimationSpec {
                     name: "Brightness Animation 0".into(),
                     property: FixtureProperty::Alpha,
@@ -277,8 +282,8 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
+                        sync: SyncMode::Synced,
                     }),
-                    sync: SyncMode::Synced,
                 },
                 1 => AnimationSpec {
                     name: "Hue Animation 0".into(),
@@ -292,8 +297,8 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
+                        sync: SyncMode::Synced,
                     }),
-                    sync: SyncMode::Synced,
                 },
                 2 => AnimationSpec {
                     name: "Brightness Animation 1".into(),
@@ -307,11 +312,12 @@ impl Default for EngineState {
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
+                        sync: SyncMode::Synced,
                     }),
-                    sync: SyncMode::Synced,
                 },
             }
             .into_iter()
+            .map(|(k, spec)| (k, AnimationTemplate { spec }))
             .collect(),
             groups: groups.clone(),
             selection: Default::default(),

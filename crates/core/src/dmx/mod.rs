@@ -207,7 +207,7 @@ impl DmxEngine {
         }
 
         // Advance animations.
-        self.build_animations_cache(audio_output.snapshot);
+        // self.build_animations_cache(audio_output.snapshot);
         self.animation_tick(audio_output);
 
         // let mut state = self.state_ref.dmx_engine.write().unwrap();
@@ -616,23 +616,13 @@ impl DmxEngine {
                 // HOW TO FIX: ADD A SWITCH TO ANIMATIONS THAT DISABLE THEM.
                 state.0.current_scene_focus = id;
 
-                let animations = state.0.animations.clone();
+                // let animations = state.0.animation_templates.clone();
 
                 let anim = &mut state.curr_scene_mut().sink.active_animations;
                 for (_selec, anim_set) in anim.iter_mut() {
                     for (anim_id, anim) in anim_set.iter_mut() {
-                        // anim.reset();
-                        let animation_sync = {
-                            let anim = match animations.get(anim_id) {
-                                Some(a) => a,
-                                None => {
-                                    println!("WARN: animation not found");
-                                    continue;
-                                }
-                            };
-                            let anim = anim.clone();
-                            anim.sync
-                        };
+                        // TODO: this can be done prettier.
+                        let animation_sync = anim.spec_cloned.sync_mode();
                         anim.set_timers(animation_sync);
                         println!("Reset animation: {anim_id}");
                     }
@@ -675,7 +665,7 @@ impl DmxEngine {
                 println!("SET OVERLAYS: {overlays:?}");
 
                 for scene in &overlays {
-                    let animations = state.0.animations.clone();
+                    // let animations = state.0.animation_templates.clone();
 
                     let anim = &mut state
                         .0
@@ -684,19 +674,21 @@ impl DmxEngine {
                         .unwrap()
                         .sink
                         .active_animations;
+
                     for (_selec, anim_set) in anim.iter_mut() {
                         for (anim_id, anim) in anim_set.iter_mut() {
                             // anim.reset();
                             let animation_sync = {
-                                let anim = match animations.get(anim_id) {
-                                    Some(a) => a,
-                                    None => {
-                                        println!("WARN: animation not found");
-                                        continue;
-                                    }
-                                };
-                                let anim = anim.clone();
-                                anim.sync
+                                // let anim = match animations.get(anim_id) {
+                                //     Some(a) => a,
+                                //     None => {
+                                //         println!("WARN: animation not found");
+                                //         continue;
+                                //     }
+                                // };
+                                // let anim = anim.clone();
+
+                                anim.spec_cloned.sync_mode()
                             };
                             anim.set_timers(animation_sync);
                             println!("Reset animation: {anim_id}");
@@ -724,6 +716,9 @@ impl DmxEngine {
 
         let (msg, undo, effective_properties) = match ev.body() {
             ControlEvent::AddAnimation(id) => {
+                // Get the source animation to clone the spec.
+                let animation_template = state.0.animation_templates.get(&id).cloned();
+
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 if !this_scene
                     .sink
@@ -744,14 +739,20 @@ impl DmxEngine {
 
                 match selec_anim.contains_key(&id) {
                     true => (Some("Animation already applied"), None, None),
-                    false => {
-                        selec_anim.insert(id, ActiveAnimation::new(&curr_selection.fixtures));
+                    false => match animation_template {
+                        Some(animation_template) => {
+                            let spec_cloned = animation_template.spec.clone();
+                            let effective_property = spec_cloned.property;
 
-                        // Get the source animation to determine its property.
-                        let animation = state.0.animations.get(&id).unwrap();
+                            selec_anim.insert(
+                                id,
+                                ActiveAnimation::new(&curr_selection.fixtures, spec_cloned),
+                            );
 
-                        (None, None, Some(vec![animation.property]))
-                    }
+                            (None, None, Some(vec![effective_property]))
+                        }
+                        None => (Some("Animation template ID does not exist"), None, None),
+                    },
                 }
             }
             ControlEvent::SetAnimationSpeed(id, md) => {
@@ -785,8 +786,8 @@ impl DmxEngine {
 
                                 anim.speed_factor = md;
 
-                                let animation = state.0.animations.get(&id).unwrap();
-                                (None, None, Some(vec![animation.property]))
+                                // let animation = state.0.animation_templates.get(&id).unwrap();
+                                (None, None, Some(vec![anim.spec_cloned.property]))
                             }
                         }
                     }
@@ -816,7 +817,7 @@ impl DmxEngine {
 
                         match selec_anim.remove(&id) {
                             None => (Some("Animation not applied to selection"), None, None),
-                            Some(_) => {
+                            Some(old_anim) => {
                                 println!("REMOVED");
 
                                 // Purge selection if empty.
@@ -825,20 +826,14 @@ impl DmxEngine {
                                     println!("moved selection entirely");
                                 }
 
-                                let animation = state.0.animations.get(&id).unwrap();
-                                (None, None, Some(vec![animation.property]))
+                                // let animation = state.0.animation_templates.get(&id).unwrap();
+                                (None, None, Some(vec![old_anim.spec_cloned.property]))
                             }
                         }
                     }
                 }
             }
             ControlEvent::PlayAnimation(id) => {
-                let (animation_sync, anim_prop) = {
-                    let anim = state.0.animations.get(&id).unwrap();
-                    let anim = anim.clone();
-                    (anim.sync, anim.property)
-                };
-
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
                 match !this_scene
                     .sink
@@ -863,8 +858,8 @@ impl DmxEngine {
 
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
-                                anim.set_timers(animation_sync);
-                                (None, None, Some(vec![anim_prop]))
+                                anim.set_timers(anim.spec_cloned.sync_mode());
+                                (None, None, Some(vec![anim.spec_cloned.property]))
                             }
                             None => (
                                 Some("No such animation on selection"),
@@ -893,11 +888,12 @@ impl DmxEngine {
                             .active_animations
                             .get_mut(curr_selection)
                             .unwrap();
+
                         match selec_anim.get_mut(&id) {
                             Some(anim) => {
                                 anim.enabled = false;
-                                let animation = state.0.animations.get(&id).unwrap();
-                                (None, None, Some(vec![animation.property]))
+                                // let animation = state.0.animation_templates.get(&id).unwrap();
+                                (None, None, Some(vec![anim.spec_cloned.property]))
                             }
                             None => (
                                 Some("No such animation on selection"),

@@ -37,11 +37,11 @@ impl BlaulichtApp {
                         egui::ScrollArea::vertical()
                             .max_height(HEIGHT - 100.0)
                             .show(ui, |ui| {
-                                for (anim_id, anim) in &dmx_engine.0.animations {
+                                for (anim_id, anim) in &dmx_engine.0.animation_templates {
                                     if components::button(
                                         ui,
                                         self.add_selected_animation == Some(*anim_id),
-                                        &format!("#{} {}", anim_id, anim.name),
+                                        &format!("#{} {}", anim_id, anim.spec.name),
                                         ButtonSize::Medium.with_width(300.0),
                                     ) {
                                         self.add_selected_animation = Some(*anim_id);
@@ -275,18 +275,24 @@ impl BlaulichtApp {
                                                 // );
 
                                                 for (animation_id, animation) in animations {
-                                                    let spec = dmx_engine.0
-                                                        .animations
-                                                        .get(animation_id)
-                                                        .unwrap();
+                                                    // let spec = dmx_engine.0
+                                                    //     .animation_templates
+                                                    //     .get(animation_id)
+                                                    //     .unwrap();
 
                                                     // Render each animation in its own rectangle/group
                                                     egui::Frame::group(ui.style()).show(ui, |ui| {
                                                         ui.set_width(ButtonSize::Medium.dim().0.x);
                                                         ui.vertical(|ui| {
                                                             // LEFT: Info (name + property + timing)
-                                                            let mut label = spec.name.clone();
-                                                            label.truncate(10);
+                                                            // let label = animation.spec_cloned.name[0..10];
+
+                                                            // TODO: do this prettier
+                                                            let label = match animation.spec_cloned.name.char_indices().nth(10) {
+                                                                    None => animation.spec_cloned.name.as_str(),
+                                                                    Some((idx, _)) => &animation.spec_cloned.name[..idx],
+                                                                };
+                                                            // label.truncate(10);
 
                                                             // [..=10];
 

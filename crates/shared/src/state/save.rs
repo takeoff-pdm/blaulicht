@@ -1,5 +1,6 @@
 use crate::{
-    ActiveAnimation, AnimationSpeedModifier, AnimationTimerState, EngineSelection,
+    ActiveAnimation, AnimationSpeedModifier, AnimationTemplate, AnimationTimerState,
+    EngineSelection,
     engine::{AnimationSpec, EngineState},
     fixture::state::{Fixture, FixtureGroup, FixtureState},
     scene::{EngineSink, FixtureSelection, FixtureSelector, Scene},
@@ -61,7 +62,7 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
 pub struct SaveEngineState {
     pub groups: Vec<SavedMapEntry<u8, SaveFixtureGroup>>,
-    pub animations: Vec<SavedMapEntry<u8, AnimationSpec>>,
+    pub animations: Vec<SavedMapEntry<u8, AnimationTemplate>>,
     pub views: Vec<SavedMapEntry<u8, View>>,
     pub scenes: Vec<SavedMapEntry<u8, SavedScene>>,
     pub current_scene_focus: u8,
@@ -76,6 +77,7 @@ pub struct SavedActiveAnimation {
     pub speed_factor: AnimationSpeedModifier,
     pub enabled: bool,
     pub fixture_timers: Vec<SavedMapEntry<(u8, u8), AnimationTimerState>>,
+    pub spec: AnimationSpec,
 }
 
 impl From<ActiveAnimation> for SavedActiveAnimation {
@@ -84,6 +86,7 @@ impl From<ActiveAnimation> for SavedActiveAnimation {
             speed_factor: value.speed_factor,
             enabled: value.enabled,
             fixture_timers: SavedMapEntry::from_btree_map(value.fixture_timers),
+            spec: value.spec_cloned,
         }
     }
 }
@@ -94,6 +97,7 @@ impl From<SavedActiveAnimation> for ActiveAnimation {
             speed_factor: value.speed_factor,
             enabled: value.enabled,
             fixture_timers: SavedMapEntry::to_btree_map(value.fixture_timers),
+            spec_cloned: value.spec,
         }
     }
 }
@@ -208,7 +212,7 @@ impl From<EngineState> for SaveEngineState {
             })
             .collect();
 
-        let animations = SavedMapEntry::from_btree_map(value.animations);
+        let animations = SavedMapEntry::from_btree_map(value.animation_templates);
 
         let views = value
             .views
@@ -275,7 +279,7 @@ impl TryFrom<SaveEngineState> for EngineState {
 
         Ok(Self {
             groups,
-            animations,
+            animation_templates: animations,
             selection: EngineSelection::default(),
             selection_stack: VecDeque::new(),
             control_buffer: FixtureState::default(),
@@ -305,8 +309,9 @@ pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {
 mod tests {
     use super::*;
     use crate::{
-        ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeatClock,
-        AnimationSpeedModifier, AnimationTimerState, FixtureProperty, SaveEngineState, SyncMode,
+        ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat,
+        AnimationSpeedModifier, AnimationTemplate, AnimationTimerState, FixtureProperty,
+        SaveEngineState, SyncMode,
         fixture::{
             FixtureType,
             dimmer::Dimmer,
@@ -341,13 +346,14 @@ mod tests {
         );
 
         // Animation specs.
-        engine.animations.insert(
+        engine.animation_templates.insert(
             1,
-            AnimationSpec {
-                name: "Anim".to_string(),
-                body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeatClock {}),
-                property: FixtureProperty::Alpha,
-                sync: SyncMode::Synced,
+            AnimationTemplate {
+                spec: AnimationSpec {
+                    name: "Anim".to_string(),
+                    body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
+                    property: FixtureProperty::Alpha,
+                },
             },
         );
 
@@ -372,9 +378,15 @@ mod tests {
         active_animation_map.insert(
             1,
             ActiveAnimation {
-                speed_factor: AnimationSpeedModifier::_1,
+                speed_factor: AnimationSpeedModifier::_32,
                 enabled: true,
                 fixture_timers: timers,
+                spec_cloned: AnimationSpec {
+                    name: "Sample Animation".to_string(),
+                    body: AnimationSpecBody::BeatClock(AnimationSpecBodyBeat {}),
+                    property: FixtureProperty::Alpha,
+                    // sync: SyncMode::StretchedHalfHalf,
+                },
             },
         );
 
@@ -429,7 +441,10 @@ mod tests {
             EngineState::try_from(decoded).expect("Conversion back to EngineState should succeed");
 
         assert_eq!(restored.groups.len(), engine.groups.len());
-        assert_eq!(restored.animations.len(), engine.animations.len());
+        assert_eq!(
+            restored.animation_templates.len(),
+            engine.animation_templates.len()
+        );
         assert_eq!(restored.views.len(), engine.views.len());
         assert_eq!(restored.scenes.len(), engine.scenes.len());
         assert_eq!(restored.current_scene_focus, engine.current_scene_focus);
