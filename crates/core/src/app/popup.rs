@@ -2,7 +2,7 @@ use crate::app::{
     components::{self, ButtonSize},
     BlaulichtApp, PopupSpec,
 };
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
+use egui::{Color32, CornerRadius, Frame, Margin, Order, RichText, Stroke};
 use std::time::{Duration, Instant};
 
 impl BlaulichtApp {
@@ -34,7 +34,7 @@ impl BlaulichtApp {
                 self.close_popup();
             }
 
-            render_popup_backdrop(ctx);
+            render_popup_backdrop(ctx, label.clone().into(), Order::Debug);
 
             egui::Window::new(&label)
                 .fixed_size(popup_size)

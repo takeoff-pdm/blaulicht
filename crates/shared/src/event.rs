@@ -4,7 +4,7 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::MainUiEvent;
+use crate::{AnimationSpec, MainUiEvent, fixture::state::Fixture};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -244,6 +244,9 @@ pub enum ControlEvent {
     SetColorHue(u16),
     SetColorSaturation(u8),
     SetColorValue(u8),
+    // Other value-tweaks.
+    AddToProperty(FixtureProperty, i8),
+    // PropertyChanged(FixtureProperty, u16),
     //
     // Animations
     //
@@ -253,6 +256,7 @@ pub enum ControlEvent {
     PauseAnimation(u8),
     PlayAnimation(u8),
     SetAnimationSpeed(u8, AnimationSpeedModifier),
+    LoadSpecIntoAnimation(u8, AnimationSpec),
     // TODO: animation speed modifier or something like this.
     //
     //
@@ -290,6 +294,62 @@ pub enum ControlEvent {
 
     // Plugin UI interaction events (ignored by DMX engine; for plugins only)
     PluginUi(PluginUiEvent, u8), // UI event and the Plugin-ID.
+}
+
+impl ControlEvent {
+    pub fn controls_fixture_property(&self) -> Option<FixtureProperty> {
+        return Some(match self {
+            ControlEvent::SelectGroup(_)
+            | ControlEvent::DeSelectGroup(_)
+            | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
+            | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
+            | ControlEvent::RemoveSelection
+            | ControlEvent::RemoveAllSelection
+            | ControlEvent::PushSelection
+            | ControlEvent::PopSelection
+            | ControlEvent::AddAnimation(_)
+            | ControlEvent::RemoveAnimation(_)
+            | ControlEvent::ResetAnimation(_)
+            | ControlEvent::PauseAnimation(_)
+            | ControlEvent::PlayAnimation(_)
+            | ControlEvent::SetAnimationSpeed(_, _)
+            | ControlEvent::LoadSpecIntoAnimation(_, _)
+            | ControlEvent::MiscEvent { .. }
+            | ControlEvent::SetSceneFocus(_)
+            | ControlEvent::SetOverlays(_)
+            | ControlEvent::RemoveOverlayScene(_)
+            | ControlEvent::SetSceneMasterAlpha(_, _)
+            | ControlEvent::SetSceneMasterSpeed(_, _)
+            | ControlEvent::SetChannelOverride(_, _, _)
+            | ControlEvent::RemoveChannelOverride(_, _)
+            | ControlEvent::MainUi(_)
+            | ControlEvent::PluginUi(_, _) => {
+                return None;
+            }
+            ControlEvent::SetEnabled(_) => todo!("Illegal message"),
+            ControlEvent::SetAlpha(_) => FixtureProperty::Alpha,
+            ControlEvent::SetStrobeSpeed(_) => FixtureProperty::Strobe,
+            ControlEvent::SetFocus(_) => FixtureProperty::Focus,
+            ControlEvent::SetTilt(_) => FixtureProperty::Tilt,
+            ControlEvent::SetPan(_) => FixtureProperty::Pan,
+            ControlEvent::SetColor(_) => FixtureProperty::ColorHue,
+            ControlEvent::SetColorHue(_) => FixtureProperty::ColorHue,
+            ControlEvent::SetColorSaturation(_) => FixtureProperty::ColorSaturation,
+            ControlEvent::SetColorValue(_) => FixtureProperty::ColorValue,
+            ControlEvent::AddToProperty(fixture_property, _) => *fixture_property,
+            ControlEvent::Transaction(control_events) => {
+                let mut prop = None;
+
+                for ev in control_events {
+                    if let Some(this_prop) = ev.controls_fixture_property() {
+                        prop = Some(this_prop);
+                    }
+                }
+
+                return prop;
+            }
+        });
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]
@@ -353,11 +413,13 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
             | ControlEvent::SetColorHue(_)
             | ControlEvent::SetColorSaturation(_)
             | ControlEvent::SetColorValue(_)
+            | ControlEvent::AddToProperty(_, _)
             | ControlEvent::AddAnimation(_)
             | ControlEvent::RemoveAnimation(_)
             | ControlEvent::ResetAnimation(_)
             | ControlEvent::PauseAnimation(_)
             | ControlEvent::PlayAnimation(_)
+            | ControlEvent::LoadSpecIntoAnimation(_, _)
             | ControlEvent::SetAnimationSpeed(_, _)
     };
 }
