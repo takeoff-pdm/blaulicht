@@ -1,8 +1,12 @@
-use egui::{vec2, Align, DragValue, Label, Layout, Response, RichText, Ui, Vec2};
+use egui::{
+    vec2, Align, Color32, DragValue, Event, Key, Label, Layout, Modifiers, Response, RichText,
+    Sense, Ui, Vec2,
+};
 
 use crate::app::components::{button, ButtonSize, Dialog};
 
 const LONG_PRESS_THRESHOLD: f64 = 0.35;
+const CLAMP_FLASH_DURATION: f64 = 0.35;
 
 #[derive(Debug, Default)]
 pub struct NumberpadState {
@@ -10,6 +14,7 @@ pub struct NumberpadState {
     press_started_at: Option<f64>,
     long_press_triggered: bool,
     input_buffer: String,
+    clamp_flash_until: Option<f64>,
 }
 
 impl NumberpadState {
@@ -22,10 +27,26 @@ impl NumberpadState {
         self.dialog_open = false;
         self.input_buffer.clear();
         self.reset_gesture();
+        self.clamp_flash_until = None;
     }
 
-    fn initialize_buffer<T: egui::emath::Numeric>(&mut self, value: &T) {
+    fn trigger_clamp_flash(&mut self, now: f64) {
+        self.clamp_flash_until = Some(now + CLAMP_FLASH_DURATION);
+    }
+
+    fn clamp_flash_active(&mut self, now: f64) -> bool {
+        if let Some(until) = self.clamp_flash_until {
+            if now < until {
+                return true;
+            }
+            self.clamp_flash_until = None;
+        }
+        false
+    }
+
+    fn initialize_buffer<T: egui::emath::Numeric>(&mut self, value: &T, range: Option<(f64, f64)>) {
         self.input_buffer = format_numeric_value(value);
+        enforce_input_constraints::<T>(&mut self.input_buffer, range);
     }
 }
 
@@ -33,6 +54,7 @@ pub struct Numberpad {
     dialog_title: String,
     dialog_size: Vec2,
     state: NumberpadState,
+    range: Option<(f64, f64)>,
 }
 
 impl Numberpad {
@@ -41,6 +63,7 @@ impl Numberpad {
             dialog_title: "Numberpad".to_owned(),
             dialog_size: vec2(480.0, 420.0),
             state: NumberpadState::default(),
+            range: None,
         }
     }
 
@@ -54,13 +77,25 @@ impl Numberpad {
         self
     }
 
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        let (min, max) = if max < min { (max, min) } else { (min, max) };
+        self.range = Some((min, max));
+        self
+    }
+
     pub fn ui<T>(&mut self, ui: &mut Ui, value: &mut T) -> Response
     where
         T: egui::emath::Numeric,
     {
         let state = &mut self.state;
         let button_size = ButtonSize::Medium.dim().0;
-        let response = ui.add_sized(button_size, DragValue::new(value));
+        let mut drag_value = DragValue::new(value);
+        if let Some((min, max)) = self.range {
+            let min_t = T::from_f64(min);
+            let max_t = T::from_f64(max);
+            drag_value = drag_value.clamp_range(min_t..=max_t);
+        }
+        let response = ui.add_sized(button_size, drag_value);
         let now = ui.input(|i| i.time);
 
         if response.is_pointer_button_down_on() {
@@ -85,7 +120,7 @@ impl Numberpad {
             if state.long_press_triggered || duration >= LONG_PRESS_THRESHOLD {
                 response.request_focus();
             } else {
-                state.initialize_buffer(value);
+                state.initialize_buffer(value, self.range);
                 state.dialog_open = true;
                 state.reset_gesture();
                 response.surrender_focus();
@@ -99,13 +134,13 @@ impl Numberpad {
 
         if state.dialog_open {
             if state.input_buffer.is_empty() {
-                state.initialize_buffer(value);
+                state.initialize_buffer(value, self.range);
             }
 
             Dialog::new(self.dialog_title.clone(), self.dialog_size)
                 .with_backdrop()
                 .show(ui.ctx(), |dialog_ui| {
-                    render_numberpad_contents(dialog_ui, value, state)
+                    render_numberpad_contents(dialog_ui, value, state, self.range)
                 });
         }
 
@@ -121,28 +156,129 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
     ui: &mut Ui,
     value: &mut T,
     state: &mut NumberpadState,
+    range: Option<(f64, f64)>,
 ) {
     const PAD_SIDE: f32 = 60.0;
     let pad_button = ButtonSize::Medium
         .with_width(PAD_SIDE)
         .with_height(PAD_SIDE);
     let pad_size = pad_button.dim().0;
+    let now = ui.ctx().input(|i| i.time);
 
     let display_height = pad_size.y;
     let display_font_size = display_height * 0.65;
+
+    let focus_id = ui.auto_id_with("numberpad_focus");
+    let focus_rect = egui::Rect::from_min_size(ui.min_rect().min, Vec2::ZERO);
+    let focus_response = ui.interact(focus_rect, focus_id, Sense::focusable_noninteractive());
+
+    if !focus_response.has_focus() {
+        focus_response.request_focus();
+    }
+
+    ui.input_mut(|input| {
+        let mut clamp_applied = false;
+        let mut appended_digit_from_text = false;
+        let mut remaining_events = Vec::new();
+
+        for event in std::mem::take(&mut input.events) {
+            match event {
+                Event::Text(text) => {
+                    let mut non_digits = String::new();
+                    let mut appended_digit = false;
+
+                    for ch in text.chars() {
+                        if ch.is_ascii_digit() {
+                            append_digit(&mut state.input_buffer, ch);
+                            appended_digit = true;
+                        } else {
+                            non_digits.push(ch);
+                        }
+                    }
+
+                    if appended_digit {
+                        appended_digit_from_text = true;
+                        clamp_applied |=
+                            enforce_input_constraints::<T>(&mut state.input_buffer, range);
+                    }
+
+                    if !non_digits.is_empty() {
+                        remaining_events.push(Event::Text(non_digits));
+                    }
+                }
+                other => remaining_events.push(other),
+            }
+        }
+
+        let digit_keys = [
+            (Key::Num0, '0'),
+            (Key::Num1, '1'),
+            (Key::Num2, '2'),
+            (Key::Num3, '3'),
+            (Key::Num4, '4'),
+            (Key::Num5, '5'),
+            (Key::Num6, '6'),
+            (Key::Num7, '7'),
+            (Key::Num8, '8'),
+            (Key::Num9, '9'),
+        ];
+
+        let mut fallback_digits = Vec::new();
+        for &(key, digit) in &digit_keys {
+            if input.consume_key(Modifiers::NONE, key) {
+                fallback_digits.push(digit);
+            }
+        }
+
+        if !fallback_digits.is_empty() && !appended_digit_from_text {
+            for digit in fallback_digits {
+                append_digit(&mut state.input_buffer, digit);
+            }
+            clamp_applied |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
+        }
+
+        if input.consume_key(Modifiers::NONE, Key::Backspace) {
+            clamp_applied |= handle_button_action("Backspace", value, state, range);
+        }
+
+        if input.consume_key(Modifiers::NONE, Key::Enter) {
+            clamp_applied |= handle_button_action("Enter", value, state, range);
+        }
+
+        if input.consume_key(Modifiers::NONE, Key::Escape) {
+            clamp_applied |= handle_button_action("Cancel", value, state, range);
+        }
+
+        input.events = remaining_events;
+
+        if clamp_applied {
+            state.trigger_clamp_flash(now);
+            ui.ctx().request_repaint();
+        }
+    });
+
     let display_text = state.input_buffer.clone();
+    let clamp_flash_active = state.clamp_flash_active(now);
+
+    if clamp_flash_active {
+        ui.ctx().request_repaint();
+    }
 
     ui.allocate_ui_with_layout(
         vec2(ui.available_width(), display_height),
         Layout::right_to_left(Align::Center),
         move |display_ui| {
+            let mut display_rich_text = RichText::new(display_text)
+                .monospace()
+                .size(display_font_size);
+
+            if clamp_flash_active {
+                display_rich_text = display_rich_text.color(Color32::RED);
+            }
+
             display_ui.add_sized(
                 vec2(display_ui.available_width(), display_height),
-                Label::new(
-                    RichText::new(display_text)
-                        .monospace()
-                        .size(display_font_size),
-                ),
+                Label::new(display_rich_text),
             );
         },
     );
@@ -166,8 +302,13 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
                         continue;
                     }
 
-                    if button(grid, false, label, pad_button) {
-                        handle_button_action(label, value, state);
+                    let active = label == "Enter";
+
+                    if button(grid, active, label, pad_button) {
+                        let clamped = handle_button_action(label, value, state, range);
+                        if clamped {
+                            state.trigger_clamp_flash(now);
+                        }
                         grid.ctx().request_repaint();
                     }
                 }
@@ -180,7 +321,10 @@ fn handle_button_action<T: egui::emath::Numeric>(
     label: &str,
     value: &mut T,
     state: &mut NumberpadState,
-) {
+    range: Option<(f64, f64)>,
+) -> bool {
+    let mut clamped = false;
+
     match label {
         "Backspace" => {
             if state.input_buffer.len() <= 1 {
@@ -191,13 +335,18 @@ fn handle_button_action<T: egui::emath::Numeric>(
                     state.input_buffer = "0".to_string();
                 }
             }
+            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         "CLR" => {
             state.input_buffer = "0".to_string();
+            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         "Enter" => {
-            if let Some(parsed) = parse_numeric_input::<T>(&state.input_buffer) {
+            if let Some((parsed, was_clamped)) =
+                parse_numeric_input::<T>(&state.input_buffer, range)
+            {
                 *value = parsed;
+                clamped |= was_clamped;
                 state.close_dialog();
             }
         }
@@ -206,9 +355,12 @@ fn handle_button_action<T: egui::emath::Numeric>(
         }
         digit if digit.len() == 1 && digit.chars().all(|c| c.is_ascii_digit()) => {
             append_digit(&mut state.input_buffer, digit.chars().next().unwrap());
+            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         _ => {}
     }
+
+    clamped
 }
 
 fn append_digit(buffer: &mut String, digit: char) {
@@ -216,6 +368,81 @@ fn append_digit(buffer: &mut String, digit: char) {
         buffer.clear();
     }
     buffer.push(digit);
+}
+
+fn enforce_input_constraints<T: egui::emath::Numeric>(
+    buffer: &mut String,
+    range: Option<(f64, f64)>,
+) -> bool {
+    match parse_numeric_input::<T>(buffer.as_str(), range) {
+        Some((parsed, clamped)) => {
+            let formatted = format_numeric_value(&parsed);
+            if *buffer != formatted {
+                *buffer = formatted;
+            }
+            clamped
+        }
+        None => {
+            buffer.clear();
+            buffer.push('0');
+            true
+        }
+    }
+}
+
+fn clamp_value_to_bounds<T: egui::emath::Numeric>(
+    mut value: f64,
+    range: Option<(f64, f64)>,
+) -> (f64, bool) {
+    let mut clamped = false;
+
+    if let Some((min, max)) = range {
+        let ranged = value.clamp(min, max);
+        if ranged != value {
+            value = ranged;
+            clamped = true;
+        }
+    }
+
+    let min_bound = T::MIN.to_f64();
+    if min_bound.is_finite() && value < min_bound {
+        value = min_bound;
+        clamped = true;
+    }
+
+    let max_bound = T::MAX.to_f64();
+    if max_bound.is_finite() && value > max_bound {
+        value = max_bound;
+        clamped = true;
+    }
+
+    if T::INTEGRAL {
+        let rounded = value.round();
+        if (rounded - value).abs() > f64::EPSILON {
+            clamped = true;
+        }
+        value = rounded;
+
+        if let Some((min, max)) = range {
+            let ranged = value.clamp(min, max);
+            if ranged != value {
+                value = ranged;
+                clamped = true;
+            }
+        }
+
+        if min_bound.is_finite() && value < min_bound {
+            value = min_bound;
+            clamped = true;
+        }
+
+        if max_bound.is_finite() && value > max_bound {
+            value = max_bound;
+            clamped = true;
+        }
+    }
+
+    (value, clamped)
 }
 
 fn format_numeric_value<T: egui::emath::Numeric>(value: &T) -> String {
@@ -243,30 +470,29 @@ fn format_numeric_value<T: egui::emath::Numeric>(value: &T) -> String {
     }
 }
 
-fn parse_numeric_input<T: egui::emath::Numeric>(input: &str) -> Option<T> {
+fn parse_numeric_input<T: egui::emath::Numeric>(
+    input: &str,
+    range: Option<(f64, f64)>,
+) -> Option<(T, bool)> {
     let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Some(T::from_f64(0.0));
-    }
+    let mut clamped = false;
 
-    let mut value = trimmed.parse::<f64>().ok()?;
+    let mut value = if trimmed.is_empty() {
+        0.0
+    } else {
+        let parsed = trimmed.parse::<f64>().ok()?;
+        if !parsed.is_finite() {
+            return None;
+        }
+        parsed
+    };
 
-    if T::INTEGRAL {
-        value = value.round();
-    }
-
-    let min = T::MIN.to_f64();
-    if min.is_finite() {
-        value = value.max(min);
-    }
-
-    let max = T::MAX.to_f64();
-    if max.is_finite() {
-        value = value.min(max);
-    }
+    let (bounded, was_clamped) = clamp_value_to_bounds::<T>(value, range);
+    value = bounded;
+    clamped |= was_clamped;
 
     if value.is_finite() {
-        Some(T::from_f64(value))
+        Some((T::from_f64(value), clamped))
     } else {
         None
     }

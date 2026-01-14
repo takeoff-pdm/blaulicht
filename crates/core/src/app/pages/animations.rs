@@ -351,6 +351,8 @@ pub struct AnimationEditState {
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
     pub speed_numberpad: Numberpad,
+    pub clamp_min_numberpad: Numberpad,
+    pub clamp_max_numberpad: Numberpad,
 }
 
 impl Default for AnimationEditState {
@@ -369,7 +371,15 @@ impl Default for AnimationEditState {
             },
             math_base_fn_dialog_open: false,
             sync_mode_dialog_open: false,
-            speed_numberpad: Numberpad::new(),
+            speed_numberpad: Numberpad::new()
+                .dialog_title("speed-num")
+                .range(0.0, 30000.0),
+            clamp_min_numberpad: Numberpad::new()
+                .dialog_title("clamp-min-num")
+                .range(0.0, 360.0),
+            clamp_max_numberpad: Numberpad::new()
+                .dialog_title("clamp-max-num")
+                .range(0.0, 360.0),
         }
     }
 }
@@ -563,22 +573,10 @@ impl AnimationEditState {
                     ui.separator();
 
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut mathematical_phaser.amplitude_min)
-                                .speed(0.1) // How fast dragging changes the value
-                                // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=u16::MAX as f32)
-                                .prefix("Value: ") // Prefix text
-                                .suffix(" units"), // Suffix text
-                        );
-                        ui.add(
-                            egui::DragValue::new(&mut mathematical_phaser.amplitude_max)
-                                .speed(0.1) // How fast dragging changes the value
-                                // .clamp_range(0.0..=100.0) // Min/max range
-                                .range(0.0..=u16::MAX as f32)
-                                .prefix("Value: ") // Prefix text
-                                .suffix(" units"), // Suffix text
-                        );
+                        self.clamp_min_numberpad
+                            .ui(ui, &mut mathematical_phaser.amplitude_min);
+                        self.clamp_max_numberpad
+                            .ui(ui, &mut mathematical_phaser.amplitude_max);
                     });
                 }
                 PhaserKind::Keyframed(keyframed_phaser) => todo!(),
