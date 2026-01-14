@@ -34,7 +34,7 @@ impl BlaulichtApp {
                 self.close_popup();
             }
 
-            render_popup_backdrop(ctx, label.clone().into(), Order::Debug);
+            render_popup_backdrop(ctx, label.clone().into(), Order::Foreground);
 
             egui::Window::new(&label)
                 .fixed_size(popup_size)

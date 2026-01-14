@@ -378,6 +378,9 @@ impl AnimationEditState {
     pub fn load_state(&mut self, spec: AnimationSpec) {
         println!("UI load state");
         self.working_state = spec;
+        self.sync_mode_dialog_open = false;
+        self.math_base_fn_dialog_open = false;
+        self.speed_numberpad.close();
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> Option<AnimationSpec> {
