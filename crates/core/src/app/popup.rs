@@ -34,6 +34,8 @@ impl BlaulichtApp {
                 self.close_popup();
             }
 
+            render_popup_backdrop(ctx);
+
             egui::Window::new(&label)
                 .fixed_size(popup_size)
                 .collapsible(false)

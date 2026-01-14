@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, button, ButtonSize, Dialog, HFader, Pagination},
+        components::{self, button, ButtonSize, Dialog, HFader, Numberpad, Pagination},
         BlaulichtApp,
     },
     dmx::{animation::phaser, EngineState},
@@ -347,8 +347,10 @@ pub struct AnimationEditState {
     // pub timing: PhaserDuration,
     // pub timing_pin_to_beat: bool,
     pub working_state: AnimationSpec,
+
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
+    pub speed_numberpad: Numberpad,
 }
 
 impl Default for AnimationEditState {
@@ -367,6 +369,7 @@ impl Default for AnimationEditState {
             },
             math_base_fn_dialog_open: false,
             sync_mode_dialog_open: false,
+            speed_numberpad: Numberpad::new(),
         }
     }
 }
@@ -508,6 +511,8 @@ impl AnimationEditState {
                                         .prefix("Speed: ") // Prefix text
                                         .suffix(" millis"), // Suffix text
                                 );
+
+                                self.speed_numberpad.ui(ui, value);
                             }
                         };
                     });
