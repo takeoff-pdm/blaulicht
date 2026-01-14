@@ -2,17 +2,23 @@ use std::collections::VecDeque;
 
 use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::serial::SerialConnection;
-use blaulicht_plugin_framework::{self as bpf, send_event};
+use blaulicht_plugin_framework::{self as bpf, send_event, MidiConnection};
 use blaulicht_plugin_framework::{ui, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 
 pub struct SamplePlugin {
     restart_timer: usize,
+    midi_handle_out: Option<MidiConnection>,
+    midi_handle_in: Option<MidiConnection>,
 }
 
 impl Default for SamplePlugin {
     fn default() -> Self {
-        Self { restart_timer: 0 }
+        Self {
+            restart_timer: 0,
+            midi_handle_out: None,
+            midi_handle_in: None,
+        }
     }
 }
 
@@ -20,10 +26,20 @@ impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.restart_timer += 1;
         println!("TEST: {}", self.restart_timer);
+
+        self.midi_handle_out = Some(MidiConnection::open("Blaulicht OUT").unwrap());
+        self.midi_handle_in = Some(MidiConnection::open("Blaulicht IN").unwrap());
     }
 
     fn run(&mut self, input: TickInput) {
         let state = bpf::get_dmx();
+
+        let ev = self.midi_handle_out.unwrap().poll();
+        for e in &ev {
+            println!("E: {e:?}");
+        }
+
+        self.midi_handle_in.unwrap().send(127, 42, 69);
     }
 }
 

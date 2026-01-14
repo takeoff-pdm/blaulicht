@@ -1,4 +1,4 @@
-use egui::{vec2, Color32, CornerRadius, Frame, Margin, Stroke, Ui, Vec2};
+use egui::{vec2, Color32, CornerRadius, Frame, Id, LayerId, Margin, Order, Stroke, Ui, Vec2};
 
 use crate::app::popup::render_popup_backdrop;
 
@@ -43,17 +43,45 @@ impl Dialog {
     }
 
     pub fn show(&self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
-        if self.with_backdrop {
-            render_popup_backdrop(ctx);
-        }
+        let order = Order::Foreground;
+        let window_id = Id::new(format!("dialog::{}", self.label));
+        let window_layer = LayerId::new(order, window_id);
+
+        let backdrop_layer = if self.with_backdrop {
+            Some(render_popup_backdrop(
+                ctx,
+                window_id.with("backdrop"),
+                order,
+            ))
+        } else {
+            None
+        };
+
+        ctx.memory_mut(|mem| {
+            let areas = mem.areas_mut();
+
+            if let Some(backdrop_layer) = backdrop_layer {
+                areas.move_to_top(backdrop_layer);
+                areas.set_sublayer(backdrop_layer, window_layer);
+            }
+
+            areas.move_to_top(window_layer);
+            mem.set_modal_layer(window_layer);
+        });
 
         match self.fixed_pos {
-            Some(pos) => self.show_fixed_pos(ctx, pos, add_contents),
-            None => self.show_dynamic_pos(ctx, add_contents),
+            Some(pos) => self.show_fixed_pos(ctx, window_id, order, pos, add_contents),
+            None => self.show_dynamic_pos(ctx, window_id, order, add_contents),
         }
     }
 
-    fn show_dynamic_pos(&self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
+    fn show_dynamic_pos(
+        &self,
+        ctx: &egui::Context,
+        window_id: Id,
+        order: Order,
+        add_contents: impl FnOnce(&mut Ui),
+    ) {
         let screen_rect = ctx.screen_rect();
 
         // println!(
@@ -79,7 +107,9 @@ impl Dialog {
             .fixed_size(vec2(self.popup_size.x, 0.0))
             .collapsible(false)
             .resizable(false)
-            .title_bar(false);
+            .title_bar(false)
+            .id(window_id)
+            .order(order);
 
         let window_proto = match self.moveable {
             true => window_proto.default_pos(center_pos),
@@ -108,6 +138,8 @@ impl Dialog {
     fn show_fixed_pos(
         &self,
         ctx: &egui::Context,
+        window_id: Id,
+        order: Order,
         fixed_pos: Vec2,
         add_contents: impl FnOnce(&mut Ui),
     ) {
@@ -117,7 +149,9 @@ impl Dialog {
             .fixed_size(self.popup_size)
             .collapsible(false)
             .resizable(false)
-            .title_bar(false);
+            .title_bar(false)
+            .id(window_id)
+            .order(order);
 
         let window_proto = match self.moveable {
             true => window_proto.default_pos(fixed_pos.to_pos2()),

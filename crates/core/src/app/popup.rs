@@ -92,14 +92,26 @@ impl BlaulichtApp {
             screen_rect.center().y - popup_size.y / 2.0,
         );
 
-        render_popup_backdrop(ctx);
+        let order = egui::Order::Foreground;
+        let window_id = egui::Id::new("init_modal_window");
+        let backdrop_layer = render_popup_backdrop(ctx, window_id.with("backdrop"), order);
+        let window_layer = egui::LayerId::new(order, window_id);
+
+        ctx.memory_mut(|mem| {
+            let areas = mem.areas_mut();
+            areas.move_to_top(window_layer);
+            areas.set_sublayer(backdrop_layer, window_layer);
+            mem.set_modal_layer(window_layer);
+        });
 
         egui::Window::new("Initializing...")
+            .id(window_id)
             .fixed_size(popup_size)
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .fixed_pos(center_pos)
+            .order(order)
             .frame(Frame {
                 corner_radius: CornerRadius::same(1),
                 fill: Color32::from_gray(40),
@@ -141,29 +153,43 @@ impl BlaulichtApp {
     }
 }
 
-pub fn render_popup_backdrop(ctx: &egui::Context) {
-    egui::Area::new("init_modal_backdrop".into())
+pub fn render_popup_backdrop(
+    ctx: &egui::Context,
+    id: egui::Id,
+    order: egui::Order,
+) -> egui::LayerId {
+    let area = egui::Area::new(id)
+        .kind(egui::UiKind::Modal)
         .interactable(true) // Blocks clicks from going through to the widgets behind
         .fixed_pos(egui::pos2(0.0, 0.0))
-        .order(egui::Order::Background)
-        .show(ctx, |ui| {
-            // Get the full screen rect
-            let screen_rect = ctx.screen_rect();
+        .order(order);
 
-            // Allocate a rect that covers the whole screen to catch clicks
-            let response = ui.allocate_rect(screen_rect, egui::Sense::click());
+    let layer_id = area.layer();
 
-            // Optional: Close popup if user clicks the dark background
-            if response.clicked() {
-                {}
-            }
+    ctx.memory_mut(|mem| {
+        mem.areas_mut().move_to_top(layer_id);
+    });
 
-            // Paint the semi-transparent black color
-            let painter = ui.painter();
-            painter.rect_filled(
-                screen_rect,
-                egui::CornerRadius::ZERO,
-                egui::Color32::from_black_alpha(180), // Adjust alpha for darkness (0-255)
-            );
-        });
+    area.show(ctx, |ui| {
+        // Get the full screen rect
+        let screen_rect = ctx.screen_rect();
+
+        // Allocate a rect that covers the whole screen to catch clicks
+        let response = ui.allocate_rect(screen_rect, egui::Sense::click());
+
+        // Optional: Close popup if user clicks the dark background
+        if response.clicked() {
+            {}
+        }
+
+        // Paint the semi-transparent black color
+        let painter = ui.painter();
+        painter.rect_filled(
+            screen_rect,
+            egui::CornerRadius::ZERO,
+            egui::Color32::from_black_alpha(180), // Adjust alpha for darkness (0-255)
+        );
+    });
+
+    layer_id
 }

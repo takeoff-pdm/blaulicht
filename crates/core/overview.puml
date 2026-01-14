@@ -469,7 +469,7 @@ package l__lib #lightskyblue {
       }
       class popup_mod <<mod>> #lightskyblue {
         .. Module functions ..
-        + render_popup_backdrop(ctx: &egui :: Context) -> ()
+        + render_popup_backdrop(ctx: &egui :: Context, id: egui :: Id, order: egui :: Order) -> egui :: LayerId
       }
     }
     package theme #lightskyblue {

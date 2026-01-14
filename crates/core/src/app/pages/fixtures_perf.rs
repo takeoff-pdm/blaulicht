@@ -421,7 +421,9 @@ impl BlaulichtApp {
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
-                    self.fixture_perf_ui.scene_overview_animation_edit.show(ui, ctx);
+                    self.fixture_perf_ui
+                        .scene_overview_animation_edit
+                        .show(ui, ctx);
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
                         self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
