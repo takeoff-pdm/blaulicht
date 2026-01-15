@@ -251,7 +251,6 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
         }
 
         input.events = remaining_events;
-
     });
 
     if clamp_applied {

@@ -36,10 +36,15 @@ impl Pagination {
         "Make sure to prepare the paginated items first";
 
     pub fn with_items_per_page(self, items_per_page: usize) -> Self {
+        debug_assert!(items_per_page > 0, "items_per_page must be > 0");
         Self {
             items_per_page,
             ..self
         }
+    }
+
+    pub fn with_ui_width(self, ui_width: f32) -> Self {
+        Self { ui_width, ..self }
     }
 
     pub fn width(&self) -> f32 {
@@ -62,9 +67,25 @@ impl Pagination {
     }
 
     pub fn prepare_current_page_items<'t, T>(&mut self, items: &'t [T]) -> Take<Skip<Iter<'t, T>>> {
+        debug_assert!(
+            self.items_per_page > 0,
+            "items_per_page must be greater than zero"
+        );
         let number_of_items_total = items.len();
-        let total_pages = number_of_items_total / self.items_per_page;
-        let start_index = self.current_page_index * self.items_per_page;
+        let total_pages = if number_of_items_total == 0 {
+            0
+        } else {
+            (number_of_items_total + self.items_per_page - 1) / self.items_per_page
+        };
+
+        if total_pages == 0 {
+            self.current_page_index = 0;
+        } else if self.current_page_index >= total_pages {
+            self.current_page_index = total_pages - 1;
+        }
+
+        let start_index =
+            (self.current_page_index * self.items_per_page).min(number_of_items_total);
         let page_items = items.iter().skip(start_index).take(self.items_per_page);
 
         self.total_items = number_of_items_total;
@@ -74,6 +95,10 @@ impl Pagination {
         page_items
     }
 
+    pub fn set_current_page(&mut self, page_index: usize) {
+        self.current_page_index = page_index;
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, page_ui: impl FnOnce(&mut Ui)) {
         debug_assert!(self.prepared_items, "{}", Self::ENSURE_PREPARED_ASSERT_MSG);
 
@@ -81,21 +106,30 @@ impl Pagination {
             egui::vec2(self.ui_width, ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
-                ui.set_min_width(self.ui_width);
+                ui.set_width(self.ui_width);
+                // ui.set_width(ui.available_width());
 
                 ui.vertical_centered(|ui| {
+                    ui.set_width(self.ui_width);
+
+                    let has_prev = self.current_page_index > 0;
+                    let has_next =
+                        self.total_pages > 0 && self.current_page_index + 1 < self.total_pages;
+
                     let scene_panel_page_button_sizes =
                         ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
 
                     ui.horizontal(|ui| {
+                        ui.set_width(self.ui_width);
+
                         if components::button(ui, false, "◀", scene_panel_page_button_sizes)
-                            && self.current_page_index > 0
+                            && has_prev
                         {
                             self.current_page_index -= 1;
                         }
 
                         if components::button(ui, false, "▶", scene_panel_page_button_sizes)
-                            && self.current_page_index < self.total_pages
+                            && has_next
                         {
                             self.current_page_index += 1;
                         }
@@ -103,9 +137,15 @@ impl Pagination {
 
                     ui.add_space(5.0);
 
+                    let (current_page_display, total_pages_display) = if self.total_pages == 0 {
+                        (0, 0)
+                    } else {
+                        (self.current_page_index + 1, self.total_pages)
+                    };
+
                     ui.label(format!(
                         "Page {} / {}",
-                        self.current_page_index, self.total_pages
+                        current_page_display, total_pages_display
                     ));
                     ui.label(format!("Total: {}", self.total_items));
                 });

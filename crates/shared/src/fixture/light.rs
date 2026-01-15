@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
 
-#[derive(Serialize, Deserialize, Debug, Clone, EnumIter, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter, Encode, Decode)]
 pub enum Light {
     //
     // 0: Red
@@ -250,10 +250,7 @@ impl Light {
                 dmx[this.start_addr + 2] = color.g;
                 dmx[this.start_addr + 3] = color.b;
                 // Re-use focus property as BPM control (0 keeps tempo unchanged).
-                dmx[this.start_addr + 4] = match state.focus {
-                    0 => 0,
-                    v => v.map_range(1..255, 40..240),
-                };
+                dmx[this.start_addr + 4] = state.focus;
                 dmx[this.start_addr + 5] = state.focus;
             }
         }

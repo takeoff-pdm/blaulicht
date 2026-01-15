@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
 
-#[derive(Serialize, Deserialize, Debug, Clone, EnumIter, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter, Encode, Decode)]
 pub enum MovingHead {
     //
     // Channel map is complicated, look below.

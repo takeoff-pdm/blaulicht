@@ -433,7 +433,6 @@ impl BlaulichtApp {
                                 EventOriginator::Web,
                                 ControlEvent::Transaction(vec![
                                     ControlEvent::LoadSpecIntoAnimation(*anim_id, spec),
-                                    ControlEvent::LoadSpecIntoAnimation(*anim_id, spec),
                                 ]),
                             ));
                     }

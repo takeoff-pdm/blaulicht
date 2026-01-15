@@ -8,7 +8,7 @@ use crate::fixture::state::FixtureState;
 
 use super::Fixture;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode, EnumIter)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, EnumIter)]
 pub enum Dimmer {
     FogMachineSingle,
     DimmerSingle,

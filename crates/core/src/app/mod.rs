@@ -4,11 +4,14 @@ use crate::{
             DmxSimulator, LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
-        pages::{AnimationEditState, AnimationUI, FixturePerfUi, SystemUI},
+        pages::{AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI},
         ui::FileDialogOpenOrigin,
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
+use blaulicht_shared::fixture::dimmer::Dimmer;
+use blaulicht_shared::fixture::light::Light;
+use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::Color32;
 use egui_file::FileDialog;
@@ -152,10 +155,12 @@ pub struct BlaulichtApp {
     add_fixture_universe_no: u16,
     add_fixture_pos_x: usize,
     add_fixture_pos_y: usize,
-    // 0 = MovingHead, 1 = Light, 2 = Dimmer
-    add_fixture_kind: usize,
-    // model index per kind (simple integer mapping to enum variants)
-    add_fixture_model_index: usize,
+    add_fixture_kind: AddFixtureKind,
+    add_fixture_kind_dialog_open: bool,
+    add_fixture_model_dialog_open: bool,
+    add_fixture_selected_moving_head: MovingHead,
+    add_fixture_selected_light: Light,
+    add_fixture_selected_dimmer: Dimmer,
     // number of fixtures to create in one action
     add_fixture_count: u16,
 
@@ -254,8 +259,12 @@ impl BlaulichtApp {
             add_fixture_start_addr: 1,
             add_fixture_pos_x: 0,
             add_fixture_pos_y: 0,
-            add_fixture_kind: 0,
-            add_fixture_model_index: 0,
+            add_fixture_kind: AddFixtureKind::MovingHead,
+            add_fixture_kind_dialog_open: false,
+            add_fixture_model_dialog_open: false,
+            add_fixture_selected_moving_head: MovingHead::MartinMac250E,
+            add_fixture_selected_light: Light::Generic3ChanNoAlpha,
+            add_fixture_selected_dimmer: Dimmer::FogMachineSingle,
             add_fixture_count: 1,
             setup_fixture_id: 0,
             add_fixture_universe_no: 0,

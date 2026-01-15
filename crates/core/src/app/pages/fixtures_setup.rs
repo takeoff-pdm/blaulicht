@@ -11,9 +11,31 @@ use blaulicht_shared::fixture::state::{Fixture, Position};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit, Vec2};
-use std::mem;
 use std::time::Duration;
+use std::{fmt, mem};
 use strum::IntoEnumIterator;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddFixtureKind {
+    MovingHead,
+    Light,
+    Dimmer,
+}
+
+impl AddFixtureKind {
+    pub const ALL: [Self; 3] = [Self::MovingHead, Self::Light, Self::Dimmer];
+}
+
+impl fmt::Display for AddFixtureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            AddFixtureKind::MovingHead => "MovingHead",
+            AddFixtureKind::Light => "Light",
+            AddFixtureKind::Dimmer => "Dimmer",
+        };
+        f.write_str(label)
+    }
+}
 
 impl BlaulichtApp {
     pub fn render_delete_group(&mut self, ctx: &Context) {
@@ -343,62 +365,103 @@ impl BlaulichtApp {
                     // Kind selector
                     ui.horizontal(|ui| {
                         ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
-                        let kinds = ["MovingHead", "Light", "Dimmer"];
-                        egui::ComboBox::from_id_source("add_fixture_kind_combo")
-                            .width(140.0)
-                            .selected_text(kinds[self.add_fixture_kind])
-                            .show_ui(ui, |ui| {
-                                for (idx, label) in kinds.iter().enumerate() {
-                                    ui.selectable_value(&mut self.add_fixture_kind, idx, *label);
-                                }
-                            });
+                        let kind_button_size = BUTTON_SIZE.with_width(140.0);
+                        if components::button(
+                            ui,
+                            self.add_fixture_kind_dialog_open,
+                            &self.add_fixture_kind.to_string(),
+                            kind_button_size,
+                        ) {
+                            self.add_fixture_kind_dialog_open = true;
+                        }
 
-                        ///////
+                        let (new_kind, kind_changed) = components::selection_dialog(
+                            ctx,
+                            AddFixtureKind::ALL,
+                            self.add_fixture_kind,
+                            &mut self.add_fixture_kind_dialog_open,
+                            "Select Fixture Type".to_string(),
+                        );
+
+                        if kind_changed {
+                            self.add_fixture_kind = new_kind;
+                            self.add_fixture_model_dialog_open = false;
+                        }
 
                         ui.add_sized([LABEL_W, cell_h], Label::new("Model:"));
+                        let model_button_size = BUTTON_SIZE.with_width(140.0).with_font_size(8.5);
                         match self.add_fixture_kind {
-                            0 => {
-                                // MovingHead
-                                let labels: Vec<_> =
-                                    MovingHead::iter().map(|l| l.to_string()).collect();
+                            AddFixtureKind::MovingHead => {
+                                let label = self.add_fixture_selected_moving_head.to_string();
+                                if components::button(
+                                    ui,
+                                    self.add_fixture_model_dialog_open,
+                                    &label,
+                                    model_button_size,
+                                ) {
+                                    self.add_fixture_model_dialog_open = true;
+                                }
 
-                                let mut idx = self.add_fixture_model_index.min(labels.len() - 1);
-                                egui::ComboBox::from_id_source("add_fixture_model_combo")
-                                    .width(140.0)
-                                    .selected_text(&labels[idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, l) in labels.iter().enumerate() {
-                                            ui.selectable_value(&mut idx, i, l);
-                                        }
-                                    });
-                                self.add_fixture_model_index = idx;
+                                let options: Vec<_> = MovingHead::iter().collect();
+                                let (new_model, changed) = components::selection_dialog(
+                                    ctx,
+                                    options,
+                                    self.add_fixture_selected_moving_head,
+                                    &mut self.add_fixture_model_dialog_open,
+                                    "Select Moving Head".to_string(),
+                                );
+
+                                if changed {
+                                    self.add_fixture_selected_moving_head = new_model;
+                                }
                             }
-                            1 => {
-                                // Light
-                                let labels: Vec<_> = Light::iter().map(|l| l.to_string()).collect();
-                                let mut idx = self.add_fixture_model_index.min(labels.len() - 1);
-                                egui::ComboBox::from_id_source("add_fixture_model_combo")
-                                    .selected_text(&labels[idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, l) in labels.iter().enumerate() {
-                                            ui.selectable_value(&mut idx, i, l);
-                                        }
-                                    });
-                                self.add_fixture_model_index = idx;
+                            AddFixtureKind::Light => {
+                                let label = self.add_fixture_selected_light.to_string();
+                                if components::button(
+                                    ui,
+                                    self.add_fixture_model_dialog_open,
+                                    &label,
+                                    model_button_size,
+                                ) {
+                                    self.add_fixture_model_dialog_open = true;
+                                }
+
+                                let options: Vec<_> = Light::iter().collect();
+                                let (new_model, changed) = components::selection_dialog(
+                                    ctx,
+                                    options,
+                                    self.add_fixture_selected_light,
+                                    &mut self.add_fixture_model_dialog_open,
+                                    "Select Light".to_string(),
+                                );
+
+                                if changed {
+                                    self.add_fixture_selected_light = new_model;
+                                }
                             }
-                            _ => {
-                                // Light
-                                let labels: Vec<_> =
-                                    Dimmer::iter().map(|l| l.to_string()).collect();
-                                let mut idx = self.add_fixture_model_index.min(labels.len() - 1);
-                                egui::ComboBox::from_id_source("add_fixture_model_combo")
-                                    .selected_text(&labels[idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, l) in labels.iter().enumerate() {
-                                            ui.selectable_value(&mut idx, i, l);
-                                        }
-                                    });
-                                self.add_fixture_model_index = idx;
+                            AddFixtureKind::Dimmer => {
+                                let label = self.add_fixture_selected_dimmer.to_string();
+                                if components::button(
+                                    ui,
+                                    self.add_fixture_model_dialog_open,
+                                    &label,
+                                    model_button_size,
+                                ) {
+                                    self.add_fixture_model_dialog_open = true;
+                                }
+
+                                let options: Vec<_> = Dimmer::iter().collect();
+                                let (new_model, changed) = components::selection_dialog(
+                                    ctx,
+                                    options,
+                                    self.add_fixture_selected_dimmer,
+                                    &mut self.add_fixture_model_dialog_open,
+                                    "Select Dimmer".to_string(),
+                                );
+
+                                if changed {
+                                    self.add_fixture_selected_dimmer = new_model;
+                                }
                             }
                         }
                     });
@@ -424,6 +487,8 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                             self.add_fixture_open = false;
+                            self.add_fixture_kind_dialog_open = false;
+                            self.add_fixture_model_dialog_open = false;
                         }
 
                         let can_create = self.add_fixture_group.is_some()
@@ -459,43 +524,14 @@ impl BlaulichtApp {
 
                             // Build fixture type
                             let fixture_type = match self.add_fixture_kind {
-                                0 => {
-                                    // MovingHead
-                                    let model = match self.add_fixture_model_index {
-                                        0 => MovingHead::MartinMac250E,
-                                        1 => MovingHead::VaryTechHeroSpot60,
-                                        _ => unreachable!("Not possible"),
-                                    };
-                                    FixtureType::from(model)
+                                AddFixtureKind::MovingHead => {
+                                    FixtureType::from(self.add_fixture_selected_moving_head)
                                 }
-                                1 => {
-                                    // Light
-                                    let model = match self.add_fixture_model_index {
-                                        0 => Light::Generic3ChanNoAlpha,
-                                        1 => Light::Generic4ChanWithAlpha,
-                                        2 => Light::LEDPartyTCLSpot,
-                                        3 => Light::AdjMegaHexPar,
-                                        4 => Light::LiteCraftMiniParAT10,
-                                        5 => Light::VaryTechVP1,
-                                        6 => Light::LightMaxxVegaSilentPar2Quad,
-                                        7 => Light::LEDPar64RGBSpot5Chan,
-                                        8 => Light::CameoQSpot40RGBW_4Chan,
-                                        9 => Light::LightMaxxTripleDerbyHP,
-                                        10 => Light::EuroLiteLEDMultiFX_10Chan,
-                                        11 => Light::TakeOffLogo,
-                                        _ => unreachable!("not possible"),
-                                    };
-                                    FixtureType::from(model)
+                                AddFixtureKind::Light => {
+                                    FixtureType::from(self.add_fixture_selected_light)
                                 }
-                                _ => {
-                                    let model = match self.add_fixture_model_index {
-                                        0 => Dimmer::FogMachineSingle,
-                                        1 => Dimmer::DimmerSingle,
-                                        2 => Dimmer::DimmerWStrobe,
-                                        _ => unreachable!("not possible"),
-                                    };
-
-                                    FixtureType::from(model)
+                                AddFixtureKind::Dimmer => {
+                                    FixtureType::from(self.add_fixture_selected_dimmer)
                                 }
                             };
 
@@ -539,9 +575,8 @@ impl BlaulichtApp {
 
                             // Reset some fields and close
                             self.add_fixture_open = false;
-
-                            // self.add_fixture_model_index = 0;
-                            // self.add_fixture_kind = 0;
+                            self.add_fixture_kind_dialog_open = false;
+                            self.add_fixture_model_dialog_open = false;
 
                             self.add_fixture_name = String::from("New Fixture");
                         }
