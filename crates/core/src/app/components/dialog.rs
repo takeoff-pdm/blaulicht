@@ -1,6 +1,39 @@
 use egui::{vec2, Color32, CornerRadius, Frame, Id, LayerId, Margin, Order, Stroke, Ui, Vec2};
+use std::cell::Cell;
 
 use crate::app::popup::render_popup_backdrop;
+
+thread_local! {
+    static MODAL_DEPTH: Cell<usize> = Cell::new(0);
+}
+
+struct ModalDepthGuard {
+    previous_depth: usize,
+}
+
+impl ModalDepthGuard {
+    fn push() -> Self {
+        let previous_depth = MODAL_DEPTH.with(|depth| {
+            let prev = depth.get();
+            depth.set(prev + 1);
+            prev
+        });
+
+        Self { previous_depth }
+    }
+
+    fn previous_depth(&self) -> usize {
+        self.previous_depth
+    }
+}
+
+impl Drop for ModalDepthGuard {
+    fn drop(&mut self) {
+        MODAL_DEPTH.with(|depth| {
+            depth.set(self.previous_depth);
+        });
+    }
+}
 
 pub struct Dialog {
     label: String,
@@ -43,7 +76,16 @@ impl Dialog {
     }
 
     pub fn show(&self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
-        let order = Order::Foreground;
+        let modal_guard = self.with_backdrop.then(ModalDepthGuard::push);
+
+        let order = if modal_guard
+            .as_ref()
+            .map_or(false, |guard| guard.previous_depth() > 0)
+        {
+            Order::Tooltip
+        } else {
+            Order::Foreground
+        };
         let window_id = Id::new(format!("dialog::{}", self.label));
         let window_layer = LayerId::new(order, window_id);
 

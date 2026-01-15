@@ -104,80 +104,6 @@ impl BlaulichtApp {
 
         // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
 
-        if self.add_dmx_override_open {
-            let cell_h = ButtonSize::Medium.dim().0.y;
-            let height = cell_h * 3.5 + 24.0;
-            const LABEL_W: f32 = 120.0;
-
-            Dialog::new("Add Override".to_string(), egui::vec2(260.0, height))
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
-
-                    ui.horizontal_centered(|ui| {
-                        ui.set_height(cell_h);
-
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_uni)
-                                .speed(1)
-                                .range(0..=1),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Uni:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal_centered(|ui| {
-                        ui.set_height(cell_h);
-
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
-                                .speed(1)
-                                .range(1..=512),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal_centered(|ui| {
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
-                                .speed(1)
-                                .range(0..=255),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.set_height(cell_h);
-
-                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                            self.add_dmx_override_open = false;
-                        }
-
-                        if components::button(ui, true, "Add", ButtonSize::Medium) {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetChannelOverride(
-                                        self.add_dmx_override_uni,
-                                        self.add_dmx_override_chan,
-                                        self.add_dmx_override_value,
-                                    ),
-                                ));
-                            self.add_dmx_override_open = false;
-                        }
-                    });
-                });
-        }
-
         if self.dmx_override_dialog_open {
             let r = ctx.screen_rect();
 
@@ -264,6 +190,81 @@ impl BlaulichtApp {
                     ui.separator();
                 }
             });
+        }
+
+        // Render after the parent override dialog so it stays on top of the stack.
+        if self.add_dmx_override_open {
+            let cell_h = ButtonSize::Medium.dim().0.y;
+            let height = cell_h * 3.5 + 24.0;
+            const LABEL_W: f32 = 120.0;
+
+            Dialog::new("Add Override".to_string(), egui::vec2(260.0, height))
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+
+                    ui.horizontal_centered(|ui| {
+                        ui.set_height(cell_h);
+
+                        ui.add_sized(
+                            [140.0, cell_h],
+                            egui::widgets::DragValue::new(&mut self.add_dmx_override_uni)
+                                .speed(1)
+                                .range(0..=1),
+                        );
+                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Uni:"));
+                    });
+
+                    ui.separator();
+
+                    ui.horizontal_centered(|ui| {
+                        ui.set_height(cell_h);
+
+                        ui.add_sized(
+                            [140.0, cell_h],
+                            egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
+                                .speed(1)
+                                .range(1..=512),
+                        );
+                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
+                    });
+
+                    ui.separator();
+
+                    ui.horizontal_centered(|ui| {
+                        ui.add_sized(
+                            [140.0, cell_h],
+                            egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
+                                .speed(1)
+                                .range(0..=255),
+                        );
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
+                    });
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.set_height(cell_h);
+
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                            self.add_dmx_override_open = false;
+                        }
+
+                        if components::button(ui, true, "Add", ButtonSize::Medium) {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetChannelOverride(
+                                        self.add_dmx_override_uni,
+                                        self.add_dmx_override_chan,
+                                        self.add_dmx_override_value,
+                                    ),
+                                ));
+                            self.add_dmx_override_open = false;
+                        }
+                    });
+                });
         }
 
         self.render_add_group_dialog(ctx);

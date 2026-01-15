@@ -1,5 +1,12 @@
 use std::{
-    collections::HashMap, ffi::OsStr, mem, net::SocketAddr, path::{Path, PathBuf}, process::Command, str::FromStr, time::Duration
+    collections::HashMap,
+    ffi::OsStr,
+    mem,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process::Command,
+    str::FromStr,
+    time::Duration,
 };
 
 use blaulicht_assets::icons;
@@ -83,14 +90,7 @@ impl BlaulichtApp {
                     dmx.0.clone()
                 };
 
-                let plugin_state = {
-                    self.data
-                        .state
-                        .plugin_state_storage
-                        .lock()
-                        .unwrap()
-                        .clone()
-                };
+                let plugin_state = { self.data.state.plugin_state_storage.lock().unwrap().clone() };
 
                 let artnet_state = {
                     let artnet_output = self.data.state.artnet_output.read().unwrap();
@@ -859,8 +859,7 @@ impl BlaulichtApp {
                         // mem::drop(dmx);
 
                         let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                        let mut artnet =
-                            self.data.state.artnet_output.write().unwrap();
+                        let mut artnet = self.data.state.artnet_output.write().unwrap();
                         config::read_showfile(
                             file.to_path_buf(),
                             &mut dmx,
@@ -975,8 +974,7 @@ impl BlaulichtApp {
                         let path = PathBuf::from_str(&self.data.config_path).unwrap();
                         config::write_config(path, conf.clone()).unwrap();
                         let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                        let mut artnet =
-                            self.data.state.artnet_output.write().unwrap();
+                        let mut artnet = self.data.state.artnet_output.write().unwrap();
                         config::close_showfile(
                             &mut dmx,
                             &mut artnet,
