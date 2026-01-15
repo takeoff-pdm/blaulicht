@@ -421,9 +421,22 @@ impl BlaulichtApp {
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
-                    self.fixture_perf_ui
+                    let new_value_spec = self
+                        .fixture_perf_ui
                         .scene_overview_animation_edit
                         .show(ui, ctx);
+
+                    if let Some(spec) = new_value_spec {
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::Transaction(vec![
+                                    ControlEvent::LoadSpecIntoAnimation(*anim_id, spec),
+                                    ControlEvent::LoadSpecIntoAnimation(*anim_id, spec),
+                                ]),
+                            ));
+                    }
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
                         self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
