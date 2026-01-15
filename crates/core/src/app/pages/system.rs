@@ -1,15 +1,11 @@
 use std::{
-    ffi::OsStr,
-    mem,
-    net::SocketAddr,
-    path::{Path, PathBuf},
-    process::Command,
-    str::FromStr,
-    time::Duration,
+    collections::HashMap, ffi::OsStr, mem, net::SocketAddr, path::{Path, PathBuf}, process::Command, str::FromStr, time::Duration
 };
 
 use blaulicht_assets::icons;
-use blaulicht_shared::LogLevel;
+use blaulicht_shared::{
+    LogLevel, SaveEngineState, Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
+};
 use egui::{
     Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
     ThemePreference, Vec2, Widget,
@@ -81,28 +77,44 @@ impl BlaulichtApp {
         let mut config_mut = self.data.config.lock().unwrap();
 
         match config_mut.last_open_showfile.clone() {
-            Some(ref path) => {
-                let mut dmx = self.data.state.dmx_engine.write().unwrap();
+            Some(path) => {
+                let engine_snapshot = {
+                    let dmx = self.data.state.dmx_engine.read().unwrap();
+                    dmx.0.clone()
+                };
 
-                {
-                    let plugin_state = self.data.state.plugin_state_storage.lock().unwrap();
-                    dmx.0.plugin_state = plugin_state.clone();
-                }
+                let plugin_state = {
+                    self.data
+                        .state
+                        .plugin_state_storage
+                        .lock()
+                        .unwrap()
+                        .clone()
+                };
 
-                // let string = ron::to_string(&dmx.clone()).unwrap();
-                // let pretty = PrettyConfig::new()
-                //     .indentor("    ".to_owned())
-                //     .new_line("\n".to_owned());
+                let artnet_state = {
+                    let artnet_output = self.data.state.artnet_output.read().unwrap();
+                    ShowfileArtNetState {
+                        receivers: artnet_output
+                            .receivers
+                            .iter()
+                            .map(|receiver| ShowfileArtNetReceiver {
+                                address: receiver.address,
+                                enabled: receiver.enabled,
+                            })
+                            .collect(),
+                    }
+                };
 
-                // let string = serde_json::to_string_pretty(&dmx.clone()).unwrap();
+                let showfile = Showfile {
+                    engine: SaveEngineState::from(engine_snapshot),
+                    artnet: artnet_state,
+                    plugin_state,
+                };
 
-                // let string = ron::ser::to_string_pretty(&dmx.clone(), pretty).unwrap();
-                // let string = ron::to_string(&dmx.clone()).unwrap();
-                let string = blaulicht_shared::save::engine_state_to_json(dmx.0.clone()).unwrap();
-                println!("STRING: {string}");
-
-                // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                std::fs::write(path, &string).unwrap();
+                let serialized =
+                    serde_json::to_string_pretty(&showfile).expect("Failed to serialize showfile");
+                std::fs::write(&path, &serialized).expect("Failed to write showfile");
 
                 config_mut.last_open_showfile = Some(path.clone());
 
@@ -118,7 +130,6 @@ impl BlaulichtApp {
                     .unwrap();
 
                 mem::drop(config_mut);
-                mem::drop(dmx);
 
                 self.show_popup(PopupSpec::with_duration(
                     Duration::from_secs(2),
@@ -848,12 +859,16 @@ impl BlaulichtApp {
                         // mem::drop(dmx);
 
                         let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                        let mut artnet =
+                            self.data.state.artnet_output.write().unwrap();
                         config::read_showfile(
                             file.to_path_buf(),
                             &mut dmx,
+                            &mut artnet,
                             &self.data.state.plugin_state_storage,
                             self.data.system_message_sender.clone(),
                         );
+                        mem::drop(artnet);
                         mem::drop(dmx);
 
                         config.last_open_showfile = Some(file.to_path_buf());
@@ -960,7 +975,15 @@ impl BlaulichtApp {
                         let path = PathBuf::from_str(&self.data.config_path).unwrap();
                         config::write_config(path, conf.clone()).unwrap();
                         let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                        config::close_showfile(&mut dmx, &self.data.state.plugin_state_storage);
+                        let mut artnet =
+                            self.data.state.artnet_output.write().unwrap();
+                        config::close_showfile(
+                            &mut dmx,
+                            &mut artnet,
+                            &self.data.state.plugin_state_storage,
+                        );
+                        mem::drop(artnet);
+                        mem::drop(dmx);
                     }
                 }
 

@@ -1,6 +1,10 @@
-use crate::{dmx, msg::SystemMessage};
+use crate::{
+    dmx,
+    msg::SystemMessage,
+    state::{ArtNetOutput, ArtNetReceiver},
+};
 use anyhow::{anyhow, Context, Result};
-use blaulicht_shared::{EngineState, LogLevel, SaveEngineState};
+use blaulicht_shared::{EngineState, LogLevel, SaveEngineState, Showfile};
 use crossbeam_channel::Sender;
 use log::debug;
 use serde::{Deserialize, Serialize};
@@ -55,10 +59,11 @@ pub struct PluginConfig {
 pub fn read_showfile(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
     system_message_sender: Sender<SystemMessage>,
 ) {
-    match read_showfile_logic(file.clone(), dmx, plugin_state_storage) {
+    match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
         Ok(_) => {
             system_message_sender
                 .send(SystemMessage::Log(
@@ -81,51 +86,71 @@ pub fn read_showfile(
 fn read_showfile_logic(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<()> {
     debug!("Attempting to read showfile from {file:?}...");
 
-    // let mut f = File::open(&file)?;
-    // let metadata = fs::metadata(&file)?;
-    // let mut buffer = vec![0; metadata.len() as usize];
-    // f.read(&mut buffer)?;
-
     let string = fs::read_to_string(&file)?;
 
-    // match {
-    //     Ok(de) => {
-    //             let mut storage = plugin_state_storage.lock().unwrap();
-    //             *storage = de.plugin_state.clone();
-    //     },
-    //     Err(e) => {},
-    // }
-    //
-    match serde_json::from_str::<SaveEngineState>(&string) {
-        Ok(de) => {
-            let core_format: EngineState = de
+    match serde_json::from_str::<Showfile>(&string) {
+        Ok(showfile) => {
+            let core_engine: EngineState = showfile
+                .engine
                 .try_into()
                 .map_err(|e| anyhow!("{e}"))
-                .with_context(|| "Failed to parse")?;
+                .with_context(|| "Failed to parse engine state")?;
 
             let mut storage = plugin_state_storage.lock().unwrap();
-            *storage = core_format.plugin_state.clone();
+            *storage = showfile.plugin_state;
 
-            dmx.load_showfile(core_format);
+            artnet_output.receivers = showfile
+                .artnet
+                .receivers
+                .into_iter()
+                .map(|receiver| ArtNetReceiver {
+                    address: receiver.address,
+                    enabled: receiver.enabled,
+                })
+                .collect();
+
+            dmx.load_showfile(core_engine);
 
             Ok(())
         }
-        Err(e) => Err(anyhow!(e)),
+        Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
+            Ok(deprecated) => {
+                let core_format: EngineState = deprecated
+                    .try_into()
+                    .map_err(|e| anyhow!("{e}"))
+                    .with_context(|| "Failed to parse deprecated engine state")?;
+
+                {
+                    let mut storage = plugin_state_storage.lock().unwrap();
+                    storage.clear();
+                }
+
+                artnet_output.receivers.clear();
+                dmx.load_showfile(core_format);
+
+                Ok(())
+            }
+            Err(_) => Err(anyhow!(showfile_err)),
+        },
     }
 }
 
 pub fn close_showfile(
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
+    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
 ) {
     debug!("Closing showfile...");
 
     let mut storage = plugin_state_storage.lock().unwrap();
     *storage = HashMap::new();
+
+    artnet_output.receivers.clear();
 
     dmx.load_showfile(EngineState::default());
 }

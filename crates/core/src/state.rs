@@ -160,7 +160,7 @@ impl ArtNetReceiver {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ArtNetOutput {
     pub receivers: Vec<ArtNetReceiver>,
 }

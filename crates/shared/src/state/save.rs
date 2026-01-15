@@ -10,6 +10,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
+use std::net::SocketAddr;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct SaveFixtureGroup {
@@ -68,6 +69,24 @@ pub struct SaveEngineState {
     pub current_scene_focus: u8,
     pub current_overlay_scenes: Vec<u8>,
     pub overrides: Vec<SavedMapEntry<(usize, usize), u8>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+pub struct ShowfileArtNetReceiver {
+    pub address: SocketAddr,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
+pub struct ShowfileArtNetState {
+    pub receivers: Vec<ShowfileArtNetReceiver>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
+pub struct Showfile {
+    pub engine: SaveEngineState,
+    #[serde(default)]
+    pub artnet: ShowfileArtNetState,
     #[serde(default)]
     pub plugin_state: HashMap<String, String>,
 }
@@ -237,7 +256,6 @@ impl From<EngineState> for SaveEngineState {
             current_scene_focus: value.current_scene_focus,
             current_overlay_scenes: value.current_overlay_scenes,
             overrides: SavedMapEntry::from_btree_map(value.overrides),
-            plugin_state: value.plugin_state,
         }
     }
 }
@@ -288,22 +306,9 @@ impl TryFrom<SaveEngineState> for EngineState {
             current_scene_focus: value.current_scene_focus,
             current_overlay_scenes: value.current_overlay_scenes,
             overrides,
-            plugin_state: value.plugin_state,
         })
     }
 }
-
-pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {
-    let converted = SaveEngineState::from(from);
-    println!("conv: {:?}", converted);
-    serde_json::to_string_pretty(&converted)
-}
-
-// pub fn engine_state_to_json(from: EngineState) -> serde_json::Result<String> {
-//     let converted = SaveEngineState::from(from);
-//     println!("conv: {:?}", converted);
-//     serde_json::to_string(&converted)
-// }
 
 #[cfg(test)]
 mod tests {
@@ -423,10 +428,6 @@ mod tests {
         engine.current_overlay_scenes = vec![1];
         engine.overrides.insert((0, 1), 42);
         engine
-            .plugin_state
-            .insert("plugin".to_string(), "state".to_string());
-
-        engine
     }
 
     #[test]
@@ -453,6 +454,42 @@ mod tests {
             engine.current_overlay_scenes
         );
         assert_eq!(restored.overrides, engine.overrides);
-        assert_eq!(restored.plugin_state, engine.plugin_state);
+    }
+
+    #[test]
+    fn showfile_serialization_keeps_optional_sections() {
+        let engine = sample_engine_state();
+        let save_state = SaveEngineState::from(engine.clone());
+
+        let mut plugin_state = HashMap::new();
+        plugin_state.insert("plugin".to_string(), "state".to_string());
+
+        let showfile = Showfile {
+            engine: save_state,
+            artnet: ShowfileArtNetState {
+                receivers: vec![ShowfileArtNetReceiver {
+                    address: "127.0.0.1:6454".parse().unwrap(),
+                    enabled: true,
+                }],
+            },
+            plugin_state,
+        };
+
+        let json =
+            serde_json::to_string(&showfile).expect("Showfile JSON serialization should succeed");
+        let decoded: Showfile =
+            serde_json::from_str(&json).expect("Showfile JSON deserialization should succeed");
+
+        assert_eq!(decoded.artnet.receivers.len(), 1);
+        assert!(decoded.artnet.receivers[0].enabled);
+        assert_eq!(
+            decoded.artnet.receivers[0].address,
+            "127.0.0.1:6454".parse().unwrap()
+        );
+        assert_eq!(decoded.plugin_state.get("plugin"), Some(&"state".to_string()));
+
+        let restored_engine =
+            EngineState::try_from(decoded.engine).expect("Engine conversion should succeed");
+        assert_eq!(restored_engine.groups.len(), engine.groups.len());
     }
 }

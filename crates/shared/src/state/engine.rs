@@ -80,9 +80,8 @@ pub struct EngineState {
 
     // Overrides a (universe, channel) -> value
     pub overrides: BTreeMap<(usize, usize), u8>,
-
-    #[serde(default)]
-    pub plugin_state: HashMap<String, String>,
+    // #[serde(default)]
+    // pub plugin_state: HashMap<String, String>,
 }
 
 impl EngineState {
