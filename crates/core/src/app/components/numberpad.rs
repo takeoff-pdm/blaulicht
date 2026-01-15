@@ -176,8 +176,9 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
         focus_response.request_focus();
     }
 
+    let mut clamp_applied = false;
+
     ui.input_mut(|input| {
-        let mut clamp_applied = false;
         let mut appended_digit_from_text = false;
         let mut remaining_events = Vec::new();
 
@@ -251,11 +252,12 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
 
         input.events = remaining_events;
 
-        if clamp_applied {
-            state.trigger_clamp_flash(now);
-            ui.ctx().request_repaint();
-        }
     });
+
+    if clamp_applied {
+        state.trigger_clamp_flash(now);
+        ui.ctx().request_repaint();
+    }
 
     let display_text = state.input_buffer.clone();
     let clamp_flash_active = state.clamp_flash_active(now);

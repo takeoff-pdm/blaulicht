@@ -2,7 +2,7 @@ cargo-features = ["codegen-backend"]
 
 [profile.dev]
 opt-level = 0
-debug = false
+debug = true
 overflow-checks = true
 lto = false
 incremental = true
