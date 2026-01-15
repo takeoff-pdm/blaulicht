@@ -481,6 +481,7 @@ impl BlaulichtApp {
                                         8 => Light::CameoQSpot40RGBW_4Chan,
                                         9 => Light::LightMaxxTripleDerbyHP,
                                         10 => Light::EuroLiteLEDMultiFX_10Chan,
+                                        11 => Light::TakeOffLogo,
                                         _ => unreachable!("not possible"),
                                     };
                                     FixtureType::from(model)

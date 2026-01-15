@@ -36,6 +36,7 @@ impl DmxEngine {
                     speed_per_step
                 }
                 AnimationSpecBody::AudioVolume(_)
+                | AnimationSpecBody::BPMValue(_)
                 | AnimationSpecBody::BeatClock(_)
                 | AnimationSpecBody::AudioBeat(_)
                 | AnimationSpecBody::AudioFrequencies(_) => DMX_TICK_TIME.as_millis() as f64,
@@ -65,6 +66,7 @@ impl DmxEngine {
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
                 audio_snapshot.snapshot.volume as u16
             }
+            AnimationSpecBody::BPMValue(_) => audio_snapshot.snapshot.bpm as u16,
             AnimationSpecBody::AudioFrequencies(freqs) => {
                 // Create bins of size `fixtures_in_selection`
                 // let bins = bin_spectrum_to_u8(&audio_snapshot.current_audio_colunn, fixtures_in_selection);

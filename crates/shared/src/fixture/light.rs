@@ -1,5 +1,5 @@
 use crate::{
-    HSVColor, RGBColor,
+    RGBColor,
     fixture::state::{FixtureOrientation, FixtureState},
 };
 
@@ -103,6 +103,15 @@ pub enum Light {
     // 8: White SMDS
     // 9: Speed
     EuroLiteLEDMultiFX_10Chan,
+    //
+    // 0: Alpha
+    // 1: Red
+    // 2: Green
+    // 3: Blue
+    // 4: BPM Control (0 = unchanged, 1-255 -> ~40-240 BPM)
+    // 5: Focus
+    //
+    TakeOffLogo,
 }
 
 impl Display for Light {
@@ -125,6 +134,7 @@ impl Light {
             Light::CameoQSpot40RGBW_4Chan => 4,
             Light::LightMaxxTripleDerbyHP => 4,
             Light::EuroLiteLEDMultiFX_10Chan => 10,
+            Light::TakeOffLogo => 6,
         }
     }
 
@@ -234,6 +244,18 @@ impl Light {
                 dmx[this.start_addr + 8] = state.focus;
                 dmx[this.start_addr + 9] = state.orientation.pan;
             }
+            Light::TakeOffLogo => {
+                dmx[this.start_addr + 0] = state.alpha;
+                dmx[this.start_addr + 1] = color.r;
+                dmx[this.start_addr + 2] = color.g;
+                dmx[this.start_addr + 3] = color.b;
+                // Re-use focus property as BPM control (0 keeps tempo unchanged).
+                dmx[this.start_addr + 4] = match state.focus {
+                    0 => 0,
+                    v => v.map_range(1..255, 40..240),
+                };
+                dmx[this.start_addr + 5] = state.focus;
+            }
         }
     }
 
@@ -262,6 +284,19 @@ impl Light {
             Light::CameoQSpot40RGBW_4Chan => todo!(),
             Light::LightMaxxTripleDerbyHP => todo!(),
             Light::EuroLiteLEDMultiFX_10Chan => todo!(),
+            Light::TakeOffLogo => {
+                let alpha = dmx[this.start_addr + 0];
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 1);
+                let focus = dmx[this.start_addr + 5];
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed: 0,
+                    focus,
+                }
+            }
         }
     }
 

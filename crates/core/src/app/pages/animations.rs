@@ -407,6 +407,7 @@ impl AnimationEditState {
             match &self.working_state.body {
                 AnimationSpecBody::Phaser(phaser) => self.anim_phaser_ui(ui, ctx),
                 AnimationSpecBody::AudioVolume(audio) => self.anim_audio_ui(ui),
+                AnimationSpecBody::BPMValue(_) => self.anim_bpm_ui(ui),
                 AnimationSpecBody::AudioFrequencies(freq) => self.anim_freq_ui(ui),
                 AnimationSpecBody::AudioBeat(beat) => self.anim_beat_ui(ui),
                 AnimationSpecBody::BeatClock(beat) => self.anim_beat_clock_ui(ui),
@@ -596,6 +597,10 @@ impl AnimationEditState {
 
     fn anim_audio_ui(&mut self, ui: &mut egui::Ui) {
         ui.label("[AUDIO]");
+    }
+
+    fn anim_bpm_ui(&mut self, ui: &mut egui::Ui) {
+        ui.label("[AUDIO-BPM]");
     }
 
     fn anim_freq_ui(&mut self, ui: &mut egui::Ui) {

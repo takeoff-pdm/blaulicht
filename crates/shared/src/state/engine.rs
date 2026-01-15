@@ -196,6 +196,7 @@ impl AnimationSpec {
                 animation_spec_body_phaser.sync
             }
             AnimationSpecBody::AudioVolume(_)
+            | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
@@ -211,6 +212,7 @@ impl AnimationSpec {
                 animation_spec_body_phaser.pin_to_beat
             }
             AnimationSpecBody::AudioVolume(_)
+            | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
@@ -224,6 +226,7 @@ pub enum AnimationSpecBody {
     /// Phaser operates on a degree (0-360 DEG) an the amount is increased in time steps.
     Phaser(AnimationSpecBodyPhaser),
     AudioVolume(AnimationSpecBodyAudioVolume),
+    BPMValue(AnimationSpecBodyBpmValue),
     AudioBeat(AnimationSpecBodyBeat),
     AudioFrequencies(AnimationSpecBodyFrequencies),
     BeatClock(AnimationSpecBodyBeat),
@@ -237,6 +240,7 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
             AnimationSpecBodyKind::AudioVolume => {
                 Self::AudioVolume(AnimationSpecBodyAudioVolume::default())
             }
+            AnimationSpecBodyKind::BPMValue => Self::BPMValue(AnimationSpecBodyBpmValue::default()),
             AnimationSpecBodyKind::AudioBeat => Self::AudioBeat(AnimationSpecBodyBeat::default()),
             AnimationSpecBodyKind::AudioFrequencies => {
                 Self::AudioFrequencies(AnimationSpecBodyFrequencies::default())
@@ -252,6 +256,7 @@ impl AnimationSpecBody {
         match self {
             AnimationSpecBody::Phaser(_) => AnimationSpecBodyKind::Phaser,
             AnimationSpecBody::AudioVolume(_) => AnimationSpecBodyKind::AudioVolume,
+            AnimationSpecBody::BPMValue(_) => AnimationSpecBodyKind::BPMValue,
             AnimationSpecBody::AudioBeat(_) => AnimationSpecBodyKind::AudioBeat,
             AnimationSpecBody::AudioFrequencies(_) => AnimationSpecBodyKind::AudioFrequencies,
             AnimationSpecBody::BeatClock(_) => AnimationSpecBodyKind::BeatClock,
@@ -264,6 +269,7 @@ impl AnimationSpecBody {
 pub enum AnimationSpecBodyKind {
     Phaser,
     AudioVolume,
+    BPMValue,
     AudioBeat,
     AudioFrequencies,
     BeatClock,
@@ -357,6 +363,9 @@ pub struct KeyframedPhaser {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyAudioVolume {}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
+pub struct AnimationSpecBodyBpmValue {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyBeat {}
