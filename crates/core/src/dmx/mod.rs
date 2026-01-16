@@ -648,6 +648,45 @@ impl DmxEngine {
                     ),
                 }
             }
+            ControlEvent::AddOverlayScene(scene_id) => {
+                if !state.0.scenes.contains_key(&scene_id) {
+                    return (Some("Illegal scene"), None);
+                }
+
+                if scene_id == state.0.current_scene_focus {
+                    return (Some("Base scene cannot appear in overlays"), None);
+                }
+
+                if state.0.current_overlay_scenes.contains(&scene_id) {
+                    return (
+                        Some("Scene already an overlay"),
+                        Some(ControlEvent::SetOverlays(
+                            state.0.current_overlay_scenes.clone(),
+                        )),
+                    );
+                }
+
+                {
+                    let animations = &mut state
+                        .0
+                        .scenes
+                        .get_mut(&scene_id)
+                        .unwrap()
+                        .sink
+                        .active_animations;
+
+                    for (_selection, anim_set) in animations.iter_mut() {
+                        for (anim_id, anim) in anim_set.iter_mut() {
+                            let animation_sync = anim.spec_cloned.sync_mode();
+                            anim.set_timers(animation_sync);
+                            println!("Reset animation: {anim_id}");
+                        }
+                    }
+                }
+
+                state.0.current_overlay_scenes.push(scene_id);
+                (None, None)
+            }
             ControlEvent::SetOverlays(overlays) => {
                 if overlays.contains(&state.0.current_scene_focus) {
                     return (Some("Base scene cannot appear in overlays"), None);

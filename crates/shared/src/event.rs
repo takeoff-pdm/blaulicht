@@ -281,6 +281,7 @@ pub enum ControlEvent {
     // ClearOverlays(u8),
     SetOverlays(Vec<u8>),
     RemoveOverlayScene(u8),
+    AddOverlayScene(u8),
 
     // Scene masters.
     SetSceneMasterAlpha(u8, u8),
@@ -318,6 +319,7 @@ impl ControlEvent {
             | ControlEvent::SetSceneFocus(_)
             | ControlEvent::SetOverlays(_)
             | ControlEvent::RemoveOverlayScene(_)
+            | ControlEvent::AddOverlayScene(_)
             | ControlEvent::SetSceneMasterAlpha(_, _)
             | ControlEvent::SetSceneMasterSpeed(_, _)
             | ControlEvent::SetChannelOverride(_, _, _)
@@ -448,7 +450,8 @@ impl ControlEvent {
             | ControlEvent::PushSelection
             | ControlEvent::SetSceneFocus(_)
             | ControlEvent::SetOverlays(_)
-            | Self::RemoveOverlayScene(_) => false,
+            | Self::RemoveOverlayScene(_)
+            | Self::AddOverlayScene(_) => false,
             ControlEvent::SetSceneMasterAlpha(_, _) | ControlEvent::SetSceneMasterSpeed(_, _) => {
                 false
             }

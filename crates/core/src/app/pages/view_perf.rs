@@ -11,30 +11,15 @@ const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
 
 pub struct ViewPerfUI {
-    // pagination: Pagination,
-    // add_view_open: bool,
-    // delete_view_open: bool,
-    // selected_view_id: Option<u8>,
-    // delete_view_id: Option<u8>,
-    // new_view_name: String,
-    // overlay_picker_open: bool,
-    // base_picker_open: bool,
-    // // For both overlay and base
-    // scene_picker_view_id: Option<u8>,
+    overlay_picker_open: bool,
+    overlay_selection: Option<u8>,
 }
 
 impl Default for ViewPerfUI {
     fn default() -> Self {
         Self {
-            // pagination: Pagination::default().with_items_per_page(VIEWS_PER_PAGE),
-            // add_view_open: false,
-            // delete_view_open: false,
-            // selected_view_id: None,
-            // delete_view_id: None,
-            // new_view_name: DEFAULT_NEW_VIEW_NAME.to_string(),
-            // overlay_picker_open: false,
-            // base_picker_open: false,
-            // scene_picker_view_id: None,
+            overlay_picker_open: false,
+            overlay_selection: None,
         }
     }
 }
@@ -176,8 +161,71 @@ impl BlaulichtApp {
             });
     }
 
+    fn render_view_perf_overlay_picker_dialog(
+        &mut self,
+        ctx: &Context,
+        available_scenes: &[(u8, String)],
+    ) {
+        if !self.view_perf_ui_state.overlay_picker_open {
+            return;
+        }
+
+        if available_scenes.is_empty() {
+            self.view_perf_ui_state.overlay_picker_open = false;
+            self.view_perf_ui_state.overlay_selection = None;
+            return;
+        }
+
+        let current_selection = self
+            .view_perf_ui_state
+            .overlay_selection
+            .unwrap_or(available_scenes[0].0);
+
+        let (selected_id, changed) = components::id_selection_dialog(
+            ctx,
+            available_scenes.to_vec(),
+            current_selection,
+            &mut self.view_perf_ui_state.overlay_picker_open,
+            "Select Overlay Scene".to_string(),
+        );
+
+        self.view_perf_ui_state.overlay_selection = Some(selected_id);
+
+        if changed {
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::AddOverlayScene(selected_id),
+                ));
+        }
+
+        if !self.view_perf_ui_state.overlay_picker_open {
+            self.view_perf_ui_state.overlay_selection = None;
+        }
+    }
+
     pub fn view_perf_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+        let base_scene = dmx_engine.0.current_scene_focus;
+        let current_overlays = dmx_engine.0.current_overlay_scenes.clone();
+        let available_overlay_scenes: Vec<(u8, String)> = dmx_engine
+            .0
+            .scenes
+            .iter()
+            .filter_map(|(scene_id, scene)| {
+                if *scene_id == base_scene {
+                    return None;
+                }
+
+                if current_overlays.contains(scene_id) {
+                    return None;
+                }
+
+                Some((*scene_id, format!("{} ({})", scene.name, scene_id)))
+            })
+            .collect();
+
         let groups = dmx_engine.groups();
         self.render_dmx_simulation_dialog(ctx, groups);
 
@@ -186,7 +234,16 @@ impl BlaulichtApp {
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "ADD OVERLAY", ButtonSize::Medium) {}
+                    let can_add_overlay = !available_overlay_scenes.is_empty();
+                    if components::button(
+                        ui,
+                        self.view_perf_ui_state.overlay_picker_open,
+                        "ADD OVERLAY",
+                        ButtonSize::Medium,
+                    ) && can_add_overlay
+                    {
+                        self.view_perf_ui_state.overlay_picker_open = true;
+                    }
 
                     if components::button(ui, false, "BAR BAZ", ButtonSize::Medium) {}
 
@@ -251,5 +308,7 @@ impl BlaulichtApp {
                 );
             },
         );
+
+        self.render_view_perf_overlay_picker_dialog(ctx, &available_overlay_scenes);
     }
 }
