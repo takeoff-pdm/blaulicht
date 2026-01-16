@@ -32,4 +32,5 @@ impl AppPage {
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]
 pub enum MainUiEvent {
     NavigatePage(AppPage),
+    SetPluginUIOpen { plugin_id: u8, open: bool },
 }

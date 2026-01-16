@@ -2,7 +2,7 @@ use crate::app::components::ButtonSize;
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
+    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
 };
 use crossbeam_channel::TryRecvError;
 use egui::Context;
@@ -78,6 +78,17 @@ impl BlaulichtApp {
                             let mut map = data_clone.state.plugin_ui_visibility.write().unwrap();
                             if let Some(v) = map.get_mut(&plugin_id_copy) {
                                 *v = false;
+
+                                // Notify plugins.
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
+                                            plugin_id: plugin_id_copy,
+                                            open: false,
+                                        }),
+                                    ));
                             }
                         }
                     },

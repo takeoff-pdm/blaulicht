@@ -11,7 +11,8 @@ use std::{
 
 use blaulicht_assets::icons;
 use blaulicht_shared::{
-    LogLevel, SaveEngineState, Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
+    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, SaveEngineState,
+    Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
 };
 use egui::{
     Align, Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, TextEdit,
@@ -1363,6 +1364,17 @@ impl BlaulichtApp {
                                 let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
                                 let entry = map.entry(*id).or_insert(false);
                                 *entry = !*entry;
+
+                                // Notify plugins.
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
+                                            plugin_id: *id,
+                                            open: *entry,
+                                        }),
+                                    ));
                             }
                         });
                         ui.add_space(8.0);

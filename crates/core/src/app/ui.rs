@@ -2,7 +2,7 @@ use crate::app::components::ButtonSize;
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, PluginUiEvent,
+    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
 };
 
 #[cfg(feature = "audio")]
@@ -10,6 +10,7 @@ use cpal::traits::DeviceTrait;
 
 use crossbeam_channel::TryRecvError;
 use egui::{vec2, Context, FontId, RichText};
+use log::debug;
 use strum::IntoEnumIterator;
 
 pub enum FileDialogOpenOrigin {
@@ -88,8 +89,23 @@ impl eframe::App for BlaulichtApp {
         let mut empty = 0;
         loop {
             match self.data.event_bus_connection.try_recv() {
-                Some(bus) => println!("bus: {:?}", bus),
-                None => {
+                // Don't handle web to avoid infinite loopbacks.
+                Some(control_event) if control_event.originator() != EventOriginator::Web => {
+                    if let ControlEvent::MainUi(main_ui_event) = control_event.body() {
+                        match main_ui_event {
+                            MainUiEvent::NavigatePage(app_page) => {
+                                debug!("[UI] Navigate to: {app_page:?}");
+                                self.current_page = app_page;
+                            }
+                            MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
+                                debug!("[UI] Set plugin <{plugin_id}> visibility to: {open}");
+                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+                                map.insert(plugin_id, open);
+                            }
+                        }
+                    }
+                }
+                _ => {
                     empty += 1;
                 }
             }

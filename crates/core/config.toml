@@ -3,26 +3,25 @@ dmx_out_devices = [
     "/dev/dmx_out_0",
     "/dev/dmx_out_0",
 ]
-default_audio_device = "dummy-name"
+default_audio_device = "pipewire"
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/BL_DBG.json"
 
 [stream]
 fft_resolution = 4096
-gravity = 100.0
 refresh_rate = 60
+gravity = 100.0
 
 [stream.processor]
+sample_rate = 44100
 frequency_bounds = [
     40,
     20000,
 ]
-interpolation = "Cubic"
-position_normalisation = "Harmonic"
-sample_rate = 44100
 volume = 1.0
 volume_normalisation = "Mixture"
+position_normalisation = "Harmonic"
+interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"

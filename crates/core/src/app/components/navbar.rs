@@ -1,4 +1,4 @@
-use blaulicht_shared::AppPage;
+use blaulicht_shared::{AppPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::Context;
 use strum::IntoEnumIterator;
 
@@ -45,7 +45,15 @@ impl BlaulichtApp {
                     let label = app_page_to_icon(&page);
 
                     if components::button(ui, is_selected, &label, button_size) && !is_selected {
-                        self.current_page = page;
+                        self.current_page = page.clone();
+
+                        // Send event to notify plugins.
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::MainUi(MainUiEvent::NavigatePage(page)),
+                            ));
                     }
 
                     if idx + 1 < button_count {
