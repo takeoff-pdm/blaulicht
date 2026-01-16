@@ -55,27 +55,27 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
         // Save spectrogram
         //
 
-        let spec = {
-            let s = app_state.audio_spectrogram.read().unwrap();
-            (*s).clone()
-        };
-
-        let image = crate::app::components::create_spectrogram_image(
-            &spec,
-            dim.0 as usize,
-            dim.1 as usize,
-            &SpectrogramDisplayOptions {
-                include_bass_markers: false,
-                include_beat_markers: false,
-            },
-        );
-        for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-            let source_pixel = image.pixels[y as usize * image.width() + x as usize];
-
-            *pixel = image::Rgb([source_pixel.r(), source_pixel.g(), source_pixel.b()]);
-        }
-
         if let Some(dir) = &output_dir {
+            let spec = {
+                let s = app_state.audio_spectrogram.read().unwrap();
+                (*s).clone()
+            };
+
+            let image = crate::app::components::create_spectrogram_image(
+                &spec,
+                dim.0 as usize,
+                dim.1 as usize,
+                &SpectrogramDisplayOptions {
+                    include_bass_markers: false,
+                    include_beat_markers: false,
+                },
+            );
+            for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
+                let source_pixel = image.pixels[y as usize * image.width() + x as usize];
+
+                *pixel = image::Rgb([source_pixel.r(), source_pixel.g(), source_pixel.b()]);
+            }
+
             let path = dir.join(format!("{count}.bmp"));
             if let Err(err) = imgbuf.save_with_format(&path, image::ImageFormat::Bmp) {
                 warn!(

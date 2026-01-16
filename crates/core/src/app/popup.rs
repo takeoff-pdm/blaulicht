@@ -1,8 +1,9 @@
 use crate::app::{
-    components::{self, ButtonSize},
+    components::{self, ButtonSize, Dialog},
     BlaulichtApp, PopupSpec,
 };
-use egui::{Color32, CornerRadius, Frame, Margin, Order, RichText, Stroke};
+use eframe::glow::components_per_format;
+use egui::{Color32, CornerRadius, Frame, Margin, Order, Pos2, RichText, Stroke};
 use std::time::{Duration, Instant};
 
 impl BlaulichtApp {
@@ -24,7 +25,7 @@ impl BlaulichtApp {
             let screen_rect = ctx.screen_rect();
             let popup_size = egui::Vec2::new(200.0, 100.0); // desired popup size
 
-            let center_pos = egui::Pos2::new(
+            let center_pos = egui::vec2(
                 screen_rect.center().x - popup_size.x / 2.0,
                 screen_rect.center().y - popup_size.y / 2.0,
             );
@@ -34,21 +35,9 @@ impl BlaulichtApp {
                 self.close_popup();
             }
 
-            render_popup_backdrop(ctx, label.clone().into(), Order::Foreground);
-
-            egui::Window::new(&label)
-                .fixed_size(popup_size)
-                .collapsible(false)
-                .resizable(false)
-                .title_bar(false)
+            components::Dialog::new(label.clone(), popup_size)
+                .with_backdrop()
                 .fixed_pos(center_pos)
-                .frame(Frame {
-                    corner_radius: CornerRadius::same(1),
-                    fill: Color32::from_gray(40),
-                    stroke: Stroke::new(1.0, Color32::from_gray(60)),
-                    inner_margin: Margin::symmetric(6, 12),
-                    ..Frame::default()
-                })
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.label(RichText::new(&label).size(24.0));
@@ -72,18 +61,18 @@ impl BlaulichtApp {
                         );
 
                         Self::draw_progress_bar(ui, progress, 18.0, &text);
-                    })
+                    });
                 });
         }
     }
 
-    pub fn render_init_popup(&mut self, ctx: &egui::Context) {
+    pub fn render_init_popup(&mut self, ctx: &egui::Context) -> bool {
         const INIT_POPUP_DURATION: Duration = Duration::from_secs(2);
 
         let open_elapsed = self.init_popup_open_time.elapsed();
 
         if open_elapsed > INIT_POPUP_DURATION {
-            return;
+            return false;
         }
 
         let screen_rect = ctx.screen_rect();
@@ -96,7 +85,12 @@ impl BlaulichtApp {
 
         let order = egui::Order::Foreground;
         let window_id = egui::Id::new("init_modal_window");
-        let backdrop_layer = render_popup_backdrop(ctx, window_id.with("backdrop"), order);
+        let backdrop_layer = Dialog::render_popup_backdrop(
+            ctx,
+            window_id.with("backdrop"),
+            order,
+            Some(Color32::BLACK),
+        );
         let window_layer = egui::LayerId::new(order, window_id);
 
         ctx.memory_mut(|mem| {
@@ -152,46 +146,6 @@ impl BlaulichtApp {
                     Self::draw_progress_bar(ui, progress, 18.0, &text);
                 })
             });
+        true
     }
-}
-
-pub fn render_popup_backdrop(
-    ctx: &egui::Context,
-    id: egui::Id,
-    order: egui::Order,
-) -> egui::LayerId {
-    let area = egui::Area::new(id)
-        .kind(egui::UiKind::Modal)
-        .interactable(true) // Blocks clicks from going through to the widgets behind
-        .fixed_pos(egui::pos2(0.0, 0.0))
-        .order(order);
-
-    let layer_id = area.layer();
-
-    ctx.memory_mut(|mem| {
-        mem.areas_mut().move_to_top(layer_id);
-    });
-
-    area.show(ctx, |ui| {
-        // Get the full screen rect
-        let screen_rect = ctx.screen_rect();
-
-        // Allocate a rect that covers the whole screen to catch clicks
-        let response = ui.allocate_rect(screen_rect, egui::Sense::click());
-
-        // Optional: Close popup if user clicks the dark background
-        if response.clicked() {
-            {}
-        }
-
-        // Paint the semi-transparent black color
-        let painter = ui.painter();
-        painter.rect_filled(
-            screen_rect,
-            egui::CornerRadius::ZERO,
-            egui::Color32::from_black_alpha(180), // Adjust alpha for darkness (0-255)
-        );
-    });
-
-    layer_id
 }

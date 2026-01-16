@@ -1,7 +1,7 @@
 use crate::{
     app::{
         components::{
-            DmxSimulator, LogWindow, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
+            DmxSimulator, LogWindow, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
         pages::{AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI},
@@ -163,6 +163,11 @@ pub struct BlaulichtApp {
     add_fixture_selected_dimmer: Dimmer,
     // number of fixtures to create in one action
     add_fixture_count: u16,
+    add_fixture_start_addr_numberpad: Numberpad,
+    add_fixture_universe_numberpad: Numberpad,
+    add_fixture_pos_x_numberpad: Numberpad,
+    add_fixture_pos_y_numberpad: Numberpad,
+    add_fixture_count_numberpad: Numberpad,
 
     setup_fixture_id: u8,
 
@@ -266,6 +271,24 @@ impl BlaulichtApp {
             add_fixture_selected_light: Light::Generic3ChanNoAlpha,
             add_fixture_selected_dimmer: Dimmer::FogMachineSingle,
             add_fixture_count: 1,
+            add_fixture_start_addr_numberpad: Numberpad::new()
+                .dialog_title("Start Address")
+                .field_width(140.0)
+                .range(1.0, 512.0),
+            add_fixture_universe_numberpad: Numberpad::new()
+                .dialog_title("Universe")
+                .field_width(140.0)
+                .range(0.0, (NUM_DMX_UNIVERSES.saturating_sub(1)) as f64),
+            add_fixture_pos_x_numberpad: Numberpad::new()
+                .field_width(140.0)
+                .dialog_title("Position X"),
+            add_fixture_pos_y_numberpad: Numberpad::new()
+                .field_width(140.0)
+                .dialog_title("Position Y"),
+            add_fixture_count_numberpad: Numberpad::new()
+                .dialog_title("Fixture Count")
+                .field_width(140.0)
+                .range(1.0, 64.0),
             setup_fixture_id: 0,
             add_fixture_universe_no: 0,
             new_fixture_name: String::new(),

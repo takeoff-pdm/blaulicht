@@ -60,7 +60,10 @@ impl eframe::App for BlaulichtApp {
             theme::set_theme(ctx, theme::REKORDBOX);
         }
 
-        self.render_init_popup(ctx);
+        if self.render_init_popup(ctx) {
+            ctx.request_repaint();
+            return;
+        }
         self.render_popup(ctx);
 
         if self.system_ui_state.debug_open {

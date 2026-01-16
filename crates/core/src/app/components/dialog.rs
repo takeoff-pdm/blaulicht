@@ -1,8 +1,6 @@
 use egui::{vec2, Color32, CornerRadius, Frame, Id, LayerId, Margin, Order, Stroke, Ui, Vec2};
 use std::cell::Cell;
 
-use crate::app::popup::render_popup_backdrop;
-
 thread_local! {
     static MODAL_DEPTH: Cell<usize> = Cell::new(0);
 }
@@ -41,9 +39,12 @@ pub struct Dialog {
     fixed_pos: Option<Vec2>,
     moveable: bool,
     with_backdrop: bool,
+    backdrop_color: Option<Color32>,
 }
 
 impl Dialog {
+    const BACKDROP_COLOR: Color32 = Color32::from_black_alpha(180);
+
     pub fn new(label: String, popup_size: Vec2) -> Self {
         Self {
             label,
@@ -51,6 +52,7 @@ impl Dialog {
             fixed_pos: None,
             moveable: false,
             with_backdrop: false,
+            backdrop_color: None,
         }
     }
 
@@ -64,6 +66,13 @@ impl Dialog {
     pub fn with_backdrop(self) -> Self {
         Self {
             with_backdrop: true,
+            ..self
+        }
+    }
+
+    pub fn backdrop_color(self, color: Color32) -> Self {
+        Self {
+            backdrop_color: Some(color),
             ..self
         }
     }
@@ -90,10 +99,11 @@ impl Dialog {
         let window_layer = LayerId::new(order, window_id);
 
         let backdrop_layer = if self.with_backdrop {
-            Some(render_popup_backdrop(
+            Some(Self::render_popup_backdrop(
                 ctx,
                 window_id.with("backdrop"),
                 order,
+                self.backdrop_color,
             ))
         } else {
             None
@@ -218,6 +228,46 @@ impl Dialog {
                     });
                 });
             });
+    }
+
+    pub fn render_popup_backdrop(
+        ctx: &egui::Context,
+        id: egui::Id,
+        order: egui::Order,
+        color: Option<Color32>,
+    ) -> egui::LayerId {
+        let color = color.unwrap_or(Self::BACKDROP_COLOR);
+
+        let area = egui::Area::new(id)
+            .kind(egui::UiKind::Modal)
+            .interactable(true) // Blocks clicks from going through to the widgets behind
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .order(order);
+
+        let layer_id = area.layer();
+
+        ctx.memory_mut(|mem| {
+            mem.areas_mut().move_to_top(layer_id);
+        });
+
+        area.show(ctx, |ui| {
+            // Get the full screen rect
+            let screen_rect = ctx.screen_rect();
+
+            // Allocate a rect that covers the whole screen to catch clicks
+            let response = ui.allocate_rect(screen_rect, egui::Sense::click());
+
+            // Optional: Close popup if user clicks the dark background
+            if response.clicked() {
+                {}
+            }
+
+            // Paint the semi-transparent black color
+            let painter = ui.painter();
+            painter.rect_filled(screen_rect, egui::CornerRadius::ZERO, color);
+        });
+
+        layer_id
     }
 }
 

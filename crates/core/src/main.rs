@@ -16,8 +16,6 @@ use std::time::Duration;
 
 // #[actix_web::main]
 fn main() -> anyhow::Result<()> {
-    panic!("overrides still broken");
-
     let config_filepath = "./config.toml";
 
     let cfg = config::read_config(config_filepath.into())?;

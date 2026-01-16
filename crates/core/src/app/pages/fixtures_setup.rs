@@ -4,6 +4,7 @@ use crate::app::{
     BlaulichtApp,
 };
 use crate::app::{PopupButtonSpec, PopupSpec};
+use crate::dmx::EngineState;
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
@@ -38,6 +39,14 @@ impl fmt::Display for AddFixtureKind {
 }
 
 impl BlaulichtApp {
+    fn close_add_fixture_numberpads(&mut self) {
+        self.add_fixture_start_addr_numberpad.close();
+        self.add_fixture_universe_numberpad.close();
+        self.add_fixture_pos_x_numberpad.close();
+        self.add_fixture_pos_y_numberpad.close();
+        self.add_fixture_count_numberpad.close();
+    }
+
     pub fn render_delete_group(&mut self, ctx: &Context) {
         if self.delete_group_open {
             // TODO: create a confirmation dialog component
@@ -105,6 +114,461 @@ impl BlaulichtApp {
         }
     }
 
+    fn render_dmx_override_create_dialog(&mut self, ctx: &Context) {
+        if !self.add_dmx_override_open {
+            return;
+        }
+
+        let cell_h = ButtonSize::Medium.dim().0.y;
+        let height = cell_h * 3.5 + 24.0;
+        const LABEL_W: f32 = 120.0;
+
+        Dialog::new("Add Override".to_string(), egui::vec2(260.0, height))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+
+                ui.horizontal_centered(|ui| {
+                    ui.set_height(cell_h);
+
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_dmx_override_uni)
+                            .speed(1)
+                            .range(0..=1),
+                    );
+                    ui.add_sized([LABEL_W, cell_h], Label::new("DMX Uni:"));
+                });
+
+                ui.separator();
+
+                ui.horizontal_centered(|ui| {
+                    ui.set_height(cell_h);
+
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
+                            .speed(1)
+                            .range(1..=512),
+                    );
+                    ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
+                });
+
+                ui.separator();
+
+                ui.horizontal_centered(|ui| {
+                    ui.add_sized(
+                        [140.0, cell_h],
+                        egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
+                            .speed(1)
+                            .range(0..=255),
+                    );
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
+                });
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    ui.set_height(cell_h);
+
+                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                        self.add_dmx_override_open = false;
+                    }
+
+                    if components::button(ui, true, "Add", ButtonSize::Medium) {
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::SetChannelOverride(
+                                    self.add_dmx_override_uni,
+                                    self.add_dmx_override_chan,
+                                    self.add_dmx_override_value,
+                                ),
+                            ));
+                        self.add_dmx_override_open = false;
+                    }
+                });
+            });
+    }
+
+    fn render_dmx_override_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if !self.dmx_override_dialog_open {
+            return;
+        }
+
+        let r = ctx.screen_rect();
+
+        Dialog::new(
+            "Overrides".to_string(),
+            egui::vec2(r.width() / 2.0, r.height()),
+        )
+        .with_backdrop()
+        .fixed_pos(egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            self.render_dmx_override_create_dialog(ctx);
+
+            let frame = Frame::NONE;
+
+            frame.show(ui, |ui| {
+                ui.set_height(30.0);
+                ui.set_width(ui.available_width());
+
+                ui.horizontal_centered(|ui| {
+                    ui.label("DMX Overrides");
+
+                    if components::button(ui, false, "Add", ButtonSize::Medium) {
+                        self.add_dmx_override_open = true;
+                    }
+
+                    if components::button(ui, false, "Close", ButtonSize::Medium) {
+                        self.add_dmx_override_open = false;
+                        self.dmx_override_dialog_open = false;
+                    }
+                });
+            });
+
+            ui.separator();
+
+            for ((universe, chan), value) in &dmx_engine.0.overrides {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), 30.0),
+                    egui::Layout::left_to_right(egui::Align::Min),
+                    |ui| {
+                        ui.add_sized(
+                            [60.0, 16.0],
+                            Label::new(
+                                RichText::new(format!("UN: {universe} | CH: {chan:0>3}"))
+                                    .color(Color32::LIGHT_RED)
+                                    .size(16.0),
+                            ),
+                        );
+
+                        ui.add_space(20.0);
+
+                        {
+                            let mut value = *value as f32;
+                            if ui
+                                .add(HFader::new(&mut value, 0.0..=255.0).with_label("Value"))
+                                .changed()
+                            {
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::SetChannelOverride(
+                                            *universe as u16,
+                                            *chan as u16,
+                                            value as u8,
+                                        ),
+                                    ));
+                            }
+                        };
+
+                        ui.add_space(50.0);
+
+                        if components::button(ui, false, "Delete", ButtonSize::Medium) {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::RemoveChannelOverride(
+                                        *universe as u16,
+                                        *chan as u16,
+                                    ),
+                                ));
+                        }
+                    },
+                );
+
+                ui.separator();
+            }
+        });
+    }
+
+    fn render_add_fixture_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) -> bool {
+        let mut skip_rest = false;
+
+        if !self.add_fixture_open {
+            return skip_rest;
+        }
+
+        const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+        let cell_h = BUTTON_SIZE.dim().0.y;
+        let width = 570.0;
+        let height = 330.0;
+        const LABEL_W: f32 = 120.0;
+
+        Dialog::new("Add Fixture".to_string(), egui::vec2(width, height))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                // Group selector
+                ui.label(format!("Group #{}", self.add_fixture_group.unwrap_or(0)));
+
+                ui.separator();
+
+                // Name
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
+
+                    ui.add(
+                        TextEdit::singleline(&mut self.add_fixture_name)
+                            .font(FontId::proportional(BUTTON_SIZE.dim().1))
+                            .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
+                    );
+                });
+
+                // Start address
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Start Addr:"));
+                    self.add_fixture_start_addr_numberpad
+                        .ui(ui, &mut self.add_fixture_start_addr);
+
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Universe:"));
+                    self.add_fixture_universe_numberpad
+                        .ui(ui, &mut self.add_fixture_universe_no);
+                });
+
+                // Universe
+                // ui.horizontal(|ui| {
+                // });
+
+                // Position
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Pos X:"));
+                    self.add_fixture_pos_x_numberpad
+                        .ui(ui, &mut self.add_fixture_pos_x);
+
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Pos Y:"));
+                    self.add_fixture_pos_y_numberpad
+                        .ui(ui, &mut self.add_fixture_pos_y);
+                });
+
+                ui.separator();
+
+                // Kind selector
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
+                    let kind_button_size = BUTTON_SIZE.with_width(140.0);
+                    if components::button(
+                        ui,
+                        self.add_fixture_kind_dialog_open,
+                        &self.add_fixture_kind.to_string(),
+                        kind_button_size,
+                    ) {
+                        self.add_fixture_kind_dialog_open = true;
+                    }
+
+                    let (new_kind, kind_changed) = components::selection_dialog(
+                        ctx,
+                        AddFixtureKind::ALL,
+                        self.add_fixture_kind,
+                        &mut self.add_fixture_kind_dialog_open,
+                        "Select Fixture Type".to_string(),
+                    );
+
+                    if kind_changed {
+                        self.add_fixture_kind = new_kind;
+                        self.add_fixture_model_dialog_open = false;
+                    }
+
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Model:"));
+                    let model_button_size = BUTTON_SIZE.with_width(140.0).with_font_size(8.5);
+                    match self.add_fixture_kind {
+                        AddFixtureKind::MovingHead => {
+                            let label = self.add_fixture_selected_moving_head.to_string();
+                            if components::button(
+                                ui,
+                                self.add_fixture_model_dialog_open,
+                                &label,
+                                model_button_size,
+                            ) {
+                                self.add_fixture_model_dialog_open = true;
+                            }
+
+                            let options: Vec<_> = MovingHead::iter().collect();
+                            let (new_model, changed) = components::selection_dialog(
+                                ctx,
+                                options,
+                                self.add_fixture_selected_moving_head,
+                                &mut self.add_fixture_model_dialog_open,
+                                "Select Moving Head".to_string(),
+                            );
+
+                            if changed {
+                                self.add_fixture_selected_moving_head = new_model;
+                            }
+                        }
+                        AddFixtureKind::Light => {
+                            let label = self.add_fixture_selected_light.to_string();
+                            if components::button(
+                                ui,
+                                self.add_fixture_model_dialog_open,
+                                &label,
+                                model_button_size,
+                            ) {
+                                self.add_fixture_model_dialog_open = true;
+                            }
+
+                            let options: Vec<_> = Light::iter().collect();
+                            let (new_model, changed) = components::selection_dialog(
+                                ctx,
+                                options,
+                                self.add_fixture_selected_light,
+                                &mut self.add_fixture_model_dialog_open,
+                                "Select Light".to_string(),
+                            );
+
+                            if changed {
+                                self.add_fixture_selected_light = new_model;
+                            }
+                        }
+                        AddFixtureKind::Dimmer => {
+                            let label = self.add_fixture_selected_dimmer.to_string();
+                            if components::button(
+                                ui,
+                                self.add_fixture_model_dialog_open,
+                                &label,
+                                model_button_size,
+                            ) {
+                                self.add_fixture_model_dialog_open = true;
+                            }
+
+                            let options: Vec<_> = Dimmer::iter().collect();
+                            let (new_model, changed) = components::selection_dialog(
+                                ctx,
+                                options,
+                                self.add_fixture_selected_dimmer,
+                                &mut self.add_fixture_model_dialog_open,
+                                "Select Dimmer".to_string(),
+                            );
+
+                            if changed {
+                                self.add_fixture_selected_dimmer = new_model;
+                            }
+                        }
+                    }
+                });
+
+                // Model selector depending on kind
+                // ui.horizontal(|ui| {});
+
+                ui.separator();
+
+                // Count
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Count:"));
+                    self.add_fixture_count_numberpad
+                        .ui(ui, &mut self.add_fixture_count);
+                });
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                        self.add_fixture_open = false;
+                        self.add_fixture_kind_dialog_open = false;
+                        self.add_fixture_model_dialog_open = false;
+                        self.close_add_fixture_numberpads();
+                    }
+
+                    let can_create = self.add_fixture_group.is_some()
+                        && dmx_engine
+                            .groups()
+                            .get(&self.add_fixture_group.unwrap())
+                            .is_some()
+                        && self.add_fixture_start_addr >= 1
+                        && self.add_fixture_start_addr <= 512;
+
+                    let mut button_pressed =
+                        components::button(ui, can_create, "Create", ButtonSize::Medium);
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            button_pressed = true;
+                        }
+                    });
+
+                    if !can_create {
+                        button_pressed = false;
+                    }
+
+                    if button_pressed && self.add_fixture_group.is_some() {
+                        let group_id = self.add_fixture_group.unwrap();
+                        let base_name = std::mem::take(&mut self.add_fixture_name);
+                        let mut start_addr = self.add_fixture_start_addr as usize;
+                        let universe_no = self.add_fixture_universe_no as usize;
+                        let pos = Position {
+                            x: self.add_fixture_pos_x,
+                            y: self.add_fixture_pos_y,
+                            z: 0,
+                        };
+
+                        // Build fixture type
+                        let fixture_type = match self.add_fixture_kind {
+                            AddFixtureKind::MovingHead => {
+                                FixtureType::from(self.add_fixture_selected_moving_head)
+                            }
+                            AddFixtureKind::Light => {
+                                FixtureType::from(self.add_fixture_selected_light)
+                            }
+                            AddFixtureKind::Dimmer => {
+                                FixtureType::from(self.add_fixture_selected_dimmer)
+                            }
+                        };
+
+                        // Determine channel footprint for address stepping
+                        let footprint = fixture_type.footprint();
+
+                        // Create multiple fixtures if requested
+                        {
+                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                            let count = self.add_fixture_count.max(1) as usize;
+                            for i in 0..count {
+                                if start_addr + fixture_type.footprint() > 513 {
+                                    mem::drop(dmx_engine);
+                                    self.show_popup(PopupSpec {
+                                        label: "Out of Channels".to_string(),
+                                        lifetime_duration: Duration::from_secs(3),
+                                        button: Some(PopupButtonSpec {
+                                            label: "OK".to_string(),
+                                        }),
+                                    });
+                                    break;
+                                }
+
+                                let name = if count > 1 {
+                                    format!("{} #{}", base_name, i + 1)
+                                } else {
+                                    base_name.clone()
+                                };
+                                let mut fixture = Fixture::new(
+                                    universe_no,
+                                    start_addr,
+                                    name,
+                                    fixture_type.clone(),
+                                );
+                                fixture.pos = pos.clone();
+                                dmx_engine.add_fixture_to_group(group_id, fixture);
+                                start_addr = start_addr.saturating_add(footprint);
+                            }
+                            skip_rest = true;
+                        }
+
+                        // Reset some fields and close
+                        self.add_fixture_open = false;
+                        self.add_fixture_kind_dialog_open = false;
+                        self.add_fixture_model_dialog_open = false;
+                        self.close_add_fixture_numberpads();
+
+                        self.add_fixture_name = String::from("New Fixture");
+                    }
+                });
+            });
+
+        skip_rest
+    }
+
     pub fn fixtures_ui_setup(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         // Make controls touch-friendly within this page
         ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
@@ -120,470 +584,12 @@ impl BlaulichtApp {
         self.render_rename_scene_dialog(ctx);
         self.render_delete_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
-        // self.render_scene_animations_dialog(ctx, &dmx_engine);
-
-        // mem::drop(dmx_engine);
-
-        // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-
-        if self.dmx_override_dialog_open {
-            let r = ctx.screen_rect();
-
-            Dialog::new(
-                "Overrides".to_string(),
-                egui::vec2(r.width() / 2.0, r.height()),
-            )
-            .with_backdrop()
-            .fixed_pos(egui::vec2(0.0, 0.0))
-            .show(ctx, |ui| {
-                let frame = Frame::NONE;
-
-                frame.show(ui, |ui| {
-                    ui.set_height(30.0);
-                    ui.set_width(ui.available_width());
-
-                    ui.horizontal_centered(|ui| {
-                        ui.label("DMX Overrides");
-
-                        if components::button(ui, false, "Add", ButtonSize::Medium) {
-                            self.add_dmx_override_open = true;
-                        }
-
-                        if components::button(ui, false, "Close", ButtonSize::Medium) {
-                            self.dmx_override_dialog_open = false;
-                            self.add_dmx_override_open = false;
-                        }
-                    });
-                });
-
-                ui.separator();
-
-                for ((universe, chan), value) in &dmx_engine.0.overrides {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), 30.0),
-                        egui::Layout::left_to_right(egui::Align::Min),
-                        |ui| {
-                            ui.add_sized(
-                                [60.0, 16.0],
-                                Label::new(
-                                    RichText::new(format!("UN: {universe} | CH: {chan}"))
-                                        .color(Color32::LIGHT_RED)
-                                        .size(16.0),
-                                ),
-                            );
-
-                            ui.add_space(20.0);
-
-                            {
-                                let mut value = *value as f32;
-                                if ui
-                                    .add(HFader::new(&mut value, 0.0..=255.0).with_label("Value"))
-                                    .changed()
-                                {
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::SetChannelOverride(
-                                                *universe as u16,
-                                                *chan as u16,
-                                                value as u8,
-                                            ),
-                                        ));
-                                }
-                            };
-
-                            ui.add_space(50.0);
-
-                            if components::button(ui, false, "Delete", ButtonSize::Medium) {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::RemoveChannelOverride(
-                                            *universe as u16,
-                                            *chan as u16,
-                                        ),
-                                    ));
-                            }
-                        },
-                    );
-
-                    ui.separator();
-                }
-            });
-        }
-
-        // Render after the parent override dialog so it stays on top of the stack.
-        if self.add_dmx_override_open {
-            let cell_h = ButtonSize::Medium.dim().0.y;
-            let height = cell_h * 3.5 + 24.0;
-            const LABEL_W: f32 = 120.0;
-
-            Dialog::new("Add Override".to_string(), egui::vec2(260.0, height))
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
-
-                    ui.horizontal_centered(|ui| {
-                        ui.set_height(cell_h);
-
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_uni)
-                                .speed(1)
-                                .range(0..=1),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Uni:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal_centered(|ui| {
-                        ui.set_height(cell_h);
-
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
-                                .speed(1)
-                                .range(1..=512),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal_centered(|ui| {
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
-                                .speed(1)
-                                .range(0..=255),
-                        );
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.set_height(cell_h);
-
-                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                            self.add_dmx_override_open = false;
-                        }
-
-                        if components::button(ui, true, "Add", ButtonSize::Medium) {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetChannelOverride(
-                                        self.add_dmx_override_uni,
-                                        self.add_dmx_override_chan,
-                                        self.add_dmx_override_value,
-                                    ),
-                                ));
-                            self.add_dmx_override_open = false;
-                        }
-                    });
-                });
-        }
-
+        self.render_dmx_override_dialog(ctx, &dmx_engine);
         self.render_add_group_dialog(ctx);
         self.render_delete_group(ctx);
 
-        let mut skip_rest = false;
-
-        // Add Fixture Dialog
-        if self.add_fixture_open {
-            const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
-            let cell_h = BUTTON_SIZE.dim().0.y;
-            let width = 570.0;
-            let height = 330.0;
-            const LABEL_W: f32 = 120.0;
-
-            Dialog::new("Add Fixture".to_string(), egui::vec2(width, height))
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
-                    // Group selector
-                    ui.label(format!("Group #{}", self.add_fixture_group.unwrap_or(0)));
-
-                    ui.separator();
-
-                    // Name
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
-
-                        ui.add(
-                            TextEdit::singleline(&mut self.add_fixture_name)
-                                .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                        );
-                    });
-
-                    // Start address
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Start Addr:"));
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_fixture_start_addr)
-                                .speed(1)
-                                .range(1..=512),
-                        );
-
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Universe:"));
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_fixture_universe_no)
-                                .speed(1)
-                                .range(0..=1),
-                        );
-                    });
-
-                    // Universe
-                    // ui.horizontal(|ui| {
-                    // });
-
-                    // Position
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Pos X:"));
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_fixture_pos_x).speed(1),
-                        );
-
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Pos Y:"));
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_fixture_pos_y).speed(1),
-                        );
-                    });
-
-                    ui.separator();
-
-                    // Kind selector
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
-                        let kind_button_size = BUTTON_SIZE.with_width(140.0);
-                        if components::button(
-                            ui,
-                            self.add_fixture_kind_dialog_open,
-                            &self.add_fixture_kind.to_string(),
-                            kind_button_size,
-                        ) {
-                            self.add_fixture_kind_dialog_open = true;
-                        }
-
-                        let (new_kind, kind_changed) = components::selection_dialog(
-                            ctx,
-                            AddFixtureKind::ALL,
-                            self.add_fixture_kind,
-                            &mut self.add_fixture_kind_dialog_open,
-                            "Select Fixture Type".to_string(),
-                        );
-
-                        if kind_changed {
-                            self.add_fixture_kind = new_kind;
-                            self.add_fixture_model_dialog_open = false;
-                        }
-
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Model:"));
-                        let model_button_size = BUTTON_SIZE.with_width(140.0).with_font_size(8.5);
-                        match self.add_fixture_kind {
-                            AddFixtureKind::MovingHead => {
-                                let label = self.add_fixture_selected_moving_head.to_string();
-                                if components::button(
-                                    ui,
-                                    self.add_fixture_model_dialog_open,
-                                    &label,
-                                    model_button_size,
-                                ) {
-                                    self.add_fixture_model_dialog_open = true;
-                                }
-
-                                let options: Vec<_> = MovingHead::iter().collect();
-                                let (new_model, changed) = components::selection_dialog(
-                                    ctx,
-                                    options,
-                                    self.add_fixture_selected_moving_head,
-                                    &mut self.add_fixture_model_dialog_open,
-                                    "Select Moving Head".to_string(),
-                                );
-
-                                if changed {
-                                    self.add_fixture_selected_moving_head = new_model;
-                                }
-                            }
-                            AddFixtureKind::Light => {
-                                let label = self.add_fixture_selected_light.to_string();
-                                if components::button(
-                                    ui,
-                                    self.add_fixture_model_dialog_open,
-                                    &label,
-                                    model_button_size,
-                                ) {
-                                    self.add_fixture_model_dialog_open = true;
-                                }
-
-                                let options: Vec<_> = Light::iter().collect();
-                                let (new_model, changed) = components::selection_dialog(
-                                    ctx,
-                                    options,
-                                    self.add_fixture_selected_light,
-                                    &mut self.add_fixture_model_dialog_open,
-                                    "Select Light".to_string(),
-                                );
-
-                                if changed {
-                                    self.add_fixture_selected_light = new_model;
-                                }
-                            }
-                            AddFixtureKind::Dimmer => {
-                                let label = self.add_fixture_selected_dimmer.to_string();
-                                if components::button(
-                                    ui,
-                                    self.add_fixture_model_dialog_open,
-                                    &label,
-                                    model_button_size,
-                                ) {
-                                    self.add_fixture_model_dialog_open = true;
-                                }
-
-                                let options: Vec<_> = Dimmer::iter().collect();
-                                let (new_model, changed) = components::selection_dialog(
-                                    ctx,
-                                    options,
-                                    self.add_fixture_selected_dimmer,
-                                    &mut self.add_fixture_model_dialog_open,
-                                    "Select Dimmer".to_string(),
-                                );
-
-                                if changed {
-                                    self.add_fixture_selected_dimmer = new_model;
-                                }
-                            }
-                        }
-                    });
-
-                    // Model selector depending on kind
-                    // ui.horizontal(|ui| {});
-
-                    ui.separator();
-
-                    // Count
-                    ui.horizontal(|ui| {
-                        ui.add_sized([LABEL_W, cell_h], Label::new("Count:"));
-                        ui.add_sized(
-                            [140.0, cell_h],
-                            egui::widgets::DragValue::new(&mut self.add_fixture_count)
-                                .speed(1)
-                                .range(1..=64),
-                        );
-                    });
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                            self.add_fixture_open = false;
-                            self.add_fixture_kind_dialog_open = false;
-                            self.add_fixture_model_dialog_open = false;
-                        }
-
-                        let can_create = self.add_fixture_group.is_some()
-                            && dmx_engine
-                                .groups()
-                                .get(&self.add_fixture_group.unwrap())
-                                .is_some()
-                            && self.add_fixture_start_addr >= 1
-                            && self.add_fixture_start_addr <= 512;
-
-                        let mut button_pressed =
-                            components::button(ui, can_create, "Create", ButtonSize::Medium);
-                        ctx.input(|input| {
-                            if input.key_pressed(Key::Enter) {
-                                button_pressed = true;
-                            }
-                        });
-
-                        if !can_create {
-                            button_pressed = false;
-                        }
-
-                        if button_pressed && self.add_fixture_group.is_some() {
-                            let group_id = self.add_fixture_group.unwrap();
-                            let base_name = std::mem::take(&mut self.add_fixture_name);
-                            let mut start_addr = self.add_fixture_start_addr as usize;
-                            let universe_no = self.add_fixture_universe_no as usize;
-                            let pos = Position {
-                                x: self.add_fixture_pos_x,
-                                y: self.add_fixture_pos_y,
-                                z: 0,
-                            };
-
-                            // Build fixture type
-                            let fixture_type = match self.add_fixture_kind {
-                                AddFixtureKind::MovingHead => {
-                                    FixtureType::from(self.add_fixture_selected_moving_head)
-                                }
-                                AddFixtureKind::Light => {
-                                    FixtureType::from(self.add_fixture_selected_light)
-                                }
-                                AddFixtureKind::Dimmer => {
-                                    FixtureType::from(self.add_fixture_selected_dimmer)
-                                }
-                            };
-
-                            // Determine channel footprint for address stepping
-                            let footprint = fixture_type.footprint();
-
-                            // Create multiple fixtures if requested
-                            {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                let count = self.add_fixture_count.max(1) as usize;
-                                for i in 0..count {
-                                    if start_addr + fixture_type.footprint() > 513 {
-                                        mem::drop(dmx_engine);
-                                        self.show_popup(PopupSpec {
-                                            label: "Out of Channels".to_string(),
-                                            lifetime_duration: Duration::from_secs(3),
-                                            button: Some(PopupButtonSpec {
-                                                label: "OK".to_string(),
-                                            }),
-                                        });
-                                        break;
-                                    }
-
-                                    let name = if count > 1 {
-                                        format!("{} #{}", base_name, i + 1)
-                                    } else {
-                                        base_name.clone()
-                                    };
-                                    let mut fixture = Fixture::new(
-                                        universe_no,
-                                        start_addr,
-                                        name,
-                                        fixture_type.clone(),
-                                    );
-                                    fixture.pos = pos.clone();
-                                    dmx_engine.add_fixture_to_group(group_id, fixture);
-                                    start_addr = start_addr.saturating_add(footprint);
-                                }
-                                skip_rest = true;
-                            }
-
-                            // Reset some fields and close
-                            self.add_fixture_open = false;
-                            self.add_fixture_kind_dialog_open = false;
-                            self.add_fixture_model_dialog_open = false;
-
-                            self.add_fixture_name = String::from("New Fixture");
-                        }
-                    });
-                });
-        }
-
+        // Skipping required because UI breaks at some point.
+        let skip_rest = self.render_add_fixture_dialog(ctx, &dmx_engine);
         if skip_rest {
             return;
         }
@@ -674,13 +680,18 @@ impl BlaulichtApp {
                                 "Add Fixture",
                                 ButtonSize::Medium,
                             ) {
-                                if dmx_engine.groups().is_empty() {
+                                if dmx_engine.groups().is_empty()
+                                    || self.add_fixture_group.is_none()
+                                {
                                     self.show_popup(PopupSpec::with_duration(
                                         Duration::from_secs(3),
                                         "No Group Selected".to_string(),
                                     ));
                                 } else {
                                     self.add_fixture_open = !self.add_fixture_open;
+                                    if !self.add_fixture_open {
+                                        self.close_add_fixture_numberpads();
+                                    }
                                 }
                             }
 

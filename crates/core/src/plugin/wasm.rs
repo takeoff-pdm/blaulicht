@@ -114,8 +114,8 @@ impl PluginManager {
 
             let plugin_name = plugin.file_path.to_string();
 
-            let wasm_bytes =
-                fs::read(&plugin.file_path).with_context(|| "failed to read wasm file")?;
+            let wasm_bytes = fs::read(&plugin.file_path)
+                .with_context(|| format!("failed to read wasm file: <{plugin_name}>"))?;
             let module =
                 Module::new(&engine, wasm_bytes).with_context(|| "failed to create wasm module")?;
             modules.insert(plugin_name.clone(), module.clone());

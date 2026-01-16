@@ -53,6 +53,7 @@ impl NumberpadState {
 pub struct Numberpad {
     dialog_title: String,
     dialog_size: Vec2,
+    field_dimensions: Vec2,
     state: NumberpadState,
     range: Option<(f64, f64)>,
 }
@@ -62,6 +63,7 @@ impl Numberpad {
         Self {
             dialog_title: "Numberpad".to_owned(),
             dialog_size: vec2(480.0, 420.0),
+            field_dimensions: ButtonSize::Medium.dim().0,
             state: NumberpadState::default(),
             range: None,
         }
@@ -70,6 +72,23 @@ impl Numberpad {
     pub fn dialog_title(mut self, title: impl Into<String>) -> Self {
         self.dialog_title = title.into();
         self
+    }
+
+    pub fn field_size(self, size: Vec2) -> Self {
+        Self {
+            field_dimensions: size,
+            ..self
+        }
+    }
+
+    pub fn field_width(self, size: f32) -> Self {
+        Self {
+            field_dimensions: Vec2 {
+                x: size,
+                y: self.field_dimensions.y,
+            },
+            ..self
+        }
     }
 
     pub fn dialog_size(mut self, size: Vec2) -> Self {
@@ -88,7 +107,7 @@ impl Numberpad {
         T: egui::emath::Numeric,
     {
         let state = &mut self.state;
-        let button_size = ButtonSize::Medium.dim().0;
+        let button_size = self.field_dimensions;
         let mut drag_value = DragValue::new(value);
         if let Some((min, max)) = self.range {
             let min_t = T::from_f64(min);
