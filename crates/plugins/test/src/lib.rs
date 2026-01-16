@@ -1,15 +1,21 @@
-use std::collections::VecDeque;
-
+use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::serial::SerialConnection;
-use blaulicht_plugin_framework::{self as bpf, send_event, MidiConnection};
+use blaulicht_plugin_framework::{send_event, MidiConnection};
 use blaulicht_plugin_framework::{ui, Plugin};
 use blaulicht_shared::{
     AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
 };
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+
+#[derive(Serialize, Deserialize)]
+pub struct SaveState {
+    restart_timer: usize,
+}
 
 pub struct SamplePlugin {
-    restart_timer: usize,
+    state: SaveState,
     // midi_handle_out: Option<MidiConnection>,
     // midi_handle_in: Option<MidiConnection>,
 }
@@ -17,17 +23,39 @@ pub struct SamplePlugin {
 impl Default for SamplePlugin {
     fn default() -> Self {
         Self {
-            restart_timer: 0,
-            // midi_handle_out: None,
-            // midi_handle_in: None,
+            state: SaveState { restart_timer: 0 }, // midi_handle_out: None,
+                                                   // midi_handle_in: None,
+        }
+    }
+}
+
+impl SamplePlugin {
+    fn save(&self) {
+        if let Ok(json) = serde_json::to_string(&self.state) {
+            bpf::save_plugin_state(&json);
+        }
+    }
+
+    fn initialize(&mut self, _tick: TickInput) {
+        if let Some(json) = bpf::load_plugin_state() {
+            if let Ok(saved) = serde_json::from_str::<SaveState>(&json) {
+                self.state = saved;
+            } else {
+                panic!("State loading failed!");
+            }
         }
     }
 }
 
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
-        self.restart_timer += 1;
-        println!("TEST: {}", self.restart_timer);
+        self.initialize(_input);
+
+        println!("TEST: {}", self.state.restart_timer);
+
+        self.state.restart_timer += 1;
+
+        self.save();
 
         // self.midi_handle_out = Some(MidiConnection::open("Blaulicht OUT").unwrap());
         // self.midi_handle_in = Some(MidiConnection::open("Blaulicht IN").unwrap());

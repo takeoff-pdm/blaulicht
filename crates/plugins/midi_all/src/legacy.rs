@@ -1,11 +1,14 @@
 use blaulicht_plugin_framework::{
     self as bpf, midi, println, send_event, ui, MidiConnection, MidiEvent,
 };
-use blaulicht_shared::{hsv_to_rgb, ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
+use blaulicht_shared::{
+    hsv_to_rgb, AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
+};
 use map_range::MapRange;
 use std::{fmt::Display, mem::MaybeUninit};
 
 const STROBE_SCENE: u8 = 2;
+const APC_PAGE_PADS: [u8; 8] = [63, 55, 47, 39, 31, 23, 15, 7];
 
 //
 // MIDI start.
@@ -58,15 +61,16 @@ pub struct LegacyState {
     hsv: (u16, f32, f32),
 
     last_scene: u8,
-    last_video: usize,
-    video: usize,
+    current_app_page: Option<AppPage>,
+    last_app_page: Option<AppPage>,
+    page_update_from_ui: bool,
+    pending_app_page_sync: bool,
     is_apc_init: bool,
 
     fans: bool,
     // strobe_enabled: bool,
-    drums_enabled: bool,
-    drums_enabled_bef: bool,
-
+    // drums_enabled: bool,
+    // drums_enabled_bef: bool,
     intensity_mapping: Vec<u8>,
 }
 
@@ -134,11 +138,13 @@ impl LegacyState {
         self.groups = vec![false; 8];
         self.brightness_mod = 0;
         self.last_scene = 0;
-        self.video = 0;
-        self.last_video = 0;
+        self.current_app_page = Some(AppPage::Logs);
+        self.last_app_page = None;
+        self.page_update_from_ui = false;
+        self.pending_app_page_sync = true;
         self.is_apc_init = true;
-        self.drums_enabled = true;
-        self.drums_enabled_bef = true;
+        // self.drums_enabled = true;
+        // self.drums_enabled_bef = true;
 
         // Initialize fans in the end.
         // bpf::system("sudo fans on");
@@ -165,9 +171,7 @@ impl LegacyState {
                             self.set_fans(checked);
                         }
                     }
-                    ControlEvent::MiscEvent { descriptor, value } if descriptor == 43 => {
-                        self.drums_enabled = !self.drums_enabled;
-                    }
+                    ControlEvent::MiscEvent { .. } => {}
                     _ => {}
                 }
             }
@@ -290,6 +294,19 @@ impl LegacyState {
 
         // return;
 
+        for ev in &input.events.events {
+            match ev.body() {
+                ControlEvent::MainUi(MainUiEvent::NavigatePage(page)) => {
+                    self.current_app_page = Some(page.clone());
+                    self.page_update_from_ui = true;
+                    self.pending_app_page_sync = true;
+                }
+                _ => {}
+            }
+
+            println!("---> EVENT: {ev:?}");
+        }
+
         let handles = self.midi_handles.clone();
         for (dev, handle) in handles {
             let res = handle.poll();
@@ -298,10 +315,6 @@ impl LegacyState {
                 MidiDevice::MidiMix => self.midimix(handle, res),
                 MidiDevice::APCMini => self.apc(handle, res, input.clone()),
             }
-        }
-
-        for ev in &input.events.events {
-            println!("---> EVENT: {ev:?}");
         }
 
         //     match ev {
@@ -405,7 +418,6 @@ impl LegacyState {
 
     fn apc(&mut self, conn: MidiConnection, ev: Vec<MidiEvent>, input: TickInput) {
         const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
-        const VIDEOS: [u8; 8] = [63, 55, 47, 39, 31, 23, 15, 7];
 
         const SCENES_INT: [u8; 5] = [60, 52, 44, 36, 28];
 
@@ -417,9 +429,9 @@ impl LegacyState {
             self.is_apc_init = false;
         }
 
-        if self.drums_enabled != self.drums_enabled_bef {
-            self.sync_drums_enabled(conn);
-        }
+        // if self.drums_enabled != self.drums_enabled_bef {
+        //     self.sync_drums_enabled(conn);
+        // }
 
         // if ev.is_empty() {
         //     return;
@@ -471,20 +483,8 @@ impl LegacyState {
             }
         }
 
-        if self.video != self.last_video {
-            // for i in 0..64 {
-            for s in VIDEOS {
-                conn.send(0x96, s, 0);
-            }
-
-            conn.send(0x96, VIDEOS[self.video], 10);
-
-            // }
-            // state.counter += 1.0;
-            // state.last_update = input.clock;
-            println!("sync vieo");
-
-            self.last_video = self.video;
+        if self.current_app_page != self.last_app_page || self.pending_app_page_sync {
+            self.sync_app_page(&conn);
         }
 
         for e in ev {
@@ -519,9 +519,14 @@ impl LegacyState {
 
                     bpf::send_event(ControlEvent::SetSceneFocus(index));
                 }
-                (144, 63, 127) => {
-                    self.drums_enabled = !self.drums_enabled;
-                    self.sync_drums_enabled(conn);
+                (144, page, 127) => {
+                    if let Some(app_page) = Self::app_page_from_pad(page) {
+                        self.page_update_from_ui = false;
+                        self.pending_app_page_sync = false;
+                        self.current_app_page = Some(app_page.clone());
+                        self.sync_app_page(&conn);
+                        bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(app_page)));
+                    }
                 }
                 _ => {
                     println!("{}: {:?}", conn.get_meta().device_id, e);
@@ -530,24 +535,74 @@ impl LegacyState {
         }
     }
 
-    fn sync_drums_enabled(&mut self, conn: MidiConnection) {
-        match self.drums_enabled {
-            true => {
-                conn.send(0x96, 63, 20);
+    fn sync_app_page(&mut self, conn: &MidiConnection) {
+        for pad in APC_PAGE_PADS {
+            conn.send(0x96, pad, 0);
+        }
+
+        if let Some(ref page) = self.current_app_page {
+            if let Some(pad) = Self::pad_for_app_page(page) {
+                conn.send(0x96, pad, 10);
             }
-            false => {
-                conn.send(0x96, 63, 0);
+
+            if !self.page_update_from_ui {
+                bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(page.clone())));
             }
         }
 
-        send_event(ControlEvent::MiscEvent {
-            descriptor: 42,
-            value: self.drums_enabled as u8,
-        });
-
-        self.drums_enabled_bef = self.drums_enabled;
-        println!("DRUMS SYNC");
+        self.last_app_page = self.current_app_page.clone();
+        self.page_update_from_ui = false;
+        self.pending_app_page_sync = false;
     }
+
+    fn app_page_from_pad(pad: u8) -> Option<AppPage> {
+        match pad {
+            63 => Some(AppPage::Logs),
+            55 => Some(AppPage::System),
+            47 => Some(AppPage::Audio),
+            39 => Some(AppPage::FixturesSetup),
+            31 => Some(AppPage::View),
+            23 => Some(AppPage::ViewPerformance),
+            15 => Some(AppPage::FixturesPerformance),
+            7 => Some(AppPage::Animations),
+            _ => None,
+        }
+    }
+
+    fn pad_for_app_page(page: &AppPage) -> Option<u8> {
+        let pad = match page {
+            AppPage::Logs => 63,
+            AppPage::System => 55,
+            AppPage::Audio => 47,
+            AppPage::FixturesSetup => 39,
+            AppPage::View => 31,
+            AppPage::ViewPerformance => 23,
+            AppPage::FixturesPerformance => 15,
+            AppPage::Animations => 7,
+        };
+
+        Some(pad)
+    }
+
+
+    // fn sync_drums_enabled(&mut self, conn: MidiConnection) {
+    //     match self.drums_enabled {
+    //         true => {
+    //             conn.send(0x96, 63, 20);
+    //         }
+    //         false => {
+    //             conn.send(0x96, 63, 0);
+    //         }
+    //     }
+    //
+    //     send_event(ControlEvent::MiscEvent {
+    //         descriptor: 42,
+    //         value: self.drums_enabled as u8,
+    //     });
+    //
+    //     self.drums_enabled_bef = self.drums_enabled;
+    //     println!("DRUMS SYNC");
+    // }
 
     //
     // fn enable_strobe() {

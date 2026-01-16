@@ -7,6 +7,8 @@ default_audio_device = "pipewire"
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
 
+run_setup_on_reload = true
+
 [stream]
 fft_resolution = 4096
 refresh_rate = 60

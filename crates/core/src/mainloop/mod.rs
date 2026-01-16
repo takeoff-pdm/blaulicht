@@ -67,6 +67,7 @@ pub fn run(
         midi_out_receiver,
         to_plugins_sender,
         Arc::clone(&app_state),
+        system_out.clone(),
     )));
 
     //
@@ -119,7 +120,9 @@ pub fn run(
     // Check for the state of the DMX output.
 
     // TODO: add a command for starting + stopping setup.
-    // dmx_engine.start_setup();
+    if config.run_setup_on_reload {
+        dmx_engine.start_setup();
+    }
 
     //
     // Audio signal collector.

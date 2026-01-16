@@ -57,7 +57,9 @@ impl BlaulichtApp {
 
                         let text = format!(
                             "{} seconds remaining",
-                            lifetime_duration.as_secs() - elapsed.as_secs()
+                            lifetime_duration
+                                .as_secs()
+                                .saturating_sub(elapsed.as_secs())
                         );
 
                         Self::draw_progress_bar(ui, progress, 18.0, &text);

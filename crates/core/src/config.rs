@@ -25,6 +25,8 @@ pub struct Config {
     pub dmx_out_devices: [String; 2],
     pub default_audio_device: Option<String>,
 
+    pub run_setup_on_reload: bool,
+
     #[cfg(feature = "audio")]
     pub stream: StreamConfig,
 
@@ -172,6 +174,8 @@ impl Default for Config {
                 gravity: Some(100.0),
                 ..Default::default()
             },
+
+            run_setup_on_reload: false,
 
             spectrogram_window_seconds: default_spectrogram_window_seconds(),
             spectrogram_refresh_hz: default_spectrogram_refresh_hz(),

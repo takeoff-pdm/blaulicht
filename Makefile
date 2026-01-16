@@ -1,5 +1,5 @@
 DIR := ${CURDIR}
-VERSION = 0.4.0
+VERSION = 0.5.0
 BUILD_OUTPUT_DIR = blaulicht-dist
 PACKAGE = blaulicht-core
 

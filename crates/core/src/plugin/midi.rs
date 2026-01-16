@@ -1,3 +1,4 @@
+use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
@@ -8,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 // use wmidi::MidiMessage;
 
-use crate::msg::MidiEvent;
+use crate::msg::{MidiEvent, SystemMessage};
 use crate::state::{AppHealthState, AppState, MidiDeviceState, MidiHealthError};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -36,6 +37,8 @@ pub struct MidiManager {
     to_plugins_sender: Sender<MidiEvent>,
 
     app_state: Arc<AppState>,
+
+    system_message_sender: Sender<SystemMessage>,
 }
 
 struct MidiDeviceHandle {
@@ -50,6 +53,7 @@ impl MidiManager {
         midi_out_receiver: Receiver<MidiEvent>,
         to_plugins_sender: Sender<MidiEvent>,
         app_state: Arc<AppState>,
+        system_message_sender: Sender<SystemMessage>,
     ) -> Self {
         let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
@@ -61,6 +65,7 @@ impl MidiManager {
             to_manager_receiver: midi_out_receiver,
             to_plugins_sender,
             app_state,
+            system_message_sender,
         };
 
         if let Err(err) = manager.enumerate_devices() {
@@ -281,7 +286,14 @@ impl MidiManager {
                     };
 
                     if let Some(ref mut output) = output_device.output {
-                        output.send(&[sig.status, sig.data0, sig.data1]).unwrap();
+                        if let Err(err) = output.send(&[sig.status, sig.data0, sig.data1]) {
+                            self.system_message_sender
+                                .send(SystemMessage::Log(
+                                    format!("MIDI ERROR: {err}"),
+                                    LogLevel::Err,
+                                ))
+                                .unwrap();
+                        }
                     } else {
                         debug!("MIDI output not available for device {}", sig.device);
                     }

@@ -373,6 +373,12 @@ impl DmxEngine {
 
                 for overlay_id in &state.0.current_overlay_scenes {
                     let this_scene = state.0.scenes.get(overlay_id).unwrap();
+
+                    if this_scene.sink.master_alpha_fader == 0 {
+                        // Skip scene - it is disabled.
+                        continue;
+                    }
+
                     let mut scene_fixture_state = this_scene
                         .sink
                         .fixture_states
@@ -932,6 +938,43 @@ impl DmxEngine {
                             Some(anim) => {
                                 anim.enabled = false;
                                 // let animation = state.0.animation_templates.get(&id).unwrap();
+                                (None, None, Some(vec![anim.spec_cloned.property]))
+                            }
+                            None => (
+                                Some("No such animation on selection"),
+                                Some(ControlEvent::PauseAnimation(id)),
+                                None,
+                            ),
+                        }
+                    }
+                }
+            }
+            ControlEvent::LoadSpecIntoAnimation(id, spec) => {
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+                match !this_scene
+                    .sink
+                    .active_animations
+                    .contains_key(curr_selection)
+                {
+                    true => {
+                        debug!("No such selection: {curr_selection:?}");
+
+                        (
+                            Some("No such selection"),
+                            Some(ControlEvent::PauseAnimation(id)),
+                            None,
+                        )
+                    }
+                    false => {
+                        let selec_anim = this_scene
+                            .sink
+                            .active_animations
+                            .get_mut(curr_selection)
+                            .unwrap();
+
+                        match selec_anim.get_mut(&id) {
+                            Some(anim) => {
+                                anim.spec_cloned = spec;
                                 (None, None, Some(vec![anim.spec_cloned.property]))
                             }
                             None => (
