@@ -2,11 +2,13 @@ use egui::{
     vec2, Align, Color32, DragValue, Event, Key, Label, Layout, Modifiers, Response, RichText,
     Sense, Ui, Vec2,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::components::{button, ButtonSize, Dialog};
 
 const LONG_PRESS_THRESHOLD: f64 = 0.35;
 const CLAMP_FLASH_DURATION: f64 = 0.35;
+static NEXT_DIALOG_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Default)]
 pub struct NumberpadState {
@@ -15,6 +17,7 @@ pub struct NumberpadState {
     long_press_triggered: bool,
     input_buffer: String,
     clamp_flash_until: Option<f64>,
+    dialog_instance_id: Option<u64>,
 }
 
 impl NumberpadState {
@@ -28,6 +31,7 @@ impl NumberpadState {
         self.input_buffer.clear();
         self.reset_gesture();
         self.clamp_flash_until = None;
+        self.dialog_instance_id = None;
     }
 
     fn trigger_clamp_flash(&mut self, now: f64) {
@@ -56,6 +60,7 @@ pub struct Numberpad {
     field_dimensions: Vec2,
     state: NumberpadState,
     range: Option<(f64, f64)>,
+    random_ids: bool,
 }
 
 impl Numberpad {
@@ -66,6 +71,7 @@ impl Numberpad {
             field_dimensions: ButtonSize::Medium.dim().0,
             state: NumberpadState::default(),
             range: None,
+            random_ids: false,
         }
     }
 
@@ -99,6 +105,11 @@ impl Numberpad {
     pub fn range(mut self, min: f64, max: f64) -> Self {
         let (min, max) = if max < min { (max, min) } else { (min, max) };
         self.range = Some((min, max));
+        self
+    }
+
+    pub fn with_random_ids(mut self) -> Self {
+        self.random_ids = true;
         self
     }
 
@@ -141,6 +152,7 @@ impl Numberpad {
             } else {
                 state.initialize_buffer(value, self.range);
                 state.dialog_open = true;
+                state.dialog_instance_id = None;
                 state.reset_gesture();
                 response.surrender_focus();
                 ui.ctx().request_repaint();
@@ -156,7 +168,19 @@ impl Numberpad {
                 state.initialize_buffer(value, self.range);
             }
 
-            Dialog::new(self.dialog_title.clone(), self.dialog_size)
+            if self.random_ids && state.dialog_instance_id.is_none() {
+                let new_id = NEXT_DIALOG_ID.fetch_add(1, Ordering::Relaxed);
+                state.dialog_instance_id = Some(new_id);
+            }
+
+            let dialog_label = if let (true, Some(id)) = (self.random_ids, state.dialog_instance_id)
+            {
+                format!("{}::{id}", self.dialog_title)
+            } else {
+                self.dialog_title.clone()
+            };
+
+            Dialog::new(dialog_label, self.dialog_size)
                 .with_backdrop()
                 .show(ui.ctx(), |dialog_ui| {
                     render_numberpad_contents(dialog_ui, value, state, self.range)

@@ -47,6 +47,20 @@ impl BlaulichtApp {
         self.add_fixture_count_numberpad.close();
     }
 
+    fn close_edit_fixture_numberpads(&mut self) {
+        self.edit_fixture_start_addr_numberpad.close();
+        self.edit_fixture_universe_numberpad.close();
+        self.edit_fixture_pos_x_numberpad.close();
+        self.edit_fixture_pos_y_numberpad.close();
+        self.edit_fixture_pos_z_numberpad.close();
+    }
+
+    fn close_dmx_override_numberpads(&mut self) {
+        self.add_dmx_override_uni_numberpad.close();
+        self.add_dmx_override_chan_numberpad.close();
+        self.add_dmx_override_value_numberpad.close();
+    }
+
     pub fn render_delete_group(&mut self, ctx: &Context) {
         if self.delete_group_open {
             // TODO: create a confirmation dialog component
@@ -114,6 +128,7 @@ impl BlaulichtApp {
 
     fn render_dmx_override_create_dialog(&mut self, ctx: &Context) {
         if !self.add_dmx_override_open {
+            self.close_dmx_override_numberpads();
             return;
         }
 
@@ -129,12 +144,8 @@ impl BlaulichtApp {
                 ui.horizontal_centered(|ui| {
                     ui.set_height(cell_h);
 
-                    ui.add_sized(
-                        [140.0, cell_h],
-                        egui::widgets::DragValue::new(&mut self.add_dmx_override_uni)
-                            .speed(1)
-                            .range(0..=1),
-                    );
+                    self.add_dmx_override_uni_numberpad
+                        .ui(ui, &mut self.add_dmx_override_uni);
                     ui.add_sized([LABEL_W, cell_h], Label::new("DMX Uni:"));
                 });
 
@@ -143,24 +154,16 @@ impl BlaulichtApp {
                 ui.horizontal_centered(|ui| {
                     ui.set_height(cell_h);
 
-                    ui.add_sized(
-                        [140.0, cell_h],
-                        egui::widgets::DragValue::new(&mut self.add_dmx_override_chan)
-                            .speed(1)
-                            .range(1..=512),
-                    );
+                    self.add_dmx_override_chan_numberpad
+                        .ui(ui, &mut self.add_dmx_override_chan);
                     ui.add_sized([LABEL_W, cell_h], Label::new("DMX Channel:"));
                 });
 
                 ui.separator();
 
                 ui.horizontal_centered(|ui| {
-                    ui.add_sized(
-                        [140.0, cell_h],
-                        egui::widgets::DragValue::new(&mut self.add_dmx_override_value)
-                            .speed(1)
-                            .range(0..=255),
-                    );
+                    self.add_dmx_override_value_numberpad
+                        .ui(ui, &mut self.add_dmx_override_value);
                     ui.add_sized([LABEL_W, cell_h], Label::new("Value:"));
                 });
 
@@ -171,6 +174,7 @@ impl BlaulichtApp {
 
                     if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                         self.add_dmx_override_open = false;
+                        self.close_dmx_override_numberpads();
                     }
 
                     if components::button(ui, true, "Add", ButtonSize::Medium) {
@@ -185,6 +189,7 @@ impl BlaulichtApp {
                                 ),
                             ));
                         self.add_dmx_override_open = false;
+                        self.close_dmx_override_numberpads();
                     }
                 });
             });
@@ -192,6 +197,7 @@ impl BlaulichtApp {
 
     fn render_dmx_override_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if !self.dmx_override_dialog_open {
+            self.close_dmx_override_numberpads();
             return;
         }
 
@@ -217,11 +223,13 @@ impl BlaulichtApp {
 
                     if components::button(ui, false, "Add", ButtonSize::Medium) {
                         self.add_dmx_override_open = true;
+                        self.close_dmx_override_numberpads();
                     }
 
                     if components::button(ui, false, "Close", ButtonSize::Medium) {
                         self.add_dmx_override_open = false;
                         self.dmx_override_dialog_open = false;
+                        self.close_dmx_override_numberpads();
                     }
                 });
             });
@@ -574,13 +582,13 @@ impl BlaulichtApp {
         //
         // Dialogs start.
         //
+        self.render_dmx_override_dialog(ctx, &dmx_engine);
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_add_scene_dialog(ctx);
         self.render_clone_scene_dialog(ctx);
         self.render_rename_scene_dialog(ctx);
         self.render_delete_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
-        self.render_dmx_override_dialog(ctx, &dmx_engine);
         self.render_add_group_dialog(ctx);
         self.render_delete_group(ctx);
 
@@ -700,6 +708,10 @@ impl BlaulichtApp {
                                 ButtonSize::Medium,
                             ) {
                                 self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
+                                if !self.dmx_override_dialog_open {
+                                    self.add_dmx_override_open = false;
+                                }
+                                self.close_dmx_override_numberpads();
                             }
 
                             ui.separator();
@@ -736,6 +748,7 @@ impl BlaulichtApp {
                                 // let mut new_addr = fix.start_addr as u16;
 
                                 if changed {
+                                    self.close_edit_fixture_numberpads();
                                     self.add_fixture_group = Some(new_g);
                                     self.setup_fixture_id = new_f;
 
@@ -782,15 +795,19 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Name:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    TextEdit::singleline(
-                                                        &mut self.new_fixture_name,
-                                                    )
-                                                    .font(FontId::proportional(
-                                                        ButtonSize::Medium.dim().1,
-                                                    )),
-                                                );
+
+                                                components::TextInput::new(140.0)
+                                                    .with_hint_text("New Name")
+                                                    .ui(ui, &mut self.new_fixture_name);
+
+                                                // ui.add_sized(
+                                                //     [140.0, ButtonSize::Medium.dim().0.y],
+                                                //     TextEdit::singleline(
+                                                //     )
+                                                //     .font(FontId::proportional(
+                                                //         ButtonSize::Medium.dim().1,
+                                                //     )),
+                                                // );
                                             });
 
                                             ui.horizontal(|ui| {
@@ -798,14 +815,8 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Start Addr:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    egui::widgets::DragValue::new(
-                                                        &mut self.new_fixture_addr,
-                                                    )
-                                                    .speed(1)
-                                                    .range(1..=512),
-                                                );
+                                                self.edit_fixture_start_addr_numberpad
+                                                    .ui(ui, &mut self.new_fixture_addr);
                                             });
 
                                             ui.horizontal(|ui| {
@@ -813,14 +824,8 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Universe:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    egui::widgets::DragValue::new(
-                                                        &mut self.new_fixture_uni,
-                                                    )
-                                                    .speed(1)
-                                                    .range(0..=1),
-                                                );
+                                                self.edit_fixture_universe_numberpad
+                                                    .ui(ui, &mut self.new_fixture_uni);
                                             });
 
                                             ui.horizontal(|ui| {
@@ -828,14 +833,8 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Position X:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    egui::widgets::DragValue::new(
-                                                        &mut self.new_fixture_pos_x,
-                                                    )
-                                                    .speed(1)
-                                                    .range(0..=1000),
-                                                );
+                                                self.edit_fixture_pos_x_numberpad
+                                                    .ui(ui, &mut self.new_fixture_pos_x);
                                             });
 
                                             ui.horizontal(|ui| {
@@ -843,14 +842,8 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Position Y:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    egui::widgets::DragValue::new(
-                                                        &mut self.new_fixture_pos_y,
-                                                    )
-                                                    .speed(1)
-                                                    .range(0..=1000),
-                                                );
+                                                self.edit_fixture_pos_y_numberpad
+                                                    .ui(ui, &mut self.new_fixture_pos_y);
                                             });
 
                                             ui.horizontal(|ui| {
@@ -858,14 +851,8 @@ impl BlaulichtApp {
                                                     [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                     Label::new("Position Z:"),
                                                 );
-                                                ui.add_sized(
-                                                    [140.0, ButtonSize::Medium.dim().0.y],
-                                                    egui::widgets::DragValue::new(
-                                                        &mut self.new_fixture_pos_z,
-                                                    )
-                                                    .speed(1)
-                                                    .range(0..=1000),
-                                                );
+                                                self.edit_fixture_pos_z_numberpad
+                                                    .ui(ui, &mut self.new_fixture_pos_z);
                                             });
 
                                             ui.add_space(6.0);

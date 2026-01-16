@@ -144,6 +144,9 @@ pub struct BlaulichtApp {
     add_dmx_override_uni: u16,
     add_dmx_override_chan: u16,
     add_dmx_override_value: u8,
+    add_dmx_override_uni_numberpad: Numberpad,
+    add_dmx_override_chan_numberpad: Numberpad,
+    add_dmx_override_value_numberpad: Numberpad,
 
     dmx_override_dialog_open: bool,
 
@@ -177,6 +180,11 @@ pub struct BlaulichtApp {
     new_fixture_pos_x: usize,
     new_fixture_pos_y: usize,
     new_fixture_pos_z: usize,
+    edit_fixture_start_addr_numberpad: Numberpad,
+    edit_fixture_universe_numberpad: Numberpad,
+    edit_fixture_pos_x_numberpad: Numberpad,
+    edit_fixture_pos_y_numberpad: Numberpad,
+    edit_fixture_pos_z_numberpad: Numberpad,
 
     add_group_open: bool,
     delete_group_open: bool,
@@ -256,6 +264,21 @@ impl BlaulichtApp {
             add_dmx_override_chan: 1,
             add_dmx_override_uni: 0,
             add_dmx_override_value: 0,
+            add_dmx_override_uni_numberpad: Numberpad::new()
+                .dialog_title("Override Universe")
+                .field_width(140.0)
+                .range(0.0, (NUM_DMX_UNIVERSES.saturating_sub(1)) as f64)
+                .with_random_ids(),
+            add_dmx_override_chan_numberpad: Numberpad::new()
+                .dialog_title("Override Channel")
+                .field_width(140.0)
+                .range(1.0, 512.0)
+                .with_random_ids(),
+            add_dmx_override_value_numberpad: Numberpad::new()
+                .dialog_title("Override Value")
+                .field_width(140.0)
+                .range(0.0, 255.0)
+                .with_random_ids(),
             dmx_override_dialog_open: false,
             // Add Fixture defaults
             add_fixture_open: false,
@@ -297,6 +320,26 @@ impl BlaulichtApp {
             new_fixture_pos_x: 0,
             new_fixture_pos_y: 0,
             new_fixture_pos_z: 0,
+            edit_fixture_start_addr_numberpad: Numberpad::new()
+                .dialog_title("Start Address")
+                .field_width(140.0)
+                .range(1.0, 512.0),
+            edit_fixture_universe_numberpad: Numberpad::new()
+                .dialog_title("Universe")
+                .field_width(140.0)
+                .range(0.0, (NUM_DMX_UNIVERSES.saturating_sub(1)) as f64),
+            edit_fixture_pos_x_numberpad: Numberpad::new()
+                .dialog_title("Position X")
+                .field_width(140.0)
+                .range(0.0, 1000.0),
+            edit_fixture_pos_y_numberpad: Numberpad::new()
+                .dialog_title("Position Y")
+                .field_width(140.0)
+                .range(0.0, 1000.0),
+            edit_fixture_pos_z_numberpad: Numberpad::new()
+                .dialog_title("Position Z")
+                .field_width(140.0)
+                .range(0.0, 1000.0),
             add_group_open: false,
             delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
