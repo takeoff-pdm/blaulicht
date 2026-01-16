@@ -29,6 +29,8 @@ pub struct AnimationUI {
     pub new_name: String,
     pub new_mode: AnimationSpecBodyKind,
     pub new_prop: FixtureProperty,
+    pub new_mode_dialog_open: bool,
+    pub new_prop_dialog_open: bool,
 
     pub edit_state: AnimationEditState,
 }
@@ -44,8 +46,17 @@ impl Default for AnimationUI {
             new_name: "Anim #".to_string(),
             new_mode: AnimationSpecBodyKind::Phaser,
             new_prop: FixtureProperty::Alpha,
+            new_mode_dialog_open: false,
+            new_prop_dialog_open: false,
             edit_state: AnimationEditState::default(),
         }
+    }
+}
+
+impl AnimationUI {
+    fn close_selection_dialogs(&mut self) {
+        self.new_mode_dialog_open = false;
+        self.new_prop_dialog_open = false;
     }
 }
 
@@ -113,43 +124,53 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     ui.add_sized([LABEL_W, cell_h], Label::new("Type:"));
 
-                    egui::ComboBox::from_id_salt("add_anim_kind_combo")
-                        .width(140.0)
-                        .selected_text(self.animation_ui_state.new_mode.to_string())
-                        .show_ui(ui, |ui| {
-                            for animation_spec in AnimationSpecBodyKind::iter() {
-                                if components::button(
-                                    ui,
-                                    animation_spec == self.animation_ui_state.new_mode,
-                                    &animation_spec.to_string(),
-                                    ButtonSize::Medium.with_width(140.0),
-                                ) {
-                                    self.animation_ui_state.new_mode = animation_spec;
-                                }
-                            }
-                        });
+                    let type_button_size = BUTTON_SIZE.with_width(140.0);
+                    if components::button(
+                        ui,
+                        self.animation_ui_state.new_mode_dialog_open,
+                        &self.animation_ui_state.new_mode.to_string(),
+                        type_button_size,
+                    ) {
+                        self.animation_ui_state.new_mode_dialog_open = true;
+                    }
+
+                    let (new_mode, mode_changed) = components::selection_dialog(
+                        ctx,
+                        AnimationSpecBodyKind::iter(),
+                        self.animation_ui_state.new_mode,
+                        &mut self.animation_ui_state.new_mode_dialog_open,
+                        "Select Animation Type".to_string(),
+                    );
+
+                    if mode_changed {
+                        self.animation_ui_state.new_mode = new_mode;
+                    }
                 });
 
                 ui.horizontal(|ui| {
                     ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
 
-                    let kinds: Vec<_> = FixtureProperty::iter().collect();
-                    egui::ComboBox::from_id_salt("add_anim_prop_combo")
-                        .width(140.0)
-                        .selected_text(format!("{}", self.animation_ui_state.new_prop))
-                        .show_ui(ui, |ui| {
-                            for prop in &kinds {
-                                if components::button(
-                                    ui,
-                                    self.animation_ui_state.new_prop == *prop,
-                                    &format!("{prop}"),
-                                    ButtonSize::Medium.with_width(140.0), // TODO: uniform
-                                                                          // width
-                                ) {
-                                    self.animation_ui_state.new_prop = *prop;
-                                }
-                            }
-                        });
+                    let prop_button_size = BUTTON_SIZE.with_width(140.0);
+                    if components::button(
+                        ui,
+                        self.animation_ui_state.new_prop_dialog_open,
+                        &self.animation_ui_state.new_prop.to_string(),
+                        prop_button_size,
+                    ) {
+                        self.animation_ui_state.new_prop_dialog_open = true;
+                    }
+
+                    let (new_prop, prop_changed) = components::selection_dialog(
+                        ctx,
+                        FixtureProperty::iter(),
+                        self.animation_ui_state.new_prop,
+                        &mut self.animation_ui_state.new_prop_dialog_open,
+                        "Select Fixture Property".to_string(),
+                    );
+
+                    if prop_changed {
+                        self.animation_ui_state.new_prop = new_prop;
+                    }
                 });
 
                 ui.separator();
@@ -157,6 +178,7 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                         self.animation_ui_state.create_open = false;
+                        self.animation_ui_state.close_selection_dialogs();
                     }
 
                     let mut button_pressed =
@@ -187,6 +209,7 @@ impl BlaulichtApp {
                         );
 
                         self.animation_ui_state.create_open = false;
+                        self.animation_ui_state.close_selection_dialogs();
                     }
                 });
             });
@@ -269,6 +292,10 @@ impl BlaulichtApp {
                             ) {
                                 self.animation_ui_state.create_open =
                                     !self.animation_ui_state.create_open;
+
+                                if !self.animation_ui_state.create_open {
+                                    self.animation_ui_state.close_selection_dialogs();
+                                }
                             }
 
                             if button(

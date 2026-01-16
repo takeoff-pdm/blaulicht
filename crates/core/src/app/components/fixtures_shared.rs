@@ -352,95 +352,104 @@ impl BlaulichtApp {
     }
 
     pub fn render_clone_scene_dialog(&mut self, ctx: &Context) {
-        if self.clone_scene_dialog_open {
-            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-            const SPACING: f32 = 16.0;
+        if !self.clone_scene_dialog_open {
+            return;
+        }
 
-            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+        const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+        const SPACING: f32 = 16.0;
 
-            Dialog::new("Clone Scene".to_string(), size)
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(10, 6))
-                        .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut self.new_scene_name)
-                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                            );
-                        });
+        let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
 
-                    ui.add_space(SPACING);
-
-                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                    ctx.input(|input| {
-                        if input.key_pressed(Key::Enter) {
-                            button_pressed = true;
-                        }
+        Dialog::new("Clone Scene".to_string(), size)
+            .with_backdrop()
+            .show(ctx, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        components::TextInput::new(180.0)
+                            .with_hint_text("New Name")
+                            .ui(ui, &mut self.new_scene_name);
                     });
 
-                    if button_pressed {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        dmx_engine.clone_scene(self.new_scene_name.take());
+                ui.add_space(SPACING);
+
+                let mut button_pressed = false;
+
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "CANCEL", BUTTON_SIZE) {
                         self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
                         self.clone_scene_dialog_open = false;
                     }
+                    button_pressed = components::button(ui, true, "OK", BUTTON_SIZE);
                 });
-        }
+
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        button_pressed = true;
+                    }
+                });
+
+                if button_pressed {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.clone_scene(self.new_scene_name.take());
+                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                    self.clone_scene_dialog_open = false;
+                }
+            });
     }
 
     pub fn render_add_scene_dialog(&mut self, ctx: &Context) {
-        if self.new_scene_dialog_open {
-            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-            const SPACING: f32 = 16.0;
+        if !self.new_scene_dialog_open {
+            return;
+        }
 
-            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+        const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+        const SPACING: f32 = 16.0;
 
-            Dialog::new("Create Scene".to_string(), size)
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(10, 6))
-                        .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut self.new_scene_name)
-                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                            );
-                        });
+        let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
 
-                    ui.add_space(SPACING);
-
-                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                    ctx.input(|input| {
-                        if input.key_pressed(Key::Enter) {
-                            button_pressed = true;
-                        }
+        Dialog::new("Create Scene".to_string(), size)
+            .with_backdrop()
+            .show(ctx, |ui| {
+                Frame::new()
+                    .inner_margin(Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        components::TextInput::new(180.0)
+                            .with_hint_text("Scene Name")
+                            .ui(ui, &mut self.new_scene_name);
                     });
 
-                    if button_pressed {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        dmx_engine.new_scene(self.new_scene_name.take());
-                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                        self.new_scene_dialog_open = false;
+                ui.add_space(SPACING);
+
+                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                ctx.input(|input| {
+                    if input.key_pressed(Key::Enter) {
+                        button_pressed = true;
                     }
                 });
-        }
+
+                if button_pressed {
+                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    dmx_engine.new_scene(self.new_scene_name.take());
+                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
+                    self.new_scene_dialog_open = false;
+                }
+            });
     }
 
     pub fn render_rename_scene_dialog(&mut self, ctx: &Context) {
         if self.rename_scene_dialog_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
             const SPACING: f32 = 16.0;
-            let size = egui::vec2(220.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
 
-            if self.rename_scene_name.is_empty() {
-                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-                if let Some(scene) = dmx_engine.0.scenes.get(&dmx_engine.0.current_scene_focus) {
-                    self.rename_scene_name = scene.name.clone();
-                }
-            }
+            // if self.rename_scene_name.is_empty() {
+            //     let dmx_engine = self.data.state.dmx_engine.read().unwrap();
+            //     if let Some(scene) = dmx_engine.0.scenes.get(&dmx_engine.0.current_scene_focus) {
+            //         self.rename_scene_name = scene.name.clone();
+            //     }
+            // }
 
             Dialog::new("Rename Scene".to_string(), size)
                 .with_backdrop()
@@ -448,24 +457,22 @@ impl BlaulichtApp {
                     Frame::new()
                         .inner_margin(Margin::symmetric(10, 6))
                         .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut self.rename_scene_name)
-                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                            );
+                            components::TextInput::new(180.0)
+                                .with_hint_text("New Name")
+                                .ui(ui, &mut self.rename_scene_name);
                         });
 
                     ui.add_space(SPACING);
 
                     let mut confirm_pressed = false;
                     ui.horizontal(|ui| {
-                        if components::button(ui, false, "OK", BUTTON_SIZE) {
-                            confirm_pressed = true;
-                        }
-
-                        if components::button(ui, true, "Cancel", BUTTON_SIZE) {
+                        if components::button(ui, false, "CANCEL", BUTTON_SIZE) {
                             self.rename_scene_dialog_open = false;
                             self.rename_scene_name.clear();
+                        }
+
+                        if components::button(ui, true, "OK", BUTTON_SIZE) {
+                            confirm_pressed = true;
                         }
                     });
 

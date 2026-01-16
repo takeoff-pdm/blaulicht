@@ -11,7 +11,7 @@ use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::fixture::state::{Fixture, Position};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
-use egui::{Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit, Vec2};
+use egui::{Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit};
 use std::time::Duration;
 use std::{fmt, mem};
 use strum::IntoEnumIterator;
@@ -79,7 +79,7 @@ impl BlaulichtApp {
         if self.add_group_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
             const SPACING: f32 = 16.0;
-            let size = egui::vec2(260.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING + 8.0);
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING + 8.0);
 
             Dialog::new("Create Group".to_string(), size)
                 .with_backdrop()
@@ -88,11 +88,9 @@ impl BlaulichtApp {
                     Frame::new()
                         .inner_margin(Margin::symmetric(10, 6))
                         .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut self.new_group_name)
-                                    .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                                    .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                            );
+                            components::TextInput::new(180.0)
+                                .with_hint_text("Group Name")
+                                .ui(ui, &mut self.new_group_name);
                         });
 
                     ui.add_space(SPACING);
@@ -312,11 +310,9 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     ui.add_sized([LABEL_W, cell_h], Label::new("Name:"));
 
-                    ui.add(
-                        TextEdit::singleline(&mut self.add_fixture_name)
-                            .font(FontId::proportional(BUTTON_SIZE.dim().1))
-                            .min_size(Vec2::new(0.0, BUTTON_SIZE.dim().1)),
-                    );
+                    components::TextInput::new(415.0)
+                        .with_hint_text("Fixture Name")
+                        .ui(ui, &mut self.add_fixture_name);
                 });
 
                 // Start address

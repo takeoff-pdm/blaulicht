@@ -568,29 +568,19 @@ impl BlaulichtApp {
 
                     ui.vertical(|ui| {
                         let base_button = ButtonSize::Medium.dim();
-                        let input_height = base_button.0.y;
                         let input_font_size = base_button.1 + 7.0;
 
                         let create_clicked = ui
                             .horizontal(|ui| {
-                                ui.add_sized(
-                                    [170.0, input_height],
-                                    TextEdit::singleline(
+                                components::TextInput::new(170.0)
+                                    .with_hint_text("IPv4 Address")
+                                    .ui(
+                                        ui,
                                         &mut self.system_ui_state.new_artnet_address,
-                                    )
-                                    .hint_text("IPv4 Address")
-                                    .font(FontId::monospace(input_font_size))
-                                    .vertical_align(Align::Center),
-                                );
-                                ui.add_sized(
-                                    [90.0, input_height],
-                                    TextEdit::singleline(
-                                        &mut self.system_ui_state.new_artnet_port,
-                                    )
-                                    .hint_text("Port")
-                                    .font(FontId::monospace(input_font_size))
-                                    .vertical_align(Align::Center),
-                                );
+                                    );
+                                components::TextInput::new(90.0)
+                                    .with_hint_text("Port")
+                                    .ui(ui, &mut self.system_ui_state.new_artnet_port);
 
                                 components::button(ui, true, "Create", ButtonSize::Medium)
                             })
@@ -678,7 +668,7 @@ impl BlaulichtApp {
                         if receivers.is_empty() {
                             ui.label("No ArtNet receivers configured.");
                         } else {
-                            let row_height = ButtonSize::Medium.dim().0.y.max(44.0);
+                            let row_height = base_button.0.y.max(44.0);
 
                             for (receiver_index, receiver) in receivers.into_iter().enumerate() {
                                 let mut row_enabled = receiver.enabled;

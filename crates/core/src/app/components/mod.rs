@@ -16,6 +16,7 @@ mod selection_dialog;
 mod spectrogram;
 mod speed_knob;
 mod switch;
+mod text_input;
 
 pub use button::*;
 pub use clickable::*;
@@ -35,3 +36,4 @@ pub use selection_dialog::*;
 pub use spectrogram::*;
 pub use speed_knob::*;
 pub use switch::*;
+pub use text_input::*;
