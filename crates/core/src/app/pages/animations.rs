@@ -487,7 +487,7 @@ impl AnimationEditState {
 
         let plot_points = (0..(360) * RENDER_WIDTH)
             .map(|x| {
-                let y = phaser::generate(&phaser_mut, x as f32);
+                let y = phaser::generate(&phaser_mut, x as u64);
                 [x as f64, y as f64]
             })
             .collect::<PlotPoints<'_>>();

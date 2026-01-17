@@ -9,4 +9,6 @@ pub mod videowall {
     pub const SET_SPEED: u8 = 63;
     /// Descriptor for requesting the videowall plugin to refresh status from the backend.
     pub const REQUEST_STATUS_REFRESH: u8 = 64;
+    /// Descriptor for adjusting fry/contrast level, expects a midi value (0-127) mapped to tens.
+    pub const SET_FRY: u8 = 65;
 }

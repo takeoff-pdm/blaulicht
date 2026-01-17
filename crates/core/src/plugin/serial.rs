@@ -171,14 +171,14 @@ impl SerialManager {
                     }
 
 
-                    println!("Read {} bytes: {:?}", n, &sliced_buf);
+                    // println!("Read {} bytes: {:?}", n, &sliced_buf);
 
                     port.buffer.extend_from_slice(sliced_buf);
 
-                    println!("buf_so_far {:?}", port.buffer);
+                    // println!("buf_so_far {:?}", port.buffer);
 
                     if let Some(linefeed_end) = linefeed_index {
-                        println!("got line feed");
+                        // println!("got line feed");
 
                         let sliced_buf = &sliced_buf[..linefeed_end];
                         port.buffer.extend_from_slice(sliced_buf);

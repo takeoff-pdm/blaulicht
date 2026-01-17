@@ -4,7 +4,7 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{AnimationSpec, MainUiEvent, fixture::state::Fixture};
+use crate::{scene::FixtureSelection, AnimationSpec, MainUiEvent};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -269,6 +269,10 @@ pub enum ControlEvent {
         descriptor: u8,
         value: u8,
     },
+    RemoveChange {
+        selection: FixtureSelection,
+        property: FixtureProperty,
+    },
     // Transaction Actions.
     Transaction(Vec<ControlEvent>),
     //
@@ -339,6 +343,7 @@ impl ControlEvent {
             ControlEvent::SetColorSaturation(_) => FixtureProperty::ColorSaturation,
             ControlEvent::SetColorValue(_) => FixtureProperty::ColorValue,
             ControlEvent::AddToProperty(fixture_property, _) => *fixture_property,
+            ControlEvent::RemoveChange { property, .. } => *property,
             ControlEvent::Transaction(control_events) => {
                 let mut prop = None;
 
@@ -450,6 +455,7 @@ impl ControlEvent {
             | ControlEvent::RemoveSelection
             | ControlEvent::RemoveAllSelection
             | ControlEvent::MiscEvent { .. }
+            | ControlEvent::RemoveChange { .. }
             | ControlEvent::PopSelection
             | ControlEvent::PushSelection
             | ControlEvent::SetSceneFocus(_)

@@ -8,7 +8,7 @@ use crate::{
     event::SystemEventBusConnectionInst,
 };
 use blaulicht_shared::{
-    scene::{FixtureSelection, Scene},
+    scene::{FixtureSelection, FixtureSelector, Scene},
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
 use egui::{Color32, Context, RichText};
@@ -262,10 +262,11 @@ impl BlaulichtApp {
                                                 {
                                                     scene.sink.master_speed = speed;
                                                 }
-
-                                                ui.label("TODO: list scene changes here and allow removal");
                                             });
 
+                                            ui.separator();
+                                            ui.add_space(12.0);
+                                            self.scene_changes(ui, &dmx_engine);
                                             ui.separator();
 
                                             for (selection, animations) in
@@ -398,6 +399,69 @@ impl BlaulichtApp {
                 );
             },
         );
+    }
+
+    fn scene_changes(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        ui.heading("Scene Changes");
+        ui.add_space(8.0);
+
+        let scene = dmx_engine.curr_scene();
+        let groups = dmx_engine.groups();
+
+        let mut changes: Vec<FixtureSelector> = scene.sink.changeset.iter().cloned().collect();
+        changes.sort_by(|a, b| {
+            a.gid
+                .cmp(&b.gid)
+                .then(a.fid.cmp(&b.fid))
+                .then((a.property as u8).cmp(&(b.property as u8)))
+        });
+
+        if changes.is_empty() {
+            ui.label("No Scene Changes");
+            return;
+        }
+
+        egui::ScrollArea::vertical()
+            .max_height(180.0)
+            .show(ui, |ui| {
+                for change in changes {
+                    let FixtureSelector { gid, fid, property } = change;
+
+                    let (group_name, fixture_name) = groups
+                        .get(&gid)
+                        .map(|group| {
+                            let fixture_name = group
+                                .fixtures
+                                .get(&fid)
+                                .map(|fixture| fixture.name.as_str())
+                                .unwrap_or("Unknown fixture");
+                            (group.name.as_str(), fixture_name)
+                        })
+                        .unwrap_or(("Unknown group", "Unknown fixture"));
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name}) · {property}"
+                            )),
+                        );
+
+                        if components::button(ui, false, "Delete", ButtonSize::Small) {
+                            let selection = FixtureSelection {
+                                fixtures: vec![(gid, fid)],
+                            };
+
+                            self.data.event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::RemoveChange {
+                                    selection,
+                                    property,
+                                },
+                            ));
+                        }
+                    });
+                }
+            });
     }
 
     pub fn render_scene_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {

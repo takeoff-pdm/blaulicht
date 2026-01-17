@@ -102,8 +102,7 @@ impl BlaulichtApp {
             mem.set_modal_layer(window_layer);
         });
 
-        const INIT_TITLE: &str =
-            concat!("Initializing (v", env!("CARGO_PKG_VERSION"), ") ...");
+        const INIT_TITLE: &str = concat!("Initializing (v", env!("CARGO_PKG_VERSION"), ") ...");
 
         egui::Window::new(INIT_TITLE)
             .id(window_id)

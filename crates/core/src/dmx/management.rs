@@ -8,8 +8,33 @@ use log::debug;
 
 impl EngineState {
     pub fn delete_animation(&mut self, id: u8) {
-        // Find all dependent animations.
-        todo!("Not implemented")
+        let removed_template = self.0.animation_templates.remove(&id).is_some();
+
+        for (scene_id, scene) in self.0.scenes.iter_mut() {
+            let mut selections_to_purge = Vec::new();
+
+            for (selection, active_animations) in scene.sink.active_animations.iter_mut() {
+                if active_animations.remove(&id).is_some() {
+                    debug!("Delete animation: removed template {id} from scene {scene_id}");
+                }
+
+                if active_animations.is_empty() {
+                    selections_to_purge.push(selection.clone());
+                }
+            }
+
+            for selection in selections_to_purge {
+                scene.sink.active_animations.remove(&selection);
+                debug!(
+                    "Delete animation: removed empty selection {:?} from scene {scene_id}",
+                    selection
+                );
+            }
+        }
+
+        if !removed_template {
+            debug!("Delete animation: template {id} not found in engine state");
+        }
     }
 
     pub fn delete_group(&mut self, id: u8) {

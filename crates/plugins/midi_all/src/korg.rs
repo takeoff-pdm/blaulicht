@@ -306,9 +306,11 @@ impl KorgSubSystem {
         let alpha = self.fader_vals[fader];
         let alpha = (alpha as u16).map_range(0..127, 0..100) as u8;
         println!("ALPHA: {alpha}");
-        let scene_id = self.scenes[fader];
+        let Some(scene_id) = self.scenes.get(fader) else {
+            return;
+        };
 
-        bpf::send_event(ControlEvent::SetSceneMasterAlpha(scene_id, alpha));
+        bpf::send_event(ControlEvent::SetSceneMasterAlpha(*scene_id, alpha));
         // self.nano_render_scenes();
     }
 
@@ -316,10 +318,14 @@ impl KorgSubSystem {
         let knob_val = self.knob_vals[knob];
         let max_index = AnimationSpeedModifier::ALL.len() as u16 - 1;
         let index = (knob_val as u16).map_range(0..127, 0..max_index) as usize;
-        let scene_id = self.scenes[knob];
+
+        let Some(scene_id) = self.scenes.get(knob) else {
+            return;
+        };
+
         let speed = AnimationSpeedModifier::from_index(index);
 
-        bpf::send_event(ControlEvent::SetSceneMasterSpeed(scene_id, speed));
+        bpf::send_event(ControlEvent::SetSceneMasterSpeed(*scene_id, speed));
         // self.nano_render_scenes();
     }
 }

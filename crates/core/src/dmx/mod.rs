@@ -16,8 +16,8 @@ use crate::{
 };
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
-    scene::FixtureSelection,
-    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
+    scene::{FixtureSelection, FixtureSelector},
+    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, LogLevel,
     CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
@@ -267,7 +267,7 @@ impl DmxEngine {
 
     fn write_to_artnet(&mut self) {
         let Some(ref mut socket) = self.artnet_output.socket else {
-            println!("NO ARTNET");
+            // println!("NO ARTNET");
             return;
         };
 
@@ -588,6 +588,41 @@ impl DmxEngine {
             }
             ControlEvent::MiscEvent { descriptor, value } => {
                 println!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
+                (None, None)
+            }
+            ControlEvent::RemoveChange {
+                selection,
+                property,
+            } => {
+                let scene_id = state.0.current_scene_focus;
+                let Some(scene) = state.0.scenes.get_mut(&scene_id) else {
+                    return (Some("Illegal scene id"), None);
+                };
+
+                let mut removed_any = false;
+
+                for (gid, fid) in &selection.fixtures {
+                    let selector = FixtureSelector {
+                        gid: *gid,
+                        fid: *fid,
+                        property,
+                    };
+
+                    if scene.sink.changeset.remove(&selector) {
+                        removed_any = true;
+
+                        if let Some(fixture_state) =
+                            scene.sink.fixture_states.get_mut(&(*gid, *fid))
+                        {
+                            fixture_state.apply_value(0, property);
+                        }
+                    }
+                }
+
+                if removed_any {
+                    state.0.control_buffer.apply_value(0, property);
+                }
+
                 (None, None)
             }
             ControlEvent::SetSceneMasterAlpha(scene_id, value_percent) => {

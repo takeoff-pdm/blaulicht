@@ -2,7 +2,7 @@ use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::Plugin;
 use blaulicht_shared::{
     misc_event::videowall::{
-        REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
+        REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
     },
     ControlEvent, ControlEventMessage, PluginUiEvent, TickInput,
 };
@@ -15,7 +15,8 @@ const REFRESH_BUTTON_ID: u8 = 2;
 const BRIGHTNESS_SLIDER_ID: u8 = 3;
 const ROTATION_SLIDER_ID: u8 = 4;
 const SPEED_SLIDER_ID: u8 = 5;
-const SET_BUTTON_ID: u8 = 6;
+const FRY_SLIDER_ID: u8 = 6;
+const SET_BUTTON_ID: u8 = 7;
 
 const CURL_HEADERS: &str = concat!(
     " -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0'",
@@ -67,6 +68,7 @@ pub struct VideowallPlugin {
     pending_brightness: u8,
     pending_rotation: u8,
     pending_speed: u8,
+    pending_fry: u8,
 }
 
 impl VideowallPlugin {
@@ -173,6 +175,9 @@ impl VideowallPlugin {
             PluginUiEvent::Slider { id, value } if *id == SPEED_SLIDER_ID => {
                 self.pending_speed = *value;
             }
+            PluginUiEvent::Slider { id, value } if *id == FRY_SLIDER_ID => {
+                self.pending_fry = *value;
+            }
             PluginUiEvent::Button { id } if *id == REFRESH_BUTTON_ID => {
                 if let Err(err) = self.refresh_videos() {
                     self.last_error = Some(err);
@@ -186,6 +191,7 @@ impl VideowallPlugin {
                 self.apply_brightness(self.pending_brightness);
                 self.apply_rotation(self.pending_rotation);
                 self.apply_speed(self.pending_speed);
+                self.apply_fry(self.pending_fry);
                 self.last_error = None;
             }
             _ => {}
@@ -197,6 +203,7 @@ impl VideowallPlugin {
             SET_BRIGHTNESS => self.apply_brightness(value),
             SET_ROTATION => self.apply_rotation(value),
             SET_SPEED => self.apply_speed(value),
+            SET_FRY => self.apply_fry(value),
             SET_VIDEO_INDEX => self.apply_selection_or_queue(value),
             REQUEST_STATUS_REFRESH => {
                 if let Err(err) = self.refresh_status() {
@@ -248,6 +255,12 @@ impl VideowallPlugin {
         self.pending_speed = value;
     }
 
+    fn apply_fry(&mut self, value: u8) {
+        bpf::send_udp(UDP_ENDPOINT, &[110, value]);
+        self.playback.fry = (value as i32) * 10;
+        self.pending_fry = value;
+    }
+
     fn send_video_by_index(&mut self, index: usize) {
         if let Some(file) = self.videos.get(index) {
             let mut payload = Vec::with_capacity(1 + file.len());
@@ -283,6 +296,7 @@ impl VideowallPlugin {
         self.pending_brightness = self.playback.brightness.clamp(0, 255) as u8;
         self.pending_rotation = degrees_to_midi(self.playback.rotation);
         self.pending_speed = speed_to_midi(self.playback.speed);
+        self.pending_fry = fry_to_midi(self.playback.fry);
     }
 
     fn render_ui(&self) {
@@ -329,6 +343,10 @@ impl VideowallPlugin {
             let speed_value = midi_to_speed(self.pending_speed);
             bpf::ui::label(&format!("Speed: {:.2}x", speed_value));
             bpf::ui::slider("Speed", SPEED_SLIDER_ID, 0, 127, self.pending_speed);
+
+            let fry_value = midi_to_fry(self.pending_fry);
+            bpf::ui::label(&format!("Fry: {}", fry_value));
+            bpf::ui::slider("Fry", FRY_SLIDER_ID, 0, 127, self.pending_fry);
         }
 
         if !self.videos.is_empty() {
@@ -379,4 +397,12 @@ fn speed_to_midi(speed: f32) -> u8 {
     let clamped = speed.clamp(0.25, 2.0);
     let normalized = ((clamped - 0.25) / (2.0 - 0.25)) * 127.0;
     normalized.round().clamp(0.0, 127.0) as u8
+}
+
+fn midi_to_fry(value: u8) -> u16 {
+    value as u16 * 10
+}
+
+fn fry_to_midi(fry: i32) -> u8 {
+    (fry / 10).clamp(0, 127) as u8
 }

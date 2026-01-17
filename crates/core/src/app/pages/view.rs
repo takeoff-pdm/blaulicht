@@ -354,7 +354,35 @@ impl BlaulichtApp {
 
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {
-                                ui.heading("View Details");
+                                ui.horizontal(|ui| {
+                                    ui.heading("View Details");
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(ui.available_width(), 0.0),
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if components::button(
+                                                ui,
+                                                true,
+                                                "Apply",
+                                                ButtonSize::Medium,
+                                            ) {
+                                                self.data
+                                                    .event_bus_connection
+                                                    .send(ControlEventMessage::new(
+                                                        EventOriginator::Web,
+                                                        ControlEvent::Transaction(vec![
+                                                            ControlEvent::SetSceneFocus(
+                                                                view_snapshot.base_scene,
+                                                            ),
+                                                            ControlEvent::SetOverlays(
+                                                                view_snapshot.overlays.clone(),
+                                                            ),
+                                                        ]),
+                                                    ));
+                                            }
+                                        },
+                                    );
+                                });
                                 ui.add_space(4.0);
 
                                 ui.horizontal(|ui| {
@@ -472,18 +500,6 @@ impl BlaulichtApp {
                         });
 
                         ui.separator();
-
-                        if components::button(ui, true, "Apply", ButtonSize::Medium) {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::Transaction(vec![
-                                        ControlEvent::SetSceneFocus(view_snapshot.base_scene),
-                                        ControlEvent::SetOverlays(view_snapshot.overlays.clone()),
-                                    ]),
-                                ));
-                        }
                     },
                 );
             },

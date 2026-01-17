@@ -62,7 +62,7 @@ impl DmxEngine {
         // let animation = animations.get(&id).unwrap();
 
         match &spec.body {
-            AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time as f32),
+            AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
                 audio_snapshot.snapshot.volume as u16
             }
@@ -138,11 +138,11 @@ impl DmxEngine {
                     })
                     .collect();
 
-                while fixtures_in_selection >= quantized_audio_bins.len() {
-                    quantized_audio_bins.push(0);
+                while fixture_index_in_selection >= quantized_audio_bins.len() {
+                    quantized_audio_bins.push(0); // NOOO: this adds 0 padding and bricks it
                 }
 
-                debug_assert!(fixtures_in_selection < quantized_audio_bins.len());
+                debug_assert!(fixture_index_in_selection < quantized_audio_bins.len());
 
                 let fixture_value = quantized_audio_bins[fixture_index_in_selection];
                 fixture_value as u16

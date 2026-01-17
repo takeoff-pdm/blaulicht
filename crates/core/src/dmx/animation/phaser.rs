@@ -2,8 +2,8 @@ use std::f32::consts::PI;
 
 use blaulicht_shared::{AnimationSpecBodyPhaser, MathematicalBaseFunction, PhaserKind};
 
-pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
-    let degrees = degrees_raw % 360.0;
+pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: u64) -> u16 {
+    let degrees = (degrees_raw % 360) as f32;
     debug_assert!((0.0..=360.0).contains(&degrees));
 
     let value = match &self_.kind {
@@ -11,6 +11,10 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
             let min = mathematical_phaser.amplitude_min as f32;
             let max = mathematical_phaser.amplitude_max as f32;
             let range = max - min;
+
+            let mut mathematical_phaser = mathematical_phaser.clone();
+            mathematical_phaser.stretch_factor = 1.0;
+            println!("min={min}, max={max}, range={range}");
 
             match mathematical_phaser.base {
                 MathematicalBaseFunction::Sin => {
@@ -28,7 +32,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     ((cosine + 1.0) / 2.0) * range + min
                 }
                 MathematicalBaseFunction::Triangle => {
-                    let degrees = (degrees * mathematical_phaser.stretch_factor) % 360.0;
+                    let degrees = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
                     let phase = degrees / 360.0;
 
                     let triangle = 4.0 * (phase - 0.5).abs() - 1.0; // -1 to 1
@@ -37,7 +41,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     ((triangle + 1.0) / 2.0) * range + min
                 }
                 MathematicalBaseFunction::Square1_2 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor) % 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
 
                     // High in first half, low in second half
                     if angle < 180.0 {
@@ -47,7 +51,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     }
                 }
                 MathematicalBaseFunction::Square1_8 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor) % 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
 
                     // High in first eigth, low in second half
                     if angle < 360.0 / 8.0 {
@@ -57,19 +61,14 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     }
                 }
                 MathematicalBaseFunction::Sawtooth => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor) % 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
                     let phase = angle / 360.0;
 
                     // Linear ramp from min to max
                     min + phase * range
                 }
                 MathematicalBaseFunction::EaseIn => {
-                    let t = match degrees_raw {
-                        v @ 0.0..360.0 => v,
-                        _ => 360.0,
-                    };
-
-                    let t = t.clamp(0.0, 360.0) / 360.0;
+                    let t = degrees / 360.0;
 
                     let percent = if t < 0.5 {
                         2.0 * t * t
@@ -80,12 +79,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     percent * range + min
                 }
                 MathematicalBaseFunction::EaseOut => {
-                    let t = match degrees_raw {
-                        v @ 0.0..360.0 => v,
-                        _ => 360.0,
-                    };
-
-                    let t = t.clamp(0.0, 360.0) / 360.0;
+                    let t = degrees / 360.0;
 
                     let percent = if t < 0.5 {
                         2.0 * t * t
@@ -96,11 +90,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: f32) -> u16 {
                     (1.0 - percent) * range + min
                 }
                 MathematicalBaseFunction::EaseInOut => {
-                    let t = match degrees_raw {
-                        v @ 0.0..360.0 => v,
-                        _ => 360.0,
-                    };
-                    let radians = std::f32::consts::PI * t.clamp(0.0, 360.0) / 360.0;
+                    let radians = std::f32::consts::PI * degrees / 360.0;
                     let v = radians.sin() * range + min;
                     v.clamp(0.0, 255.0)
                 }

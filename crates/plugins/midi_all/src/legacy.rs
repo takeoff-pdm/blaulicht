@@ -3,7 +3,9 @@ use blaulicht_plugin_framework::{
 };
 use blaulicht_shared::{
     hsv_to_rgb,
-    misc_event::videowall::{REQUEST_STATUS_REFRESH, SET_BRIGHTNESS},
+    misc_event::videowall::{
+        REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
+    },
     AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
 };
 use map_range::MapRange;
@@ -402,6 +404,7 @@ impl LegacyState {
         const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
 
         const SCENES_INT: [u8; 5] = [60, 52, 44, 36, 28];
+        const VIDEO_PADS: [u8; 8] = [62, 54, 46, 38, 30, 22, 14, 6];
 
         if self.is_apc_init {
             for i in 0..64 {
@@ -471,6 +474,24 @@ impl LegacyState {
 
         for e in ev {
             match (e.status, e.kind, e.value) {
+                (176, 52, val) => {
+                    bpf::send_event(ControlEvent::MiscEvent {
+                        descriptor: SET_SPEED,
+                        value: val,
+                    });
+                }
+                (176, 53, val) => {
+                    bpf::send_event(ControlEvent::MiscEvent {
+                        descriptor: SET_FRY,
+                        value: val,
+                    });
+                }
+                (176, 54, val) => {
+                    bpf::send_event(ControlEvent::MiscEvent {
+                        descriptor: SET_ROTATION,
+                        value: val,
+                    });
+                }
                 (176, 55, val) => {
                     println!("val");
                     bpf::send_event(ControlEvent::MiscEvent {
@@ -511,6 +532,14 @@ impl LegacyState {
                         self.current_app_page = Some(app_page.clone());
                         self.sync_app_page(&conn);
                         bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(app_page)));
+                    }
+                }
+                (128, pad, _) if VIDEO_PADS.contains(&pad) => {
+                    if let Some(idx) = VIDEO_PADS.iter().position(|v| *v == pad) {
+                        bpf::send_event(ControlEvent::MiscEvent {
+                            descriptor: SET_VIDEO_INDEX,
+                            value: idx as u8,
+                        });
                     }
                 }
                 (176, 56, val) => {
