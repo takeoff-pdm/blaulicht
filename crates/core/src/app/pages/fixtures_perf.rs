@@ -18,6 +18,7 @@ pub struct FixturePerfUi {
     pub scene_overview_animation_edit: AnimationEditState,
     pub scene_overview_animation_selection_edit: Option<(FixtureSelection, u8)>,
     pub scene_overview_animation_selection_edit_need_to_load: bool,
+    pub close_scene_overview_after_child: bool,
 }
 
 impl BlaulichtApp {
@@ -365,6 +366,22 @@ impl BlaulichtApp {
                                                                                 ),
                                                                             );
                                                                         }
+                                                                        if components::button(
+                                                                            ui,
+                                                                            false,
+                                                                            "Edit",
+                                                                            ButtonSize::Medium,
+                                                                        ) {
+                                                                            self.current_scene_animations_dialog_open = true;
+                                                                            self.fixture_perf_ui
+                                                                                .scene_overview_animation_selection_edit =
+                                                                                Some((selection.to_owned(), *animation_id));
+                                                                            self.fixture_perf_ui
+                                                                                .scene_overview_animation_selection_edit_need_to_load =
+                                                                                true;
+                                                                            self.fixture_perf_ui
+                                                                                .close_scene_overview_after_child = true;
+                                                                        }
                                                                     });
                                                                 },
                                                             );
@@ -439,6 +456,10 @@ impl BlaulichtApp {
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
                         self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
+                        if self.fixture_perf_ui.close_scene_overview_after_child {
+                            self.current_scene_animations_dialog_open = false;
+                        }
+                        self.fixture_perf_ui.close_scene_overview_after_child = false;
                     }
                 } else {
                     self.render_normal_scene_animations(ui, scene);
@@ -547,6 +568,7 @@ impl BlaulichtApp {
                             Some((selection.to_owned(), *animation_id));
                         self.fixture_perf_ui
                             .scene_overview_animation_selection_edit_need_to_load = true;
+                        self.fixture_perf_ui.close_scene_overview_after_child = false;
                     }
                 }
             }
