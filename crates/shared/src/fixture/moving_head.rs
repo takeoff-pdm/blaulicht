@@ -162,7 +162,7 @@ impl MovingHead {
                     v if v <= 5000 => {
                         // Enable lamp.
                         println!("ENABLE LAMP");
-                        dmx[this.start_addr + 0] = 237;
+                        dmx[this.start_addr + 0] = 236;
                     }
                     v => {
                         println!("DONT ENABLE LAMP");

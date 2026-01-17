@@ -37,6 +37,7 @@ extern "C" {
     fn ui_separator(plugin_id: u8);
     fn ui_button(plugin_id: u8, ptr: *const u8, len: usize, id: u8);
     fn ui_checkbox(plugin_id: u8, ptr: *const u8, len: usize, id: u8, checked: i32);
+    fn ui_switch(plugin_id: u8, ptr: *const u8, len: usize, id: u8, value: i32);
     fn ui_slider(plugin_id: u8, ptr: *const u8, len: usize, id: u8, min: i32, max: i32, value: i32);
     fn ui_text_edit(
         plugin_id: u8,
@@ -288,8 +289,9 @@ pub mod ui {
         ui_painter_rect as host_ui_painter_rect,
         ui_painter_rect_stroke as host_ui_painter_rect_stroke,
         ui_painter_text as host_ui_painter_text, ui_separator as host_ui_separator,
-        ui_slider as host_ui_slider, ui_text_edit as host_ui_text_edit,
-        ui_text_edit_multiline as host_ui_text_edit_multiline, PLUGIN_ID,
+        ui_slider as host_ui_slider, ui_switch as host_ui_switch,
+        ui_text_edit as host_ui_text_edit, ui_text_edit_multiline as host_ui_text_edit_multiline,
+        PLUGIN_ID,
     };
 
     pub fn begin() {
@@ -317,6 +319,18 @@ pub mod ui {
                 label.len(),
                 id,
                 if checked { 1 } else { 0 },
+            )
+        };
+    }
+
+    pub fn switch(label: &str, id: u8, value: bool) {
+        unsafe {
+            host_ui_switch(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                if value { 1 } else { 0 },
             )
         };
     }

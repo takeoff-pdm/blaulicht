@@ -363,6 +363,10 @@ pub enum PluginUiEvent {
         id: u8,
         checked: bool,
     },
+    Switch {
+        id: u8,
+        value: bool,
+    },
     Slider {
         id: u8,
         value: u8,

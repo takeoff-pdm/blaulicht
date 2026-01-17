@@ -11,6 +11,11 @@ pub enum WasmUiOp {
         id: u8,
         checked: bool,
     },
+    Switch {
+        label: String,
+        id: u8,
+        value: bool,
+    },
     Slider {
         label: String,
         id: u8,

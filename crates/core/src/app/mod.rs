@@ -4,7 +4,9 @@ use crate::{
             DmxSimulator, LogWindow, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
-        pages::{AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI},
+        pages::{
+            AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI,
+        },
         ui::FileDialogOpenOrigin,
     },
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},

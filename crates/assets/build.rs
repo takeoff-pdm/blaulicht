@@ -10,6 +10,8 @@ fn main() {
         .expect("Failed to execute make. Is it installed?");
 
     if !status.success() {
-        println!("cargo::warning=Makefile failed to generate icons. Check the terminal output above.");
+        println!(
+            "cargo::warning=Makefile failed to generate icons. Check the terminal output above."
+        );
     }
 }

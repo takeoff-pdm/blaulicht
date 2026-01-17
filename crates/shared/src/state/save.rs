@@ -486,7 +486,10 @@ mod tests {
             decoded.artnet.receivers[0].address,
             "127.0.0.1:6454".parse().unwrap()
         );
-        assert_eq!(decoded.plugin_state.get("plugin"), Some(&"state".to_string()));
+        assert_eq!(
+            decoded.plugin_state.get("plugin"),
+            Some(&"state".to_string())
+        );
 
         let restored_engine =
             EngineState::try_from(decoded.engine).expect("Engine conversion should succeed");

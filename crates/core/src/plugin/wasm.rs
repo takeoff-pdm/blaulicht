@@ -537,6 +537,39 @@ impl PluginManager {
             },
         )?;
 
+        // Switch
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_switch",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  id: i32,
+                  value: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+                let label = String::from_utf8_lossy(&buffer).to_string();
+
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::Switch {
+                        label,
+                        id: id as u8,
+                        value: value != 0,
+                    });
+            },
+        )?;
+
         // Slider
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(

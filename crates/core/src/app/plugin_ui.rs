@@ -178,6 +178,27 @@ fn render_plugin_ops(
                 }
                 *idx += 1;
             }
+            Op::Switch { label, id, value } => {
+                let mut state = *value;
+                let mut widget = components::Switch::new(&mut state);
+                if !label.is_empty() {
+                    widget = widget.with_label(label.clone());
+                }
+
+                if ui.add(widget).changed() {
+                    let evt = ControlEvent::PluginUi(
+                        PluginUiEvent::Switch {
+                            id: *id,
+                            value: state,
+                        },
+                        plugin_id,
+                    );
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                }
+
+                *idx += 1;
+            }
             Op::Slider {
                 label,
                 id,

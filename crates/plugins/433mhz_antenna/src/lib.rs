@@ -369,8 +369,11 @@ impl SamplePlugin {
                 if idx >= (u8::MAX as usize).saturating_sub(REMOTE_CHECKBOX_BASE_ID as usize) {
                     continue;
                 }
+                if idx > 0 {
+                    ui::separator();
+                }
                 let checkbox_id = REMOTE_CHECKBOX_BASE_ID.saturating_add(idx as u8);
-                ui::checkbox(
+                ui::switch(
                     &remote.name,
                     checkbox_id,
                     *self.remote_enabled.get(idx).unwrap_or(&false),
@@ -421,6 +424,9 @@ impl SamplePlugin {
             ui::label("Add a remote to configure mappings.");
         } else {
             for (remote_idx, remote) in self.remote_definitions.iter().enumerate() {
+                if remote_idx > 0 {
+                    ui::separator();
+                }
                 ui::label(&remote.name);
                 ui::begin_vertical();
                 for button_index in 0..MAX_REMOTE_BUTTONS {
@@ -480,6 +486,14 @@ impl SamplePlugin {
                 }
 
                 match ui_event {
+                    PluginUiEvent::Switch { id, value } => {
+                        let idx = id.saturating_sub(REMOTE_CHECKBOX_BASE_ID) as usize;
+                        if id >= REMOTE_CHECKBOX_BASE_ID && idx < self.remote_enabled.len() {
+                            println!("Remote {} enabled -> {}", idx, value);
+                            self.remote_enabled[idx] = value;
+                            self.save_state();
+                        }
+                    }
                     PluginUiEvent::Checkbox { id, checked } => {
                         let idx = id.saturating_sub(REMOTE_CHECKBOX_BASE_ID) as usize;
                         if id >= REMOTE_CHECKBOX_BASE_ID && idx < self.remote_enabled.len() {
