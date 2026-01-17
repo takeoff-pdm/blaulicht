@@ -369,8 +369,24 @@ pub struct AnimationSpecBodyBpmValue {}
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyBeat {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
-pub struct AnimationSpecBodyFrequencies {}
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+pub struct AnimationSpecBodyFrequencies {
+    pub gate: u8,
+    pub boost: u8,
+    pub freq_min: u16,
+    pub freq_max: u16,
+}
+
+impl Default for AnimationSpecBodyFrequencies {
+    fn default() -> Self {
+        Self {
+            gate: 0,
+            boost: 0,
+            freq_min: 0,
+            freq_max: 20_000,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyWasm {}

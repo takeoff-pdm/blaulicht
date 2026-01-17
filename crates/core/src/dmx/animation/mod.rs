@@ -1,5 +1,5 @@
 pub mod state;
-use std::time::Instant;
+use std::{cmp, time::Instant};
 
 use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
@@ -76,12 +76,52 @@ impl DmxEngine {
                     return 0;
                 }
 
+                if fixtures_in_selection == 0 {
+                    return 0;
+                }
+
                 // Quantize to reduce dimension of the audio column
                 debug_assert!(audio_snapshot.current_audio_colunn.len() > fixtures_in_selection);
 
-                let chunk_size = audio_snapshot.current_audio_colunn.len() / fixtures_in_selection;
-                let quantized_audio_bins: Vec<usize> = audio_snapshot
-                    .current_audio_colunn
+                // Apply per-animation frequency window, gate, and boost adjustments before binning.
+                let mut processed_bins: Vec<u8> = {
+                    const MAX_FREQ_HZ: f32 = 20_000.0;
+
+                    let mut bins = Vec::with_capacity(audio_snapshot.current_audio_colunn.len());
+
+                    let freq_min =
+                        (freqs.freq_min.min(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
+                    let freq_max =
+                        (freqs.freq_min.max(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
+
+                    let denom = (audio_snapshot.current_audio_colunn.len() - 1).max(1) as f32;
+
+                    let gate_threshold = freqs.gate as f32;
+                    let boost = freqs.boost;
+
+                    for (idx, raw_value) in audio_snapshot.current_audio_colunn.iter().enumerate() {
+                        let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
+
+                        let mut value = *raw_value as f32;
+
+                        let in_freq_range = bin_freq >= freq_min && bin_freq <= freq_max;
+
+                        if !in_freq_range {
+                            value = 0.0;
+                        } else if value < gate_threshold {
+                            value = 0.0;
+                        } else if boost > 0 {
+                            value = (value + boost as f32).min(u8::MAX as f32);
+                        }
+
+                        bins.push(value.round().clamp(0.0, u8::MAX as f32) as u8);
+                    }
+
+                    bins
+                };
+
+                let chunk_size = cmp::max(processed_bins.len() / fixtures_in_selection, 1);
+                let quantized_audio_bins: Vec<usize> = processed_bins
                     .chunks(chunk_size)
                     .map(|chunk| {
                         // Compute average

@@ -11,6 +11,7 @@ use blaulicht_shared::{
     AnimationSpeedModifier, AnimationTemplate, FixtureProperty, MathematicalBaseFunction,
     PhaserDuration, PhaserKind, SyncMode,
 };
+use eframe::glow::components_per_format;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{Line, Plot, PlotPoints};
 use strum::IntoEnumIterator;
@@ -631,7 +632,55 @@ impl AnimationEditState {
     }
 
     fn anim_freq_ui(&mut self, ui: &mut egui::Ui) {
-        ui.label("[AUDIO-FREQ]");
+        let AnimationSpecBody::AudioFrequencies(ref mut body) = self.working_state.body else {
+            return;
+        };
+
+        ui.horizontal(|ui| {
+            let mut gate_value = body.gate as f32;
+            if ui
+                .add(HFader::new(&mut gate_value, 0.0..=255.0).with_label("Gate"))
+                .changed()
+            {
+                body.gate = gate_value.clamp(0.0, 255.0).round() as u8;
+            }
+
+            ui.add_space(32.0);
+
+            let mut boost_value = body.boost as f32;
+            if ui
+                .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
+                .changed()
+            {
+                body.boost = boost_value.clamp(0.0, 255.0).round() as u8;
+            }
+        });
+
+        ui.add_space(12.0);
+
+        ui.horizontal(|ui| {
+            let mut freq_min_value = body.freq_min as f32;
+            if ui
+                .add(HFader::new(&mut freq_min_value, 0.0..=20_000.0).with_label("Freq Min"))
+                .changed()
+            {
+                body.freq_min = freq_min_value.clamp(0.0, 20_000.0).round() as u16;
+            }
+
+            ui.add_space(32.0);
+
+            let mut freq_max_value = body.freq_max as f32;
+            if ui
+                .add(HFader::new(&mut freq_max_value, 0.0..=20_000.0).with_label("Freq Max"))
+                .changed()
+            {
+                body.freq_max = freq_max_value.clamp(0.0, 20_000.0).round() as u16;
+            }
+        });
+
+        if body.freq_min > body.freq_max {
+            std::mem::swap(&mut body.freq_min, &mut body.freq_max);
+        }
     }
 
     fn anim_beat_ui(&mut self, ui: &mut egui::Ui) {

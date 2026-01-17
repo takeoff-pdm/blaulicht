@@ -18,6 +18,7 @@ pub struct CollectorOutputSpec {
     // update_every: Duration,
     // last_update: Instant,
     pub bins_p_column: Option<usize>, // If None, no columns will be included
+    pub raw: bool,                    // Whether to apply envelopes, etc.
 }
 
 impl Default for CollectorOutputSpec {
@@ -26,6 +27,7 @@ impl Default for CollectorOutputSpec {
             // update_every: Default::default(),
             // last_update: Instant::now(),
             bins_p_column: Default::default(),
+            raw: false,
         }
     }
 }
@@ -118,6 +120,7 @@ where
 {
     pub audio_source: SourceT,
     pub freqs: Vec<Frequency>,
+    pub freqs_raw: Vec<Frequency>, // Without transformations.
     pub current: CollectedAudioSnapshot,
     pub params: SignalCollectorParams,
     pub scratch_params: CollectorScratchParameters,
@@ -183,6 +186,7 @@ where
             params,
             scratch_params,
             freqs: vec![],
+            freqs_raw: vec![],
             // converter,
             // _capture,
             current: CollectedAudioSnapshot::default(),
@@ -223,6 +227,8 @@ where
     fn get_frequencies(&mut self, now: usize) {
         let values_raw = self.audio_source.get_frequencies(now);
 
+        self.freqs_raw = values_raw.clone();
+
         let values_vol_adjusted = match self.params.volume {
             100 => values_raw,
             adjust_percent => values_raw
@@ -237,6 +243,8 @@ where
                 })
                 .collect(),
         };
+
+        // TODO: would outsource into function.
 
         let values = match self.params.gate {
             0 => values_vol_adjusted,
@@ -334,8 +342,13 @@ where
     pub fn tick_output<const OUTPUT_INDEX: usize>(&mut self) -> CollectorOutput {
         let output_spec = self.outputs[OUTPUT_INDEX];
 
+        let freqs = match output_spec.raw {
+            true => &self.freqs_raw,
+            false => &self.freqs,
+        };
+
         let current_audio_colunn = match output_spec.bins_p_column {
-            Some(num_bins) => bin_spectrum_to_u8(&self.freqs, num_bins),
+            Some(num_bins) => bin_spectrum_to_u8(freqs, num_bins),
             None => vec![],
         };
 

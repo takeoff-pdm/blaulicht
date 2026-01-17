@@ -60,8 +60,15 @@ impl EngineState {
     }
 
     pub fn create_group(&mut self, name: String) -> u8 {
-        let new_id = self.0.groups.len();
+        // TODO: this is insane code
+        let mut new_id = self.0.groups.len();
+
+        while self.0.groups.contains_key(&(new_id as u8)) {
+            new_id += 1;
+        }
+
         debug_assert!(new_id < u8::MAX as usize);
+
         self.0.groups.insert(
             new_id as u8,
             FixtureGroup {

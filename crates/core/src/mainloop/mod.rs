@@ -155,9 +155,11 @@ pub fn run(
 
     collector_outputs[COLLECTOR_DMX] = CollectorOutputSpec {
         bins_p_column: Some(128), // TODO: maybe this needs some tweaking.
+        raw: true,
     };
     collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
         bins_p_column: Some(128),
+        raw: false,
     };
 
     #[cfg(feature = "audio")]
