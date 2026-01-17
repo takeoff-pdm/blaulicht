@@ -375,6 +375,7 @@ pub struct AnimationSpecBodyFrequencies {
     pub boost: u8,
     pub freq_min: u16,
     pub freq_max: u16,
+    pub normalization: FrequencyNormalization,
 }
 
 impl Default for AnimationSpecBodyFrequencies {
@@ -384,7 +385,29 @@ impl Default for AnimationSpecBodyFrequencies {
             boost: 0,
             freq_min: 0,
             freq_max: 20_000,
+            normalization: FrequencyNormalization::default(),
         }
+    }
+}
+
+#[derive(
+    Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode, EnumIter,
+)]
+pub enum FrequencyNormalization {
+    Logarithmic,
+    Off,
+    Flat,
+}
+
+impl Default for FrequencyNormalization {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl Display for FrequencyNormalization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

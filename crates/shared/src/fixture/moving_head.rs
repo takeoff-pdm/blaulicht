@@ -1,6 +1,6 @@
 use crate::{
     HSVColor, RGBColor,
-    fixture::state::{FixtureOrientation, FixtureState},
+    fixture::state::{FixtureOrientation, FixtureState, Position},
 };
 
 use super::Fixture;
@@ -158,11 +158,23 @@ impl MovingHead {
     pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             MovingHead::MartinMac250E => {
+                self.write(
+                    this,
+                    &FixtureState {
+                        orientation: FixtureOrientation {
+                            pan: 127,
+                            tilt: 127,
+                        },
+                        ..state.clone()
+                    },
+                    dmx,
+                ); // Ensure all other values are not fucked up.
+
                 match time {
                     v if v <= 5000 => {
                         // Enable lamp.
                         println!("ENABLE LAMP");
-                        dmx[this.start_addr + 0] = 236;
+                        dmx[this.start_addr + 0] = 237;
                     }
                     v => {
                         println!("DONT ENABLE LAMP");

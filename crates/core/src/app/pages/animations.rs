@@ -8,8 +8,8 @@ use crate::{
 use blaulicht_shared::{
     AnimationSpec, AnimationSpecBody, AnimationSpecBodyAudioVolume, AnimationSpecBodyBeat,
     AnimationSpecBodyFrequencies, AnimationSpecBodyKind, AnimationSpecBodyPhaser,
-    AnimationSpeedModifier, AnimationTemplate, FixtureProperty, MathematicalBaseFunction,
-    PhaserDuration, PhaserKind, SyncMode,
+    AnimationSpeedModifier, AnimationTemplate, FixtureProperty, FrequencyNormalization,
+    MathematicalBaseFunction, PhaserDuration, PhaserKind, SyncMode,
 };
 use eframe::glow::components_per_format;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
@@ -381,6 +381,11 @@ pub struct AnimationEditState {
     pub speed_numberpad: Numberpad,
     pub clamp_min_numberpad: Numberpad,
     pub clamp_max_numberpad: Numberpad,
+    pub freq_gate_numberpad: Numberpad,
+    pub freq_boost_numberpad: Numberpad,
+    pub freq_min_numberpad: Numberpad,
+    pub freq_max_numberpad: Numberpad,
+    pub freq_normalization_dialog_open: bool,
 }
 
 impl Default for AnimationEditState {
@@ -408,6 +413,19 @@ impl Default for AnimationEditState {
             clamp_max_numberpad: Numberpad::new()
                 .dialog_title("clamp-max-num")
                 .range(0.0, 360.0),
+            freq_gate_numberpad: Numberpad::new()
+                .dialog_title("freq-gate-num")
+                .range(0.0, 255.0),
+            freq_boost_numberpad: Numberpad::new()
+                .dialog_title("freq-boost-num")
+                .range(0.0, 255.0),
+            freq_min_numberpad: Numberpad::new()
+                .dialog_title("freq-min-num")
+                .range(0.0, 20_000.0),
+            freq_max_numberpad: Numberpad::new()
+                .dialog_title("freq-max-num")
+                .range(0.0, 20_000.0),
+            freq_normalization_dialog_open: false,
         }
     }
 }
@@ -419,6 +437,11 @@ impl AnimationEditState {
         self.sync_mode_dialog_open = false;
         self.math_base_fn_dialog_open = false;
         self.speed_numberpad.close();
+        self.freq_gate_numberpad.close();
+        self.freq_boost_numberpad.close();
+        self.freq_min_numberpad.close();
+        self.freq_max_numberpad.close();
+        self.freq_normalization_dialog_open = false;
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> Option<AnimationSpec> {
@@ -636,46 +659,57 @@ impl AnimationEditState {
             return;
         };
 
+        const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+        let cell_h = BUTTON_SIZE.dim().0.y;
+        const LABEL_W: f32 = 120.0;
+
         ui.horizontal(|ui| {
-            let mut gate_value = body.gate as f32;
-            if ui
-                .add(HFader::new(&mut gate_value, 0.0..=255.0).with_label("Gate"))
-                .changed()
-            {
-                body.gate = gate_value.clamp(0.0, 255.0).round() as u8;
+            ui.add_sized([LABEL_W, cell_h], Label::new("Normalization:"));
+
+            if components::button(
+                ui,
+                self.freq_normalization_dialog_open,
+                &body.normalization.to_string(),
+                BUTTON_SIZE.with_width(140.0),
+            ) {
+                self.freq_normalization_dialog_open = true;
             }
 
-            ui.add_space(32.0);
+            let (new_norm, changed) = components::selection_dialog(
+                ui.ctx(),
+                FrequencyNormalization::iter(),
+                body.normalization,
+                &mut self.freq_normalization_dialog_open,
+                "Select Normalization".to_string(),
+            );
 
-            let mut boost_value = body.boost as f32;
-            if ui
-                .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
-                .changed()
-            {
-                body.boost = boost_value.clamp(0.0, 255.0).round() as u8;
+            if changed {
+                body.normalization = new_norm;
             }
         });
 
         ui.add_space(12.0);
 
         ui.horizontal(|ui| {
-            let mut freq_min_value = body.freq_min as f32;
-            if ui
-                .add(HFader::new(&mut freq_min_value, 0.0..=20_000.0).with_label("Freq Min"))
-                .changed()
-            {
-                body.freq_min = freq_min_value.clamp(0.0, 20_000.0).round() as u16;
-            }
+            ui.add_sized([LABEL_W, cell_h], Label::new("Gate:"));
+            self.freq_gate_numberpad.ui(ui, &mut body.gate);
 
             ui.add_space(32.0);
 
-            let mut freq_max_value = body.freq_max as f32;
-            if ui
-                .add(HFader::new(&mut freq_max_value, 0.0..=20_000.0).with_label("Freq Max"))
-                .changed()
-            {
-                body.freq_max = freq_max_value.clamp(0.0, 20_000.0).round() as u16;
-            }
+            ui.add_sized([LABEL_W, cell_h], Label::new("Boost:"));
+            self.freq_boost_numberpad.ui(ui, &mut body.boost);
+        });
+
+        ui.add_space(12.0);
+
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Freq Min:"));
+            self.freq_min_numberpad.ui(ui, &mut body.freq_min);
+
+            ui.add_space(32.0);
+
+            ui.add_sized([LABEL_W, cell_h], Label::new("Freq Max:"));
+            self.freq_max_numberpad.ui(ui, &mut body.freq_max);
         });
 
         if body.freq_min > body.freq_max {

@@ -84,10 +84,8 @@ impl DmxEngine {
                 debug_assert!(audio_snapshot.current_audio_colunn.len() > fixtures_in_selection);
 
                 // Apply per-animation frequency window, gate, and boost adjustments before binning.
-                let mut processed_bins: Vec<u8> = {
+                let processed_bins: Vec<u8> = {
                     const MAX_FREQ_HZ: f32 = 20_000.0;
-
-                    let mut bins = Vec::with_capacity(audio_snapshot.current_audio_colunn.len());
 
                     let freq_min =
                         (freqs.freq_min.min(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
@@ -99,26 +97,35 @@ impl DmxEngine {
                     let gate_threshold = freqs.gate as f32;
                     let boost = freqs.boost;
 
-                    for (idx, raw_value) in audio_snapshot.current_audio_colunn.iter().enumerate() {
-                        let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
+                    audio_snapshot
+                        .current_audio_colunn
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(idx, raw_value)| {
+                            let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
 
-                        let mut value = *raw_value as f32;
+                            if bin_freq < freq_min || bin_freq > freq_max {
+                                return None;
+                            }
 
-                        let in_freq_range = bin_freq >= freq_min && bin_freq <= freq_max;
+                            let mut value = *raw_value as f32;
 
-                        if !in_freq_range {
-                            value = 0.0;
-                        } else if value < gate_threshold {
-                            value = 0.0;
-                        } else if boost > 0 {
-                            value = (value + boost as f32).min(u8::MAX as f32);
-                        }
+                            if value < gate_threshold {
+                                return None;
+                            }
 
-                        bins.push(value.round().clamp(0.0, u8::MAX as f32) as u8);
-                    }
+                            if boost > 0 {
+                                value = (value + boost as f32).min(u8::MAX as f32);
+                            }
 
-                    bins
+                            Some(value.round().clamp(0.0, u8::MAX as f32) as u8)
+                        })
+                        .collect()
                 };
+
+                if processed_bins.is_empty() {
+                    return 0;
+                }
 
                 let chunk_size = cmp::max(processed_bins.len() / fixtures_in_selection, 1);
                 let mut quantized_audio_bins: Vec<usize> = processed_bins
