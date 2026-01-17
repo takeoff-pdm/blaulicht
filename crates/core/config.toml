@@ -4,26 +4,26 @@ dmx_out_devices = [
     "/dev/dmx_out_0",
 ]
 default_audio_device = "pipewire"
-run_setup_on_reload = true
+run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/17.01.new.json"
+last_open_showfile = "/home/mik/17.01.freq.json"
 
 [stream]
 fft_resolution = 4096
-gravity = 100.0
 refresh_rate = 60
+gravity = 100.0
 
 [stream.processor]
+sample_rate = 44100
 frequency_bounds = [
     40,
     20000,
 ]
-interpolation = "Cubic"
-position_normalisation = "Harmonic"
-sample_rate = 44100
 volume = 1.0
 volume_normalisation = "Mixture"
+position_normalisation = "Harmonic"
+interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"
@@ -52,6 +52,11 @@ enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/test.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/videowall.wasm"
 enabled = true
 enable_watcher = true
 

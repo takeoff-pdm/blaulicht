@@ -2,7 +2,13 @@
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
     fn log(plugin_id: u8, ptr: *const u8, len: usize, log_level: i32);
-    fn sys(plugin_id: u8, ptr: *const u8, len: usize);
+    fn sys(
+        plugin_id: u8,
+        ptr: *const u8,
+        len: usize,
+        output_ptr: *mut u8,
+        output_len: usize,
+    );
     fn udp(
         target_addr_ptr: *const u8,
         target_addr_len: usize,
@@ -222,8 +228,22 @@ pub fn bl_log(msg: &str, level: LogLevel) {
     unsafe { log(PLUGIN_ID, msg.as_ptr(), msg.len(), level.into()) }
 }
 
-pub fn system(cmd: &str) {
-    unsafe { sys(PLUGIN_ID, cmd.as_ptr(), cmd.len()) }
+pub fn system(cmd: &str) -> String {
+    const OUTPUT_BUFFER_SIZE: usize = 1000;
+    let mut buffer = vec![0u8; OUTPUT_BUFFER_SIZE];
+
+    unsafe {
+        sys(
+            PLUGIN_ID,
+            cmd.as_ptr(),
+            cmd.len(),
+            buffer.as_mut_ptr(),
+            buffer.len(),
+        );
+    }
+
+    let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
+    String::from_utf8_lossy(&buffer[..len]).into_owned()
 }
 
 pub fn send_event(event: ControlEvent) {

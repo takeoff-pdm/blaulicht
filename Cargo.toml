@@ -28,6 +28,7 @@ exclude = [
     "./crates/plugins/midi_all",
     "./crates/plugins/visualizer",
     "./crates/plugins/433mhz_antenna",
+    "./crates/plugins/videowall",
     "./crates/plugins/test",
 ]
 resolver = "2"

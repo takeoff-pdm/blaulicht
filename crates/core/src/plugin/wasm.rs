@@ -255,9 +255,12 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "sys",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
-                use serde::de::Error;
-
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  output_str_pointer: i32,
+                  output_str_capacity: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -272,10 +275,82 @@ impl PluginManager {
 
                 let output = Command::new("bash").arg("-c").arg(received_string).output();
 
+                let report_memory_error =
+                    |action: &str, err: wasmtime::MemoryAccessError| {
+                        let msg = format!("WASM: {action}: {err}");
+                        error!("{msg}");
+                        if let Err(send_err) =
+                            so.send(SystemMessage::Log(msg.clone(), LogLevel::Err))
+                        {
+                            warn!(
+                                "WASM: Failed to forward memory access error to system output: {send_err}"
+                            );
+                        }
+                    };
+
+                let write_stdout_to_guest = |caller: &mut Caller<'_, ()>,
+                                             stdout_bytes: &[u8]|
+                 -> bool {
+                    let capacity = output_str_capacity.max(0) as usize;
+
+                    if capacity == 0 {
+                        return true;
+                    }
+
+                    let zero_buf = vec![0u8; capacity];
+                    if let Err(err) = memory.write(
+                        &mut *caller,
+                        output_str_pointer as usize,
+                        &zero_buf,
+                    ) {
+                        report_memory_error(
+                            "Failed to clear stdout buffer in guest memory",
+                            err,
+                        );
+                        return false;
+                    }
+
+                    let copy_len = stdout_bytes
+                        .len()
+                        .min(capacity.saturating_sub(1));
+
+                    if copy_len > 0 {
+                        if let Err(err) = memory.write(
+                            &mut *caller,
+                            output_str_pointer as usize,
+                            &stdout_bytes[..copy_len],
+                        ) {
+                            report_memory_error(
+                                "Failed to write stdout into guest memory",
+                                err,
+                            );
+                            return false;
+                        }
+                    }
+
+                    true
+                };
+
                 match output {
                     Ok(o) => {
-                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        let stdout_bytes = &o.stdout;
                         let stderr = String::from_utf8_lossy(&o.stderr);
+
+                        if write_stdout_to_guest(&mut caller, stdout_bytes) {
+                            let capacity = output_str_capacity.max(0) as usize;
+                            let max_payload = capacity.saturating_sub(1);
+                            if capacity > 0 && stdout_bytes.len() > max_payload {
+                                so.send(SystemMessage::Log(
+                                    format!(
+                                        "WASM: Command STDOUT truncated to fit into buffer of size {capacity}"
+                                    ),
+                                    LogLevel::Warn,
+                                ))
+                                .unwrap();
+                            }
+                        }
+
+                        let stdout = String::from_utf8_lossy(stdout_bytes);
 
                         so.send(SystemMessage::Log(
                             format!("WASM: Command STDOUT: {stdout}"),
@@ -299,6 +374,8 @@ impl PluginManager {
                         }
                     }
                     Err(err) => {
+                        write_stdout_to_guest(&mut caller, &[]);
+
                         so.send(SystemMessage::Log(
                             format!("WASM: Command invocation error: {err}"),
                             LogLevel::Err,

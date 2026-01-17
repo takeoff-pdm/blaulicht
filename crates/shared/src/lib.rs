@@ -25,3 +25,5 @@ pub use animation::*;
 
 mod serial;
 pub use serial::*;
+
+pub mod misc_event;

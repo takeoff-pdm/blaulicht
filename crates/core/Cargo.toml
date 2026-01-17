@@ -12,7 +12,7 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 
 [features]
-default = ["audio", "wayland"] # ["wasmtime"]   # keep it on by default
+default = ["audio", "wayland", "wasmtime"] # ["wasmtime"]   # keep it on by default
 wasmtime = ["dep:wasmtime"]
 audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in"]
 audio-mock = ["blaulicht-audio-engine/noise"]

@@ -102,7 +102,10 @@ impl BlaulichtApp {
             mem.set_modal_layer(window_layer);
         });
 
-        egui::Window::new("Initializing...")
+        const INIT_TITLE: &str =
+            concat!("Initializing (v", env!("CARGO_PKG_VERSION"), ") ...");
+
+        egui::Window::new(INIT_TITLE)
             .id(window_id)
             .fixed_size(popup_size)
             .collapsible(false)
@@ -120,7 +123,7 @@ impl BlaulichtApp {
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(
-                        RichText::new("Initializing...")
+                        RichText::new(INIT_TITLE)
                             .size(14.0)
                             .color(Color32::from_gray(150)),
                     );

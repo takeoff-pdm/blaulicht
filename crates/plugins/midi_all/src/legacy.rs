@@ -2,7 +2,9 @@ use blaulicht_plugin_framework::{
     self as bpf, midi, println, send_event, ui, MidiConnection, MidiEvent,
 };
 use blaulicht_shared::{
-    hsv_to_rgb, AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
+    hsv_to_rgb,
+    misc_event::videowall::{REQUEST_STATUS_REFRESH, SET_BRIGHTNESS},
+    AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
 };
 use map_range::MapRange;
 use std::{fmt::Display, mem::MaybeUninit};
@@ -76,38 +78,18 @@ pub struct LegacyState {
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
 
-fn set_video(vid: &str) {
-    let body_str = vid.as_bytes();
-    let mut body = Vec::with_capacity(body_str.len() + 1);
-    body.push(100);
-    body.extend_from_slice(body_str);
-    // TODO: make IP configurable.
-    bpf::send_udp("192.168.0.102:1714", &body);
-}
-
-pub fn set_rotate(value: u8) {
-    let val = (value as u16).map_range(0..127, 0..360);
-    let val_bytes = val.to_le_bytes();
-    let mut buf = Vec::with_capacity(1 + val_bytes.len());
-    buf.push(120);
-    buf.extend_from_slice(&val_bytes);
-    bpf::send_udp("192.168.0.102:1714", &buf);
-}
-
-// pub fn set_vid_speed(value: u8) {
-//     bl_udp("127.0.0.1:9000", &[130, val]);
-// }
-
-pub fn set_brightness_internal(val: u8) {
-    bpf::send_udp("192.168.0.102:1714", &[130, val]);
-}
-
 impl LegacyState {
     pub fn init(&mut self) {
         println!("[LEGACY] Initializing...");
 
-        // set_video("a to x ng.mp4");
-        // set_rotate(0);
+        // bpf::send_event(ControlEvent::MiscEvent {
+        //     descriptor: SET_VIDEO_INDEX,
+        //     value: 0,
+        // });
+        // bpf::send_event(ControlEvent::MiscEvent {
+        //     descriptor: SET_ROTATION,
+        //     value: 0,
+        // });
 
         //
         // return;
@@ -152,7 +134,7 @@ impl LegacyState {
     }
 
     pub fn set_fans(&mut self, v: bool) {
-        bpf::system(&format!("sudo fans {}", if v { "on" } else { "off" }));
+        let _ = bpf::system(&format!("sudo fans {}", if v { "on" } else { "off" }));
         self.fans = v;
     }
 
@@ -491,7 +473,10 @@ impl LegacyState {
             match (e.status, e.kind, e.value) {
                 (176, 55, val) => {
                     println!("val");
-                    set_brightness_internal(val);
+                    bpf::send_event(ControlEvent::MiscEvent {
+                        descriptor: SET_BRIGHTNESS,
+                        value: val,
+                    });
                 }
                 (144, scene, 127) if SCENES_INT.contains(&scene) => {
                     let normal_index = SCENES_INT.iter().position(|v| *v == scene).unwrap();
@@ -526,6 +511,15 @@ impl LegacyState {
                         self.current_app_page = Some(app_page.clone());
                         self.sync_app_page(&conn);
                         bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(app_page)));
+                    }
+                }
+                (176, 56, val) => {
+                    // Allow requesting status refresh from a spare knob
+                    if val == 127 {
+                        bpf::send_event(ControlEvent::MiscEvent {
+                            descriptor: REQUEST_STATUS_REFRESH,
+                            value: 1,
+                        });
                     }
                 }
                 _ => {
