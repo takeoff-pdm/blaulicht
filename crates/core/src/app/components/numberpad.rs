@@ -242,8 +242,6 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
 
                     if appended_digit {
                         appended_digit_from_text = true;
-                        clamp_applied |=
-                            enforce_input_constraints::<T>(&mut state.input_buffer, range);
                     }
 
                     if !non_digits.is_empty() {
@@ -278,7 +276,6 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
             for digit in fallback_digits {
                 append_digit(&mut state.input_buffer, digit);
             }
-            clamp_applied |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
 
         if input.consume_key(Modifiers::NONE, Key::Backspace) {
@@ -379,19 +376,21 @@ fn handle_button_action<T: egui::emath::Numeric>(
                     state.input_buffer = "0".to_string();
                 }
             }
-            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         "CLR" => {
             state.input_buffer = "0".to_string();
-            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         "Enter" => {
             if let Some((parsed, was_clamped)) =
                 parse_numeric_input::<T>(&state.input_buffer, range)
             {
                 *value = parsed;
-                clamped |= was_clamped;
-                state.close_dialog();
+                if was_clamped {
+                    state.input_buffer = format_numeric_value(&parsed);
+                    clamped |= was_clamped;
+                } else {
+                    state.close_dialog();
+                }
             }
         }
         "Cancel" => {
@@ -399,7 +398,6 @@ fn handle_button_action<T: egui::emath::Numeric>(
         }
         digit if digit.len() == 1 && digit.chars().all(|c| c.is_ascii_digit()) => {
             append_digit(&mut state.input_buffer, digit.chars().next().unwrap());
-            clamped |= enforce_input_constraints::<T>(&mut state.input_buffer, range);
         }
         _ => {}
     }

@@ -121,7 +121,7 @@ impl DmxEngine {
                 };
 
                 let chunk_size = cmp::max(processed_bins.len() / fixtures_in_selection, 1);
-                let quantized_audio_bins: Vec<usize> = processed_bins
+                let mut quantized_audio_bins: Vec<usize> = processed_bins
                     .chunks(chunk_size)
                     .map(|chunk| {
                         // Compute average
@@ -131,7 +131,11 @@ impl DmxEngine {
                     })
                     .collect();
 
-                debug_assert!(fixtures_in_selection <= quantized_audio_bins.len());
+                while fixtures_in_selection >= quantized_audio_bins.len() {
+                    quantized_audio_bins.push(0);
+                }
+
+                debug_assert!(fixtures_in_selection < quantized_audio_bins.len());
 
                 let fixture_value = quantized_audio_bins[fixture_index_in_selection];
                 fixture_value as u16
