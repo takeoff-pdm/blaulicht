@@ -494,6 +494,9 @@ impl AnimationEditState {
 
         ui.vertical(|ui| {
             match &mut phaser_mut.kind {
+                PhaserKind::MathRush(rush) => {
+                    egui::text_edit
+                }
                 PhaserKind::Mathematical(mathematical_phaser) => {
                     ui.horizontal(|ui| {
                         ui.horizontal(|ui| {
