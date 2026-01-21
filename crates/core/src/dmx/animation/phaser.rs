@@ -7,6 +7,28 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: u64) -> u16 {
     debug_assert!((0.0..=360.0).contains(&degrees));
 
     let value = match &self_.kind {
+        PhaserKind::MathRush(rush) => {
+            let ast = match rush_analyzer::analyze(&rush.function_expression, "animation.rush") {
+                Ok((ast, _)) => ast,
+                Err(diagnostics) => {
+                    for d in diagnostics {
+                        log::error!("{d}");
+                    }
+
+                    return 0;
+                }
+            };
+
+            let anim_value = match rush_interpreter_vm::run(ast) {
+                Ok(c) => c,
+                Err(err) => {
+                    log::error!("{err}");
+                    0
+                }
+            };
+
+            anim_value as f32
+        }
         PhaserKind::Mathematical(mathematical_phaser) => {
             let min = mathematical_phaser.amplitude_min as f32;
             let max = mathematical_phaser.amplitude_max as f32;

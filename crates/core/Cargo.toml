@@ -77,6 +77,8 @@ image = { version = "0.25", default-features = false, features = ["bmp"] }
 # ron = "0.12.0"
 artnet_protocol = "0.4.4"
 rush-interpreter-vm = "0.1.2"
+egui_code_editor = { version = "=0.2.14" }
+rush-analyzer = "0.1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"

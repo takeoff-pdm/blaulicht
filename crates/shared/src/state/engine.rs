@@ -224,6 +224,7 @@ impl AnimationSpec {
 pub enum AnimationSpecBody {
     /// Phaser operates on a degree (0-360 DEG) an the amount is increased in time steps.
     Phaser(AnimationSpecBodyPhaser),
+    PhaserRush(MathematicalPhaserRush),
     AudioVolume(AnimationSpecBodyAudioVolume),
     BPMValue(AnimationSpecBodyBpmValue),
     AudioBeat(AnimationSpecBodyBeat),
@@ -236,6 +237,7 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
     fn from(value: AnimationSpecBodyKind) -> Self {
         match value {
             AnimationSpecBodyKind::Phaser => Self::Phaser(AnimationSpecBodyPhaser::default()),
+            AnimationSpecBodyKind::PhaserRush => Self::Phaser(MathematicalPhaserRush::default()),
             AnimationSpecBodyKind::AudioVolume => {
                 Self::AudioVolume(AnimationSpecBodyAudioVolume::default())
             }
@@ -267,6 +269,7 @@ impl AnimationSpecBody {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, EnumIter, PartialEq, Eq)]
 pub enum AnimationSpecBodyKind {
     Phaser,
+    PhaserRush,
     AudioVolume,
     BPMValue,
     AudioBeat,
@@ -314,12 +317,26 @@ impl Display for PhaserDuration {
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub enum PhaserKind {
     Mathematical(MathematicalPhaser),
+    MathRush(MathematicalPhaserRush),
     Keyframed(KeyframedPhaser),
 }
 
 impl Default for PhaserKind {
     fn default() -> Self {
         Self::Mathematical(MathematicalPhaser::default())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+pub struct MathematicalPhaserRush {
+    pub function_expression: String,
+}
+
+impl Default for MathematicalPhaserRush {
+    fn default() -> Self {
+        Self {
+            function_expression: "fn calculate(x: int) -> int { (x * x) }".to_string(),
+        }
     }
 }
 
@@ -390,9 +407,7 @@ impl Default for AnimationSpecBodyFrequencies {
     }
 }
 
-#[derive(
-    Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode, EnumIter,
-)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode, EnumIter)]
 pub enum FrequencyNormalization {
     Logarithmic,
     Off,

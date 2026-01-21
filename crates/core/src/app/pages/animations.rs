@@ -495,7 +495,17 @@ impl AnimationEditState {
         ui.vertical(|ui| {
             match &mut phaser_mut.kind {
                 PhaserKind::MathRush(rush) => {
-                    egui::text_edit
+                    use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
+                    let syntax = Syntax::rust();
+
+                    CodeEditor::default()
+                        .id_source("code editor")
+                        .with_rows(12)
+                        .with_fontsize(14.0)
+                        .with_theme(ColorTheme::GRUVBOX)
+                        .with_syntax(syntax)
+                        .with_numlines(true)
+                        .show(ui, &mut rush.function_expression);
                 }
                 PhaserKind::Mathematical(mathematical_phaser) => {
                     ui.horizontal(|ui| {
