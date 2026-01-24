@@ -237,6 +237,52 @@ impl eframe::App for BlaulichtApp {
             }
         });
 
+        // let plugin_id_copy = *plugin_id;
+        // let ops_copy = ops_map.get(plugin_id).cloned();
+        // let data_clone = self.data.clone();
+
+        let viewport_id = egui::ViewportId::from_hash_of("foobar");
+        ctx.show_viewport_immediate(
+            viewport_id,
+            egui::ViewportBuilder::default()
+                .with_title("FOOBAR")
+                .with_inner_size([800.0, 480.0])
+                .with_resizable(true),
+            |ctx, _class| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.audio_ui(ui, ctx);
+                });
+            },
+        );
+
+        let viewport_id = egui::ViewportId::from_hash_of("foobar1");
+        ctx.show_viewport_immediate(
+            viewport_id,
+            egui::ViewportBuilder::default()
+                .with_title("FOOBAR")
+                .with_inner_size([800.0, 480.0])
+                .with_resizable(true),
+            |ctx, _class| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.view_perf_ui(ui, ctx);
+                });
+            },
+        );
+
+        let viewport_id = egui::ViewportId::from_hash_of("foobar2");
+        ctx.show_viewport_immediate(
+            viewport_id,
+            egui::ViewportBuilder::default()
+                .with_title("FOOBAR")
+                .with_inner_size([800.0, 480.0])
+                .with_resizable(true),
+            |ctx, _class| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.animations_ui(ctx, ui);
+                });
+            },
+        );
+
         // Render per-plugin UI windows (visible across pages)
         self.render_plugin_ui(ctx);
     }
