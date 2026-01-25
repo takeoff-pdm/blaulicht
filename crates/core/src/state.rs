@@ -165,6 +165,30 @@ pub struct ArtNetOutput {
     pub receivers: Vec<ArtNetReceiver>,
 }
 
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ScreenId(usize);
+
+impl ScreenId {
+    pub const MAIN: Self = Self(0);
+
+    pub fn external(index: usize) -> Self {
+        Self(index + 1)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PluginOpenState {
+    pub screen_id: ScreenId,
+    pub open: bool,
+}
+
+impl PluginOpenState {
+    pub const CLOSED: Self = Self {
+        screen_id: ScreenId::MAIN,
+        open: false,
+    };
+}
+
 pub struct AppState {
     pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
@@ -181,7 +205,9 @@ pub struct AppState {
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     // Back buffer for plugin UI ops. Plugins write here; UI reads from `plugin_ui_ops`.
     pub plugin_ui_ops_back: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
-    pub plugin_ui_visibility: RwLock<HashMap<u8, bool>>, // per-plugin UI window visibility
+    // per-plugin UI window visibility (also per-screen.)
+    // This is (plugin-id, screen_id) to visibility.
+    pub plugin_ui_visibility: RwLock<HashMap<u8, PluginOpenState>>,
     pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>, // (plugin_id, tabs_id) -> tab_id
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
@@ -215,8 +241,8 @@ impl AppState {
         let mut plugin_ui_visibility = HashMap::new();
         let mut plugin_ui_popped_out = HashMap::new();
         for (i, _) in plugins.iter().enumerate() {
-            plugin_ui_visibility.insert(i as u8, false);
-            plugin_ui_popped_out.insert(i as u8, false);
+            plugin_ui_visibility.insert(i as u8, PluginOpenState::CLOSED);
+            plugin_ui_popped_out.insert((i as u8), false);
         }
 
         Self {

@@ -224,7 +224,7 @@ pub struct BlaulichtApp {
 impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
         Self {
-            external_screens: vec![ExternalScreen::mock(), ExternalScreen::mock()],
+            external_screens: vec![],
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
                 "Volume".to_string(),

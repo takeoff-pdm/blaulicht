@@ -1,8 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use crate::app::{BlaulichtApp, ExternalScreen};
+use crate::state::ScreenId;
 use blaulicht_shared::AppPage;
-use egui::{Context, Id, WidgetText};
+use egui::{
+    vec2, Color32, Context, Frame, Id, Layout, Margin, Sense, Stroke, UiBuilder, Widget, WidgetText,
+};
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Style};
 use strum::IntoEnumIterator;
@@ -54,6 +57,7 @@ impl ExternalScreen {
 struct TabViewer<'bl, 'ct> {
     app: &'bl mut BlaulichtApp,
     ctx: &'ct Context,
+    screen_id: ScreenId,
 }
 
 impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
@@ -64,7 +68,27 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        self.app.page_content_based_on_tab(tab.page, ui, self.ctx);
+        Frame::NONE
+            .outer_margin(Margin::same(0))
+            .inner_margin(Margin::same(8))
+            .stroke(Stroke::new(2.0, Color32::RED))
+            .show(ui, |ui| {
+                let (rect, _response) = ui.allocate_exact_size(vec2(723.0, 480.0), Sense::empty());
+                let mut child_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+
+                child_ui.set_clip_rect(rect);
+
+                self.app.page_content_based_on_tab(
+                    tab.page,
+                    &mut child_ui,
+                    self.ctx,
+                    self.screen_id,
+                );
+            });
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
@@ -85,8 +109,14 @@ impl BlaulichtApp {
                 .with_resizable(true),
             |ctx, _class| {
                 let mut screen = self.external_screens[screen_idx].clone();
+                let screen_id = ScreenId::external(screen_idx);
+                self.render_plugin_ui(ctx, screen_id);
 
-                let mut tab_viewer = TabViewer { app: self, ctx };
+                let mut tab_viewer = TabViewer {
+                    app: self,
+                    ctx,
+                    screen_id,
+                };
 
                 DockArea::new(screen.dock_state())
                     .id(Id::new(("external_screen_dock", screen_idx)))
