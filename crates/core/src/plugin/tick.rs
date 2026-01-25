@@ -162,7 +162,7 @@ impl Plugin {
     fn tick(
         &mut self,
         input: TickInput,
-        midi_events: &[MidiEvent],
+        mut midi_events: &[MidiEvent],
         serial_received: Vec<SerialReceived>,
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<()> {
@@ -201,7 +201,8 @@ impl Plugin {
         let midi_array_len = midi_events.len() as u32;
 
         if midi_array_len > 100 {
-            panic!("TOO many MIDI events!");
+            midi_events = &midi_events[0..100];
+            log::warn!("TOO many MIDI events! TRUNCATING");
         }
 
         let mut midi_array_bytes = Vec::new();

@@ -4,26 +4,31 @@ use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::serial::SerialConnection;
 use blaulicht_plugin_framework::{self as bpf, send_event};
 use blaulicht_plugin_framework::{ui, Plugin};
-use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
+use blaulicht_shared::{
+    view::View, AnimationSpeedModifier, ControlEvent, ControlEventMessage, PluginUiEvent, TickInput,
+};
 use serde::{Deserialize, Serialize};
 
-const MAX_REMOTE_BUTTONS: usize = 5;
+const MAX_REMOTE_BUTTONS: usize = 7;
 
-const DEFAULT_REMOTE_SIGNALS: [[u32; MAX_REMOTE_BUTTONS]; 2] = [
+const DEFAULT_REMOTE_SIGNALS: [[u32; MAX_REMOTE_BUTTONS]; 1] = [
     [
         11973516, // 1
         11973514, // 2
         11973513, // 3
         11973517, // 4
         11973515, // 5
+        11973508, // 6
+        11973506, // 7
+                  //
     ],
-    [
-        10194876, // 1
-        10194874, // 2
-        10194873, // 3
-        10194877, // 4
-        10194875, // 5
-    ],
+    // [
+    //     10194876, // 1
+    //     10194874, // 2
+    //     10194873, // 3
+    //     10194877, // 4
+    //     10194875, // 5
+    // ],
 ];
 
 const REMOTE_CHECKBOX_BASE_ID: u8 = 10;
@@ -32,14 +37,25 @@ const WIZARD_NAME_TEXT_ID: u8 = 110;
 const WIZARD_RECORD_BASE_ID: u8 = 120;
 const WIZARD_SAVE_BUTTON_ID: u8 = 130;
 const WIZARD_CANCEL_BUTTON_ID: u8 = 131;
-const SCENE_SELECT_BUTTON_BASE_ID: u8 = 150;
-const SCENE_SELECT_OPTION_BASE_ID: u8 = 200;
+const VIEW_SELECT_BUTTON_BASE_ID: u8 = 150;
+const VIEW_SELECT_OPTION_BASE_ID: u8 = 200;
+const SPEED_SCENE_SELECT_BUTTON_BASE_ID: u8 = 210;
+const SPEED_SCENE_SELECT_OPTION_BASE_ID: u8 = 250;
+const SPEED_MODIFIER_SELECT_BUTTON_BASE_ID: u8 = 40;
+const SPEED_MODIFIER_SELECT_OPTION_BASE_ID: u8 = 80;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct RemoteDefinition {
     name: String,
     button_signals: [u32; MAX_REMOTE_BUTTONS],
-    button_scene_ids: [Option<u8>; MAX_REMOTE_BUTTONS],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    legacy_button_scene_ids: Option<[Option<u8>; MAX_REMOTE_BUTTONS]>,
+    #[serde(default = "default_button_view_ids")]
+    button_view_ids: [Option<u8>; MAX_REMOTE_BUTTONS],
+    // #[serde(default = "default_button_speed_scene_ids")]
+    // button_speed_scene_ids: [Option<u8>; MAX_REMOTE_BUTTONS],
+    #[serde(default = "default_button_speed_cycle_start")]
+    button_speed_cycle_start: [AnimationSpeedModifier; MAX_REMOTE_BUTTONS],
 }
 
 impl RemoteDefinition {
@@ -47,7 +63,21 @@ impl RemoteDefinition {
         Self {
             name,
             button_signals: signals,
-            button_scene_ids: [None; MAX_REMOTE_BUTTONS],
+            legacy_button_scene_ids: None,
+            button_view_ids: default_button_view_ids(),
+            // button_speed_scene_ids: default_button_speed_scene_ids(),
+            button_speed_cycle_start: default_button_speed_cycle_start(),
+        }
+    }
+
+    fn drop_legacy_scene_mappings(&mut self) -> bool {
+        if let Some(legacy) = self.legacy_button_scene_ids.take() {
+            // Only trigger a save if there was at least one legacy assignment.
+            let had_assignment = legacy.iter().any(|entry| entry.is_some());
+            self.button_view_ids = default_button_view_ids();
+            had_assignment
+        } else {
+            false
         }
     }
 }
@@ -92,8 +122,10 @@ impl RemoteWizard {
     fn record_signal(&mut self, button_index: usize, signal: u32) {
         if button_index < MAX_REMOTE_BUTTONS {
             self.button_signals[button_index] = Some(signal);
-            self.status_message =
-                Some(format!("Captured signal {signal} for button {}", button_index + 1));
+            self.status_message = Some(format!(
+                "Captured signal {signal} for button {}",
+                button_index + 1
+            ));
         }
     }
 
@@ -117,6 +149,64 @@ impl RemoteWizard {
     }
 }
 
+fn default_button_view_ids() -> [Option<u8>; MAX_REMOTE_BUTTONS] {
+    [None; MAX_REMOTE_BUTTONS]
+}
+
+fn default_button_speed_scene_ids() -> [Option<u8>; MAX_REMOTE_BUTTONS] {
+    [None; MAX_REMOTE_BUTTONS]
+}
+
+fn default_button_speed_cycle_start() -> [AnimationSpeedModifier; MAX_REMOTE_BUTTONS] {
+    [AnimationSpeedModifier::_1; MAX_REMOTE_BUTTONS]
+}
+
+#[derive(Clone, PartialEq)]
+struct ViewInfo {
+    id: u8,
+    view: View,
+    base_scene_name: Option<String>,
+    overlay_names: Vec<(u8, Option<String>)>,
+}
+
+impl ViewInfo {
+    fn base_label(&self) -> String {
+        match &self.base_scene_name {
+            Some(name) => format!("{name} (#{})", self.view.base_scene),
+            None => format!("Scene #{}", self.view.base_scene),
+        }
+    }
+
+    fn overlays_label(&self) -> String {
+        if self.view.overlays.is_empty() {
+            return "none".to_string();
+        }
+
+        self.overlay_names
+            .iter()
+            .map(|(overlay_id, name)| match name {
+                Some(name) => format!("{name} (#{overlay_id})"),
+                None => format!("Scene #{overlay_id}"),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    fn button_label(&self) -> String {
+        format!("{} (#{})", self.view.name, self.id)
+    }
+
+    fn option_label(&self) -> String {
+        format!(
+            "{} (#{}) – base {} – overlays {}",
+            self.view.name,
+            self.id,
+            self.base_label(),
+            self.overlays_label()
+        )
+    }
+}
+
 pub struct SamplePlugin {
     conn: SerialConnection,
     remote_definitions: Vec<RemoteDefinition>,
@@ -124,8 +214,12 @@ pub struct SamplePlugin {
     log: VecDeque<String>,
     drums_toggle_time: u32,
     wizard: Option<RemoteWizard>,
+    available_views: Vec<ViewInfo>,
     available_scenes: Vec<(u8, String)>,
-    scene_selector_open: Option<(usize, usize)>,
+    scene_speeds: Vec<(u8, AnimationSpeedModifier)>,
+    view_selector_open: Option<(usize, usize)>,
+    speed_selector_open: Option<(usize, usize)>,
+    speed_modifier_selector_open: Option<(usize, usize)>,
 }
 
 impl Default for SamplePlugin {
@@ -134,10 +228,7 @@ impl Default for SamplePlugin {
             .iter()
             .enumerate()
             .map(|(idx, signals)| {
-                RemoteDefinition::from_signals(
-                    format!("Remote {}", idx + 1),
-                    *signals,
-                )
+                RemoteDefinition::from_signals(format!("Remote {}", idx + 1), *signals)
             })
             .collect::<Vec<_>>();
         let remote_enabled = vec![true; remote_definitions.len()];
@@ -149,8 +240,12 @@ impl Default for SamplePlugin {
             log: VecDeque::new(),
             drums_toggle_time: 0,
             wizard: None,
+            available_views: vec![],
             available_scenes: vec![],
-            scene_selector_open: None,
+            scene_speeds: vec![],
+            view_selector_open: None,
+            speed_selector_open: None,
+            speed_modifier_selector_open: None,
         }
     }
 }
@@ -184,11 +279,26 @@ impl SamplePlugin {
                         .resize(self.remote_definitions.len(), true);
                     needs_save = true;
                 } else if self.remote_enabled.len() > self.remote_definitions.len() {
-                    self.remote_enabled
-                        .truncate(self.remote_definitions.len());
+                    self.remote_enabled.truncate(self.remote_definitions.len());
                     needs_save = true;
                 }
             }
+        }
+
+        let mut migrated_remote_names = Vec::new();
+        for remote in &mut self.remote_definitions {
+            if remote.drop_legacy_scene_mappings() {
+                migrated_remote_names.push(remote.name.clone());
+            }
+        }
+
+        if !migrated_remote_names.is_empty() {
+            for name in migrated_remote_names {
+                self.push_log(format!(
+                    "Cleared scene assignments for '{name}'. Please assign a view."
+                ));
+            }
+            needs_save = true;
         }
 
         if self.remote_definitions.is_empty() {
@@ -196,10 +306,7 @@ impl SamplePlugin {
                 .iter()
                 .enumerate()
                 .map(|(idx, signals)| {
-                    RemoteDefinition::from_signals(
-                        format!("Remote {}", idx + 1),
-                        *signals,
-                    )
+                    RemoteDefinition::from_signals(format!("Remote {}", idx + 1), *signals)
                 })
                 .collect();
             self.remote_enabled = vec![true; self.remote_definitions.len()];
@@ -212,6 +319,10 @@ impl SamplePlugin {
         }
     }
 
+    fn view_info(&self, view_id: u8) -> Option<&ViewInfo> {
+        self.available_views.iter().find(|info| info.id == view_id)
+    }
+
     fn scene_name(&self, scene_id: u8) -> Option<&str> {
         self.available_scenes
             .iter()
@@ -219,52 +330,163 @@ impl SamplePlugin {
             .map(|(_, name)| name.as_str())
     }
 
-    fn ensure_scene_assignments(&mut self) {
+    fn current_scene_speed(&self, scene_id: u8) -> AnimationSpeedModifier {
+        self.scene_speeds
+            .iter()
+            .find(|(id, _)| *id == scene_id)
+            .map(|(_, speed)| *speed)
+            .unwrap_or(AnimationSpeedModifier::_1)
+    }
+
+    fn cache_scene_speed(&mut self, scene_id: u8, speed: AnimationSpeedModifier) {
+        if let Some(entry) = self.scene_speeds.iter_mut().find(|(id, _)| *id == scene_id) {
+            entry.1 = speed;
+        } else {
+            self.scene_speeds.push((scene_id, speed));
+        }
+    }
+
+    fn next_cycle_speed(
+        current: AnimationSpeedModifier,
+        cycle_start: AnimationSpeedModifier,
+    ) -> AnimationSpeedModifier {
+        let all = AnimationSpeedModifier::ALL;
+        let curr_idx = all
+            .iter()
+            .position(|value| *value == current)
+            .unwrap_or_else(|| {
+                all.iter()
+                    .position(|value| *value == cycle_start)
+                    .unwrap_or(0)
+            });
+        let mut next_idx = curr_idx + 1;
+        if next_idx >= all.len() {
+            next_idx = all
+                .iter()
+                .position(|value| *value == cycle_start)
+                .unwrap_or(0);
+        }
+        all[next_idx]
+    }
+
+    fn ensure_view_assignments(&mut self) {
         for remote in &mut self.remote_definitions {
-            for (button_index, slot) in remote.button_scene_ids.iter_mut().enumerate() {
+            for (button_index, slot) in remote.button_view_ids.iter_mut().enumerate() {
                 if slot.is_none() {
-                    if let Some((scene_id, _)) = self.available_scenes.get(button_index) {
-                        *slot = Some(*scene_id);
+                    if let Some(view_info) = self.available_views.get(button_index) {
+                        *slot = Some(view_info.id);
                     }
                 }
             }
         }
     }
 
-    fn clear_invalid_scene_selector(&mut self) {
-        if let Some((remote_idx, button_idx)) = self.scene_selector_open {
+    fn clear_invalid_view_selector(&mut self) {
+        if let Some((remote_idx, button_idx)) = self.view_selector_open {
             if remote_idx >= self.remote_definitions.len() || button_idx >= MAX_REMOTE_BUTTONS {
-                self.scene_selector_open = None;
+                self.view_selector_open = None;
             }
         }
     }
 
-    fn scene_selector_button_id(remote_idx: usize, button_idx: usize) -> Option<u8> {
+    fn clear_invalid_speed_selector(&mut self) {
+        if let Some((remote_idx, button_idx)) = self.speed_selector_open {
+            if remote_idx >= self.remote_definitions.len() || button_idx >= MAX_REMOTE_BUTTONS {
+                self.speed_selector_open = None;
+            }
+        }
+    }
+
+    fn clear_invalid_speed_modifier_selector(&mut self) {
+        if let Some((remote_idx, button_idx)) = self.speed_modifier_selector_open {
+            if remote_idx >= self.remote_definitions.len() || button_idx >= MAX_REMOTE_BUTTONS {
+                self.speed_modifier_selector_open = None;
+            }
+        }
+    }
+
+    fn view_selector_button_id(remote_idx: usize, button_idx: usize) -> Option<u8> {
         let offset = remote_idx
             .checked_mul(MAX_REMOTE_BUTTONS)?
             .checked_add(button_idx)?;
-        let max_offset = (u8::MAX - SCENE_SELECT_BUTTON_BASE_ID) as usize;
+        let max_offset = (u8::MAX - VIEW_SELECT_BUTTON_BASE_ID) as usize;
         if offset > max_offset {
             return None;
         }
-        Some(SCENE_SELECT_BUTTON_BASE_ID + offset as u8)
+        Some(VIEW_SELECT_BUTTON_BASE_ID + offset as u8)
     }
 
-    fn decode_scene_selector_button(id: u8) -> Option<(usize, usize)> {
-        if id < SCENE_SELECT_BUTTON_BASE_ID || id >= SCENE_SELECT_OPTION_BASE_ID {
+    fn decode_view_selector_button(id: u8) -> Option<(usize, usize)> {
+        if id < VIEW_SELECT_BUTTON_BASE_ID || id >= VIEW_SELECT_OPTION_BASE_ID {
             return None;
         }
-        let relative = id - SCENE_SELECT_BUTTON_BASE_ID;
+        let relative = id - VIEW_SELECT_BUTTON_BASE_ID;
         let remote_idx = (relative as usize) / MAX_REMOTE_BUTTONS;
         let button_idx = (relative as usize) % MAX_REMOTE_BUTTONS;
         Some((remote_idx, button_idx))
     }
 
-    fn decode_scene_option(id: u8) -> Option<usize> {
-        if id < SCENE_SELECT_OPTION_BASE_ID {
+    fn decode_view_option(id: u8) -> Option<usize> {
+        if id < VIEW_SELECT_OPTION_BASE_ID {
             return None;
         }
-        Some((id - SCENE_SELECT_OPTION_BASE_ID) as usize)
+        Some((id - VIEW_SELECT_OPTION_BASE_ID) as usize)
+    }
+
+    fn speed_scene_selector_button_id(remote_idx: usize, button_idx: usize) -> Option<u8> {
+        let offset = remote_idx
+            .checked_mul(MAX_REMOTE_BUTTONS)?
+            .checked_add(button_idx)?;
+        let max_offset = (u8::MAX - SPEED_SCENE_SELECT_BUTTON_BASE_ID) as usize;
+        if offset > max_offset {
+            return None;
+        }
+        Some(SPEED_SCENE_SELECT_BUTTON_BASE_ID + offset as u8)
+    }
+
+    fn decode_speed_scene_selector_button(id: u8) -> Option<(usize, usize)> {
+        if id < SPEED_SCENE_SELECT_BUTTON_BASE_ID || id >= SPEED_SCENE_SELECT_OPTION_BASE_ID {
+            return None;
+        }
+        let relative = id - SPEED_SCENE_SELECT_BUTTON_BASE_ID;
+        let remote_idx = (relative as usize) / MAX_REMOTE_BUTTONS;
+        let button_idx = (relative as usize) % MAX_REMOTE_BUTTONS;
+        Some((remote_idx, button_idx))
+    }
+
+    fn decode_speed_scene_option(id: u8) -> Option<usize> {
+        if id < SPEED_SCENE_SELECT_OPTION_BASE_ID {
+            return None;
+        }
+        Some((id - SPEED_SCENE_SELECT_OPTION_BASE_ID) as usize)
+    }
+
+    fn speed_modifier_selector_button_id(remote_idx: usize, button_idx: usize) -> Option<u8> {
+        let offset = remote_idx
+            .checked_mul(MAX_REMOTE_BUTTONS)?
+            .checked_add(button_idx)?;
+        let max_offset = (u8::MAX - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID) as usize;
+        if offset > max_offset {
+            return None;
+        }
+        Some(SPEED_MODIFIER_SELECT_BUTTON_BASE_ID + offset as u8)
+    }
+
+    fn decode_speed_modifier_selector_button(id: u8) -> Option<(usize, usize)> {
+        if id < SPEED_MODIFIER_SELECT_BUTTON_BASE_ID || id >= SPEED_MODIFIER_SELECT_OPTION_BASE_ID {
+            return None;
+        }
+        let relative = id - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID;
+        let remote_idx = (relative as usize) / MAX_REMOTE_BUTTONS;
+        let button_idx = (relative as usize) % MAX_REMOTE_BUTTONS;
+        Some((remote_idx, button_idx))
+    }
+
+    fn decode_speed_modifier_option(id: u8) -> Option<usize> {
+        if id < SPEED_MODIFIER_SELECT_OPTION_BASE_ID {
+            return None;
+        }
+        Some((id - SPEED_MODIFIER_SELECT_OPTION_BASE_ID) as usize)
     }
 
     fn handle_signal(&mut self, sig: u32, now: u32) {
@@ -284,20 +506,6 @@ impl SamplePlugin {
     }
 
     fn process(&mut self, sig: u32, now: u32) {
-        if sig == 10194868 || sig == 11973508 {
-            let elapsed = now - self.drums_toggle_time;
-            if (elapsed) > 500 {
-                send_event(ControlEvent::MiscEvent {
-                    descriptor: 43,
-                    value: 0,
-                });
-                self.drums_toggle_time = now;
-            } else {
-                println!("DEBOUNCE: {elapsed} elapsed");
-            }
-            return;
-        }
-
         let mut button_descriptor = None;
 
         for (remote_index, remote) in self.remote_definitions.iter().enumerate() {
@@ -320,30 +528,55 @@ impl SamplePlugin {
         }
 
         if let Some((remote_idx, btn_idx)) = button_descriptor {
-            if self.remote_enabled.get(remote_idx).copied().unwrap_or(false) {
-                if let Some(remote) = self.remote_definitions.get(remote_idx) {
-                    let scene_id = remote.button_scene_ids.get(btn_idx).copied().flatten();
-                    match scene_id {
-                        Some(scene_id) => {
-                            bpf::send_event(ControlEvent::SetSceneFocus(scene_id));
-                            let scene_label = self
-                                .scene_name(scene_id)
-                                .map(|name| name.to_string())
-                                .unwrap_or_else(|| format!("Scene {scene_id}"));
+            if self
+                .remote_enabled
+                .get(remote_idx)
+                .copied()
+                .unwrap_or(false)
+            {
+                if let Some(remote) = self.remote_definitions.get(remote_idx).cloned() {
+                    let remote_name = remote.name.clone();
+
+                    if let Some(view_id) = remote.button_view_ids.get(btn_idx).copied().flatten() {
+                        if let Some(view_info) = self.view_info(view_id).cloned() {
+                            let cycle_start = remote.button_speed_cycle_start[btn_idx];
+                            let mut events = Vec::with_capacity(2 + view_info.view.overlays.len());
+                            events.push(ControlEvent::SetSceneMasterSpeed(
+                                view_info.view.base_scene,
+                                cycle_start,
+                            ));
+                            for overlay in &view_info.view.overlays {
+                                events
+                                    .push(ControlEvent::SetSceneMasterSpeed(*overlay, cycle_start));
+                            }
+                            events.push(ControlEvent::SetSceneFocus(view_info.view.base_scene));
+                            events.push(ControlEvent::SetOverlays(view_info.view.overlays.clone()));
+                            bpf::send_event(ControlEvent::Transaction(events));
+
+                            self.cache_scene_speed(view_info.view.base_scene, cycle_start);
+                            for overlay in &view_info.view.overlays {
+                                self.cache_scene_speed(*overlay, cycle_start);
+                            }
+
                             self.push_log(format!(
                                 "{} button {} -> {}",
-                                remote.name,
+                                remote_name,
                                 btn_idx + 1,
-                                scene_label
+                                view_info.option_label()
                             ));
-                        }
-                        None => {
+                        } else {
                             self.push_log(format!(
-                                "{} button {} has no scene assigned",
-                                remote.name,
+                                "{} button {} view #{view_id} unavailable",
+                                remote_name,
                                 btn_idx + 1
                             ));
                         }
+                    } else {
+                        self.push_log(format!(
+                            "{} button {} has no view assigned",
+                            remote_name,
+                            btn_idx + 1
+                        ));
                     }
                 } else {
                     println!("Remote definition missing for index {remote_idx}");
@@ -416,13 +649,17 @@ impl SamplePlugin {
         }
 
         ui::separator();
-        ui::label("Button -> Scene mapping");
+        ui::label("Button -> View mapping");
 
-        if self.available_scenes.is_empty() {
-            ui::label("No scenes available.");
-        } else if self.remote_definitions.is_empty() {
+        if self.remote_definitions.is_empty() {
             ui::label("Add a remote to configure mappings.");
         } else {
+            if self.available_views.is_empty() {
+                ui::label("No views available.");
+            }
+            if self.available_scenes.is_empty() {
+                ui::label("No scenes available for speed control.");
+            }
             for (remote_idx, remote) in self.remote_definitions.iter().enumerate() {
                 if remote_idx > 0 {
                     ui::separator();
@@ -430,39 +667,61 @@ impl SamplePlugin {
                 ui::label(&remote.name);
                 ui::begin_vertical();
                 for button_index in 0..MAX_REMOTE_BUTTONS {
-                    if let Some(button_id) =
-                        Self::scene_selector_button_id(remote_idx, button_index)
+                    if let Some(view_button_id) =
+                        Self::view_selector_button_id(remote_idx, button_index)
                     {
                         ui::begin_horizontal();
                         ui::label(&format!("Button {}", button_index + 1));
-                        let button_label = remote.button_scene_ids[button_index]
-                            .and_then(|scene_id| {
-                                self.scene_name(scene_id)
-                                    .map(|name| format!("{name} (#{scene_id})"))
+                        let view_button_label = remote.button_view_ids[button_index]
+                            .and_then(|view_id| {
+                                self.view_info(view_id).map(|info| info.button_label())
                             })
                             .unwrap_or_else(|| "Unassigned".to_string());
-                        ui::button(&button_label, button_id);
+                        ui::button(&view_button_label, view_button_id);
 
-                        if self.scene_selector_open == Some((remote_idx, button_index)) {
+                        if self.view_selector_open == Some((remote_idx, button_index)) {
                             ui::begin_vertical();
-                            for (scene_idx, (scene_id, scene_name)) in
-                                self.available_scenes.iter().enumerate()
-                            {
-                                if scene_idx
-                                    > (u8::MAX - SCENE_SELECT_OPTION_BASE_ID) as usize
-                                {
-                                    ui::label("Scene list truncated");
+                            for (view_idx, view_info) in self.available_views.iter().enumerate() {
+                                if view_idx > (u8::MAX - VIEW_SELECT_OPTION_BASE_ID) as usize {
+                                    ui::label("View list truncated");
                                     break;
                                 }
 
-                                let option_id =
-                                    SCENE_SELECT_OPTION_BASE_ID + scene_idx as u8;
-                                ui::button(
-                                    &format!("{} (#{})", scene_name, scene_id),
-                                    option_id,
-                                );
+                                let option_id = VIEW_SELECT_OPTION_BASE_ID + view_idx as u8;
+                                ui::button(&view_info.option_label(), option_id);
                             }
                             ui::end_vertical();
+                        }
+
+                        if let Some(speed_cycle_button_id) =
+                            Self::speed_modifier_selector_button_id(remote_idx, button_index)
+                        {
+                            let cycle_label =
+                                remote.button_speed_cycle_start[button_index].as_str();
+                            ui::button(
+                                &format!("Cycle start: {}", cycle_label),
+                                speed_cycle_button_id,
+                            );
+
+                            if self.speed_modifier_selector_open == Some((remote_idx, button_index))
+                            {
+                                ui::begin_vertical();
+                                for (modifier_idx, modifier) in
+                                    AnimationSpeedModifier::ALL.iter().enumerate()
+                                {
+                                    if modifier_idx
+                                        > (u8::MAX - SPEED_MODIFIER_SELECT_OPTION_BASE_ID) as usize
+                                    {
+                                        ui::label("Speed list truncated");
+                                        break;
+                                    }
+
+                                    let option_id =
+                                        SPEED_MODIFIER_SELECT_OPTION_BASE_ID + modifier_idx as u8;
+                                    ui::button(&format!("Speed {}", modifier.as_str()), option_id);
+                                }
+                                ui::end_vertical();
+                            }
                         }
 
                         ui::end_horizontal();
@@ -502,106 +761,150 @@ impl SamplePlugin {
                             self.save_state();
                         }
                     }
-                    PluginUiEvent::Button { id } => {
-                        match id {
-                            ADD_REMOTE_BUTTON_ID => {
-                                if self.wizard.is_none() {
-                                    self.wizard = Some(RemoteWizard::new());
-                                }
+                    PluginUiEvent::Button { id } => match id {
+                        ADD_REMOTE_BUTTON_ID => {
+                            if self.wizard.is_none() {
+                                self.wizard = Some(RemoteWizard::new());
                             }
-                            WIZARD_SAVE_BUTTON_ID => {
-                                if let Some(remote) = self
-                                    .wizard
-                                    .as_ref()
-                                    .and_then(|wizard| {
-                                        wizard.build_remote(self.remote_definitions.len())
-                                    })
-                                {
-                                    let remote_name = remote.name.clone();
-                                    self.remote_definitions.push(remote);
-                                    self.remote_enabled.push(true);
-                                    self.ensure_scene_assignments();
-                                    self.scene_selector_open = None;
-                                    self.save_state();
-                                    self.push_log(format!("Added remote {}", remote_name));
-                                    self.wizard = None;
-                                } else if let Some(current) = self.wizard.as_mut() {
-                                    current.status_message = Some(
-                                        "Record all buttons before saving".to_string(),
-                                    );
-                                }
-                            }
-                            WIZARD_CANCEL_BUTTON_ID => {
+                        }
+                        WIZARD_SAVE_BUTTON_ID => {
+                            if let Some(remote) = self.wizard.as_ref().and_then(|wizard| {
+                                wizard.build_remote(self.remote_definitions.len())
+                            }) {
+                                let remote_name = remote.name.clone();
+                                self.remote_definitions.push(remote);
+                                self.remote_enabled.push(true);
+                                self.ensure_view_assignments();
+                                self.view_selector_open = None;
+                                self.speed_selector_open = None;
+                                self.speed_modifier_selector_open = None;
+                                self.save_state();
+                                self.push_log(format!("Added remote {}", remote_name));
                                 self.wizard = None;
+                            } else if let Some(current) = self.wizard.as_mut() {
+                                current.status_message =
+                                    Some("Record all buttons before saving".to_string());
                             }
-                            _ if id >= WIZARD_RECORD_BASE_ID
-                                && id
-                                    < WIZARD_RECORD_BASE_ID + MAX_REMOTE_BUTTONS as u8 =>
+                        }
+                        WIZARD_CANCEL_BUTTON_ID => {
+                            self.wizard = None;
+                        }
+                        _ if id >= WIZARD_RECORD_BASE_ID
+                            && id < WIZARD_RECORD_BASE_ID + MAX_REMOTE_BUTTONS as u8 =>
+                        {
+                            if let Some(wizard) = self.wizard.as_mut() {
+                                let button_index = (id - WIZARD_RECORD_BASE_ID) as usize;
+                                wizard.set_pending_button(button_index);
+                            }
+                        }
+                        _ => {
+                            if let Some((remote_idx, button_idx)) =
+                                Self::decode_view_selector_button(id)
                             {
-                                if let Some(wizard) = self.wizard.as_mut() {
-                                    let button_index =
-                                        (id - WIZARD_RECORD_BASE_ID) as usize;
-                                    wizard.set_pending_button(button_index);
+                                if remote_idx < self.remote_definitions.len()
+                                    && button_idx < MAX_REMOTE_BUTTONS
+                                {
+                                    if self.view_selector_open == Some((remote_idx, button_idx)) {
+                                        self.view_selector_open = None;
+                                    } else {
+                                        self.view_selector_open = Some((remote_idx, button_idx));
+                                    }
                                 }
-                            }
-                            _ => {
+                            } else if let Some(view_idx) = Self::decode_view_option(id) {
                                 if let Some((remote_idx, button_idx)) =
-                                    Self::decode_scene_selector_button(id)
+                                    self.view_selector_open.take()
+                                {
+                                    if view_idx < self.available_views.len()
+                                        && remote_idx < self.remote_definitions.len()
+                                    {
+                                        let view_info = self.available_views[view_idx].clone();
+                                        let mut remote_name = None;
+                                        if let Some(remote) =
+                                            self.remote_definitions.get_mut(remote_idx)
+                                        {
+                                            if button_idx < MAX_REMOTE_BUTTONS {
+                                                remote.button_view_ids[button_idx] =
+                                                    Some(view_info.id);
+                                                remote_name = Some(remote.name.clone());
+                                            }
+                                        }
+
+                                        if let Some(remote_name) = remote_name {
+                                            self.push_log(format!(
+                                                "{} button {} mapped to {}",
+                                                remote_name,
+                                                button_idx + 1,
+                                                view_info.option_label()
+                                            ));
+                                            self.save_state();
+                                        }
+                                    } else {
+                                        self.push_log("View selection out of range");
+                                    }
+                                }
+                            } else if let Some((remote_idx, button_idx)) =
+                                Self::decode_speed_scene_selector_button(id)
+                            {
+                                if remote_idx < self.remote_definitions.len()
+                                    && button_idx < MAX_REMOTE_BUTTONS
+                                {
+                                    if self.speed_selector_open == Some((remote_idx, button_idx)) {
+                                        self.speed_selector_open = None;
+                                    } else {
+                                        self.speed_selector_open = Some((remote_idx, button_idx));
+                                    }
+                                }
+                            } else if let Some((remote_idx, button_idx)) =
+                                Self::decode_speed_modifier_selector_button(id)
+                            {
+                                if remote_idx < self.remote_definitions.len()
+                                    && button_idx < MAX_REMOTE_BUTTONS
+                                {
+                                    if self.speed_modifier_selector_open
+                                        == Some((remote_idx, button_idx))
+                                    {
+                                        self.speed_modifier_selector_open = None;
+                                    } else {
+                                        self.speed_modifier_selector_open =
+                                            Some((remote_idx, button_idx));
+                                    }
+                                }
+                            } else if let Some(modifier_idx) =
+                                Self::decode_speed_modifier_option(id)
+                            {
+                                if let Some((remote_idx, button_idx)) =
+                                    self.speed_modifier_selector_open.take()
                                 {
                                     if remote_idx < self.remote_definitions.len()
                                         && button_idx < MAX_REMOTE_BUTTONS
                                     {
-                                        if self.scene_selector_open
-                                            == Some((remote_idx, button_idx))
+                                        if let Some(modifier) =
+                                            AnimationSpeedModifier::ALL.get(modifier_idx)
                                         {
-                                            self.scene_selector_open = None;
-                                        } else {
-                                            self.scene_selector_open =
-                                                Some((remote_idx, button_idx));
-                                        }
-                                    }
-                                } else if let Some(scene_idx) =
-                                    Self::decode_scene_option(id)
-                                {
-                                    if let Some((remote_idx, button_idx)) =
-                                        self.scene_selector_open.take()
-                                    {
-                                        if scene_idx < self.available_scenes.len()
-                                            && remote_idx < self.remote_definitions.len()
-                                        {
-                                            let (scene_id, scene_name) =
-                                                self.available_scenes[scene_idx].clone();
                                             let mut remote_name = None;
-                                            if let Some(remote) = self
-                                                .remote_definitions
-                                                .get_mut(remote_idx)
+                                            if let Some(remote) =
+                                                self.remote_definitions.get_mut(remote_idx)
                                             {
-                                                if button_idx < MAX_REMOTE_BUTTONS {
-                                                    remote.button_scene_ids[button_idx] =
-                                                        Some(scene_id);
-                                                    remote_name =
-                                                        Some(remote.name.clone());
-                                                }
+                                                remote.button_speed_cycle_start[button_idx] =
+                                                    *modifier;
+                                                remote_name = Some(remote.name.clone());
                                             }
 
                                             if let Some(remote_name) = remote_name {
                                                 self.push_log(format!(
-                                                    "{} button {} mapped to {} (#{})",
+                                                    "{} button {} cycle start -> {}",
                                                     remote_name,
                                                     button_idx + 1,
-                                                    scene_name,
-                                                    scene_id
+                                                    modifier.as_str()
                                                 ));
                                                 self.save_state();
                                             }
-                                        } else {
-                                            self.push_log("Scene selection out of range");
                                         }
                                     }
                                 }
                             }
                         }
-                    }
+                    },
                     PluginUiEvent::Text { id, text } => {
                         if id == WIZARD_NAME_TEXT_ID {
                             if let Some(wizard) = self.wizard.as_mut() {
@@ -638,13 +941,54 @@ impl Plugin for SamplePlugin {
             .iter()
             .map(|(scene_id, scene)| (*scene_id, scene.name.clone()))
             .collect::<Vec<_>>();
-        // Preserve ordering from engine state (already sorted by scene id)
         if scenes != self.available_scenes {
             self.available_scenes = scenes;
-            self.ensure_scene_assignments();
         }
 
-        self.clear_invalid_scene_selector();
+        let scene_speeds = state
+            .scenes
+            .iter()
+            .map(|(scene_id, scene)| (*scene_id, scene.sink.master_speed))
+            .collect::<Vec<_>>();
+        if scene_speeds != self.scene_speeds {
+            self.scene_speeds = scene_speeds;
+        }
+
+        let view_infos = state
+            .views
+            .iter()
+            .map(|(view_id, view)| {
+                let base_scene_name = state
+                    .scenes
+                    .get(&view.base_scene)
+                    .map(|scene| scene.name.clone());
+                let overlay_names = view
+                    .overlays
+                    .iter()
+                    .map(|overlay_id| {
+                        (
+                            *overlay_id,
+                            state.scenes.get(overlay_id).map(|scene| scene.name.clone()),
+                        )
+                    })
+                    .collect();
+                ViewInfo {
+                    id: *view_id,
+                    view: view.clone(),
+                    base_scene_name,
+                    overlay_names,
+                }
+            })
+            .collect::<Vec<_>>();
+        // Preserve ordering from engine state (already sorted by view id)
+        if view_infos != self.available_views {
+            self.available_views = view_infos;
+            self.ensure_view_assignments();
+        }
+
+        self.clear_invalid_view_selector();
+        self.clear_invalid_speed_selector();
+        self.clear_invalid_speed_modifier_selector();
 
         for ev in self.conn.poll() {
             let str = String::from_utf8_lossy(&ev.body);

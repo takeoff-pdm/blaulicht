@@ -13,7 +13,7 @@ use blaulicht_shared::{
 };
 use eframe::glow::components_per_format;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use strum::IntoEnumIterator;
 
 const ANIMATIONS_PER_PAGE: usize = 5;
@@ -654,6 +654,22 @@ impl AnimationEditState {
                     .width(512.0)
                     .view_aspect(1.0)
                     .default_y_bounds(-1.0, 260.0)
+                    .x_grid_spacer(|input| {
+                        let mut marks = Vec::new();
+                        let (min, max) = input.bounds;
+
+                        // Every 90 degrees
+                        let start_90 = (min / 90.0).floor() as i64;
+                        let end_90 = (max / 90.0).ceil() as i64;
+
+                        for i in start_90..=end_90 {
+                            let value = i as f64 * 90.0;
+                            let step_size = if i % 4 == 0 { 360.0 } else { 90.0 };
+
+                            marks.push(GridMark { value, step_size });
+                        }
+                        marks
+                    })
                     .show(ui, |plot_ui| plot_ui.line(line));
             });
         });

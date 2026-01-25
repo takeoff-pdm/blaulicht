@@ -1,30 +1,45 @@
 use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
-use blaulicht_plugin_framework::serial::SerialConnection;
-use blaulicht_plugin_framework::{send_event, MidiConnection};
 use blaulicht_plugin_framework::{ui, Plugin};
 use blaulicht_shared::{
     AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+
+const HFADER_PRIMARY_ID: u8 = 10;
+const HFADER_SECONDARY_ID: u8 = 11;
 
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct SaveState {
     restart_timer: usize,
+    hfader_primary: u8,
+    hfader_secondary: u8,
+}
+
+impl Default for SaveState {
+    fn default() -> Self {
+        Self {
+            restart_timer: 0,
+            hfader_primary: 64,
+            hfader_secondary: 192,
+        }
+    }
 }
 
 pub struct SamplePlugin {
     state: SaveState,
     // midi_handle_out: Option<MidiConnection>,
     // midi_handle_in: Option<MidiConnection>,
+    saved: bool,
 }
 
 impl Default for SamplePlugin {
     fn default() -> Self {
         Self {
-            state: SaveState { restart_timer: 0 }, // midi_handle_out: None,
-                                                   // midi_handle_in: None,
+            state: SaveState::default(), // midi_handle_out: None,
+            // midi_handle_in: None,
+            saved: false,
         }
     }
 }
@@ -45,6 +60,60 @@ impl SamplePlugin {
             }
         }
     }
+
+    fn handle_ui_event(&mut self, event: &PluginUiEvent, plugin_id: u8, my_id: u8) {
+        if plugin_id != my_id {
+            return;
+        }
+
+        match event {
+            PluginUiEvent::HFader { id, value } | PluginUiEvent::Slider { id, value }
+                if *id == HFADER_PRIMARY_ID =>
+            {
+                if self.state.hfader_primary != *value {
+                    println!("HFADER primary updated -> {}", value);
+                    self.state.hfader_primary = *value;
+                }
+            }
+            PluginUiEvent::HFader { id, value } | PluginUiEvent::Slider { id, value }
+                if *id == HFADER_SECONDARY_ID =>
+            {
+                if self.state.hfader_secondary != *value {
+                    println!("HFADER secondary updated -> {}", value);
+                    self.state.hfader_secondary = *value;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn render_ui(&self) {
+        ui::begin();
+        ui::begin_frame_styled(42, "HFader Playground", 8, 8, 4, 4);
+        ui::label("Horizontal fader host bridge demo");
+
+        ui::label(&format!("Primary value: {}", self.state.hfader_primary));
+        ui::hfader(
+            "Primary HFader",
+            HFADER_PRIMARY_ID,
+            0,
+            u8::MAX,
+            self.state.hfader_primary,
+        );
+
+        ui::label(&format!("Secondary value: {}", self.state.hfader_secondary));
+        ui::hfader(
+            "Secondary HFader",
+            HFADER_SECONDARY_ID,
+            0,
+            u8::MAX,
+            self.state.hfader_secondary,
+        );
+
+        ui::separator();
+        ui::label("You can also scrub the faders using number input");
+        ui::end_frame();
+    }
 }
 
 impl Plugin for SamplePlugin {
@@ -62,7 +131,7 @@ impl Plugin for SamplePlugin {
     }
 
     fn run(&mut self, input: TickInput) {
-        let state = bpf::get_dmx();
+        let _state = bpf::get_dmx();
 
         for ev in &input.events.events {
             println!("TEST-EV: {ev:?}");
@@ -83,6 +152,9 @@ impl Plugin for SamplePlugin {
                     }
                     _ => {}
                 },
+                ControlEvent::PluginUi(ui_event, plugin_id) => {
+                    self.handle_ui_event(&ui_event, plugin_id, input.id);
+                }
                 _ => {}
             }
         }
@@ -93,6 +165,13 @@ impl Plugin for SamplePlugin {
         // }
         //
         // self.midi_handle_in.unwrap().send(127, 42, 69);
+
+        self.render_ui();
+
+        if !self.saved {
+            self.save();
+            self.saved = true;
+        }
     }
 }
 

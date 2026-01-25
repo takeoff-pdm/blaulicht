@@ -26,6 +26,7 @@ exclude = [
     "./crates/plugins/drums",
     "./crates/plugins/sample_egui_plugin",
     "./crates/plugins/midi_all",
+    "./crates/plugins/midi_all_proto",
     "./crates/plugins/visualizer",
     "./crates/plugins/433mhz_antenna",
     "./crates/plugins/videowall",

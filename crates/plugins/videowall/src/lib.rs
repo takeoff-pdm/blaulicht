@@ -163,19 +163,29 @@ impl VideowallPlugin {
 
     fn handle_ui_event(&mut self, event: &PluginUiEvent) {
         match event {
-            PluginUiEvent::Slider { id, value } if *id == VIDEO_SLIDER_ID => {
+            PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value }
+                if *id == VIDEO_SLIDER_ID =>
+            {
                 self.apply_selection_or_queue(*value);
             }
-            PluginUiEvent::Slider { id, value } if *id == BRIGHTNESS_SLIDER_ID => {
+            PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value }
+                if *id == BRIGHTNESS_SLIDER_ID =>
+            {
                 self.pending_brightness = *value;
             }
-            PluginUiEvent::Slider { id, value } if *id == ROTATION_SLIDER_ID => {
+            PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value }
+                if *id == ROTATION_SLIDER_ID =>
+            {
                 self.pending_rotation = *value;
             }
-            PluginUiEvent::Slider { id, value } if *id == SPEED_SLIDER_ID => {
+            PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value }
+                if *id == SPEED_SLIDER_ID =>
+            {
                 self.pending_speed = *value;
             }
-            PluginUiEvent::Slider { id, value } if *id == FRY_SLIDER_ID => {
+            PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value }
+                if *id == FRY_SLIDER_ID =>
+            {
                 self.pending_fry = *value;
             }
             PluginUiEvent::Button { id } if *id == REFRESH_BUTTON_ID => {
@@ -322,7 +332,7 @@ impl VideowallPlugin {
 
             bpf::ui::label(&format!("Current video: {}", current_video));
             bpf::ui::label(&format!("Brightness: {}", self.pending_brightness));
-            bpf::ui::slider(
+            bpf::ui::hfader(
                 "Brightness",
                 BRIGHTNESS_SLIDER_ID,
                 0,
@@ -332,7 +342,7 @@ impl VideowallPlugin {
 
             let rotation_degrees = midi_to_degrees(self.pending_rotation);
             bpf::ui::label(&format!("Rotation: {}°", rotation_degrees));
-            bpf::ui::slider(
+            bpf::ui::hfader(
                 "Rotation",
                 ROTATION_SLIDER_ID,
                 0,
@@ -342,17 +352,17 @@ impl VideowallPlugin {
 
             let speed_value = midi_to_speed(self.pending_speed);
             bpf::ui::label(&format!("Speed: {:.2}x", speed_value));
-            bpf::ui::slider("Speed", SPEED_SLIDER_ID, 0, 127, self.pending_speed);
+            bpf::ui::hfader("Speed", SPEED_SLIDER_ID, 0, 127, self.pending_speed);
 
             let fry_value = midi_to_fry(self.pending_fry);
             bpf::ui::label(&format!("Fry: {}", fry_value));
-            bpf::ui::slider("Fry", FRY_SLIDER_ID, 0, 127, self.pending_fry);
+            bpf::ui::hfader("Fry", FRY_SLIDER_ID, 0, 127, self.pending_fry);
         }
 
         if !self.videos.is_empty() {
             let max_index = (self.videos.len().saturating_sub(1)).min(u8::MAX as usize) as u8;
             let selected = self.selected_index.min(max_index);
-            bpf::ui::slider("Video", VIDEO_SLIDER_ID, 0, max_index, selected);
+            bpf::ui::hfader("Video", VIDEO_SLIDER_ID, 0, max_index, selected);
         } else {
             bpf::ui::label("No videos discovered.");
         }

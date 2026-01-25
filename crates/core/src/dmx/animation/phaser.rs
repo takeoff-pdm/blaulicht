@@ -36,7 +36,7 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: u64) -> u16 {
 
             let mut mathematical_phaser = mathematical_phaser.clone();
             mathematical_phaser.stretch_factor = 1.0;
-            println!("min={min}, max={max}, range={range}");
+            // println!("min={min}, max={max}, range={range}");
 
             match mathematical_phaser.base {
                 MathematicalBaseFunction::Sin => {

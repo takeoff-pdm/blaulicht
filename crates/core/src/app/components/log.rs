@@ -188,18 +188,45 @@ impl LogWindow {
 
                     let datetime: DateTime<Local> = entry.timestamp.into();
                     let time_formatted = datetime.format("%H:%M:%S").to_string();
-
-                    // Create log line
-                    let log_text = format!(
-                        "[{}] {:?} | {} | {}",
-                        time_formatted, entry.level, entry.source, entry.message
+                    let prefix = format!(
+                        "[{}] {:?} | {} |",
+                        time_formatted, entry.level, entry.source
                     );
+                    let indent = " ".repeat(prefix.chars().count() + 1);
+                    let color = log_level_color(&entry.level);
 
-                    // Display with appropriate color
-                    ui.colored_label(
-                        log_level_color(&entry.level),
-                        RichText::new(log_text).size(12.0),
-                    );
+                    let mut lines = entry
+                        .message
+                        .split('\n')
+                        .map(|line| line.trim_end_matches('\r'));
+
+                    if let Some(first_line) = lines.next() {
+                        let first = if first_line.is_empty() {
+                            format!("{prefix} ")
+                        } else {
+                            format!("{prefix} {first_line}")
+                        };
+
+                        ui.colored_label(color, RichText::new(first).size(12.0).monospace());
+
+                        for line in lines {
+                            let continuation = if line.is_empty() {
+                                format!("{indent} ")
+                            } else {
+                                format!("{indent}{line}")
+                            };
+
+                            ui.colored_label(
+                                color,
+                                RichText::new(continuation).size(12.0).monospace(),
+                            );
+                        }
+                    } else {
+                        ui.colored_label(
+                            color,
+                            RichText::new(format!("{prefix} ")).size(12.0).monospace(),
+                        );
+                    }
 
                     should_scroll_to_bottom = true;
 

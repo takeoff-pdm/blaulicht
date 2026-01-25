@@ -2,3 +2,30 @@
 - make dmx channel writes explicit so that only the updates are sent via UDP (more efficient)
 - make audio signal source persistant
 - add audio normalization (don't care what the input signal is)
+
+
+- chaining animations
+- fix stupid frequency animation BS
+- Track down panics
+- Fix long reload / load times
+- More forgiving config loading.
+- Configuration checkpoints / diffs.
+- Trigger DMX setup async
+- Flight Recorder
+- Export Showfile with a list of feautures [only patches, complete state]
+- Removing changes from a scene
+- Setting a scene to output / selec
+- Multiple engine selections or states
+- Track down stupid animation bug with selections
+- Better views UI
+- Using more faders for views
+- View shortcuts on MIDI devices
+- Jumping into arbitrary scenes and changing values in them WHILE THEY PLAY
+  - 2-state mode?
+- Set Master Hue in scene
+- Enforce fader return-to position
+- Save audio settings in showfile
+- enable / disable plugins from the UI
+- fix beat detection
+- split fixture setup into multiple tabs (scenes, groups)
+- external BPM 'suggestions'

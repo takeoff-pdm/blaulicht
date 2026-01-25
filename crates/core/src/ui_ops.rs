@@ -23,6 +23,13 @@ pub enum WasmUiOp {
         max: u8,
         value: u8,
     },
+    HFader {
+        label: String,
+        id: u8,
+        min: u8,
+        max: u8,
+        value: u8,
+    },
     // Layout control
     BeginVertical,
     EndVertical,

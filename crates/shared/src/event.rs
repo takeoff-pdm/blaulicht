@@ -4,7 +4,7 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{scene::FixtureSelection, AnimationSpec, MainUiEvent};
+use crate::{AnimationSpec, MainUiEvent, scene::FixtureSelection};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -373,6 +373,10 @@ pub enum PluginUiEvent {
         value: bool,
     },
     Slider {
+        id: u8,
+        value: u8,
+    },
+    HFader {
         id: u8,
         value: u8,
     },

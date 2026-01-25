@@ -2,13 +2,7 @@
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
     fn log(plugin_id: u8, ptr: *const u8, len: usize, log_level: i32);
-    fn sys(
-        plugin_id: u8,
-        ptr: *const u8,
-        len: usize,
-        output_ptr: *mut u8,
-        output_len: usize,
-    );
+    fn sys(plugin_id: u8, ptr: *const u8, len: usize, output_ptr: *mut u8, output_len: usize);
     fn udp(
         target_addr_ptr: *const u8,
         target_addr_len: usize,
@@ -45,6 +39,7 @@ extern "C" {
     fn ui_checkbox(plugin_id: u8, ptr: *const u8, len: usize, id: u8, checked: i32);
     fn ui_switch(plugin_id: u8, ptr: *const u8, len: usize, id: u8, value: i32);
     fn ui_slider(plugin_id: u8, ptr: *const u8, len: usize, id: u8, min: i32, max: i32, value: i32);
+    fn ui_hfader(plugin_id: u8, ptr: *const u8, len: usize, id: u8, min: i32, max: i32, value: i32);
     fn ui_text_edit(
         plugin_id: u8,
         label_ptr: *const u8,
@@ -301,7 +296,8 @@ pub mod ui {
         ui_color_picker as host_ui_color_picker, ui_end_collapsing as host_ui_end_collapsing,
         ui_end_frame as host_ui_end_frame, ui_end_horizontal as host_ui_end_horizontal,
         ui_end_tab as host_ui_end_tab, ui_end_tabs as host_ui_end_tabs,
-        ui_end_vertical as host_ui_end_vertical, ui_label as host_ui_label,
+        ui_end_vertical as host_ui_end_vertical,
+        ui_hfader as host_ui_hfader, ui_label as host_ui_label,
         ui_painter_begin as host_ui_painter_begin, ui_painter_circle as host_ui_painter_circle,
         ui_painter_circle_stroke as host_ui_painter_circle_stroke,
         ui_painter_cubic_bezier as host_ui_painter_cubic_bezier,
@@ -358,6 +354,20 @@ pub mod ui {
     pub fn slider(label: &str, id: u8, min: u8, max: u8, value: u8) {
         unsafe {
             host_ui_slider(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                min as i32,
+                max as i32,
+                value as i32,
+            )
+        };
+    }
+
+    pub fn hfader(label: &str, id: u8, min: u8, max: u8, value: u8) {
+        unsafe {
+            host_ui_hfader(
                 unsafe { PLUGIN_ID },
                 label.as_ptr(),
                 label.len(),

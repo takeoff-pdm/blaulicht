@@ -220,6 +220,35 @@ fn render_plugin_ops(
                 }
                 *idx += 1;
             }
+            Op::HFader {
+                label,
+                id,
+                min,
+                max,
+                value,
+            } => {
+                let mut current = *value as f32;
+                let mut widget =
+                    components::HFader::new(&mut current, (*min as f32)..=(*max as f32));
+                if !label.is_empty() {
+                    widget = widget.with_label(label.clone());
+                }
+
+                if ui.add(widget).changed() {
+                    let new_value = current.round().clamp(*min as f32, *max as f32) as u8;
+                    let evt = ControlEvent::PluginUi(
+                        PluginUiEvent::HFader {
+                            id: *id,
+                            value: new_value,
+                        },
+                        plugin_id,
+                    );
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                }
+
+                *idx += 1;
+            }
             Op::TextEdit { label, id, text } => {
                 let edit_id = ui.make_persistent_id(format!("text_edit_{}", id));
                 let mut s = ui.data_mut(|d| {
