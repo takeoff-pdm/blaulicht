@@ -23,6 +23,7 @@ use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, SaveEngineState,
     Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
 };
+use eframe::glow::components_per_format;
 use egui::{
     Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Vec2,
     Widget,
@@ -241,7 +242,7 @@ impl BlaulichtApp {
             return;
         }
 
-        Dialog::new("Plugins".to_string(), egui::vec2(500.0, 200.0))
+        Dialog::new("Plugins".to_string(), egui::vec2(500.0, 400.0))
             .with_backdrop()
             .show(ctx, |ui| {
                 // --- Plugin Overview ---
@@ -249,125 +250,137 @@ impl BlaulichtApp {
 
                 ui.add_space(4.0);
 
-                {
-                    let plugins = self.data.state.plugins.read().unwrap();
-                    let current_visibility =
-                        self.data.state.plugin_ui_visibility.read().unwrap().clone();
+                ui.set_height(200.0);
+                ui.set_min_height(200.0);
 
-                    for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
-                        let box_size = egui::vec2(ui.available_width(), 42.0);
-                        ui.allocate_ui_with_layout(
-                            box_size,
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                let (rect, _response) =
-                                    ui.allocate_exact_size(box_size, egui::Sense::empty());
-                                let painter = ui.painter();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    {
+                        let plugins = self.data.state.plugins.read().unwrap();
+                        let current_visibility =
+                            self.data.state.plugin_ui_visibility.read().unwrap().clone();
 
-                                // State color and blinking logic
-                                let mut show_border = true;
-                                let border_color = match (plugin.has_errored(), plugin.is_enabled())
-                                {
-                                    // Alive and healthy.
-                                    (false, true) => egui::Color32::from_rgb(0, 200, 0),
-                                    // Dead, crashed.
-                                    (true, true) => {
-                                        let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 0, 0)
+                        for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
+                            let box_size = egui::vec2(ui.available_width(), 42.0);
+                            ui.allocate_ui_with_layout(
+                                box_size,
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    let (rect, _response) =
+                                        ui.allocate_exact_size(box_size, egui::Sense::empty());
+                                    let painter = ui.painter();
+
+                                    // State color and blinking logic
+                                    let mut show_border = true;
+                                    let border_color =
+                                        match (plugin.has_errored(), plugin.is_enabled()) {
+                                            // Alive and healthy.
+                                            (false, true) => egui::Color32::from_rgb(0, 200, 0),
+                                            // Dead, crashed.
+                                            (true, true) => {
+                                                let blink =
+                                                    ((self.animation_time * 8.0) as i32) % 2 == 0;
+                                                show_border = blink;
+                                                egui::Color32::from_rgb(200, 0, 0)
+                                            }
+                                            // Disabled.
+                                            (_, false) => {
+                                                let blink =
+                                                    ((self.animation_time * 2.0) as i32) % 2 == 0;
+                                                show_border = blink;
+                                                egui::Color32::from_rgb(200, 200, 0)
+                                            }
+                                        };
+
+                                    // Draw the main box
+                                    painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
+
+                                    // Draw the left border if needed
+                                    let border_width = 6.0;
+                                    if show_border {
+                                        let border_rect = egui::Rect::from_min_max(
+                                            rect.left_top(),
+                                            rect.left_bottom() + egui::vec2(border_width, 0.0),
+                                        );
+                                        painter.rect_filled(border_rect, 0.0, border_color);
                                     }
-                                    // Disabled.
-                                    (_, false) => {
-                                        let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 200, 0)
-                                    }
-                                };
 
-                                // Draw the main box
-                                painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
+                                    // Plugin name
+                                    let path_str = plugin.path.to_string().to_string();
+                                    let path = Path::new(&path_str);
+                                    let basename = path.file_stem().unwrap().to_string_lossy();
+                                    // let basename = path.file_name().unwrap().to_string_lossy();
+                                    let name = format!("P:{basename} ({})", i + 1);
 
-                                // Draw the left border if needed
-                                let border_width = 6.0;
-                                if show_border {
-                                    let border_rect = egui::Rect::from_min_max(
-                                        rect.left_top(),
-                                        rect.left_bottom() + egui::vec2(border_width, 0.0),
+                                    let text_padding = 5.0;
+
+                                    painter.text(
+                                        rect.left_center()
+                                            + egui::vec2(border_width + text_padding, 0.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        name,
+                                        egui::FontId::monospace(12.0),
+                                        if plugin.has_errored() {
+                                            Color32::WHITE
+                                        } else {
+                                            egui::Color32::from_gray(90)
+                                        },
                                     );
-                                    painter.rect_filled(border_rect, 0.0, border_color);
-                                }
+                                },
+                            );
+                            ui.horizontal(|ui| {
+                                // TODO: write a helper function for accessing this screen-specific
+                                // state.
+                                let visibility = *current_visibility
+                                    .get(plugin_id)
+                                    .unwrap_or(&PluginOpenState::CLOSED);
 
-                                // Plugin name
-                                let path_str = plugin.path.to_string().to_string();
-                                let path = Path::new(&path_str);
-                                let basename = path.file_stem().unwrap().to_string_lossy();
-                                // let basename = path.file_name().unwrap().to_string_lossy();
-                                let name = format!("P:{basename} ({})", i + 1);
-
-                                let text_padding = 5.0;
-
-                                painter.text(
-                                    rect.left_center()
-                                        + egui::vec2(border_width + text_padding, 0.0),
-                                    egui::Align2::LEFT_CENTER,
-                                    name,
-                                    egui::FontId::monospace(12.0),
-                                    if plugin.has_errored() {
-                                        Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_gray(90)
-                                    },
-                                );
-                            },
-                        );
-                        ui.horizontal(|ui| {
-                            // TODO: write a helper function for accessing this screen-specific
-                            // state.
-                            let visibility = *current_visibility
-                                .get(plugin_id)
-                                .unwrap_or(&PluginOpenState::CLOSED);
-
-                            let label = if visibility.open {
-                                "Hide UI"
-                            } else {
-                                "Show UI"
-                            };
-                            if ui.small_button(label).clicked() {
-                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-
-                                // PATCH: ensure that the window is only open on one screen.
-
-                                let entry =
-                                    map.entry(*plugin_id).or_insert(PluginOpenState::CLOSED);
-
-                                match visibility.open {
-                                    true => {
-                                        entry.open = false;
-                                    }
-                                    false => {
-                                        entry.open = true;
-                                        entry.screen_id = screen_id;
-                                    }
+                                let label = if visibility.open {
+                                    "Hide UI"
+                                } else {
+                                    "Show UI"
                                 };
+                                if ui.small_button(label).clicked() {
+                                    let mut map =
+                                        self.data.state.plugin_ui_visibility.write().unwrap();
 
-                                // Notify plugins.
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
-                                            plugin_id: *plugin_id,
-                                            open: entry.open,
-                                        }),
-                                    ));
-                            }
-                        });
-                        ui.add_space(8.0);
+                                    // PATCH: ensure that the window is only open on one screen.
+
+                                    let entry =
+                                        map.entry(*plugin_id).or_insert(PluginOpenState::CLOSED);
+
+                                    match visibility.open {
+                                        true => {
+                                            entry.open = false;
+                                        }
+                                        false => {
+                                            entry.open = true;
+                                            entry.screen_id = screen_id;
+                                        }
+                                    };
+
+                                    // Notify plugins.
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
+                                                plugin_id: *plugin_id,
+                                                open: entry.open,
+                                            }),
+                                        ));
+                                }
+                            });
+                            ui.add_space(8.0);
+                        }
+
+                        ui.separator();
+
+                        mem::drop(plugins)
                     }
+                });
 
-                    ui.separator();
-
-                    mem::drop(plugins)
+                if components::button(ui, false, "Close", ButtonSize::Medium) {
+                    self.system_ui_state.plugin_dialog_open = false;
                 }
             });
     }
