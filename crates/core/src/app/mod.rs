@@ -4,6 +4,7 @@ use crate::{
             DmxSimulator, LogWindow, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
+        external_screen::Pane,
         pages::{
             AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI,
         },
@@ -16,12 +17,14 @@ use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::Color32;
+use egui_dock::DockState;
 use egui_file::FileDialog;
 use pages::ViewUI;
 use std::time::{Duration, Instant};
 use strum::EnumIter;
 
 pub mod components;
+pub mod external_screen;
 pub mod pages;
 mod plugin_ui;
 mod popup;
@@ -76,7 +79,24 @@ impl PopupSpec {
     }
 }
 
+#[derive(Clone)]
+pub struct ExternalScreen {
+    dock_state: DockState<Pane>,
+}
+
+impl ExternalScreen {
+    pub fn mock() -> Self {
+        Self::new()
+    }
+
+    pub(crate) fn dock_state(&mut self) -> &mut DockState<Pane> {
+        &mut self.dock_state
+    }
+}
+
 pub struct BlaulichtApp {
+    external_screens: Vec<ExternalScreen>,
+
     // Example stuff:
     // label: String,
     //
@@ -204,6 +224,7 @@ pub struct BlaulichtApp {
 impl BlaulichtApp {
     fn new_default(data: AppStateWrapper) -> Self {
         Self {
+            external_screens: vec![ExternalScreen::mock(), ExternalScreen::mock()],
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
                 "Volume".to_string(),

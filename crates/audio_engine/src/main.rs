@@ -86,6 +86,7 @@ fn main() {
 
     let output = [CollectorOutputSpec {
         bins_p_column: Some(128),
+        raw: false,
     }];
 
     let song_path_str = song_path.to_string_lossy().into_owned();

@@ -20,3 +20,8 @@ Commits follow conventional prefixes (`feat:`, `fix:`, `refactor:`, `chore:`) an
 
 ## Configuration & Deployment Notes
 Adjust defaults via `config.toml` and keep secrets out of version control. Release artifacts live in `target/`; do not commit them. Coordinate with maintainers before modifying `run.sh`, which powers automation experiments.
+
+## Plugin UI Rendering Notes
+- Plugins queue egui instructions by calling host-provided `ui_*` exports; `ui_begin` swaps the double-buffer so the frontend reads stable frames.
+- Host stores queued `WasmUiOp` lists in `AppState.plugin_ui_ops`; the `render_plugin_ops` walker in `src/app/plugin_ui.rs` materialises widgets and canvases.
+- User actions emit `ControlEvent::PluginUi` through the event bus, letting the originating plugin observe button presses, text edits, and canvas gestures in its next `TickInput`.

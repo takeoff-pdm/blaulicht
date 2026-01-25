@@ -366,9 +366,8 @@ impl BlaulichtApp {
                                                 "Apply",
                                                 ButtonSize::Medium,
                                             ) {
-                                                self.data
-                                                    .event_bus_connection
-                                                    .send(ControlEventMessage::new(
+                                                self.data.event_bus_connection.send(
+                                                    ControlEventMessage::new(
                                                         EventOriginator::Web,
                                                         ControlEvent::Transaction(vec![
                                                             ControlEvent::SetSceneFocus(
@@ -378,7 +377,8 @@ impl BlaulichtApp {
                                                                 view_snapshot.overlays.clone(),
                                                             ),
                                                         ]),
-                                                    ));
+                                                    ),
+                                                );
                                             }
                                         },
                                     );

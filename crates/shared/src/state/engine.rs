@@ -194,7 +194,8 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(ref animation_spec_body_phaser) => {
                 animation_spec_body_phaser.sync
             }
-            AnimationSpecBody::AudioVolume(_)
+            AnimationSpecBody::PhaserRush(_)
+            | AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
@@ -210,7 +211,8 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
                 animation_spec_body_phaser.pin_to_beat
             }
-            AnimationSpecBody::AudioVolume(_)
+            AnimationSpecBody::PhaserRush(_)
+            | AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
@@ -237,7 +239,9 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
     fn from(value: AnimationSpecBodyKind) -> Self {
         match value {
             AnimationSpecBodyKind::Phaser => Self::Phaser(AnimationSpecBodyPhaser::default()),
-            AnimationSpecBodyKind::PhaserRush => Self::Phaser(MathematicalPhaserRush::default()),
+            AnimationSpecBodyKind::PhaserRush => {
+                Self::PhaserRush(MathematicalPhaserRush::default())
+            }
             AnimationSpecBodyKind::AudioVolume => {
                 Self::AudioVolume(AnimationSpecBodyAudioVolume::default())
             }
@@ -256,6 +260,7 @@ impl AnimationSpecBody {
     pub fn kind(&self) -> AnimationSpecBodyKind {
         match self {
             AnimationSpecBody::Phaser(_) => AnimationSpecBodyKind::Phaser,
+            AnimationSpecBody::PhaserRush(_) => AnimationSpecBodyKind::PhaserRush,
             AnimationSpecBody::AudioVolume(_) => AnimationSpecBodyKind::AudioVolume,
             AnimationSpecBody::BPMValue(_) => AnimationSpecBodyKind::BPMValue,
             AnimationSpecBody::AudioBeat(_) => AnimationSpecBodyKind::AudioBeat,

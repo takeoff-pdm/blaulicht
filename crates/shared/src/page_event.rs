@@ -2,7 +2,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-#[derive(Debug, Clone, PartialEq, EnumIter, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter, Serialize, Deserialize, Encode, Decode)]
 pub enum AppPage {
     Logs,
     System,
@@ -15,7 +15,7 @@ pub enum AppPage {
 }
 
 impl AppPage {
-    fn short(&self) -> &'static str {
+    pub fn short(&self) -> &'static str {
         match self {
             AppPage::Logs => "Logs",
             AppPage::System => "Sys",

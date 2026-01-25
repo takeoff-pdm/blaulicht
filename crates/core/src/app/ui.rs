@@ -1,5 +1,5 @@
 use crate::app::components::ButtonSize;
-use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{components, external_screen, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
@@ -49,6 +49,9 @@ impl BlaulichtApp {
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
         cc.egui_ctx.set_fonts(fonts);
+
+        // Create external window.
+        app.external_screens = vec![external_screen::create(), external_screen::create()];
 
         app
     }
@@ -209,87 +212,56 @@ impl eframe::App for BlaulichtApp {
             self.animation_time += 0.016; // 16ms = 0.016 seconds
 
             // Page content based on selected tab
-            match self.current_page {
-                AppPage::Logs => {
-                    self.logs_ui(ui, ctx);
-                }
-                AppPage::System => {
-                    self.system_ui(ui, ctx);
-                }
-                AppPage::Audio => {
-                    self.audio_ui(ui, ctx);
-                }
-                AppPage::FixturesSetup => {
-                    self.fixtures_ui_setup(ui, ctx);
-                }
-                AppPage::View => {
-                    self.view_ui(ui, ctx);
-                }
-                AppPage::ViewPerformance => {
-                    self.view_perf_ui(ui, ctx);
-                }
-                AppPage::FixturesPerformance => {
-                    self.fixtures_ui(ui, ctx);
-                }
-                AppPage::Animations => {
-                    self.animations_ui(ctx, ui);
-                }
-            }
+            let page = self.current_page;
+            self.page_content_based_on_tab(page, ui, ctx)
         });
 
         // let plugin_id_copy = *plugin_id;
         // let ops_copy = ops_map.get(plugin_id).cloned();
         // let data_clone = self.data.clone();
 
-        let viewport_id = egui::ViewportId::from_hash_of("foobar");
-        ctx.show_viewport_immediate(
-            viewport_id,
-            egui::ViewportBuilder::default()
-                .with_title("FOOBAR")
-                .with_inner_size([800.0, 480.0])
-                .with_resizable(true),
-            |ctx, _class| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    self.audio_ui(ui, ctx);
-                });
-            },
-        );
-
-        let viewport_id = egui::ViewportId::from_hash_of("foobar1");
-        ctx.show_viewport_immediate(
-            viewport_id,
-            egui::ViewportBuilder::default()
-                .with_title("FOOBAR")
-                .with_inner_size([800.0, 480.0])
-                .with_resizable(true),
-            |ctx, _class| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    self.view_perf_ui(ui, ctx);
-                });
-            },
-        );
-
-        let viewport_id = egui::ViewportId::from_hash_of("foobar2");
-        ctx.show_viewport_immediate(
-            viewport_id,
-            egui::ViewportBuilder::default()
-                .with_title("FOOBAR")
-                .with_inner_size([800.0, 480.0])
-                .with_resizable(true),
-            |ctx, _class| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    self.animations_ui(ctx, ui);
-                });
-            },
-        );
-
         // Render per-plugin UI windows (visible across pages)
         self.render_plugin_ui(ctx);
+
+        const EXTERNAL_SCREENS: usize = 2;
+
+        for i in 0..EXTERNAL_SCREENS {
+            self.render_external_screen(ctx, i);
+        }
     }
 }
 
 impl BlaulichtApp {
     fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         self.log_window.draw(ctx, ui);
+    }
+
+    pub fn page_content_based_on_tab(&mut self, page: AppPage, ui: &mut egui::Ui, ctx: &Context) {
+        match page {
+            AppPage::Logs => {
+                self.logs_ui(ui, ctx);
+            }
+            AppPage::System => {
+                self.system_ui(ui, ctx);
+            }
+            AppPage::Audio => {
+                self.audio_ui(ui, ctx);
+            }
+            AppPage::FixturesSetup => {
+                self.fixtures_ui_setup(ui, ctx);
+            }
+            AppPage::View => {
+                self.view_ui(ui, ctx);
+            }
+            AppPage::ViewPerformance => {
+                self.view_perf_ui(ui, ctx);
+            }
+            AppPage::FixturesPerformance => {
+                self.fixtures_ui(ui, ctx);
+            }
+            AppPage::Animations => {
+                self.animations_ui(ctx, ui);
+            }
+        }
     }
 }

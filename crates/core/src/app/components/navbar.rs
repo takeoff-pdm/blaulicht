@@ -7,7 +7,7 @@ use crate::app::{
     BlaulichtApp,
 };
 
-fn app_page_to_icon(from: &AppPage) -> &'static str {
+pub fn app_page_to_icon(from: &AppPage) -> &'static str {
     match from {
         AppPage::Logs => egui_phosphor::regular::TERMINAL_WINDOW,
         AppPage::System => egui_phosphor::regular::GEAR,
