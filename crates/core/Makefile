@@ -1,3 +1,6 @@
+all-check:
+	RUSTFLAGS=-Awarnings cargo c --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11
+
 all-run:
 	RUSTFLAGS=-Awarnings cargo r --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11
 
@@ -13,3 +16,6 @@ audio-mock-run:
 mock-run:
 	RUSTFLAGS=-Awarnings cargo r --message-format short --no-default-features --features wayland --features=audio-mock
 
+
+mock-check:
+	RUSTFLAGS=-Awarnings cargo c --message-format short --no-default-features --features wayland --features=audio-mock

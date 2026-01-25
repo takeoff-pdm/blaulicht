@@ -1,4 +1,4 @@
-use egui::{Color32, Label, Ui, Vec2, WidgetText};
+use egui::{Color32, Label, Sense, Ui, Vec2, WidgetText};
 
 use crate::app::components::text_color_for_bg;
 
@@ -54,7 +54,12 @@ pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool 
     const RADIUS: f32 = 1.0;
     // const BORDER_WIDTH: f32 = 6.0;
 
-    let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        size.dim().0,
+        Sense::click().union(Sense::focusable_noninteractive()),
+    );
+
+    let is_focussed = response.has_focus();
 
     let painter = ui.painter();
 
@@ -96,6 +101,16 @@ pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool 
 
     // Actual button.
     painter.rect_filled(rect, RADIUS, bg_color);
+
+    // Draw a `border` if focussed.
+    if is_focussed {
+        ui.painter().rect_stroke(
+            rect,
+            egui::CornerRadius::same(1),
+            egui::Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
+            egui::StrokeKind::Middle,
+        );
+    }
 
     painter.text(
         rect.center(),

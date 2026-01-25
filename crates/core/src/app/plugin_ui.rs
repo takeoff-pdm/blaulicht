@@ -1,5 +1,5 @@
-use crate::app::components::ButtonSize;
 use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::state::ScreenId;
 use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
@@ -12,14 +12,18 @@ use strum::IntoEnumIterator;
 use cpal::traits::DeviceTrait;
 
 impl BlaulichtApp {
-    pub fn render_plugin_ui(&self, ctx: &Context) {
+    pub fn render_plugin_ui(&self, ctx: &Context, canvas_screen_id: ScreenId) {
         let ops_map = self.data.state.plugin_ui_ops.read().unwrap().clone();
         let visibility_map = self.data.state.plugin_ui_visibility.read().unwrap().clone();
         let popped_out_map = self.data.state.plugin_ui_popped_out.read().unwrap().clone();
 
-        for (plugin_id, visible) in visibility_map.iter() {
-            let mut is_open = *visible;
+        for (plugin_id, visibility) in visibility_map.iter() {
+            let mut is_open = visibility.open;
             if !is_open {
+                continue;
+            }
+
+            if visibility.screen_id != canvas_screen_id {
                 continue;
             }
 
@@ -77,7 +81,7 @@ impl BlaulichtApp {
                         if ctx.input(|i| i.viewport().close_requested()) {
                             let mut map = data_clone.state.plugin_ui_visibility.write().unwrap();
                             if let Some(v) = map.get_mut(&plugin_id_copy) {
-                                *v = false;
+                                v.open = false;
 
                                 // Notify plugins.
                                 self.data
@@ -129,7 +133,7 @@ impl BlaulichtApp {
                 if !is_open {
                     let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
                     if let Some(v) = map.get_mut(plugin_id) {
-                        *v = false;
+                        v.open = false;
                     }
                 }
             }

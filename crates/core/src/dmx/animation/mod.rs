@@ -19,6 +19,9 @@ impl DmxEngine {
         let speed_per_step = {
             // let animation_spec = animations.get(anim_id).unwrap();
             match &animation_spec.body {
+                AnimationSpecBody::PhaserRush(_) => {
+                    todo!("PANIC")
+                }
                 AnimationSpecBody::Phaser(body) => {
                     let speed_for_all_steps = match body.time_total {
                         PhaserDuration::Fixed(time) => time as f64,
@@ -62,6 +65,7 @@ impl DmxEngine {
         // let animation = animations.get(&id).unwrap();
 
         match &spec.body {
+            AnimationSpecBody::PhaserRush(_) => todo!("ERROR"),
             AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
             AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
                 audio_snapshot.snapshot.volume as u16
