@@ -64,6 +64,22 @@ sudo find /usr/share/xsessions/ ! -name openbox.desktop ! -name blaulicht.deskto
 # Delete gnome if installed.
 sudo apt purge gnome-session gnome-shell -y || echo "Gnome removal completed with error"
 
+# TODO: detect if installed before installing
+# Delete appamor and other bloat
+sudo systemctl stop apparmor || echo "No appamor"
+sudo systemctl disable apparmor || echo "No appamor"
+sudo apt purge -y apparmor || echo "Remove appamor"
+
+
+sudo systemctl stop cups cups-browsed || echo "CUPS"
+sudo systemctl disable cups cups-browsed || echo "CUPS"
+sudo apt purge -y cups* || echo "CUPS"
+
+sudo systemctl stop wpa_supplicant || echo "WPA"
+sudo systemctl disable wpa_supplicant  || echo "WPA"
+sudo apt purge -y wpasupplicant || echo "WPA"
+
+
 sudo apt install -y lightdm || exit 1
 # sed "s/USER-PLACEHOLDER/${USER}/g" gdm3.conf | sudo tee /etc/gdm3/daemon.conf || exit 1
 sudo cp ./lightdm.conf /etc/lightdm/lightdm.conf || exit 1
@@ -88,7 +104,7 @@ sudo cp ./fans.sh /usr/bin/fans
 #
 #
 
-sudo apt install -y wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
+sudo apt install -y btop rsync wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
 
 blaulicht_binary
 
@@ -144,6 +160,12 @@ echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/fans" | sudo tee /etc/sudoers.d/bla
 
 sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown
 sudo chmod 440 /etc/sudoers.d/blaulicht-fans
+
+#
+# Thread priority adjustments
+#
+
+sudo cp ./limits.conf /etc/security/limits.d/99-blaulicht-thread-priority.conf || exit 1
 
 #
 #
