@@ -97,6 +97,13 @@ pub fn supervisor_thread(
             }
             Err(TryRecvError::Disconnected) => {
                 log::warn!("[SUPERVISOR] Shutting down.");
+
+                signal_mainloop(
+                    Arc::clone(&audio_thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORTED,
+                );
+
                 break;
             }
             Err(TryRecvError::Empty) => {}

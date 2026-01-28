@@ -6,9 +6,9 @@ pub mod dmx;
 pub mod health;
 pub mod midi;
 pub mod misc;
+pub mod serial;
 pub mod showfile;
 pub mod speed;
-pub mod serial;
 
 pub struct SystemUI {
     open_file_dialog: Option<FileDialog>,

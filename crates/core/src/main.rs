@@ -14,8 +14,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 // #[actix_web::main]
 fn main() -> anyhow::Result<()> {
+    let _profiler = dhat::Profiler::new_heap();
+
     let config_filepath = "./config.toml";
 
     let cfg = config::read_config(config_filepath.into())?;

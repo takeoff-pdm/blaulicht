@@ -52,6 +52,26 @@ impl ExternalScreen {
             dock_state: DockState::new(tabs),
         }
     }
+
+    fn ensure_core_tabs(&mut self) {
+        let present_pages = {
+            let mut pages = Vec::new();
+            for surface in self.dock_state.iter_surfaces() {
+                for (_, pane) in surface.iter_all_tabs() {
+                    if !pages.contains(&pane.page) {
+                        pages.push(pane.page);
+                    }
+                }
+            }
+            pages
+        };
+
+        for page in AppPage::iter() {
+            if !present_pages.contains(&page) {
+                self.dock_state.push_to_first_leaf(Pane::new(page));
+            }
+        }
+    }
 }
 
 struct TabViewer<'bl, 'ct> {
@@ -122,6 +142,8 @@ impl BlaulichtApp {
                     .id(Id::new(("external_screen_dock", screen_idx)))
                     .style(Style::from_egui(ctx.style().as_ref()))
                     .show(ctx, &mut tab_viewer);
+
+                screen.ensure_core_tabs();
 
                 // This is peak bullshit code.
                 self.external_screens[screen_idx] = screen;
