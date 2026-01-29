@@ -18,6 +18,7 @@ audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in"]
 audio-mock = ["blaulicht-audio-engine/noise"]
 wayland = ["eframe/wayland"]
 x11 = ["eframe/x11"]
+dhat = ["dep:dhat"]
 
 [dependencies]
 
@@ -80,7 +81,8 @@ artnet_protocol = "0.4.4"
 rush-interpreter-vm = "0.1.2"
 egui_code_editor = { version = "=0.2.14" }
 rush-analyzer = "0.1.1"
-dhat = "0.3.3"
+
+dhat = { version = "0.3.3", optional = true }
 # egui_tiles = "0.13.0"
 
 [patch.crates-io]
