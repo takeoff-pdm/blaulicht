@@ -60,6 +60,8 @@ pub struct CollectorScratch {
     pub(crate) is_on_beat: bool,
 
     pub(crate) last_calibrate_time: usize,
+
+    pub(crate) beat_volume_volume_samples_buffer: Vec<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +91,7 @@ impl CollectorScratch {
             is_on_beat: false,
             beat_needs_sync: true,
             last_calibrate_time: now,
+            beat_volume_volume_samples_buffer: vec![0; 2048], // TODO: make this more steerable?
         }
     }
 }
@@ -118,9 +121,12 @@ pub struct SignalCollector<const NUM_OUTPUTS: usize, SourceT>
 where
     SourceT: AudioSource,
 {
+    pub freq_buffer: Vec<Frequency>,
+    pub freq_buffer_raw: Vec<Frequency>,
+
     pub audio_source: SourceT,
-    pub freqs: Vec<Frequency>,
-    pub freqs_raw: Vec<Frequency>, // Without transformations.
+    // pub freqs: Vec<Frequency>,
+    // pub freqs_raw: Vec<Frequency>, // Without transformations.
     pub current: CollectedAudioSnapshot,
     pub params: SignalCollectorParams,
     pub scratch_params: CollectorScratchParameters,
@@ -181,14 +187,18 @@ where
         scratch_params: CollectorScratchParameters,
         audio_source: SourceT,
         now: usize,
+        // TODO: breaking -> the freq buffer size is obtained automatically from the source.
+        // freq_buffer_size: usize,
     ) -> anyhow::Result<Self> {
+        let freq_buffer_size = audio_source.get_freq_buffer_size();
+
+        debug_assert!(freq_buffer_size > 0);
+
         Ok(Self {
             params,
             scratch_params,
-            freqs: vec![],
-            freqs_raw: vec![],
-            // converter,
-            // _capture,
+            freq_buffer: vec![Frequency::default(); freq_buffer_size],
+            freq_buffer_raw: vec![Frequency::default(); freq_buffer_size],
             current: CollectedAudioSnapshot::default(),
             scratch: CollectorScratch::new(scratch_params, now),
             outputs,
@@ -227,53 +237,49 @@ where
     fn get_frequencies(&mut self, now: usize) {
         let values_raw = self.audio_source.get_frequencies(now);
 
-        self.freqs_raw = values_raw.clone();
+        // Copy into internal buffer.
+        self.freq_buffer_raw.copy_from_slice(values_raw);
+        self.freq_buffer.copy_from_slice(values_raw);
 
-        let values_vol_adjusted = match self.params.volume {
-            100 => values_raw,
-            adjust_percent => values_raw
-                .into_iter()
-                .map(|freq| {
+        //
+        // Volume pass.
+        //
+        match self.params.volume {
+            100 => {}
+            adjust_percent => {
+                self.freq_buffer.iter_mut().for_each(|freq| {
                     let adjust_percent_float = adjust_percent as f32 / 100.0;
-                    Frequency {
-                        volume: freq.volume * adjust_percent_float,
-                        freq: freq.freq,
-                        position: freq.position,
+                    freq.volume = freq.volume * adjust_percent_float;
+                });
+            }
+        }
+
+        //
+        // Gate pass.
+        //
+        match self.params.gate {
+            0 => {}
+            gate_min => {
+                self.freq_buffer.iter_mut().for_each(|freq| {
+                    if freq.volume >= gate_min as f32 {
+                        match self.params.boost {
+                            Some(b) => {
+                                freq.volume += (b as f32) / 10.0;
+                            }
+                            None => {}
+                        }
+
+                        return;
                     }
-                })
-                .collect(),
-        };
 
-        // TODO: would outsource into function.
-
-        let values = match self.params.gate {
-            0 => values_vol_adjusted,
-            gate_min => values_vol_adjusted
-                .into_iter()
-                .map(|freq| match (freq.volume * 10.0) >= gate_min as f32 {
-                    true => match self.params.boost {
-                        Some(b) => Frequency {
-                            volume: freq.volume + ((b as f32) / 10.0),
-                            freq: freq.freq,
-                            position: freq.position,
-                        },
-                        None => freq,
-                    },
-                    false => Frequency {
-                        volume: 0.0,
-                        freq: freq.freq,
-                        position: freq.position,
-                    },
-                })
-                .collect(),
-        };
-
-        self.freqs = values;
-        // self.current.initialized = true;
+                    freq.volume = 0.0;
+                });
+            }
+        }
     }
 
     pub fn clear(&mut self) {
-        self.freqs = vec![];
+        // self.freqs = vec![];
         self.scratch = CollectorScratch::new(self.scratch_params, 0);
         self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS]
     }
@@ -339,14 +345,16 @@ where
     //     }
     // }
 
+    // TODO: make this one mutable on the collector output.
     pub fn tick_output<const OUTPUT_INDEX: usize>(&mut self) -> CollectorOutput {
         let output_spec = self.outputs[OUTPUT_INDEX];
 
         let freqs = match output_spec.raw {
-            true => &self.freqs_raw,
-            false => &self.freqs,
+            true => &self.freq_buffer,
+            false => &self.freq_buffer,
         };
 
+        // TODO: this also allocates in a hot loop :/
         let current_audio_colunn = match output_spec.bins_p_column {
             Some(num_bins) => bin_spectrum_to_u8(freqs, num_bins),
             None => vec![],

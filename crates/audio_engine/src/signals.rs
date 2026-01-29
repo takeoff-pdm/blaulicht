@@ -8,7 +8,7 @@
 // };
 // use audioviz::spectrum::Frequency;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Frequency {
     pub volume: f32,
 
@@ -96,7 +96,7 @@ where
 
             let (v, lower_volume_limit) = match USES_BASS {
                 true => (
-                    self.freqs
+                    self.freq_buffer
                         .iter()
                         .filter(|f| f.freq > 20.0 && f.freq < 250.0)
                         .map(|f| f.volume as usize)
@@ -104,7 +104,7 @@ where
                     100.0,
                 ),
                 false => (
-                    self.freqs
+                    self.freq_buffer
                         .iter()
                         .map(|f| f.volume as usize)
                         .collect::<Vec<usize>>(),
@@ -252,22 +252,35 @@ where
 
     #[inline(always)]
     pub fn beat_volume(&mut self) -> anyhow::Result<()> {
-        let curr: Vec<usize> = self
-            .freqs
-            .chunks(2)
-            // TODO: only look at the bass line?
-            .map(|f| f.iter().map(|e| e.volume as usize).max().unwrap())
-            .collect();
+        // 1. Clear buffer 2. Fill it up again
+        self.scratch.beat_volume_volume_samples_buffer.clear();
+        self.scratch.beat_volume_volume_samples_buffer.extend(
+            self.freq_buffer
+                .chunks(2)
+                .map(|f| f.iter().map(|e| e.volume as usize).max().unwrap_or(0)),
+        );
 
-        let curr_unfiltered: usize = self.freqs.iter().map(|f| f.volume as usize).sum();
+        // let curr: Vec<usize> = self
+        //     .freq_buffer
+        //     .chunks(2)
+        //     // TODO: only look at the bass line?
+        //     .map(|f| f.iter().map(|e| e.volume as usize).max().unwrap())
+        //     .collect();
+
+        let curr_unfiltered: usize = self.freq_buffer.iter().map(|f| f.volume as usize).sum();
         shift_push!(
             self.scratch.long_historic,
             LONG_HISTORIC_FRAMES,
             curr_unfiltered
         );
 
-        let curr = curr.iter().max().unwrap_or(&0);
-        shift_push!(self.scratch.historic, ROLLING_AVERAGE_FRAMES, *curr);
+        let curr_max = self
+            .scratch
+            .beat_volume_volume_samples_buffer
+            .iter()
+            .max()
+            .unwrap_or(&0);
+        shift_push!(self.scratch.historic, ROLLING_AVERAGE_FRAMES, *curr_max);
 
         let min = self
             .scratch
@@ -288,7 +301,7 @@ where
 
         const MAX_BEAT_VOLUME: u8 = 255;
 
-        let index_mapped = curr.map_range(min..max, 0..MAX_BEAT_VOLUME as usize);
+        let index_mapped = curr_max.map_range(min..max, 0..MAX_BEAT_VOLUME as usize);
 
         if self.scratch.last_index != index_mapped {
             self.scratch.last_index = index_mapped;
@@ -313,7 +326,7 @@ where
         });
 
         let curr_max = (self
-            .freqs
+            .freq_buffer
             .iter()
             // .max_by_key(|f| (f.volume * 10.0) as usize)
             // .unwrap_or(&Frequency {
@@ -324,7 +337,7 @@ where
             .map(|f| f.volume)
             .sum::<f32>()
             * 10.0
-            / self.freqs.len() as f32) as usize;
+            / self.freq_buffer.len() as f32) as usize;
         // .volume as usize;
 
         // TODO: this is fake, this is not even the average.

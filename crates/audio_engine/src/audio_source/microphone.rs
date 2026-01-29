@@ -15,27 +15,40 @@ use cpal::{traits::DeviceTrait, Device};
 pub struct AudioSourceMicrophone {
     pub converter: AudioConverter,
     _capture: Capture, // Cant be dropped or the converter dies.
+    pub freq_buffer: Vec<Frequency>,
 }
 
 impl AudioSourceMicrophone {
-    pub fn new(device: Device, config: StreamConfig) -> anyhow::Result<Self> {
+    pub fn new(
+        device: Device,
+        config: StreamConfig,
+        freq_buffer_size: usize,
+    ) -> anyhow::Result<Self> {
         let (converter, _capture) = init_converter(device, config)
             .with_context(|| "Failed to initialize audio converter")?;
 
         Ok(Self {
             converter,
             _capture,
+            freq_buffer: vec![Frequency::default(); freq_buffer_size],
         })
     }
 }
 
 impl AudioSource for AudioSourceMicrophone {
-    fn get_frequencies(&mut self, _now: usize) -> Vec<Frequency> {
-        self.converter
+    fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
+        let a: Vec<_> = self
+            .converter
             .freqs()
             .iter()
             .map(|f| Frequency::from(f))
-            .collect()
+            .collect();
+
+        &self.freq_buffer
+    }
+
+    fn get_freq_buffer_size(&self) -> usize {
+        self.freq_buffer.len()
     }
 }
 

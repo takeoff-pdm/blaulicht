@@ -72,6 +72,13 @@ pub fn supervisor_thread(
 
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
             warn!("[SUPERVISOR] Shutting down...");
+
+            signal_mainloop(
+                Arc::clone(&audio_thread_control_signal),
+                Arc::clone(&app_state),
+                AudioThreadControlSignal::ABORTED,
+            );
+
             break;
         };
         seq += 1;

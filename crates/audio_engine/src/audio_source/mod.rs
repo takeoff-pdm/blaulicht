@@ -10,5 +10,6 @@ pub mod microphone;
 pub mod noise;
 
 pub trait AudioSource {
-    fn get_frequencies(&mut self, now: usize) -> Vec<Frequency>;
+    fn get_freq_buffer_size(&self) -> usize;
+    fn get_frequencies(&mut self, now: usize) -> &[Frequency];
 }

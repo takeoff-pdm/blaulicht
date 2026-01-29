@@ -47,6 +47,8 @@ pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 // pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
 
+const AUDIO_SOURCE_FREQ_BUFFER_SIZE: usize = 2048;
+
 pub fn run(
     device: AudioDeviceT,
     system_out: Sender<SystemMessage>,
@@ -163,11 +165,12 @@ pub fn run(
     };
 
     #[cfg(feature = "audio")]
-    let audio_source = AudioSourceMicrophone::new(device, config.stream)
-        .with_context(|| "Failed to initialize audio stream")?;
+    let audio_source =
+        AudioSourceMicrophone::new(device, config.stream, AUDIO_SOURCE_FREQ_BUFFER_SIZE)
+            .with_context(|| "Failed to initialize audio stream")?;
 
     #[cfg(not(feature = "audio"))]
-    let audio_source = AudioSourceNoise::new(41100, 100000);
+    let audio_source = AudioSourceNoise::new(41100, 100000, AUDIO_SOURCE_FREQ_BUFFER_SIZE);
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),

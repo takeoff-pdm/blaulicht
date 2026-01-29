@@ -3,22 +3,34 @@ use rand::Rng; // Import the trait to use .gen_range()
 
 #[derive(Clone)]
 pub struct AudioSourceNoise {
-    samples: Vec<f32>,
+    freq_buffer: Vec<Frequency>,
     sample_rate: u32,
     chunk_size: usize,
     length_millis: usize,
 }
 
 impl AudioSource for AudioSourceNoise {
-    fn get_frequencies(&mut self, now: usize) -> Vec<Frequency> {
+    fn get_frequencies(&mut self, now: usize) -> &[Frequency] {
         self.get_frequencies_at_time(now)
+    }
+
+    fn get_freq_buffer_size(&self) -> usize {
+        self.freq_buffer.len()
     }
 }
 
 impl AudioSourceNoise {
-    pub fn new(sample_rate: u32, length_millis: usize) -> Self {
+    pub fn new(sample_rate: u32, length_millis: usize, num_samples: usize) -> Self {
+        let samples = (0..num_samples)
+            .map(|i| Frequency {
+                volume: 0.0,
+                freq: (i * 100) as f32,
+                position: 0.0,
+            })
+            .collect();
+
         Self {
-            samples: vec![],
+            freq_buffer: samples,
             sample_rate,
             chunk_size: 10,
             length_millis,
@@ -36,21 +48,13 @@ impl AudioSourceNoise {
     }
 
     /// Get frequencies at a specific time in seconds
-    pub fn get_frequencies_at_time(&self, time_millis: usize) -> Vec<Frequency> {
-        // ... inside your function ...
-
+    pub fn get_frequencies_at_time(&mut self, time_millis: usize) -> &[Frequency] {
         let mut rng = rand::rng(); // Create a local random generator
-        let mut base = Vec::with_capacity(200);
 
-        for i in 0..200 {
-            base.push(Frequency {
-                // Generate a random f32 between 0.0 and 100.0
-                volume: rng.random_range(0.0..100.0),
-                freq: (i * 100) as f32,
-                position: 0.0,
-            });
-        }
+        self.freq_buffer.iter_mut().for_each(|freq| {
+            freq.volume = rng.random_range(0.0..50.0);
+        });
 
-        base
+        &self.freq_buffer
     }
 }

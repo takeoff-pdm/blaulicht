@@ -99,6 +99,8 @@ impl AudioConverter {
 
     pub fn freqs(&mut self) -> Vec<Frequency> {
         if let Some(stream) = &self.stream_controller {
+            // TODO: this needs MASSIVE optimization!
+            // THIS is a catastrophe.
             let freqs = stream.get_frequencies();
             return freqs;
         }

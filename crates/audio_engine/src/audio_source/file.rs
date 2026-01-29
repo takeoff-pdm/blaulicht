@@ -1,6 +1,7 @@
 use crate::{AudioSource, Frequency};
 use audioviz::spectrum::{config::ProcessorConfig, processor::Processor};
 use std::fs::File;
+use std::ops::Range;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
@@ -10,6 +11,7 @@ use symphonia::core::probe::Hint;
 
 #[derive(Clone)]
 pub struct AudioSourceSoundfile {
+    freq_buffer: Vec<Frequency>,
     samples: Vec<f32>,
     sample_rate: u32,
     chunk_size: usize,
@@ -17,14 +19,21 @@ pub struct AudioSourceSoundfile {
 }
 
 impl AudioSource for AudioSourceSoundfile {
-    fn get_frequencies(&mut self, now: usize) -> Vec<Frequency> {
+    fn get_frequencies(&mut self, now: usize) -> &[Frequency] {
         // let time = self.start_time.elapsed().as_millis() as f32 / 1000f32;
         self.get_frequencies_at_time(now)
+    }
+
+    fn get_freq_buffer_size(&self) -> usize {
+        self.freq_buffer.len()
     }
 }
 
 impl AudioSourceSoundfile {
-    pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        file_path: &str,
+        freq_buffer_len: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // Open the audio file
         let file = File::open(file_path)?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -82,6 +91,7 @@ impl AudioSourceSoundfile {
         let length_millis = (samples.len() as f32 / sample_rate as f32 * 1000.0) as usize;
 
         Ok(Self {
+            freq_buffer: vec![Frequency::default(); freq_buffer_len],
             samples,
             sample_rate,
             chunk_size: 4096,
@@ -100,11 +110,11 @@ impl AudioSourceSoundfile {
     }
 
     /// Get frequencies at a specific time in seconds
-    pub fn get_frequencies_at_time(&self, time_millis: usize) -> Vec<Frequency> {
+    pub fn get_frequencies_at_time(&mut self, time_millis: usize) -> &[Frequency] {
         let sample_index = (time_millis as f32 / 1000.0 * self.sample_rate as f32) as usize;
 
         if sample_index >= self.samples.len() {
-            return Vec::new();
+            return &[];
         }
 
         // Get chunk centered around the requested time
@@ -112,40 +122,38 @@ impl AudioSourceSoundfile {
         let end = (start + self.chunk_size).min(self.samples.len());
 
         if end - start < self.chunk_size {
-            return Vec::new();
+            return &[];
         }
 
-        let chunk = &self.samples[start..end];
-        self.compute_frequencies(chunk)
+        let range = start..end;
+        self.compute_frequencies(range)
     }
 
     /// Get frequencies for a range of time in seconds
-    pub fn get_frequencies_range(&self, start_time: f32, end_time: f32) -> Vec<Frequency> {
+    pub fn get_frequencies_range(&mut self, start_time: f32, end_time: f32) -> &[Frequency] {
         let start_sample = (start_time * self.sample_rate as f32) as usize;
         let end_sample = (end_time * self.sample_rate as f32) as usize;
 
         if start_sample >= self.samples.len() || end_sample > self.samples.len() {
-            return Vec::new();
+            return &[];
         }
 
-        let chunk = &self.samples[start_sample..end_sample];
-
-        // If chunk is too small, return empty
-        if chunk.len() < 512 {
-            return Vec::new();
+        let range = start_sample..end_sample;
+        if range.len() < 512 {
+            return &[];
         }
 
-        self.compute_frequencies(chunk)
+        self.compute_frequencies(range)
     }
 
     /// Get current frequencies (returns frequencies for the entire loaded audio)
-    pub fn get_frequencies(&self) -> Vec<Frequency> {
+    pub fn get_frequencies(&mut self) -> &[Frequency] {
         if self.samples.len() < self.chunk_size {
-            return Vec::new();
+            return &[];
         }
 
-        let chunk = &self.samples[..self.chunk_size];
-        self.compute_frequencies(chunk)
+        let range = 0..self.chunk_size;
+        self.compute_frequencies(range)
     }
 
     /// Set the FFT chunk size (must be power of 2)
@@ -155,9 +163,11 @@ impl AudioSourceSoundfile {
         }
     }
 
-    fn compute_frequencies(&self, samples: &[f32]) -> Vec<Frequency> {
+    fn compute_frequencies(&mut self, chunk_range: Range<usize>) -> &[Frequency] {
+        let samples = &self.samples[chunk_range];
+
         if samples.is_empty() {
-            return Vec::new();
+            return &[];
         }
 
         {
@@ -171,11 +181,25 @@ impl AudioSourceSoundfile {
             );
 
             processor.compute_all();
-            processor
-                .freq_buffer
-                .iter()
-                .map(|f| Frequency::from(f))
-                .collect()
+
+            debug_assert!(
+                processor.freq_buffer.len() == self.freq_buffer.len(),
+                "Soundfile buffer is {} but got {} from processor",
+                self.freq_buffer.len(),
+                processor.freq_buffer.len()
+            );
+
+            for (i, f) in processor.freq_buffer.iter().enumerate() {
+                self.freq_buffer[i] = Frequency::from(f);
+            }
+
+            &self.freq_buffer
+
+            // processor
+            //     .freq_buffer
+            //     .iter()
+            //     .map(|f| Frequency::from(f))
+            //     .collect()
         }
     }
 }

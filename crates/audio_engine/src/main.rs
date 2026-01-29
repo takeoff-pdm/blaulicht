@@ -15,7 +15,8 @@ use blaulicht_audio_engine::{
 use clap::Parser;
 use egui::mutex::Mutex;
 use kdam::{tqdm, BarExt};
-use log::info;
+
+const FREQ_BUFFER_SIZE: usize = 2048;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -91,7 +92,8 @@ fn main() {
 
     let song_path_str = song_path.to_string_lossy().into_owned();
 
-    let audio_source = AudioSourceSoundfile::new(&song_path_str).unwrap();
+    // TODO: what is a good value for this?
+    let audio_source = AudioSourceSoundfile::new(&song_path_str, FREQ_BUFFER_SIZE).unwrap();
     let length_millis = audio_source.duration();
 
     let spec_period = 16;
@@ -142,6 +144,7 @@ fn main() {
                     },
                     audio_source,
                     0,
+                    FREQ_BUFFER_SIZE,
                 )
                 .unwrap();
 
