@@ -223,11 +223,11 @@ pub fn run(
                     ))
                     .unwrap();
 
-                signal_mainloop(
-                    Arc::clone(&thread_control_signal),
-                    Arc::clone(&app_state),
-                    AudioThreadControlSignal::ABORTED,
-                );
+                // signal_mainloop(
+                //     Arc::clone(&thread_control_signal),
+                //     Arc::clone(&app_state),
+                //     AudioThreadControlSignal::ABORTED,
+                // );
 
                 break;
             }
