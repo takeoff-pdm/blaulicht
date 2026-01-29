@@ -19,7 +19,7 @@ use std::{
 };
 
 #[cfg(feature = "wasmtime")]
-use wasmtime::{Instance, Memory, Store};
+use wasmtime::{Instance, Memory, Store, TypedFunc};
 
 use crate::{
     config::PluginConfig,
@@ -66,6 +66,9 @@ pub struct Plugin {
     #[cfg(feature = "wasmtime")]
     wasm_state: PluginWasmState,
 
+    #[cfg(feature = "wasmtime")]
+    tick_func: TypedFunc<(i32, i32), ()>,
+
     // DANGER: this is not always populated.
     midi_buffers: AddrDescriptor,
     serial_buffers: AddrDescriptor,
@@ -73,6 +76,25 @@ pub struct Plugin {
 
     // When was the last time the engine state was written into that plugin?
     last_dmx_engine_sync: Instant,
+}
+
+impl Plugin {
+    pub fn new(path: Cow<'static, str>, mut wasm_state: PluginWasmState) -> anyhow::Result<Self> {
+        let tick_func = wasm_state.instance.get_typed_func::<(i32, i32), ()>(
+            &mut wasm_state.store,
+            "internal_tick", // TODO: external type and name constants.
+        )?;
+
+        Ok(Self {
+            path,
+            wasm_state,
+            tick_func,
+            midi_buffers: AddrDescriptor::dummy(),
+            state_buffers: AddrDescriptor::dummy(),
+            serial_buffers: AddrDescriptor::dummy(),
+            last_dmx_engine_sync: Instant::now(),
+        })
+    }
 }
 
 pub struct PluginReloadRequest {

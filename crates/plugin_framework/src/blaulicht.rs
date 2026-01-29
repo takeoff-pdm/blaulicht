@@ -13,7 +13,7 @@ extern "C" {
     fn bl_open_midi_device(device_name_ptr: *const u8, device_name_len: usize) -> u8;
     fn bl_enumerate_midi_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn bl_transmit_midi(device_id: u8, status: u8, data0: u8, data1: u8);
-    fn bl_report_panic();
+    fn bl_report_panic(plugin_id: u8, ptr: *const u8, len: usize);
 
     fn bl_open_serial_device(
         device_name_ptr: *const u8,
@@ -205,10 +205,8 @@ pub fn bl_enumerate_serial_devices_safe() -> Vec<String> {
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
 
-pub fn report_panic() {
-    unsafe {
-        bl_report_panic();
-    }
+pub fn report_panic(msg: &str) {
+    unsafe { bl_report_panic(PLUGIN_ID, msg.as_ptr(), msg.len()) }
 }
 
 pub fn bl_transmit_midi_safe(device: u8, status: u8, data0: u8, data1: u8) {
@@ -296,9 +294,9 @@ pub mod ui {
         ui_color_picker as host_ui_color_picker, ui_end_collapsing as host_ui_end_collapsing,
         ui_end_frame as host_ui_end_frame, ui_end_horizontal as host_ui_end_horizontal,
         ui_end_tab as host_ui_end_tab, ui_end_tabs as host_ui_end_tabs,
-        ui_end_vertical as host_ui_end_vertical,
-        ui_hfader as host_ui_hfader, ui_label as host_ui_label,
-        ui_painter_begin as host_ui_painter_begin, ui_painter_circle as host_ui_painter_circle,
+        ui_end_vertical as host_ui_end_vertical, ui_hfader as host_ui_hfader,
+        ui_label as host_ui_label, ui_painter_begin as host_ui_painter_begin,
+        ui_painter_circle as host_ui_painter_circle,
         ui_painter_circle_stroke as host_ui_painter_circle_stroke,
         ui_painter_cubic_bezier as host_ui_painter_cubic_bezier,
         ui_painter_end as host_ui_painter_end, ui_painter_line as host_ui_painter_line,

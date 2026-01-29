@@ -152,20 +152,17 @@ impl PluginManager {
                 .unwrap();
 
             // store the instance and store for future use
-            let mut plugin = Plugin {
-                path: plugin.file_path.clone().into(),
-                wasm_state: PluginWasmState {
-                    memory: instance
-                        .get_memory(&mut store, "memory")
-                        .expect("memory not found"),
-                    store,
-                    instance,
-                },
-                midi_buffers: AddrDescriptor::dummy(),
-                state_buffers: AddrDescriptor::dummy(),
-                serial_buffers: AddrDescriptor::dummy(),
-                last_dmx_engine_sync: Instant::now(),
+            let plugin_wasm_state = PluginWasmState {
+                memory: instance
+                    .get_memory(&mut store, "memory")
+                    .expect("memory not found"),
+                store,
+                instance,
             };
+
+            // TODO: more context here, also just fail this one plugin and not crash whole plugin
+            // manager.
+            let mut plugin = Plugin::new(plugin.file_path.clone().into(), plugin_wasm_state)?;
 
             plugin
                 .acquire_midi_buffer_addresses()
@@ -1274,10 +1271,40 @@ impl PluginManager {
             },
         )?;
 
-        linker.func_wrap::<_, ()>("blaulicht", "bl_report_panic", move || {
-            println!("report panic!");
-            // todo: do we really need this?
-        })?;
+        // linker.func_wrap::<_, ()>("blaulicht", "bl_report_panic", move || {
+        //     println!("report panic!");
+        //     // todo: do we really need this?
+        // })?;
+
+        let so = self.system_out.clone();
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "bl_report_panic",
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
+
+                debug!("WASM: {received_string}");
+
+                let msg = format!("***PANIC***:\n{received_string}");
+
+                so.send(SystemMessage::WasmLog(WasmLogBody {
+                    plugin_id: plugin_id as u8,
+                    msg: msg.into(),
+                    level: LogLevel::Err,
+                }))
+                .expect("failed to send log message");
+            },
+        )?;
 
         // let mo = self.to_midi_devices.clone();
         // linker.func_wrap::<_, ()>(

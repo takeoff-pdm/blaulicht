@@ -56,13 +56,9 @@ pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_len
 
             // Set panic-hook.
             std::panic::set_hook(Box::new(|info| {
-                blaulicht::bl_log(
-                    &format!("***PANIC***: (plugin {}): {info}", unsafe {
-                        blaulicht::PLUGIN_ID
-                    },),
-                    LogLevel::Err,
-                );
-                blaulicht::report_panic()
+                // blaulicht::bl_log(&msg, LogLevel::Err);
+                let msg = info.to_string();
+                blaulicht::report_panic(&msg);
             }));
 
             // Call user-exposed init code.
