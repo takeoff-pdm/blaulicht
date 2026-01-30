@@ -1,5 +1,5 @@
 DIR := ${CURDIR}
-VERSION = 0.6.4
+VERSION = 0.6.5
 BUILD_OUTPUT_DIR = blaulicht-dist
 PACKAGE = blaulicht-core
 
@@ -14,6 +14,17 @@ cargo-build-x64:
 	-v `pwd`:/root/project \
 	blaulicht-cross \
 	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
+	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64
+
+# For cross-compilation to X86_64 Musl (HASWELL)
+cargo-build-x64-haswell:
+	docker run -it \
+	-v $(DIR)/target:/build \
+	-v `pwd`:/root/project \
+	-e RUSTFLAGS="-C target-cpu=haswell" \
+	blaulicht-cross \
+	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
+	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64-haswell
 
 # audio-cargo-build-x64:
 # 	docker run -it \
@@ -39,11 +50,11 @@ prepare-archives:
 build-archives: prepare-archives build-archive-x64
 build-archives-debug: prepare-archives build-archive-x64-debug
 
-
-build-archive-x64: cargo-build-x64
+create-build-dir:
 	mkdir -p ./$(BUILD_OUTPUT_DIR)
-	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
-	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
+
+build-archive-x64: create-build-dir cargo-build-x64 cargo-build-x64-haswell
+	tar -cvzf dist/blaulicht-x86_64-all-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
 	rm -rf $(BUILD_OUTPUT_DIR)
 
 build-archive-x64-debug: cargo-build-x64-debug

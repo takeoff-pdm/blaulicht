@@ -53,6 +53,9 @@ pub struct PluginManager {
     state_ref: Arc<AppState>,
 }
 
+#[cfg(not(feature = "wasmtime"))]
+pub struct PluginWasmState {}
+
 #[cfg(feature = "wasmtime")]
 pub struct PluginWasmState {
     memory: Memory,
@@ -79,7 +82,15 @@ pub struct Plugin {
 }
 
 impl Plugin {
-    pub fn new(path: Cow<'static, str>, mut wasm_state: PluginWasmState) -> anyhow::Result<Self> {
+    pub fn new(path: Cow<'static, str>, wasm_state: PluginWasmState) -> anyhow::Result<Self> {
+        Self::new_internal(path, wasm_state)
+    }
+
+    #[cfg(feature = "wasmtime")]
+    fn new_internal(
+        path: Cow<'static, str>,
+        mut wasm_state: PluginWasmState,
+    ) -> anyhow::Result<Self> {
         let tick_func = wasm_state.instance.get_typed_func::<(i32, i32), ()>(
             &mut wasm_state.store,
             "internal_tick", // TODO: external type and name constants.
@@ -89,6 +100,20 @@ impl Plugin {
             path,
             wasm_state,
             tick_func,
+            midi_buffers: AddrDescriptor::dummy(),
+            state_buffers: AddrDescriptor::dummy(),
+            serial_buffers: AddrDescriptor::dummy(),
+            last_dmx_engine_sync: Instant::now(),
+        })
+    }
+
+    #[cfg(not(feature = "wasmtime"))]
+    fn new_internal(
+        path: Cow<'static, str>,
+        mut wasm_state: PluginWasmState,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            path,
             midi_buffers: AddrDescriptor::dummy(),
             state_buffers: AddrDescriptor::dummy(),
             serial_buffers: AddrDescriptor::dummy(),
