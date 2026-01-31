@@ -1,21 +1,8 @@
 use std::{time::Duration, u8};
 
-// // #[cfg(feature = "wasmtime")]
-// use audioviz::{audio_capture::capture::Capture, spectrum::config::StreamConfig};
-// use audioviz::{
-//     audio_capture::capture::CaptureReceiver,
-//     spectrum::{
-//         stream::{Stream, StreamController},
-//         Frequency,
-//     },
-// };
-
 const ROLLING_AVERAGE_LOOP_ITERATIONS: usize = 100;
 const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATIONS / 2;
-
-// Important.
 pub const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
-// pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

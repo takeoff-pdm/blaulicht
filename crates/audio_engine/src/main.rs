@@ -144,7 +144,6 @@ fn main() {
                     },
                     audio_source,
                     0,
-                    FREQ_BUFFER_SIZE,
                 )
                 .unwrap();
 
@@ -155,7 +154,7 @@ fn main() {
                 let end = start + chunk_sizes;
 
                 for i in start..end {
-                    collector.tick(i).unwrap();
+                    collector.tick(i as u64).unwrap();
 
                     if (i - last_spec_time) > spec_period as usize {
                         last_spec_time = i;

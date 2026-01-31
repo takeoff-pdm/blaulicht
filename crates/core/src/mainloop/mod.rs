@@ -7,7 +7,7 @@ use crate::{
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::signal_mainloop,
-    msg::{AudioDeviceT, SystemMessage},
+    msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
     state::{AppState, DmxHealth},
     system_message,
@@ -44,8 +44,7 @@ use std::{
 pub use supervisor::supervisor_thread;
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
-// pub const SIGNAL_SPEED: Duration = Duration::from_millis(50);
-const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(1000);
+const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 
 const AUDIO_SOURCE_FREQ_BUFFER_SIZE: usize = 2048;
 
@@ -202,10 +201,14 @@ pub fn run(
 
     let mut plugin_wasm_engine_crashed = false;
 
+    /// Speeds.
+    let mut plugin_manager_tick_duration = Duration::default();
+    let mut dmx_tick_durations = DmxTickSpeeds::default();
+
     // Boost the current thread.
 
     loop {
-        let now = mainloop_begin_time.elapsed().as_millis() as usize;
+        let now = mainloop_begin_time.elapsed().as_millis() as u64;
         let loop_begin_time = now;
 
         //
@@ -267,15 +270,8 @@ pub fn run(
             _ => {}
         }
 
-        //
-        // Measure loop speed.
-        //
-
-        let now = mainloop_begin_time.elapsed().as_millis() as usize;
-        let loop_speed: usize = now - loop_begin_time;
-
         // Constant tick.
-        if now - time_of_last_dmx_tick >= DMX_TICK_TIME.as_millis() as usize {
+        if now - time_of_last_dmx_tick >= DMX_TICK_TIME.as_millis() as u64 {
             // TODO: does this even work?
             let midi_manager = Arc::clone(&midi_manager);
             let midi = {
@@ -293,11 +289,8 @@ pub fn run(
                     .map_err(|e| anyhow!("Failed to tick serial manager: {e:?}"))?
             };
 
-            //
-            // Collect control events.
-            //
-
-            let dmx_tick_duration = match plugin_manager.tick(
+            // TODO: this is cursed code! - SLOW plugins cause DMX output congestion
+            plugin_manager_tick_duration = match plugin_manager.tick(
                 sig_collector.take_snapshot(),
                 &midi,
                 serial,
@@ -316,34 +309,21 @@ pub fn run(
                 }
             };
 
-            // Update the collector one last time to include the beat trigger.
-            // if is_on_beat_memo == 2 {
-            //     sig_collector.signal(Signal::BeatTrigger(true));
-            //     is_on_beat_memo -= 1;
-            // }
+            let audio_into_dmx_engine = sig_collector.tick_output::<COLLECTOR_DMX>();
+            dmx_tick_durations = dmx_engine.tick(&audio_into_dmx_engine);
 
-            // TODO: maybe feed with audio signals.
-            let out = sig_collector.tick_output::<COLLECTOR_DMX>();
-            dmx_engine.tick(&out);
-
+            let now = mainloop_begin_time.elapsed().as_millis() as u64;
             time_of_last_dmx_tick = now;
-
-            system_message!(now, time_of_last_system_publish, system_out, {
-                &[
-                    SystemMessage::TickSpeed(dmx_tick_duration),
-                    SystemMessage::LoopSpeed(Duration::from_millis(loop_speed as u64)),
-                ]
-            });
         }
 
         /////////////////// Signal Begin ///////////////
+        let start = Instant::now();
         sig_collector
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;
 
-        if now - last_spectrogram_tick >= spec_period.as_millis() as usize {
+        if now - last_spectrogram_tick >= spec_period.as_millis() as u64 {
             // deadlock issues here!
-
             {
                 let mut ui_params = app_state.audio_params.write().unwrap();
                 if ui_params.changed {
@@ -366,6 +346,23 @@ pub fn run(
 
             last_spectrogram_tick = now;
         }
+
+        let audio_processor_speed = start.elapsed();
+
+        //
+        // Measure loop speed.
+        //
+        let now = mainloop_begin_time.elapsed().as_millis() as u64;
+        let speeds = TickSpeeds {
+            loop_total: Duration::from_millis(now - loop_begin_time),
+            plugins: plugin_manager_tick_duration,
+            audio_processing: audio_processor_speed,
+            dmx: dmx_tick_durations,
+        };
+
+        system_message!(now, time_of_last_system_publish, system_out, {
+            &[SystemMessage::TickSpeeds(speeds)]
+        });
     }
 
     mem::drop(sig_collector);

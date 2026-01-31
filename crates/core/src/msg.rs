@@ -26,15 +26,32 @@ pub struct WasmControlsConfig {
     pub y: u8,
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct DmxTickSpeeds {
+    pub dmx_engine: Duration,
+    pub dmx_write: Duration,
+}
+
+#[derive(Clone, Default)]
+pub struct TickSpeeds {
+    pub loop_total: Duration,
+    pub plugins: Duration,
+    pub audio_processing: Duration,
+    pub dmx: DmxTickSpeeds,
+}
+
 #[derive(Clone)]
 pub enum SystemMessage {
     // System.
     Heartbeat(usize),
     Log(String, LogLevel),
     WasmLog(WasmLogBody),
-    // Performance.
-    LoopSpeed(Duration),
-    TickSpeed(Duration),
+
+    TickSpeeds(TickSpeeds),
+
+    // // Performance.
+    // LoopSpeed(Duration),
+    // TickSpeed(Duration),
     // Audio.
     AudioSelected(Option<AudioDeviceT>),
     AudioDevicesView(Vec<(AudioHostT, AudioDeviceT)>),

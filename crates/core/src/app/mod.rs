@@ -10,6 +10,7 @@ use crate::{
         },
         ui::FileDialogOpenOrigin,
     },
+    msg::TickSpeeds,
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::fixture::dimmer::Dimmer;
@@ -20,7 +21,7 @@ use egui::Color32;
 use egui_dock::DockState;
 use egui_file::FileDialog;
 use pages::ViewUI;
-use std::time::{Duration, Instant};
+use std::{collections::VecDeque, time::{Duration, Instant}};
 use strum::EnumIter;
 
 pub mod components;
@@ -123,12 +124,9 @@ pub struct BlaulichtApp {
 
     pub data: AppStateWrapper,
 
-    // recv: Receiver<UnifiedMessage>,
-    // collector: SignalCollector,
-    loop_speed: usize,
-    tick_speed: usize,
+    fps_samples: VecDeque<f32>,
+    tick_speeds: TickSpeeds,
 
-    // logs: Vec<String>,
     log_window: LogWindow,
 
     // Current page
@@ -262,8 +260,8 @@ impl BlaulichtApp {
             spectro_scroll_px_offset: 0.0,
             spectro_last_instant: Instant::now(),
             data,
-            loop_speed: 0,
-            tick_speed: 0,
+            tick_speeds: TickSpeeds::default(),
+            fps_samples: VecDeque::with_capacity(5),
             log_window: LogWindow::new(100),
             current_page: AppPage::Logs,
             last_heartbeat_frame: 0,

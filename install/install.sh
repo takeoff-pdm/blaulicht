@@ -15,7 +15,17 @@ if [ "$USER" = "root" ]; then
     exit 1
 fi
 
+detect_cpu_features() {
+    echo "TODO"
+    exit 42
+}
+
 blaulicht_binary() {
+    echo "Detecting host CPU features..."
+    cpu_version=$(detect_cpu_features)
+
+    echo "Found CPU features: >= ${cpu_version}"
+
     sudo killall blaulicht || echo "Blaulicht not running"
 
     rm blaulicht-latest.tar.gz || echo "No junk yet"

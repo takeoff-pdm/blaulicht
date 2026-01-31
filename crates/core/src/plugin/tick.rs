@@ -39,7 +39,7 @@ impl PluginManager {
         _: Vec<SerialReceived>,
         _: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
-        Ok(Duration::from_millis(42))
+        Ok(Duration::from_micros(1))
     }
 
     pub fn disable_errored_plugins(

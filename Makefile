@@ -12,6 +12,7 @@ cargo-build-x64:
 	docker run -it \
 	-v $(DIR)/target:/build \
 	-v `pwd`:/root/project \
+	-e RUST_MIN_STACK=16777216 \
 	blaulicht-cross \
 	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
 	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64
@@ -22,6 +23,7 @@ cargo-build-x64-haswell:
 	-v $(DIR)/target:/build \
 	-v `pwd`:/root/project \
 	-e RUSTFLAGS="-C target-cpu=haswell" \
+	-e RUST_MIN_STACK=16777216 \
 	blaulicht-cross \
 	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
 	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64-haswell

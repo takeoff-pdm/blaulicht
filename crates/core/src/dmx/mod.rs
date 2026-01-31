@@ -11,7 +11,7 @@ pub mod animation;
 pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
-    msg::SystemMessage,
+    msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
@@ -176,12 +176,11 @@ impl DmxEngine {
         }
     }
 
-    /// Returns whether the DMX buffer changed.
-    fn tick_internal(&mut self, audio_output: &CollectorOutput) -> bool {
-        // Read back events.
-        let mut events = vec![];
-        while let Some(ev) = self.event_bus_connection.try_recv() {
-            events.push(ev)
+    fn tick_internal(&mut self, audio_output: &CollectorOutput) {
+        // Clear DMX buffers (slow).
+        for buffer in self.state_ref.dmx_universes.iter() {
+            let mut buffer = buffer.write().unwrap();
+            buffer.dmx_buffer.fill(0);
         }
 
         if self.running_setup {
@@ -197,21 +196,14 @@ impl DmxEngine {
                     .unwrap();
             }
 
-            return true;
+            return;
         }
 
-        // Clear DMX buffers (slow).
-        for buffer in self.state_ref.dmx_universes.iter() {
-            let mut buffer = buffer.write().unwrap();
-            buffer.dmx_buffer.fill(0);
+        // Read back events.
+        let mut events = vec![];
+        while let Some(ev) = self.event_bus_connection.try_recv() {
+            events.push(ev)
         }
-
-        // Advance animations.
-        // self.build_animations_cache(audio_output.snapshot);
-        self.animation_tick(audio_output);
-
-        // let mut state = self.state_ref.dmx_engine.write().unwrap();
-        // state.groups().iter().flat_map(|g|g.values());
 
         if !events.is_empty() {
             let mut state = self.state_ref.dmx_engine.write().unwrap();
@@ -232,29 +224,28 @@ impl DmxEngine {
             }
         }
 
-        // Only read if there were no events.
-        self.update_dmx_buffer();
-        // TODO: flatten to DMX buffer.
+        // Advance animations.
+        self.animation_tick(audio_output);
 
-        // Return true if the dmx buffer changed.
-        // let mut buffer = self.state_ref.dmx_buffer.write().unwrap();
-        // if buffer.dmx_buffer != self.dmx_previous {
-        //     self.dmx_previous = buffer.dmx_buffer;
-        //     true
-        // } else {
-        //     false
-        // }
-
-        // TODO: this always returns true in the current impl
-        true
+        self.render_universes();
     }
 
-    pub fn tick(&mut self, audio_snapshot: &CollectorOutput) {
-        if self.tick_internal(audio_snapshot) {
-            // TODO: THIS might be too heavy.
-            // self.system_out
-            //     .send(SystemMessage::DMX(Box::new(self.dmx)))
-            //     .unwrap();
+    pub fn tick(&mut self, audio_snapshot: &CollectorOutput) -> DmxTickSpeeds {
+        let dmx_engine = {
+            let now = Instant::now();
+            self.tick_internal(audio_snapshot);
+            now.elapsed()
+        };
+
+        let dmx_write = {
+            let now = Instant::now();
+            self.write_to_output();
+            now.elapsed()
+        };
+
+        DmxTickSpeeds {
+            dmx_engine,
+            dmx_write,
         }
     }
 
@@ -349,7 +340,7 @@ impl DmxEngine {
         self.write_to_output();
     }
 
-    fn update_dmx_buffer(&mut self) {
+    fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
 
         // For each fixture, merge all scene states.
@@ -424,8 +415,6 @@ impl DmxEngine {
         }
 
         mem::drop(state);
-
-        self.write_to_output();
     }
 
     pub fn apply(

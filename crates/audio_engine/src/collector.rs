@@ -287,7 +287,9 @@ where
     //
     // DOES NOT run every ~20 ms. This runs as often as possible.
     //
-    pub fn tick(&mut self, now: usize) -> anyhow::Result<()> {
+    pub fn tick(&mut self, now: u64) -> anyhow::Result<()> {
+        let now = now as usize;
+
         if self.params.auto_calibrate {
             self.calibrate(now);
         }
