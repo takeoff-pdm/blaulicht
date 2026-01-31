@@ -83,7 +83,7 @@ impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
         self.system_out
             .send(SystemMessage::Log(
-                "WASM subsystem initializing...".to_string(),
+                "[WASM] subsystem initializing...".to_string(),
                 LogLevel::Info,
             ))
             .unwrap();
@@ -94,6 +94,17 @@ impl PluginManager {
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
+        config.wasm_simd(true);
+        config.wasm_relaxed_simd(true);
+        config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+        // TODO: make this tweakale
+        config.memory_reservation(1 << 16);
+        config.memory_guard_size(1 << 16);
+
+        let path = "/tmp/blaulicht-wasm-cache.toml";
+        fs::write(path, include_bytes!("../../wasmtime-cache-config.toml"))?;
+        config.cache_config_load(path)?;
+
         let engine = Engine::new(&config).with_context(|| "failed to create wasmtime engine")?;
 
         let mut linker = Linker::new(&engine);
@@ -130,19 +141,6 @@ impl PluginManager {
             //
             // initialize data.
             //
-
-            // todo: do not initialize dmx buffer?
-            // let memory = instance
-            //     .get_memory(&mut store, "memory")
-            //     .expect("memory not found");
-
-            // // initialize dmx.
-            // let dmx_array_offset = 0x20000; // todo: make this offset a const.
-            // let mut dmx_array_bytes: vec<u8> = vec![0; dmx_len];
-            // for &num in &self.dmx {
-            //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
-            // }
-            // memory.write(&mut store, dmx_array_offset, &dmx_array_bytes)?;
 
             self.system_out
                 .send(SystemMessage::Log(
@@ -181,17 +179,10 @@ impl PluginManager {
             self.plugins.insert(plugin_id as u8, plugin);
         }
 
-        //
-        // bind wasm functions.
-        //
-
-        // todo: udp support.
-        // let socket = udpsocket::bind("0.0.0.0:0")?;
-
         self.system_out
             .send(SystemMessage::Log(
                 format!(
-                    "WASM: loaded and instantiated {} wasm modules.",
+                    "[WASM]: loaded and instantiated {} wasm modules.",
                     self.plugins.len()
                 ),
                 LogLevel::Debug,

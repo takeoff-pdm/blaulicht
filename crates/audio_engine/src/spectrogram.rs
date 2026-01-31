@@ -73,6 +73,7 @@ pub fn create_spectrogram_image(
     width: usize,
     height_outer: usize,
     options: &SpectrogramDisplayOptions,
+    // TODO: add a pixel buffer / cache.
 ) -> egui::ColorImage {
     let pad_btm = 20;
     let pad_top = 5;
@@ -89,7 +90,7 @@ pub fn create_spectrogram_image(
     // Downsample if we have more columns than pixels
     let columns: Vec<CollectorOutput> = if pixels_per_column >= 1.0 {
         // Stretching: each column gets multiple pixels
-        columns_data.iter().cloned().collect()
+        columns_data.to_vec()
     } else {
         // Compressing: multiple columns per pixel - need to average
         let cols_per_pixel = (1.0 / pixels_per_column).ceil() as usize;
@@ -186,9 +187,7 @@ pub fn create_spectrogram_image(
         }
     }
 
-    let image = egui::ColorImage::new([width, height_outer], pixels);
-    // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
-    image
+    egui::ColorImage::new([width, height_outer], pixels)
 }
 
 // Classic spectrogram: black -> purple -> blue -> cyan -> green -> yellow -> red -> white

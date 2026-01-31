@@ -9,11 +9,12 @@ use crate::{
     mainloop::supervisor::signal_mainloop,
     msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
-    state::{AppState, DmxHealth},
+    state::AppState,
     system_message,
     util::increase_thread_priority,
 };
 use anyhow::{anyhow, Context};
+
 #[cfg(not(feature = "audio"))]
 use blaulicht_audio_engine::noise::AudioSourceNoise;
 
@@ -21,24 +22,18 @@ use blaulicht_audio_engine::noise::AudioSourceNoise;
 use blaulicht_audio_engine::audio_source::microphone::AudioSourceMicrophone;
 
 use blaulicht_audio_engine::{
-    CollectorOutputSpec, CollectorScratchParameters, Signal, SignalCollector,
-    SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
-    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+    CollectorOutputSpec, CollectorScratchParameters, SignalCollector, SignalCollectorParams,
+    BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
+    ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use blaulicht_shared::LogLevel;
-
-#[cfg(feature = "audio")]
-use cpal::Device;
-
 use crossbeam_channel::Sender;
-use itertools::Itertools;
 use std::{
     mem,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex,
     },
-    thread,
     time::{Duration, Instant},
 };
 pub use supervisor::supervisor_thread;
@@ -57,8 +52,6 @@ pub fn run(
     event_bus_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) -> anyhow::Result<()> {
-    increase_thread_priority(system_out.clone());
-
     //
     // MIDI.
     //
@@ -91,10 +84,10 @@ pub fn run(
         p_app_state,
     );
 
-    let plugin_state = app_state.plugin_state_storage.lock().unwrap().clone();
-    plugin_manager.load_plugin_states(plugin_state);
-
-    thread::sleep(Duration::from_secs(2)); // TODO: hack
+    {
+        let plugin_state = app_state.plugin_state_storage.lock().unwrap().clone();
+        plugin_manager.load_plugin_states(plugin_state);
+    }
 
     plugin_manager
         .init()
@@ -201,11 +194,13 @@ pub fn run(
 
     let mut plugin_wasm_engine_crashed = false;
 
-    /// Speeds.
+    // Speeds.
     let mut plugin_manager_tick_duration = Duration::default();
     let mut dmx_tick_durations = DmxTickSpeeds::default();
 
     // Boost the current thread.
+    // NOTE: this is done only now since the previous init code could starve the UI thread.
+    increase_thread_priority(system_out.clone());
 
     loop {
         let now = mainloop_begin_time.elapsed().as_millis() as u64;

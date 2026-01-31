@@ -1,0 +1,5 @@
+[cache]
+enabled = true
+directory = "/tmp/blaulicht-wasm-cache"
+cleanup-interval = "24h"
+files-total-size-soft-limit = "10Gi"

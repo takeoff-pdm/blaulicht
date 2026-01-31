@@ -67,9 +67,9 @@ pub fn supervisor_thread(
 
     let mut sent_no_device_available_log_message = false;
 
-    loop {
-        thread::sleep(heartbeat_delay);
+    let mut is_initial_device_changed = true;
 
+    loop {
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
             warn!("[SUPERVISOR] Shutting down...");
 
@@ -121,7 +121,10 @@ pub fn supervisor_thread(
             == AudioThreadControlSignal::CRASHED
             && audio_device.is_some()
         {
-            thread::sleep(Duration::from_secs(2));
+            if !is_initial_device_changed {
+                thread::sleep(Duration::from_secs(2));
+            }
+            is_initial_device_changed = false;
             device_changed = true;
         }
 
@@ -239,5 +242,7 @@ pub fn supervisor_thread(
             ))
             .unwrap();
         }
+
+        thread::sleep(heartbeat_delay);
     }
 }
