@@ -1,5 +1,5 @@
 use crate::{
-    RGBColor,
+    HSVColor, RGBColor,
     fixture::state::{FixtureOrientation, FixtureState},
 };
 
@@ -272,15 +272,145 @@ impl Light {
                 strobe_speed: 0,
                 focus: 0,
             },
-            Light::LEDPartyTCLSpot => todo!(),
-            Light::AdjMegaHexPar => todo!(),
-            Light::LiteCraftMiniParAT10 => todo!(),
-            Light::VaryTechVP1 => todo!(),
-            Light::LightMaxxVegaSilentPar2Quad => todo!(),
-            Light::LEDPar64RGBSpot5Chan => todo!(),
-            Light::CameoQSpot40RGBW_4Chan => todo!(),
-            Light::LightMaxxTripleDerbyHP => todo!(),
-            Light::EuroLiteLEDMultiFX_10Chan => todo!(),
+            Light::LEDPartyTCLSpot => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let alpha = dmx[this.start_addr + 3];
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed: 0,
+                    focus: 0,
+                }
+            }
+            Light::AdjMegaHexPar => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let alpha = dmx[this.start_addr + 6];
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed: 0,
+                    focus: 0,
+                }
+            }
+            Light::LiteCraftMiniParAT10 => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let alpha = dmx[this.start_addr + 7];
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed: 0,
+                    focus: 0,
+                }
+            }
+            Light::VaryTechVP1 => FixtureState {
+                color: HSVColor::BLACK,
+                alpha: dmx[this.start_addr + 0],
+                orientation: FixtureOrientation::default(),
+                strobe_speed: dmx[this.start_addr + 1],
+                focus: 0,
+            },
+            Light::LightMaxxVegaSilentPar2Quad => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 4);
+                let alpha = dmx[this.start_addr + 0];
+                let strobe_speed = dmx[this.start_addr + 1];
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            Light::LEDPar64RGBSpot5Chan => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let alpha = dmx[this.start_addr + 3];
+                let strobe_speed = match dmx[this.start_addr + 4] {
+                    0 => 0,
+                    v if v < 11 => 0,
+                    v => v.map_range(11..255, 0..255),
+                };
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            Light::CameoQSpot40RGBW_4Chan => {
+                let white = dmx[this.start_addr + 3];
+
+                if white == 255 {
+                    let r = dmx[this.start_addr + 0];
+                    let g = dmx[this.start_addr + 1];
+                    let b = dmx[this.start_addr + 2];
+                    let alpha = r.max(g).max(b);
+
+                    FixtureState {
+                        color: RGBColor::white().into(),
+                        alpha,
+                        orientation: FixtureOrientation::default(),
+                        strobe_speed: 0,
+                        focus: 0,
+                    }
+                } else {
+                    let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+
+                    FixtureState {
+                        color: rgb.into(),
+                        alpha: 255,
+                        orientation: FixtureOrientation::default(),
+                        strobe_speed: 0,
+                        focus: 0,
+                    }
+                }
+            }
+            Light::LightMaxxTripleDerbyHP => {
+                let hue = (dmx[this.start_addr + 0] as f64).map_range(0.0..255.0, 0.0..360.0);
+                let pan = dmx[this.start_addr + 1];
+                let strobe_speed = dmx[this.start_addr + 2];
+                let alpha = dmx[this.start_addr + 3];
+
+                FixtureState {
+                    color: HSVColor {
+                        h: hue,
+                        s: 1.0,
+                        v: 1.0,
+                    },
+                    alpha,
+                    orientation: FixtureOrientation { pan, tilt: 0 },
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            Light::EuroLiteLEDMultiFX_10Chan => {
+                let hue = (dmx[this.start_addr + 3] as f64).map_range(0.0..255.0, 0.0..360.0);
+                let pan = dmx[this.start_addr + 5];
+                let tilt = dmx[this.start_addr + 7];
+                let alpha = dmx[this.start_addr + 0];
+                let strobe_speed = dmx[this.start_addr + 2];
+                let focus = dmx[this.start_addr + 8];
+
+                FixtureState {
+                    color: HSVColor {
+                        h: hue,
+                        s: 1.0,
+                        v: 1.0,
+                    },
+                    alpha,
+                    orientation: FixtureOrientation { pan, tilt },
+                    strobe_speed,
+                    focus,
+                }
+            }
             Light::TakeOffLogo => {
                 let alpha = dmx[this.start_addr + 0];
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 1);

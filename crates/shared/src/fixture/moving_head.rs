@@ -114,15 +114,18 @@ impl MovingHead {
             MovingHead::MartinMac250E => {
                 let strobe_speed = dmx[this.start_addr + 0];
                 let alpha = dmx[this.start_addr + 1];
-                let hue = (dmx[this.start_addr + 3] as u16).map_range(0..255, 0..360);
+                let hue = (dmx[this.start_addr + 3] as f64).map_range(0.0..255.0, 0.0..360.0);
+                let saturation =
+                    (dmx[this.start_addr + 11] as f64).map_range(0.0..255.0, 0.0..1.0);
+                let value = (dmx[this.start_addr + 5] as f64).map_range(0.0..255.0, 0.0..1.0);
                 let pan = dmx[this.start_addr + 12];
                 let tilt = dmx[this.start_addr + 14];
 
                 FixtureState {
                     color: HSVColor {
-                        h: hue as f64,
-                        s: 1.0,
-                        v: 1.0,
+                        h: hue,
+                        s: saturation,
+                        v: value,
                     },
                     alpha,
                     orientation: FixtureOrientation { pan, tilt },
@@ -134,11 +137,17 @@ impl MovingHead {
                 let pan = dmx[this.start_addr + 0];
                 let tilt = dmx[this.start_addr + 1];
                 let alpha = dmx[this.start_addr + 3];
-                let strobe = dmx[this.start_addr + 4];
+                let strobe = match dmx[this.start_addr + 4] {
+                    0 => 0,
+                    v if v < 10 => 0,
+                    v => v.map_range(10..250, 1..255),
+                };
                 let focus = dmx[this.start_addr + 5];
+                let mut color = HSVColor::default();
+                color.s = (dmx[this.start_addr + 6] as f64).map_range(0.0..255.0, 0.0..1.0);
 
                 FixtureState {
-                    color: HSVColor::BLACK,
+                    color,
                     alpha,
                     orientation: FixtureOrientation { pan, tilt },
                     strobe_speed: strobe,
