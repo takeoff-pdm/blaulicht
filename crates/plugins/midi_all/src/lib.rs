@@ -1,13 +1,12 @@
+mod korg;
+mod legacy;
+
+use crate::korg::KorgSubSystem;
+use crate::legacy::LegacyState;
 use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::Plugin;
 use blaulicht_shared::TickInput;
-
-use crate::korg::KorgSubSystem;
-use crate::legacy::LegacyState;
-
-mod korg;
-mod legacy;
 
 #[derive(Default)]
 pub struct MidiAllPlugin {
@@ -17,14 +16,9 @@ pub struct MidiAllPlugin {
 
 impl Plugin for MidiAllPlugin {
     fn initialize(&mut self, _input: TickInput) {
-        println!("Initializing...");
-
-        // Get state dump.
-        let state = bpf::get_dmx();
-        println!("STATE TEST -> {} SCENES.", state.scenes.len());
-
         self.korg.init();
-        self.legacy_state.init()
+        self.legacy_state.init();
+        println!("[Midi All] Initialized");
     }
 
     fn run(&mut self, input: TickInput) {

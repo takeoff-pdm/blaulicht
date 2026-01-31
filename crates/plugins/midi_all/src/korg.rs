@@ -16,10 +16,7 @@ const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 1
 //
 
 pub struct KorgSubSystem {
-    last_state_render: u32,
-
     selection_mode: bool,
-
     midi_handle: MidiConnection,
     active_groups: HashSet<u8>,
     last_sync: u32,
@@ -38,7 +35,6 @@ pub struct KorgSubSystem {
 impl Default for KorgSubSystem {
     fn default() -> Self {
         Self {
-            last_state_render: 0,
             selection_mode: true,
             midi_handle: unsafe { MidiConnection::dummy() },
             active_groups: HashSet::new(),
@@ -65,7 +61,7 @@ impl KorgSubSystem {
         println!("[KORG] initializing...");
 
         let name = "nanoKONTROL Studio";
-        let midi_handle = MidiConnection::open(&name).unwrap();
+        let midi_handle = MidiConnection::open(name).unwrap();
         println!(
             "Got MIDI handle to device! HANDLE ID: {}",
             midi_handle.get_meta().device_id
@@ -84,7 +80,7 @@ impl KorgSubSystem {
         self.nano_in(res);
         self.nano_out(&input.events.events);
 
-        for i in 0..FADER_BYTES.len() {
+        for i in 0..COUNT_SELECT_BUTTONS as usize {
             self.handle_fader_input(i);
             self.handle_knob_input(i);
         }
@@ -128,10 +124,13 @@ impl KorgSubSystem {
                 }
                 // Group Select.
                 (144, key, 127)
-                    if key >= SELECT_BUTTON_STARTER
-                        && key <= SELECT_BUTTON_STARTER + COUNT_SELECT_BUTTONS
-                        && self.selection_mode =>
+                    if (SELECT_BUTTON_STARTER..=SELECT_BUTTON_STARTER + COUNT_SELECT_BUTTONS)
+                        .contains(&key) =>
                 {
+                    if !self.selection_mode {
+                        println!("WARN: not in selection mode");
+                    }
+
                     let g_idx = key - SELECT_BUTTON_STARTER;
 
                     let dmx = bpf::get_dmx();
@@ -146,25 +145,24 @@ impl KorgSubSystem {
                 }
                 // Faders
                 (176, fader_byte, value) if FADER_BYTES.contains(&fader_byte) => {
+                    if self.selection_mode {
+                        println!("WARN: in selection_mode");
+                        return;
+                    }
+
                     let index = FADER_BYTES.iter().position(|b| *b == fader_byte).unwrap();
                     self.fader_vals[index] = value;
                     self.fader_vals_updated[index] = true;
-
-                    if self.selection_mode {
-                        println!("WARN: not in selection_mode");
-                        return;
-                    }
                 }
                 (176, knob_byte, value) if knob_byte >= 13 && knob_byte <= 20 => {
+                    if self.selection_mode {
+                        println!("WARN: in selection_mode");
+                        return;
+                    }
+
                     let index = knob_byte as usize - 13;
                     self.knob_vals[index] = value;
                     self.knob_vals_updated[index] = true;
-
-                    // Set speed
-                    if self.selection_mode {
-                        println!("WARN: not in selection_mode");
-                        return;
-                    }
                 }
                 // Set button on the left.
                 (144, 82, 127) => {}
@@ -284,25 +282,19 @@ impl KorgSubSystem {
 
     fn nano_out(&mut self, control_events: &[ControlEventMessage]) {
         for ev in control_events {
-            if self.selection_mode {
-                match ev.body() {
-                    ControlEvent::SelectGroup(g_idx) => {
-                        self.active_groups.insert(g_idx);
-                        self.nano_render_groups();
-                    }
-                    ControlEvent::DeSelectGroup(g_idx) => {
-                        self.active_groups.remove(&g_idx);
-                        self.nano_render_groups();
-                    }
-                    _ => {} // ControlEvent::LimitSelectionToFixtureInCurrentGroup(_) => todo!(),
-                            // ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_) => todo!(),
-                            // ControlEvent::RemoveSelection => todo!(),
-                            // ControlEvent::SetEnabled(_) => todo!(),
-                            // ControlEvent::SetBrightness(_) => todo!(),
-                            // ControlEvent::SetColor(_) => todo!(),
-                            // ControlEvent::MiscEvent { descriptor, value } => todo!(),
+            if !self.selection_mode {
+                continue;
+            }
+            match ev.body() {
+                ControlEvent::SelectGroup(g_idx) => {
+                    self.active_groups.insert(g_idx);
+                    self.nano_render_groups();
                 }
-            } else {
+                ControlEvent::DeSelectGroup(g_idx) => {
+                    self.active_groups.remove(&g_idx);
+                    self.nano_render_groups();
+                }
+                _ => {}
             }
         }
     }

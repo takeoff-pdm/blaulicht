@@ -1,54 +1,16 @@
-use blaulicht_plugin_framework::{
-    self as bpf, midi, println, send_event, ui, MidiConnection, MidiEvent,
-};
+mod apc_midi;
+mod page_nav;
+
+use blaulicht_plugin_framework::{self as bpf, println, ui, MidiConnection, MidiEvent};
 use blaulicht_shared::{
-    hsv_to_rgb,
     misc_event::videowall::{
         REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
     },
-    AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
+    AppPage, ControlEvent, MainUiEvent, PluginUiEvent, TickInput,
 };
 use map_range::MapRange;
-use std::{fmt::Display, mem::MaybeUninit};
 
-const STROBE_SCENE: u8 = 2;
-const APC_PAGE_PADS: [u8; 8] = [63, 55, 47, 39, 31, 23, 15, 7];
-
-//
-// MIDI start.
-//
-
-#[derive(Clone, Copy)]
-enum MidiDevice {
-    MidiMix,
-    APCMini,
-}
-
-impl Display for MidiDevice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                MidiDevice::MidiMix => "MIDI Mix",
-                MidiDevice::APCMini => "APC mini mk2",
-            }
-        )
-    }
-}
-
-impl MidiDevice {
-    fn index(&self) -> usize {
-        match self {
-            MidiDevice::MidiMix => 0,
-            MidiDevice::APCMini => 1,
-        }
-    }
-}
-
-//
-// MIDI end.
-//
+use crate::legacy::apc_midi::MidiDevice;
 
 #[derive(Default)]
 pub struct LegacyState {
@@ -144,15 +106,16 @@ impl LegacyState {
         {
             ui::begin();
             let cid = 0;
-            ui::checkbox("Fans", cid, self.fans);
+            ui::switch("Fans", cid, self.fans);
+
             for ev in &input.events.events {
                 match ev.body() {
-                    ControlEvent::PluginUi(PluginUiEvent::Checkbox { id, checked }, pid) => {
+                    ControlEvent::PluginUi(PluginUiEvent::Switch { id, value }, pid) => {
                         if pid != input.id {
                             continue;
                         }
                         if cid == id {
-                            self.set_fans(checked);
+                            self.set_fans(value);
                         }
                     }
                     ControlEvent::MiscEvent { .. } => {}
@@ -162,7 +125,7 @@ impl LegacyState {
         }
 
         let state = bpf::get_dmx();
-        if state.scenes.len() > 0 && self.intensity_mapping.is_empty() {
+        if !state.scenes.is_empty() && self.intensity_mapping.is_empty() {
             println!("RUNNING INIT for intensity");
             self.intensity_mapping = vec![];
 
@@ -173,7 +136,7 @@ impl LegacyState {
                     let char_to_test = index.to_string().chars().nth(0).unwrap();
                     let name_char = scene.name.chars().nth(0).unwrap();
                     // println!("TESTING INDEX {index} and scene {scene_id} | CHAR: {char_to_test} vs {name_char}");
-                    if scene.name.len() > 0 && name_char == char_to_test {
+                    if !scene.name.is_empty() && name_char == char_to_test {
                         self.intensity_mapping.push(*scene_id);
                         println!("added intensity {index} --> Scene {scene_id}");
                         index += 1;
@@ -193,8 +156,6 @@ impl LegacyState {
         //     #[allow(static_mut_refs)]
         //     STATE.assume_init_mut()
         // };
-
-        let dmx = bpf::get_dmx();
 
         // if input.audio_data.bass_avg < 70 && !self.arm_drop {
         //     println!("ARMED DROP");
@@ -557,56 +518,6 @@ impl LegacyState {
             }
         }
     }
-
-    fn sync_app_page(&mut self, conn: &MidiConnection) {
-        for pad in APC_PAGE_PADS {
-            conn.send(0x96, pad, 0);
-        }
-
-        if let Some(ref page) = self.current_app_page {
-            if let Some(pad) = Self::pad_for_app_page(page) {
-                conn.send(0x96, pad, 10);
-            }
-
-            if !self.page_update_from_ui {
-                bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(page.clone())));
-            }
-        }
-
-        self.last_app_page = self.current_app_page.clone();
-        self.page_update_from_ui = false;
-        self.pending_app_page_sync = false;
-    }
-
-    fn app_page_from_pad(pad: u8) -> Option<AppPage> {
-        match pad {
-            63 => Some(AppPage::Logs),
-            55 => Some(AppPage::System),
-            47 => Some(AppPage::Audio),
-            39 => Some(AppPage::FixturesSetup),
-            31 => Some(AppPage::View),
-            23 => Some(AppPage::ViewPerformance),
-            15 => Some(AppPage::FixturesPerformance),
-            7 => Some(AppPage::Animations),
-            _ => None,
-        }
-    }
-
-    fn pad_for_app_page(page: &AppPage) -> Option<u8> {
-        let pad = match page {
-            AppPage::Logs => 63,
-            AppPage::System => 55,
-            AppPage::Audio => 47,
-            AppPage::FixturesSetup => 39,
-            AppPage::View => 31,
-            AppPage::ViewPerformance => 23,
-            AppPage::FixturesPerformance => 15,
-            AppPage::Animations => 7,
-        };
-
-        Some(pad)
-    }
-
 
     // fn sync_drums_enabled(&mut self, conn: MidiConnection) {
     //     match self.drums_enabled {
