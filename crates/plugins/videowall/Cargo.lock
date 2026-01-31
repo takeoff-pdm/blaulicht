@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-shared"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "bincode",
  "color_space",
