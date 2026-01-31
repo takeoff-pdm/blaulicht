@@ -4,12 +4,15 @@ use blaulicht_plugin_framework::Plugin;
 use blaulicht_shared::TickInput;
 
 use crate::korg::KorgSubSystem;
+use crate::legacy::LegacyState;
 
 mod korg;
+mod legacy;
 
 #[derive(Default)]
 pub struct MidiAllPlugin {
     korg: KorgSubSystem,
+    legacy_state: LegacyState,
 }
 
 impl Plugin for MidiAllPlugin {
@@ -21,10 +24,12 @@ impl Plugin for MidiAllPlugin {
         println!("STATE TEST -> {} SCENES.", state.scenes.len());
 
         self.korg.init();
+        self.legacy_state.init()
     }
 
     fn run(&mut self, input: TickInput) {
         self.korg.run(input.clone());
+        self.legacy_state.run(input);
     }
 }
 
