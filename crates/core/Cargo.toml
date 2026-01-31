@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-core"
-version = "0.6.5"
+version = "0.6.6"
 authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
@@ -39,7 +39,7 @@ crossbeam-channel = "0.5.14"
 env_logger = "0.11.6"
 # actix = "0.13.5"
 # actix-web-actors = "4.3.1"
-# actix-ws = "0.6.5"
+# actix-ws = "0.6.6"
 itertools = "0.14.0"
 wasmtime = { version = "31.0.0", optional = true, features = [ "all-arch" ] }
 midir = "0.10.1"
