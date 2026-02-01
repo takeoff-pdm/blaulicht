@@ -37,13 +37,6 @@ impl AudioSourceMicrophone {
 
 impl AudioSource for AudioSourceMicrophone {
     fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
-        let a: Vec<_> = self
-            .converter
-            .freqs()
-            .iter()
-            .map(|f| Frequency::from(f))
-            .collect();
-
         &self.freq_buffer
     }
 
