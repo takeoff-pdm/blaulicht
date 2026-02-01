@@ -1,18 +1,20 @@
 use anyhow::{bail, Context};
-use blaulicht_core::app::{BlaulichtApp, PopupSpec};
+use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
+use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::msg::{FromFrontend, SystemMessage};
+use blaulicht_core::msg::FromFrontend;
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
-use blaulicht_shared::LogLevel;
+use clap::Parser;
 use env_logger::Env;
 use log::info;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
 #[cfg(feature = "dhat")]
 #[global_allocator]
@@ -22,11 +24,19 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "dhat")]
     let _profiler = dhat::Profiler::new_heap();
 
-    let config_filepath = "./config.toml";
+    let args = CliArgs::parse();
 
-    let cfg = config::read_config(config_filepath.into())?;
+    let config_filepath = match args.config_file {
+        Some(path) => path,
+        None => PathBuf::from_str("./config.toml").unwrap(),
+    };
+
+    let cfg = config::read_config(config_filepath.clone())?;
     let Some(cfg) = cfg else {
-        info!("Created default configuration file at {config_filepath}");
+        info!(
+            "Created default configuration file at {}",
+            config_filepath.to_string_lossy()
+        );
         return Ok(());
     };
 
@@ -112,7 +122,7 @@ fn main() -> anyhow::Result<()> {
     let state_wrapper = AppStateWrapper {
         from_frontend_sender,
         config: Arc::new(Mutex::new(cfg.clone())),
-        config_path: config_filepath.to_string(),
+        config_path: config_filepath.to_string_lossy().to_string(),
         event_bus_connection: event_bus_connection_websocket,
         state: Arc::clone(&app_state),
         system_message_receiver: app_system_receiver,
@@ -149,7 +159,7 @@ fn main() -> anyhow::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 480.0])
             .with_resizable(false)
-            .with_decorations(false),
+            .with_decorations(args.window_decorations),
         ..Default::default()
     };
 
