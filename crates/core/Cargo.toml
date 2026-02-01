@@ -80,6 +80,7 @@ image = { version = "0.25", default-features = false, features = ["bmp"] }
 # Rush
 rush-interpreter-vm = "0.1.2"
 rush-analyzer = "0.1.1"
+tempdir = "0.3.7"
 
 
 [patch.crates-io]

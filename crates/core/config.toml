@@ -3,6 +3,7 @@ dmx_out_devices = [
     "/dev/dmx_out_0",
     "/dev/dmx_out_0",
 ]
+default_audio_device = "dummy-name"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60

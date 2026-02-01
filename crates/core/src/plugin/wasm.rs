@@ -81,10 +81,12 @@ impl PluginManager {
 #[cfg(feature = "wasmtime")]
 impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
+        use tempdir::TempDir;
+
         self.system_out
             .send(SystemMessage::Log(
                 "[WASM] subsystem initializing...".to_string(),
-                LogLevel::Info,
+                LogLevel::Debug,
             ))
             .unwrap();
 
@@ -101,8 +103,13 @@ impl PluginManager {
         config.memory_reservation(1 << 16);
         config.memory_guard_size(1 << 16);
 
-        let path = "/tmp/blaulicht-wasm-cache.toml";
-        fs::write(path, include_bytes!("../../wasmtime-cache-config.toml"))?;
+        let wasmtime_cache_dir = TempDir::new("blaulicht_wasm_cache")?;
+        log::info!(
+            "[WASM] Cache dir at {}",
+            wasmtime_cache_dir.path().to_string_lossy()
+        );
+        let path = wasmtime_cache_dir.path().join("config.toml");
+        fs::write(&path, include_bytes!("../../wasmtime-cache-config.toml"))?;
         config.cache_config_load(path)?;
 
         let engine = Engine::new(&config).with_context(|| "failed to create wasmtime engine")?;
@@ -116,7 +123,7 @@ impl PluginManager {
             if !plugin.enabled {
                 self.system_out
                     .send(SystemMessage::Log(
-                        format!("Plugin {} is disabled, skipping.", plugin.file_path),
+                        format!("Plugin <{}> is disabled, skipping.", plugin.file_path),
                         LogLevel::Warn,
                     ))
                     .unwrap();
@@ -124,6 +131,13 @@ impl PluginManager {
             }
 
             let plugin_name = plugin.file_path.to_string();
+
+            self.system_out
+                .send(SystemMessage::Log(
+                    "[WASM] Initializing plugin <{plugin_name}>...".to_string(),
+                    LogLevel::Debug,
+                ))
+                .unwrap();
 
             let wasm_bytes = fs::read(&plugin.file_path)
                 .with_context(|| format!("failed to read wasm file: <{plugin_name}>"))?;
@@ -144,8 +158,8 @@ impl PluginManager {
 
             self.system_out
                 .send(SystemMessage::Log(
-                    format!("loaded plugin: {}", plugin_name),
-                    LogLevel::Debug,
+                    "[WASM] Loaded plugin <{plugin_name}>".to_string(),
+                    LogLevel::Info,
                 ))
                 .unwrap();
 

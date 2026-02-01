@@ -250,10 +250,8 @@ impl DmxEngine {
     }
 
     fn write_to_output(&mut self) {
-        let start = Instant::now();
         self.write_to_artnet();
         self.write_to_serial();
-        log::debug!("DMX HW OUTPUT TIME: {:?}", start.elapsed());
     }
 
     fn write_to_artnet(&mut self) {
