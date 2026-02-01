@@ -156,14 +156,13 @@ impl LogWindow {
         //     ui.add(egui::Slider::new(&mut self.log_height, 100.0..=600.0).text("height"));
         // });
 
-        egui::ScrollArea::vertical()
+        let scroll_output = egui::ScrollArea::vertical()
             .max_height(ui.available_height())
             .max_width(ctx.screen_rect().width() - 100.0)
             .auto_shrink([false, false])
+            .stick_to_bottom(self.auto_scroll)
             .show(ui, |ui| {
                 ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-
-                let mut should_scroll_to_bottom = false;
 
                 for entry in &self.logs {
                     // Apply filters
@@ -228,16 +227,17 @@ impl LogWindow {
                         );
                     }
 
-                    should_scroll_to_bottom = true;
-
                     ui.separator();
                 }
-
-                // Auto-scroll to bottom
-                if self.auto_scroll && should_scroll_to_bottom {
-                    ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
-                }
             });
+
+        const AUTO_SCROLL_EPSILON: f32 = 2.0;
+        let max_offset_y = (scroll_output.content_size.y - scroll_output.inner_rect.height())
+            .max(0.0);
+        let at_bottom = scroll_output.state.offset.y >= max_offset_y - AUTO_SCROLL_EPSILON;
+        if self.auto_scroll != at_bottom {
+            self.auto_scroll = at_bottom;
+        }
 
         // Status bar
         ui.separator();
