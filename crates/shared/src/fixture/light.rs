@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
 
+#[allow(nonstandard_style)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter, Encode, Decode)]
 pub enum Light {
     //
@@ -146,61 +147,62 @@ impl Light {
                 let (r, g, b) = color.tup();
                 let alpha = state.alpha;
 
-                dmx[this.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
-                dmx[this.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
-                dmx[this.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 0) = (r as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 1) = (g as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 2) = (b as f32 / 255.0 * alpha as f32) as u8;
             }
             Light::Generic4ChanWithAlpha => {
-                dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = color.r;
-                dmx[this.start_addr + 2] = color.g;
-                dmx[this.start_addr + 3] = color.b;
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = color.r;
+                fixture_channel!(dmx, this, 2) = color.g;
+                fixture_channel!(dmx, this, 3) = color.b;
             }
             Light::LEDPartyTCLSpot => {
-                dmx[this.start_addr + 0] = color.r;
-                dmx[this.start_addr + 1] = color.g;
-                dmx[this.start_addr + 2] = color.b;
-                dmx[this.start_addr + 3] = state.alpha;
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 3) = state.alpha;
             }
             Light::AdjMegaHexPar => {
-                dmx[this.start_addr + 0] = color.r;
-                dmx[this.start_addr + 1] = color.g;
-                dmx[this.start_addr + 2] = color.b;
-                dmx[this.start_addr + 6] = state.alpha;
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 6) = state.alpha;
             }
             Light::LiteCraftMiniParAT10 => {
-                dmx[this.start_addr + 0] = color.r;
-                dmx[this.start_addr + 1] = color.g;
-                dmx[this.start_addr + 2] = color.b;
-                dmx[this.start_addr + 7] = state.alpha;
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 7) = state.alpha;
             }
             Light::VaryTechVP1 => {
-                dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = state.strobe_speed; // strobe
-                dmx[this.start_addr + 2] = 127; // warm white
-                dmx[this.start_addr + 3] = 127; // cold white
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = state.strobe_speed; // strobe
+                fixture_channel!(dmx, this, 2) = 127; // warm white
+                fixture_channel!(dmx, this, 3) = 127; // cold white
             }
             Light::LightMaxxVegaSilentPar2Quad => {
-                dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = state.strobe_speed;
-                dmx[this.start_addr + 2] = 0;
-                dmx[this.start_addr + 3] = 0; // MACRO
-                dmx[this.start_addr + 4] = color.r;
-                dmx[this.start_addr + 5] = color.g;
-                dmx[this.start_addr + 6] = color.b;
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = state.strobe_speed;
+                fixture_channel!(dmx, this, 2) = 0;
+                fixture_channel!(dmx, this, 3) = 0; // MACRO
+                fixture_channel!(dmx, this, 4) = color.r;
+                fixture_channel!(dmx, this, 5) = color.g;
+                fixture_channel!(dmx, this, 6) = color.b;
                 // WHITE override.
-                dmx[this.start_addr + 7] = if color.r == 255 && color.g == 255 && color.b == 255 {
-                    255
-                } else {
-                    0
-                };
+                fixture_channel!(dmx, this, 7) =
+                    if color.r == 255 && color.g == 255 && color.b == 255 {
+                        255
+                    } else {
+                        0
+                    };
             }
             Light::LEDPar64RGBSpot5Chan => {
-                dmx[this.start_addr + 0] = color.r;
-                dmx[this.start_addr + 1] = color.g;
-                dmx[this.start_addr + 2] = color.b;
-                dmx[this.start_addr + 3] = state.alpha;
-                dmx[this.start_addr + 4] = match state.strobe_speed {
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 3) = state.alpha;
+                fixture_channel!(dmx, this, 4) = match state.strobe_speed {
                     0 => 0,
                     v => v.map_range(0..255, 11..255),
                 };
@@ -209,15 +211,16 @@ impl Light {
                 let (r, g, b) = color.tup();
                 let alpha = state.alpha;
 
-                dmx[this.start_addr + 0] = (r as f32 / 255.0 * alpha as f32) as u8;
-                dmx[this.start_addr + 1] = (g as f32 / 255.0 * alpha as f32) as u8;
-                dmx[this.start_addr + 2] = (b as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 0) = (r as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 1) = (g as f32 / 255.0 * alpha as f32) as u8;
+                fixture_channel!(dmx, this, 2) = (b as f32 / 255.0 * alpha as f32) as u8;
                 // WHITE override.
-                dmx[this.start_addr + 3] = if color.r == 255 && color.g == 255 && color.b == 255 {
-                    255
-                } else {
-                    0
-                };
+                fixture_channel!(dmx, this, 3) =
+                    if color.r == 255 && color.g == 255 && color.b == 255 {
+                        255
+                    } else {
+                        0
+                    };
             }
             Light::LightMaxxTripleDerbyHP => {
                 //
@@ -226,32 +229,33 @@ impl Light {
                 // 2: Strobe
                 // 3: Alpha
                 //
-                dmx[this.start_addr + 0] = (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
-                dmx[this.start_addr + 1] = state.orientation.pan;
-                dmx[this.start_addr + 2] = state.strobe_speed;
-                dmx[this.start_addr + 3] = state.alpha;
+                fixture_channel!(dmx, this, 0) =
+                    (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
+                fixture_channel!(dmx, this, 1) = state.orientation.pan;
+                fixture_channel!(dmx, this, 2) = state.strobe_speed;
+                fixture_channel!(dmx, this, 3) = state.alpha;
             }
             Light::EuroLiteLEDMultiFX_10Chan => {
                 let hue_u8 = (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
-                dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = state.alpha;
-                dmx[this.start_addr + 2] = state.strobe_speed;
-                dmx[this.start_addr + 3] = hue_u8;
-                dmx[this.start_addr + 4] = hue_u8;
-                dmx[this.start_addr + 5] = state.orientation.pan;
-                dmx[this.start_addr + 6] = state.strobe_speed;
-                dmx[this.start_addr + 7] = state.orientation.tilt;
-                dmx[this.start_addr + 8] = state.focus;
-                dmx[this.start_addr + 9] = state.orientation.pan;
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = state.alpha;
+                fixture_channel!(dmx, this, 2) = state.strobe_speed;
+                fixture_channel!(dmx, this, 3) = hue_u8;
+                fixture_channel!(dmx, this, 4) = hue_u8;
+                fixture_channel!(dmx, this, 5) = state.orientation.pan;
+                fixture_channel!(dmx, this, 6) = state.strobe_speed;
+                fixture_channel!(dmx, this, 7) = state.orientation.tilt;
+                fixture_channel!(dmx, this, 8) = state.focus;
+                fixture_channel!(dmx, this, 9) = state.orientation.pan;
             }
             Light::TakeOffLogo => {
-                dmx[this.start_addr + 0] = state.alpha;
-                dmx[this.start_addr + 1] = color.r;
-                dmx[this.start_addr + 2] = color.g;
-                dmx[this.start_addr + 3] = color.b;
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = color.r;
+                fixture_channel!(dmx, this, 2) = color.g;
+                fixture_channel!(dmx, this, 3) = color.b;
                 // Re-use focus property as BPM control (0 keeps tempo unchanged).
-                dmx[this.start_addr + 4] = state.focus;
-                dmx[this.start_addr + 5] = state.focus;
+                fixture_channel!(dmx, this, 4) = state.focus;
+                fixture_channel!(dmx, this, 5) = state.focus;
             }
         }
     }
@@ -267,14 +271,14 @@ impl Light {
             },
             Light::Generic4ChanWithAlpha => FixtureState {
                 color: RGBColor::parse_dmx(dmx, this.start_addr + 1).into(),
-                alpha: dmx[this.start_addr + 0],
+                alpha: fixture_channel!(dmx, this, 0),
                 orientation: FixtureOrientation::default(),
                 strobe_speed: 0,
                 focus: 0,
             },
             Light::LEDPartyTCLSpot => {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
-                let alpha = dmx[this.start_addr + 3];
+                let alpha = fixture_channel!(dmx, this, 3);
 
                 FixtureState {
                     color: rgb.into(),
@@ -286,7 +290,7 @@ impl Light {
             }
             Light::AdjMegaHexPar => {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
-                let alpha = dmx[this.start_addr + 6];
+                let alpha = fixture_channel!(dmx, this, 6);
 
                 FixtureState {
                     color: rgb.into(),
@@ -298,7 +302,7 @@ impl Light {
             }
             Light::LiteCraftMiniParAT10 => {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
-                let alpha = dmx[this.start_addr + 7];
+                let alpha = fixture_channel!(dmx, this, 7);
 
                 FixtureState {
                     color: rgb.into(),
@@ -310,15 +314,15 @@ impl Light {
             }
             Light::VaryTechVP1 => FixtureState {
                 color: HSVColor::BLACK,
-                alpha: dmx[this.start_addr + 0],
+                alpha: fixture_channel!(dmx, this, 0),
                 orientation: FixtureOrientation::default(),
-                strobe_speed: dmx[this.start_addr + 1],
+                strobe_speed: fixture_channel!(dmx, this, 1),
                 focus: 0,
             },
             Light::LightMaxxVegaSilentPar2Quad => {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 4);
-                let alpha = dmx[this.start_addr + 0];
-                let strobe_speed = dmx[this.start_addr + 1];
+                let alpha = fixture_channel!(dmx, this, 0);
+                let strobe_speed = fixture_channel!(dmx, this, 1);
 
                 FixtureState {
                     color: rgb.into(),
@@ -330,8 +334,8 @@ impl Light {
             }
             Light::LEDPar64RGBSpot5Chan => {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
-                let alpha = dmx[this.start_addr + 3];
-                let strobe_speed = match dmx[this.start_addr + 4] {
+                let alpha = fixture_channel!(dmx, this, 3);
+                let strobe_speed = match fixture_channel!(dmx, this, 4) {
                     0 => 0,
                     v if v < 11 => 0,
                     v => v.map_range(11..255, 0..255),
@@ -346,12 +350,12 @@ impl Light {
                 }
             }
             Light::CameoQSpot40RGBW_4Chan => {
-                let white = dmx[this.start_addr + 3];
+                let white = fixture_channel!(dmx, this, 3);
 
                 if white == 255 {
-                    let r = dmx[this.start_addr + 0];
-                    let g = dmx[this.start_addr + 1];
-                    let b = dmx[this.start_addr + 2];
+                    let r = fixture_channel!(dmx, this, 0);
+                    let g = fixture_channel!(dmx, this, 1);
+                    let b = fixture_channel!(dmx, this, 2);
                     let alpha = r.max(g).max(b);
 
                     FixtureState {
@@ -374,10 +378,10 @@ impl Light {
                 }
             }
             Light::LightMaxxTripleDerbyHP => {
-                let hue = (dmx[this.start_addr + 0] as f64).map_range(0.0..255.0, 0.0..360.0);
-                let pan = dmx[this.start_addr + 1];
-                let strobe_speed = dmx[this.start_addr + 2];
-                let alpha = dmx[this.start_addr + 3];
+                let hue = (fixture_channel!(dmx, this, 0) as f64).map_range(0.0..255.0, 0.0..360.0);
+                let pan = fixture_channel!(dmx, this, 1);
+                let strobe_speed = fixture_channel!(dmx, this, 2);
+                let alpha = fixture_channel!(dmx, this, 3);
 
                 FixtureState {
                     color: HSVColor {
@@ -392,12 +396,12 @@ impl Light {
                 }
             }
             Light::EuroLiteLEDMultiFX_10Chan => {
-                let hue = (dmx[this.start_addr + 3] as f64).map_range(0.0..255.0, 0.0..360.0);
-                let pan = dmx[this.start_addr + 5];
-                let tilt = dmx[this.start_addr + 7];
-                let alpha = dmx[this.start_addr + 0];
-                let strobe_speed = dmx[this.start_addr + 2];
-                let focus = dmx[this.start_addr + 8];
+                let hue = (fixture_channel!(dmx, this, 3) as f64).map_range(0.0..255.0, 0.0..360.0);
+                let pan = fixture_channel!(dmx, this, 5);
+                let tilt = fixture_channel!(dmx, this, 7);
+                let alpha = fixture_channel!(dmx, this, 0);
+                let strobe_speed = fixture_channel!(dmx, this, 2);
+                let focus = fixture_channel!(dmx, this, 8);
 
                 FixtureState {
                     color: HSVColor {
@@ -412,9 +416,9 @@ impl Light {
                 }
             }
             Light::TakeOffLogo => {
-                let alpha = dmx[this.start_addr + 0];
+                let alpha = fixture_channel!(dmx, this, 0);
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 1);
-                let focus = dmx[this.start_addr + 5];
+                let focus = fixture_channel!(dmx, this, 5);
 
                 FixtureState {
                     color: rgb.into(),
@@ -427,34 +431,22 @@ impl Light {
         }
     }
 
-    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
-        // let color: RGBColor = state.color.into();
-        //
-        // match self {
-        //     Light::Generic3ChanNoAlpha => {
-        //         dmx[this.start_addr + 0] = 0;
-        //         dmx[this.start_addr + 1] = 0;
-        //         dmx[this.start_addr + 2] = 0;
-        //     }
-        //     Light::Generic4ChanWithAlpha => {
-        //         dmx[this.start_addr + 0] = 0;
-        //         dmx[this.start_addr + 1] = color.r;
-        //         dmx[this.start_addr + 2] = color.g;
-        //         dmx[this.start_addr + 3] = color.b;
-        //     }
-        //     Light::LEDPartyTCLSpot => {
-        //         dmx[this.start_addr + 0] = color.r;
-        //         dmx[this.start_addr + 1] = color.g;
-        //         dmx[this.start_addr + 2] = color.b;
-        //         dmx[this.start_addr + 3] = 0;
-        //     }
-        // }
-    }
+    pub fn blackout(&self, _this: &Fixture, _state: &FixtureState, _dmx: &mut [u8]) {}
 
-    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
-        // match self {
-        //     MovingHead::Generic3ChanNoAlpha => todo!(),
-        //     MovingHead::Generic4ChanWithAlpha => todo!(),
-        // }
+    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &FixtureState, _dmx: &mut [u8]) {
+        match self {
+            Light::Generic3ChanNoAlpha => {}
+            Light::Generic4ChanWithAlpha => {}
+            Light::LEDPartyTCLSpot => {}
+            Light::AdjMegaHexPar => {}
+            Light::LiteCraftMiniParAT10 => {}
+            Light::VaryTechVP1 => {}
+            Light::LightMaxxVegaSilentPar2Quad => {}
+            Light::LEDPar64RGBSpot5Chan => {}
+            Light::CameoQSpot40RGBW_4Chan => {}
+            Light::LightMaxxTripleDerbyHP => {}
+            Light::EuroLiteLEDMultiFX_10Chan => {}
+            Light::TakeOffLogo => {}
+        }
     }
 }

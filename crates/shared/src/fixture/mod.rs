@@ -1,3 +1,9 @@
+macro_rules! fixture_channel {
+    ($dmx:expr, $this:expr, $channel:expr) => {
+        $dmx[$this.start_addr + $channel]
+    };
+}
+
 pub mod dimmer;
 pub mod light;
 pub mod moving_head;

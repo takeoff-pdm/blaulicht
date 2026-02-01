@@ -58,49 +58,48 @@ impl MovingHead {
                 // dmx[start_addr + 2] = 0;
 
                 // Strobe state.
-                dmx[this.start_addr + 0] = state.strobe_speed as u8;
-
+                fixture_channel!(dmx, this, 0) = state.strobe_speed;
                 // Alpha.
-                dmx[this.start_addr + 1] = state.alpha;
+                fixture_channel!(dmx, this, 1) = state.alpha;
 
                 // Color.
-                dmx[this.start_addr + 3] = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 3) = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
 
                 // Gobo wheel.
-                dmx[this.start_addr + 11] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 11) = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
 
                 // Gobo rot.
-                dmx[this.start_addr + 5] = state.color.v.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 5) = state.color.v.map_range(0.0..1.0, 0.0..255.0) as u8;
 
                 // Focus
-                // dmx[this.start_addr + 6] = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
+                // fixture_channel!(dmx, this, 6) = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
 
-                // dmx[this.start_addr + 5] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+                // fixture_channel!(dmx, this, 5) = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
 
                 // Actually gobo shit
-                //dmx[this.start_addr + 9] = color.r; // WTF.
-                //dmx[this.start_addr + 10] = color.g;
-                //dmx[this.start_addr + 11] = color.b;
+                //fixture_channel!(dmx, this, 9) = color.r; // WTF.
+                //fixture_channel!(dmx, this, 10) = color.g;
+                //fixture_channel!(dmx, this, 11) = color.b;
 
                 // Position
-                dmx[this.start_addr + 12] = state.orientation.pan;
-                dmx[this.start_addr + 13] = 0;
+                fixture_channel!(dmx, this, 12) = state.orientation.pan;
+                fixture_channel!(dmx, this, 13) = 0;
 
                 // tilt
-                dmx[this.start_addr + 14] = state.orientation.tilt;
-                dmx[this.start_addr + 15] = 0;
+                fixture_channel!(dmx, this, 14) = state.orientation.tilt;
+                fixture_channel!(dmx, this, 15) = 0;
             }
             MovingHead::VaryTechHeroSpot60 => {
-                dmx[this.start_addr + 0] = state.orientation.pan;
-                dmx[this.start_addr + 1] = state.orientation.tilt;
-                dmx[this.start_addr + 2] = 0;
-                dmx[this.start_addr + 3] = state.alpha;
-                dmx[this.start_addr + 4] = match state.strobe_speed {
+                fixture_channel!(dmx, this, 0) = state.orientation.pan;
+                fixture_channel!(dmx, this, 1) = state.orientation.tilt;
+                fixture_channel!(dmx, this, 2) = 0;
+                fixture_channel!(dmx, this, 3) = state.alpha;
+                fixture_channel!(dmx, this, 4) = match state.strobe_speed {
                     0 => 0,
                     v => v.map_range(1..255, 10..250),
                 };
-                dmx[this.start_addr + 5] = state.focus;
-                dmx[this.start_addr + 6] = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 5) = state.focus;
+                fixture_channel!(dmx, this, 6) = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
             }
         }
         // match self {
@@ -112,14 +111,13 @@ impl MovingHead {
     pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
         match self {
             MovingHead::MartinMac250E => {
-                let strobe_speed = dmx[this.start_addr + 0];
-                let alpha = dmx[this.start_addr + 1];
-                let hue = (dmx[this.start_addr + 3] as f64).map_range(0.0..255.0, 0.0..360.0);
-                let saturation =
-                    (dmx[this.start_addr + 11] as f64).map_range(0.0..255.0, 0.0..1.0);
-                let value = (dmx[this.start_addr + 5] as f64).map_range(0.0..255.0, 0.0..1.0);
-                let pan = dmx[this.start_addr + 12];
-                let tilt = dmx[this.start_addr + 14];
+                let strobe_speed = fixture_channel!(dmx, this, 0);
+                let alpha = fixture_channel!(dmx, this, 1);
+                let hue = (fixture_channel!(dmx, this, 3) as f64).map_range(0.0..255.0, 0.0..360.0);
+                let saturation = (fixture_channel!(dmx, this, 11) as f64).map_range(0.0..255.0, 0.0..1.0);
+                let value = (fixture_channel!(dmx, this, 5) as f64).map_range(0.0..255.0, 0.0..1.0);
+                let pan = fixture_channel!(dmx, this, 12);
+                let tilt = fixture_channel!(dmx, this, 14);
 
                 FixtureState {
                     color: HSVColor {
@@ -134,17 +132,17 @@ impl MovingHead {
                 }
             }
             MovingHead::VaryTechHeroSpot60 => {
-                let pan = dmx[this.start_addr + 0];
-                let tilt = dmx[this.start_addr + 1];
-                let alpha = dmx[this.start_addr + 3];
-                let strobe = match dmx[this.start_addr + 4] {
+                let pan = fixture_channel!(dmx, this, 0);
+                let tilt = fixture_channel!(dmx, this, 1);
+                let alpha = fixture_channel!(dmx, this, 3);
+                let strobe = match fixture_channel!(dmx, this, 4) {
                     0 => 0,
                     v if v < 10 => 0,
                     v => v.map_range(10..250, 1..255),
                 };
-                let focus = dmx[this.start_addr + 5];
+                let focus = fixture_channel!(dmx, this, 5);
                 let mut color = HSVColor::default();
-                color.s = (dmx[this.start_addr + 6] as f64).map_range(0.0..255.0, 0.0..1.0);
+                color.s = (fixture_channel!(dmx, this, 6) as f64).map_range(0.0..255.0, 0.0..1.0);
 
                 FixtureState {
                     color,
@@ -157,16 +155,12 @@ impl MovingHead {
         }
     }
 
-    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
-        // match self {
-        //     MovingHead::Generic3ChanNoAlpha => todo!(),
-        //     MovingHead::Generic4ChanWithAlpha => todo!(),
-        // }
-    }
+    pub fn blackout(&self, _this: &Fixture, _state: &FixtureState, _dmx: &mut [u8]) {}
 
     pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
         match self {
             MovingHead::MartinMac250E => {
+                // Ensure all other values are not fucked up.
                 self.write(
                     this,
                     &FixtureState {
@@ -177,27 +171,22 @@ impl MovingHead {
                         ..state.clone()
                     },
                     dmx,
-                ); // Ensure all other values are not fucked up.
+                );
 
+                // Then manually set the shutter.
                 match time {
                     v if v <= 5000 => {
                         // Enable lamp.
                         println!("ENABLE LAMP");
-                        dmx[this.start_addr + 0] = 237;
+                        fixture_channel!(dmx, this, 0) = 237;
                     }
-                    v => {
+                    _ => {
                         println!("DONT ENABLE LAMP");
-                        dmx[this.start_addr + 0] = 20;
+                        fixture_channel!(dmx, this, 0) = 20;
                     }
                 }
             }
             MovingHead::VaryTechHeroSpot60 => {}
         }
-        // TODO: just call write.
-        // self.write(this, dmx);
-        // match self {
-        //     MovingHead::Generic3ChanNoAlpha => todo!(),
-        //     MovingHead::Generic4ChanWithAlpha => todo!(),
-        // }
     }
 }
