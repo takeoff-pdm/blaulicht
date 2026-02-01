@@ -37,6 +37,10 @@ impl AudioSourceMicrophone {
 
 impl AudioSource for AudioSourceMicrophone {
     fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
+        for (i, v) in self.converter.freqs().iter().enumerate() {
+            self.freq_buffer[i] = Frequency::from(v);
+        }
+
         &self.freq_buffer
     }
 

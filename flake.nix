@@ -30,7 +30,7 @@
             glibc.dev
             gcc 
             mold
-            # dbus
+            dbus
         ];
 
         packages = with pkgs; [
@@ -52,7 +52,7 @@
             pkgs.stdenv.cc.cc.lib
             openssl
             pkgs.binaryen
-            # dbus
+            dbus
         ];
       in
       {
