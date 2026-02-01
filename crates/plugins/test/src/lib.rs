@@ -32,6 +32,8 @@ pub struct SamplePlugin {
     // midi_handle_out: Option<MidiConnection>,
     // midi_handle_in: Option<MidiConnection>,
     saved: bool,
+
+    last_print: u32,
 }
 
 impl Default for SamplePlugin {
@@ -40,6 +42,7 @@ impl Default for SamplePlugin {
             state: SaveState::default(), // midi_handle_out: None,
             // midi_handle_in: None,
             saved: false,
+            last_print: 0,
         }
     }
 }
@@ -132,6 +135,11 @@ impl Plugin for SamplePlugin {
 
     fn run(&mut self, input: TickInput) {
         let _state = bpf::get_dmx();
+
+        if input.clock - self.last_print > 1000 {
+            println!("A");
+            self.last_print = input.clock;
+        }
 
         for ev in &input.events.events {
             println!("TEST-EV: {ev:?}");

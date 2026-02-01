@@ -1,7 +1,7 @@
 pub mod icons;
 
 fn font_bytes() -> &'static [u8] {
-    &*include_bytes!("../dist/icons.ttf")
+    &*include_bytes!("../fonts/icons.ttf")
 }
 
 fn font_data() -> egui::FontData {

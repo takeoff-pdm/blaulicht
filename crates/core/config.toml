@@ -3,7 +3,7 @@ dmx_out_devices = [
     "/dev/dmx_out_0",
     "/dev/dmx_out_0",
 ]
-default_audio_device = "pipewire"
+default_audio_device = "dummy-name"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
@@ -52,12 +52,12 @@ enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/test.wasm"
-enabled = false
+enabled = true
 enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/videowall.wasm"
-enabled = false
+enabled = true
 enable_watcher = true
 
 [plugin_state]
