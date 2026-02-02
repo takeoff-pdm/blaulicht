@@ -39,6 +39,7 @@ use std::{
 pub use supervisor::supervisor_thread;
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
+pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 
 const AUDIO_SOURCE_FREQ_BUFFER_SIZE: usize = 2048;
@@ -190,6 +191,7 @@ pub fn run(
 
     // Dmx last tick.
     let mut time_of_last_dmx_tick = 0;
+    let mut time_of_last_plugin_tick = 0;
     let mut last_spectrogram_tick = 0;
 
     let mut plugin_wasm_engine_crashed = false;
@@ -265,10 +267,9 @@ pub fn run(
             _ => {}
         }
 
-        // Constant tick.
-        if now - time_of_last_dmx_tick >= DMX_TICK_TIME.as_millis() as u64 {
+        if now - time_of_last_plugin_tick >= PLUGINS_TICK_TIME.as_millis() as u64 {
             // TODO: does this even work?
-            let midi_manager = Arc::clone(&midi_manager);
+            // let midi_manager = Arc::clone(&midi_manager);
             let midi = {
                 let mut midi_manager = midi_manager.lock().unwrap();
                 midi_manager
@@ -276,7 +277,7 @@ pub fn run(
                     .map_err(|e| anyhow!("Failed to tick MIDI manager: {e:?}"))?
             };
 
-            let serial_manager = Arc::clone(&serial_manager);
+            // let serial_manager = Arc::clone(&serial_manager);
             let serial = {
                 let mut serial_manager = serial_manager.lock().unwrap();
                 serial_manager
@@ -304,6 +305,12 @@ pub fn run(
                 }
             };
 
+            let now = mainloop_begin_time.elapsed().as_millis() as u64;
+            time_of_last_plugin_tick = now;
+        }
+
+        // Constant tick.
+        if now - time_of_last_dmx_tick >= DMX_TICK_TIME.as_millis() as u64 {
             let audio_into_dmx_engine = sig_collector.tick_output::<COLLECTOR_DMX>();
             dmx_tick_durations = dmx_engine.tick(&audio_into_dmx_engine);
 
