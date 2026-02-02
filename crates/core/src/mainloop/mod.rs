@@ -157,9 +157,12 @@ pub fn run(
     };
 
     #[cfg(feature = "audio")]
-    let audio_source =
-        AudioSourceMicrophone::new(device, config.stream, AUDIO_SOURCE_FREQ_BUFFER_SIZE)
-            .with_context(|| "Failed to initialize audio stream")?;
+    let audio_source = AudioSourceMicrophone::new(
+        audioviz::io::Device::Cpal(device),
+        config.stream,
+        AUDIO_SOURCE_FREQ_BUFFER_SIZE,
+    )
+    .with_context(|| "Failed to initialize audio stream")?;
 
     #[cfg(not(feature = "audio"))]
     let audio_source = AudioSourceNoise::new(41100, 100000, AUDIO_SOURCE_FREQ_BUFFER_SIZE);
