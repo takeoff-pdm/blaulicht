@@ -21,7 +21,8 @@ noise = ["dep:rand"]
 log = "0.4"
 
 # stream_in, file
-audioviz = { version = "0.4.4", features = ["serde"], optional = true }
+# audioviz = { version = "0.4.4", features = ["serde"], optional = true }
+audioviz = { path = "/home/mik/Downloads/audioviz/", optional = true }
 cpal = { version = "0.15.3", optional = true }
 
 # file

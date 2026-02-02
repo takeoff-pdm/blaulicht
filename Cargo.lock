@@ -330,6 +330,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "audioviz"
+version = "0.6.0"
+dependencies = [
+ "apodize",
+ "cpal 0.13.5",
+ "log",
+ "rustfft",
+ "splines",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -477,7 +488,7 @@ name = "blaulicht-audio-engine"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "audioviz",
+ "audioviz 0.6.0",
  "blaulicht-shared",
  "clap",
  "cpal 0.15.3",
@@ -502,7 +513,7 @@ dependencies = [
  "anyhow",
  "artnet_protocol",
  "audio_thread_priority",
- "audioviz",
+ "audioviz 0.4.4",
  "blaulicht-assets",
  "blaulicht-audio-engine",
  "blaulicht-shared",
