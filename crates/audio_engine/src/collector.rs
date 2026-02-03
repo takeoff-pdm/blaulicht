@@ -174,6 +174,9 @@ where
             Signal::BassAvg(v) => {
                 self.current.bass_avg = v;
             }
+            Signal::BassSlope(v) => {
+                self.current.bass_slope = v;
+            }
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;
                 self.current.time_between_beats_millis = v.time_between_beats_millis;
@@ -238,8 +241,14 @@ where
         let values_raw = self.audio_source.get_frequencies(now);
 
         // Copy into internal buffer.
-        self.freq_buffer_raw.copy_from_slice(values_raw);
-        self.freq_buffer.copy_from_slice(values_raw);
+        self.freq_buffer_raw.clear();
+        self.freq_buffer_raw.extend(values_raw);
+
+        self.freq_buffer.clear();
+        self.freq_buffer.extend(values_raw);
+
+        // self.freq_buffer_raw.copy_from_slice(values_raw);
+        // self.freq_buffer.copy_from_slice(values_raw);
 
         //
         // Volume pass.
@@ -249,7 +258,7 @@ where
             adjust_percent => {
                 self.freq_buffer.iter_mut().for_each(|freq| {
                     let adjust_percent_float = adjust_percent as f32 / 100.0;
-                    freq.volume = freq.volume * adjust_percent_float;
+                    freq.volume *= adjust_percent_float;
                 });
             }
         }
@@ -260,11 +269,14 @@ where
         match self.params.gate {
             0 => {}
             gate_min => {
+                let min_freq = self.scratch.volume_samples.iter().max().unwrap_or(&0);
+                let min_freq = *min_freq as f32 * (gate_min as f32 / 100.0);
+
                 self.freq_buffer.iter_mut().for_each(|freq| {
-                    if freq.volume >= gate_min as f32 {
+                    if freq.volume >= min_freq {
                         match self.params.boost {
                             Some(b) => {
-                                freq.volume += (b as f32) / 10.0;
+                                freq.volume *= (b as f32) / 100.0;
                             }
                             None => {}
                         }
@@ -382,7 +394,13 @@ where
 // Spectrogram utils.
 //
 
-pub type AudioColumn = Vec<u8>;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AudioBucket {
+    pub volume: u8,
+    pub freq_bound_upper: u64,
+}
+
+pub type AudioColumn = Vec<AudioBucket>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
 pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn {
@@ -414,7 +432,7 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn 
     // println!("chunk size: {chunk_size}");
 
     // let chunk_size = values.len() as f32 / bins as f32;
-    let chunks: Vec<u8> = values
+    let chunks: Vec<AudioBucket> = values
         .chunks(chunk_size)
         .map(|c| {
             // let mut max = 0.0;
@@ -426,23 +444,25 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn 
 
             // println!("MAX: {max}");
 
-            c.iter()
-                .map(|datapoint| datapoint.volume * 10.0)
+            let volume = c
+                .iter()
+                .map(|datapoint| datapoint.volume * 15.0)
                 .sum::<f32>()
-                / c.len() as f32
+                / c.len() as f32;
+
+            let upper_freq = c
+                .iter()
+                .map(|datapoint| datapoint.freq as u64)
+                .max()
+                .unwrap_or(0);
+
+            (volume, upper_freq)
         })
-        .map(|v| {
-            // debug_assert!(if v > u8::MAX as f32 { panic!("V too large: {v}") } else { true });
-            v as u8
+        .map(|(vol, freq)| AudioBucket {
+            volume: vol as u8,
+            freq_bound_upper: freq,
         })
         .collect();
-
-    // let data = [1, 2, 3, 4, 5, 6, 7];
-
-    // let sums: Vec<i32> = data
-    //     .chunks(3)
-    //     .map(|chunk| chunk.iter().sum()) // map each chunk to its sum
-    //     .collect();
 
     chunks
 }

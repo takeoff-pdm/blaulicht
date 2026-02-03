@@ -11,6 +11,7 @@ use audioviz::spectrum::{
     config::{ProcessorConfig, StreamConfig},
     stream::Stream,
 };
+use audioviz::utils::combine_channels;
 use cpal::traits::DeviceTrait;
 use std::time::{Duration, Instant};
 
@@ -30,7 +31,7 @@ pub struct AudioSourceMicrophone {
 
 impl AudioSourceMicrophone {
     pub fn new(
-        device: Device,
+        device: cpal::Device,
         config: StreamConfig,
         freq_buffer_size: usize,
     ) -> anyhow::Result<Self> {
@@ -42,11 +43,12 @@ impl AudioSourceMicrophone {
 
         let stream = Stream::new(config);
 
+        let latency = 10;
         let frames_10ms_at_48k = stream.config.processor.sampling_rate * 10 / 1000;
         let buffer_size = Some(frames_10ms_at_48k);
 
         // set up capture on the same thread; only the CPAL callback runs elsewhere
-        let mut input = Input::with_latency(10);
+        let mut input = Input::with_latency(latency);
         let (_channels, _sample_rate, controller) = input
             .init(&device, buffer_size)
             .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
@@ -74,13 +76,17 @@ impl AudioSource for AudioSourceMicrophone {
 
         // loop {
         // blocks until CPAL callback pushes a block into the channel
-        if let Some(block) = self.controller.pull_data() {
+        if let Some(block) = self.controller.try_pull_data_alternative() {
             pulled_at = Some(Instant::now());
             self.stream.push_data(block);
             self.stream.update(); // FFT + post-processing on the main thread
+
             updated_at = Some(Instant::now());
         } else {
-            println!("CRITICAL: Xrun in audio input");
+            // println!("audio: reuse");
+            //
+            // self.stream.update(); // FFT + post-processing on the main thread
+            // return &self.freq_buffer;
         }
 
         // if start.elapsed() > Duration::from_millis(10) {
@@ -105,42 +111,26 @@ impl AudioSource for AudioSourceMicrophone {
             return &self.freq_buffer;
         }
 
-        //                     let mut b: Vec<f32> = Vec::new();
-        //
-        //                     let bufs = d.chunks(1);
-        //                     for buf in bufs {
-        //                         let mut max: f32 = 0.0;
-        //                         for value in buf {
-        //                             println!("vollll: {}", self.config.processor.volume);
-        //                             let value = value * 30.0 * self.config.processor.volume;
-        //                             if value > max {
-        //                                 max = value
-        //                             }
-        //                         }
-        //                         b.push(max)
-        //                     }
-        //                     b
-
         let mut frequencies = frequencies[0].clone();
 
         if frequencies.is_empty() {
             return &self.freq_buffer;
         }
 
-        if frequencies.len() < self.freq_buffer.len() {
-            println!(
-                "Len mismatch: expected: {}, but got: {}",
-                self.freq_buffer.len(),
-                frequencies.len()
-            );
-            while frequencies.len() < self.freq_buffer.len() {
-                frequencies.push(audioviz::spectrum::Frequency {
-                    volume: 0.0,
-                    freq: 0.0,
-                    position: 0.0,
-                });
-            }
-        }
+        // if frequencies.len() < self.freq_buffer.len() {
+        //     println!(
+        //         "Len mismatch: expected: {}, but got: {}",
+        //         self.freq_buffer.len(),
+        //         frequencies.len()
+        //     );
+        //     while frequencies.len() < self.freq_buffer.len() {
+        //         frequencies.push(audioviz::spectrum::Frequency {
+        //             volume: 0.0,
+        //             freq: 0.0,
+        //             position: 0.0,
+        //         });
+        //     }
+        // }
 
         while frequencies.len() > self.freq_buffer.len() {
             println!(
@@ -151,18 +141,18 @@ impl AudioSource for AudioSourceMicrophone {
             frequencies.pop();
         }
 
-        if frequencies.len() != self.freq_buffer.len() {
-            panic!(
-                "expected: {} got {}",
-                self.freq_buffer.len(),
-                frequencies.len()
-            );
-        }
+        // if frequencies.len() != self.freq_buffer.len() {
+        //     panic!(
+        //         "expected: {} got {}",
+        //         self.freq_buffer.len(),
+        //         frequencies.len()
+        //     );
+        // }
 
         self.freq_buffer.clear();
         self.freq_buffer
             .extend(frequencies.iter().map(|f| Frequency {
-                volume: f.volume * 5.0,
+                volume: f.volume * 10.0,
                 freq: f.freq,
                 position: f.position,
             }));

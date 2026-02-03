@@ -122,6 +122,18 @@ where
                 self.scratch.bass_samples.pop_front();
             }
 
+            // Construct derivative of the bass frames.
+            // Construct derivative of the bass frames.
+            let last_y = self.scratch.bass_samples.iter().last().unwrap_or(&0);
+
+            let current_x = 1.0;
+            let prev_x = 0.0;
+
+            let current_y = bass_sig as f32;
+            let prev_y = *last_y as f32;
+
+            let slope = (current_y - prev_y) / (current_x - prev_x);
+
             let bass_moving_average = self
                 .scratch
                 .bass_samples
@@ -242,6 +254,7 @@ where
                     Signal::BassAvgShort(0)
                 },
                 Signal::BassAvg(bass_moving_average as u8),
+                Signal::BassSlope((slope as f32 * 10.0) as u8),
             ]
         };
 
@@ -334,10 +347,12 @@ where
             //     freq: 0f32,
             //     position: 0f32,
             // })
+            .filter(|f| f.freq > 0.0)
             .map(|f| f.volume)
             .sum::<f32>()
             * 10.0
-            / self.freq_buffer.len() as f32) as usize;
+            / self.freq_buffer.iter().filter(|f| f.freq > 0.0).count() as f32)
+            as usize;
         // .volume as usize;
 
         // TODO: this is fake, this is not even the average.

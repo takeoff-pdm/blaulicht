@@ -18,8 +18,8 @@ channel_count = 2
 [stream.processor]
 sampling_rate = 48000
 frequency_bounds = [
-    0,
-    50000,
+    40,
+    20000,
 ]
 volume = 1.0
 volume_normalisation = "Mixture"

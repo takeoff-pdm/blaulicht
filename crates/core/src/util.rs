@@ -7,8 +7,8 @@ use crossbeam_channel::Sender;
 use thread_priority::ThreadPriority;
 
 pub fn increase_thread_priority(system_sender: Sender<SystemMessage>) {
-    realtime(system_sender);
-    // conservative(system_sender);
+    // realtime(system_sender);
+    conservative(system_sender);
 }
 
 fn conservative(system_sender: Sender<SystemMessage>) {

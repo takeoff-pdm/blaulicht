@@ -13,6 +13,7 @@ pub enum Signal {
     Bass(u8),
     BassAvgShort(u8),
     BassAvg(u8),
+    BassSlope(u8),
     Volume(u8),
     BeatTrigger(bool),
 }

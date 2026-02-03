@@ -21,7 +21,10 @@ use egui::Color32;
 use egui_dock::DockState;
 use egui_file::FileDialog;
 use pages::ViewUI;
-use std::{collections::VecDeque, time::{Duration, Instant}};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 use strum::EnumIter;
 
 pub mod components;
@@ -154,6 +157,7 @@ pub struct BlaulichtApp {
     init_popup_open_time: Instant,
 
     set_audio_device_popup_open: bool,
+    audio_info_dialog_open: bool,
 
     // TODO: move into custom scroll area or whatever
     scene_page_index: usize,
@@ -281,6 +285,7 @@ impl BlaulichtApp {
             popup_open_time: Instant::now(),
             init_popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
+            audio_info_dialog_open: false,
             scene_page_index: 0,
             add_dmx_override_open: false,
             add_dmx_override_chan: 1,

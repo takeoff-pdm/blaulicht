@@ -14,7 +14,7 @@ frequency_bounds = [
     20000,
 ]
 volume = 1.0
-volume_normalisation = "Exponential"
+volume_normalisation = "Mixture"
 position_normalisation = "Harmonic"
 interpolation = "Cubic"
 

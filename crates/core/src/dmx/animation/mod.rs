@@ -105,14 +105,14 @@ impl DmxEngine {
                         .current_audio_colunn
                         .iter()
                         .enumerate()
-                        .filter_map(|(idx, raw_value)| {
+                        .filter_map(|(idx, audio_bucket)| {
                             let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
 
                             if bin_freq < freq_min || bin_freq > freq_max {
                                 return None;
                             }
 
-                            let mut value = *raw_value as f32;
+                            let mut value = audio_bucket.volume as f32;
 
                             if value < gate_threshold {
                                 return None;

@@ -102,6 +102,12 @@ impl BlaulichtApp {
                                 .size(ButtonSize::Medium.dim().1)
                                 .color(Color32::LIGHT_RED),
                         );
+
+                        ui.separator();
+
+                        if components::button(ui, false, "Info", ButtonSize::Medium) {
+                            self.audio_info_dialog_open = !self.audio_info_dialog_open;
+                        }
                     });
 
                     self.render_choose_audio_device_popup(ctx, &mut selected_device);

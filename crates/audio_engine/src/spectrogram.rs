@@ -3,7 +3,7 @@ use std::{collections::VecDeque, sync::RwLockReadGuard, time::Duration};
 use blaulicht_shared::CollectedAudioSnapshot;
 use egui::Color32;
 
-use crate::CollectorOutput;
+use crate::{AudioBucket, CollectorOutput};
 
 // use crate::{::collector::CollectorOutput, state::AudioSpectrogram};
 
@@ -42,7 +42,8 @@ impl AudioSpectrogram {
             if data.current_audio_colunn.len() != self.bin_count {
                 // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
                 // This can happen due to rounding issues.
-                data.current_audio_colunn.resize(self.bin_count, 0);
+                data.current_audio_colunn
+                    .resize(self.bin_count, AudioBucket::default());
             }
             // println!("{} vs {}", self.columns.len(), self.max_columns);
             if self.columns.len() >= self.max_columns {
@@ -118,10 +119,20 @@ pub fn create_spectrogram_image(
                 for bucket_idx in 0..bucket_count {
                     let sum: u32 = chunks
                         .iter()
-                        .map(|col| col.current_audio_colunn[bucket_idx] as u32)
+                        .map(|col| col.current_audio_colunn[bucket_idx].volume as u32)
                         .sum();
                     let avg = (sum / chunks.len() as u32) as u8;
-                    averaged.current_audio_colunn.push(avg);
+
+                    let freq_bound_upper = chunks
+                        .iter()
+                        .map(|col| col.current_audio_colunn[bucket_idx].freq_bound_upper as u64)
+                        .max()
+                        .unwrap_or(0);
+
+                    averaged.current_audio_colunn.push(crate::AudioBucket {
+                        volume: avg,
+                        freq_bound_upper,
+                    });
                 }
 
                 // average the snapshot
@@ -150,7 +161,7 @@ pub fn create_spectrogram_image(
             let y_min = pad_top + (bidx as f32 * bucket_height) as usize;
             let y_max = pad_top + ((bidx + 1) as f32 * bucket_height).min(height as f32) as usize;
 
-            let bucket_color = spectrogram_color(bucket);
+            let bucket_color = spectrogram_color(bucket.volume);
 
             // Draw buckets.
             for x in col_start_x..col_end_x {

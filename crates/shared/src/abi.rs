@@ -21,6 +21,7 @@ pub struct CollectedAudioSnapshot {
     pub bass: u8,
     pub bass_avg_short: u8,
     pub bass_avg: u8,
+    pub bass_slope: u8,
     pub bpm: u8,
     pub time_between_beats_millis: u16,
     pub initial: bool,

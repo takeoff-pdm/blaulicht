@@ -159,7 +159,7 @@ pub fn run(
 
     #[cfg(feature = "audio")]
     let audio_source = AudioSourceMicrophone::new(
-        audioviz::io::Device::Cpal(device),
+        device,
         config.stream,
         AUDIO_SOURCE_FREQ_BUFFER_SIZE,
     )
