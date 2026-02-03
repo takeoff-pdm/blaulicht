@@ -23,7 +23,8 @@ dhat = ["dep:dhat"]
 [dependencies]
 
 # Audio
-audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
+audioviz = { version = "0.6.0", features = ["serde"], optional = true }
+# audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
 cpal = { version = "0.15.3", optional = true }
 blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
 

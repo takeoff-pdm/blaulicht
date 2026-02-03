@@ -21,7 +21,8 @@ noise = ["dep:rand"]
 log = "0.4"
 
 # stream_in, file
-audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
+# audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
+audioviz = { version = "0.6.0", features = ["serde"], optional = true }
 cpal = { version = "0.15.3", optional = true }
 
 # file

@@ -172,7 +172,7 @@ impl Default for Config {
                 // TODO: also experiment with fft resolution
                 // gravity: None, // OR: Some(100)
                 gravity: Some(100.0),
-                ..Default::default()
+                ..StreamConfig::default()
             },
 
             run_setup_on_reload: false,

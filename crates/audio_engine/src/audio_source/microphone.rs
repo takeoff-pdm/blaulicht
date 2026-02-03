@@ -44,13 +44,13 @@ impl AudioSourceMicrophone {
         let stream = Stream::new(config);
 
         let latency = 10;
-        let frames_10ms_at_48k = stream.config.processor.sampling_rate * 10 / 1000;
+        let frames_10ms_at_48k = stream.config.processor.sampling_rate * latency / 1000;
         let buffer_size = Some(frames_10ms_at_48k);
 
         // set up capture on the same thread; only the CPAL callback runs elsewhere
-        let mut input = Input::with_latency(latency);
+        let mut input = Input::new();
         let (_channels, _sample_rate, controller) = input
-            .init(&device, buffer_size)
+            .init(&audioviz::io::Device::DefaultInput, buffer_size)
             .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
 
         // let (converter, _capture) = init_converter(device, config)
@@ -76,13 +76,15 @@ impl AudioSource for AudioSourceMicrophone {
 
         // loop {
         // blocks until CPAL callback pushes a block into the channel
-        if let Some(block) = self.controller.try_pull_data_alternative() {
-            pulled_at = Some(Instant::now());
-            self.stream.push_data(block);
-            self.stream.update(); // FFT + post-processing on the main thread
+        if let Some(block) = self.controller.try_pull_data() {
+            if !block.is_empty() {
+                pulled_at = Some(Instant::now());
+                self.stream.push_data(block);
+                self.stream.update(); // FFT + post-processing on the main thread
 
-            updated_at = Some(Instant::now());
-        } else {
+                updated_at = Some(Instant::now());
+            } else {
+            }
             // println!("audio: reuse");
             //
             // self.stream.update(); // FFT + post-processing on the main thread
