@@ -37,8 +37,7 @@ struct Cli {
 
 fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_base: &Path) {
     let _start = Instant::now();
-
-    let dim = (700, 170);
+    let dim = (700, 200);
     let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
 
     let image = create_spectrogram_image(
@@ -88,21 +87,23 @@ fn main() {
     // let offsets = offset_size.get();
     // let chunk_sizes = chunk_size.get();
     // let thread_limit = worker_threads.get();
+    //
 
+    let spectrogram_column_bin_count = 128;
     let output = [CollectorOutputSpec {
-        bins_p_column: Some(128),
+        bins_p_column: Some(spectrogram_column_bin_count),
         raw: false,
     }];
 
     let song_path = PathBuf::from_str("FOO").unwrap();
     let output_base = PathBuf::from_str("./OUTPUT").unwrap();
 
-    // let song_path_str = song_path.to_string_lossy().into_owned();
+    let song_path_str = "/home/mik/Documents/mit-CBCAST-kommst-zu-inst-BERGHAIN.wav";
 
     // TODO: what is a good value for this?
-    // let audio_source = AudioSourceSoundfile::new(&song_path_str, FREQ_BUFFER_SIZE).unwrap();
-    let length = 20000;
-    let audio_source = AudioSourceNoise::new(41000, length, 200);
+    let audio_source = AudioSourceSoundfile::new(&song_path_str, FREQ_BUFFER_SIZE).unwrap();
+    // let length = 20000;
+    // let audio_source = AudioSourceNoise::new(41000, length, 2000);
     let length_millis = audio_source.duration();
 
     let spec_period = 16;
@@ -142,8 +143,11 @@ fn main() {
         let start = chunk * offsets;
         let end = start + offsets;
 
-        let mut spectrogram =
-            AudioSpectrogram::new(600, 128, Duration::from_millis(spec_period as u64));
+        let mut spectrogram = AudioSpectrogram::new(
+            600,
+            spectrogram_column_bin_count,
+            Duration::from_millis(spec_period as u64),
+        );
 
         for i in start..end {
             // println!("run: {i}/{end}");

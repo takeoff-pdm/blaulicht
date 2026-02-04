@@ -140,7 +140,6 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
     columns
 }
 
-// Create texture once when data changes (not every frame!)
 pub fn create_spectrogram_image(
     spec: &AudioSpectrogram,
     width: usize,
@@ -213,8 +212,202 @@ pub fn create_spectrogram_image(
     let freq_step = 1000;
 
     let freq_steps = (freq_max - freq_min) / freq_step;
+
+    let mut subcolumn_height = 0;
+
+    let step_height_max = (height as f32 / freq_steps as f32).ceil() as usize;
+
     println!("Freq STEPS: {freq_steps}");
-    let step_height = (height as f32 / freq_steps as f32).floor() as usize;
+    let mut step_height = (height as f32 / freq_steps as f32).ceil() as usize;
+
+    if step_height > subcolumn_height {
+        step_height = subcolumn_height;
+        println!("WARN: subcolumn_height != step_height => {step_height} vs {step_height_max}");
+    }
+
+    for bin_index in 0..bin_count_per_column {
+        let y_max = pad_top + ((bin_count_per_column - bin_index) * bucket_height);
+        let y_min = y_max - bucket_height;
+        // pad_top + ((bucket_index + 1) as f32 * bucket_height).min(height as f32) as usize;
+
+        for (column_index, column) in columns_data.iter().enumerate() {
+            let x_start = pad_left + (column_index * pixels_per_column);
+            let x_end = x_start + pixels_per_column;
+
+            let bucket_color = spectrogram_color(column.current_audio_colunn[bin_index].volume);
+            for y in y_min..y_max {
+                for x in x_start..x_end {
+                    pixels[y * width + x] = bucket_color;
+                }
+            }
+        }
+
+
+        // Draw bass marker.
+        {
+            if options.include_bass_markers {
+                if col.snapshot.bass_avg_short == 255 {
+                    let dot_size = 5;
+                    for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
+                        pixels[y * width + col_start_x] = Color32::GREEN;
+                    }
+                }
+            }
+        }
+
+        // Draw beat marker.
+        {
+            if options.include_beat_markers {
+                if col.snapshot.beat_trigger {
+                    for y in 0..height_outer {
+                        pixels[y * width + col_start_x] = Color32::RED;
+                    }
+                }
+            }
+        }
+    }
+
+    let image = egui::ColorImage::new([width, height_outer], pixels);
+    // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
+    image
+}
+
+// Create texture once when data changes (not every frame!)
+pub fn create_spectrogram_image_with_freqs(
+    spec: &AudioSpectrogram,
+    width: usize,
+    height_outer: usize,
+    options: &SpectrogramDisplayOptions,
+) -> egui::ColorImage {
+    let pad_btm = 20;
+    let pad_top = 5;
+    let pad_left = 5;
+
+    let height = height_outer - pad_btm - pad_top;
+    let mut pixels = vec![Color32::BLACK; width * height_outer];
+
+    let total_cols = spec.max_columns;
+
+    let avail_width = width - pad_left;
+    let pixels_per_column = (avail_width as f32 / total_cols as f32);
+
+    let mut chunks_cont = spec.columns.clone();
+    let columns_data = chunks_cont.make_contiguous();
+
+    // NOTE: downsampling does nothing for vertical issues.
+    let columns_data = downsample(columns_data, pixels_per_column);
+
+    let pixels_per_column = (avail_width as f32 / columns_data.len() as f32).floor() as usize;
+
+    println!("pixels per column: {pixels_per_column}");
+
+    // if pixels_per_column * columns_data.len() > avail_width {
+    //     panic!("pixels p. column too large");
+    // }
+
+    // Render line-by line.
+
+    // Sanity check: every line has same column size.
+    let mut bin_count_per_column = 0;
+    for column in columns_data.iter() {
+        if bin_count_per_column == 0 {
+            bin_count_per_column = column.current_audio_colunn.len();
+        }
+
+        if bin_count_per_column != column.current_audio_colunn.len() {
+            println!("WARN: Illegal spectrogram input 1");
+            // let image = egui::ColorImage::new([width, height_outer], pixels);
+            // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
+            // return image;
+        }
+    }
+
+    if bin_count_per_column == 0 {
+        // println!("Illegal spectrogram input 2");
+        let image = egui::ColorImage::new([width, height_outer], pixels);
+        // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
+        return image;
+    }
+
+    let bucket_height = height as f32 / bin_count_per_column as f32;
+
+    println!("bucket_height: {bucket_height} | bin_count_per_column: {bin_count_per_column}");
+
+    if bucket_height < 1.0 {
+        panic!("too small");
+    }
+
+    let bucket_height = bucket_height.floor() as usize;
+
+    let freq_min = 0;
+    let freq_max = 20000;
+
+    let freq_step = 1000;
+
+    let freq_steps = (freq_max - freq_min) / freq_step;
+
+    // Lines for 1khz columns.
+    let mut lines_by_freqs = vec![
+        // List of inner columns for freqs that match this frequency range.
+        vec![]; 
+        freq_steps
+    ];
+
+    let mut subcolumn_height = 0;
+
+    let step_height_max = (height as f32 / freq_steps as f32).ceil() as usize;
+
+    // TODO: change implementation: very broken right now
+    // Does not respect multiple lines per freq-line
+    for freq_step_idx in 0..freq_steps {
+        let bound_high = ((freq_steps - freq_step_idx) * freq_step) as u64;
+        let bound_low = bound_high - freq_step as u64;
+
+        for (_, column) in columns_data.iter().enumerate() {
+
+            // NOTE: assume even distribution of frequencies.
+            // let buckets_per_subline = column.current_audio_colunn.len()  / freq_steps;
+
+            let mut sub_column = vec![];
+            for (_, bucket) in column.current_audio_colunn.iter().enumerate() {
+                if bucket.freq_bound_lower >= bound_low && bucket.freq_bound_upper <= bound_high {
+                    // decide whether to create a new subline bucket
+                    if sub_column.len() < step_height_max {
+                        sub_column.push(bucket.clone());
+                    } else {
+                        println!("Warn: subbucket overflow: freq = ({bound_low} -- {bound_high})");
+                    }
+                }
+
+                // TODO: actually sort this in?
+            }
+
+            if sub_column.len() > 0 {
+                if subcolumn_height == 0 {
+                    subcolumn_height = sub_column.len();
+                }
+
+                // if sub_column.len() < subcolumn_height {
+                //     kVk!("WARN: sub column mismatch: expected {} got {}", sub_column.len(), subcolumn_height);
+                // }
+
+                if sub_column.len() > subcolumn_height {
+                    subcolumn_height = sub_column.len();
+                }
+            }
+
+            lines_by_freqs[freq_step_idx].push(sub_column);
+
+        }
+    }
+
+    println!("Freq STEPS: {freq_steps}");
+    let mut step_height = (height as f32 / freq_steps as f32).ceil() as usize;
+
+    if step_height > subcolumn_height {
+        step_height = subcolumn_height;
+        println!("WARN: subcolumn_height != step_height => {step_height} vs {step_height_max}");
+    }
 
     {
         let mut is_black = true;
@@ -242,37 +435,32 @@ pub fn create_spectrogram_image(
         }
     }
 
-    // TODO: change the data structure:
-    let mut lines_by_freqs = vec![vec![]; freq_steps];
-
-    // TODO: change implementation: very broken right now
-    // Does not respect multiple lines per freq-line
-    for freq_step_idx in 0..freq_steps {
-        let bound_low = (freq_step_idx * freq_step) as u64;
-        let bound_high = bound_low + freq_step as u64;
-
-        for (_, column) in columns_data.iter().enumerate() {
-            for (_, bucket) in column.current_audio_colunn.iter().enumerate() {
-                if bucket.freq_bound_lower >= bound_low && bucket.freq_bound_upper <= bound_high {
-                    lines_by_freqs[freq_step_idx].push(bucket);
-                }
-            }
-        }
-    }
-
     // Draw pass.
     for (row_index, freq_row) in lines_by_freqs.iter().enumerate() {
         let y_min_start_line = pad_top + (row_index * step_height);
         let y_max_end_line = y_min_start_line + step_height;
 
-        for (column_index, bucket) in freq_row.iter().enumerate() {
+        for (column_index, sub_column) in freq_row.iter().enumerate() {
             let x_start = pad_left + (column_index * pixels_per_column);
             let x_end = x_start + pixels_per_column;
 
-            let bucket_color = spectrogram_color(bucket.volume);
-            for y in y_min..y_max {
-                for x in x_start..x_end {
-                    pixels[y * width + x] = bucket_color;
+            let sub_column_elements = sub_column.len();
+
+            if sub_column.len() > 0 {
+                let subcolumn_height = y_max_end_line - y_min_start_line;
+                let subcolumn_bucket_height = subcolumn_height / sub_column_elements;
+                // println!("sub: {} total_col_height: {bin_count_per_column}: sub height: {subcolumn_height} sub bucket height: {subcolumn_bucket_height}", sub_column.len() );
+
+                for (bucket_idx, bucket) in sub_column.iter().enumerate() {
+                    let bucket_color = spectrogram_color(bucket.volume);
+                    let y_min = y_min_start_line + (bucket_idx * subcolumn_bucket_height);
+                    let y_max = y_min + subcolumn_bucket_height;
+
+                    for y in y_min..y_max {
+                        for x in x_start..x_end {
+                            pixels[y * width + x] = bucket_color;
+                        }
+                    }
                 }
             }
 

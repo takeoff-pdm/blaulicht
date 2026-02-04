@@ -138,7 +138,7 @@ impl BlaulichtApp {
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---
                     ui.add_space(6.0);
-                    let spec_height = 150.0; // compact height
+                    let spec_height = 160.0; // compact height
                     let spec_width = ui.available_width();
 
                     let spec = self.data.state.audio_spectrogram.read().unwrap();

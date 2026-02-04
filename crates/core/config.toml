@@ -23,6 +23,7 @@ frequency_bounds = [
 ]
 volume = 1.0
 volume_normalisation = "Mixture"
+# volume_normalisation = "Exponential"
 position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
