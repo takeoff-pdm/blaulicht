@@ -73,56 +73,17 @@ impl BlaulichtApp {
 
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.audio_info_dialog_open {
-            components::Dialog::new("Info".to_string(), vec2(700.0, 300.0))
+            components::Dialog::new("Info".to_string(), vec2(800.0, 200.0))
                 .moveable()
                 .show(ctx, |ui| {
                     let spec_bass = self.data.state.bass_spectrogram.read().unwrap();
 
                     let spec_height = 160.0; // compact height
-                    let spec_width = 600.0;
+                    let spec_width = 750.0;
 
-                    ui.set_width(700.0);
+                    ui.set_width(800.0);
                     ui.set_min_width(700.0);
-                    ui.set_height(400.0);
-
-                    {
-                        // if spec.columns.is_empty() {
-                        //     let (spec_resp, spec_painter) = ui.allocate_painter(
-                        //         egui::vec2(spec_width, spec_height),
-                        //         egui::Sense::hover(),
-                        //     );
-                        //     let spec_rect = spec_resp.rect;
-                        //     spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
-                        //     spec_painter.text(
-                        //         spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                        //         egui::Align2::CENTER_TOP,
-                        //         "Waiting for audio…",
-                        //         egui::FontId::proportional(12.0),
-                        //         Color32::GRAY,
-                        //     );
-                        // } else {
-                        //     let image = components::create_spectrogram_image(
-                        //         &spec,
-                        //         spec_width as usize,
-                        //         spec_height as usize,
-                        //         &SpectrogramDisplayOptions {
-                        //             include_bass_markers: true,
-                        //             include_beat_markers: true,
-                        //         },
-                        //     );
-                        //
-                        //     {}
-                        //
-                        //     let texture = ctx.load_texture(
-                        //         "spectrogram_norm",
-                        //         image,
-                        //         egui::TextureOptions::NEAREST,
-                        //     );
-                        //
-                        //     ui.image(&texture);
-                        // }
-                        //
-                    }
+                    ui.set_height(200.0);
 
                     if spec_bass.columns.is_empty() {
                         let (spec_resp, spec_painter) = ui.allocate_painter(
