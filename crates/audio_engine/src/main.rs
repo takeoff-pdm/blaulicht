@@ -3,14 +3,16 @@ use std::{
     fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
 
 use blaulicht_audio_engine::{
-    file::AudioSourceSoundfile, spectrogram::create_spectrogram_image, AudioSpectrogram,
-    CollectorOutputSpec, SignalCollector, SpectrogramDisplayOptions,
+    audio_source, file::AudioSourceSoundfile, noise::AudioSourceNoise,
+    spectrogram::create_spectrogram_image, AudioSpectrogram, CollectorOutputSpec, SignalCollector,
+    SpectrogramDisplayOptions,
 };
 use clap::Parser;
 use egui::mutex::Mutex;
@@ -36,7 +38,7 @@ struct Cli {
 fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_base: &Path) {
     let _start = Instant::now();
 
-    let dim = (600, 150);
+    let dim = (700, 170);
     let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
 
     let image = create_spectrogram_image(
@@ -63,7 +65,9 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
     let _ = fs::create_dir_all(&path);
 
     let path = path.join(format!("{count}.bmp"));
-    println!("PATH: {path:?}");
+    // println!("PATH: {path:?}");
+
+    let a = fs::remove_file(&path);
 
     imgbuf
         .save_with_format(&path, image::ImageFormat::Bmp)
@@ -73,133 +77,87 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
 }
 
 fn main() {
-    let Cli {
-        offset_size,
-        chunk_size,
-        song_path,
-        output_base,
-        worker_threads,
-    } = Cli::parse();
+    // let Cli {
+    //     offset_size,
+    //     chunk_size,
+    //     song_path,
+    //     output_base,
+    //     worker_threads,
+    // } = Cli::parse();
 
-    let offsets = offset_size.get();
-    let chunk_sizes = chunk_size.get();
-    let thread_limit = worker_threads.get();
+    // let offsets = offset_size.get();
+    // let chunk_sizes = chunk_size.get();
+    // let thread_limit = worker_threads.get();
 
     let output = [CollectorOutputSpec {
         bins_p_column: Some(128),
         raw: false,
     }];
 
-    let song_path_str = song_path.to_string_lossy().into_owned();
+    let song_path = PathBuf::from_str("FOO").unwrap();
+    let output_base = PathBuf::from_str("./OUTPUT").unwrap();
+
+    // let song_path_str = song_path.to_string_lossy().into_owned();
 
     // TODO: what is a good value for this?
-    let audio_source = AudioSourceSoundfile::new(&song_path_str, FREQ_BUFFER_SIZE).unwrap();
+    // let audio_source = AudioSourceSoundfile::new(&song_path_str, FREQ_BUFFER_SIZE).unwrap();
+    let length = 20000;
+    let audio_source = AudioSourceNoise::new(41000, length, 200);
     let length_millis = audio_source.duration();
 
     let spec_period = 16;
-    let chunks = length_millis as f32 / offsets as f32;
+    let offsets = 10000;
+    let chunks = (length_millis as f32 / offsets as f32) as usize;
 
-    let threads: Arc<Mutex<HashMap<usize, _>>> = Arc::new(Mutex::new(HashMap::new()));
+    println!("conversion gets us: {chunks} chunks");
 
     let mut pb = tqdm!(total = chunks as usize);
 
-    let base_audio_source = audio_source.clone();
-    let threads_for_spawner = Arc::clone(&threads);
-    let song_path_for_spawner = song_path.clone();
-    let output_base_for_spawner = output_base.clone();
-    thread::spawn(move || {
-        for chunk in 0..chunks as usize {
-            loop {
-                {
-                    let t = threads_for_spawner.lock();
-                    if t.len() < thread_limit {
-                        break;
-                    }
-                }
+    let mut last_spec_time = 0;
 
-                thread::sleep(Duration::from_millis(100));
-            }
+    let mut collector = SignalCollector::new(
+        blaulicht_audio_engine::SignalCollectorParams {
+            gate: 0,
+            boost: None,
+            volume: 100,
+            auto_calibrate: false,
+            changed: false,
+        },
+        output,
+        blaulicht_audio_engine::CollectorScratchParameters {
+            volume_frames: 1200,
+            long_historic_frames: 1200,
+            rolling_frames: 1200,
+            bass_frames: 1200,
+            bass_peak_frames: 1200,
+        },
+        audio_source,
+        0,
+    )
+    .unwrap();
 
-            let audio_source = base_audio_source.clone();
-            let song_path = song_path_for_spawner.clone();
-            let output_base = output_base_for_spawner.clone();
-            let handle = thread::spawn(move || {
-                let mut last_spec_time = 0;
+    // println!("Thread: created collector");
 
-                let mut collector = SignalCollector::new(
-                    blaulicht_audio_engine::SignalCollectorParams {
-                        gate: 0,
-                        boost: None,
-                        volume: 100,
-                        auto_calibrate: false,
-                        changed: false,
-                        savgol_window: 5,
-                        savgol_poly: 3,
-                        savgol_slice: 100,
-                    },
-                    output,
-                    blaulicht_audio_engine::CollectorScratchParameters {
-                        volume_frames: 1200,
-                        long_historic_frames: 1200,
-                        rolling_frames: 1200,
-                        bass_frames: 1200,
-                        bass_peak_frames: 1200,
-                    },
-                    audio_source,
-                    0,
-                )
-                .unwrap();
+    for chunk in 0..chunks {
+        let start = chunk * offsets;
+        let end = start + offsets;
 
-                let mut spectrogram =
-                    AudioSpectrogram::new(600, 128, Duration::from_millis(spec_period as u64));
+        let mut spectrogram =
+            AudioSpectrogram::new(600, 128, Duration::from_millis(spec_period as u64));
 
-                let start = offsets * chunk;
-                let end = start + chunk_sizes;
+        for i in start..end {
+            // println!("run: {i}/{end}");
 
-                for i in start..end {
-                    collector.tick(i as u64).unwrap();
+            collector.tick(i as u64).unwrap();
 
-                    if (i - last_spec_time) > spec_period as usize {
-                        last_spec_time = i;
-                        let out = collector.tick_output::<0>();
-                        spectrogram.push_data(out);
-                    }
-                }
-
-                render_spec(spectrogram, chunk, &song_path, &output_base);
-            });
-
-            {
-                let mut t = threads_for_spawner.lock();
-                t.insert(chunk, handle);
-            }
-        }
-    });
-
-    thread::sleep(Duration::from_millis(100));
-
-    loop {
-        let mut t = threads.lock();
-        if t.is_empty() {
-            break;
-        }
-
-        let mut to_be_removed = vec![];
-
-        for (chunk, handle) in t.iter() {
-            if handle.is_finished() {
-                to_be_removed.push(*chunk);
+            if (i - last_spec_time) > spec_period as usize {
+                last_spec_time = i;
+                let out = collector.tick_output::<0>();
+                spectrogram.push_data(out);
             }
         }
 
-        for r in to_be_removed {
-            if let Some(handle) = t.remove(&r) {
-                drop(handle);
-                let _ = pb.update(1);
-                // println!("Thread {r} finished.")
-            }
-        }
+        render_spec(spectrogram.clone(), chunk, &song_path, &output_base);
+        pb.update(1).unwrap();
     }
-
-    eprintln!("");
 }

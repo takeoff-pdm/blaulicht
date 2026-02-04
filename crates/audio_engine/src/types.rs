@@ -1,3 +1,4 @@
+use blaulicht_shared::SignalDebugData;
 use serde::Serialize;
 
 #[derive(Clone, Copy, Serialize, Debug)]
@@ -13,7 +14,7 @@ pub enum Signal {
     Bass(u8),
     BassAvgShort(u8),
     BassAvg(u8),
-    BassDerivative(Vec<f64>),
+    DebugData(SignalDebugData),
     Volume(u8),
     BeatTrigger(bool),
 }

@@ -103,9 +103,6 @@ pub struct SignalCollectorParams {
     pub boost: Option<u8>,
     pub auto_calibrate: bool,
     pub changed: bool,
-    pub savgol_window: usize,
-    pub savgol_poly: usize,
-    pub savgol_slice: usize,
 }
 
 impl Default for SignalCollectorParams {
@@ -116,9 +113,6 @@ impl Default for SignalCollectorParams {
             boost: None,
             auto_calibrate: false,
             changed: false,
-            savgol_poly: 3,
-            savgol_window: 5,
-            savgol_slice: 100,
         }
     }
 }
@@ -180,8 +174,8 @@ where
             Signal::BassAvg(v) => {
                 self.current.bass_avg = v;
             }
-            Signal::BassDerivative(v) => {
-                self.current.bass_derivative = v.clone();
+            Signal::DebugData(v) => {
+                self.current.debug_data = v.clone();
             }
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;
@@ -403,6 +397,7 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AudioBucket {
     pub volume: u8,
+    pub freq_bound_lower: u64,
     pub freq_bound_upper: u64,
 }
 
@@ -441,32 +436,30 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn 
     let chunks: Vec<AudioBucket> = values
         .chunks(chunk_size)
         .map(|c| {
-            // let mut max = 0.0;
-            // for f in c {
-            //     if f.volume > max {
-            //         max = f.volume;
-            //     }
-            // }
-
-            // println!("MAX: {max}");
-
             let volume = c
                 .iter()
                 .map(|datapoint| datapoint.volume * 15.0)
                 .sum::<f32>()
                 / c.len() as f32;
 
-            let upper_freq = c
+            let freq_low = c
+                .iter()
+                .map(|datapoint| datapoint.freq as u64)
+                .min()
+                .unwrap_or(0);
+
+            let freq_high = c
                 .iter()
                 .map(|datapoint| datapoint.freq as u64)
                 .max()
-                .unwrap_or(0);
+                .unwrap_or(freq_low + 1);
 
-            (volume, upper_freq)
+            (volume, freq_low, freq_high)
         })
-        .map(|(vol, freq)| AudioBucket {
+        .map(|(vol, freq_low, freq_high)| AudioBucket {
             volume: vol as u8,
-            freq_bound_upper: freq,
+            freq_bound_lower: freq_low,
+            freq_bound_upper: freq_high,
         })
         .collect();
 

@@ -1,7 +1,7 @@
 use crate::ControlEventCollection;
 use bincode::{Decode, Encode, config};
 use serde::Serialize;
-use std::fmt::Display;
+use std::{fmt::Display, ops::Range};
 use strum::EnumIter;
 
 #[derive(Clone, Encode, Decode, Default)]
@@ -13,6 +13,11 @@ pub struct TickInput {
     pub events: ControlEventCollection,
 }
 
+#[derive(Debug, Clone, Default, Encode, Decode, Serialize)]
+pub struct SignalDebugData {
+    pub bass_range: Range<f32>,
+}
+
 #[derive(Debug, Clone, Default, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
     pub time: u64,
@@ -21,7 +26,7 @@ pub struct CollectedAudioSnapshot {
     pub bass: u8,
     pub bass_avg_short: u8,
     pub bass_avg: u8,
-    pub bass_derivative: Vec<f64>,
+    pub debug_data: SignalDebugData,
     pub bpm: u8,
     pub time_between_beats_millis: u16,
     pub initial: bool,

@@ -170,31 +170,29 @@ impl AudioSourceSoundfile {
             return &[];
         }
 
-        todo!("kaputt");
-
         {
-            // let mut processor = Processor::from_raw_data(
-            //     ProcessorConfig {
-            //         sample_rate: self.sample_rate,
-            //         resolution: Some(samples.len() / 2),
-            //         ..ProcessorConfig::default()
-            //     },
-            //     samples.to_vec(),
-            // );
-            //
-            // processor.compute_all();
-            //
-            // debug_assert!(
-            //     processor.freq_buffer.len() == self.freq_buffer.len(),
-            //     "Soundfile buffer is {} but got {} from processor",
-            //     self.freq_buffer.len(),
-            //     processor.freq_buffer.len()
-            // );
-            //
-            // for (i, f) in processor.freq_buffer.iter().enumerate() {
-            //     self.freq_buffer[i] = Frequency::from(f);
-            // }
-            //
+            let mut processor = Processor::from_raw_data(
+                ProcessorConfig {
+                    sampling_rate: self.sample_rate,
+                    resolution: Some(samples.len() / 2),
+                    ..ProcessorConfig::default()
+                },
+                samples.to_vec(),
+            );
+
+            processor.compute_all();
+
+            debug_assert!(
+                processor.freq_buffer.len() == self.freq_buffer.len(),
+                "Soundfile buffer is {} but got {} from processor",
+                self.freq_buffer.len(),
+                processor.freq_buffer.len()
+            );
+
+            for (i, f) in processor.freq_buffer.iter().enumerate() {
+                self.freq_buffer[i] = Frequency::from(f);
+            }
+
             &self.freq_buffer
 
             // processor

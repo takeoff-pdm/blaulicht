@@ -21,11 +21,14 @@ impl AudioSource for AudioSourceNoise {
 
 impl AudioSourceNoise {
     pub fn new(sample_rate: u32, length_millis: usize, num_samples: usize) -> Self {
+        let upper_freq_range = 20000;
+        let freq_step = upper_freq_range / num_samples;
+
         let samples = (0..num_samples)
             .map(|i| Frequency {
                 volume: 0.0,
-                freq: (i * 100) as f32,
-                position: 0.0,
+                freq: (freq_step * i) as f32,
+                position: i as f32,
             })
             .collect();
 

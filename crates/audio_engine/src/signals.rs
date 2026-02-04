@@ -49,6 +49,7 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
     }
 }
 
+use blaulicht_shared::SignalDebugData;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use map_range::MapRange;
@@ -93,27 +94,18 @@ where
     #[inline(always)]
     pub fn bass(&mut self, now: usize) -> anyhow::Result<()> {
         let signals = {
-            const USES_BASS: bool = true;
+            let lower_volume_limit = 100.0;
 
-            let (v, lower_volume_limit) = match USES_BASS {
-                true => (
-                    self.freq_buffer
-                        .iter()
-                        .filter(|f| f.freq > 20.0 && f.freq < 250.0)
-                        .map(|f| f.volume as usize)
-                        .collect::<Vec<usize>>(),
-                    100.0,
-                ),
-                false => (
-                    self.freq_buffer
-                        .iter()
-                        .map(|f| f.volume as usize)
-                        .collect::<Vec<usize>>(),
-                    10.0,
-                ),
-            };
+            let bass_range = 20.0..250.0;
 
-            let avg = v.iter().sum::<usize>() as f32 / v.len() as f32;
+            let bass_samples = self
+                .freq_buffer
+                .iter()
+                .filter(|f| bass_range.contains(&f.freq))
+                .map(|f| f.volume as usize)
+                .collect::<Vec<usize>>();
+
+            let avg = bass_samples.iter().sum::<usize>() as f32 / bass_samples.len() as f32;
             let bass_sig = (avg * 100.0) as u8;
 
             // Bass samples.
@@ -231,14 +223,14 @@ where
             }
 
             // Construct derivative of the bass frames.
-            let current_x = 1.0;
-            let prev_x = 0.0;
-
-            let current_y = bass_sig as f32;
-            let prev_y = bass_moving_average as f32;
-
-            let slope = (current_y - prev_y) / (current_x - prev_x);
-            println!("slope: {}", slope);
+            // let current_x = 1.0;
+            // let prev_x = 0.0;
+            //
+            // let current_y = bass_sig as f32;
+            // let prev_y = bass_moving_average as f32;
+            //
+            // let slope = (current_y - prev_y) / (current_x - prev_x);
+            // println!("slope: {}", slope);
 
             // let deriv_input: Vec<_> = self
             //     .scratch
@@ -249,42 +241,44 @@ where
             //     .map(|chunk| (chunk.iter().map(|v| **v as f64).sum::<f64>() / chunk.len() as f64))
             //     .collect();
 
-            let v = self.scratch.bass_samples.iter().collect::<Vec<_>>();
+            // let v = self.scratch.bass_samples.iter().collect::<Vec<_>>();
+            //
+            // let slice_off = self.params.savgol_slice;
 
-            let slice_off = self.params.savgol_slice;
+            // let deriv = match v.len() {
+            //     l if l < slice_off => {
+            //         vec![]
+            //     }
+            //     l => {
+            //         let begin_idx = l - slice_off;
+            //         let v = &v[begin_idx..l];
+            //
+            //         let deriv_input = v.iter().map(|v| **v as f64).collect::<Vec<_>>();
+            //
+            //         // let deriv = match deriv_input.len() {
+            //         //     v if v < 2 => {
+            //         //         vec![]
+            //         //     }
+            //         //     _ => ve, 1.0),
+            //         // };
+            //
+            //         let input = SavGolInput {
+            //             data: &deriv_input,
+            //             window_length: self.params.savgol_window,
+            //             poly_order: self.params.savgol_poly,
+            //             derivative: 1,
+            //         };
+            //
+            //         let result = match deriv_input.len() {
+            //             v if v < 11 => vec![],
+            //             _ => savgol_rs::savgol_filter(&input).unwrap_or_else(|_| vec![]),
+            //         };
+            //
+            //         result
+            //     }
+            // };
 
-            let deriv = match v.len() {
-                l if l < slice_off => {
-                    vec![]
-                }
-                l => {
-                    let begin_idx = l - slice_off;
-                    let v = &v[begin_idx..l];
-
-                    let deriv_input = v.iter().map(|v| **v as f64).collect::<Vec<_>>();
-
-                    // let deriv = match deriv_input.len() {
-                    //     v if v < 2 => {
-                    //         vec![]
-                    //     }
-                    //     _ => ve, 1.0),
-                    // };
-
-                    let input = SavGolInput {
-                        data: &deriv_input,
-                        window_length: self.params.savgol_window,
-                        poly_order: self.params.savgol_poly,
-                        derivative: 1,
-                    };
-
-                    let result = match deriv_input.len() {
-                        v if v < 11 => vec![],
-                        _ => savgol_rs::savgol_filter(&input).unwrap_or_else(|_| vec![]),
-                    };
-
-                    result
-                }
-            };
+            let debug_data = SignalDebugData { bass_range };
 
             &[
                 Signal::BeatTrigger(self.scratch.is_on_beat),
@@ -299,7 +293,7 @@ where
                     Signal::BassAvgShort(0)
                 },
                 Signal::BassAvg(bass_moving_average as u8),
-                Signal::BassDerivative(deriv),
+                Signal::DebugData(debug_data),
             ]
         };
 
