@@ -123,6 +123,9 @@ fn main() {
             volume: 100,
             auto_calibrate: false,
             changed: false,
+            bass_freq_low: 0,
+            bass_freq_high: 250,
+            bass_volume: 100,
         },
         output,
         blaulicht_audio_engine::CollectorScratchParameters {

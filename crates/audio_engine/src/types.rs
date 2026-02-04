@@ -1,5 +1,6 @@
-use blaulicht_shared::SignalDebugData;
 use serde::Serialize;
+
+use crate::SignalDebugData;
 
 #[derive(Clone, Copy, Serialize, Debug)]
 pub struct BpmInfo {

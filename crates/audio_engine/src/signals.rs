@@ -1,12 +1,11 @@
 //
 // Provides analysis on the audio.
 //
-// use crate::{
-//     audio::collector::{CollectorScratch, SignalCollector},
-//     msg::{BpmInfo, Signal},
-//     shift_push, signal, util,
-// };
-// use audioviz::spectrum::Frequency;
+
+use crate::{bin_spectrum_to_u8, AudioSource, BpmInfo, Signal, SignalCollector, SignalDebugData};
+use itertools::Itertools;
+use map_range::MapRange;
+use std::u8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Frequency {
@@ -49,20 +48,6 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
     }
 }
 
-use blaulicht_shared::SignalDebugData;
-use crossbeam_channel::Sender;
-use itertools::Itertools;
-use map_range::MapRange;
-use savgol_rs::SavGolInput;
-use std::{
-    cmp::Ordering,
-    collections::VecDeque,
-    time::{self, Instant},
-    u8,
-};
-
-use crate::{AudioSource, BpmInfo, Signal, SignalCollector};
-
 // Constants.
 pub const BASS_FRAMES: usize = 10000;
 pub const BASS_PEAK_FRAMES: usize = 800;
@@ -96,16 +81,23 @@ where
         let signals = {
             let lower_volume_limit = 100.0;
 
-            let bass_range = 20.0..250.0;
+            let bass_range =
+                (self.params.bass_freq_low as f32)..(self.params.bass_freq_high as f32);
 
-            let bass_samples = self
+            let bass_samples_freqs = self
                 .freq_buffer
                 .iter()
+                .copied()
                 .filter(|f| bass_range.contains(&f.freq))
-                .map(|f| f.volume as usize)
-                .collect::<Vec<usize>>();
+                // .map(|f| f.volume as f32)
+                .collect::<Vec<_>>();
 
-            let avg = bass_samples.iter().sum::<usize>() as f32 / bass_samples.len() as f32;
+            let bass_samples = bass_samples_freqs
+                .iter()
+                .map(|f| f.volume as f32)
+                .collect::<Vec<_>>();
+
+            let avg = bass_samples.iter().sum::<f32>() / bass_samples.len() as f32;
             let bass_sig = (avg * 100.0) as u8;
 
             // Bass samples.
@@ -278,7 +270,10 @@ where
             //     }
             // };
 
-            let debug_data = SignalDebugData { bass_range };
+            let debug_data = SignalDebugData {
+                bass_range,
+                bass_values: bin_spectrum_to_u8(&bass_samples_freqs, 20),
+            };
 
             &[
                 Signal::BeatTrigger(self.scratch.is_on_beat),

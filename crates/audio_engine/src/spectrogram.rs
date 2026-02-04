@@ -1,12 +1,7 @@
-use std::{collections::VecDeque, sync::RwLockReadGuard, time::Duration};
-
-use audioviz::io::output;
+use std::{collections::VecDeque, time::Duration};
 use blaulicht_shared::CollectedAudioSnapshot;
 use egui::Color32;
-
-use crate::{AudioBucket, CollectorOutput};
-
-// use crate::{::collector::CollectorOutput, state::AudioSpectrogram};
+use crate::{AudioBucket, CollectorOutput, SignalDebugData};
 
 /// Rolling buffer of recent spectra for a live spectrogram.
 #[derive(Clone)]
@@ -91,6 +86,7 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
                 let mut averaged = CollectorOutput {
                     current_audio_colunn: Vec::with_capacity(bucket_count),
                     snapshot: CollectedAudioSnapshot::default(),
+                    debug_data: SignalDebugData::default(),
                 };
 
                 let mut bass_avg_short_avg = 0;
@@ -240,27 +236,27 @@ pub fn create_spectrogram_image(
                     pixels[y * width + x] = bucket_color;
                 }
             }
-        }
 
 
-        // Draw bass marker.
-        {
-            if options.include_bass_markers {
-                if col.snapshot.bass_avg_short == 255 {
-                    let dot_size = 5;
-                    for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
-                        pixels[y * width + col_start_x] = Color32::GREEN;
+            // Draw bass marker.
+            {
+                if options.include_bass_markers {
+                    if column.snapshot.bass_avg_short == 255 {
+                        let dot_size = 5;
+                        for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
+                            pixels[y * width + x_start] = Color32::GREEN;
+                        }
                     }
                 }
             }
-        }
 
-        // Draw beat marker.
-        {
-            if options.include_beat_markers {
-                if col.snapshot.beat_trigger {
-                    for y in 0..height_outer {
-                        pixels[y * width + col_start_x] = Color32::RED;
+            // Draw beat marker.
+            {
+                if options.include_beat_markers {
+                    if column.snapshot.beat_trigger {
+                        for y in 0..height_outer {
+                            pixels[y * width + x_start] = Color32::RED;
+                        }
                     }
                 }
             }

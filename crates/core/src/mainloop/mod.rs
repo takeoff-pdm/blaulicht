@@ -22,9 +22,9 @@ use blaulicht_audio_engine::noise::AudioSourceNoise;
 use blaulicht_audio_engine::audio_source::microphone::AudioSourceMicrophone;
 
 use blaulicht_audio_engine::{
-    CollectorOutputSpec, CollectorScratchParameters, SignalCollector, SignalCollectorParams,
-    BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
-    ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+    CollectorOutput, CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
+    SignalCollectorParams, SignalDebugData, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use blaulicht_shared::LogLevel;
 use crossbeam_channel::Sender;
@@ -131,8 +131,21 @@ pub fn run(
     let desired_columns = spec_refresh_hz * window_secs;
     let spec_period = Duration::from_millis((1000f32 / spec_refresh_hz as f32) as u64);
     println!("set spec period: {spec_period:?}");
+
     {
         let mut spec = app_state.audio_spectrogram.write().unwrap();
+        spec.max_columns = desired_columns;
+        println!("set spec max columns {desired_columns}");
+        println!("set spec bin count {}", spec.bin_count);
+        // Trim if we already exceed
+        while spec.columns.len() > spec.max_columns {
+            spec.columns.pop_front();
+            println!("popping front");
+        }
+    }
+
+    {
+        let mut spec = app_state.bass_spectrogram.write().unwrap();
         spec.max_columns = desired_columns;
         println!("set spec max columns {desired_columns}");
         println!("set spec bin count {}", spec.bin_count);
@@ -149,7 +162,9 @@ pub fn run(
     const COLLECTOR_SPECTROGRAM: usize = 1;
 
     collector_outputs[COLLECTOR_DMX] = CollectorOutputSpec {
-        bins_p_column: Some(128), // TODO: maybe this needs some tweaking.
+        // TODO: maybe this needs some tweaking.
+        // Interesting to think about, probably make this even bigger?
+        bins_p_column: Some(128),
         raw: true,
     };
     collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
@@ -158,12 +173,9 @@ pub fn run(
     };
 
     #[cfg(feature = "audio")]
-    let audio_source = AudioSourceMicrophone::new(
-        device,
-        config.stream,
-        AUDIO_SOURCE_FREQ_BUFFER_SIZE,
-    )
-    .with_context(|| "Failed to initialize audio stream")?;
+    let audio_source =
+        AudioSourceMicrophone::new(device, config.stream, AUDIO_SOURCE_FREQ_BUFFER_SIZE)
+            .with_context(|| "Failed to initialize audio stream")?;
 
     #[cfg(not(feature = "audio"))]
     let audio_source = AudioSourceNoise::new(41100, 100000, AUDIO_SOURCE_FREQ_BUFFER_SIZE);
@@ -347,7 +359,17 @@ pub fn run(
                 .audio_spectrogram
                 .write()
                 .unwrap()
-                .push_data(output);
+                .push_data(output.clone());
+
+            app_state
+                .bass_spectrogram
+                .write()
+                .unwrap()
+                .push_data(CollectorOutput {
+                    snapshot: output.snapshot.clone(),
+                    current_audio_colunn: output.debug_data.bass_values.clone(),
+                    debug_data: SignalDebugData::default(),
+                });
 
             last_spectrogram_tick = now;
         }

@@ -6,9 +6,10 @@ use anyhow::{anyhow, Context};
 //     spectrum::{config::StreamConfig, stream::Stream},
 // };
 use blaulicht_shared::CollectedAudioSnapshot;
+use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{AudioSource, Frequency, Signal};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::Range};
 
 // Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
 // The problem is: both run at different refresh rates.
@@ -36,6 +37,7 @@ impl Default for CollectorOutputSpec {
 pub struct CollectorOutput {
     pub snapshot: CollectedAudioSnapshot,
     pub current_audio_colunn: AudioColumn,
+    pub debug_data: SignalDebugData,
 }
 
 pub struct CollectorScratch {
@@ -103,6 +105,11 @@ pub struct SignalCollectorParams {
     pub boost: Option<u8>,
     pub auto_calibrate: bool,
     pub changed: bool,
+
+    // Bass recognition parameters.
+    pub bass_freq_low: usize,
+    pub bass_freq_high: usize,
+    pub bass_volume: usize,
 }
 
 impl Default for SignalCollectorParams {
@@ -113,6 +120,10 @@ impl Default for SignalCollectorParams {
             boost: None,
             auto_calibrate: false,
             changed: false,
+
+            bass_freq_low: 0,
+            bass_freq_high: 250,
+            bass_volume: 100,
         }
     }
 }
@@ -128,6 +139,7 @@ where
     // pub freqs: Vec<Frequency>,
     // pub freqs_raw: Vec<Frequency>, // Without transformations.
     pub current: CollectedAudioSnapshot,
+    pub debug_data: SignalDebugData,
     pub params: SignalCollectorParams,
     pub scratch_params: CollectorScratchParameters,
     pub scratch: CollectorScratch,
@@ -175,7 +187,7 @@ where
                 self.current.bass_avg = v;
             }
             Signal::DebugData(v) => {
-                self.current.debug_data = v.clone();
+                self.debug_data = v.clone();
             }
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;
@@ -203,6 +215,7 @@ where
             freq_buffer: vec![Frequency::default(); freq_buffer_size],
             freq_buffer_raw: vec![Frequency::default(); freq_buffer_size],
             current: CollectedAudioSnapshot::default(),
+            debug_data: SignalDebugData::default(),
             scratch: CollectorScratch::new(scratch_params, now),
             outputs,
             need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
@@ -376,6 +389,7 @@ where
 
         let mut output = CollectorOutput {
             snapshot: self.take_snapshot(),
+            debug_data: self.debug_data.clone(),
             current_audio_colunn,
         };
 
@@ -394,11 +408,17 @@ where
 // Spectrogram utils.
 //
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct AudioBucket {
     pub volume: u8,
     pub freq_bound_lower: u64,
     pub freq_bound_upper: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SignalDebugData {
+    pub bass_range: Range<f32>,
+    pub bass_values: AudioColumn,
 }
 
 pub type AudioColumn = Vec<AudioBucket>;
