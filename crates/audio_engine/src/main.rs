@@ -133,6 +133,9 @@ fn main() {
                         volume: 100,
                         auto_calibrate: false,
                         changed: false,
+                        savgol_window: 5,
+                        savgol_poly: 3,
+                        savgol_slice: 100,
                     },
                     output,
                     blaulicht_audio_engine::CollectorScratchParameters {

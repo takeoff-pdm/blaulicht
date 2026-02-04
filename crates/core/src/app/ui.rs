@@ -234,7 +234,8 @@ impl eframe::App for BlaulichtApp {
             let audio_snapshot = audio_data.current_snapshot();
 
             self.volume_graph.update(audio_snapshot.volume as i32);
-            self.volume_graph.update(audio_snapshot.volume as i32);
+            // self.bass_derivative_graph
+            //     .update(audio_snapshot.bass_slope as i32);
             self.beat_volume_graph
                 .update(audio_snapshot.beat_volume as i32);
             self.bass_graph.update(audio_snapshot.bass as i32);

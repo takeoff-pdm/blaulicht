@@ -13,7 +13,7 @@ pub struct TickInput {
     pub events: ControlEventCollection,
 }
 
-#[derive(Debug, Clone, Copy, Default, Encode, Decode)]
+#[derive(Debug, Clone, Default, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
     pub time: u64,
     pub volume: u8,
@@ -21,7 +21,7 @@ pub struct CollectedAudioSnapshot {
     pub bass: u8,
     pub bass_avg_short: u8,
     pub bass_avg: u8,
-    pub bass_slope: u8,
+    pub bass_derivative: Vec<f64>,
     pub bpm: u8,
     pub time_between_beats_millis: u16,
     pub initial: bool,

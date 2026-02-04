@@ -187,7 +187,7 @@ impl DmxEngine {
                         animation.fixture_timers.iter_mut().enumerate()
                     {
                         let base_time = Self::animation_base_time(
-                            audio_snapshot.snapshot,
+                            audio_snapshot.snapshot.clone(),
                             &animation.spec_cloned,
                         );
 

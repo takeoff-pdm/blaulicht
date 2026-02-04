@@ -60,6 +60,7 @@ impl AudioSpectrogram {
             .last()
             .unwrap_or(&CollectorOutput::default())
             .snapshot
+            .clone()
     }
 }
 

@@ -21,6 +21,7 @@ use egui::{
     Rect, RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2, Widget,
 };
 use egui_file::FileDialog;
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use noise::utils::Color;
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -71,6 +72,96 @@ impl BlaulichtApp {
     }
 
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.audio_info_dialog_open {
+            components::Dialog::new("Info".to_string(), vec2(200.0, 100.0))
+                .moveable()
+                .show(ctx, |ui| {
+                    // let graph_height = 105.0;
+                    // let graph_width = 300.0;
+                    //
+                    // let (response, painter) = ui
+                    //     .allocate_painter(egui::vec2(graph_width, graph_height), egui::Sense::hover());
+                    // self.bass_derivative_graph.draw(painter, response.rect);
+                    //
+                    let mut window =
+                        self.data.state.audio_params.read().unwrap().savgol_window as f32;
+                    if ui
+                        .add(HFader::new(&mut window, 0.0..=100.0).with_label("Window"))
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.savgol_window = window as usize;
+                        params.changed = true;
+                    }
+
+                    ui.separator();
+
+                    let mut poly = self.data.state.audio_params.read().unwrap().savgol_poly as f32;
+                    if ui
+                        .add(HFader::new(&mut poly, 0.0..=100.0).with_label("Poly Deg"))
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.savgol_poly = poly as usize;
+                        params.changed = true;
+                    }
+
+                    ui.separator();
+
+                    let mut slice =
+                        self.data.state.audio_params.read().unwrap().savgol_slice as f32;
+                    if ui
+                        .add(HFader::new(&mut slice, 0.0..=2000.0).with_label("Poly Deg"))
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.savgol_slice = slice as usize;
+                        params.changed = true;
+                    }
+
+                    ui.separator();
+
+                    let plot_points: PlotPoints = self
+                        .collector_snapshot
+                        .bass_derivative
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, point)| [idx as f64, *point as f64])
+                        .collect();
+
+                    // let plot_points = (0..(360) * RENDER_WIDTH)
+                    //     .map(|x| {
+                    //         let y = phaser::generate(&phaser_mut, x as u64);
+                    //         [x as f64, y as f64]
+                    //     })
+                    //     .collect::<PlotPoints<'_>>();
+
+                    let line = Line::new("animation", plot_points);
+                    Plot::new("animation_plot")
+                        .height(128.0)
+                        .width(512.0)
+                        .view_aspect(1.0)
+                        .default_y_bounds(-200.0, 200.0)
+                        .x_grid_spacer(|input| {
+                            let mut marks = Vec::new();
+                            let (min, max) = (-100.0 as f64, 100.0 as f64);
+
+                            // Every 90 degrees
+                            let start_90 = (min / 90.0).floor() as i64;
+                            let end_90 = (max / 90.0).ceil() as i64;
+
+                            for i in start_90..=end_90 {
+                                let value = i as f64 * 90.0;
+                                let step_size = if i % 4 == 0 { 360.0 } else { 90.0 };
+
+                                marks.push(GridMark { value, step_size });
+                            }
+                            marks
+                        })
+                        .show(ui, |plot_ui| plot_ui.line(line));
+                });
+        }
+
         ui.horizontal(|ui| {
             let total_width = ui.available_width();
             let graph_panel_width = total_width / 3.0;

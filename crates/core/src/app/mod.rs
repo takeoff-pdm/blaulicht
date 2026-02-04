@@ -112,6 +112,7 @@ pub struct BlaulichtApp {
     bass_graph: TimeSeriesGraph,
     bass_avg_graph: TimeSeriesGraph,
     bass_avg_short_graph: TimeSeriesGraph,
+    bass_derivative_graph: TimeSeriesGraph,
     collector_snapshot: CollectedAudioSnapshot,
     // bpm_graph: TimeSeriesGraph,
     // time_between_beats_graph: TimeSeriesGraph,
@@ -254,6 +255,12 @@ impl BlaulichtApp {
             ),
             bass_avg_short_graph: TimeSeriesGraph::new(
                 "Bass Avg Short".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(0, 200, 255),
+            ),
+            bass_derivative_graph: TimeSeriesGraph::new(
+                "Bass Deriv".to_string(),
                 0,
                 255,
                 egui::Color32::from_rgb(0, 200, 255),

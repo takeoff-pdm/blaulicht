@@ -103,6 +103,9 @@ pub struct SignalCollectorParams {
     pub boost: Option<u8>,
     pub auto_calibrate: bool,
     pub changed: bool,
+    pub savgol_window: usize,
+    pub savgol_poly: usize,
+    pub savgol_slice: usize,
 }
 
 impl Default for SignalCollectorParams {
@@ -113,6 +116,9 @@ impl Default for SignalCollectorParams {
             boost: None,
             auto_calibrate: false,
             changed: false,
+            savgol_poly: 3,
+            savgol_window: 5,
+            savgol_slice: 100,
         }
     }
 }
@@ -145,12 +151,12 @@ where
     // this function.
     //
     pub fn take_snapshot(&self) -> CollectedAudioSnapshot {
-        self.current
+        self.current.clone()
     }
 
     pub fn send_signals(&mut self, signals: &[Signal]) {
         for s in signals {
-            self.signal(*s);
+            self.signal(s.clone());
         }
     }
 
@@ -174,8 +180,8 @@ where
             Signal::BassAvg(v) => {
                 self.current.bass_avg = v;
             }
-            Signal::BassSlope(v) => {
-                self.current.bass_slope = v;
+            Signal::BassDerivative(v) => {
+                self.current.bass_derivative = v.clone();
             }
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;

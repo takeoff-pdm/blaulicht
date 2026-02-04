@@ -6,14 +6,14 @@ pub struct BpmInfo {
     pub time_between_beats_millis: u16,
 }
 
-#[derive(Clone, Copy, Serialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 pub enum Signal {
     Bpm(BpmInfo),
     BeatVolume(u8),
     Bass(u8),
     BassAvgShort(u8),
     BassAvg(u8),
-    BassSlope(u8),
+    BassDerivative(Vec<f64>),
     Volume(u8),
     BeatTrigger(bool),
 }

@@ -84,6 +84,7 @@ rush-interpreter-vm = "0.1.2"
 rush-analyzer = "0.1.1"
 tempdir = "0.3.7"
 audio_thread_priority = "0.34.0"
+savgol-rs = "0.1.0"
 
 
 [patch.crates-io]

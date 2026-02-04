@@ -85,7 +85,7 @@ impl PluginManager {
                     id: plugin_key,
                     clock: self.timer_start.elapsed().as_millis() as u32, // TODO: what if we overflow?
                     initial: self.is_initial_tick,
-                    audio_data,
+                    audio_data: audio_data.clone(),
                     events: ControlEventCollection {
                         events: events.clone(),
                     },

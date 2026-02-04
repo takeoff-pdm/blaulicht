@@ -52,6 +52,7 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use map_range::MapRange;
+use savgol_rs::SavGolInput;
 use std::{
     cmp::Ordering,
     collections::VecDeque,
@@ -121,18 +122,6 @@ where
             if self.scratch.bass_samples.len() >= BASS_FRAMES {
                 self.scratch.bass_samples.pop_front();
             }
-
-            // Construct derivative of the bass frames.
-            // Construct derivative of the bass frames.
-            let last_y = self.scratch.bass_samples.iter().last().unwrap_or(&0);
-
-            let current_x = 1.0;
-            let prev_x = 0.0;
-
-            let current_y = bass_sig as f32;
-            let prev_y = *last_y as f32;
-
-            let slope = (current_y - prev_y) / (current_x - prev_x);
 
             let bass_moving_average = self
                 .scratch
@@ -241,6 +230,62 @@ where
                 self.scratch.beat_needs_sync = true;
             }
 
+            // Construct derivative of the bass frames.
+            let current_x = 1.0;
+            let prev_x = 0.0;
+
+            let current_y = bass_sig as f32;
+            let prev_y = bass_moving_average as f32;
+
+            let slope = (current_y - prev_y) / (current_x - prev_x);
+            println!("slope: {}", slope);
+
+            // let deriv_input: Vec<_> = self
+            //     .scratch
+            //     .bass_samples
+            //     .iter()
+            //     .collect::<Vec<_>>()
+            //     .chunks(1000)
+            //     .map(|chunk| (chunk.iter().map(|v| **v as f64).sum::<f64>() / chunk.len() as f64))
+            //     .collect();
+
+            let v = self.scratch.bass_samples.iter().collect::<Vec<_>>();
+
+            let slice_off = self.params.savgol_slice;
+
+            let deriv = match v.len() {
+                l if l < slice_off => {
+                    vec![]
+                }
+                l => {
+                    let begin_idx = l - slice_off;
+                    let v = &v[begin_idx..l];
+
+                    let deriv_input = v.iter().map(|v| **v as f64).collect::<Vec<_>>();
+
+                    // let deriv = match deriv_input.len() {
+                    //     v if v < 2 => {
+                    //         vec![]
+                    //     }
+                    //     _ => ve, 1.0),
+                    // };
+
+                    let input = SavGolInput {
+                        data: &deriv_input,
+                        window_length: self.params.savgol_window,
+                        poly_order: self.params.savgol_poly,
+                        derivative: 1,
+                    };
+
+                    let result = match deriv_input.len() {
+                        v if v < 11 => vec![],
+                        _ => savgol_rs::savgol_filter(&input).unwrap_or_else(|_| vec![]),
+                    };
+
+                    result
+                }
+            };
+
             &[
                 Signal::BeatTrigger(self.scratch.is_on_beat),
                 Signal::Bass(bass_sig),
@@ -254,13 +299,39 @@ where
                     Signal::BassAvgShort(0)
                 },
                 Signal::BassAvg(bass_moving_average as u8),
-                Signal::BassSlope((slope as f32 * 10.0) as u8),
+                Signal::BassDerivative(deriv),
             ]
         };
 
         self.send_signals(signals);
 
         Ok(())
+    }
+
+    fn gradient(data: &[f64], spacing: f64) -> Vec<f64> {
+        let n = data.len();
+        if n < 2 {
+            panic!("List must have at least 2 numbers to calculate a derivative");
+        }
+
+        let mut deriv = Vec::with_capacity(n);
+
+        // 1. First Point (Forward Difference)
+        // Formula: (y[1] - y[0]) / h
+        deriv.push((data[1] - data[0]) / spacing);
+
+        // 2. Middle Points (Central Difference)
+        // Formula: (y[i+1] - y[i-1]) / 2h
+        for i in 1..n - 1 {
+            let val = (data[i + 1] - data[i - 1]) / (2.0 * spacing);
+            deriv.push(val);
+        }
+
+        // 3. Last Point (Backward Difference)
+        // Formula: (y[n] - y[n-1]) / h
+        deriv.push((data[n - 1] - data[n - 2]) / spacing);
+
+        deriv
     }
 
     #[inline(always)]
