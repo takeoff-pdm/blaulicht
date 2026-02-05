@@ -60,12 +60,15 @@ pub struct CollectorScratch {
     pub(crate) beat_needs_sync: bool,
 
     pub(crate) is_on_beat: bool,
+    pub(crate) actual_onset_peak: bool,
 
     // Onset + tempo tracking.
     pub(crate) onset_history: VecDeque<f32>,
+    pub(crate) band_onset_history: [VecDeque<f32>; 3],
     pub(crate) last_onset_sample_time: usize,
     pub(crate) onset_ema: f32,
     pub(crate) band_energy_ema: [f32; 3],
+    pub(crate) band_weights: [f32; 3],
     pub(crate) beat_interval_ms: f32,
     pub(crate) bpm_estimate: f32,
 
@@ -99,11 +102,14 @@ impl CollectorScratch {
             time_of_last_bpm_marker: now,
             num_beat_mismatches: 0,
             is_on_beat: false,
+            actual_onset_peak: false,
             beat_needs_sync: true,
             onset_history: VecDeque::new(),
+            band_onset_history: [VecDeque::new(), VecDeque::new(), VecDeque::new()],
             last_onset_sample_time: now,
             onset_ema: 0.0,
             band_energy_ema: [0.0; 3],
+            band_weights: [0.6, 0.3, 0.1],
             beat_interval_ms: 0.0,
             bpm_estimate: 0.0,
             last_calibrate_time: now,
@@ -118,6 +124,7 @@ pub struct SignalCollectorParams {
     pub gate: u8,
     pub boost: Option<u8>,
     pub auto_calibrate: bool,
+    pub auto_weight: bool,
     pub changed: bool,
 
     // Bass recognition parameters.
@@ -133,6 +140,7 @@ impl Default for SignalCollectorParams {
             gate: 0,
             boost: None,
             auto_calibrate: false,
+            auto_weight: false,
             changed: false,
 
             bass_freq_low: 0,
@@ -159,6 +167,7 @@ where
     pub scratch: CollectorScratch,
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
+    pub need_to_update_output_beat_onset: [bool; NUM_OUTPUTS],
 }
 
 impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
@@ -194,9 +203,9 @@ where
             Signal::Bass(v) => {
                 self.current.bass = v;
             }
-            Signal::BassAvgShort(v) => {
-                self.current.bass_avg_short = v;
-            }
+            // Signal::BassAvgShort(v) => {
+            //     self.current.bass_avg_short = v;
+            // }
             Signal::BassAvg(v) => {
                 self.current.bass_avg = v;
             }
@@ -233,6 +242,7 @@ where
             scratch: CollectorScratch::new(scratch_params, now),
             outputs,
             need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
+            need_to_update_output_beat_onset: [true; NUM_OUTPUTS],
             audio_source,
         })
     }
@@ -246,7 +256,7 @@ where
 
         // Progressively decrement the gate until we get a BPM.
         if now - self.scratch.last_calibrate_time > 100 {
-            if self.current.bpm == 0 && self.current.bass_avg > 50 {
+            if self.current.bpm == 0.0 && self.current.bass_avg > 50 {
                 let last_gate = match self.params.gate {
                     0 => 60,
                     v => v,
@@ -256,7 +266,7 @@ where
 
                 self.params.gate = last_gate - 1;
                 self.params.changed = true;
-            } else if self.current.bpm > 0 {
+            } else if self.current.bpm > 0.0 {
                 self.params.auto_calibrate = false;
             }
 
@@ -320,7 +330,8 @@ where
     pub fn clear(&mut self) {
         // self.freqs = vec![];
         self.scratch = CollectorScratch::new(self.scratch_params, 0);
-        self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS]
+        self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS];
+        self.need_to_update_output_beat_onset = [false; NUM_OUTPUTS];
     }
 
     //
@@ -344,47 +355,24 @@ where
         // Beat Volume
         self.beat_volume()?;
 
-        if self.scratch.is_on_beat {
-            // println!("activate on beat flag");
-            // self.scratch.is_on_beat = false;
+        {
             // NOTE: this will cause a missing update if the consumer takes too long.
             // self.need_to_update_output_beat_trigger = [true; NUM_OUTPUTS];
-            self.need_to_update_output_beat_trigger.fill(true);
-            self.scratch.is_on_beat = false;
+            if self.scratch.is_on_beat {
+                self.need_to_update_output_beat_trigger.fill(true);
+                self.scratch.is_on_beat = false;
+            }
+
+            if self.scratch.actual_onset_peak {
+                self.need_to_update_output_beat_onset.fill(true);
+                self.scratch.actual_onset_peak = false;
+            }
         }
 
         self.current.time += 1;
 
         Ok(())
     }
-
-    // fn tick_outputs(&mut self, freqs: &[Frequency], now: Instant) {
-    //     let snapshot = self.take_snapshot();
-    //
-    //     for (output_spec, output) in self.outputs.iter_mut() {
-    //         if output_spec.last_update.elapsed() < output_spec.update_every {
-    //             continue;
-    //         }
-    //
-    //         output_spec.last_update = now;
-    //
-    //         match output_spec.bins_p_column {
-    //             Some(num_bins) => {
-    //                 let new_column = bin_spectrum_to_u8(&freqs, num_bins);
-    //                 output.current_audio_colunn = new_column;
-    //             }
-    //             None => {}
-    //         }
-    //
-    //         output.snapshot = snapshot;
-    //
-    //         // Ensure time-critical flags are set.
-    //         if self.scratch.is_on_beat_pending_updates > 0 {
-    //             output.snapshot.beat_trigger = true;
-    //             self.scratch.is_on_beat_pending_updates -= 1;
-    //         }
-    //     }
-    // }
 
     // TODO: make this one mutable on the collector output.
     pub fn tick_output<const OUTPUT_INDEX: usize>(&mut self) -> CollectorOutput {
@@ -411,7 +399,11 @@ where
         if self.need_to_update_output_beat_trigger[OUTPUT_INDEX] {
             output.snapshot.beat_trigger = true;
             self.need_to_update_output_beat_trigger[OUTPUT_INDEX] = false;
-            // println!("included beat trigger")
+        }
+
+        if self.need_to_update_output_beat_onset[OUTPUT_INDEX] {
+            output.snapshot.actual_onset_peak = true;
+            self.need_to_update_output_beat_onset[OUTPUT_INDEX] = false;
         }
 
         output
@@ -432,7 +424,10 @@ pub struct AudioBucket {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SignalDebugData {
     pub bass_range: Range<f32>,
-    pub bass_values: AudioColumn,
+    pub band_energies: [f32; 3],
+    pub band_onset_peakiness: [f32; 3],
+    pub band_onset_periodicity: [f32; 3],
+    pub band_weights: [f32; 3],
 }
 
 pub type AudioColumn = Vec<AudioBucket>;

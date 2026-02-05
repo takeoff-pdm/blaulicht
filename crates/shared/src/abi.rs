@@ -20,12 +20,13 @@ pub struct CollectedAudioSnapshot {
     pub volume: u8,
     pub beat_volume: u8,
     pub bass: u8,
-    pub bass_avg_short: u8,
+    // pub bass_avg_short: u8,
     pub bass_avg: u8,
-    pub bpm: u8,
+    pub bpm: f32,
     pub time_between_beats_millis: u16,
     pub initial: bool,
     pub beat_trigger: bool,
+    pub actual_onset_peak: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]

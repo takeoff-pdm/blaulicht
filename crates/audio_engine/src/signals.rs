@@ -57,9 +57,16 @@ pub const ONSET_HISTORY_FRAMES: usize = 600;
 const ONSET_EMA_ALPHA: f32 = 0.2;
 const ONSET_LONG_ALPHA: f32 = 0.01;
 const ONSET_PEAK_STDDEV: f32 = 1.5;
+const DEFAULT_BAND_WEIGHTS: [f32; 3] = [0.6, 0.3, 0.1];
 const PHASE_WINDOW_FRACTION: f32 = 0.2;
+const BEAT_DEBOUNCE_FRACTION: f32 = 0.25;
 const PHASE_CORRECTION: f32 = 0.1;
 const MIN_PHASE_WINDOW_MS: f32 = 25.0;
+const ONSET_METRIC_EPS: f32 = 1e-6;
+const WEIGHT_SOFTMAX_TEMPERATURE: f32 = 1.0;
+// Lower -> steadier weights, higher -> faster adaptation.
+// With ~10 ms updates, 0.01 is roughly a ~1s time constant.
+const WEIGHT_SMOOTH_ALPHA: f32 = 0.0001;
 const MIN_BPM: f32 = 80.0;
 const MAX_BPM: f32 = 200.0;
 const MID_FREQ_HIGH: f32 = 2000.0;
@@ -96,18 +103,18 @@ where
             let bass_range =
                 (self.params.bass_freq_low as f32)..(self.params.bass_freq_high as f32);
 
-            let bass_samples_freqs = self
+            let bass_samples = self
                 .freq_buffer
                 .iter()
                 .copied()
                 .filter(|f| bass_range.contains(&f.freq))
-                // .map(|f| f.volume as f32)
-                .collect::<Vec<_>>();
-
-            let bass_samples = bass_samples_freqs
-                .iter()
                 .map(|f| f.volume as f32)
                 .collect::<Vec<_>>();
+
+            // let bass_samples = bass_samples_freqs
+            //     .iter()
+            //     .map(|f| f.volume as f32)
+            //     .collect::<Vec<_>>();
 
             let avg = if bass_samples.is_empty() {
                 0.0
@@ -162,6 +169,7 @@ where
                 .freq_buffer
                 .iter()
                 .fold(0.0_f32, |acc, f| acc.max(f.freq));
+
             let mid_high = MID_FREQ_HIGH.min(max_freq);
             let high_high = HIGH_FREQ_HIGH.min(max_freq);
             let mid_range = bass_range.end..mid_high;
@@ -180,12 +188,35 @@ where
                     self.scratch.band_energy_ema[idx] = *energy;
                 } else {
                     band_onsets[idx] = (*energy - ema).max(0.0);
-                    self.scratch.band_energy_ema[idx] =
-                        ema + ONSET_LONG_ALPHA * (*energy - ema);
+                    self.scratch.band_energy_ema[idx] = ema + ONSET_LONG_ALPHA * (*energy - ema);
                 }
             }
 
-            let onset = band_onsets[0] * 0.6 + band_onsets[1] * 0.3 + band_onsets[2] * 0.1;
+            let mut band_onset_peakiness = [0.0_f32; 3];
+            let mut band_onset_periodicity = [0.0_f32; 3];
+            for (idx, history) in self.scratch.band_onset_history.iter_mut().enumerate() {
+                band_onset_peakiness[idx] = Self::onset_peakiness(history.make_contiguous());
+                band_onset_periodicity[idx] =
+                    Self::onset_periodicity(history.make_contiguous(), ONSET_SAMPLE_PERIOD_MS);
+            }
+
+            let band_weights = if self.params.auto_weight {
+                let updated = Self::compute_band_weights(
+                    self.scratch.band_weights,
+                    band_energies,
+                    band_onset_peakiness,
+                    band_onset_periodicity,
+                );
+                self.scratch.band_weights = updated;
+                updated
+            } else {
+                self.scratch.band_weights = DEFAULT_BAND_WEIGHTS;
+                DEFAULT_BAND_WEIGHTS
+            };
+
+            let onset = band_onsets[0] * band_weights[0]
+                + band_onsets[1] * band_weights[1]
+                + band_onsets[2] * band_weights[2];
             self.scratch.onset_ema += ONSET_EMA_ALPHA * (onset - self.scratch.onset_ema);
 
             let mut onset_peak = false;
@@ -196,6 +227,13 @@ where
                 self.scratch.onset_history.push_back(self.scratch.onset_ema);
                 if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
                     self.scratch.onset_history.pop_front();
+                }
+                for (idx, onset_val) in band_onsets.iter().enumerate() {
+                    let history = &mut self.scratch.band_onset_history[idx];
+                    history.push_back(*onset_val);
+                    if history.len() > ONSET_HISTORY_FRAMES {
+                        history.pop_front();
+                    }
                 }
 
                 let history = self.scratch.onset_history.make_contiguous();
@@ -241,8 +279,7 @@ where
                 if self.scratch.bpm_estimate <= 0.0 {
                     self.scratch.bpm_estimate = new_bpm;
                 } else {
-                    self.scratch.bpm_estimate =
-                        (self.scratch.bpm_estimate * 0.8) + (new_bpm * 0.2);
+                    self.scratch.bpm_estimate = (self.scratch.bpm_estimate * 0.8) + (new_bpm * 0.2);
                 }
             }
 
@@ -255,7 +292,7 @@ where
             }
 
             let bpm_f32 = self.scratch.bpm_estimate;
-            let bpm = bpm_f32.round().clamp(0.0, u8::MAX as f32) as u8;
+            // let bpm = bpm_f32.round().clamp(0.0, u8::MAX as f32) as u8;
             let time_between_beats_millis = if self.scratch.beat_interval_ms > 0.0 {
                 self.scratch.beat_interval_ms.round() as u16
             } else {
@@ -269,17 +306,23 @@ where
                 let window = (self.scratch.beat_interval_ms * PHASE_WINDOW_FRACTION)
                     .max(MIN_PHASE_WINDOW_MS);
 
+                // let min_debounce_ms = self.scratch.beat_interval_ms * BEAT_DEBOUNCE_FRACTION;
+                // let since_last_beat =
+                //     now.saturating_sub(self.scratch.time_of_last_bpm_marker) as f32;
+                // let debounce_ok = since_last_beat >= min_debounce_ms;
+
                 if onset_peak {
                     let phase_error = now_f - expected;
                     if self.scratch.beat_needs_sync || phase_error.abs() <= window {
                         self.scratch.is_on_beat = true;
+                        self.scratch.actual_onset_peak = true;
                         self.scratch.time_of_last_bpm_marker = now;
                         self.scratch.beat_needs_sync = false;
 
                         let adjusted =
                             self.scratch.beat_interval_ms + phase_error * PHASE_CORRECTION;
-                        self.scratch.beat_interval_ms = adjusted
-                            .clamp(60000.0 / MAX_BPM, 60000.0 / MIN_BPM);
+                        self.scratch.beat_interval_ms =
+                            adjusted.clamp(60000.0 / MAX_BPM, 60000.0 / MIN_BPM);
                     }
                 }
 
@@ -292,92 +335,24 @@ where
                 }
             }
 
-            let is_beat_confirmed = onset_peak || peaked;
-            if self.scratch.is_on_beat && !is_beat_confirmed {
-                self.scratch.num_beat_mismatches += 1;
-            } else if self.scratch.is_on_beat && is_beat_confirmed {
-                self.scratch.num_beat_mismatches = 0;
-            }
-
-            if self.scratch.num_beat_mismatches > 3 && bpm > 0 {
-                self.scratch.beat_needs_sync = true;
-            }
-
-            let is_bass_avg_short = peaked || elapsed_since_last_peak < 50; // cross-tick mitigation
-
-            // Construct derivative of the bass frames.
-            // let current_x = 1.0;
-            // let prev_x = 0.0;
-            //
-            // let current_y = bass_sig as f32;
-            // let prev_y = bass_moving_average as f32;
-            //
-            // let slope = (current_y - prev_y) / (current_x - prev_x);
-            // println!("slope: {}", slope);
-
-            // let deriv_input: Vec<_> = self
-            //     .scratch
-            //     .bass_samples
-            //     .iter()
-            //     .collect::<Vec<_>>()
-            //     .chunks(1000)
-            //     .map(|chunk| (chunk.iter().map(|v| **v as f64).sum::<f64>() / chunk.len() as f64))
-            //     .collect();
-
-            // let v = self.scratch.bass_samples.iter().collect::<Vec<_>>();
-            //
-            // let slice_off = self.params.savgol_slice;
-
-            // let deriv = match v.len() {
-            //     l if l < slice_off => {
-            //         vec![]
-            //     }
-            //     l => {
-            //         let begin_idx = l - slice_off;
-            //         let v = &v[begin_idx..l];
-            //
-            //         let deriv_input = v.iter().map(|v| **v as f64).collect::<Vec<_>>();
-            //
-            //         // let deriv = match deriv_input.len() {
-            //         //     v if v < 2 => {
-            //         //         vec![]
-            //         //     }
-            //         //     _ => ve, 1.0),
-            //         // };
-            //
-            //         let input = SavGolInput {
-            //             data: &deriv_input,
-            //             window_length: self.params.savgol_window,
-            //             poly_order: self.params.savgol_poly,
-            //             derivative: 1,
-            //         };
-            //
-            //         let result = match deriv_input.len() {
-            //             v if v < 11 => vec![],
-            //             _ => savgol_rs::savgol_filter(&input).unwrap_or_else(|_| vec![]),
-            //         };
-            //
-            //         result
-            //     }
-            // };
+            // let is_bass_avg_short = (self.scratch.onset_ema * 10.0) as u8;
 
             let debug_data = SignalDebugData {
                 bass_range,
-                bass_values: bin_spectrum_to_u8(&bass_samples_freqs, 20),
+                band_energies,
+                band_onset_peakiness,
+                band_onset_periodicity,
+                band_weights: self.scratch.band_weights,
             };
 
             &[
                 Signal::BeatTrigger(self.scratch.is_on_beat),
                 Signal::Bass(bass_sig),
                 Signal::Bpm(BpmInfo {
-                    bpm,
+                    bpm: bpm_f32,
                     time_between_beats_millis,
                 }),
-                if is_bass_avg_short {
-                    Signal::BassAvgShort(255)
-                } else {
-                    Signal::BassAvgShort(0)
-                },
+                // Signal::BassAvgShort(is_bass_avg_short),
                 Signal::BassAvg(bass_moving_average as u8),
                 Signal::DebugData(debug_data),
             ]
@@ -405,16 +380,176 @@ where
             return (0.0, 0.0);
         }
 
-        let mean = history.iter().sum::<f32>() / history.len() as f32;
-        let mut var = 0.0;
+        let (mean, std, _) = Self::onset_stats(history);
+        let threshold = mean + ONSET_PEAK_STDDEV * std;
+
+        (mean, threshold)
+    }
+
+    fn onset_peakiness(history: &[f32]) -> f32 {
+        if history.is_empty() {
+            return 0.0;
+        }
+
+        let (mean, _, max) = Self::onset_stats(history);
+        max / (mean + ONSET_METRIC_EPS)
+    }
+
+    fn compute_band_weights(
+        prev: [f32; 3],
+        band_energies: [f32; 3],
+        band_onset_peakiness: [f32; 3],
+        band_onset_periodicity: [f32; 3],
+    ) -> [f32; 3] {
+        let energy_sum = band_energies.iter().sum::<f32>();
+        if !energy_sum.is_finite() || energy_sum <= 0.0 {
+            return prev;
+        }
+
+        let mut scores = [0.0_f32; 3];
+        for i in 0..3 {
+            let energy_norm = band_energies[i] / energy_sum;
+            let score = band_onset_periodicity[i] * band_onset_peakiness[i] * energy_norm;
+            scores[i] = if score.is_finite() { score } else { 0.0 };
+        }
+
+        let score_sum = scores.iter().sum::<f32>();
+        if !score_sum.is_finite() || score_sum <= 0.0 {
+            return prev;
+        }
+
+        let target = match Self::softmax(scores, WEIGHT_SOFTMAX_TEMPERATURE) {
+            Some(weights) => weights,
+            None => return prev,
+        };
+
+        let mut weights = [0.0_f32; 3];
+        for i in 0..3 {
+            weights[i] = prev[i] + (target[i] - prev[i]) * WEIGHT_SMOOTH_ALPHA;
+        }
+
+        Self::normalize_weights(weights, prev)
+    }
+
+    fn softmax(scores: [f32; 3], temperature: f32) -> Option<[f32; 3]> {
+        let temp = if temperature <= 0.0 { 1.0 } else { temperature };
+        let inv_temp = 1.0 / temp;
+        let mut max_score = f32::NEG_INFINITY;
+        for score in scores {
+            if score > max_score {
+                max_score = score;
+            }
+        }
+        if !max_score.is_finite() {
+            return None;
+        }
+
+        let mut exps = [0.0_f32; 3];
+        let mut sum = 0.0_f32;
+        for (idx, score) in scores.iter().enumerate() {
+            let value = ((*score - max_score) * inv_temp).exp();
+            if !value.is_finite() {
+                return None;
+            }
+            exps[idx] = value;
+            sum += value;
+        }
+
+        if !sum.is_finite() || sum <= 0.0 {
+            return None;
+        }
+
+        for value in &mut exps {
+            *value /= sum;
+        }
+
+        Some(exps)
+    }
+
+    fn normalize_weights(weights: [f32; 3], fallback: [f32; 3]) -> [f32; 3] {
+        let sum = weights.iter().sum::<f32>();
+        if !sum.is_finite() || sum <= 0.0 {
+            return fallback;
+        }
+
+        let mut normalized = [0.0_f32; 3];
+        for i in 0..3 {
+            normalized[i] = weights[i] / sum;
+        }
+
+        normalized
+    }
+
+    fn onset_periodicity(history: &[f32], sample_period_ms: usize) -> f32 {
+        let n = history.len();
+        if n < 2 || sample_period_ms == 0 {
+            return 0.0;
+        }
+
+        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms as f32)
+            .round()
+            .max(1.0) as usize;
+        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms as f32)
+            .round()
+            .max(1.0) as usize;
+
+        if min_lag >= max_lag || n < max_lag * 2 {
+            return 0.0;
+        }
+
+        let mean = history.iter().sum::<f32>() / n as f32;
+        let mut best_corr = 0.0_f32;
+        let mut sum_corr = 0.0_f32;
+        let mut count = 0usize;
+
+        for lag in min_lag..=max_lag {
+            let mut corr = 0.0_f32;
+            for i in 0..(n - lag) {
+                let a = history[i] - mean;
+                let b = history[i + lag] - mean;
+                corr += a * b;
+            }
+            corr /= (n - lag) as f32;
+            if corr > best_corr {
+                best_corr = corr;
+            }
+            if corr > 0.0 {
+                sum_corr += corr;
+                count += 1;
+            }
+        }
+
+        if count == 0 {
+            return 0.0;
+        }
+
+        let avg_corr = sum_corr / count as f32;
+        best_corr / (avg_corr + ONSET_METRIC_EPS)
+    }
+
+    fn onset_stats(history: &[f32]) -> (f32, f32, f32) {
+        if history.is_empty() {
+            return (0.0, 0.0, 0.0);
+        }
+
+        let mut sum = 0.0_f32;
+        let mut max = 0.0_f32;
+        for v in history {
+            sum += *v;
+            if *v > max {
+                max = *v;
+            }
+        }
+        let mean = sum / history.len() as f32;
+
+        let mut var = 0.0_f32;
         for v in history {
             let d = *v - mean;
             var += d * d;
         }
         let std = (var / history.len() as f32).sqrt();
-        let threshold = mean + ONSET_PEAK_STDDEV * std;
 
-        (mean, threshold)
+        (mean, std, max)
     }
 
     fn estimate_bpm_from_onset(history: &[f32], sample_period_ms: usize) -> Option<f32> {
@@ -423,10 +558,12 @@ where
             return None;
         }
 
-        let min_lag =
-            ((60_000.0 / MAX_BPM) / sample_period_ms as f32).round().max(1.0) as usize;
-        let max_lag =
-            ((60_000.0 / MIN_BPM) / sample_period_ms as f32).round().max(1.0) as usize;
+        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms as f32)
+            .round()
+            .max(1.0) as usize;
+        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms as f32)
+            .round()
+            .max(1.0) as usize;
 
         if min_lag >= max_lag || n < max_lag * 2 {
             return None;
@@ -456,7 +593,11 @@ where
         let period_ms = best_lag as f32 * sample_period_ms as f32;
         let bpm = 60_000.0 / period_ms;
 
-        if bpm.is_finite() { Some(bpm) } else { None }
+        if bpm.is_finite() {
+            Some(bpm)
+        } else {
+            None
+        }
     }
 
     fn gradient(data: &[f64], spacing: f64) -> Vec<f64> {

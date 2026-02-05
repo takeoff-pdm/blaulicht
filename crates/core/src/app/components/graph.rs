@@ -18,6 +18,8 @@ pub struct TimeSeriesGraph {
     max_value: i32,
     line_color: egui::Color32,
     shadow_color: egui::Color32,
+    auto_scale: bool,
+    last_autoscale: u64,
 }
 
 impl TimeSeriesGraph {
@@ -37,11 +39,20 @@ impl TimeSeriesGraph {
             },
             start_time,
             last_update: 0,
+            last_autoscale: 0,
             title,
             min_value,
             max_value,
             line_color,
             shadow_color: egui::Color32::from_gray(40),
+            auto_scale: false,
+        }
+    }
+
+    pub fn with_autoscale(self) -> Self {
+        Self {
+            auto_scale: true,
+            ..self
         }
     }
 
@@ -55,6 +66,16 @@ impl TimeSeriesGraph {
         self.time_series_data.push((relative_time, value));
         if self.time_series_data.len() > CAP {
             self.time_series_data.remove(0);
+        }
+
+        if self.auto_scale {
+            if value < self.min_value {
+                self.min_value = value;
+            }
+
+            if value > self.max_value {
+                self.max_value = value + (value / 100 * 10);
+            }
         }
     }
 

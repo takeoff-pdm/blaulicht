@@ -73,52 +73,59 @@ impl BlaulichtApp {
 
     pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.audio_info_dialog_open {
-            components::Dialog::new("Info".to_string(), vec2(800.0, 200.0))
+            let debug_data = {
+                let spec = self.data.state.audio_spectrogram.read().unwrap();
+                spec.columns
+                    .back()
+                    .map(|col| col.debug_data.clone())
+                    .unwrap_or_default()
+            };
+            let mut auto_weight = {
+                let params = self.data.state.audio_params.read().unwrap();
+                params.auto_weight
+            };
+
+            components::Dialog::new("Info".to_string(), vec2(540.0, 360.0))
                 .moveable()
                 .show(ctx, |ui| {
-                    let spec_bass = self.data.state.bass_spectrogram.read().unwrap();
+                    ui.horizontal(|ui| {
+                        ui.label("Auto Weight");
+                        if components::Switch::new(&mut auto_weight).ui(ui).changed() {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.auto_weight = auto_weight;
+                            params.changed = true;
+                        }
+                    });
 
-                    let spec_height = 160.0; // compact height
-                    let spec_width = 750.0;
+                    ui.add_space(8.0);
 
-                    ui.set_width(800.0);
-                    ui.set_min_width(700.0);
-                    ui.set_height(200.0);
+                    for (idx, band) in self.band_energy_graphs.iter().enumerate() {
+                        let graph_height = 100.0;
+                        let metrics_width = 140.0;
+                        let graph_width = (ui.available_width() - metrics_width - 12.0).max(140.0);
 
-                    if spec_bass.columns.is_empty() {
-                        let (spec_resp, spec_painter) = ui.allocate_painter(
-                            egui::vec2(spec_width, spec_height),
-                            egui::Sense::hover(),
-                        );
-                        let spec_rect = spec_resp.rect;
-                        spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
-                        spec_painter.text(
-                            spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                            egui::Align2::CENTER_TOP,
-                            "Waiting for bass…",
-                            egui::FontId::proportional(12.0),
-                            Color32::GRAY,
-                        );
-                    } else {
-                        let image = components::create_spectrogram_image(
-                            &spec_bass,
-                            spec_width as usize,
-                            spec_height as usize,
-                            &SpectrogramDisplayOptions {
-                                include_bass_markers: true,
-                                include_beat_markers: true,
-                            },
-                        );
+                        ui.horizontal(|ui| {
+                            let (response, painter) = ui.allocate_painter(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
+                            );
+                            band.draw(painter, response.rect);
 
-                        {}
+                            ui.add_space(8.0);
 
-                        let texture = ctx.load_texture(
-                            "spectrogram_bass",
-                            image,
-                            egui::TextureOptions::NEAREST,
-                        );
-
-                        ui.image(&texture);
+                            ui.vertical(|ui| {
+                                ui.set_width(metrics_width);
+                                ui.label(format!(
+                                    "Peakiness: {:.2}",
+                                    debug_data.band_onset_peakiness[idx]
+                                ));
+                                ui.label(format!(
+                                    "Periodicity: {:.2}",
+                                    debug_data.band_onset_periodicity[idx]
+                                ));
+                                ui.label(format!("Weight: {:.2}", debug_data.band_weights[idx]));
+                            });
+                        });
                     }
                 });
         }
@@ -190,6 +197,8 @@ impl BlaulichtApp {
                     let mut gate_value = params.gate as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
                     let mut auto_calibrate = params.auto_calibrate;
+                    let mut bass_low_value = params.bass_freq_low;
+                    let mut bass_high_value = params.bass_freq_high;
                     // let mut filterbank_value = params.filterbank;
                     // let mut use_dp_tracking = params.use_dynamic_programming_beat;
                     drop(params);
@@ -215,7 +224,6 @@ impl BlaulichtApp {
                                 spec_width as usize,
                                 spec_height as usize,
                                 &SpectrogramDisplayOptions {
-                                    include_bass_markers: true,
                                     include_beat_markers: true,
                                 },
                             );
@@ -285,6 +293,38 @@ impl BlaulichtApp {
                                 params.changed = true;
                             }
                         });
+
+                        ui.add_space(12.0);
+
+                        ui.horizontal(|ui| {
+                            let bass_low_before = bass_low_value;
+                            let bass_high_before = bass_high_value;
+
+                            ui.label(
+                                RichText::new("Bass Low (Hz)").size(ButtonSize::Medium.dim().1),
+                            );
+                            self.bass_low_numberpad.ui(ui, &mut bass_low_value);
+
+                            ui.add_space(40.0);
+
+                            ui.label(
+                                RichText::new("Bass High (Hz)").size(ButtonSize::Medium.dim().1),
+                            );
+                            self.bass_high_numberpad.ui(ui, &mut bass_high_value);
+
+                            if bass_low_value > bass_high_value {
+                                mem::swap(&mut bass_low_value, &mut bass_high_value);
+                            }
+
+                            if bass_low_value != bass_low_before
+                                || bass_high_value != bass_high_before
+                            {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                params.bass_freq_low = bass_low_value;
+                                params.bass_freq_high = bass_high_value;
+                                params.changed = true;
+                            }
+                        });
                     }
 
                     // Set larger graph height
@@ -320,14 +360,15 @@ impl BlaulichtApp {
                             self.bass_avg_graph
                                 .draw(painter_bass_avg, response_bass_avg.rect);
 
-                            ui.add_space(padding);
-                            let (response_bass_avg_short, painter_bass_avg_short) = ui
-                                .allocate_painter(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                            self.bass_avg_short_graph
-                                .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+                            // TODO: add another graph here.
+                            // ui.add_space(padding);
+                            // let (response_bass_avg_short, painter_bass_avg_short) = ui
+                            //     .allocate_painter(
+                            //         egui::vec2(graph_width, graph_height),
+                            //         egui::Sense::hover(),
+                            //     );
+                            // self.bass_avg_short_graph
+                            //     .draw(painter_bass_avg_short, response_bass_avg_short.rect);
                         });
 
                         ui.vertical(|ui| {
@@ -351,7 +392,7 @@ impl BlaulichtApp {
                                     ui.horizontal(|ui| {
                                         ui.heading(
                                             RichText::new(format!(
-                                                "{: >3} BPM",
+                                                "{: >3.1} BPM",
                                                 self.collector_snapshot.bpm
                                             ))
                                             .strong()

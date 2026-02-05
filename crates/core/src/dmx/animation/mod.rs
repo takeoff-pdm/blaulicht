@@ -152,7 +152,7 @@ impl DmxEngine {
                 fixture_value as u16
             }
             AnimationSpecBody::AudioBeat(animation_spec_body_beat) => {
-                audio_snapshot.snapshot.bass_avg_short as u16
+                audio_snapshot.snapshot.bass as u16
             }
             AnimationSpecBody::BeatClock(animation_spec_body_beat) => {
                 (audio_snapshot.snapshot.beat_trigger as u16) * 255

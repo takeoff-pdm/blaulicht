@@ -66,7 +66,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 dim.0 as usize,
                 dim.1 as usize,
                 &SpectrogramDisplayOptions {
-                    include_bass_markers: false,
+                    // include_bass_markers: false,
                     include_beat_markers: false,
                 },
             );

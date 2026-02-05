@@ -111,9 +111,10 @@ pub struct BlaulichtApp {
     beat_volume_graph: TimeSeriesGraph,
     bass_graph: TimeSeriesGraph,
     bass_avg_graph: TimeSeriesGraph,
-    bass_avg_short_graph: TimeSeriesGraph,
-    bass_derivative_graph: TimeSeriesGraph,
+    // bass_avg_short_graph: TimeSeriesGraph,
     collector_snapshot: CollectedAudioSnapshot,
+
+    band_energy_graphs: [TimeSeriesGraph; 3],
     // bpm_graph: TimeSeriesGraph,
     // time_between_beats_graph: TimeSeriesGraph,
 
@@ -159,6 +160,8 @@ pub struct BlaulichtApp {
 
     set_audio_device_popup_open: bool,
     audio_info_dialog_open: bool,
+    bass_low_numberpad: Numberpad,
+    bass_high_numberpad: Numberpad,
 
     // TODO: move into custom scroll area or whatever
     scene_page_index: usize,
@@ -253,18 +256,20 @@ impl BlaulichtApp {
                 255,
                 egui::Color32::from_rgb(0, 200, 255),
             ),
-            bass_avg_short_graph: TimeSeriesGraph::new(
-                "Bass Avg Short".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
-            bass_derivative_graph: TimeSeriesGraph::new(
-                "Bass Deriv".to_string(),
-                0,
-                255,
-                egui::Color32::from_rgb(0, 200, 255),
-            ),
+            // bass_avg_short_graph: TimeSeriesGraph::new(
+            //     "Bass Avg Short".to_string(),
+            //     0,
+            //     255,
+            //     egui::Color32::from_rgb(0, 200, 255),
+            // ),
+            band_energy_graphs: [
+                TimeSeriesGraph::new("Band Low".to_string(), 0, 1000, Color32::RED)
+                    .with_autoscale(),
+                TimeSeriesGraph::new("Band Mid".to_string(), 0, 1000, Color32::GREEN)
+                    .with_autoscale(),
+                TimeSeriesGraph::new("Band High".to_string(), 0, 1000, Color32::BLUE)
+                    .with_autoscale(),
+            ],
             collector_snapshot: CollectedAudioSnapshot::default(),
             frame_count: 0,
             animation_time: 0.0,
@@ -293,6 +298,14 @@ impl BlaulichtApp {
             init_popup_open_time: Instant::now(),
             set_audio_device_popup_open: false,
             audio_info_dialog_open: false,
+            bass_low_numberpad: Numberpad::new()
+                .dialog_title("Bass Low")
+                .field_width(140.0)
+                .range(0.0, 20_000.0),
+            bass_high_numberpad: Numberpad::new()
+                .dialog_title("Bass High")
+                .field_width(140.0)
+                .range(0.0, 20_000.0),
             scene_page_index: 0,
             add_dmx_override_open: false,
             add_dmx_override_chan: 1,

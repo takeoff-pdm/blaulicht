@@ -201,7 +201,6 @@ pub struct AppState {
     pub audio_params: RwLock<SignalCollectorParams>, // Boolean stores if something has
     // changed
     pub audio_spectrogram: RwLock<AudioSpectrogram>,
-    pub bass_spectrogram: RwLock<AudioSpectrogram>,
     pub mainloop_state: RwLock<AudioThreadControlSignal>,
     pub plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     // Back buffer for plugin UI ops. Plugins write here; UI reads from `plugin_ui_ops`.
@@ -262,11 +261,6 @@ impl AppState {
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             audio_params: RwLock::new(SignalCollectorParams::default()),
             audio_spectrogram: RwLock::new(AudioSpectrogram::new(
-                40,
-                128,
-                Duration::from_millis(20),
-            )),
-            bass_spectrogram: RwLock::new(AudioSpectrogram::new(
                 40,
                 128,
                 Duration::from_millis(20),

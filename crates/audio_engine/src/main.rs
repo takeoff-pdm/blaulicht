@@ -45,7 +45,7 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
         dim.0 as usize,
         dim.1 as usize,
         &SpectrogramDisplayOptions {
-            include_bass_markers: false,
+            // include_bass_markers: false,
             include_beat_markers: false,
         },
     );
@@ -122,6 +122,7 @@ fn main() {
             boost: None,
             volume: 100,
             auto_calibrate: false,
+            auto_weight: false,
             changed: false,
             bass_freq_low: 0,
             bass_freq_high: 250,

@@ -58,10 +58,18 @@ impl AudioSpectrogram {
             .snapshot
             .clone()
     }
+
+    pub fn current_output(&self) -> CollectorOutput {
+        self.columns
+            .iter()
+            .last()
+            .unwrap_or(&CollectorOutput::default())
+            .clone()
+    }
 }
 
 pub struct SpectrogramDisplayOptions {
-    pub include_bass_markers: bool,
+    // pub include_bass_markers: bool,
     pub include_beat_markers: bool,
 }
 
@@ -89,14 +97,14 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
                     debug_data: SignalDebugData::default(),
                 };
 
-                let mut bass_avg_short_avg = 0;
-                for _ in 0..chunks.len() {
-                    bass_avg_short_avg += averaged.snapshot.bass_avg_short as u16;
-                }
+                // let mut bass_avg_short_avg = 0;
+                // for _ in 0..chunks.len() {
+                //     bass_avg_short_avg += averaged.snapshot.bass_avg_short as u16;
+                // }
+                //
+                // bass_avg_short_avg /= chunks.len() as u16;
 
-                bass_avg_short_avg /= chunks.len() as u16;
-
-                averaged.snapshot.bass_avg_short = bass_avg_short_avg as u8;
+                // averaged.snapshot.bass_avg_short = bass_avg_short_avg as u8;
 
                 for bucket_idx in 0..bucket_count {
                     let sum: u32 = chunks
@@ -237,25 +245,23 @@ pub fn create_spectrogram_image(
                 }
             }
 
-
-            // Draw bass marker.
-            {
-                if options.include_bass_markers {
-                    if column.snapshot.bass_avg_short == 255 {
-                        let dot_size = 5;
-                        for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
-                            pixels[y * width + x_start] = Color32::GREEN;
-                        }
-                    }
-                }
-            }
-
             // Draw beat marker.
             {
                 if options.include_beat_markers {
                     if column.snapshot.beat_trigger {
                         for y in 0..height_outer {
                             pixels[y * width + x_start] = Color32::RED;
+                        }
+                    }
+
+                    if column.snapshot.actual_onset_peak {
+                        // for y in 0..(height_outer / 3) {
+                        //     pixels[y * width + x_start] = Color32::YELLOW;
+                        // }
+
+                        let dot_size = x_end - x_start;
+                        for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
+                            pixels[y * width + x_start] = Color32::MAGENTA;
                         }
                     }
                 }

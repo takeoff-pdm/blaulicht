@@ -231,7 +231,8 @@ impl eframe::App for BlaulichtApp {
         // Update all graphs with current data
         {
             let audio_data = self.data.state.audio_spectrogram.read().unwrap();
-            let audio_snapshot = audio_data.current_snapshot();
+            let audio_output = audio_data.current_output();
+            let audio_snapshot = audio_output.snapshot;
 
             self.volume_graph.update(audio_snapshot.volume as i32);
             // self.bass_derivative_graph
@@ -240,9 +241,13 @@ impl eframe::App for BlaulichtApp {
                 .update(audio_snapshot.beat_volume as i32);
             self.bass_graph.update(audio_snapshot.bass as i32);
             self.bass_avg_graph.update(audio_snapshot.bass_avg as i32);
-            self.bass_avg_short_graph
-                .update(audio_snapshot.bass_avg_short as i32);
+            // self.bass_avg_short_graph
+            //     .update(audio_snapshot.bass_avg_short as i32);
             self.collector_snapshot = audio_snapshot;
+
+            for (i, value) in audio_output.debug_data.band_energies.iter().enumerate() {
+                self.band_energy_graphs[i].update(*value as i32);
+            }
         }
 
         // Navbar
@@ -288,7 +293,19 @@ impl BlaulichtApp {
     ) {
         match page {
             AppPage::Logs => {
-                self.logs_ui(ui, ctx);
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        for i in 0..5 {
+                            components::button(
+                                ui,
+                                false,
+                                "Tab x",
+                                ButtonSize::Medium.with_height(ButtonSize::Small.dim().0.y),
+                            );
+                        }
+                    });
+                    self.logs_ui(ui, ctx);
+                });
             }
             AppPage::System => {
                 self.system_ui(ui, ctx, screen_id);

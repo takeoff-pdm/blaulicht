@@ -144,18 +144,6 @@ pub fn run(
         }
     }
 
-    {
-        let mut spec = app_state.bass_spectrogram.write().unwrap();
-        spec.max_columns = desired_columns;
-        println!("set spec max columns {desired_columns}");
-        println!("set spec bin count {}", spec.bin_count);
-        // Trim if we already exceed
-        while spec.columns.len() > spec.max_columns {
-            spec.columns.pop_front();
-            println!("popping front");
-        }
-    }
-
     let mut collector_outputs = [CollectorOutputSpec::default(); 2];
 
     const COLLECTOR_DMX: usize = 0;
@@ -360,16 +348,6 @@ pub fn run(
                 .write()
                 .unwrap()
                 .push_data(output.clone());
-
-            app_state
-                .bass_spectrogram
-                .write()
-                .unwrap()
-                .push_data(CollectorOutput {
-                    snapshot: output.snapshot.clone(),
-                    current_audio_colunn: output.debug_data.bass_values.clone(),
-                    debug_data: SignalDebugData::default(),
-                });
 
             last_spectrogram_tick = now;
         }
