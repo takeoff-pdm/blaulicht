@@ -61,6 +61,14 @@ pub struct CollectorScratch {
 
     pub(crate) is_on_beat: bool,
 
+    // Onset + tempo tracking.
+    pub(crate) onset_history: VecDeque<f32>,
+    pub(crate) last_onset_sample_time: usize,
+    pub(crate) onset_ema: f32,
+    pub(crate) band_energy_ema: [f32; 3],
+    pub(crate) beat_interval_ms: f32,
+    pub(crate) bpm_estimate: f32,
+
     pub(crate) last_calibrate_time: usize,
 
     pub(crate) beat_volume_volume_samples_buffer: Vec<usize>,
@@ -92,6 +100,12 @@ impl CollectorScratch {
             num_beat_mismatches: 0,
             is_on_beat: false,
             beat_needs_sync: true,
+            onset_history: VecDeque::new(),
+            last_onset_sample_time: now,
+            onset_ema: 0.0,
+            band_energy_ema: [0.0; 3],
+            beat_interval_ms: 0.0,
+            bpm_estimate: 0.0,
             last_calibrate_time: now,
             beat_volume_volume_samples_buffer: vec![0; 2048], // TODO: make this more steerable?
         }
