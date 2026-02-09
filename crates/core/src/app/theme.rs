@@ -145,7 +145,7 @@ pub const MOCHA: Theme = Theme {
     crust: Color32::from_rgb(17, 17, 27),
 };
 
-pub const REKORDBOX: Theme = Theme {
+pub const BLUE: Theme = Theme {
     rosewater: Color32::from_rgb(255, 140, 168),
     flamingo: Color32::from_rgb(255, 110, 132),
     pink: Color32::from_rgb(255, 95, 195),

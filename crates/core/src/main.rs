@@ -155,14 +155,6 @@ fn main() -> anyhow::Result<()> {
 
     // info!("Blaulicht is shutting down...");
 
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 480.0])
-            .with_resizable(false)
-            .with_decorations(args.window_decorations),
-        ..Default::default()
-    };
-
     if let Some(showfile) = cfg.last_open_showfile {
         let mut dmx = app_state.dmx_engine.write().unwrap();
         let mut artnet = app_state.artnet_output.write().unwrap();
@@ -175,10 +167,13 @@ fn main() -> anyhow::Result<()> {
         );
     };
 
-    // let initial_popup = Some(PopupSpec::with_duration(
-    //     Duration::from_secs(2),
-    //     "Initializing...".to_string(),
-    // ));
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 480.0])
+            .with_resizable(args.desktop_mode)
+            .with_decorations(args.window_decorations),
+        ..Default::default()
+    };
 
     let initial_popup = None;
 
@@ -190,6 +185,7 @@ fn main() -> anyhow::Result<()> {
                 cc,
                 state_wrapper,
                 initial_popup,
+                args.desktop_mode,
             )))
         }),
     )

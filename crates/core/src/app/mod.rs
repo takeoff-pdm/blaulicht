@@ -1,7 +1,7 @@
 use crate::{
     app::{
         components::{
-            DmxSimulator, LogWindow, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
+            DmxSimulator, LogWindow, Navbar, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
             DEFAULT_NEW_SCENE_NAME,
         },
         external_screen::Pane,
@@ -27,8 +27,12 @@ use std::{
 };
 use strum::EnumIter;
 
+mod app_navbar;
 pub mod components;
+mod debug;
+mod event;
 pub mod external_screen;
+mod page;
 pub mod pages;
 mod plugin_ui;
 mod popup;
@@ -99,6 +103,10 @@ impl ExternalScreen {
 }
 
 pub struct BlaulichtApp {
+    desktop_mode: bool,
+    navbar: Navbar,
+
+    main_screen_desktop_mode: ExternalScreen,
     external_screens: Vec<ExternalScreen>,
 
     // Example stuff:
@@ -135,7 +143,7 @@ pub struct BlaulichtApp {
     log_window: LogWindow,
 
     // Current page
-    pub current_page: AppPage,
+    // pub current_page: AppPage,
     last_heartbeat_frame: u64,
     selected_fixture_group: Option<u8>,
 
@@ -228,8 +236,11 @@ pub struct BlaulichtApp {
 }
 
 impl BlaulichtApp {
-    fn new_default(data: AppStateWrapper) -> Self {
+    fn new_default(data: AppStateWrapper, desktop_mode: bool) -> Self {
         Self {
+            desktop_mode,
+            navbar: Navbar::new(AppPage::Logs),
+            main_screen_desktop_mode: ExternalScreen::new(),
             external_screens: vec![],
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
@@ -279,7 +290,7 @@ impl BlaulichtApp {
             tick_speeds: TickSpeeds::default(),
             fps_samples: VecDeque::with_capacity(5),
             log_window: LogWindow::new(100),
-            current_page: AppPage::Logs,
+            // current_page: AppPage::Logs,
             last_heartbeat_frame: 0,
             selected_fixture_group: None,
             available_audio_devices: vec![],

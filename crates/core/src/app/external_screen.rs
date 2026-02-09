@@ -118,7 +118,7 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
 }
 
 impl BlaulichtApp {
-    pub fn render_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
+    pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
         let viewport_id =
             egui::ViewportId::from_hash_of(format!("blaulicht_external_screen: {screen_idx}"));
         ctx.show_viewport_immediate(
@@ -130,24 +130,34 @@ impl BlaulichtApp {
             |ctx, _class| {
                 let mut screen = self.external_screens[screen_idx].clone();
                 let screen_id = ScreenId::external(screen_idx);
-                self.render_plugin_ui(ctx, screen_id);
 
-                let mut tab_viewer = TabViewer {
-                    app: self,
-                    ctx,
-                    screen_id,
-                };
+                self.draw_external_screen_contents(ctx, screen_id, &mut screen);
 
-                DockArea::new(screen.dock_state())
-                    .id(Id::new(("external_screen_dock", screen_idx)))
-                    .style(Style::from_egui(ctx.style().as_ref()))
-                    .show(ctx, &mut tab_viewer);
-
-                screen.ensure_core_tabs();
-
-                // This is peak bullshit code.
+                // TODO: This is peak bullshit code.
                 self.external_screens[screen_idx] = screen;
             },
         );
+    }
+
+    pub fn draw_external_screen_contents(
+        &mut self,
+        ctx: &Context,
+        screen_id: ScreenId,
+        screen: &mut ExternalScreen,
+    ) {
+        self.render_plugin_ui(ctx, screen_id);
+
+        let mut tab_viewer = TabViewer {
+            app: self,
+            ctx,
+            screen_id,
+        };
+
+        DockArea::new(screen.dock_state())
+            .id(Id::new(("external_screen_dock", screen_id)))
+            .style(Style::from_egui(ctx.style().as_ref()))
+            .show(ctx, &mut tab_viewer);
+
+        screen.ensure_core_tabs();
     }
 }

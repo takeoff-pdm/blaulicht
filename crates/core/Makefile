@@ -1,5 +1,7 @@
 RUSTFLAGS = -C target-cpu=native -Awarnings
 export
+
+RARGS:=
 	
 all-check:
 	cargo c --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11
@@ -17,7 +19,7 @@ dhat-wasm-run:
 	cargo r --message-format short --no-default-features  --features=audio-mock --features=wayland --features=wasmtime --features=dhat
 
 prod-run:
-	cargo r -r --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11
+	cargo r -r --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11 $(RARGS)
 
 prod-build:
 	cargo b -r --message-format short --features=wayland --features=audio --features=wasmtime --features=wayland --features=x11
@@ -29,7 +31,7 @@ wasm-mock-run:
 	cargo r --message-format short --no-default-features --features=wayland --features=audio-mock --features=wasmtime
 
 mock-run:
-	cargo r --message-format short --no-default-features --features wayland --features=audio-mock
+	cargo r --message-format short --no-default-features --features wayland --features=audio-mock $(RARGS)
 
 dhat-mock-run:
 	cargo r --message-format short --no-default-features --features wayland --features=audio-mock --features=dhat

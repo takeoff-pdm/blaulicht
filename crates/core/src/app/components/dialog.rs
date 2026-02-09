@@ -33,7 +33,7 @@ impl Drop for ModalDepthGuard {
     }
 }
 
-pub struct Dialog {
+pub struct DialogBuilder {
     label: String,
     popup_size: Vec2,
     fixed_pos: Option<Vec2>,
@@ -42,50 +42,92 @@ pub struct Dialog {
     backdrop_color: Option<Color32>,
 }
 
+pub struct Dialog {
+    builder: DialogBuilder,
+    backdrop_clicked: bool,
+}
+
 impl Dialog {
     const BACKDROP_COLOR: Color32 = Color32::from_black_alpha(180);
 
     pub fn new(label: String, popup_size: Vec2) -> Self {
         Self {
-            label,
-            popup_size,
-            fixed_pos: None,
-            moveable: false,
-            with_backdrop: false,
-            backdrop_color: None,
+            builder: DialogBuilder {
+                label,
+                popup_size,
+                fixed_pos: None,
+                moveable: false,
+                with_backdrop: false,
+                backdrop_color: None,
+            },
+            backdrop_clicked: false,
         }
     }
 
     pub fn moveable(self) -> Self {
         Self {
-            moveable: true,
+            builder: DialogBuilder {
+                moveable: true,
+                ..self.builder
+            },
             ..self
         }
     }
 
     pub fn with_backdrop(self) -> Self {
         Self {
-            with_backdrop: true,
+            builder: DialogBuilder {
+                with_backdrop: true,
+                ..self.builder
+            },
             ..self
         }
     }
 
+    // pub fn raw_layout(self) -> Self {
+    //     Self {
+    //         raw_layout: true,
+    //         ..self
+    //     }
+    // }
+
+    // pub fn with_backdrop_clickable(self) -> Self {
+    //     Self {
+    //         with_backdrop: true,
+    //         ..self
+    //     }
+    // }
+
     pub fn backdrop_color(self, color: Color32) -> Self {
         Self {
-            backdrop_color: Some(color),
+            builder: DialogBuilder {
+                backdrop_color: Some(color),
+                ..self.builder
+            },
             ..self
         }
     }
 
     pub fn fixed_pos(self, pos: Vec2) -> Self {
         Self {
-            fixed_pos: Some(pos),
+            builder: DialogBuilder {
+                fixed_pos: Some(pos),
+                ..self.builder
+            },
             ..self
         }
     }
 
-    pub fn show(&self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
-        let modal_guard = self.with_backdrop.then(ModalDepthGuard::push);
+    pub fn backdrop_clicked(&self) -> bool {
+        debug_assert!(
+            self.builder.with_backdrop,
+            "Function can only be used when backdrop is active"
+        );
+        self.backdrop_clicked
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
+        let modal_guard = self.builder.with_backdrop.then(ModalDepthGuard::push);
 
         let order = if modal_guard
             .as_ref()
@@ -95,16 +137,20 @@ impl Dialog {
         } else {
             Order::Foreground
         };
-        let window_id = Id::new(format!("dialog::{}", self.label));
+        let window_id = Id::new(format!("dialog::{}", self.builder.label));
         let window_layer = LayerId::new(order, window_id);
 
-        let backdrop_layer = if self.with_backdrop {
-            Some(Self::render_popup_backdrop(
+        let backdrop_layer = if self.builder.with_backdrop {
+            let (layer, clicked) = Self::render_popup_backdrop(
                 ctx,
                 window_id.with("backdrop"),
                 order,
-                self.backdrop_color,
-            ))
+                self.builder.backdrop_color,
+            );
+
+            self.backdrop_clicked = clicked;
+
+            Some(layer)
         } else {
             None
         };
@@ -121,7 +167,7 @@ impl Dialog {
             mem.set_modal_layer(window_layer);
         });
 
-        match self.fixed_pos {
+        match self.builder.fixed_pos {
             Some(pos) => self.show_fixed_pos(ctx, window_id, order, pos, add_contents),
             None => self.show_dynamic_pos(ctx, window_id, order, add_contents),
         }
@@ -142,8 +188,8 @@ impl Dialog {
         //     screen_rect.center().y
         // );
         let center_pos = egui::Pos2::new(
-            screen_rect.center().x - self.popup_size.x / 2.0,
-            screen_rect.center().y - self.popup_size.y / 2.0,
+            screen_rect.center().x - self.builder.popup_size.x / 2.0,
+            screen_rect.center().y - self.builder.popup_size.y / 2.0,
         );
 
         // Clamp to screen boundaries
@@ -154,16 +200,16 @@ impl Dialog {
         //     .y
         //     .clamp(screen_rect.top(), screen_rect.bottom() - popup_size.y);
 
-        let window_proto = egui::Window::new(&self.label)
+        let window_proto = egui::Window::new(&self.builder.label)
             // .min_size(popup_size)
-            .fixed_size(vec2(self.popup_size.x, 0.0))
+            .fixed_size(vec2(self.builder.popup_size.x, 0.0))
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .id(window_id)
             .order(order);
 
-        let window_proto = match self.moveable {
+        let window_proto = match self.builder.moveable {
             true => window_proto.default_pos(center_pos),
             false => window_proto.fixed_pos(center_pos),
         };
@@ -195,17 +241,17 @@ impl Dialog {
         fixed_pos: Vec2,
         add_contents: impl FnOnce(&mut Ui),
     ) {
-        let window_proto = egui::Window::new(&self.label)
+        let window_proto = egui::Window::new(&self.builder.label)
             // .min_size(popup_size)
-            .min_size(self.popup_size)
-            .fixed_size(self.popup_size)
+            .min_size(self.builder.popup_size)
+            .fixed_size(self.builder.popup_size)
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .id(window_id)
             .order(order);
 
-        let window_proto = match self.moveable {
+        let window_proto = match self.builder.moveable {
             true => window_proto.default_pos(fixed_pos.to_pos2()),
             false => window_proto.fixed_pos(fixed_pos.to_pos2()),
         };
@@ -222,7 +268,7 @@ impl Dialog {
                 let frame = Frame::NONE;
 
                 frame.show(ui, |ui| {
-                    ui.set_min_size(self.popup_size);
+                    ui.set_min_size(self.builder.popup_size);
                     ui.vertical_centered(|ui| {
                         add_contents(ui);
                     });
@@ -235,7 +281,7 @@ impl Dialog {
         id: egui::Id,
         order: egui::Order,
         color: Option<Color32>,
-    ) -> egui::LayerId {
+    ) -> (egui::LayerId, bool) {
         let color = color.unwrap_or(Self::BACKDROP_COLOR);
 
         let area = egui::Area::new(id)
@@ -250,6 +296,8 @@ impl Dialog {
             mem.areas_mut().move_to_top(layer_id);
         });
 
+        let mut clicked = false;
+
         area.show(ctx, |ui| {
             // Get the full screen rect
             let screen_rect = ctx.screen_rect();
@@ -259,7 +307,10 @@ impl Dialog {
 
             // Optional: Close popup if user clicks the dark background
             if response.clicked() {
-                {}
+                {
+                    clicked = true;
+                }
+                // TODO: hook this in.
             }
 
             // Paint the semi-transparent black color
@@ -267,7 +318,7 @@ impl Dialog {
             painter.rect_filled(screen_rect, egui::CornerRadius::ZERO, color);
         });
 
-        layer_id
+        (layer_id, clicked)
     }
 }
 

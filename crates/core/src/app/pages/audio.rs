@@ -80,9 +80,13 @@ impl BlaulichtApp {
                     .map(|col| col.debug_data.clone())
                     .unwrap_or_default()
             };
-            let mut auto_weight = {
+            let (mut auto_weight, mut bass_low_value, mut bass_high_value) = {
                 let params = self.data.state.audio_params.read().unwrap();
-                params.auto_weight
+                (
+                    params.auto_weight,
+                    params.bass_freq_low,
+                    params.bass_freq_high,
+                )
             };
 
             components::Dialog::new("Info".to_string(), vec2(540.0, 360.0))
@@ -93,6 +97,39 @@ impl BlaulichtApp {
                         if components::Switch::new(&mut auto_weight).ui(ui).changed() {
                             let mut params = self.data.state.audio_params.write().unwrap();
                             params.auto_weight = auto_weight;
+                            params.changed = true;
+                        }
+                    });
+
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        let bass_low_before = bass_low_value;
+                        let bass_high_before = bass_high_value;
+
+                        ui.label(
+                            RichText::new("Bass Low (Hz)")
+                                .size(ButtonSize::Medium.dim().1),
+                        );
+                        self.bass_low_numberpad.ui(ui, &mut bass_low_value);
+
+                        ui.add_space(40.0);
+
+                        ui.label(
+                            RichText::new("Bass High (Hz)")
+                                .size(ButtonSize::Medium.dim().1),
+                        );
+                        self.bass_high_numberpad.ui(ui, &mut bass_high_value);
+
+                        if bass_low_value > bass_high_value {
+                            mem::swap(&mut bass_low_value, &mut bass_high_value);
+                        }
+
+                        if bass_low_value != bass_low_before || bass_high_value != bass_high_before
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.bass_freq_low = bass_low_value;
+                            params.bass_freq_high = bass_high_value;
                             params.changed = true;
                         }
                     });
@@ -122,6 +159,10 @@ impl BlaulichtApp {
                                 ui.label(format!(
                                     "Periodicity: {:.2}",
                                     debug_data.band_onset_periodicity[idx]
+                                ));
+                                ui.label(format!(
+                                    "Trans. Stre: {:.2}",
+                                    debug_data.band_transient_strength[idx]
                                 ));
                                 ui.label(format!("Weight: {:.2}", debug_data.band_weights[idx]));
                             });
@@ -197,8 +238,6 @@ impl BlaulichtApp {
                     let mut gate_value = params.gate as f32;
                     let mut boost_value = params.boost.unwrap_or(0) as f32;
                     let mut auto_calibrate = params.auto_calibrate;
-                    let mut bass_low_value = params.bass_freq_low;
-                    let mut bass_high_value = params.bass_freq_high;
                     // let mut filterbank_value = params.filterbank;
                     // let mut use_dp_tracking = params.use_dynamic_programming_beat;
                     drop(params);
@@ -294,37 +333,6 @@ impl BlaulichtApp {
                             }
                         });
 
-                        ui.add_space(12.0);
-
-                        ui.horizontal(|ui| {
-                            let bass_low_before = bass_low_value;
-                            let bass_high_before = bass_high_value;
-
-                            ui.label(
-                                RichText::new("Bass Low (Hz)").size(ButtonSize::Medium.dim().1),
-                            );
-                            self.bass_low_numberpad.ui(ui, &mut bass_low_value);
-
-                            ui.add_space(40.0);
-
-                            ui.label(
-                                RichText::new("Bass High (Hz)").size(ButtonSize::Medium.dim().1),
-                            );
-                            self.bass_high_numberpad.ui(ui, &mut bass_high_value);
-
-                            if bass_low_value > bass_high_value {
-                                mem::swap(&mut bass_low_value, &mut bass_high_value);
-                            }
-
-                            if bass_low_value != bass_low_before
-                                || bass_high_value != bass_high_before
-                            {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                params.bass_freq_low = bass_low_value;
-                                params.bass_freq_high = bass_high_value;
-                                params.changed = true;
-                            }
-                        });
                     }
 
                     // Set larger graph height

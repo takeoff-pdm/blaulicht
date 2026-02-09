@@ -1,6 +1,3 @@
-use std::collections::hash_map::Entry;
-
-use crate::app::components::ButtonSize;
 use crate::app::{components, external_screen, theme, AppPage, BlaulichtApp, PopupSpec};
 use crate::state::ScreenId;
 use crate::{msg::SystemMessage, state::AppStateWrapper};
@@ -8,8 +5,8 @@ use blaulicht_shared::{
     ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
 };
 
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
+// #[cfg(feature = "audio")]
+// use cpal::traits::DeviceTrait;
 
 use crossbeam_channel::TryRecvError;
 use egui::{vec2, Context, FontId, RichText};
@@ -36,8 +33,9 @@ impl BlaulichtApp {
         cc: &eframe::CreationContext<'_>,
         state: AppStateWrapper,
         initial_popup: Option<PopupSpec>,
+        desktop_mode: bool,
     ) -> Self {
-        let mut app = Self::new_default(state);
+        let mut app = Self::new_default(state, desktop_mode);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 
@@ -65,168 +63,24 @@ impl BlaulichtApp {
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Continuous rendering - always request repaints
+        // TODO: try to get actual screen FPS from X11 / wayland
+        ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
+
+        self.handle_events();
+
         if ctx.style().visuals.dark_mode {
-            theme::set_theme(ctx, theme::REKORDBOX);
+            theme::set_theme(ctx, theme::BLUE);
         }
 
         if self.render_init_popup(ctx) {
             ctx.request_repaint();
             return;
         }
+
         self.render_popup(ctx);
 
-        if self.system_ui_state.debug_open {
-            egui::Window::new("Debug")
-                .title_bar(false)
-                .fixed_size(vec2(200.0, 150.0))
-                .show(ctx, |ui| {
-                    ui.set_width(200.0);
-                    ui.set_height(150.0);
-                    let dt = ctx.input(|i| i.stable_dt);
-                    let fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-
-                    if self.fps_samples.len() + 2 == self.fps_samples.capacity() {
-                        self.fps_samples.pop_front();
-                    }
-
-                    self.fps_samples.push_back(fps);
-
-                    let fps_avg =
-                        self.fps_samples.iter().sum::<f32>() / self.fps_samples.len() as f32;
-
-                    ui.label(
-                        RichText::new(format!("FPS: {:.0}", fps_avg)).font(FontId::monospace(24.0)),
-                    );
-
-                    ui.separator();
-                    let perf_fontsize = 12.0;
-
-                    ui.label(
-                        RichText::new(format!("DMX ENGINE: {:?}", self.tick_speeds.dmx.dmx_engine))
-                            .font(FontId::monospace(perf_fontsize)),
-                    );
-
-                    ui.label(
-                        RichText::new(format!("DMX WRITE: {:?}", self.tick_speeds.dmx.dmx_write))
-                            .font(FontId::monospace(perf_fontsize)),
-                    );
-
-                    ui.separator();
-
-                    ui.label(
-                        RichText::new(format!("PLUGINS: {:?}", self.tick_speeds.plugins))
-                            .font(FontId::monospace(perf_fontsize)),
-                    );
-
-                    ui.label(
-                        RichText::new(format!("LOOP TOT: {:?}", self.tick_speeds.loop_total))
-                            .font(FontId::monospace(perf_fontsize)),
-                    );
-
-                    ui.label(
-                        RichText::new(format!("AUDIO: {:?}", self.tick_speeds.audio_processing))
-                            .font(FontId::monospace(perf_fontsize)),
-                    );
-                });
-        }
-
-        //
-        // At the beginning, process any incoming state changes.
-        //
-
-        let mut empty = 0;
-        loop {
-            match self.data.event_bus_connection.try_recv() {
-                // Don't handle web to avoid infinite loopbacks.
-                Some(control_event) if control_event.originator() != EventOriginator::Web => {
-                    if let ControlEvent::MainUi(main_ui_event) = control_event.body() {
-                        match main_ui_event {
-                            MainUiEvent::NavigatePage(app_page) => {
-                                debug!("[UI] Navigate to: {app_page:?}");
-                                self.current_page = app_page;
-                            }
-                            MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
-                                debug!("[UI] Set plugin <{plugin_id}> visibility to: {open}");
-                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-                                if let Entry::Occupied(ref mut entry) = map.entry(plugin_id) {
-                                    entry.get_mut().open = open;
-                                };
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    empty += 1;
-                }
-            }
-
-            match self.data.system_message_receiver.try_recv() {
-                Ok(sys) => match sys {
-                    SystemMessage::Heartbeat(_) => {
-                        self.last_heartbeat_frame = self.frame_count;
-                    }
-                    SystemMessage::Log(log_msg, level) => {
-                        self.log_window
-                            .add_log(level, log_msg, "System".to_string());
-                    }
-                    SystemMessage::WasmLog(wasm_log_body) => {
-                        self.log_window.add_log(
-                            wasm_log_body.level.clone(),
-                            format!("PID: {} | {}", wasm_log_body.plugin_id, wasm_log_body.msg),
-                            "WASM".to_string(),
-                        );
-                    }
-                    SystemMessage::TickSpeeds(speeds) => {
-                        self.tick_speeds = speeds;
-                    }
-                    SystemMessage::AudioSelected(device) => {
-                        // self.log_window.add_log(
-                        //     LogLevel::Info,
-                        //     format!("Audio device selected: {}", if device.is_some() { "Yes" } else { "No" }),
-                        //     "Audio".to_string(),
-                        // );
-                    }
-                    SystemMessage::AudioDevicesView(items) => {
-                        // Check if number of devices changed.
-                        //
-                        if self.available_audio_devices.len() != items.len() {
-                            self.log_window.add_log(
-                                LogLevel::Debug,
-                                format!("Available audio devices updated: {} devices", items.len()),
-                                "Audio".to_string(),
-                            );
-                            let items_str = items
-                                .into_iter()
-                                .map(|(_, dev)| dev.name().unwrap())
-                                .collect();
-                            self.available_audio_devices = items_str;
-                        }
-                    }
-                    SystemMessage::DMX(dmx_msg) => {
-                        // self.log_window.add_log(
-                        //     LogLevel::Info,
-                        //     format!("DMX message: {:?}", dmx_msg),
-                        //     "DMX".to_string(),
-                        // );
-                    }
-                    SystemMessage::SavePluginState {
-                        plugin_name,
-                        state_data,
-                    } => {}
-                },
-                Err(TryRecvError::Empty) => {
-                    empty += 1;
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => {
-                    unreachable!("CANNOT REACH")
-                }
-            }
-
-            if empty >= 3 {
-                break;
-            }
-        }
+        self.debug_dialog(ctx);
 
         // Update all graphs with current data
         {
@@ -250,84 +104,43 @@ impl eframe::App for BlaulichtApp {
             }
         }
 
-        // Navbar
-        self.navbar_ui(ctx);
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // Continuous rendering - always request repaints
-            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
-
-            // // Update animation time for continuous rendering
-            self.frame_count += 1;
-            self.animation_time += 0.016; // 16ms = 0.016 seconds
-
-            // Page content based on selected tab
-            let page = self.current_page;
-            self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN);
-        });
-
-        // let plugin_id_copy = *plugin_id;
-        // let ops_copy = ops_map.get(plugin_id).cloned();
-        // let data_clone = self.data.clone();
-
-        // Render per-plugin UI windows (visible across pages)
-        self.render_plugin_ui(ctx, ScreenId::MAIN);
-
-        for i in 0..self.external_screens.len() {
-            self.render_external_screen(ctx, i);
+        match self.desktop_mode {
+            true => {
+                let mut screen = self.main_screen_desktop_mode.clone();
+                self.draw_external_screen_contents(ctx, ScreenId::MAIN, &mut screen);
+                // TODO: this is completely broken.
+                self.main_screen_desktop_mode = screen;
+            }
+            false => {
+                self.render_main_screen(ctx);
+            }
         }
     }
 }
 
 impl BlaulichtApp {
-    fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        self.log_window.draw(ctx, ui);
+    fn render_main_screen(&mut self, ctx: &Context) {
+        // Navbar
+        self.show_navbar(ctx);
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // // Update animation time for continuous rendering
+            self.frame_count += 1; // TODO: when does this overflow?
+            self.animation_time += 0.016; // 16ms ~= 60fps
+
+            let page = self.navbar.page();
+            self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN);
+        });
+
+        // Render per-plugin UI windows.
+        self.render_plugin_ui(ctx, ScreenId::MAIN);
+
+        for i in 0..self.external_screens.len() {
+            self.drive_external_screen(ctx, i);
+        }
     }
 
-    pub fn page_content_based_on_tab(
-        &mut self,
-        page: AppPage,
-        ui: &mut egui::Ui,
-        ctx: &Context,
-        screen_id: ScreenId,
-    ) {
-        match page {
-            AppPage::Logs => {
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        for i in 0..5 {
-                            components::button(
-                                ui,
-                                false,
-                                "Tab x",
-                                ButtonSize::Medium.with_height(ButtonSize::Small.dim().0.y),
-                            );
-                        }
-                    });
-                    self.logs_ui(ui, ctx);
-                });
-            }
-            AppPage::System => {
-                self.system_ui(ui, ctx, screen_id);
-            }
-            AppPage::Audio => {
-                self.audio_ui(ui, ctx);
-            }
-            AppPage::FixturesSetup => {
-                self.fixtures_ui_setup(ui, ctx);
-            }
-            AppPage::View => {
-                self.view_ui(ui, ctx);
-            }
-            AppPage::ViewPerformance => {
-                self.view_perf_ui(ui, ctx);
-            }
-            AppPage::FixturesPerformance => {
-                self.fixtures_ui(ui, ctx);
-            }
-            AppPage::Animations => {
-                self.animations_ui(ctx, ui);
-            }
-        }
+    pub fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        self.log_window.draw(ctx, ui);
     }
 }

@@ -54,6 +54,7 @@ pub const BASS_PEAK_FRAMES: usize = 800;
 pub const BASS_MODIFIER: usize = 60;
 pub const ONSET_SAMPLE_PERIOD_MS: usize = 10;
 pub const ONSET_HISTORY_FRAMES: usize = 600;
+const TRANSIENT_HISTORY_MS: usize = 10_000;
 const ONSET_EMA_ALPHA: f32 = 0.2;
 const ONSET_LONG_ALPHA: f32 = 0.01;
 const ONSET_PEAK_STDDEV: f32 = 1.5;
@@ -67,6 +68,10 @@ const WEIGHT_SOFTMAX_TEMPERATURE: f32 = 1.0;
 // Lower -> steadier weights, higher -> faster adaptation.
 // With ~10 ms updates, 0.01 is roughly a ~1s time constant.
 const WEIGHT_SMOOTH_ALPHA: f32 = 0.0001;
+// Faster EMA for transient tracking.
+const TRANSIENT_SHORT_ALPHA: f32 = 0.3;
+// Smoothing for attack/decay slope tracking.
+const TRANSIENT_SLOPE_ALPHA: f32 = 0.05;
 const MIN_BPM: f32 = 80.0;
 const MAX_BPM: f32 = 200.0;
 const MID_FREQ_HIGH: f32 = 2000.0;
@@ -183,13 +188,34 @@ where
 
             let mut band_onsets = [0.0_f32; 3];
             for (idx, energy) in band_energies.iter().enumerate() {
-                let ema = self.scratch.band_energy_ema[idx];
-                if ema <= 0.0 {
-                    self.scratch.band_energy_ema[idx] = *energy;
+                let energy = *energy;
+                let long_prev = self.scratch.band_energy_ema[idx];
+                if long_prev <= 0.0 {
+                    self.scratch.band_energy_ema[idx] = energy;
                 } else {
-                    band_onsets[idx] = (*energy - ema).max(0.0);
-                    self.scratch.band_energy_ema[idx] = ema + ONSET_LONG_ALPHA * (*energy - ema);
+                    band_onsets[idx] = (energy - long_prev).max(0.0);
+                    self.scratch.band_energy_ema[idx] =
+                        long_prev + ONSET_LONG_ALPHA * (energy - long_prev);
                 }
+
+                let short_prev = self.scratch.band_energy_ema_short[idx];
+                let short_new = if short_prev <= 0.0 {
+                    energy
+                } else {
+                    short_prev + TRANSIENT_SHORT_ALPHA * (energy - short_prev)
+                };
+                self.scratch.band_energy_ema_short[idx] = short_new;
+
+                let delta = short_new - short_prev;
+                let rise = if delta > 0.0 { delta } else { 0.0 };
+                let fall = if delta < 0.0 { -delta } else { 0.0 };
+
+                let rise_prev = self.scratch.band_energy_rise_ema[idx];
+                let fall_prev = self.scratch.band_energy_fall_ema[idx];
+                self.scratch.band_energy_rise_ema[idx] =
+                    rise_prev + TRANSIENT_SLOPE_ALPHA * (rise - rise_prev);
+                self.scratch.band_energy_fall_ema[idx] =
+                    fall_prev + TRANSIENT_SLOPE_ALPHA * (fall - fall_prev);
             }
 
             let mut band_onset_peakiness = [0.0_f32; 3];
@@ -241,6 +267,16 @@ where
                 let (mean, threshold) = Self::onset_threshold(history);
                 onset_peak = self.scratch.onset_ema > threshold
                     && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
+
+                if onset_peak {
+                    for idx in 0..3 {
+                        let rise = self.scratch.band_energy_rise_ema[idx];
+                        let fall = self.scratch.band_energy_fall_ema[idx];
+                        let strength = rise / (rise + fall + ONSET_METRIC_EPS);
+                        let history = &mut self.scratch.band_transient_history[idx];
+                        history.push_back((now, strength));
+                    }
+                }
             }
 
             const SECONDS_IN_A_MINUTE: f64 = 60.0;
@@ -337,11 +373,31 @@ where
 
             // let is_bass_avg_short = (self.scratch.onset_ema * 10.0) as u8;
 
+            let mut band_transient_strength = [0.0_f32; 3];
+            for idx in 0..3 {
+                let history = &mut self.scratch.band_transient_history[idx];
+                while let Some((timestamp, _)) = history.front() {
+                    if now.saturating_sub(*timestamp) > TRANSIENT_HISTORY_MS {
+                        history.pop_front();
+                    } else {
+                        break;
+                    }
+                }
+
+                if history.is_empty() {
+                    band_transient_strength[idx] = 0.0;
+                } else {
+                    let sum = history.iter().map(|(_, v)| *v).sum::<f32>();
+                    band_transient_strength[idx] = sum / history.len() as f32;
+                }
+            }
+
             let debug_data = SignalDebugData {
                 bass_range,
                 band_energies,
                 band_onset_peakiness,
                 band_onset_periodicity,
+                band_transient_strength,
                 band_weights: self.scratch.band_weights,
             };
 

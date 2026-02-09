@@ -87,7 +87,7 @@ impl BlaulichtApp {
 
         let order = egui::Order::Foreground;
         let window_id = egui::Id::new("init_modal_window");
-        let backdrop_layer = Dialog::render_popup_backdrop(
+        let (backdrop_layer, _clicked) = Dialog::render_popup_backdrop(
             ctx,
             window_id.with("backdrop"),
             order,
@@ -138,6 +138,15 @@ impl BlaulichtApp {
                     // }
 
                     ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE));
+
+                    ui.label(
+                        self.log_window
+                            .logs
+                            .iter()
+                            .last()
+                            .map(|l| l.message.clone())
+                            .unwrap_or_default(),
+                    );
 
                     let progress = 1.0
                         - open_elapsed.as_millis() as f32 / INIT_POPUP_DURATION.as_millis() as f32;

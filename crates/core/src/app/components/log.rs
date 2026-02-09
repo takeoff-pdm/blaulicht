@@ -21,7 +21,7 @@ fn log_level_color(from: &LogLevel) -> egui::Color32 {
 
 /// A log window component that displays scrolling log messages
 pub struct LogWindow {
-    logs: VecDeque<LogEntry>,
+    pub logs: VecDeque<LogEntry>,
     max_logs: usize,
     auto_scroll: bool,
     filter_text: String,
@@ -34,7 +34,7 @@ pub struct LogWindow {
 pub struct LogEntry {
     timestamp: std::time::SystemTime,
     level: LogLevel,
-    message: String,
+    pub message: String,
     source: String,
 }
 

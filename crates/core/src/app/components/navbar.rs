@@ -20,9 +20,29 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
     }
 }
 
-impl BlaulichtApp {
-    pub fn navbar_ui(&mut self, ctx: &Context) {
+pub struct Navbar {
+    pub current_page: AppPage,
+}
+
+impl Navbar {
+    pub fn new(initial_page: AppPage) -> Self {
+        Self {
+            current_page: initial_page,
+        }
+    }
+
+    pub fn navigate_to(&mut self, page: AppPage) {
+        self.current_page = page;
+    }
+
+    pub fn page(&self) -> AppPage {
+        self.current_page
+    }
+
+    pub fn ui(&mut self, ctx: &Context) -> Option<AppPage> {
         const WIDTH: f32 = 45.0;
+
+        let mut changed = None;
 
         egui::SidePanel::left("navbar")
             .resizable(false)
@@ -46,14 +66,7 @@ impl BlaulichtApp {
 
                     if components::button(ui, is_selected, &label, button_size) && !is_selected {
                         self.current_page = page.clone();
-
-                        // Send event to notify plugins.
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::MainUi(MainUiEvent::NavigatePage(page)),
-                            ));
+                        changed = Some(page.clone());
                     }
 
                     if idx + 1 < button_count {
@@ -61,5 +74,7 @@ impl BlaulichtApp {
                     }
                 }
             });
+
+        changed
     }
 }
