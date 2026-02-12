@@ -80,6 +80,31 @@ impl From<LogLevel> for i32 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PluginStateLocation {
+    Showfile = 0,
+    Global = 1,
+}
+
+impl TryFrom<u8> for PluginStateLocation {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Showfile,
+            1 => Self::Global,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl From<PluginStateLocation> for u8 {
+    fn from(value: PluginStateLocation) -> Self {
+        value as u8
+    }
+}
+
 // const TICKINPUT_WIREFORMAT_LENGTH: usize = 2;
 
 // const VALUE_CLOCK_INDEX: usize = 0;

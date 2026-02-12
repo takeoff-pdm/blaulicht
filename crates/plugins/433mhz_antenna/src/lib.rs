@@ -263,14 +263,14 @@ impl SamplePlugin {
             remote_definitions: self.remote_definitions.clone(),
             remote_enabled: self.remote_enabled.clone(),
         }) {
-            bpf::save_plugin_state(&json);
+            bpf::save_plugin_state(bpf::PluginStateLocation::Showfile, &json);
         }
     }
 
     fn load_state(&mut self) {
         let mut needs_save = false;
 
-        if let Some(json) = bpf::load_plugin_state() {
+        if let Some(json) = bpf::load_plugin_state(bpf::PluginStateLocation::Showfile) {
             if let Ok(saved) = serde_json::from_str::<PersistedState>(&json) {
                 self.remote_definitions = saved.remote_definitions;
                 self.remote_enabled = saved.remote_enabled;

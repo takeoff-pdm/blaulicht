@@ -1,5 +1,5 @@
 use blaulicht_audio_engine::Signal;
-use blaulicht_shared::LogLevel;
+use blaulicht_shared::{LogLevel, PluginStateLocation};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, time::Duration};
 
@@ -61,6 +61,7 @@ pub enum SystemMessage {
     SavePluginState {
         plugin_name: String,
         state_data: String,
+        location: PluginStateLocation,
     },
 }
 

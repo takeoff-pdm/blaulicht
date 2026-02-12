@@ -88,6 +88,10 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_state = Arc::new(AppState::new(&cfg.plugins));
+    {
+        let mut global_state = app_state.plugin_state_storage_global.lock().unwrap();
+        *global_state = cfg.plugin_state.clone();
+    }
 
     {
         // Audio recording and analysis thread.

@@ -1,7 +1,8 @@
-use crate::{app::BlaulichtApp, msg::SystemMessage};
-use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent};
+use crate::{app::BlaulichtApp, config, msg::SystemMessage};
+use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
 use crossbeam_channel::TryRecvError;
 use std::collections::hash_map::Entry;
+use std::path::PathBuf;
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
@@ -85,7 +86,20 @@ impl BlaulichtApp {
                     SystemMessage::SavePluginState {
                         plugin_name,
                         state_data,
-                    } => {}
+                        location,
+                    } => {
+                        if location == PluginStateLocation::Global {
+                            let mut config_mut = self.data.config.lock().unwrap();
+                            config_mut
+                                .plugin_state
+                                .insert(plugin_name.clone(), state_data.clone());
+                            let config_path = PathBuf::from(self.data.config_path.clone());
+                            if let Err(err) = config::write_config(config_path, config_mut.clone())
+                            {
+                                log::error!("Failed to write config after global state save: {err}");
+                            }
+                        }
+                    }
                 },
                 Err(TryRecvError::Empty) => {
                     empty += 1;

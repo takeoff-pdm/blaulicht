@@ -4,6 +4,7 @@ use blaulicht_shared::ControlEvent;
 use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
 use blaulicht_shared::LogLevel;
+use blaulicht_shared::PluginStateLocation;
 use blaulicht_shared::TickInput;
 
 #[cfg(feature = "audio")]
@@ -1418,12 +1419,17 @@ impl PluginManager {
         // End serial interface.
         //
 
-        let state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
         let system_out = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_save_plugin_state",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, data_ptr: i32, data_len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  location: i32,
+                  data_ptr: i32,
+                  data_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -1436,6 +1442,8 @@ impl PluginManager {
 
                 let state_data = String::from_utf8_lossy(&buf).to_string();
                 let plugin_name = format!("plugin_{}", plugin_id);
+                let location =
+                    PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
 
                 println!(
                     "Saving plugin state for {}: {} bytes",
@@ -1444,7 +1452,11 @@ impl PluginManager {
                 );
 
                 {
-                    let mut storage = state_storage.lock().unwrap();
+                    let storage = match location {
+                        PluginStateLocation::Showfile => Arc::clone(&showfile_state_storage),
+                        PluginStateLocation::Global => Arc::clone(&global_state_storage),
+                    };
+                    let mut storage = storage.lock().unwrap();
                     storage.insert(plugin_name.clone(), state_data.clone());
                 }
 
@@ -1452,6 +1464,7 @@ impl PluginManager {
                     .send(SystemMessage::SavePluginState {
                         plugin_name,
                         state_data,
+                        location,
                     })
                     .unwrap_or_else(|e| {
                         error!("Failed to send save plugin state message: {}", e);
@@ -1459,16 +1472,27 @@ impl PluginManager {
             },
         )?;
 
-        let state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
+        let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_load_plugin_state",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  location: i32,
+                  buffer_ptr: i32,
+                  buffer_len: i32| {
                 let plugin_name = format!("plugin_{}", plugin_id);
+                let location =
+                    PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
 
                 println!("Loading plugin state for {}", plugin_name);
 
-                let storage = state_storage.lock().unwrap();
+                let storage = match location {
+                    PluginStateLocation::Showfile => Arc::clone(&showfile_state_storage),
+                    PluginStateLocation::Global => Arc::clone(&global_state_storage),
+                };
+                let storage = storage.lock().unwrap();
                 let state_data = storage.get(&plugin_name);
 
                 if let Some(data) = state_data {

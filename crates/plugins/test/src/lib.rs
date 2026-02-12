@@ -50,12 +50,12 @@ impl Default for SamplePlugin {
 impl SamplePlugin {
     fn save(&self) {
         if let Ok(json) = serde_json::to_string(&self.state) {
-            bpf::save_plugin_state(&json);
+            bpf::save_plugin_state(bpf::PluginStateLocation::Showfile, &json);
         }
     }
 
     fn initialize(&mut self, _tick: TickInput) {
-        if let Some(json) = bpf::load_plugin_state() {
+        if let Some(json) = bpf::load_plugin_state(bpf::PluginStateLocation::Showfile) {
             if let Ok(saved) = serde_json::from_str::<SaveState>(&json) {
                 self.state = saved;
             } else {
