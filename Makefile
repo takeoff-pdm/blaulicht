@@ -2,6 +2,7 @@ DIR := ${CURDIR}
 VERSION = 0.6.7
 BUILD_OUTPUT_DIR = blaulicht-dist
 PACKAGE = blaulicht-core
+RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./target)
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \
 		build-web build-archives build-archive-armhf build-archive-armel \
@@ -10,23 +11,23 @@ PACKAGE = blaulicht-core
 # For cross-compilation to X86_64 Musl
 cargo-build-x64:
 	docker run -it \
-	-v $(DIR)/target:/build \
+	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUST_MIN_STACK=16777216 \
 	blaulicht-cross \
 	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
-	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64
+	cp $(RUST_TARGET_DIR)/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64
 
 # For cross-compilation to X86_64 Musl (HASWELL)
 cargo-build-x64-haswell:
 	docker run -it \
-	-v $(DIR)/target:/build \
+	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUSTFLAGS="-C target-cpu=haswell" \
 	-e RUST_MIN_STACK=16777216 \
 	blaulicht-cross \
 	cargo build --package $(PACKAGE) --release --features=wasmtime --features=audio --features=wayland --features=x11 --target x86_64-unknown-linux-gnu
-	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64-haswell
+	cp $(RUST_TARGET_DIR)/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht-x64-haswell
 
 # audio-cargo-build-x64:
 # 	docker run -it \
@@ -37,7 +38,7 @@ cargo-build-x64-haswell:
 
 cargo-build-x64-debug:
 	docker run -it \
-	-v $(DIR)/target:/build \
+	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	blaulicht-cross \
 	cargo build --target x86_64-unknown-linux-gnu
@@ -61,7 +62,7 @@ build-archive-x64: create-build-dir cargo-build-x64 cargo-build-x64-haswell
 
 build-archive-x64-debug: cargo-build-x64-debug
 	mkdir -p ./$(BUILD_OUTPUT_DIR)
-	cp ./target/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
+	cp $(RUST_TARGET_DIR)/x86_64-unknown-linux-gnu/release/blaulicht-core ./$(BUILD_OUTPUT_DIR)/blaulicht
 	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
 	rm -rf $(BUILD_OUTPUT_DIR)
 
