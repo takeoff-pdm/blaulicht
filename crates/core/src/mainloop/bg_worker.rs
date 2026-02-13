@@ -6,6 +6,7 @@ use std::{
 };
 
 use blaulicht_audio_engine::SpectrogramDisplayOptions;
+use egui::ColorImage;
 use log::{info, warn};
 
 use crate::state::AppState;
@@ -61,7 +62,8 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 (*s).clone()
             };
 
-            let image = crate::app::components::create_spectrogram_image(
+            let mut image = ColorImage::default();
+            crate::app::components::create_spectrogram_image(
                 &spec,
                 dim.0 as usize,
                 dim.1 as usize,
@@ -69,7 +71,9 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                     // include_bass_markers: false,
                     include_beat_markers: false,
                 },
+                &mut image,
             );
+
             for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
                 let source_pixel = image.pixels[y as usize * image.width() + x as usize];
 

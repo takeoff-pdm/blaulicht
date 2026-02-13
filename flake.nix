@@ -60,6 +60,7 @@
             dbus
             mpv
             pythonEnv
+            linuxPackages.perf 
         ];
       in
       {

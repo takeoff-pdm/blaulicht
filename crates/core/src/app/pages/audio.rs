@@ -107,18 +107,12 @@ impl BlaulichtApp {
                         let bass_low_before = bass_low_value;
                         let bass_high_before = bass_high_value;
 
-                        ui.label(
-                            RichText::new("Bass Low (Hz)")
-                                .size(ButtonSize::Medium.dim().1),
-                        );
+                        ui.label(RichText::new("Bass Low (Hz)").size(ButtonSize::Medium.dim().1));
                         self.bass_low_numberpad.ui(ui, &mut bass_low_value);
 
                         ui.add_space(40.0);
 
-                        ui.label(
-                            RichText::new("Bass High (Hz)")
-                                .size(ButtonSize::Medium.dim().1),
-                        );
+                        ui.label(RichText::new("Bass High (Hz)").size(ButtonSize::Medium.dim().1));
                         self.bass_high_numberpad.ui(ui, &mut bass_high_value);
 
                         if bass_low_value > bass_high_value {
@@ -258,24 +252,34 @@ impl BlaulichtApp {
                                 Color32::GRAY,
                             );
                         } else {
-                            let image = components::create_spectrogram_image(
+                            components::create_spectrogram_image(
                                 &spec,
                                 spec_width as usize,
                                 spec_height as usize,
                                 &SpectrogramDisplayOptions {
                                     include_beat_markers: true,
                                 },
+                                &mut self.spectrogram_image_buffer,
                             );
 
-                            {}
+                            match &mut self.spectrogram_texture_handle {
+                                Some(ref mut handle) => {
+                                    handle.set(
+                                        self.spectrogram_image_buffer.clone(),
+                                        egui::TextureOptions::NEAREST,
+                                    );
+                                }
+                                None => {
+                                    let texture = ctx.load_texture(
+                                        "spectrogram",
+                                        self.spectrogram_image_buffer.clone(),
+                                        egui::TextureOptions::NEAREST,
+                                    );
+                                    self.spectrogram_texture_handle = Some(texture);
+                                }
+                            };
 
-                            let texture = ctx.load_texture(
-                                "spectrogram",
-                                image,
-                                egui::TextureOptions::NEAREST,
-                            );
-
-                            ui.image(&texture);
+                            ui.image(self.spectrogram_texture_handle.as_ref().unwrap());
                         }
                     }
 
@@ -332,7 +336,6 @@ impl BlaulichtApp {
                                 params.changed = true;
                             }
                         });
-
                     }
 
                     // Set larger graph height

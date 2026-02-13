@@ -17,7 +17,7 @@ use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
-use egui::Color32;
+use egui::{Color32, ColorImage, TextureHandle};
 use egui_dock::DockState;
 use egui_file::FileDialog;
 use pages::ViewUI;
@@ -134,6 +134,8 @@ pub struct BlaulichtApp {
     // Spectrogram smooth scrolling
     spectro_scroll_px_offset: f32,
     spectro_last_instant: Instant,
+    spectrogram_image_buffer: ColorImage,
+    spectrogram_texture_handle: Option<TextureHandle>,
 
     pub data: AppStateWrapper,
 
@@ -286,6 +288,8 @@ impl BlaulichtApp {
             animation_time: 0.0,
             spectro_scroll_px_offset: 0.0,
             spectro_last_instant: Instant::now(),
+            spectrogram_image_buffer: ColorImage::default(),
+            spectrogram_texture_handle: None,
             data,
             tick_speeds: TickSpeeds::default(),
             fps_samples: VecDeque::with_capacity(5),

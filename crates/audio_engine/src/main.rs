@@ -15,7 +15,7 @@ use blaulicht_audio_engine::{
     SpectrogramDisplayOptions,
 };
 use clap::Parser;
-use egui::mutex::Mutex;
+use egui::{ColorImage, mutex::Mutex};
 use kdam::{tqdm, BarExt};
 
 const FREQ_BUFFER_SIZE: usize = 2048;
@@ -40,7 +40,9 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
     let dim = (700, 200);
     let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
 
-    let image = create_spectrogram_image(
+    let mut image = ColorImage::default();
+
+    create_spectrogram_image(
         &spec,
         dim.0 as usize,
         dim.1 as usize,
@@ -48,6 +50,7 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
             // include_bass_markers: false,
             include_beat_markers: false,
         },
+        &mut image,
     );
 
     for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {

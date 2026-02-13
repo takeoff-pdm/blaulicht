@@ -51,3 +51,11 @@ libc = "0.2"
 
 # [profile.release]
 # opt-level = 3
+
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "spectrogram_performance"
+harness = false
