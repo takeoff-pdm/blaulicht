@@ -10,10 +10,10 @@ spectrogram_refresh_hz = 60
 last_open_showfile = "/home/mik/BL_DBG.json"
 
 [stream]
+channel_count = 2
 fft_resolution = 4096
 refresh_rate = 60
 gravity = 100.0
-channel_count = 2
 
 [stream.processor]
 sampling_rate = 48000
@@ -23,7 +23,6 @@ frequency_bounds = [
 ]
 volume = 1.0
 volume_normalisation = "Mixture"
-# volume_normalisation = "Exponential"
 position_normalisation = "Harmonic"
 interpolation = "Cubic"
 

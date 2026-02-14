@@ -20,9 +20,11 @@ except ImportError as exc:
     ) from exc
 
 try:
-    import pyartnet  # noqa: F401
+    import stupidArtnet  # noqa: F401
 except ImportError as exc:
-    raise SystemExit("pyartnet is required. Install the pyartnet package.") from exc
+    raise SystemExit(
+        "stupidartnet is required. Install the stupidartnet package."
+    ) from exc
 
 ARTNET_HEADER = b"Art-Net\x00"
 ARTNET_PORT = 6454
@@ -112,20 +114,30 @@ def capture_baseline(
     universe_filter: Optional[int],
     frames: int,
     timeout_s: float,
-) -> Optional[bytes]:
+) -> Tuple[Optional[bytes], Optional[float]]:
     baseline = None
     remaining = frames
     deadline = time.monotonic() + timeout_s
+    last_ts: Optional[int] = None
+    intervals: list[int] = []
     while remaining > 0:
         if time.monotonic() > deadline:
-            return baseline
+            break
         result = recv_artdmx(sock, universe_filter, timeout_s=0.5)
         if result is None:
             continue
-        _universe, data, _ts = result
+        _universe, data, ts = result
         baseline = data
+        if last_ts is not None:
+            intervals.append(ts - last_ts)
+        last_ts = ts
         remaining -= 1
-    return baseline
+    rate_hz = None
+    if intervals:
+        avg_ns = sum(intervals) / len(intervals)
+        if avg_ns > 0:
+            rate_hz = 1_000_000_000 / avg_ns
+    return baseline, rate_hz
 
 
 def max_delta(a: bytes, b: bytes) -> int:
@@ -161,6 +173,37 @@ def wait_for_change(
     return None
 
 
+def wait_for_playback_restart(player: mpv.MPV, timeout_s: Optional[float]) -> bool:
+    try:
+        event = player.wait_for_event("playback-restart", timeout=timeout_s)
+    except Exception as exc:
+        print(f"Failed waiting for playback restart: {exc}", file=sys.stderr)
+        return False
+    if event is None:
+        return False
+    return True
+
+
+def wait_for_zero(
+    sock: socket.socket,
+    universe_filter: Optional[int],
+    window: Optional[ChannelWindow],
+    timeout_s: float,
+) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        result = recv_artdmx(sock, universe_filter, timeout_s=0.5)
+        if result is None:
+            continue
+        _universe, data, _ts = result
+        data_window = window.slice(data) if window else data
+        if not data_window:
+            continue
+        if all(value == 0 for value in data_window):
+            return True
+    return False
+
+
 def format_ms(ns: int) -> str:
     return f"{ns / 1_000_000:.2f} ms"
 
@@ -184,8 +227,22 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--baseline-timeout", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=8.0)
     parser.add_argument("--min-delta", type=int, default=1)
-    parser.add_argument("--runs", type=int, default=1)
-    parser.add_argument("--cooldown-ms", type=int, default=500)
+    parser.add_argument(
+        "-l",
+        "--loops",
+        "--runs",
+        dest="runs",
+        type=int,
+        default=1,
+        help="Number of runs to average.",
+    )
+    parser.add_argument("--cooldown-ms", type=int, default=100)
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Wait for a keypress before starting playback for each run.",
+    )
     parser.add_argument(
         "--no-stop",
         action="store_true",
@@ -197,6 +254,9 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 def main(argv: Iterable[str]) -> int:
     args = parse_args(argv)
+    if args.runs < 1:
+        print("--loops must be >= 1", file=sys.stderr)
+        return 2
 
     if args.channel is not None:
         if args.channel < 1:
@@ -223,7 +283,7 @@ def main(argv: Iterable[str]) -> int:
     for run in range(1, args.runs + 1):
         if args.verbose:
             print(f"Run {run}/{args.runs}: waiting for baseline Art-Net frames...")
-        baseline = capture_baseline(
+        baseline, rate_hz = capture_baseline(
             sock,
             universe_filter=args.universe,
             frames=max(args.baseline_frames, 1),
@@ -232,13 +292,30 @@ def main(argv: Iterable[str]) -> int:
         if baseline is None:
             print("No Art-Net DMX received during baseline window.", file=sys.stderr)
             return 1
+        if rate_hz is not None:
+            print(f"Run {run}: DMX rate ~{rate_hz:.1f} Hz")
+
+        if args.interactive:
+            prompt = f"Run {run}: press Enter to start playback..."
+            try:
+                input(prompt)
+            except EOFError:
+                print("Interactive input unavailable.", file=sys.stderr)
+                return 1
 
         audio_buffer.rewind()
         if args.verbose:
             print(f"Run {run}: starting playback via libmpv")
-        start_ns = time.monotonic_ns()
         player.command("loadfile", audio_buffer.source, "replace")
         player.pause = False
+        if args.verbose:
+            print(f"Run {run}: waiting for playback restart event...")
+        if not wait_for_playback_restart(player, timeout_s=args.timeout):
+            print("Timed out waiting for playback restart.", file=sys.stderr)
+            if not args.no_stop:
+                player.command("stop")
+            return 1
+        start_ns = time.monotonic_ns()
 
         change = wait_for_change(
             sock,
@@ -265,8 +342,19 @@ def main(argv: Iterable[str]) -> int:
         if not args.no_stop:
             player.command("stop")
 
-        if run < args.runs and args.cooldown_ms > 0:
-            time.sleep(args.cooldown_ms / 1000.0)
+        if run < args.runs:
+            if args.verbose:
+                print(f"Run {run}: waiting for DMX to return to zero...")
+            if not wait_for_zero(
+                sock,
+                universe_filter=args.universe,
+                window=window,
+                timeout_s=max(args.baseline_timeout, 1.0),
+            ):
+                print("Timed out waiting for DMX to return to zero.", file=sys.stderr)
+                return 1
+            if args.cooldown_ms > 0:
+                time.sleep(args.cooldown_ms / 1000.0)
 
     if len(latencies) > 1:
         avg_ns = sum(latencies) // len(latencies)

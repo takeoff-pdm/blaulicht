@@ -8,7 +8,7 @@ This directory contains a simple end-to-end harness that:
 - Configure an Art-Net receiver in the app (e.g. `127.0.0.1:6454`).
 - Load a showfile with a single fixture using the `audiovolume` animation.
 - Ensure the audio input is wired (manual loopback is fine).
-- Install libmpv + python bindings and pyartnet.
+- Install libmpv + python bindings and stupidartnet.
 
 ## Usage
 Run the system as normal, then execute:

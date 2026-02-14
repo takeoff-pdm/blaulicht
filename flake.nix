@@ -8,9 +8,11 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
         pythonEnv = pkgs.python3.withPackages (ps: [
             ps.scapy
             (ps.mpv or (ps."python-mpv" or ps.python_mpv))
+            ps.stupidartnet
         ]);
 
         libraries = with pkgs;[
