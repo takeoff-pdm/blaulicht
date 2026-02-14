@@ -8,7 +8,10 @@ use anyhow::{anyhow, Context};
 use blaulicht_shared::CollectedAudioSnapshot;
 use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
-use crate::{AudioSource, Frequency, Signal};
+use crate::{
+    AudioSource, Frequency, Signal, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+};
 use std::{collections::VecDeque, ops::Range};
 
 // Exists for unifying the output used for the main engine (DMX + plugins) and the spectrogram.
@@ -88,6 +91,18 @@ pub struct CollectorScratchParameters {
     pub rolling_frames: usize,
     pub bass_frames: usize,
     pub bass_peak_frames: usize,
+}
+
+impl Default for CollectorScratchParameters {
+    fn default() -> Self {
+        Self {
+            volume_frames: ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+            long_historic_frames: LONG_HISTORIC_FRAMES,
+            rolling_frames: ROLLING_AVERAGE_FRAMES,
+            bass_frames: BASS_FRAMES,
+            bass_peak_frames: BASS_PEAK_FRAMES,
+        }
+    }
 }
 
 impl CollectorScratch {

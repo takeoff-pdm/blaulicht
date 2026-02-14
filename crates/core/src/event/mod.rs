@@ -1,18 +1,15 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Display,
-    mem, result,
+    mem,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use blaulicht_shared::{ControlEvent, ControlEventMessage};
-use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, TrySelectError, TrySendError};
-use log::debug;
+use blaulicht_shared::ControlEventMessage;
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError};
 use std::fmt::Debug;
-
-// use crate::audio::SIGNAL_SPEED;
 
 pub type SystemEventBusConnectionInst = SystemEventBusConnection<ControlEventMessage>;
 
@@ -27,7 +24,9 @@ impl<T> SystemEventBusConnection<T> {
     pub fn try_recv(&self) -> Option<T> {
         match self.from_exchange_receiver.try_recv() {
             Ok(event) => Some(event),
-            Err(TryRecvError::Disconnected) => unreachable!("Cannot disconnect bus"),
+            Err(TryRecvError::Disconnected) => {
+                unreachable!("[BUS] Exchange disconnected (possible crash)")
+            }
             Err(TryRecvError::Empty) => None,
         }
     }
@@ -36,9 +35,11 @@ impl<T> SystemEventBusConnection<T> {
     pub fn send(&self, event: T) {
         match self.to_exchange_sender.try_send(event) {
             Ok(_) => {}
-            Err(TrySendError::Disconnected(_)) => unreachable!("UNREACHABLE"),
+            Err(TrySendError::Disconnected(_)) => {
+                unreachable!("[BUS] Exchange disconnected (possible crash)")
+            }
             Err(TrySendError::Full(_)) => {
-                debug!("BUFFER OVERRUN")
+                log::debug!("[BUS] Exchange buffer is full.")
             }
         }
     }
@@ -47,6 +48,7 @@ impl<T> SystemEventBusConnection<T> {
 // TODO: build the actual exchange that broadcasts.
 const BUS_CAPACITY: usize = 128;
 type BroadCastMembers<T> = HashMap<usize, Sender<T>>;
+
 pub struct SystemEventBus<T> {
     // Incoming messages will be sent out to all broadcast members.
     receiver: Receiver<T>,
@@ -55,6 +57,15 @@ pub struct SystemEventBus<T> {
     // Broadcast members.
     broadcast_members_id_counter: usize,
     broadcast_members: Arc<Mutex<BroadCastMembers<T>>>,
+}
+
+impl<T> Default for SystemEventBus<T>
+where
+    T: Clone + Display + Debug,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> SystemEventBus<T>
@@ -86,7 +97,7 @@ where
         let mut members = self.broadcast_members.lock().unwrap();
         members.insert(id, to_connection_sender);
 
-        debug!("[BUS] new connection: {id}");
+        log::debug!("[BUS] new connection: {id}");
 
         conn
     }
@@ -101,7 +112,7 @@ where
         loop {
             let msg = self.receiver.recv().unwrap();
             debug_assert!({
-                debug!("[BUS] ---> {msg:?}");
+                log::debug!("[BUS] ---> {msg:?}");
                 true
             });
 
@@ -112,7 +123,7 @@ where
                 match client.try_send(msg.clone()) {
                     Ok(_) => {}
                     Err(TrySendError::Full(_)) => {
-                        panic!("Channel full!");
+                        log::warn!("[BUS] System event bus buffer is full");
                     }
                     Err(TrySendError::Disconnected(_)) => match members_to_remove {
                         Some(ref mut mem) => {
@@ -131,6 +142,7 @@ where
 
             mem::drop(members);
 
+            // TODO: tune this?
             thread::sleep(Duration::from_millis(10));
         }
     }

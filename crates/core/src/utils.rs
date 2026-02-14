@@ -15,6 +15,26 @@ pub fn init_logger() {
         .unwrap();
 }
 
+#[macro_export]
+macro_rules! syslog {
+    ($system_out:expr,$message:expr) => {{
+        use blaulicht_shared::LogLevel;
+        use $crate::msg::SystemMessage;
+
+        $system_out
+            .send(SystemMessage::Log(($message).into(), LogLevel::Info))
+            .unwrap();
+    }};
+
+    ($system_out:expr,$message:expr,$level:expr) => {{
+        use $crate::msg::SystemMessage;
+
+        $system_out
+            .send(SystemMessage::Log(($message).into(), $level))
+            .unwrap();
+    }};
+}
+
 #[cfg(feature = "audio")]
 mod with_audio_feature {
     use crate::msg::{AudioDeviceT, AudioHostT};

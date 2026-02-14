@@ -5,11 +5,11 @@ use crate::{
     mainloop::{self, bg_worker},
     msg::{AudioDeviceT, SystemMessage},
     state::AppState,
+    syslog,
 };
 use crate::{msg::FromFrontend, utils};
 use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use log::{error, info, warn};
 use std::{
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -20,7 +20,7 @@ use std::{
 };
 
 #[cfg(feature = "audio")]
-use cpal::{traits::DeviceTrait, Device};
+use cpal::traits::DeviceTrait;
 
 pub fn signal_mainloop(
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -55,8 +55,6 @@ pub fn supervisor_thread(
     let mut audio_device: Option<AudioDeviceT> = None;
     let mut device_changed = false;
 
-    // TODO: put the DMX thread under main!
-
     signal_mainloop(
         Arc::clone(&audio_thread_control_signal),
         Arc::clone(&app_state),
@@ -71,7 +69,7 @@ pub fn supervisor_thread(
 
     loop {
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
-            warn!("[SUPERVISOR] Shutting down...");
+            log::warn!("[SUPERVISOR] Shutting down...");
 
             signal_mainloop(
                 Arc::clone(&audio_thread_control_signal),
@@ -85,7 +83,8 @@ pub fn supervisor_thread(
 
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
-                info!("[SUPERVISOR] Got reload request");
+                log::info!("[SUPERVISOR] Got reload request");
+
                 if AudioThreadControlSignal::from(
                     audio_thread_control_signal.load(Ordering::Relaxed),
                 ) == AudioThreadControlSignal::CONTINUE
@@ -98,7 +97,6 @@ pub fn supervisor_thread(
                 }
             }
             Ok(FromFrontend::SelectInputDevice(dev)) => {
-                // Get device by name.
                 audio_device = dev;
                 device_changed = true;
             }
@@ -128,14 +126,12 @@ pub fn supervisor_thread(
             device_changed = true;
         }
 
+        // Syncronize to config file.
         if device_changed {
-            // Update state.
-            {
-                let mut audio = app_state.audio.write().unwrap();
-                audio.device_name = audio_device
-                    .as_ref()
-                    .map(|dev| dev.name().unwrap().to_string());
-            }
+            let mut audio = app_state.audio.write().unwrap();
+            audio.device_name = audio_device
+                .as_ref()
+                .map(|dev| dev.name().unwrap().to_string());
         }
 
         if audio_device.is_none() {
@@ -148,12 +144,11 @@ pub fn supervisor_thread(
                 .unwrap();
 
             if !sent_no_device_available_log_message {
-                system_out
-                    .send(SystemMessage::Log(
-                        "[audio] No audio device selected, waiting for selection...".to_string(),
-                        LogLevel::Debug,
-                    ))
-                    .unwrap();
+                syslog!(
+                    system_out,
+                    "[audio] No audio device selected, waiting for selection..."
+                );
+
                 sent_no_device_available_log_message = true;
             }
 
@@ -202,9 +197,8 @@ pub fn supervisor_thread(
                         bus_connection_dmx,
                         Arc::clone(&app_state),
                     ) {
-                        error!("[audio] THREAD CRASH: {err}");
-                        sys.send(SystemMessage::Log(format!("[audio] {err}"), LogLevel::Err))
-                            .unwrap();
+                        log::error!("[audio] THREAD CRASH: {err}");
+                        syslog!(sys, format!("[audio] {err}"), LogLevel::Err);
 
                         signal_mainloop(
                             Arc::clone(&audio_thread_control_signal),
@@ -227,7 +221,8 @@ pub fn supervisor_thread(
                 audio_device.clone().unwrap().name().unwrap()
             );
 
-            sys.send(SystemMessage::Log(
+            syslog!(
+                sys,
                 format!(
                     "[audio] Using device \"{}\"",
                     app_state
@@ -237,10 +232,8 @@ pub fn supervisor_thread(
                         .device_name
                         .clone()
                         .unwrap_or_else(|| "None".to_string())
-                ),
-                LogLevel::Info,
-            ))
-            .unwrap();
+                )
+            );
         }
 
         thread::sleep(heartbeat_delay);

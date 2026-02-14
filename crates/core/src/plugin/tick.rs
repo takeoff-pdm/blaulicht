@@ -2,36 +2,33 @@ use crate::state::AppState;
 use crate::{
     msg::{MidiEvent, SystemMessage},
     plugin::{Plugin, PluginManager},
-    system_message,
 };
-use blaulicht_shared::EngineState;
 #[cfg(not(feature = "wasmtime"))]
 use blaulicht_shared::SerialReceived;
 #[cfg(feature = "wasmtime")]
 use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
-use log::warn;
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
 };
-
-// #[cfg(feature = "wasmtime")]
-// use blaulicht_shared::EngineState;
-
-// #[cfg(feature = "wasmtime")]
-// use crate::{
-//     msg::{MidiEvent, SystemMessage},
-//     plugin::{Plugin, PluginManager},
-//     system_message,
-// };
 
 ///
 /// Mock implementation
 ///
 #[cfg(not(feature = "wasmtime"))]
 impl PluginManager {
+    pub fn tick_external(
+        &mut self,
+        _: CollectedAudioSnapshot,
+        _: &[MidiEvent],
+        _: Vec<SerialReceived>,
+        _: Arc<AppState>,
+    ) -> Duration {
+        Duration::from_secs(0)
+    }
+
     pub fn tick(
         &mut self,
         _: CollectedAudioSnapshot,
@@ -50,8 +47,41 @@ impl PluginManager {
     }
 }
 
+///
+/// Real implementation
+///
 #[cfg(feature = "wasmtime")]
 impl PluginManager {
+    pub fn tick_external(
+        &mut self,
+        audio_data: CollectedAudioSnapshot,
+        midi_events: &[MidiEvent],
+        serial_received: Vec<SerialReceived>,
+        app_state: Arc<AppState>,
+    ) -> Duration {
+        let tick_duration = match self.tick(
+            audio_data,
+            midi_events,
+            serial_received,
+            Some(Arc::clone(&app_state)),
+        ) {
+            Ok(dur) => {
+                // Reset crash state on successful tick.
+                self.has_crashed = false;
+                dur
+            }
+            Err(err) => {
+                if !self.has_crashed {
+                    log::error!("[Plugin] Wasm engine crash: {err}");
+                    self.has_crashed = true;
+                }
+                Duration::from_micros(0)
+            }
+        };
+
+        tick_duration
+    }
+
     pub fn tick(
         &mut self,
         audio_data: CollectedAudioSnapshot,
@@ -66,11 +96,7 @@ impl PluginManager {
         // Collect recent events.
         //
         let mut events = vec![];
-        loop {
-            let Some(event) = self.event_bus.try_recv() else {
-                break;
-            };
-
+        while let Some(event) = self.event_bus.try_recv() {
             events.push(event);
         }
 
@@ -155,7 +181,8 @@ impl PluginManager {
 // Real Wasmtime implementation.
 //
 
-const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(50);
+// TODO: tune this.
+const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(0);
 
 #[cfg(feature = "wasmtime")]
 impl Plugin {
@@ -167,86 +194,78 @@ impl Plugin {
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<()> {
         //
-        // Tick function.
+        // Tick function. (TODO: how slow is this?) -> replace with fixed handle?
         //
-
-        // use blaulicht_shared::EngineState;
         let func = self.wasm_state.instance.get_typed_func::<(i32, i32), ()>(
             &mut self.wasm_state.store,
             "internal_tick", // TODO: external type and name constants.
         )?;
 
-        //
-        // Tick input array.
-        //
+        ////////////// Tick Input ////////////
         let tick_array_offset = 0x10000; // Arbitrary offset
         let tick_array_data = input.serialize();
         let tick_array_len = tick_array_data.len() as i32;
-        let mut tick_array_bytes = Vec::new();
-        for &num in &tick_array_data {
-            tick_array_bytes.extend_from_slice(&num.to_le_bytes());
-        }
-        self.wasm_state.memory.write(
-            &mut self.wasm_state.store,
-            tick_array_offset,
-            &tick_array_bytes,
-        )?;
 
-        // TODO: macro for this array stuff.
-
-        //
-        // MIDI array.
-        //
-        // let midi_array_offset = 0x80000; // TODO: make this offset a const.
-        let midi_array_len = midi_events.len() as u32;
-
-        if midi_array_len > 100 {
-            midi_events = &midi_events[0..100];
-            log::warn!("TOO many MIDI events! TRUNCATING");
-        }
-
-        let mut midi_array_bytes = Vec::new();
-
-        let midi_events_packed: Vec<u32> = midi_events
-            .iter()
-            .map(|event| {
-                ((event.device as u32) << 24)
-                    | (event.status as u32) << 16
-                    | (event.data0 as u32) << 8
-                    | (event.data1 as u32)
-            })
-            .collect::<Vec<u32>>();
-
-        for &num in &midi_events_packed {
-            midi_array_bytes.extend_from_slice(&num.to_le_bytes());
+        {
+            let mut tick_array_bytes = Vec::new();
+            for &num in &tick_array_data {
+                tick_array_bytes.extend_from_slice(&num.to_le_bytes());
+            }
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                tick_array_offset,
+                &tick_array_bytes,
+            )?;
         }
 
         ////////////// MIDI ////////////
+        {
+            let midi_array_len = midi_events.len() as u32;
 
-        // Write the MIDI array to memory.
-        self.wasm_state.memory.write(
-            &mut self.wasm_state.store,
-            self.midi_buffers.buffer_addr(),
-            &midi_array_bytes,
-        )?;
+            if midi_array_len > 100 {
+                midi_events = &midi_events[0..100];
+                log::warn!("TOO many MIDI events! TRUNCATING");
+            }
 
-        // Write the length of the MIDI array to memory.
-        let mut midi_length_bytes = Vec::new();
-        midi_length_bytes.extend_from_slice(&midi_array_len.to_le_bytes());
-        self.wasm_state.memory.write(
-            &mut self.wasm_state.store,
-            self.midi_buffers.buffer_len_addr(),
-            &midi_length_bytes,
-        )?;
+            let mut midi_array_bytes = Vec::new();
 
-        ////////////// STATE ////////////
+            let midi_events_packed: Vec<u32> = midi_events
+                .iter()
+                .map(|event| {
+                    ((event.device as u32) << 24)
+                        | (event.status as u32) << 16
+                        | (event.data0 as u32) << 8
+                        | (event.data1 as u32)
+                })
+                .collect::<Vec<u32>>();
 
+            for &num in &midi_events_packed {
+                midi_array_bytes.extend_from_slice(&num.to_le_bytes());
+            }
+
+            // Write the MIDI array to memory.
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.midi_buffers.buffer_addr(),
+                &midi_array_bytes,
+            )?;
+
+            // Write the length of the MIDI array to memory.
+            let mut midi_length_bytes = Vec::new();
+            midi_length_bytes.extend_from_slice(&midi_array_len.to_le_bytes());
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.midi_buffers.buffer_len_addr(),
+                &midi_length_bytes,
+            )?;
+        }
+
+        ////////////// APP STATE ////////////
         if let Some(app) = app_state {
+            // TODO: profile this if this causes issues.
             if self.last_dmx_engine_sync.elapsed().as_millis()
                 > WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES.as_millis()
             {
-                use log::debug;
-
                 self.last_dmx_engine_sync = Instant::now();
                 let state_array_bytes = {
                     let engine = app.dmx_engine.read().unwrap();
@@ -270,13 +289,10 @@ impl Plugin {
                     self.state_buffers.buffer_len_addr(),
                     &state_length_bytes,
                 )?;
-
-                // debug!("SYNCED ENGINE STATE");
             }
         }
 
         ////////////////// Serial /////////////////////
-
         {
             let serial_bytes = {
                 use blaulicht_shared::SerialCollector;
@@ -302,62 +318,13 @@ impl Plugin {
                 self.serial_buffers.buffer_len_addr(),
                 &serial_length_bytes,
             )?;
-
-            // debug!("SYNCED ENGINE STATE");
         }
-
-        /// END
-        // for &num in &self.dmx {
-        //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
-        // }
-        // wasm.memory
-        //     .write(&mut wasm.store, dmx_array_offset, &dmx_array_bytes)?;
-
-        //
-        // Data array.
-        //
-        // let data_array_offset = 0x90000; // Arbitrary offset
-
-        // let mut data_array_bytes = Vec::new();
-        // for &num in &self.data {
-        //     data_array_bytes.extend_from_slice(&num.to_le_bytes());
-        // }
-        // wasm.memory
-        //     .write(&mut wasm.store, data_array_offset, &data_array_bytes)?;
-
-        // let dmx_array_offset = 0x20000; // TODO: make this offset a const.
 
         // Call the function with the pointer and length
         func.call(
             &mut self.wasm_state.store,
-            (
-                tick_array_offset as i32,
-                tick_array_len,
-                // midi_array_offset as i32,
-                // midi_array_len,
-            ),
+            (tick_array_offset as i32, tick_array_len),
         )?;
-
-        //
-        // Read back the modified DMX array
-        //
-        // let mut dmx_array_bytes: Vec<u8> = Vec::with_capacity(dmx_array_len as usize);
-        // let mut updated_dmx_bytes = vec![0u8; DMX_LEN];
-        // wasm.memory
-        //     .read(&mut wasm.store, dmx_array_offset, &mut updated_dmx_bytes)?;
-        // self.dmx = updated_dmx_bytes;
-
-        //
-        // Read back data array.
-        //
-        // let mut updated_data_bytes = vec![0u8; data_array_bytes.len()];
-        // wasm.memory
-        //     .read(&mut wasm.store, data_array_offset, &mut updated_data_bytes)?;
-        // let updated_data_bytes: Vec<i32> = updated_data_bytes
-        //     .chunks_exact(4)
-        //     .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
-        //     .collect();
-        // self.data = updated_data_bytes;
 
         Ok(())
     }

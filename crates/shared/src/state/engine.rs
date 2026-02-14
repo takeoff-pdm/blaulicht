@@ -322,7 +322,6 @@ impl Display for PhaserDuration {
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub enum PhaserKind {
     Mathematical(MathematicalPhaser),
-    MathRush(MathematicalPhaserRush),
     Keyframed(KeyframedPhaser),
 }
 

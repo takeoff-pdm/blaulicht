@@ -557,9 +557,6 @@ dependencies = [
  "midir",
  "noise",
  "notify",
- "rush-analyzer",
- "rush-interpreter-vm",
- "savgol-rs",
  "serde",
  "serde_json",
  "serialport",
@@ -4652,33 +4649,6 @@ name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
-
-[[package]]
-name = "rush-analyzer"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad2c575e657aa24bc7c909ff719d3350f75a037be34c48eae9f4d625731c7e68"
-dependencies = [
- "rush-parser",
-]
-
-[[package]]
-name = "rush-interpreter-vm"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f46b2dd527db15468352f2cc64af886887c3d4c39bf3fc1c0115fd6b807192b"
-dependencies = [
- "rush-analyzer",
-]
-
-[[package]]
-name = "rush-parser"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f0eb94aaee0be777af62f5bbeeb709ecb4a4d344037b08c1bd73ba0ff3a1e09"
-dependencies = [
- "either",
-]
 
 [[package]]
 name = "rustc-demangle"

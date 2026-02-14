@@ -6,12 +6,10 @@ use crate::{
     dmx::{animation::phaser, EngineState},
 };
 use blaulicht_shared::{
-    AnimationSpec, AnimationSpecBody, AnimationSpecBodyAudioVolume, AnimationSpecBodyBeat,
-    AnimationSpecBodyFrequencies, AnimationSpecBodyKind, AnimationSpecBodyPhaser,
+    AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat, AnimationSpecBodyKind,
     AnimationSpeedModifier, AnimationTemplate, FixtureProperty, FrequencyNormalization,
     MathematicalBaseFunction, PhaserDuration, PhaserKind, SyncMode,
 };
-use eframe::glow::components_per_format;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use strum::IntoEnumIterator;
@@ -266,11 +264,6 @@ impl BlaulichtApp {
         self.render_add_animation_dialog(ctx, ui);
         self.render_delete_animation_dialog(ctx, ui);
 
-        let animations = {
-            let dmx_engine = self.data.state.dmx_engine.read().unwrap().clone();
-            dmx_engine.0.animation_templates.clone()
-        };
-
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
             egui::Layout::left_to_right(egui::Align::Min),
@@ -368,14 +361,7 @@ impl BlaulichtApp {
 }
 
 pub struct AnimationEditState {
-    // pub clamp_min: u16,
-    // pub clamp_max: u16,
-    // pub base_function: MathematicalBaseFunction,
-    // pub sync_mode: SyncMode,
-    // pub timing: PhaserDuration,
-    // pub timing_pin_to_beat: bool,
     pub working_state: AnimationSpec,
-
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
     pub speed_numberpad: Numberpad,
@@ -391,12 +377,6 @@ pub struct AnimationEditState {
 impl Default for AnimationEditState {
     fn default() -> Self {
         Self {
-            // clamp_min: 0,
-            // clamp_max: 255,
-            // base_function: MathematicalBaseFunction::Sin,
-            // sync_mode: SyncMode::Synced,
-            // timing: PhaserDuration::Fixed(1000),
-            // timing_pin_to_beat: false,
             working_state: AnimationSpec {
                 name: "FOO".to_string(),
                 body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
@@ -448,11 +428,6 @@ impl AnimationEditState {
         let mut apply_clicked = false;
 
         ui.vertical(|ui| {
-            // let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-            // let animation = dmx_engine.0.animation_templates.get_mut(&id).unwrap();
-
-            // ui.label(format!("Animation: {}", self.));
-
             // PATCH: sync properties of the animation that was selected.
 
             match &self.working_state.body {
@@ -488,26 +463,13 @@ impl AnimationEditState {
 
         let plot_points = (0..(360) * RENDER_WIDTH)
             .map(|x| {
-                let y = phaser::generate(&phaser_mut, x as u64);
+                let y = phaser::generate(phaser_mut, x as u64);
                 [x as f64, y as f64]
             })
             .collect::<PlotPoints<'_>>();
 
         ui.vertical(|ui| {
             match &mut phaser_mut.kind {
-                PhaserKind::MathRush(rush) => {
-                    use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
-                    let syntax = Syntax::rust();
-
-                    CodeEditor::default()
-                        .id_source("code editor")
-                        .with_rows(12)
-                        .with_fontsize(14.0)
-                        .with_theme(ColorTheme::GRUVBOX)
-                        .with_syntax(syntax)
-                        .with_numlines(true)
-                        .show(ui, &mut rush.function_expression);
-                }
                 PhaserKind::Mathematical(mathematical_phaser) => {
                     ui.horizontal(|ui| {
                         ui.horizontal(|ui| {

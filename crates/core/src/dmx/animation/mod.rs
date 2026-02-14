@@ -1,23 +1,19 @@
-pub mod state;
-use std::{cmp, time::Instant};
-
-use blaulicht_audio_engine::CollectorOutput;
-use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
 pub mod phaser;
-pub use phaser::*;
 
 use crate::{dmx::DmxEngine, mainloop::DMX_TICK_TIME};
+use blaulicht_audio_engine::CollectorOutput;
+use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
+pub use phaser::*;
+use std::{cmp, time::Instant};
+
+const NUMBER_OF_STEPS: f64 = 360.0;
 
 impl DmxEngine {
     fn animation_base_time(
         audio_snapshot: CollectedAudioSnapshot,
         animation_spec: &AnimationSpec,
     ) -> f64 {
-        // Only build every 100ms or so?
-
-        // for (anim_id, anim) in animations {
         let speed_per_step = {
-            // let animation_spec = animations.get(anim_id).unwrap();
             match &animation_spec.body {
                 AnimationSpecBody::PhaserRush(_) => {
                     todo!("PANIC")
@@ -26,50 +22,40 @@ impl DmxEngine {
                     let speed_for_all_steps = match body.time_total {
                         PhaserDuration::Fixed(time) => time as f64,
                         PhaserDuration::Beat(beats) => {
-                            (audio_snapshot.time_between_beats_millis as f64 * beats.as_float())
+                            audio_snapshot.time_between_beats_millis as f64 * beats.as_float()
                         }
                     };
-
-                    let speed_per_step = speed_for_all_steps / 360.0;
-
-                    // match speed_per_step {
-                    //     0 => 1,
-                    //     v => v,
-                    // }
-                    speed_per_step
+                    speed_for_all_steps / NUMBER_OF_STEPS
                 }
                 AnimationSpecBody::AudioVolume(_)
                 | AnimationSpecBody::BPMValue(_)
                 | AnimationSpecBody::BeatClock(_)
                 | AnimationSpecBody::AudioBeat(_)
-                | AnimationSpecBody::AudioFrequencies(_) => DMX_TICK_TIME.as_millis() as f64,
-                AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+                | AnimationSpecBody::AudioFrequencies(_) => {
+                    // Reason for this is to 'always' update those animations.
+                    // DMX_TICK_TIME.as_millis() as f64 / 2.0
+                    0.0
+                }
+                AnimationSpecBody::Wasm(_) => todo!(),
             }
         };
 
         speed_per_step
-        /* } */
     }
 
     fn generate_animation_value(
         &self,
         audio_snapshot: &CollectorOutput,
         spec: &AnimationSpec,
-        animation_id: u8,
         fixture_time: u64,
         // When having a synced / offsetted animation 'group'
         fixture_index_in_selection: usize,
         fixtures_in_selection: usize,
     ) -> u16 {
-        // let animations = &self.state_ref.dmx_engine.read().unwrap().animations;
-        // let animation = animations.get(&id).unwrap();
-
         match &spec.body {
             AnimationSpecBody::PhaserRush(_) => todo!("ERROR"),
             AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
-            AnimationSpecBody::AudioVolume(animation_spec_body_audio_volume) => {
-                audio_snapshot.snapshot.volume as u16
-            }
+            AnimationSpecBody::AudioVolume(_) => audio_snapshot.snapshot.volume as u16,
             AnimationSpecBody::BPMValue(_) => audio_snapshot.snapshot.bpm as u16,
             AnimationSpecBody::AudioFrequencies(freqs) => {
                 // Create bins of size `fixtures_in_selection`
@@ -151,13 +137,9 @@ impl DmxEngine {
                 let fixture_value = quantized_audio_bins[fixture_index_in_selection];
                 fixture_value as u16
             }
-            AnimationSpecBody::AudioBeat(animation_spec_body_beat) => {
-                audio_snapshot.snapshot.bass as u16
-            }
-            AnimationSpecBody::BeatClock(animation_spec_body_beat) => {
-                (audio_snapshot.snapshot.beat_trigger as u16) * 255
-            }
-            AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+            AnimationSpecBody::AudioBeat(_) => audio_snapshot.snapshot.bass as u16,
+            AnimationSpecBody::BeatClock(_) => (audio_snapshot.snapshot.beat_trigger as u16) * 255,
+            AnimationSpecBody::Wasm(_) => todo!(),
         }
     }
 
@@ -168,17 +150,15 @@ impl DmxEngine {
         //
         let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
         let mut state = self.state_ref.dmx_engine.write().unwrap();
-        let animations = state.0.animation_templates.clone();
+        // let animations = state.0.animation_templates.clone();
 
-        for (scene_id, scene) in state.0.scenes.iter_mut() {
+        for (_scene_id, scene) in state.0.scenes.iter_mut() {
             let animation_speed_factor = scene.sink.master_speed;
 
             for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
-                // println!("scene anim: {scene_animations:?}");
-
                 let fixtures_in_selection = selection.len();
 
-                for (animation_id, animation) in scene_animations.iter_mut() {
+                for (_animation_id, animation) in scene_animations.iter_mut() {
                     if !animation.enabled {
                         continue;
                     }
@@ -258,7 +238,6 @@ impl DmxEngine {
                             let v = self.generate_animation_value(
                                 audio_snapshot,
                                 &animation.spec_cloned,
-                                *animation_id,
                                 fixture_anim_state.timer,
                                 fixture_index_in_selection,
                                 fixtures_in_selection,
@@ -269,8 +248,6 @@ impl DmxEngine {
 
                             // TODO: support multiple values?
                             fixture_state.apply_value(v, animation.spec_cloned.property);
-
-                            // println!("update animation");
                         }
                     }
                 }

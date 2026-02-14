@@ -24,6 +24,7 @@ dhat = ["dep:dhat"]
 
 # Audio
 audioviz = { version = "0.6.0", features = ["serde"], optional = true }
+audio_thread_priority = "0.34.0"
 # audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
 cpal = { version = "0.15.3", optional = true }
 blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
@@ -79,12 +80,7 @@ egui_code_editor = { version = "=0.2.14" }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 
 
-# Rush
-rush-interpreter-vm = "0.1.2"
-rush-analyzer = "0.1.1"
 tempdir = "0.3.7"
-audio_thread_priority = "0.34.0"
-savgol-rs = "0.1.0"
 
 
 [patch.crates-io]

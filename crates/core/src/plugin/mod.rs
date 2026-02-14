@@ -1,19 +1,15 @@
 use anyhow::{anyhow, Context};
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, EngineState, LogLevel};
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use log::{debug, error, info, log, trace};
+use blaulicht_shared::CollectedAudioSnapshot;
+use crossbeam_channel::{Receiver, Sender};
+use log;
 use notify::{
     event::{DataChange, ModifyKind},
-    Config, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+    EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::{
     borrow::Cow,
-    cell::{RefCell, UnsafeCell},
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    path::{Path, PathBuf},
-    rc::Rc,
-    result,
+    collections::HashMap,
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -23,10 +19,11 @@ use wasmtime::{Instance, Memory, Store, TypedFunc};
 
 use crate::{
     config::PluginConfig,
-    event::{SystemEventBusConnection, SystemEventBusConnectionInst},
+    event::SystemEventBusConnectionInst,
     msg::{FromFrontend, MidiEvent, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, wasm::AddrDescriptor},
-    state::{AppState, PluginFlags},
+    state::AppState,
+    syslog,
 };
 
 pub mod midi;
@@ -35,6 +32,9 @@ mod tick;
 mod wasm;
 
 pub struct PluginManager {
+    // true if TODO
+    has_crashed: bool,
+
     timer_start: Instant,
     is_initial_tick: bool,
     plugin_config: Vec<PluginConfig>,
@@ -139,6 +139,7 @@ impl PluginManager {
     ) -> Self {
         Self {
             timer_start: Instant::now(),
+            has_crashed: false,
             is_initial_tick: true,
             plugin_config,
             plugins: HashMap::new(),
@@ -157,12 +158,6 @@ impl PluginManager {
         *storage = plugin_state;
     }
 
-    // pub fn set_plugin_rnabl(&mut self, id: u8, flag: PluginFlag) {
-    //     let mut plugins = self.state_ref.plugins.write().unwrap();
-    //     let plugin = plugins.get_mut(&id).unwrap();
-    //     plugin.set_flag(flag);
-    // }
-
     pub fn active_plugins(&self) -> Vec<u8> {
         let plugins = self.state_ref.plugins.read().unwrap();
         plugins
@@ -180,7 +175,12 @@ impl PluginManager {
                 .read()
                 .unwrap()
                 .keys()
-                .map(|plugin_id| (*plugin_id, anyhow!("Engine initialization error: {err}")))
+                .map(|plugin_id| {
+                    (
+                        *plugin_id,
+                        anyhow!("Engine initialization log::error: {err}"),
+                    )
+                })
                 .collect();
 
             self.disable_errored_plugins(plugin_error_list);
@@ -190,19 +190,14 @@ impl PluginManager {
 
         self.is_initial_tick = true;
 
-        // Ignore any tick errors caused by misbehaving plugins.
-        // Only return on serious errors.
-        println!("initial tick");
+        // Ignore any tick log::errors caused by misbehaving plugins.
+        // Only return on serious log::errors.
+        log::debug!("[Wasm] Running initial tick...");
         if self
             .tick(CollectedAudioSnapshot::default(), &[], vec![], None)
             .is_err()
         {
-            self.system_out
-                .send(SystemMessage::Log(
-                    "Plugin(s) failed to initialize.".into(),
-                    LogLevel::Warn,
-                ))
-                .unwrap();
+            syslog!(self.system_out, "Plugin(s) failed to initialize.");
         };
 
         Ok(())
@@ -210,7 +205,7 @@ impl PluginManager {
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
         {
-            // Reset all plugins which got temporarily disabled due to errors.
+            // Reset all plugins which got temporarily disabled due to log::errors.
             let mut plugins = self.state_ref.plugins.write().unwrap();
             for (_, plug) in plugins.iter_mut() {
                 plug.set_errored(false);
@@ -241,20 +236,20 @@ impl PluginManager {
         // Watch each file of the plugins to watch.
         for file in &files_to_watch {
             if let Err(err) = watcher.watch(file, RecursiveMode::NonRecursive) {
-                error!("Watching file: {:?} failed: {}", file, err);
+                log::error!("Watching file: {:?} failed: {}", file, err);
             } else {
-                debug!("Watching file: {:?}", file);
+                log::debug!("Watching file: {:?}", file);
             }
         }
 
-        debug!("Watching {} files...", files_to_watch.len());
+        log::debug!("Watching {} files...", files_to_watch.len());
 
         // Process events
         loop {
             match rx.recv_timeout(Duration::from_secs(1)) {
                 Ok(event) => {
                     if let Ok(event) = event {
-                        trace!("Plugin file change event: {:?}", event);
+                        log::trace!("Plugin file change event: {:?}", event);
                         if !matches!(
                             event.kind,
                             EventKind::Modify(ModifyKind::Data(DataChange::Any))
@@ -263,9 +258,10 @@ impl PluginManager {
                             continue;
                         }
 
-                        info!(
+                        log::info!(
                             "Change detected in: {:?} (kind: {:?}) ----> RELOADING...",
-                            event.paths, event.kind
+                            event.paths,
+                            event.kind
                         );
                         from_frontend_sender
                             .send(FromFrontend::Reload)
