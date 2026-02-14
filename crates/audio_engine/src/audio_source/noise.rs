@@ -51,7 +51,7 @@ impl AudioSourceNoise {
     }
 
     /// Get frequencies at a specific time in seconds
-    pub fn get_frequencies_at_time(&mut self, time_millis: usize) -> &[Frequency] {
+    pub fn get_frequencies_at_time(&mut self, _time_millis: usize) -> &[Frequency] {
         let mut rng = rand::rng(); // Create a local random generator
 
         self.freq_buffer.iter_mut().for_each(|freq| {

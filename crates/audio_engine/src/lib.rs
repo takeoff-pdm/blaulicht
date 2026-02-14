@@ -7,8 +7,6 @@ pub mod collector;
 #[cfg(feature = "stream_in")]
 pub mod converter;
 
-#[cfg(feature = "stream_in")]
-pub use converter::*;
 
 pub mod signals;
 pub mod spectrogram;

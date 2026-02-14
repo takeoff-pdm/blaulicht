@@ -18,7 +18,7 @@ impl AudioSourceMicrophone {
     pub fn new(
         // TODO: fork audioviz / open issue to allow device pass thru
         // OR: use the nth-device option in the Device:: enum.
-        device: cpal::Device,
+        _device: cpal::Device,
         config: StreamConfig,
         freq_buffer_size: usize,
     ) -> anyhow::Result<Self> {

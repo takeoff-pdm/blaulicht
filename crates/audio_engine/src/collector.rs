@@ -1,6 +1,5 @@
 //
 // Provides class for capturing audio.
-use anyhow::{anyhow, Context};
 // use audioviz::{
 //     audio_capture::{capture::Capture, config::Config as CaptureConfig},
 //     spectrum::{config::StreamConfig, stream::Stream},
@@ -457,7 +456,7 @@ pub struct SignalDebugData {
 pub type AudioColumn = Vec<AudioBucket>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
-pub fn bin_spectrum_to_u8(values: &[Frequency], mut bins: usize) -> AudioColumn {
+pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
     debug_assert!(bins > 0);
 
     let chunk_size = match values.len() % bins == 0 {

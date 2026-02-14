@@ -166,7 +166,7 @@ pub fn create_spectrogram_image(
     let total_cols = spec.max_columns;
 
     let avail_width = width - pad_left;
-    let pixels_per_column = (avail_width as f32 / total_cols as f32);
+    let pixels_per_column = avail_width as f32 / total_cols as f32 ;
 
     // NOTE: downsampling does nothing for vertical issues.
     // QUESTION: is this really efficient?
@@ -235,9 +235,9 @@ pub fn create_spectrogram_image(
 
     let freq_steps = (freq_max - freq_min) / freq_step;
 
-    let mut subcolumn_height = 0;
+    let subcolumn_height = 0;
 
-    let step_height_max = (height as f32 / freq_steps as f32).ceil() as usize;
+    let _step_height_max = (height as f32 / freq_steps as f32).ceil() as usize;
 
     // println!("Freq STEPS: {freq_steps}");
     let mut step_height = (height as f32 / freq_steps as f32).ceil() as usize;
@@ -297,7 +297,7 @@ pub fn create_spectrogram_image_with_freqs(
     spec: &AudioSpectrogram,
     width: usize,
     height_outer: usize,
-    options: &SpectrogramDisplayOptions,
+    _options: &SpectrogramDisplayOptions,
 ) -> egui::ColorImage {
     let pad_btm = 20;
     let pad_top = 5;
@@ -309,7 +309,7 @@ pub fn create_spectrogram_image_with_freqs(
     let total_cols = spec.max_columns;
 
     let avail_width = width - pad_left;
-    let pixels_per_column = (avail_width as f32 / total_cols as f32);
+    let pixels_per_column = avail_width as f32 / total_cols as f32 ;
 
     let mut chunks_cont = spec.columns.clone();
     let columns_data = chunks_cont.make_contiguous();
@@ -357,7 +357,7 @@ pub fn create_spectrogram_image_with_freqs(
         panic!("too small");
     }
 
-    let bucket_height = bucket_height.floor() as usize;
+    let _bucket_height = bucket_height.floor() as usize;
 
     let freq_min = 0;
     let freq_max = 20000;

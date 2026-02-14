@@ -2,7 +2,7 @@
 // Provides analysis on the audio.
 //
 
-use crate::{bin_spectrum_to_u8, AudioSource, BpmInfo, Signal, SignalCollector, SignalDebugData};
+use crate::{AudioSource, BpmInfo, Signal, SignalCollector, SignalDebugData};
 use itertools::Itertools;
 use map_range::MapRange;
 use std::u8;
