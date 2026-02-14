@@ -5,23 +5,14 @@ use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
 use blaulicht_shared::LogLevel;
 use blaulicht_shared::PluginStateLocation;
-use blaulicht_shared::TickInput;
 
-#[cfg(feature = "audio")]
-use cpal::Device;
 
-use crossbeam_channel::Sender;
 use egui::ahash::HashMapExt;
 use log::error;
-use log::{debug, info, warn};
-use std::borrow::Cow;
-use std::rc::Rc;
+use log::{debug, warn};
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
-use std::time::Duration;
 use std::u8;
-use std::{collections::HashMap, fs, net::UdpSocket, path::PathBuf, time::Instant};
+use std::{collections::HashMap, fs, net::UdpSocket};
 
 #[cfg(feature = "wasmtime")]
 use super::PluginWasmState;
@@ -32,10 +23,8 @@ use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::ui_ops::WasmUiOp;
 use crate::{
-    config::PluginConfig,
-    msg::{SystemMessage, WasmControlsConfig, WasmControlsLog, WasmControlsSet},
+    msg::SystemMessage,
     plugin::{
-        midi::{self},
         Plugin, PluginManager,
     },
 };
@@ -259,7 +248,7 @@ impl PluginManager {
             "blaulicht",
             "sys",
             move |mut caller: Caller<'_, ()>,
-                  plugin_id: i32,
+                  _plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
                   output_str_pointer: i32,
@@ -1353,9 +1342,9 @@ impl PluginManager {
             "blaulicht",
             "bl_enumerate_midi_devices",
             move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
-                use crate::plugin::midi::MidiManager;
+                
 
-                let mut midi_manager = midi_manager.lock().unwrap();
+                let midi_manager = midi_manager.lock().unwrap();
                 let devices = midi_manager
                     .enumerate_devices()
                     .unwrap_or_else(|_| Vec::new());
@@ -1412,7 +1401,7 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_enumerate_serial_devices",
-            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| todo!(""),
+            move |_caller: Caller<'_, ()>, _buffer_ptr: i32, _buffer_len: i32| todo!(""),
         )?;
 
         //
@@ -1922,7 +1911,7 @@ impl Plugin {
     }
 
     fn acquire_serial_buffer_addresses(&mut self) -> anyhow::Result<()> {
-        use crate::plugin::serial;
+        
 
         debug!(
             "Acquiring SERIAL buffer addresses for plugin: {}",

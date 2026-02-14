@@ -1,42 +1,25 @@
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize, Dialog},
+        components::{self, ButtonSize, Dialog},
         external_screen,
-        pages::health::{
-            render_dmx_or_artnet_health_box, ARTNET_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
-        },
-        ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
-    config,
-    mainloop::DMX_TICK_TIME,
-    msg::{FromFrontend, SystemMessage},
-    plugin::midi::MidiError,
+    msg::FromFrontend,
     state::{
-        ArtNetReceiver, DmxHealthState, MidiDeviceState, PluginOpenState, ScreenId,
-        SerialDeviceState, NUM_DMX_UNIVERSES,
+        PluginOpenState, ScreenId, NUM_DMX_UNIVERSES,
     },
 };
-use blaulicht_assets::icons;
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, SaveEngineState,
-    Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
+    ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
 };
-use eframe::glow::components_per_format;
 use egui::{
-    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Vec2,
-    Widget,
+    Color32, Context, FontId, RichText, ThemePreference,
 };
-use egui_extras::{Column, TableBuilder};
-use egui_file::FileDialog;
 use std::{
-    ffi::OsStr,
     mem,
-    net::SocketAddr,
-    path::{Path, PathBuf},
+    path::Path,
     process::Command,
-    str::FromStr,
     time::Duration,
 };
 

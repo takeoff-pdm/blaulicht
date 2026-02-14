@@ -1,24 +1,13 @@
 use blaulicht_shared::{
-    fixture::{
-        light::Light,
-        moving_head::MovingHead,
-        state::{Fixture, FixtureGroup, FixtureState},
-        FixtureType,
-    },
+    fixture::state::FixtureState,
     scene::{EngineSink, FixtureSelection, Scene},
     view::View,
-    ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser,
-    AnimationSpeedModifier, AnimationTemplate, AnimationTimerState, EngineGroups, EngineSelection,
-    FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind,
-    RGBColor, SyncMode,
+    ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate, AnimationTimerState, EngineGroups, EngineSelection,
+    FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, SyncMode,
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
-use serialport::BreakDuration;
-use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    time::Instant,
-};
+use std::collections::{BTreeMap, VecDeque};
 
 //
 // State.
@@ -124,7 +113,7 @@ impl<'engine> EngineState {
                                                             .fixture_timers
                                                             .into_iter()
                                                             .enumerate()
-                                                            .map(|(counter, (k, v))| {
+                                                            .map(|(counter, (k, _v))| {
                                                                 // TODO: is is not acceptible.
                                                                 let timer = match anim_spec
                                                                     .spec

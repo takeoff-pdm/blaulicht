@@ -1,15 +1,11 @@
-use crate::app::{components, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{components, BlaulichtApp};
 use crate::state::ScreenId;
-use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
+    ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent, PluginUiEvent,
 };
-use crossbeam_channel::TryRecvError;
 use egui::Context;
 use strum::IntoEnumIterator;
 
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
 
 impl BlaulichtApp {
     pub fn render_plugin_ui(&self, ctx: &Context, canvas_screen_id: ScreenId) {
@@ -325,7 +321,7 @@ fn render_plugin_ops(
                 *idx += 1;
                 let px = (*pad_x).max(0) as f32;
                 let py = (*pad_y).max(0) as f32;
-                let mx = (*margin_x).max(0) as f32;
+                let _mx = (*margin_x).max(0) as f32;
                 let my = (*margin_y).max(0) as f32;
                 // Outer margins (vertical)
                 if my > 0.0 {

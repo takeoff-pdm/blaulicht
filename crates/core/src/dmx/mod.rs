@@ -17,7 +17,7 @@ use crate::{
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
     scene::{FixtureSelection, FixtureSelector},
-    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, LogLevel,
+    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
     CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;

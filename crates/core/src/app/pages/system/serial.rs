@@ -1,42 +1,14 @@
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize, Dialog},
-        pages::health::{
-            render_dmx_or_artnet_health_box, ARTNET_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
-        },
-        ui::FileDialogOpenOrigin,
-        BlaulichtApp, PopupSpec,
+        components::{self, ButtonSize, Dialog},
+        BlaulichtApp,
     },
-    audio::defs::AudioThreadControlSignal,
-    config,
-    mainloop::DMX_TICK_TIME,
-    msg::{FromFrontend, SystemMessage},
-    plugin::midi::MidiError,
-    state::{
-        ArtNetReceiver, DmxHealthState, MidiDeviceState, PluginOpenState, ScreenId,
-        SerialDeviceState, NUM_DMX_UNIVERSES,
-    },
-};
-use blaulicht_assets::icons;
-use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, SaveEngineState,
-    Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
+    state::SerialDeviceState,
 };
 use egui::{
-    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Vec2,
-    Widget,
+    Color32, Context, FontFamily, Frame, Margin, RichText,
 };
 use egui_extras::{Column, TableBuilder};
-use egui_file::FileDialog;
-use std::{
-    ffi::OsStr,
-    mem,
-    net::SocketAddr,
-    path::{Path, PathBuf},
-    process::Command,
-    str::FromStr,
-    time::Duration,
-};
 
 impl BlaulichtApp {
     pub fn render_serial_dialog(&mut self, ctx: &Context) {
@@ -67,7 +39,7 @@ impl BlaulichtApp {
                 Frame::none()
                     .inner_margin(Margin::symmetric(16, 0))
                     .show(ui, |frame_ui| {
-                        let mut table = TableBuilder::new(frame_ui)
+                        let table = TableBuilder::new(frame_ui)
                             .striped(true)
                             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                             .column(Column::exact(200.0))

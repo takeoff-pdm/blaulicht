@@ -4,7 +4,7 @@ use crate::app::{BlaulichtApp, ExternalScreen};
 use crate::state::ScreenId;
 use blaulicht_shared::AppPage;
 use egui::{
-    vec2, Color32, Context, Frame, Id, Layout, Margin, Sense, Stroke, UiBuilder, Widget, WidgetText,
+    vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, WidgetText,
 };
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Style};
@@ -34,7 +34,7 @@ impl Pane {
     }
 
     fn title_text(&self) -> WidgetText {
-        self.label().clone().into()
+        self.label().into()
     }
 }
 

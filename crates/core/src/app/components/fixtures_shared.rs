@@ -8,12 +8,11 @@ use crate::{
     state::DmxBuffer,
 };
 use blaulicht_shared::{
-    fixture::state::FixtureState, AnimationSpec, AnimationSpeedModifier, AnimationTemplate,
+    fixture::state::FixtureState,
     ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
-use eframe::glow::components_per_format;
 use egui::{
-    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, TextEdit, Ui, Vec2,
+    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, Vec2,
     Widget,
 };
 use map_range::MapRange;
@@ -627,7 +626,7 @@ impl BlaulichtApp {
                         .id_salt("sfixtures")
                         .show(ui, |ui| {
                             ui.set_height(400.0);
-                            for (fix_id, fixture) in dmx_engine
+                            for (fix_id, _fixture) in dmx_engine
                                 .groups()
                                 .get(&group_id)
                                 .as_ref()
@@ -747,7 +746,7 @@ impl BlaulichtApp {
                             for (group_id, group) in groups.iter() {
                                 let is_selected = selection.group_ids.contains(group_id);
 
-                                let name = format!("GRP {}", group_id);
+                                let _name = format!("GRP {}", group_id);
 
                                 if components::clickable(
                                     ui,
@@ -920,7 +919,7 @@ impl BlaulichtApp {
         ui: &mut egui::Ui,
         buf: &FixtureState,
         event_bus_connection: SystemEventBusConnectionInst,
-        animations: &[u8],
+        _animations: &[u8],
     ) {
         Frame::new()
             .fill(ui.visuals().widgets.inactive.weak_bg_fill)

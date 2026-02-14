@@ -1,17 +1,11 @@
-use crate::app::{components, external_screen, theme, AppPage, BlaulichtApp, PopupSpec};
+use crate::app::{theme, BlaulichtApp, PopupSpec};
 use crate::state::ScreenId;
-use crate::{msg::SystemMessage, state::AppStateWrapper};
-use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, PluginUiEvent,
-};
+use crate::state::AppStateWrapper;
 
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;
 
-use crossbeam_channel::TryRecvError;
-use egui::{vec2, Context, FontId, RichText};
-use egui_phosphor::regular::SCREENCAST;
-use log::debug;
+use egui::Context;
 use strum::IntoEnumIterator;
 
 pub enum FileDialogOpenOrigin {

@@ -1,7 +1,5 @@
 use crate::msg::SystemMessage;
-use audio_thread_priority::{
-    demote_current_thread_from_real_time, promote_current_thread_to_real_time,
-};
+use audio_thread_priority::promote_current_thread_to_real_time;
 use blaulicht_shared::LogLevel;
 use crossbeam_channel::Sender;
 use thread_priority::ThreadPriority;
@@ -24,7 +22,7 @@ fn conservative(system_sender: Sender<SystemMessage>) {
 
 fn realtime(system_sender: Sender<SystemMessage>) {
     match promote_current_thread_to_real_time(512, 44100) {
-        Ok(h) => {
+        Ok(_h) => {
             log::info!("SUCCESS: set thread priority to REALTIME");
         }
         Err(e) => {

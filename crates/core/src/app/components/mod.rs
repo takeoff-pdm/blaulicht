@@ -32,7 +32,6 @@ pub use log::*;
 pub use navbar::*;
 pub use numberpad::*;
 pub use pagination::*;
-pub use progress::*;
 pub use selection_dialog::*;
 pub use spectrogram::*;
 pub use speed_knob::*;

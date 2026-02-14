@@ -22,7 +22,7 @@ impl<'a> Switch<'a> {
 }
 
 impl<'a> Widget for Switch<'a> {
-    fn ui(mut self, ui: &mut Ui) -> Response {
+    fn ui(self, ui: &mut Ui) -> Response {
         let label_space = if self.label.is_some() { 20.0 } else { 0.0 };
         let desired_size = vec2(64.0, 44.0 + label_space);
 

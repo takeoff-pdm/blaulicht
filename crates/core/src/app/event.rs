@@ -53,7 +53,7 @@ impl BlaulichtApp {
                     SystemMessage::TickSpeeds(speeds) => {
                         self.tick_speeds = speeds;
                     }
-                    SystemMessage::AudioSelected(device) => {
+                    SystemMessage::AudioSelected(_device) => {
                         // self.log_window.add_log(
                         //     LogLevel::Info,
                         //     format!("Audio device selected: {}", if device.is_some() { "Yes" } else { "No" }),
@@ -76,7 +76,7 @@ impl BlaulichtApp {
                             self.available_audio_devices = items_str;
                         }
                     }
-                    SystemMessage::DMX(dmx_msg) => {
+                    SystemMessage::DMX(_dmx_msg) => {
                         // self.log_window.add_log(
                         //     LogLevel::Info,
                         //     format!("DMX message: {:?}", dmx_msg),

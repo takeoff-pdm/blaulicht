@@ -2,7 +2,6 @@
 // Graph component
 //
 
-use egui::{Color32, Context};
 
 const CAP: usize = 1000;
 const TIME_WINDOW_MS: u64 = 3000;

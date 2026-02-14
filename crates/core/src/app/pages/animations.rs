@@ -60,7 +60,7 @@ impl AnimationUI {
 }
 
 impl BlaulichtApp {
-    fn render_delete_animation_dialog(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+    fn render_delete_animation_dialog(&mut self, ctx: &Context, _ui: &mut egui::Ui) {
         if !self.animation_ui_state.delete_confirm_open {
             return;
         }
@@ -88,7 +88,7 @@ impl BlaulichtApp {
             });
     }
 
-    fn render_add_animation_dialog(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+    fn render_add_animation_dialog(&mut self, ctx: &Context, _ui: &mut egui::Ui) {
         if self.animation_ui_state.create_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
             let cell_h = BUTTON_SIZE.dim().0.y;
@@ -431,14 +431,14 @@ impl AnimationEditState {
             // PATCH: sync properties of the animation that was selected.
 
             match &self.working_state.body {
-                AnimationSpecBody::Phaser(phaser) => self.anim_phaser_ui(ui, ctx),
+                AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx),
                 AnimationSpecBody::PhaserRush(_) => todo!("unsupported"),
-                AnimationSpecBody::AudioVolume(audio) => self.anim_audio_ui(ui),
+                AnimationSpecBody::AudioVolume(_audio) => self.anim_audio_ui(ui),
                 AnimationSpecBody::BPMValue(_) => self.anim_bpm_ui(ui),
-                AnimationSpecBody::AudioFrequencies(freq) => self.anim_freq_ui(ui),
-                AnimationSpecBody::AudioBeat(beat) => self.anim_beat_ui(ui),
-                AnimationSpecBody::BeatClock(beat) => self.anim_beat_clock_ui(ui),
-                AnimationSpecBody::Wasm(animation_spec_body_wasm) => todo!(),
+                AnimationSpecBody::AudioFrequencies(_freq) => self.anim_freq_ui(ui),
+                AnimationSpecBody::AudioBeat(_beat) => self.anim_beat_ui(ui),
+                AnimationSpecBody::BeatClock(_beat) => self.anim_beat_clock_ui(ui),
+                AnimationSpecBody::Wasm(_animation_spec_body_wasm) => todo!(),
             }
 
             ui.vertical(|ui| {
@@ -607,7 +607,7 @@ impl AnimationEditState {
                             .ui(ui, &mut mathematical_phaser.amplitude_max);
                     });
                 }
-                PhaserKind::Keyframed(keyframed_phaser) => todo!(),
+                PhaserKind::Keyframed(_keyframed_phaser) => todo!(),
             }
 
             ui.vertical(|ui| {

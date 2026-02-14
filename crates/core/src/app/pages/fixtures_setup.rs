@@ -11,7 +11,7 @@ use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::fixture::state::{Fixture, Position};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
-use egui::{Color32, Context, FontId, Frame, Key, Label, Margin, RichText, TextEdit};
+use egui::{Color32, Context, Frame, Key, Label, Margin, RichText};
 use std::time::Duration;
 use std::{fmt, mem};
 use strum::IntoEnumIterator;
@@ -777,7 +777,7 @@ impl BlaulichtApp {
                                     // Read current fixture snapshot
                                     // let engine_read = self.data.state.dmx_engine.read().unwrap();
                                     if let Some(group) = dmx_engine.groups().get(&gid) {
-                                        if let Some(fix) = group.fixtures.get(&fid) {
+                                        if let Some(_fix) = group.fixtures.get(&fid) {
                                             ui.label(
                                                 RichText::new(format!(
                                                     "Selected Fixture: Group #{} • Fixture #{}",

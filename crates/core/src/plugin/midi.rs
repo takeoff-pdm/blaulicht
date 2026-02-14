@@ -2,15 +2,12 @@ use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
-use serialport::available_ports;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
 // use wmidi::MidiMessage;
 
 use crate::msg::{MidiEvent, SystemMessage};
-use crate::state::{AppHealthState, AppState, MidiDeviceState, MidiHealthError};
+use crate::state::{AppState, MidiDeviceState};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MidiError {

@@ -1,4 +1,4 @@
-use egui::{Color32, Label, Sense, Ui, Vec2, WidgetText};
+use egui::{Color32, Sense, Ui, Vec2};
 
 use crate::app::components::text_color_for_bg;
 

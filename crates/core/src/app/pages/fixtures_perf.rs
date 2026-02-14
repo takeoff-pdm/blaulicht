@@ -1,11 +1,10 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, Dialog, HFader, Knob, SpeedKnob},
+        components::{self, ButtonSize, Dialog, Knob, SpeedKnob},
         pages::AnimationEditState,
         BlaulichtApp,
     },
     dmx::EngineState,
-    event::SystemEventBusConnectionInst,
 };
 use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, Scene},

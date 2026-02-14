@@ -8,7 +8,6 @@ use crate::{
         pages::{
             AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI,
         },
-        ui::FileDialogOpenOrigin,
     },
     msg::TickSpeeds,
     state::{AppStateWrapper, NUM_DMX_UNIVERSES},
@@ -19,13 +18,11 @@ use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::{Color32, ColorImage, TextureHandle};
 use egui_dock::DockState;
-use egui_file::FileDialog;
 use pages::ViewUI;
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
 };
-use strum::EnumIter;
 
 mod app_navbar;
 pub mod components;

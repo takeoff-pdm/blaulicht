@@ -1,37 +1,19 @@
 use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
-use crate::audio::defs::AudioThreadControlSignal;
-use crate::dmx::{DmxEngine, EngineState};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
-use crate::{msg::SystemMessage, state::AppStateWrapper};
 use blaulicht_audio_engine::SpectrogramDisplayOptions;
-use blaulicht_shared::{
-    CollectedAudioSnapshot, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
-    PluginUiEvent,
-};
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
 
-use crossbeam_channel::TryRecvError;
-use egui::mutex::RwLockWriteGuard;
 use egui::{
-    vec2, Checkbox, Color32, ComboBox, Context, CornerRadius, FontId, Frame, Margin, Painter, Pos2,
-    Rect, RichText, Sense, Stroke, TextStyle, ThemePreference, Ui, Vec2, Widget,
+    vec2, Color32, FontId, Frame, Margin, RichText, Widget,
 };
-use egui_file::FileDialog;
-use egui_plot::{GridMark, Line, Plot, PlotPoints};
-use noise::utils::Color;
-use std::ffi::OsStr;
-use std::fs::{self, File};
 use std::io::Read;
 use std::mem;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::RwLockReadGuard;
-use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
 
 // TODO: include snapshot in graphs

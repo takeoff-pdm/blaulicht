@@ -5,7 +5,7 @@ use crate::app::{
 use blaulicht_shared::{
     scene::Scene, AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
-use egui::{Color32, Context, FontId, Frame, Key, Margin, Pos2, RichText, Sense, TextEdit, Vec2};
+use egui::{Color32, Context, Margin, Pos2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;

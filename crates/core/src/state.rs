@@ -2,7 +2,7 @@ use std::{
     array,
     borrow::Cow,
     collections::{HashMap, VecDeque},
-    net::{SocketAddr, ToSocketAddrs},
+    net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
@@ -243,7 +243,7 @@ impl AppState {
         let mut plugin_ui_popped_out = HashMap::new();
         for (i, _) in plugins.iter().enumerate() {
             plugin_ui_visibility.insert(i as u8, PluginOpenState::CLOSED);
-            plugin_ui_popped_out.insert((i as u8), false);
+            plugin_ui_popped_out.insert(i as u8 , false);
         }
 
         Self {

@@ -15,14 +15,11 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    AudioSource, CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
-    SignalCollectorParams, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
-    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+    CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
+    SignalCollectorParams,
 };
-use blaulicht_shared::LogLevel;
 use crossbeam_channel::Sender;
 use std::{
-    mem,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex,
@@ -105,8 +102,8 @@ pub fn run(
     //
     // Configure spectrogram window to keep configured seconds based on spectrogram refresh rate.
     // Fall back to at least 1 Hz; default configured to 60 Hz.
-    let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
-    let window_secs = config.spectrogram_window_seconds.max(1) as usize;
+    let _spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
+    let _window_secs = config.spectrogram_window_seconds.max(1) as usize;
     let spec_refresh_hz = 60;
     let window_secs = 10;
     let desired_columns = spec_refresh_hz * window_secs;
@@ -147,7 +144,7 @@ pub fn run(
     )
     .with_context(|| "Failed to create signal collector")?;
 
-    let mut plugin_wasm_engine_crashed = false;
+    let _plugin_wasm_engine_crashed = false;
 
     // Loop speed.
     let mut time_of_last_system_publish = 0;

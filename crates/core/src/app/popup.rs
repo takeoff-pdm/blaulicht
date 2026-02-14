@@ -2,8 +2,7 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     BlaulichtApp, PopupSpec,
 };
-use eframe::glow::components_per_format;
-use egui::{Color32, CornerRadius, Frame, Margin, Order, Pos2, RichText, Stroke};
+use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 use std::time::{Duration, Instant};
 
 impl BlaulichtApp {

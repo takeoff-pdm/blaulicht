@@ -1,36 +1,24 @@
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize, Dialog},
+        components::{self, ButtonSize},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
-    audio::defs::AudioThreadControlSignal,
     config,
-    mainloop::DMX_TICK_TIME,
-    msg::{FromFrontend, SystemMessage},
-    plugin::midi::MidiError,
-    state::{
-        ArtNetReceiver, DmxHealthState, MidiDeviceState, PluginOpenState, ScreenId,
-        SerialDeviceState, NUM_DMX_UNIVERSES,
-    },
+    msg::SystemMessage,
 };
-use blaulicht_assets::icons;
 use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, LogLevel, MainUiEvent, SaveEngineState,
+    LogLevel, SaveEngineState,
     Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
 };
 use egui::{
-    Color32, Context, FontFamily, FontId, Frame, Label, Margin, RichText, ThemePreference, Ui,
-    Vec2, Widget,
+    Context, Ui,
 };
-use egui_extras::{Column, TableBuilder};
 use egui_file::FileDialog;
 use std::{
     ffi::OsStr,
     mem,
-    net::SocketAddr,
     path::{Path, PathBuf},
-    process::Command,
     str::FromStr,
     time::Duration,
 };

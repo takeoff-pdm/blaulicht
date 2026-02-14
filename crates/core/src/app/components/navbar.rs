@@ -1,11 +1,8 @@
-use blaulicht_shared::{AppPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
+use blaulicht_shared::AppPage;
 use egui::Context;
 use strum::IntoEnumIterator;
 
-use crate::app::{
-    components::{self, ButtonSize},
-    BlaulichtApp,
-};
+use crate::app::components::{self, ButtonSize};
 
 pub fn app_page_to_icon(from: &AppPage) -> &'static str {
     match from {
