@@ -61,19 +61,40 @@ impl KorgSubSystem {
         println!("[KORG] initializing...");
 
         let name = "nanoKONTROL Studio";
-        let midi_handle = MidiConnection::open(name).unwrap();
-        println!(
-            "Got MIDI handle to device! HANDLE ID: {}",
-            midi_handle.get_meta().device_id
-        );
+        let midi_handle = match MidiConnection::open(name) {
+            Ok(handle) => {
+                println!(
+                    "Got MIDI handle to device! HANDLE ID: {}",
+                    handle.get_meta().device_id
+                );
+                handle
+            }
+            Err(err) => {
+                println!("[KORG] MIDI device not found: {:?}", err);
+                if crate::ALLOW_MISSING_MIDI {
+                    println!("[KORG] Continuing without nanoKONTROL Studio.");
+                    unsafe { MidiConnection::dummy() }
+                } else {
+                    panic!("[KORG] MIDI device missing and ALLOW_MISSING_MIDI=false");
+                }
+            }
+        };
 
         self.midi_handle = midi_handle;
 
-        self.nano_init();
-        println!("[KORG] done.");
+        if !crate::ALLOW_MISSING_MIDI
+            || self.midi_handle.get_meta().device_id != u8::MAX
+        {
+            self.nano_init();
+            println!("[KORG] done.");
+        }
     }
 
     pub fn run(&mut self, input: TickInput) {
+        if crate::ALLOW_MISSING_MIDI && self.midi_handle.get_meta().device_id == u8::MAX {
+            return;
+        }
+
         self.sync(input.clock);
 
         let res = self.midi_handle.poll();

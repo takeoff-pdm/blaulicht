@@ -8,6 +8,9 @@ use blaulicht_plugin_framework::prelude::println;
 use blaulicht_plugin_framework::Plugin;
 use blaulicht_shared::TickInput;
 
+// Set to false to require all MIDI devices at startup.
+pub const ALLOW_MISSING_MIDI: bool = true;
+
 #[derive(Default)]
 pub struct MidiAllPlugin {
     korg: KorgSubSystem,
@@ -24,6 +27,11 @@ impl Plugin for MidiAllPlugin {
     fn run(&mut self, input: TickInput) {
         self.korg.run(input.clone());
         self.legacy_state.run(input);
+    }
+
+    fn ui(&mut self) {
+        let now = self.legacy_state.ui_clock();
+        self.legacy_state.render_ui(now);
     }
 }
 
