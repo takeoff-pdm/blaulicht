@@ -61,4 +61,9 @@ file_path = "../plugins/bundle_debug/videowall.wasm"
 enabled = true
 enable_watcher = true
 
+[[plugins]]
+file_path = "../plugins/bundle_debug/console.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]
