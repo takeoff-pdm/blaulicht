@@ -1258,36 +1258,34 @@ impl LegacyState {
 
         // Left-side button clusters (scene + transport)
         let left_x = 24;
-        let left_y = 46;
-        let btn_w = 26;
-        let btn_h = 16;
+        let left_y = 42;
+        let btn_w = 24;
+        let btn_h = 14;
         let btn_gap = 6;
 
-        // Scene row (2 buttons)
-        for col in 0..2 {
-            let x = left_x + col * (btn_w + btn_gap);
-            let y = left_y;
-            ui::painter_rect(x, y, btn_w, btn_h, 40, 40, 40, 255);
-            ui::painter_rect_stroke(x, y, btn_w, btn_h, 70, 70, 70, 255, 1);
-        }
+        // Scene (single)
+        ui::painter_rect(left_x, left_y, btn_w, btn_h, 40, 40, 40, 255);
+        ui::painter_rect_stroke(left_x, left_y, btn_w, btn_h, 70, 70, 70, 255, 1);
 
-        // Marker row (3 buttons)
-        let marker_y = left_y + btn_h + btn_gap;
-        for col in 0..3 {
-            let x = left_x + col * (btn_w + btn_gap);
-            ui::painter_rect(x, marker_y, btn_w, btn_h, 45, 45, 45, 255);
-            ui::painter_rect_stroke(x, marker_y, btn_w, btn_h, 80, 80, 80, 255, 1);
-        }
-
-        // Transport block (2 rows x 4)
-        let t_y = marker_y + btn_h + btn_gap + 6;
+        // Two rows of 4 small buttons
+        let row1_y = left_y + btn_h + btn_gap + 4;
         for row in 0..2 {
             for col in 0..4 {
                 let x = left_x + col * (btn_w + btn_gap);
-                let y = t_y + row * (btn_h + btn_gap);
+                let y = row1_y + row * (btn_h + btn_gap);
                 ui::painter_rect(x, y, btn_w, btn_h, 45, 45, 45, 255);
                 ui::painter_rect_stroke(x, y, btn_w, btn_h, 80, 80, 80, 255, 1);
             }
+        }
+
+        // Square button row (4 buttons)
+        let square = btn_w;
+        let row3_y = row1_y + 2 * (btn_h + btn_gap) + 6;
+        for col in 0..4 {
+            let x = left_x + col * (square + btn_gap);
+            let y = row3_y;
+            ui::painter_rect(x, y, square, square, 45, 45, 45, 255);
+            ui::painter_rect_stroke(x, y, square, square, 80, 80, 80, 255, 1);
         }
 
         // Jog wheel
