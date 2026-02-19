@@ -30,6 +30,7 @@ impl Pane {
             AppPage::ViewPerformance => "View Performance",
             AppPage::FixturesPerformance => "Fixtures Performance",
             AppPage::Animations => "Animations",
+            AppPage::Visualizer => "Visualizer",
         }
     }
 

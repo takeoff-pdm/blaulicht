@@ -5,6 +5,7 @@ mod fixtures_setup;
 mod system;
 mod view;
 mod view_perf;
+mod visualizer;
 
 pub use animations::*;
 pub use fixtures_perf::*;
@@ -12,3 +13,4 @@ pub use fixtures_setup::*;
 pub use system::*;
 pub use view::*;
 pub use view_perf::*;
+pub use visualizer::*;

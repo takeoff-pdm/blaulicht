@@ -32,9 +32,10 @@ impl DmxEngine {
                 | AnimationSpecBody::BeatClock(_)
                 | AnimationSpecBody::AudioBeat(_)
                 | AnimationSpecBody::AudioFrequencies(_) => {
-                    // Reason for this is to 'always' update those animations.
-                    // DMX_TICK_TIME.as_millis() as f64 / 2.0
-                    0.0
+                    // Reason for this is to 'always' update those animations even if there are
+                    // bugs / quirks in the calculation, therefore the /2.
+                    // We cannot do 0.0 since the loop filters this out.
+                    DMX_TICK_TIME.as_millis() as f64 / 2.0
                 }
                 AnimationSpecBody::Wasm(_) => todo!(),
             }
@@ -55,7 +56,10 @@ impl DmxEngine {
         match &spec.body {
             AnimationSpecBody::PhaserRush(_) => todo!("ERROR"),
             AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
-            AnimationSpecBody::AudioVolume(_) => audio_snapshot.snapshot.volume as u16,
+            AnimationSpecBody::AudioVolume(_) => {
+                println!("volume: {}", audio_snapshot.snapshot.volume);
+                audio_snapshot.snapshot.volume as u16
+            }
             AnimationSpecBody::BPMValue(_) => audio_snapshot.snapshot.bpm as u16,
             AnimationSpecBody::AudioFrequencies(freqs) => {
                 // Create bins of size `fixtures_in_selection`

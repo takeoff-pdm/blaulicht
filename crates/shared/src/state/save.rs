@@ -338,6 +338,7 @@ mod tests {
                 name: "Fixture 1".to_string(),
                 type_: FixtureType::Dimmer(Dimmer::DimmerSingle),
                 pos: Default::default(),
+                rotation: Default::default(),
                 start_addr: 1,
                 universe_no: 0,
             },

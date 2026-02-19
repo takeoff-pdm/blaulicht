@@ -16,7 +16,7 @@
         ]);
 
         libraries = with pkgs;[
-            libudev-zero
+            udev
             wayland
             libxkbcommon
             fontconfig
@@ -28,6 +28,7 @@
             xorg.libXcursor
             xorg.libXi
             xorg.libXrandr
+            vulkan-loader
             libclang
             clang
             pkgs.stdenv.cc.cc.lib
@@ -42,7 +43,7 @@
 
         packages = with pkgs; [
             libGL
-            libudev-zero
+            udev
             pkg-config
             alsa-lib
             mold
@@ -53,6 +54,8 @@
             xorg.libXcursor
             xorg.libXi
             xorg.libXrandr
+            vulkan-loader
+            vulkan-tools
             libclang
             clang
             clangStdenv
@@ -71,6 +74,11 @@
 
           shellHook =
             ''
+              unset NIX_ENFORCE_PURITY
+              if [ -d /run/opengl-driver ]; then
+                export LD_LIBRARY_PATH=/run/opengl-driver/lib:/run/opengl-driver-32/lib:$LD_LIBRARY_PATH
+                export XDG_DATA_DIRS=/run/opengl-driver/share:/run/opengl-driver-32/share:$XDG_DATA_DIRS
+              fi
               export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH
               export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
 

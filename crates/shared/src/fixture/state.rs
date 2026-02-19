@@ -31,6 +31,8 @@ pub struct Fixture {
     pub name: String,
     pub type_: FixtureType,
     pub pos: Position,
+    #[serde(default)]
+    pub rotation: Rotation,
     // DMX start address + universe number.
     pub start_addr: usize,
     pub universe_no: usize,
@@ -42,6 +44,7 @@ impl Fixture {
             name,
             type_,
             pos: Position::default(),
+            rotation: Rotation::default(),
             start_addr,
             universe_no,
         }
@@ -65,6 +68,13 @@ pub struct Position {
     pub x: usize,
     pub y: usize,
     pub z: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
+pub struct Rotation {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 impl From<(usize, usize)> for Position {

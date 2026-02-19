@@ -8,7 +8,7 @@ use crate::dmx::EngineState;
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
-use blaulicht_shared::fixture::state::{Fixture, Position};
+use blaulicht_shared::fixture::state::{Fixture, Position, Rotation};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, Frame, Key, Label, Margin, RichText};
@@ -44,6 +44,9 @@ impl BlaulichtApp {
         self.add_fixture_universe_numberpad.close();
         self.add_fixture_pos_x_numberpad.close();
         self.add_fixture_pos_y_numberpad.close();
+        self.add_fixture_rot_x_numberpad.close();
+        self.add_fixture_rot_y_numberpad.close();
+        self.add_fixture_rot_z_numberpad.close();
         self.add_fixture_count_numberpad.close();
     }
 
@@ -53,6 +56,9 @@ impl BlaulichtApp {
         self.edit_fixture_pos_x_numberpad.close();
         self.edit_fixture_pos_y_numberpad.close();
         self.edit_fixture_pos_z_numberpad.close();
+        self.edit_fixture_rot_x_numberpad.close();
+        self.edit_fixture_rot_y_numberpad.close();
+        self.edit_fixture_rot_z_numberpad.close();
     }
 
     fn close_dmx_override_numberpads(&mut self) {
@@ -302,7 +308,7 @@ impl BlaulichtApp {
         const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
         let cell_h = BUTTON_SIZE.dim().0.y;
         let width = 570.0;
-        let height = 330.0;
+        let height = 400.0;
         const LABEL_W: f32 = 120.0;
 
         Dialog::new("Add Fixture".to_string(), egui::vec2(width, height))
@@ -347,6 +353,23 @@ impl BlaulichtApp {
                     ui.add_sized([LABEL_W, cell_h], Label::new("Pos Y:"));
                     self.add_fixture_pos_y_numberpad
                         .ui(ui, &mut self.add_fixture_pos_y);
+                });
+
+                // Rotation
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Rot X:"));
+                    self.add_fixture_rot_x_numberpad
+                        .ui(ui, &mut self.add_fixture_rot_x);
+
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Rot Y:"));
+                    self.add_fixture_rot_y_numberpad
+                        .ui(ui, &mut self.add_fixture_rot_y);
+                });
+
+                ui.horizontal(|ui| {
+                    ui.add_sized([LABEL_W, cell_h], Label::new("Rot Z:"));
+                    self.add_fixture_rot_z_numberpad
+                        .ui(ui, &mut self.add_fixture_rot_z);
                 });
 
                 ui.separator();
@@ -460,113 +483,123 @@ impl BlaulichtApp {
 
                 ui.separator();
 
-                // Count
+                // Count + actions
                 ui.horizontal(|ui| {
-                    ui.add_sized([LABEL_W, cell_h], Label::new("Count:"));
-                    self.add_fixture_count_numberpad
-                        .ui(ui, &mut self.add_fixture_count);
-                });
-
-                ui.separator();
-
-                ui.horizontal(|ui| {
-                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                        self.add_fixture_open = false;
-                        self.add_fixture_kind_dialog_open = false;
-                        self.add_fixture_model_dialog_open = false;
-                        self.close_add_fixture_numberpads();
-                    }
-
-                    let can_create = self.add_fixture_group.is_some()
-                        && dmx_engine
-                            .groups()
-                            .get(&self.add_fixture_group.unwrap())
-                            .is_some()
-                        && self.add_fixture_start_addr >= 1
-                        && self.add_fixture_start_addr <= 512;
-
-                    let mut button_pressed =
-                        components::button(ui, can_create, "Create", ButtonSize::Medium);
-                    ctx.input(|input| {
-                        if input.key_pressed(Key::Enter) {
-                            button_pressed = true;
-                        }
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.add_sized([LABEL_W, cell_h], Label::new("Count:"));
+                            self.add_fixture_count_numberpad
+                                .ui(ui, &mut self.add_fixture_count);
+                        });
                     });
 
-                    if !can_create {
-                        button_pressed = false;
-                    }
+                    ui.add_space(16.0);
 
-                    if button_pressed && self.add_fixture_group.is_some() {
-                        let group_id = self.add_fixture_group.unwrap();
-                        let base_name = std::mem::take(&mut self.add_fixture_name);
-                        let mut start_addr = self.add_fixture_start_addr as usize;
-                        let universe_no = self.add_fixture_universe_no as usize;
-                        let pos = Position {
-                            x: self.add_fixture_pos_x,
-                            y: self.add_fixture_pos_y,
-                            z: 0,
-                        };
-
-                        // Build fixture type
-                        let fixture_type = match self.add_fixture_kind {
-                            AddFixtureKind::MovingHead => {
-                                FixtureType::from(self.add_fixture_selected_moving_head)
-                            }
-                            AddFixtureKind::Light => {
-                                FixtureType::from(self.add_fixture_selected_light)
-                            }
-                            AddFixtureKind::Dimmer => {
-                                FixtureType::from(self.add_fixture_selected_dimmer)
-                            }
-                        };
-
-                        // Determine channel footprint for address stepping
-                        let footprint = fixture_type.footprint();
-
-                        // Create multiple fixtures if requested
-                        {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                            let count = self.add_fixture_count.max(1) as usize;
-                            for i in 0..count {
-                                if start_addr + fixture_type.footprint() > 513 {
-                                    mem::drop(dmx_engine);
-                                    self.show_popup(PopupSpec {
-                                        label: "Out of Channels".to_string(),
-                                        lifetime_duration: Duration::from_secs(3),
-                                        button: Some(PopupButtonSpec {
-                                            label: "OK".to_string(),
-                                        }),
-                                    });
-                                    break;
-                                }
-
-                                let name = if count > 1 {
-                                    format!("{} #{}", base_name, i + 1)
-                                } else {
-                                    base_name.clone()
-                                };
-                                let mut fixture = Fixture::new(
-                                    universe_no,
-                                    start_addr,
-                                    name,
-                                    fixture_type.clone(),
-                                );
-                                fixture.pos = pos.clone();
-                                dmx_engine.add_fixture_to_group(group_id, fixture);
-                                start_addr = start_addr.saturating_add(footprint);
-                            }
-                            skip_rest = true;
+                    ui.vertical(|ui| {
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                            self.add_fixture_open = false;
+                            self.add_fixture_kind_dialog_open = false;
+                            self.add_fixture_model_dialog_open = false;
+                            self.close_add_fixture_numberpads();
                         }
 
-                        // Reset some fields and close
-                        self.add_fixture_open = false;
-                        self.add_fixture_kind_dialog_open = false;
-                        self.add_fixture_model_dialog_open = false;
-                        self.close_add_fixture_numberpads();
+                        let can_create = self.add_fixture_group.is_some()
+                            && dmx_engine
+                                .groups()
+                                .get(&self.add_fixture_group.unwrap())
+                                .is_some()
+                            && self.add_fixture_start_addr >= 1
+                            && self.add_fixture_start_addr <= 512;
 
-                        self.add_fixture_name = String::from("New Fixture");
-                    }
+                        let mut button_pressed =
+                            components::button(ui, can_create, "Create", ButtonSize::Medium);
+                        ctx.input(|input| {
+                            if input.key_pressed(Key::Enter) {
+                                button_pressed = true;
+                            }
+                        });
+
+                        if !can_create {
+                            button_pressed = false;
+                        }
+
+                        if button_pressed && self.add_fixture_group.is_some() {
+                            let group_id = self.add_fixture_group.unwrap();
+                            let base_name = std::mem::take(&mut self.add_fixture_name);
+                            let mut start_addr = self.add_fixture_start_addr as usize;
+                            let universe_no = self.add_fixture_universe_no as usize;
+                            let pos = Position {
+                                x: self.add_fixture_pos_x,
+                                y: self.add_fixture_pos_y,
+                                z: 0,
+                            };
+                            let rotation = Rotation {
+                                x: self.add_fixture_rot_x,
+                                y: self.add_fixture_rot_y,
+                                z: self.add_fixture_rot_z,
+                            };
+
+                            // Build fixture type
+                            let fixture_type = match self.add_fixture_kind {
+                                AddFixtureKind::MovingHead => {
+                                    FixtureType::from(self.add_fixture_selected_moving_head)
+                                }
+                                AddFixtureKind::Light => {
+                                    FixtureType::from(self.add_fixture_selected_light)
+                                }
+                                AddFixtureKind::Dimmer => {
+                                    FixtureType::from(self.add_fixture_selected_dimmer)
+                                }
+                            };
+
+                            // Determine channel footprint for address stepping
+                            let footprint = fixture_type.footprint();
+
+                            // Create multiple fixtures if requested
+                            {
+                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                                let count = self.add_fixture_count.max(1) as usize;
+                                for i in 0..count {
+                                    if start_addr + fixture_type.footprint() > 513 {
+                                        mem::drop(dmx_engine);
+                                        self.show_popup(PopupSpec {
+                                            label: "Out of Channels".to_string(),
+                                            lifetime_duration: Duration::from_secs(3),
+                                            button: Some(PopupButtonSpec {
+                                                label: "OK".to_string(),
+                                            }),
+                                        });
+                                        break;
+                                    }
+
+                                    let name = if count > 1 {
+                                        format!("{} #{}", base_name, i + 1)
+                                    } else {
+                                        base_name.clone()
+                                    };
+                                    let mut fixture = Fixture::new(
+                                        universe_no,
+                                        start_addr,
+                                        name,
+                                        fixture_type.clone(),
+                                    );
+                                    fixture.pos = pos.clone();
+                                    fixture.rotation = rotation.clone();
+                                    dmx_engine.add_fixture_to_group(group_id, fixture);
+                                    start_addr = start_addr.saturating_add(footprint);
+                                }
+                                skip_rest = true;
+                            }
+
+                            // Reset some fields and close
+                            self.add_fixture_open = false;
+                            self.add_fixture_kind_dialog_open = false;
+                            self.add_fixture_model_dialog_open = false;
+                            self.close_add_fixture_numberpads();
+
+                            self.add_fixture_name = String::from("New Fixture");
+                        }
+                    });
                 });
             });
 
@@ -760,6 +793,9 @@ impl BlaulichtApp {
                                         self.new_fixture_pos_x = fix.pos.x;
                                         self.new_fixture_pos_y = fix.pos.y;
                                         self.new_fixture_pos_z = fix.pos.z;
+                                        self.new_fixture_rot_x = fix.rotation.x;
+                                        self.new_fixture_rot_y = fix.rotation.y;
+                                        self.new_fixture_rot_z = fix.rotation.z;
                                     }
                                 }
 
@@ -829,111 +865,163 @@ impl BlaulichtApp {
                                             });
 
                                             ui.horizontal(|ui| {
-                                                ui.add_sized(
-                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
-                                                    Label::new("Position X:"),
-                                                );
-                                                self.edit_fixture_pos_x_numberpad
-                                                    .ui(ui, &mut self.new_fixture_pos_x);
-                                            });
+                                                ui.vertical(|ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Position X:"),
+                                                        );
+                                                        self.edit_fixture_pos_x_numberpad
+                                                            .ui(ui, &mut self.new_fixture_pos_x);
+                                                    });
 
-                                            ui.horizontal(|ui| {
-                                                ui.add_sized(
-                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
-                                                    Label::new("Position Y:"),
-                                                );
-                                                self.edit_fixture_pos_y_numberpad
-                                                    .ui(ui, &mut self.new_fixture_pos_y);
-                                            });
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Position Y:"),
+                                                        );
+                                                        self.edit_fixture_pos_y_numberpad
+                                                            .ui(ui, &mut self.new_fixture_pos_y);
+                                                    });
 
-                                            ui.horizontal(|ui| {
-                                                ui.add_sized(
-                                                    [LABEL_W, ButtonSize::Medium.dim().0.y],
-                                                    Label::new("Position Z:"),
-                                                );
-                                                self.edit_fixture_pos_z_numberpad
-                                                    .ui(ui, &mut self.new_fixture_pos_z);
-                                            });
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Position Z:"),
+                                                        );
+                                                        self.edit_fixture_pos_z_numberpad
+                                                            .ui(ui, &mut self.new_fixture_pos_z);
+                                                    });
 
-                                            ui.add_space(6.0);
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Rotation X:"),
+                                                        );
+                                                        self.edit_fixture_rot_x_numberpad.ui(
+                                                            ui,
+                                                            &mut self.new_fixture_rot_x,
+                                                        );
+                                                    });
 
-                                            //mem::drop(engine);
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Rotation Y:"),
+                                                        );
+                                                        self.edit_fixture_rot_y_numberpad.ui(
+                                                            ui,
+                                                            &mut self.new_fixture_rot_y,
+                                                        );
+                                                    });
 
-                                            ui.horizontal(|ui| {
-                                                let can_save =
-                                                    (1..=512).contains(&self.new_fixture_addr);
-                                                if components::button(
-                                                    ui,
-                                                    can_save,
-                                                    "Save",
-                                                    ButtonSize::Medium,
-                                                ) {
-                                                    // let mut eng =
-                                                    //     self.data.state.dmx_engine.write().unwrap();
-                                                    let mut dmx_engine =
-                                                        self.data.state.dmx_engine.write().unwrap();
-                                                    if let Some(group_mut) =
-                                                        dmx_engine.0.groups.get_mut(&gid)
-                                                    {
-                                                        if let Some(fix_mut) =
-                                                            group_mut.fixtures.get_mut(&fid)
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_sized(
+                                                            [LABEL_W, ButtonSize::Medium.dim().0.y],
+                                                            Label::new("Rotation Z:"),
+                                                        );
+                                                        self.edit_fixture_rot_z_numberpad.ui(
+                                                            ui,
+                                                            &mut self.new_fixture_rot_z,
+                                                        );
+                                                    });
+                                                });
+
+                                                ui.add_space(16.0);
+
+                                                ui.vertical(|ui| {
+                                                    let can_save = (1..=512)
+                                                        .contains(&self.new_fixture_addr);
+                                                    if components::button(
+                                                        ui,
+                                                        can_save,
+                                                        "Save",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        // let mut eng =
+                                                        //     self.data.state.dmx_engine.write().unwrap();
+                                                        let mut dmx_engine = self
+                                                            .data
+                                                            .state
+                                                            .dmx_engine
+                                                            .write()
+                                                            .unwrap();
+                                                        if let Some(group_mut) =
+                                                            dmx_engine.0.groups.get_mut(&gid)
                                                         {
-                                                            fix_mut.name = self
-                                                                .new_fixture_name
-                                                                .clone()
-                                                                .into();
-                                                            fix_mut.start_addr =
-                                                                self.new_fixture_addr;
-                                                            fix_mut.universe_no =
-                                                                self.new_fixture_uni;
-                                                            fix_mut.pos.x = self.new_fixture_pos_x;
-                                                            fix_mut.pos.y = self.new_fixture_pos_y;
-                                                            fix_mut.pos.z = self.new_fixture_pos_z;
+                                                            if let Some(fix_mut) =
+                                                                group_mut.fixtures.get_mut(&fid)
+                                                            {
+                                                                fix_mut.name = self
+                                                                    .new_fixture_name
+                                                                    .clone()
+                                                                    .into();
+                                                                fix_mut.start_addr =
+                                                                    self.new_fixture_addr;
+                                                                fix_mut.universe_no =
+                                                                    self.new_fixture_uni;
+                                                                fix_mut.pos.x =
+                                                                    self.new_fixture_pos_x;
+                                                                fix_mut.pos.y =
+                                                                    self.new_fixture_pos_y;
+                                                                fix_mut.pos.z =
+                                                                    self.new_fixture_pos_z;
+                                                                fix_mut.rotation.x =
+                                                                    self.new_fixture_rot_x;
+                                                                fix_mut.rotation.y =
+                                                                    self.new_fixture_rot_y;
+                                                                fix_mut.rotation.z =
+                                                                    self.new_fixture_rot_z;
+                                                            }
                                                         }
                                                     }
-                                                }
 
-                                                ui.add_space(12.0);
+                                                    ui.add_space(12.0);
 
-                                                if components::button(
-                                                    ui,
-                                                    true,
-                                                    "Delete",
-                                                    ButtonSize::Medium,
-                                                ) {
-                                                    // let mut eng =
-                                                    //     self.data.state.dmx_engine.write().unwrap();
-                                                    //
-                                                    let mut dmx_engine =
-                                                        self.data.state.dmx_engine.write().unwrap();
+                                                    if components::button(
+                                                        ui,
+                                                        true,
+                                                        "Delete",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        // let mut eng =
+                                                        //     self.data.state.dmx_engine.write().unwrap();
+                                                        //
+                                                        let mut dmx_engine = self
+                                                            .data
+                                                            .state
+                                                            .dmx_engine
+                                                            .write()
+                                                            .unwrap();
 
-                                                    if let Some(group_mut) =
-                                                        dmx_engine.0.groups.get_mut(&gid)
-                                                    {
-                                                        let removed =
-                                                            group_mut.fixtures.remove(&fid);
-                                                        if removed.is_some() {
-                                                            // Adjust selection to first available fixture in the group, if any
-                                                            if let Some((&first_fid, _)) =
-                                                                group_mut.fixtures.iter().next()
-                                                            {
-                                                                self.setup_fixture_id = first_fid;
-                                                            }
+                                                        if let Some(group_mut) =
+                                                            dmx_engine.0.groups.get_mut(&gid)
+                                                        {
+                                                            let removed =
+                                                                group_mut.fixtures.remove(&fid);
+                                                            if removed.is_some() {
+                                                                // Adjust selection to first available fixture in the group, if any
+                                                                if let Some((&first_fid, _)) =
+                                                                    group_mut.fixtures.iter().next()
+                                                                {
+                                                                    self.setup_fixture_id = first_fid;
+                                                                }
 
-                                                            mem::drop(dmx_engine);
+                                                                mem::drop(dmx_engine);
 
-                                                            self.show_popup(
-                                                                PopupSpec::with_duration(
-                                                                    Duration::from_millis(750),
-                                                                    format!(
+                                                                self.show_popup(
+                                                                    PopupSpec::with_duration(
+                                                                        Duration::from_millis(750),
+                                                                        format!(
                                                             "Deleted fixture #{} from group #{}",
                                                             fid, gid
                                                         ),
-                                                                ),
-                                                            );
+                                                                    ),
+                                                                );
+                                                            }
                                                         }
                                                     }
-                                                }
+                                                });
                                             });
                                         } else {
                                             ui.label(

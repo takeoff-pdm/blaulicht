@@ -77,7 +77,9 @@ egui_plot = "0.33.0"
 egui_file = "0.23.1"
 egui-phosphor = "0.10.0"
 egui_code_editor = { version = "=0.2.14" }
+egui_glow = "0.32"
 image = { version = "0.25", default-features = false, features = ["bmp"] }
+bytemuck = "1.14.3"
 
 
 tempdir = "0.3.7"

@@ -194,7 +194,6 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(ref animation_spec_body_phaser) => {
                 animation_spec_body_phaser.sync
             }
-            AnimationSpecBody::PhaserRush(_)
             | AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
@@ -211,7 +210,6 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
                 animation_spec_body_phaser.pin_to_beat
             }
-            AnimationSpecBody::PhaserRush(_)
             | AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
@@ -226,7 +224,6 @@ impl AnimationSpec {
 pub enum AnimationSpecBody {
     /// Phaser operates on a degree (0-360 DEG) an the amount is increased in time steps.
     Phaser(AnimationSpecBodyPhaser),
-    PhaserRush(MathematicalPhaserRush),
     AudioVolume(AnimationSpecBodyAudioVolume),
     BPMValue(AnimationSpecBodyBpmValue),
     AudioBeat(AnimationSpecBodyBeat),
@@ -239,9 +236,6 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
     fn from(value: AnimationSpecBodyKind) -> Self {
         match value {
             AnimationSpecBodyKind::Phaser => Self::Phaser(AnimationSpecBodyPhaser::default()),
-            AnimationSpecBodyKind::PhaserRush => {
-                Self::PhaserRush(MathematicalPhaserRush::default())
-            }
             AnimationSpecBodyKind::AudioVolume => {
                 Self::AudioVolume(AnimationSpecBodyAudioVolume::default())
             }
@@ -260,7 +254,6 @@ impl AnimationSpecBody {
     pub fn kind(&self) -> AnimationSpecBodyKind {
         match self {
             AnimationSpecBody::Phaser(_) => AnimationSpecBodyKind::Phaser,
-            AnimationSpecBody::PhaserRush(_) => AnimationSpecBodyKind::PhaserRush,
             AnimationSpecBody::AudioVolume(_) => AnimationSpecBodyKind::AudioVolume,
             AnimationSpecBody::BPMValue(_) => AnimationSpecBodyKind::BPMValue,
             AnimationSpecBody::AudioBeat(_) => AnimationSpecBodyKind::AudioBeat,
@@ -274,7 +267,6 @@ impl AnimationSpecBody {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, EnumIter, PartialEq, Eq)]
 pub enum AnimationSpecBodyKind {
     Phaser,
-    PhaserRush,
     AudioVolume,
     BPMValue,
     AudioBeat,
@@ -328,19 +320,6 @@ pub enum PhaserKind {
 impl Default for PhaserKind {
     fn default() -> Self {
         Self::Mathematical(MathematicalPhaser::default())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
-pub struct MathematicalPhaserRush {
-    pub function_expression: String,
-}
-
-impl Default for MathematicalPhaserRush {
-    fn default() -> Self {
-        Self {
-            function_expression: "fn calculate(x: int) -> int { (x * x) }".to_string(),
-        }
     }
 }
 

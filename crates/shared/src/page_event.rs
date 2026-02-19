@@ -12,6 +12,7 @@ pub enum AppPage {
     ViewPerformance,
     FixturesPerformance,
     Animations,
+    Visualizer,
 }
 
 impl AppPage {
@@ -25,6 +26,7 @@ impl AppPage {
             AppPage::ViewPerformance => "V. Perf",
             AppPage::FixturesPerformance => "F. Perf",
             AppPage::Animations => "Anim",
+            AppPage::Visualizer => "Viz",
         }
     }
 }

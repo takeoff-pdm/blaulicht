@@ -137,7 +137,7 @@ impl BlaulichtApp {
     }
 }
 
-fn render_plugin_ops(
+pub(crate) fn render_plugin_ops(
     ui: &mut egui::Ui,
     ops: &Vec<crate::ui_ops::WasmUiOp>,
     idx: &mut usize,

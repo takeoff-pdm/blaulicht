@@ -7,6 +7,7 @@ use crate::{
         external_screen::Pane,
         pages::{
             AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI,
+            VisualizerUiState,
         },
     },
     msg::TickSpeeds,
@@ -193,6 +194,9 @@ pub struct BlaulichtApp {
     add_fixture_universe_no: u16,
     add_fixture_pos_x: usize,
     add_fixture_pos_y: usize,
+    add_fixture_rot_x: f32,
+    add_fixture_rot_y: f32,
+    add_fixture_rot_z: f32,
     add_fixture_kind: AddFixtureKind,
     add_fixture_kind_dialog_open: bool,
     add_fixture_model_dialog_open: bool,
@@ -205,6 +209,9 @@ pub struct BlaulichtApp {
     add_fixture_universe_numberpad: Numberpad,
     add_fixture_pos_x_numberpad: Numberpad,
     add_fixture_pos_y_numberpad: Numberpad,
+    add_fixture_rot_x_numberpad: Numberpad,
+    add_fixture_rot_y_numberpad: Numberpad,
+    add_fixture_rot_z_numberpad: Numberpad,
     add_fixture_count_numberpad: Numberpad,
 
     setup_fixture_id: u8,
@@ -215,11 +222,17 @@ pub struct BlaulichtApp {
     new_fixture_pos_x: usize,
     new_fixture_pos_y: usize,
     new_fixture_pos_z: usize,
+    new_fixture_rot_x: f32,
+    new_fixture_rot_y: f32,
+    new_fixture_rot_z: f32,
     edit_fixture_start_addr_numberpad: Numberpad,
     edit_fixture_universe_numberpad: Numberpad,
     edit_fixture_pos_x_numberpad: Numberpad,
     edit_fixture_pos_y_numberpad: Numberpad,
     edit_fixture_pos_z_numberpad: Numberpad,
+    edit_fixture_rot_x_numberpad: Numberpad,
+    edit_fixture_rot_y_numberpad: Numberpad,
+    edit_fixture_rot_z_numberpad: Numberpad,
 
     add_group_open: bool,
     delete_group_open: bool,
@@ -232,6 +245,7 @@ pub struct BlaulichtApp {
     view_ui_state: ViewUI,
     view_perf_ui_state: ViewPerfUI,
     animation_ui_state: AnimationUI,
+    visualizer_ui_state: VisualizerUiState,
 }
 
 impl BlaulichtApp {
@@ -346,6 +360,9 @@ impl BlaulichtApp {
             add_fixture_start_addr: 1,
             add_fixture_pos_x: 0,
             add_fixture_pos_y: 0,
+            add_fixture_rot_x: 0.0,
+            add_fixture_rot_y: 0.0,
+            add_fixture_rot_z: 0.0,
             add_fixture_kind: AddFixtureKind::MovingHead,
             add_fixture_kind_dialog_open: false,
             add_fixture_model_dialog_open: false,
@@ -367,6 +384,18 @@ impl BlaulichtApp {
             add_fixture_pos_y_numberpad: Numberpad::new()
                 .field_width(140.0)
                 .dialog_title("Position Y"),
+            add_fixture_rot_x_numberpad: Numberpad::new()
+                .field_width(140.0)
+                .dialog_title("Rotation X")
+                .range(0.0, 360.0),
+            add_fixture_rot_y_numberpad: Numberpad::new()
+                .field_width(140.0)
+                .dialog_title("Rotation Y")
+                .range(0.0, 360.0),
+            add_fixture_rot_z_numberpad: Numberpad::new()
+                .field_width(140.0)
+                .dialog_title("Rotation Z")
+                .range(0.0, 360.0),
             add_fixture_count_numberpad: Numberpad::new()
                 .dialog_title("Fixture Count")
                 .field_width(140.0)
@@ -379,6 +408,9 @@ impl BlaulichtApp {
             new_fixture_pos_x: 0,
             new_fixture_pos_y: 0,
             new_fixture_pos_z: 0,
+            new_fixture_rot_x: 0.0,
+            new_fixture_rot_y: 0.0,
+            new_fixture_rot_z: 0.0,
             edit_fixture_start_addr_numberpad: Numberpad::new()
                 .dialog_title("Start Address")
                 .field_width(140.0)
@@ -399,12 +431,25 @@ impl BlaulichtApp {
                 .dialog_title("Position Z")
                 .field_width(140.0)
                 .range(0.0, 1000.0),
+            edit_fixture_rot_x_numberpad: Numberpad::new()
+                .dialog_title("Rotation X")
+                .field_width(140.0)
+                .range(0.0, 360.0),
+            edit_fixture_rot_y_numberpad: Numberpad::new()
+                .dialog_title("Rotation Y")
+                .field_width(140.0)
+                .range(0.0, 360.0),
+            edit_fixture_rot_z_numberpad: Numberpad::new()
+                .dialog_title("Rotation Z")
+                .field_width(140.0)
+                .range(0.0, 360.0),
             add_group_open: false,
             delete_group_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             view_ui_state: ViewUI::default(),
             view_perf_ui_state: ViewPerfUI::default(),
             animation_ui_state: AnimationUI::default(),
+            visualizer_ui_state: VisualizerUiState::default(),
             fixture_perf_ui: FixturePerfUi {
                 scene_overview_animation_edit: AnimationEditState::default(),
                 scene_overview_animation_selection_edit: None,

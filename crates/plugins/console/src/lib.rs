@@ -1397,6 +1397,7 @@ fn page_from_index(idx: u8) -> AppPage {
         5 => AppPage::ViewPerformance,
         6 => AppPage::FixturesPerformance,
         7 => AppPage::Animations,
+        8 => AppPage::Visualizer,
         _ => AppPage::Logs,
     }
 }

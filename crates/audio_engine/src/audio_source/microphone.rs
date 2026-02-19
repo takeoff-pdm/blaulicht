@@ -88,15 +88,15 @@ impl AudioSource for AudioSourceMicrophone {
                 position: f.position,
             }));
 
-        if let (Some(pulled), Some(updated), Some(got)) = (pulled_at, updated_at, got_freqs_at) {
-            println!(
-                "get_freqs timings (ms): pull_wait={}, update={}, get_freqs={}, copy={}",
-                pulled.duration_since(start).as_millis(),
-                updated.duration_since(pulled).as_millis(),
-                got.duration_since(updated).as_millis(),
-                Instant::now().duration_since(got).as_millis()
-            );
-        }
+        // if let (Some(pulled), Some(updated), Some(got)) = (pulled_at, updated_at, got_freqs_at) {
+        //     println!(
+        //         "get_freqs timings (ms): pull_wait={}, update={}, get_freqs={}, copy={}",
+        //         pulled.duration_since(start).as_millis(),
+        //         updated.duration_since(pulled).as_millis(),
+        //         got.duration_since(updated).as_millis(),
+        //         Instant::now().duration_since(got).as_millis()
+        //     );
+        // }
 
         &self.freq_buffer
     }
