@@ -6,9 +6,28 @@ use egui_glow::CallbackFn;
 use std::sync::{Arc, Mutex};
 
 const FIXTURE_BODY_COLOR: [f32; 3] = [0.35, 0.35, 0.36];
-const FIXTURE_BORDER_COLOR: [f32; 3] = [0.32, 0.32, 0.36];
 const FIXTURE_EDGE_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
-const FIXTURE_BORDER_SCALE: f32 = 1.04;
+const JOINT_COLOR: [f32; 3] = [0.26, 0.26, 0.28];
+const HEAD_BODY_COLOR: [f32; 3] = [0.18, 0.18, 0.2];
+
+const BASE_SIZE: Vec3 = Vec3 {
+    x: 0.9,
+    y: 0.25,
+    z: 0.9,
+};
+const PAN_JOINT_HEIGHT: f32 = 0.12;
+const PAN_JOINT_RADIUS: f32 = 0.22;
+const YOKE_HEIGHT: f32 = 0.5;
+const YOKE_RADIUS: f32 = 0.18;
+const TILT_JOINT_RADIUS: f32 = 0.15;
+const TILT_JOINT_LENGTH: f32 = 0.25;
+const HEAD_SIZE: Vec3 = Vec3 {
+    x: 0.45,
+    y: 0.28,
+    z: 0.5,
+};
+const BEAM_ANGLE_DEG: f32 = 8.0;
+const CONE_SEGMENTS: usize = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisualizerSettings {
@@ -233,12 +252,35 @@ impl BlaulichtApp {
 struct RenderFixture {
     pos: Vec3,
     rotation: Vec3,
-    color: [f32; 3],
-    size: f32,
-    beam_dir: Vec3,
+    pan_rad: f32,
+    tilt_rad: f32,
     beam_len: f32,
     beam_color: [f32; 3],
     beam_strength: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BeamCone {
+    apex: Vec3,
+    dir: Vec3,
+    len: f32,
+    radius: f32,
+    color: [f32; 3],
+    strength: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FixturePose {
+    base_center: Vec3,
+    pan_center: Vec3,
+    yoke_center: Vec3,
+    tilt_pivot: Vec3,
+    head_center: Vec3,
+    head_forward: Vec3,
+    lens_pos: Vec3,
+    base_rot: [f32; 16],
+    pan_rot: [f32; 16],
+    head_rot: [f32; 16],
 }
 
 fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
@@ -261,16 +303,16 @@ fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
                 .cloned()
                 .unwrap_or_default();
             let rgb: RGBColor = state.color.into();
-            let rgb = rgb.with_alpha(state.alpha);
             let alpha = (state.alpha as f32 / 255.0).clamp(0.0, 1.0);
             let pan_deg = (state.orientation.pan as f32 / 255.0) * 540.0 - 270.0;
             let tilt_deg = (state.orientation.tilt as f32 / 255.0) * 270.0 - 135.0;
+            let pan_rad = pan_deg.to_radians();
+            let tilt_rad = tilt_deg.to_radians();
             let rotation = Vec3::new(
                 fixture.rotation.x.to_radians(),
                 fixture.rotation.y.to_radians(),
                 fixture.rotation.z.to_radians(),
             );
-            let beam_dir = rotate_vec3(dir_from_pan_tilt(pan_deg, tilt_deg), rotation);
             let pos = Vec3::new(
                 fixture.pos.x as f32 * scale,
                 fixture.pos.z as f32 * scale,
@@ -286,13 +328,8 @@ fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
             fixtures.push(RenderFixture {
                 pos,
                 rotation,
-                color: [
-                    rgb.r as f32 / 255.0,
-                    rgb.g as f32 / 255.0,
-                    rgb.b as f32 / 255.0,
-                ],
-                size: 0.6,
-                beam_dir,
+                pan_rad,
+                tilt_rad,
                 beam_len: 10.0,
                 beam_color: [
                     (rgb.r as f32 / 255.0).clamp(0.0, 1.0),
@@ -321,33 +358,36 @@ fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
     fixtures
 }
 
-fn dir_from_pan_tilt(pan_deg: f32, tilt_deg: f32) -> Vec3 {
-    let pan = pan_deg.to_radians();
-    let tilt = tilt_deg.to_radians();
-    let cos_tilt = tilt.cos();
-    Vec3::new(pan.sin() * cos_tilt, -tilt.sin(), pan.cos() * cos_tilt).normalize()
-}
+fn compute_fixture_pose(fixture: &RenderFixture) -> FixturePose {
+    let base_rot = mat4_rotation_euler(fixture.rotation);
+    let pan_rot = mat4_rotation_y(-fixture.pan_rad);
+    let tilt_rot = mat4_rotation_x(-fixture.tilt_rad);
+    let pan_matrix = mat4_mul(base_rot, pan_rot);
+    let head_rot = mat4_mul(pan_matrix, tilt_rot);
 
-fn rotate_vec3(mut v: Vec3, rot: Vec3) -> Vec3 {
-    let (sx, cx) = rot.x.sin_cos();
-    let y = v.y * cx - v.z * sx;
-    let z = v.y * sx + v.z * cx;
-    v.y = y;
-    v.z = z;
+    let up = mat4_transform_dir(base_rot, Vec3::new(0.0, 1.0, 0.0)).normalize();
+    let base_origin = fixture.pos;
+    let base_center = base_origin.add(up.scale(BASE_SIZE.y * 0.5));
+    let pan_center = base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT * 0.5));
+    let yoke_center =
+        base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT + YOKE_HEIGHT * 0.5));
+    let tilt_pivot = base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT + YOKE_HEIGHT));
+    let head_forward = mat4_transform_dir(head_rot, Vec3::new(0.0, 0.0, 1.0)).normalize();
+    let head_center = tilt_pivot.add(head_forward.scale(HEAD_SIZE.z * 0.5));
+    let lens_pos = tilt_pivot.add(head_forward.scale(HEAD_SIZE.z));
 
-    let (sy, cy) = rot.y.sin_cos();
-    let x = v.x * cy - v.z * sy;
-    let z = v.x * sy + v.z * cy;
-    v.x = x;
-    v.z = z;
-
-    let (sz, cz) = rot.z.sin_cos();
-    let x = v.x * cz - v.y * sz;
-    let y = v.x * sz + v.y * cz;
-    v.x = x;
-    v.y = y;
-
-    v
+    FixturePose {
+        base_center,
+        pan_center,
+        yoke_center,
+        tilt_pivot,
+        head_center,
+        head_forward,
+        lens_pos,
+        base_rot,
+        pan_rot: pan_matrix,
+        head_rot,
+    }
 }
 
 struct GlowRenderer {
@@ -363,9 +403,13 @@ struct GlowRenderer {
     axes_vao: glow::VertexArray,
     axes_vbo: glow::Buffer,
     axes_vertex_count: i32,
-    beam_vao: glow::VertexArray,
-    beam_vbo: glow::Buffer,
-    beam_vertex_count: i32,
+    cylinder_vao: glow::VertexArray,
+    cylinder_vbo: glow::Buffer,
+    cylinder_ebo: glow::Buffer,
+    cylinder_index_count: i32,
+    cone_vao: glow::VertexArray,
+    cone_vbo: glow::Buffer,
+    cone_vertex_count: i32,
     cube_edges_vao: glow::VertexArray,
     cube_edges_vbo: glow::Buffer,
     cube_edges_vertex_count: i32,
@@ -384,7 +428,9 @@ impl GlowRenderer {
                 create_cube_edges(gl)?;
             let (grid_vao, grid_vbo, grid_vertex_count) = create_grid(gl)?;
             let (axes_vao, axes_vbo, axes_vertex_count) = create_axes(gl)?;
-            let (beam_vao, beam_vbo) = create_dynamic_lines(gl)?;
+            let (cylinder_vao, cylinder_vbo, cylinder_ebo, cylinder_index_count) =
+                create_cylinder(gl, 24)?;
+            let (cone_vao, cone_vbo) = create_dynamic_mesh(gl)?;
             let u_mvp = gl.get_uniform_location(program, "u_mvp");
             let u_brightness = gl.get_uniform_location(program, "u_brightness");
             let u_color = gl.get_uniform_location(program, "u_color");
@@ -403,9 +449,13 @@ impl GlowRenderer {
                 axes_vao,
                 axes_vbo,
                 axes_vertex_count,
-                beam_vao,
-                beam_vbo,
-                beam_vertex_count: 0,
+                cylinder_vao,
+                cylinder_vbo,
+                cylinder_ebo,
+                cylinder_index_count,
+                cone_vao,
+                cone_vbo,
+                cone_vertex_count: 0,
                 cube_edges_vao,
                 cube_edges_vbo,
                 cube_edges_vertex_count,
@@ -473,6 +523,23 @@ impl GlowRenderer {
             };
             let view = mat4_look_at(eye, Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
 
+            let mut poses: Vec<FixturePose> = Vec::with_capacity(fixtures.len());
+            let mut cones: Vec<BeamCone> = Vec::with_capacity(fixtures.len());
+            for fixture in fixtures {
+                let pose = compute_fixture_pose(fixture);
+                let beam_angle = BEAM_ANGLE_DEG.to_radians();
+                let radius = (fixture.beam_len * beam_angle.tan()).max(0.05);
+                cones.push(BeamCone {
+                    apex: pose.lens_pos,
+                    dir: pose.head_forward,
+                    len: fixture.beam_len,
+                    radius,
+                    color: fixture.beam_color,
+                    strength: fixture.beam_strength,
+                });
+                poses.push(pose);
+            }
+
 
             if settings.show_grid {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, true);
@@ -494,66 +561,27 @@ impl GlowRenderer {
                 gl.draw_arrays(glow::LINES, 0, self.axes_vertex_count);
             }
 
-            self.update_beams(gl, fixtures);
-            if self.beam_vertex_count > 0 {
+            self.update_cones(gl, &cones);
+            if self.cone_vertex_count > 0 {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, true);
-                gl.bind_vertex_array(Some(self.beam_vao));
+                gl.bind_vertex_array(Some(self.cone_vao));
                 let mvp = mat4_mul(projection, mat4_mul(view, mat4_identity()));
                 if let Some(loc) = &self.u_mvp {
                     gl.uniform_matrix_4_f32_slice(Some(loc), false, &mvp);
                 }
-                gl.line_width(2.0);
-                gl.draw_arrays(glow::LINES, 0, self.beam_vertex_count);
+                gl.enable(glow::BLEND);
+                gl.blend_func(glow::ONE, glow::ONE);
+                gl.depth_mask(false);
+                gl.draw_arrays(glow::TRIANGLES, 0, self.cone_vertex_count);
+                gl.depth_mask(true);
+                gl.disable(glow::BLEND);
             }
 
             if !fixtures.is_empty() {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, false);
-                for fixture in fixtures {
-                    let rotation = mat4_mul(
-                        mat4_rotation_z(fixture.rotation.z),
-                        mat4_mul(
-                            mat4_rotation_y(fixture.rotation.y),
-                            mat4_rotation_x(fixture.rotation.x),
-                        ),
-                    );
-                    let model = mat4_mul(
-                        mat4_translation(fixture.pos.x, fixture.pos.y, fixture.pos.z),
-                        mat4_mul(rotation, mat4_scale(fixture.size, fixture.size, fixture.size)),
-                    );
-                    let mvp = mat4_mul(projection, mat4_mul(view, model));
-
+                let index_stride = std::mem::size_of::<u16>() as i32;
+                for (fixture, pose) in fixtures.iter().zip(poses.iter()) {
                     gl.bind_vertex_array(Some(self.cube_vao));
-
-                    gl.enable(glow::CULL_FACE);
-                    gl.cull_face(glow::FRONT);
-                    if let Some(loc) = &self.u_color {
-                        gl.uniform_3_f32(
-                            Some(loc),
-                            FIXTURE_BORDER_COLOR[0],
-                            FIXTURE_BORDER_COLOR[1],
-                            FIXTURE_BORDER_COLOR[2],
-                        );
-                    }
-                    let outline_size = fixture.size * FIXTURE_BORDER_SCALE;
-                    let outline_model = mat4_mul(
-                        mat4_translation(fixture.pos.x, fixture.pos.y, fixture.pos.z),
-                        mat4_mul(rotation, mat4_scale(outline_size, outline_size, outline_size)),
-                    );
-                    let outline_mvp = mat4_mul(projection, mat4_mul(view, outline_model));
-                    if let Some(loc) = &self.u_mvp {
-                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &outline_mvp);
-                    }
-                    gl.draw_elements(
-                        glow::TRIANGLES,
-                        self.cube_index_count,
-                        glow::UNSIGNED_SHORT,
-                        0,
-                    );
-                    gl.cull_face(glow::BACK);
-                    gl.disable(glow::CULL_FACE);
-
-                    gl.enable(glow::POLYGON_OFFSET_FILL);
-                    gl.polygon_offset(1.0, 1.0);
 
                     if let Some(loc) = &self.u_color {
                         gl.uniform_3_f32(
@@ -563,34 +591,148 @@ impl GlowRenderer {
                             FIXTURE_BODY_COLOR[2],
                         );
                     }
+                    let base_model = mat4_mul(
+                        mat4_translation(
+                            pose.base_center.x,
+                            pose.base_center.y,
+                            pose.base_center.z,
+                        ),
+                        mat4_mul(
+                            pose.base_rot,
+                            mat4_scale(BASE_SIZE.x, BASE_SIZE.y, BASE_SIZE.z),
+                        ),
+                    );
+                    let base_mvp = mat4_mul(projection, mat4_mul(view, base_model));
                     if let Some(loc) = &self.u_mvp {
-                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &mvp);
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &base_mvp);
                     }
-                    let index_stride = std::mem::size_of::<u16>() as i32;
-                    gl.draw_elements(glow::TRIANGLES, 24, glow::UNSIGNED_SHORT, 0);
                     gl.draw_elements(
                         glow::TRIANGLES,
-                        6,
+                        self.cube_index_count,
                         glow::UNSIGNED_SHORT,
-                        30 * index_stride,
+                        0,
                     );
 
+                    gl.bind_vertex_array(Some(self.cylinder_vao));
                     if let Some(loc) = &self.u_color {
                         gl.uniform_3_f32(
                             Some(loc),
-                            fixture.color[0],
-                            fixture.color[1],
-                            fixture.color[2],
+                            JOINT_COLOR[0],
+                            JOINT_COLOR[1],
+                            JOINT_COLOR[2],
+                        );
+                    }
+                    let pan_model = mat4_mul(
+                        mat4_translation(pose.pan_center.x, pose.pan_center.y, pose.pan_center.z),
+                        mat4_mul(
+                            pose.pan_rot,
+                            mat4_scale(
+                                PAN_JOINT_RADIUS,
+                                PAN_JOINT_HEIGHT * 0.5,
+                                PAN_JOINT_RADIUS,
+                            ),
+                        ),
+                    );
+                    let pan_mvp = mat4_mul(projection, mat4_mul(view, pan_model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &pan_mvp);
+                    }
+                    gl.draw_elements(
+                        glow::TRIANGLES,
+                        self.cylinder_index_count,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+
+                    let yoke_model = mat4_mul(
+                        mat4_translation(pose.yoke_center.x, pose.yoke_center.y, pose.yoke_center.z),
+                        mat4_mul(
+                            pose.pan_rot,
+                            mat4_scale(YOKE_RADIUS, YOKE_HEIGHT * 0.5, YOKE_RADIUS),
+                        ),
+                    );
+                    let yoke_mvp = mat4_mul(projection, mat4_mul(view, yoke_model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &yoke_mvp);
+                    }
+                    gl.draw_elements(
+                        glow::TRIANGLES,
+                        self.cylinder_index_count,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+
+                    let tilt_model = mat4_mul(
+                        mat4_translation(pose.tilt_pivot.x, pose.tilt_pivot.y, pose.tilt_pivot.z),
+                        mat4_mul(
+                            pose.pan_rot,
+                            mat4_mul(
+                                mat4_rotation_z(std::f32::consts::FRAC_PI_2),
+                                mat4_scale(
+                                    TILT_JOINT_RADIUS,
+                                    TILT_JOINT_LENGTH * 0.5,
+                                    TILT_JOINT_RADIUS,
+                                ),
+                            ),
+                        ),
+                    );
+                    let tilt_mvp = mat4_mul(projection, mat4_mul(view, tilt_model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &tilt_mvp);
+                    }
+                    gl.draw_elements(
+                        glow::TRIANGLES,
+                        self.cylinder_index_count,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+
+                    gl.bind_vertex_array(Some(self.cube_vao));
+                    if let Some(loc) = &self.u_color {
+                        gl.uniform_3_f32(
+                            Some(loc),
+                            HEAD_BODY_COLOR[0],
+                            HEAD_BODY_COLOR[1],
+                            HEAD_BODY_COLOR[2],
+                        );
+                    }
+                    let head_model = mat4_mul(
+                        mat4_translation(
+                            pose.head_center.x,
+                            pose.head_center.y,
+                            pose.head_center.z,
+                        ),
+                        mat4_mul(
+                            pose.head_rot,
+                            mat4_scale(HEAD_SIZE.x, HEAD_SIZE.y, HEAD_SIZE.z),
+                        ),
+                    );
+                    let head_mvp = mat4_mul(projection, mat4_mul(view, head_model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &head_mvp);
+                    }
+                    gl.draw_elements(
+                        glow::TRIANGLES,
+                        self.cube_index_count,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+
+                    let lens_intensity = (0.2 + 0.8 * fixture.beam_strength).clamp(0.0, 1.0);
+                    if let Some(loc) = &self.u_color {
+                        gl.uniform_3_f32(
+                            Some(loc),
+                            (fixture.beam_color[0] * lens_intensity).clamp(0.0, 1.0),
+                            (fixture.beam_color[1] * lens_intensity).clamp(0.0, 1.0),
+                            (fixture.beam_color[2] * lens_intensity).clamp(0.0, 1.0),
                         );
                     }
                     gl.draw_elements(
                         glow::TRIANGLES,
                         6,
                         glow::UNSIGNED_SHORT,
-                        24 * index_stride,
+                        6 * index_stride,
                     );
-
-                    gl.disable(glow::POLYGON_OFFSET_FILL);
 
                     gl.bind_vertex_array(Some(self.cube_edges_vao));
                     if let Some(loc) = &self.u_color {
@@ -601,16 +743,17 @@ impl GlowRenderer {
                             FIXTURE_EDGE_COLOR[2],
                         );
                     }
-                    let edge_size = fixture.size;
-                    let edge_model = mat4_mul(
-                        mat4_translation(fixture.pos.x, fixture.pos.y, fixture.pos.z),
-                        mat4_mul(rotation, mat4_scale(edge_size, edge_size, edge_size)),
-                    );
-                    let edge_mvp = mat4_mul(projection, mat4_mul(view, edge_model));
+                    let base_edge_mvp = mat4_mul(projection, mat4_mul(view, base_model));
                     if let Some(loc) = &self.u_mvp {
-                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &edge_mvp);
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &base_edge_mvp);
                     }
-                    gl.line_width(1.5);
+                    gl.line_width(1.2);
+                    gl.draw_arrays(glow::LINES, 0, self.cube_edges_vertex_count);
+
+                    let head_edge_mvp = mat4_mul(projection, mat4_mul(view, head_model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &head_edge_mvp);
+                    }
                     gl.draw_arrays(glow::LINES, 0, self.cube_edges_vertex_count);
                 }
             }
@@ -622,28 +765,58 @@ impl GlowRenderer {
         }
     }
 
-    fn update_beams(&mut self, gl: &Arc<glow::Context>, fixtures: &[RenderFixture]) {
+    fn update_cones(&mut self, gl: &Arc<glow::Context>, cones: &[BeamCone]) {
         let mut verts: Vec<f32> = Vec::new();
-        for fixture in fixtures {
-            if fixture.beam_strength <= 0.01 {
+        for cone in cones {
+            if cone.strength <= 0.01 {
                 continue;
             }
-            let start = fixture.pos;
-            let end = fixture.pos.add(fixture.beam_dir.scale(fixture.beam_len));
-            let intensity = (0.4 + 0.6 * fixture.beam_strength).clamp(0.0, 1.0);
-            let color = [
-                (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
-                (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
-                (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
+            let forward = cone.dir.normalize();
+            let (right, up) = basis_from_dir(forward);
+            let base_center = cone.apex.add(forward.scale(cone.len));
+            let apex_intensity = (0.7 * cone.strength).clamp(0.0, 1.0);
+            let rim_intensity = (0.08 * cone.strength).clamp(0.0, 1.0);
+            let apex_color = [
+                (cone.color[0] * apex_intensity).clamp(0.0, 1.0),
+                (cone.color[1] * apex_intensity).clamp(0.0, 1.0),
+                (cone.color[2] * apex_intensity).clamp(0.0, 1.0),
             ];
-            verts.extend_from_slice(&[start.x, start.y, start.z, color[0], color[1], color[2]]);
-            verts.extend_from_slice(&[end.x, end.y, end.z, color[0], color[1], color[2]]);
+            let rim_color = [
+                (cone.color[0] * rim_intensity).clamp(0.0, 1.0),
+                (cone.color[1] * rim_intensity).clamp(0.0, 1.0),
+                (cone.color[2] * rim_intensity).clamp(0.0, 1.0),
+            ];
+
+            let segment_step = std::f32::consts::TAU / CONE_SEGMENTS as f32;
+            for i in 0..CONE_SEGMENTS {
+                let a0 = i as f32 * segment_step;
+                let a1 = (i + 1) as f32 * segment_step;
+                let offset0 = right
+                    .scale(a0.cos() * cone.radius)
+                    .add(up.scale(a0.sin() * cone.radius));
+                let offset1 = right
+                    .scale(a1.cos() * cone.radius)
+                    .add(up.scale(a1.sin() * cone.radius));
+                let p0 = base_center.add(offset0);
+                let p1 = base_center.add(offset1);
+
+                verts.extend_from_slice(&[
+                    cone.apex.x,
+                    cone.apex.y,
+                    cone.apex.z,
+                    apex_color[0],
+                    apex_color[1],
+                    apex_color[2],
+                ]);
+                verts.extend_from_slice(&[p0.x, p0.y, p0.z, rim_color[0], rim_color[1], rim_color[2]]);
+                verts.extend_from_slice(&[p1.x, p1.y, p1.z, rim_color[0], rim_color[1], rim_color[2]]);
+            }
         }
 
-        self.beam_vertex_count = (verts.len() / 6) as i32;
+        self.cone_vertex_count = (verts.len() / 6) as i32;
         unsafe {
-            gl.bind_vertex_array(Some(self.beam_vao));
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.beam_vbo));
+            gl.bind_vertex_array(Some(self.cone_vao));
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.cone_vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
                 bytemuck::cast_slice(&verts),
@@ -667,8 +840,11 @@ impl Drop for GlowRenderer {
             self.gl.delete_buffer(self.grid_vbo);
             self.gl.delete_vertex_array(self.axes_vao);
             self.gl.delete_buffer(self.axes_vbo);
-            self.gl.delete_vertex_array(self.beam_vao);
-            self.gl.delete_buffer(self.beam_vbo);
+            self.gl.delete_vertex_array(self.cylinder_vao);
+            self.gl.delete_buffer(self.cylinder_vbo);
+            self.gl.delete_buffer(self.cylinder_ebo);
+            self.gl.delete_vertex_array(self.cone_vao);
+            self.gl.delete_buffer(self.cone_vbo);
         }
     }
 }
@@ -805,6 +981,84 @@ unsafe fn create_cube(
     Ok((vao, vbo, ebo, indices.len() as i32))
 }
 
+unsafe fn create_cylinder(
+    gl: &Arc<glow::Context>,
+    segments: usize,
+) -> Result<(glow::VertexArray, glow::Buffer, glow::Buffer, i32), String> {
+    let segs = segments.max(3);
+    let mut vertices: Vec<f32> = Vec::with_capacity((segs + 3) * 12);
+    let mut indices: Vec<u16> = Vec::new();
+
+    for i in 0..=segs {
+        let angle = (i as f32 / segs as f32) * std::f32::consts::TAU;
+        let x = angle.cos();
+        let z = angle.sin();
+        vertices.extend_from_slice(&[x, 1.0, z, 1.0, 1.0, 1.0]);
+        vertices.extend_from_slice(&[x, -1.0, z, 1.0, 1.0, 1.0]);
+    }
+
+    let ring_vert_count = (segs + 1) * 2;
+    let top_center_index = ring_vert_count as u16;
+    let bottom_center_index = top_center_index + 1;
+    vertices.extend_from_slice(&[0.0, 1.0, 0.0, 1.0, 1.0, 1.0]);
+    vertices.extend_from_slice(&[0.0, -1.0, 0.0, 1.0, 1.0, 1.0]);
+
+    for i in 0..segs {
+        let top_i = (i * 2) as u16;
+        let bottom_i = top_i + 1;
+        let top_next = ((i + 1) * 2) as u16;
+        let bottom_next = top_next + 1;
+        indices.extend_from_slice(&[top_i, bottom_i, top_next]);
+        indices.extend_from_slice(&[top_next, bottom_i, bottom_next]);
+    }
+
+    for i in 0..segs {
+        let top_i = (i * 2) as u16;
+        let top_next = ((i + 1) * 2) as u16;
+        indices.extend_from_slice(&[top_center_index, top_next, top_i]);
+    }
+
+    for i in 0..segs {
+        let bottom_i = (i * 2 + 1) as u16;
+        let bottom_next = ((i + 1) * 2 + 1) as u16;
+        indices.extend_from_slice(&[bottom_center_index, bottom_i, bottom_next]);
+    }
+
+    let vao = gl
+        .create_vertex_array()
+        .map_err(|e| format!("Cylinder VAO create failed: {e}"))?;
+    let vbo = gl
+        .create_buffer()
+        .map_err(|e| format!("Cylinder VBO create failed: {e}"))?;
+    let ebo = gl
+        .create_buffer()
+        .map_err(|e| format!("Cylinder EBO create failed: {e}"))?;
+
+    gl.bind_vertex_array(Some(vao));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+    gl.buffer_data_u8_slice(
+        glow::ARRAY_BUFFER,
+        bytemuck::cast_slice(&vertices),
+        glow::STATIC_DRAW,
+    );
+    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+    gl.buffer_data_u8_slice(
+        glow::ELEMENT_ARRAY_BUFFER,
+        bytemuck::cast_slice(&indices),
+        glow::STATIC_DRAW,
+    );
+
+    let stride = 6 * std::mem::size_of::<f32>() as i32;
+    gl.enable_vertex_attrib_array(0);
+    gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
+    gl.enable_vertex_attrib_array(1);
+    gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, 12);
+
+    gl.bind_vertex_array(None);
+
+    Ok((vao, vbo, ebo, indices.len() as i32))
+}
+
 unsafe fn create_cube_edges(
     gl: &Arc<glow::Context>,
 ) -> Result<(glow::VertexArray, glow::Buffer, i32), String> {
@@ -913,7 +1167,7 @@ unsafe fn create_line_buffer(
     Ok((vao, vbo, (verts.len() / 6) as i32))
 }
 
-unsafe fn create_dynamic_lines(
+unsafe fn create_dynamic_mesh(
     gl: &Arc<glow::Context>,
 ) -> Result<(glow::VertexArray, glow::Buffer), String> {
     let vao = gl
@@ -988,6 +1242,18 @@ impl Vec3 {
     }
 }
 
+fn basis_from_dir(dir: Vec3) -> (Vec3, Vec3) {
+    let forward = dir.normalize();
+    let up_ref = if forward.y.abs() > 0.95 {
+        Vec3::new(1.0, 0.0, 0.0)
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
+    let right = up_ref.cross(forward).normalize();
+    let up = forward.cross(right).normalize();
+    (right, up)
+}
+
 fn mat4_perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> [f32; 16] {
     let f = 1.0 / (fov_y / 2.0).tan();
     let nf = 1.0 / (near - far);
@@ -1051,6 +1317,21 @@ fn mat4_rotation_z(angle: f32) -> [f32; 16] {
     [
         c, s, 0.0, 0.0, -s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
+}
+
+fn mat4_rotation_euler(rot: Vec3) -> [f32; 16] {
+    mat4_mul(
+        mat4_rotation_z(rot.z),
+        mat4_mul(mat4_rotation_y(rot.y), mat4_rotation_x(rot.x)),
+    )
+}
+
+fn mat4_transform_dir(m: [f32; 16], v: Vec3) -> Vec3 {
+    Vec3::new(
+        m[0] * v.x + m[4] * v.y + m[8] * v.z,
+        m[1] * v.x + m[5] * v.y + m[9] * v.z,
+        m[2] * v.x + m[6] * v.y + m[10] * v.z,
+    )
 }
 
 fn mat4_look_at(eye: Vec3, target: Vec3, up: Vec3) -> [f32; 16] {

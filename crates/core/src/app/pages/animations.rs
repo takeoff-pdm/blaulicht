@@ -432,7 +432,6 @@ impl AnimationEditState {
 
             match &self.working_state.body {
                 AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx),
-                AnimationSpecBody::PhaserRush(_) => todo!("unsupported"),
                 AnimationSpecBody::AudioVolume(_audio) => self.anim_audio_ui(ui),
                 AnimationSpecBody::BPMValue(_) => self.anim_bpm_ui(ui),
                 AnimationSpecBody::AudioFrequencies(_freq) => self.anim_freq_ui(ui),

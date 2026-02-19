@@ -15,9 +15,6 @@ impl DmxEngine {
     ) -> f64 {
         let speed_per_step = {
             match &animation_spec.body {
-                AnimationSpecBody::PhaserRush(_) => {
-                    todo!("PANIC")
-                }
                 AnimationSpecBody::Phaser(body) => {
                     let speed_for_all_steps = match body.time_total {
                         PhaserDuration::Fixed(time) => time as f64,
@@ -54,7 +51,6 @@ impl DmxEngine {
         fixtures_in_selection: usize,
     ) -> u16 {
         match &spec.body {
-            AnimationSpecBody::PhaserRush(_) => todo!("ERROR"),
             AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
             AnimationSpecBody::AudioVolume(_) => {
                 println!("volume: {}", audio_snapshot.snapshot.volume);
