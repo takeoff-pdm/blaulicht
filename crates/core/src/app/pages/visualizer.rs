@@ -1,5 +1,5 @@
 use crate::app::BlaulichtApp;
-use blaulicht_shared::{fixture::{FixtureType, Light}, RGBColor};
+use blaulicht_shared::{fixture::{light::Light, FixtureType}, RGBColor};
 use egui::{Context, Sense, Vec2};
 use egui_glow::glow::{self, HasContext};
 use egui_glow::CallbackFn;
@@ -33,12 +33,16 @@ const TAKEOFF_LOGO_DEPTH: f32 = 0.18;
 const TAKEOFF_LOGO_STROKE: f32 = 0.18;
 const TAKEOFF_LOGO_W: f32 = 1.0;
 const TAKEOFF_LOGO_H: f32 = 1.35;
-const TAKEOFF_LOGO_SPACING: f32 = 0.35;
+const TAKEOFF_LOGO_SPACING: f32 = 1.55;
+const TAKEOFF_LOGO_KERNING_EO: f32 = 0.0;
+const TAKEOFF_LOGO_KERNING_OF: f32 = 0.0;
+const TAKEOFF_LOGO_KERNING_FF: f32 = 0.0;
 const TAKEOFF_LOGO_BACK_PADDING: f32 = 0.2;
 const TAKEOFF_LOGO_BACK_THICKNESS: f32 = 0.08;
 const TAKEOFF_LOGO_Y_OFFSET: f32 = 0.35;
 const TAKEOFF_BACK_COLOR: [f32; 3] = [0.08, 0.08, 0.09];
 const GENERIC_FIXTURE_SIZE: f32 = 0.45;
+const TAKEOFF_LOGO_LETTERS: [char; 7] = ['T', 'A', 'K', 'E', 'O', 'F', 'F'];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisualizerSettings {
@@ -949,9 +953,7 @@ impl GlowRenderer {
             ),
         );
 
-        let count = 7.0;
-        let word_width =
-            TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
+        let word_width = takeoff_logo_word_width();
         let word_height = TAKEOFF_LOGO_H;
         let back_model = mat4_mul(
             sign_base,
@@ -970,52 +972,18 @@ impl GlowRenderer {
         );
         let back_mvp = mat4_mul(projection, mat4_mul(view, back_model));
 
-        gl.bind_vertex_array(Some(self.cube_vao));
-        if let Some(loc) = &self.u_color {
-            gl.uniform_3_f32(
-                Some(loc),
-                TAKEOFF_BACK_COLOR[0],
-                TAKEOFF_BACK_COLOR[1],
-                TAKEOFF_BACK_COLOR[2],
-            );
-        }
-        if let Some(loc) = &self.u_mvp {
-            gl.uniform_matrix_4_f32_slice(Some(loc), false, &back_mvp);
-        }
-        gl.draw_elements(
-            glow::TRIANGLES,
-            self.cube_index_count,
-            glow::UNSIGNED_SHORT,
-            0,
-        );
-
-        let intensity = (0.2 + 0.8 * fixture.beam_strength).clamp(0.0, 1.0);
-        let glow_color = [
-            (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
-            (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
-            (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
-        ];
-
-        if let Some(loc) = &self.u_color {
-            gl.uniform_3_f32(Some(loc), glow_color[0], glow_color[1], glow_color[2]);
-        }
-
-        gl.enable(glow::BLEND);
-        gl.blend_func(glow::ONE, glow::ONE);
-        for stroke in strokes {
-            let stroke_model = mat4_mul(
-                sign_base,
-                mat4_mul(
-                    mat4_translation(stroke.center.x, stroke.center.y, stroke.center.z),
-                    mat4_mul(
-                        mat4_rotation_z(stroke.rot_z),
-                        mat4_scale(stroke.size.x, stroke.size.y, stroke.size.z),
-                    ),
-                ),
-            );
-            let stroke_mvp = mat4_mul(projection, mat4_mul(view, stroke_model));
+        unsafe {
+            gl.bind_vertex_array(Some(self.cube_vao));
+            if let Some(loc) = &self.u_color {
+                gl.uniform_3_f32(
+                    Some(loc),
+                    TAKEOFF_BACK_COLOR[0],
+                    TAKEOFF_BACK_COLOR[1],
+                    TAKEOFF_BACK_COLOR[2],
+                );
+            }
             if let Some(loc) = &self.u_mvp {
-                gl.uniform_matrix_4_f32_slice(Some(loc), false, &stroke_mvp);
+                gl.uniform_matrix_4_f32_slice(Some(loc), false, &back_mvp);
             }
             gl.draw_elements(
                 glow::TRIANGLES,
@@ -1024,7 +992,45 @@ impl GlowRenderer {
                 0,
             );
         }
-        gl.disable(glow::BLEND);
+
+        let intensity = (0.2 + 0.8 * fixture.beam_strength).clamp(0.0, 1.0);
+        let glow_color = [
+            (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
+            (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
+            (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
+        ];
+
+        unsafe {
+            if let Some(loc) = &self.u_color {
+                gl.uniform_3_f32(Some(loc), glow_color[0], glow_color[1], glow_color[2]);
+            }
+
+            gl.enable(glow::BLEND);
+            gl.blend_func(glow::ONE, glow::ONE);
+            for stroke in strokes {
+                let stroke_model = mat4_mul(
+                    sign_base,
+                    mat4_mul(
+                        mat4_translation(stroke.center.x, stroke.center.y, stroke.center.z),
+                        mat4_mul(
+                            mat4_rotation_z(stroke.rot_z),
+                            mat4_scale(stroke.size.x, stroke.size.y, stroke.size.z),
+                        ),
+                    ),
+                );
+                let stroke_mvp = mat4_mul(projection, mat4_mul(view, stroke_model));
+                if let Some(loc) = &self.u_mvp {
+                    gl.uniform_matrix_4_f32_slice(Some(loc), false, &stroke_mvp);
+                }
+                gl.draw_elements(
+                    glow::TRIANGLES,
+                    self.cube_index_count,
+                    glow::UNSIGNED_SHORT,
+                    0,
+                );
+            }
+            gl.disable(glow::BLEND);
+        }
     }
 }
 
@@ -1456,18 +1462,59 @@ fn basis_from_dir(dir: Vec3) -> (Vec3, Vec3) {
 }
 
 fn build_takeoff_logo_strokes() -> Vec<Stroke> {
-    let letters = ['T', 'A', 'K', 'E', 'O', 'F', 'F'];
-    let count = letters.len() as f32;
-    let word_width =
-        TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
-    let start_x = -word_width * 0.5 + TAKEOFF_LOGO_W * 0.5;
-
+    let centers = takeoff_logo_centers();
     let mut strokes = Vec::new();
-    for (idx, letter) in letters.iter().enumerate() {
-        let offset_x = start_x + idx as f32 * (TAKEOFF_LOGO_W + TAKEOFF_LOGO_SPACING);
-        add_letter_strokes(&mut strokes, *letter, offset_x);
+    for (offset_x, letter) in centers
+        .into_iter()
+        .zip(TAKEOFF_LOGO_LETTERS.iter().copied())
+    {
+        add_letter_strokes(&mut strokes, letter, offset_x);
     }
     strokes
+}
+
+fn takeoff_logo_word_width() -> f32 {
+    let count = TAKEOFF_LOGO_LETTERS.len() as f32;
+    let mut width = TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
+    for idx in 1..TAKEOFF_LOGO_LETTERS.len() {
+        width += takeoff_logo_kerning(
+            TAKEOFF_LOGO_LETTERS[idx - 1],
+            TAKEOFF_LOGO_LETTERS[idx],
+        );
+    }
+    width
+}
+
+fn takeoff_logo_centers() -> Vec<f32> {
+    let mut centers = Vec::with_capacity(TAKEOFF_LOGO_LETTERS.len());
+    let mut cursor_x = 0.0;
+    centers.push(0.0);
+    for idx in 1..TAKEOFF_LOGO_LETTERS.len() {
+        let kern = takeoff_logo_kerning(
+            TAKEOFF_LOGO_LETTERS[idx - 1],
+            TAKEOFF_LOGO_LETTERS[idx],
+        );
+        cursor_x += TAKEOFF_LOGO_W + TAKEOFF_LOGO_SPACING + kern;
+        centers.push(cursor_x);
+    }
+
+    let half_w = TAKEOFF_LOGO_W * 0.5;
+    let min_x = centers.first().copied().unwrap_or(0.0) - half_w;
+    let max_x = centers.last().copied().unwrap_or(0.0) + half_w;
+    let shift = -0.5 * (min_x + max_x);
+    for center in &mut centers {
+        *center += shift;
+    }
+    centers
+}
+
+fn takeoff_logo_kerning(prev: char, next: char) -> f32 {
+    match (prev, next) {
+        ('E', 'O') => TAKEOFF_LOGO_KERNING_EO,
+        ('O', 'F') => TAKEOFF_LOGO_KERNING_OF,
+        ('F', 'F') => TAKEOFF_LOGO_KERNING_FF,
+        _ => 0.0,
+    }
 }
 
 fn add_letter_strokes(strokes: &mut Vec<Stroke>, letter: char, offset_x: f32) {
