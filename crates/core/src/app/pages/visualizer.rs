@@ -1,5 +1,5 @@
 use crate::app::BlaulichtApp;
-use blaulicht_shared::RGBColor;
+use blaulicht_shared::{fixture::{FixtureType, Light}, RGBColor};
 use egui::{Context, Sense, Vec2};
 use egui_glow::glow::{self, HasContext};
 use egui_glow::CallbackFn;
@@ -28,6 +28,17 @@ const HEAD_SIZE: Vec3 = Vec3 {
 };
 const BEAM_ANGLE_DEG: f32 = 8.0;
 const CONE_SEGMENTS: usize = 24;
+const TAKEOFF_LOGO_SCALE: f32 = 0.38;
+const TAKEOFF_LOGO_DEPTH: f32 = 0.18;
+const TAKEOFF_LOGO_STROKE: f32 = 0.18;
+const TAKEOFF_LOGO_W: f32 = 1.0;
+const TAKEOFF_LOGO_H: f32 = 1.35;
+const TAKEOFF_LOGO_SPACING: f32 = 0.35;
+const TAKEOFF_LOGO_BACK_PADDING: f32 = 0.2;
+const TAKEOFF_LOGO_BACK_THICKNESS: f32 = 0.08;
+const TAKEOFF_LOGO_Y_OFFSET: f32 = 0.35;
+const TAKEOFF_BACK_COLOR: [f32; 3] = [0.08, 0.08, 0.09];
+const GENERIC_FIXTURE_SIZE: f32 = 0.45;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisualizerSettings {
@@ -257,6 +268,15 @@ struct RenderFixture {
     beam_len: f32,
     beam_color: [f32; 3],
     beam_strength: f32,
+    kind: RenderFixtureKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RenderFixtureKind {
+    MovingHead,
+    TakeOffLogo,
+    GenericLight,
+    Dimmer,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -281,6 +301,13 @@ struct FixturePose {
     base_rot: [f32; 16],
     pan_rot: [f32; 16],
     head_rot: [f32; 16],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Stroke {
+    center: Vec3,
+    size: Vec3,
+    rot_z: f32,
 }
 
 fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
@@ -313,6 +340,14 @@ fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
                 fixture.rotation.y.to_radians(),
                 fixture.rotation.z.to_radians(),
             );
+            let kind = match &fixture.type_ {
+                FixtureType::MovingHead(_) => RenderFixtureKind::MovingHead,
+                FixtureType::Light(light) => match light {
+                    Light::TakeOffLogo => RenderFixtureKind::TakeOffLogo,
+                    _ => RenderFixtureKind::GenericLight,
+                },
+                FixtureType::Dimmer(_) => RenderFixtureKind::Dimmer,
+            };
             let pos = Vec3::new(
                 fixture.pos.x as f32 * scale,
                 fixture.pos.z as f32 * scale,
@@ -325,18 +360,25 @@ fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
             max_z = max_z.max(pos.z);
             min_y = min_y.min(pos.y);
 
+            let beam_len = if kind == RenderFixtureKind::MovingHead {
+                10.0
+            } else {
+                0.0
+            };
+
             fixtures.push(RenderFixture {
                 pos,
                 rotation,
                 pan_rad,
                 tilt_rad,
-                beam_len: 10.0,
+                beam_len,
                 beam_color: [
                     (rgb.r as f32 / 255.0).clamp(0.0, 1.0),
                     (rgb.g as f32 / 255.0).clamp(0.0, 1.0),
                     (rgb.b as f32 / 255.0).clamp(0.0, 1.0),
                 ],
                 beam_strength: alpha,
+                kind,
             });
         }
     }
@@ -523,21 +565,37 @@ impl GlowRenderer {
             };
             let view = mat4_look_at(eye, Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
 
-            let mut poses: Vec<FixturePose> = Vec::with_capacity(fixtures.len());
-            let mut cones: Vec<BeamCone> = Vec::with_capacity(fixtures.len());
+            let mut head_fixtures: Vec<&RenderFixture> = Vec::new();
+            let mut poses: Vec<FixturePose> = Vec::new();
+            let mut cones: Vec<BeamCone> = Vec::new();
+            let mut takeoff_fixtures: Vec<&RenderFixture> = Vec::new();
+            let mut generic_fixtures: Vec<&RenderFixture> = Vec::new();
             for fixture in fixtures {
-                let pose = compute_fixture_pose(fixture);
-                let beam_angle = BEAM_ANGLE_DEG.to_radians();
-                let radius = (fixture.beam_len * beam_angle.tan()).max(0.05);
-                cones.push(BeamCone {
-                    apex: pose.lens_pos,
-                    dir: pose.head_forward,
-                    len: fixture.beam_len,
-                    radius,
-                    color: fixture.beam_color,
-                    strength: fixture.beam_strength,
-                });
-                poses.push(pose);
+                match fixture.kind {
+                    RenderFixtureKind::MovingHead => {
+                        let pose = compute_fixture_pose(fixture);
+                        let beam_angle = BEAM_ANGLE_DEG.to_radians();
+                        let radius = (fixture.beam_len * beam_angle.tan()).max(0.05);
+                        if fixture.beam_strength > 0.01 {
+                            cones.push(BeamCone {
+                                apex: pose.lens_pos,
+                                dir: pose.head_forward,
+                                len: fixture.beam_len,
+                                radius,
+                                color: fixture.beam_color,
+                                strength: fixture.beam_strength,
+                            });
+                        }
+                        head_fixtures.push(fixture);
+                        poses.push(pose);
+                    }
+                    RenderFixtureKind::TakeOffLogo => {
+                        takeoff_fixtures.push(fixture);
+                    }
+                    RenderFixtureKind::GenericLight | RenderFixtureKind::Dimmer => {
+                        generic_fixtures.push(fixture);
+                    }
+                }
             }
 
 
@@ -577,10 +635,10 @@ impl GlowRenderer {
                 gl.disable(glow::BLEND);
             }
 
-            if !fixtures.is_empty() {
+            if !head_fixtures.is_empty() {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, false);
                 let index_stride = std::mem::size_of::<u16>() as i32;
-                for (fixture, pose) in fixtures.iter().zip(poses.iter()) {
+                for (fixture, pose) in head_fixtures.iter().zip(poses.iter()) {
                     gl.bind_vertex_array(Some(self.cube_vao));
 
                     if let Some(loc) = &self.u_color {
@@ -758,6 +816,52 @@ impl GlowRenderer {
                 }
             }
 
+            if !takeoff_fixtures.is_empty() {
+                set_use_vertex_color(gl, &self.u_use_vertex_color, false);
+                let strokes = build_takeoff_logo_strokes();
+                for fixture in takeoff_fixtures {
+                    self.draw_takeoff_sign(gl, projection, view, fixture, &strokes);
+                }
+            }
+
+            if !generic_fixtures.is_empty() {
+                set_use_vertex_color(gl, &self.u_use_vertex_color, false);
+                gl.bind_vertex_array(Some(self.cube_vao));
+                for fixture in generic_fixtures {
+                    let rotation = mat4_rotation_euler(fixture.rotation);
+                    let model = mat4_mul(
+                        mat4_translation(fixture.pos.x, fixture.pos.y, fixture.pos.z),
+                        mat4_mul(
+                            rotation,
+                            mat4_scale(
+                                GENERIC_FIXTURE_SIZE,
+                                GENERIC_FIXTURE_SIZE,
+                                GENERIC_FIXTURE_SIZE,
+                            ),
+                        ),
+                    );
+                    let mvp = mat4_mul(projection, mat4_mul(view, model));
+                    if let Some(loc) = &self.u_mvp {
+                        gl.uniform_matrix_4_f32_slice(Some(loc), false, &mvp);
+                    }
+                    let intensity = (0.15 + 0.85 * fixture.beam_strength).clamp(0.0, 1.0);
+                    if let Some(loc) = &self.u_color {
+                        gl.uniform_3_f32(
+                            Some(loc),
+                            (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
+                            (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
+                            (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
+                        );
+                    }
+                    gl.draw_elements(
+                        glow::TRIANGLES,
+                        self.cube_index_count,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+                }
+            }
+
             gl.bind_vertex_array(None);
             gl.use_program(None);
             gl.disable(glow::DEPTH_TEST);
@@ -824,6 +928,103 @@ impl GlowRenderer {
             );
             gl.bind_vertex_array(None);
         }
+    }
+
+    fn draw_takeoff_sign(
+        &self,
+        gl: &Arc<glow::Context>,
+        projection: [f32; 16],
+        view: [f32; 16],
+        fixture: &RenderFixture,
+        strokes: &[Stroke],
+    ) {
+        let base_rot = mat4_rotation_euler(fixture.rotation);
+        let up = mat4_transform_dir(base_rot, Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let sign_center = fixture.pos.add(up.scale(TAKEOFF_LOGO_Y_OFFSET));
+        let sign_base = mat4_mul(
+            mat4_translation(sign_center.x, sign_center.y, sign_center.z),
+            mat4_mul(
+                base_rot,
+                mat4_scale(TAKEOFF_LOGO_SCALE, TAKEOFF_LOGO_SCALE, TAKEOFF_LOGO_SCALE),
+            ),
+        );
+
+        let count = 7.0;
+        let word_width =
+            TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
+        let word_height = TAKEOFF_LOGO_H;
+        let back_model = mat4_mul(
+            sign_base,
+            mat4_mul(
+                mat4_translation(
+                    0.0,
+                    0.0,
+                    -(TAKEOFF_LOGO_DEPTH + TAKEOFF_LOGO_BACK_THICKNESS) * 0.5,
+                ),
+                mat4_scale(
+                    word_width + TAKEOFF_LOGO_BACK_PADDING * 2.0,
+                    word_height + TAKEOFF_LOGO_BACK_PADDING * 2.0,
+                    TAKEOFF_LOGO_BACK_THICKNESS,
+                ),
+            ),
+        );
+        let back_mvp = mat4_mul(projection, mat4_mul(view, back_model));
+
+        gl.bind_vertex_array(Some(self.cube_vao));
+        if let Some(loc) = &self.u_color {
+            gl.uniform_3_f32(
+                Some(loc),
+                TAKEOFF_BACK_COLOR[0],
+                TAKEOFF_BACK_COLOR[1],
+                TAKEOFF_BACK_COLOR[2],
+            );
+        }
+        if let Some(loc) = &self.u_mvp {
+            gl.uniform_matrix_4_f32_slice(Some(loc), false, &back_mvp);
+        }
+        gl.draw_elements(
+            glow::TRIANGLES,
+            self.cube_index_count,
+            glow::UNSIGNED_SHORT,
+            0,
+        );
+
+        let intensity = (0.2 + 0.8 * fixture.beam_strength).clamp(0.0, 1.0);
+        let glow_color = [
+            (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
+            (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
+            (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
+        ];
+
+        if let Some(loc) = &self.u_color {
+            gl.uniform_3_f32(Some(loc), glow_color[0], glow_color[1], glow_color[2]);
+        }
+
+        gl.enable(glow::BLEND);
+        gl.blend_func(glow::ONE, glow::ONE);
+        for stroke in strokes {
+            let stroke_model = mat4_mul(
+                sign_base,
+                mat4_mul(
+                    mat4_translation(stroke.center.x, stroke.center.y, stroke.center.z),
+                    mat4_mul(
+                        mat4_rotation_z(stroke.rot_z),
+                        mat4_scale(stroke.size.x, stroke.size.y, stroke.size.z),
+                    ),
+                ),
+            );
+            let stroke_mvp = mat4_mul(projection, mat4_mul(view, stroke_model));
+            if let Some(loc) = &self.u_mvp {
+                gl.uniform_matrix_4_f32_slice(Some(loc), false, &stroke_mvp);
+            }
+            gl.draw_elements(
+                glow::TRIANGLES,
+                self.cube_index_count,
+                glow::UNSIGNED_SHORT,
+                0,
+            );
+        }
+        gl.disable(glow::BLEND);
     }
 }
 
@@ -1252,6 +1453,114 @@ fn basis_from_dir(dir: Vec3) -> (Vec3, Vec3) {
     let right = up_ref.cross(forward).normalize();
     let up = forward.cross(right).normalize();
     (right, up)
+}
+
+fn build_takeoff_logo_strokes() -> Vec<Stroke> {
+    let letters = ['T', 'A', 'K', 'E', 'O', 'F', 'F'];
+    let count = letters.len() as f32;
+    let word_width =
+        TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
+    let start_x = -word_width * 0.5 + TAKEOFF_LOGO_W * 0.5;
+
+    let mut strokes = Vec::new();
+    for (idx, letter) in letters.iter().enumerate() {
+        let offset_x = start_x + idx as f32 * (TAKEOFF_LOGO_W + TAKEOFF_LOGO_SPACING);
+        add_letter_strokes(&mut strokes, *letter, offset_x);
+    }
+    strokes
+}
+
+fn add_letter_strokes(strokes: &mut Vec<Stroke>, letter: char, offset_x: f32) {
+    let half_w = TAKEOFF_LOGO_W * 0.5;
+    let half_h = TAKEOFF_LOGO_H * 0.5;
+    let top_y = half_h - TAKEOFF_LOGO_STROKE * 0.5;
+    let bottom_y = -half_h + TAKEOFF_LOGO_STROKE * 0.5;
+
+    match letter {
+        'T' => {
+            add_h(strokes, offset_x, -half_w, half_w, top_y);
+            add_v(strokes, offset_x, 0.0, -half_h, half_h);
+        }
+        'A' => {
+            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_v(strokes, offset_x, half_w - TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_h(strokes, offset_x, -half_w, half_w, top_y);
+            add_h(strokes, offset_x, -half_w * 0.6, half_w * 0.6, 0.0);
+        }
+        'K' => {
+            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            let diag_len = TAKEOFF_LOGO_H * 0.95;
+            add_diag(
+                strokes,
+                offset_x,
+                0.1,
+                0.25,
+                diag_len,
+                std::f32::consts::FRAC_PI_4,
+            );
+            add_diag(
+                strokes,
+                offset_x,
+                0.1,
+                -0.25,
+                diag_len,
+                -std::f32::consts::FRAC_PI_4,
+            );
+        }
+        'E' => {
+            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_h(strokes, offset_x, -half_w, half_w, top_y);
+            add_h(strokes, offset_x, -half_w, half_w * 0.65, 0.0);
+            add_h(strokes, offset_x, -half_w, half_w, bottom_y);
+        }
+        'O' => {
+            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_v(strokes, offset_x, half_w - TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_h(strokes, offset_x, -half_w, half_w, top_y);
+            add_h(strokes, offset_x, -half_w, half_w, bottom_y);
+        }
+        'F' => {
+            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
+            add_h(strokes, offset_x, -half_w, half_w, top_y);
+            add_h(strokes, offset_x, -half_w, half_w * 0.6, 0.0);
+        }
+        _ => {}
+    }
+}
+
+fn add_h(strokes: &mut Vec<Stroke>, offset_x: f32, x0: f32, x1: f32, y: f32) {
+    let center = Vec3::new(offset_x + (x0 + x1) * 0.5, y, 0.0);
+    let width = (x1 - x0).abs();
+    strokes.push(Stroke {
+        center,
+        size: Vec3::new(width, TAKEOFF_LOGO_STROKE, TAKEOFF_LOGO_DEPTH),
+        rot_z: 0.0,
+    });
+}
+
+fn add_v(strokes: &mut Vec<Stroke>, offset_x: f32, x: f32, y0: f32, y1: f32) {
+    let center = Vec3::new(offset_x + x, (y0 + y1) * 0.5, 0.0);
+    let height = (y1 - y0).abs();
+    strokes.push(Stroke {
+        center,
+        size: Vec3::new(TAKEOFF_LOGO_STROKE, height, TAKEOFF_LOGO_DEPTH),
+        rot_z: 0.0,
+    });
+}
+
+fn add_diag(
+    strokes: &mut Vec<Stroke>,
+    offset_x: f32,
+    center_x: f32,
+    center_y: f32,
+    length: f32,
+    angle: f32,
+) {
+    strokes.push(Stroke {
+        center: Vec3::new(offset_x + center_x, center_y, 0.0),
+        size: Vec3::new(length, TAKEOFF_LOGO_STROKE, TAKEOFF_LOGO_DEPTH),
+        rot_z: angle,
+    });
 }
 
 fn mat4_perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> [f32; 16] {
