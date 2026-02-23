@@ -38,7 +38,6 @@ const GENERIC_FIXTURE_SIZE: f32 = 0.45;
 const TAKEOFF_TEXT: &str = "Takeoff";
 const TAKEOFF_TEXT_HEIGHT: f32 = 0.32;
 const TAKEOFF_TEXT_Y: f32 = 0.0;
-const TAKEOFF_TEXT_Z: f32 = TAKEOFF_LOGO_DEPTH * 0.55;
 const FONT_GLYPH_W: usize = 8;
 const FONT_GLYPH_H: usize = 8;
 const FONT_ATLAS_COLS: usize = 16;
@@ -47,6 +46,7 @@ const FONT_ATLAS_W: usize = FONT_GLYPH_W * FONT_ATLAS_COLS;
 const FONT_ATLAS_H: usize = FONT_GLYPH_H * FONT_ATLAS_ROWS;
 const FONT_GLYPH_SPACING: f32 = 1.0;
 const FONT_LINE_GAP: f32 = 2.0;
+const DEBUG_TEXT_OVERLAY: bool = false;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisualizerSettings {
     pub show_grid: bool,
@@ -457,6 +457,9 @@ struct GlowRenderer {
     cone_vao: glow::VertexArray,
     cone_vbo: glow::Buffer,
     cone_vertex_count: i32,
+    quad_vao: glow::VertexArray,
+    quad_vbo: glow::Buffer,
+    quad_vertex_count: i32,
     cube_edges_vao: glow::VertexArray,
     cube_edges_vbo: glow::Buffer,
     cube_edges_vertex_count: i32,
@@ -484,6 +487,7 @@ impl GlowRenderer {
             let (cylinder_vao, cylinder_vbo, cylinder_ebo, cylinder_index_count) =
                 create_cylinder(gl, 24)?;
             let (cone_vao, cone_vbo) = create_dynamic_mesh(gl)?;
+            let (quad_vao, quad_vbo, quad_vertex_count) = create_quad(gl)?;
             let u_mvp = gl.get_uniform_location(program, "u_mvp");
             let u_brightness = gl.get_uniform_location(program, "u_brightness");
             let u_color = gl.get_uniform_location(program, "u_color");
@@ -516,6 +520,9 @@ impl GlowRenderer {
                 cone_vao,
                 cone_vbo,
                 cone_vertex_count: 0,
+                quad_vao,
+                quad_vbo,
+                quad_vertex_count,
                 cube_edges_vao,
                 cube_edges_vbo,
                 cube_edges_vertex_count,
@@ -840,7 +847,7 @@ impl GlowRenderer {
             if !takeoff_fixtures.is_empty() {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, false);
                 for fixture in takeoff_fixtures {
-                    self.draw_takeoff_sign(gl, projection, view, fixture);
+                    self.draw_takeoff_sign(gl, projection, view, eye, fixture);
                 }
             }
 
@@ -879,6 +886,25 @@ impl GlowRenderer {
                         glow::UNSIGNED_SHORT,
                         0,
                     );
+                }
+            }
+
+            if DEBUG_TEXT_OVERLAY {
+                let debug_mvp = mat4_identity();
+                unsafe {
+                    gl.disable(glow::DEPTH_TEST);
+                }
+                self.draw_text(
+                    gl,
+                    debug_mvp,
+                    -0.95,
+                    0.85,
+                    0.02,
+                    "DEBUG",
+                    [1.0, 1.0, 1.0, 1.0],
+                );
+                unsafe {
+                    gl.enable(glow::DEPTH_TEST);
                 }
             }
 
@@ -956,10 +982,12 @@ impl GlowRenderer {
         gl: &Arc<glow::Context>,
         projection: [f32; 16],
         view: [f32; 16],
+        eye: Vec3,
         fixture: &RenderFixture,
     ) {
         let base_rot = mat4_rotation_euler(fixture.rotation);
         let up = mat4_transform_dir(base_rot, Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let forward = mat4_transform_dir(base_rot, Vec3::new(0.0, 0.0, 1.0)).normalize();
         let sign_center = fixture.pos.add(up.scale(TAKEOFF_LOGO_Y_OFFSET));
         let sign_base = mat4_mul(
             mat4_translation(sign_center.x, sign_center.y, sign_center.z),
@@ -1012,21 +1040,61 @@ impl GlowRenderer {
             );
         }
 
-        let intensity = (0.2 + 0.8 * fixture.beam_strength).clamp(0.0, 1.0);
-        let glow_color = [
-            (fixture.beam_color[0] * intensity).clamp(0.0, 1.0),
-            (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
-            (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
+        let light_strength = fixture.beam_strength.clamp(0.0, 1.0);
+        let text_color = [
+            (fixture.beam_color[0] * light_strength).clamp(0.0, 1.0),
+            (fixture.beam_color[1] * light_strength).clamp(0.0, 1.0),
+            (fixture.beam_color[2] * light_strength).clamp(0.0, 1.0),
+            light_strength,
         ];
-        let text_color = [glow_color[0], glow_color[1], glow_color[2], 0.85];
+        let view_dir = eye.sub(sign_center).normalize();
+        let face_sign = if forward.dot(view_dir) >= 0.0 { 1.0 } else { -1.0 };
+        let face_rot = if face_sign > 0.0 {
+            mat4_identity()
+        } else {
+            mat4_rotation_y(std::f32::consts::PI)
+        };
+        let face_width = word_width + TAKEOFF_LOGO_BACK_PADDING * 2.0;
+        let face_height = word_height + TAKEOFF_LOGO_BACK_PADDING * 2.0;
+        let face_thickness = 0.001;
+        let front_face_z = -TAKEOFF_LOGO_DEPTH * 0.5;
+        let back_face_z = -TAKEOFF_LOGO_DEPTH * 0.5 - TAKEOFF_LOGO_BACK_THICKNESS;
+        let face_z = if face_sign > 0.0 {
+            front_face_z
+        } else {
+            back_face_z
+        };
+        let text_plane_z = face_z + face_sign * 0.001;
+        let face_model = mat4_mul(
+            sign_base,
+            mat4_mul(
+                mat4_translation(0.0, 0.0, face_z),
+                mat4_scale(face_width, face_height, face_thickness),
+            ),
+        );
+        let face_mvp = mat4_mul(projection, mat4_mul(view, face_model));
+        unsafe {
+            gl.bind_vertex_array(Some(self.quad_vao));
+            if let Some(loc) = &self.u_color {
+                gl.uniform_3_f32(Some(loc), 0.35, 0.35, 0.36);
+            }
+            if let Some(loc) = &self.u_mvp {
+                gl.uniform_matrix_4_f32_slice(Some(loc), false, &face_mvp);
+            }
+            gl.draw_arrays(glow::TRIANGLES, 0, self.quad_vertex_count);
+        }
         let text_model = mat4_mul(
             sign_base,
             mat4_mul(
-                mat4_translation(0.0, TAKEOFF_TEXT_Y, TAKEOFF_TEXT_Z),
-                mat4_scale(1.0, -1.0, 1.0),
+                mat4_translation(0.0, TAKEOFF_TEXT_Y, text_plane_z),
+                mat4_mul(face_rot, mat4_scale(1.0, -1.0, 1.0)),
             ),
         );
         let text_mvp = mat4_mul(projection, mat4_mul(view, text_model));
+        unsafe {
+            gl.enable(glow::POLYGON_OFFSET_FILL);
+            gl.polygon_offset(-1.0, -1.0);
+        }
         self.draw_text(
             gl,
             text_mvp,
@@ -1036,6 +1104,9 @@ impl GlowRenderer {
             TAKEOFF_TEXT,
             text_color,
         );
+        unsafe {
+            gl.disable(glow::POLYGON_OFFSET_FILL);
+        }
         unsafe {
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.cube_vao));
@@ -1110,6 +1181,8 @@ impl Drop for GlowRenderer {
             self.gl.delete_buffer(self.cylinder_ebo);
             self.gl.delete_vertex_array(self.cone_vao);
             self.gl.delete_buffer(self.cone_vbo);
+            self.gl.delete_vertex_array(self.quad_vao);
+            self.gl.delete_buffer(self.quad_vbo);
         }
     }
 }
@@ -1498,6 +1571,41 @@ unsafe fn create_dynamic_mesh(
     gl.bind_vertex_array(None);
 
     Ok((vao, vbo))
+}
+
+unsafe fn create_quad(
+    gl: &Arc<glow::Context>,
+) -> Result<(glow::VertexArray, glow::Buffer, i32), String> {
+    let vertices: [f32; 36] = [
+        -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0,
+        0.0, 0.0, 0.0, 0.0,
+    ];
+
+    let vao = gl
+        .create_vertex_array()
+        .map_err(|e| format!("Quad VAO create failed: {e}"))?;
+    let vbo = gl
+        .create_buffer()
+        .map_err(|e| format!("Quad VBO create failed: {e}"))?;
+
+    gl.bind_vertex_array(Some(vao));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+    gl.buffer_data_u8_slice(
+        glow::ARRAY_BUFFER,
+        bytemuck::cast_slice(&vertices),
+        glow::STATIC_DRAW,
+    );
+
+    let stride = 6 * std::mem::size_of::<f32>() as i32;
+    gl.enable_vertex_attrib_array(0);
+    gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
+    gl.enable_vertex_attrib_array(1);
+    gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, 12);
+
+    gl.bind_vertex_array(None);
+
+    Ok((vao, vbo, 6))
 }
 
 unsafe fn create_text_buffers(
