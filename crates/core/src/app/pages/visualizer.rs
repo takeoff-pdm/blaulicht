@@ -30,20 +30,23 @@ const BEAM_ANGLE_DEG: f32 = 8.0;
 const CONE_SEGMENTS: usize = 24;
 const TAKEOFF_LOGO_SCALE: f32 = 0.38;
 const TAKEOFF_LOGO_DEPTH: f32 = 0.18;
-const TAKEOFF_LOGO_STROKE: f32 = 0.18;
-const TAKEOFF_LOGO_W: f32 = 1.0;
-const TAKEOFF_LOGO_H: f32 = 1.35;
-const TAKEOFF_LOGO_SPACING: f32 = 1.55;
-const TAKEOFF_LOGO_KERNING_EO: f32 = 0.0;
-const TAKEOFF_LOGO_KERNING_OF: f32 = 0.0;
-const TAKEOFF_LOGO_KERNING_FF: f32 = 0.0;
 const TAKEOFF_LOGO_BACK_PADDING: f32 = 0.2;
 const TAKEOFF_LOGO_BACK_THICKNESS: f32 = 0.08;
 const TAKEOFF_LOGO_Y_OFFSET: f32 = 0.35;
 const TAKEOFF_BACK_COLOR: [f32; 3] = [0.08, 0.08, 0.09];
 const GENERIC_FIXTURE_SIZE: f32 = 0.45;
-const TAKEOFF_LOGO_LETTERS: [char; 7] = ['T', 'A', 'K', 'E', 'O', 'F', 'F'];
-
+const TAKEOFF_TEXT: &str = "Takeoff";
+const TAKEOFF_TEXT_HEIGHT: f32 = 0.32;
+const TAKEOFF_TEXT_Y: f32 = 0.0;
+const TAKEOFF_TEXT_Z: f32 = TAKEOFF_LOGO_DEPTH * 0.55;
+const FONT_GLYPH_W: usize = 8;
+const FONT_GLYPH_H: usize = 8;
+const FONT_ATLAS_COLS: usize = 16;
+const FONT_ATLAS_ROWS: usize = 8;
+const FONT_ATLAS_W: usize = FONT_GLYPH_W * FONT_ATLAS_COLS;
+const FONT_ATLAS_H: usize = FONT_GLYPH_H * FONT_ATLAS_ROWS;
+const FONT_GLYPH_SPACING: f32 = 1.0;
+const FONT_LINE_GAP: f32 = 2.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisualizerSettings {
     pub show_grid: bool,
@@ -307,12 +310,6 @@ struct FixturePose {
     head_rot: [f32; 16],
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Stroke {
-    center: Vec3,
-    size: Vec3,
-    rot_z: f32,
-}
 
 fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
     let mut fixtures = Vec::new();
@@ -439,10 +436,14 @@ fn compute_fixture_pose(fixture: &RenderFixture) -> FixturePose {
 struct GlowRenderer {
     gl: Arc<glow::Context>,
     program: glow::Program,
+    text_program: glow::Program,
     cube_vao: glow::VertexArray,
     cube_vbo: glow::Buffer,
     cube_ebo: glow::Buffer,
     cube_index_count: i32,
+    text_vao: glow::VertexArray,
+    text_vbo: glow::Buffer,
+    text_texture: glow::Texture,
     grid_vao: glow::VertexArray,
     grid_vbo: glow::Buffer,
     grid_vertex_count: i32,
@@ -463,13 +464,19 @@ struct GlowRenderer {
     u_brightness: Option<glow::UniformLocation>,
     u_color: Option<glow::UniformLocation>,
     u_use_vertex_color: Option<glow::UniformLocation>,
+    text_u_mvp: Option<glow::UniformLocation>,
+    text_u_color: Option<glow::UniformLocation>,
+    text_u_tex: Option<glow::UniformLocation>,
 }
 
 impl GlowRenderer {
     fn new(gl: &Arc<glow::Context>) -> Result<Self, String> {
         unsafe {
             let program = create_program(gl)?;
+            let text_program = create_text_program(gl)?;
             let (cube_vao, cube_vbo, cube_ebo, cube_index_count) = create_cube(gl)?;
+            let (text_vao, text_vbo) = create_text_buffers(gl)?;
+            let text_texture = create_font_texture(gl)?;
             let (cube_edges_vao, cube_edges_vbo, cube_edges_vertex_count) =
                 create_cube_edges(gl)?;
             let (grid_vao, grid_vbo, grid_vertex_count) = create_grid(gl)?;
@@ -481,14 +488,21 @@ impl GlowRenderer {
             let u_brightness = gl.get_uniform_location(program, "u_brightness");
             let u_color = gl.get_uniform_location(program, "u_color");
             let u_use_vertex_color = gl.get_uniform_location(program, "u_use_vertex_color");
+            let text_u_mvp = gl.get_uniform_location(text_program, "u_mvp");
+            let text_u_color = gl.get_uniform_location(text_program, "u_color");
+            let text_u_tex = gl.get_uniform_location(text_program, "u_tex");
 
             Ok(Self {
                 gl: gl.clone(),
                 program,
+                text_program,
                 cube_vao,
                 cube_vbo,
                 cube_ebo,
                 cube_index_count,
+                text_vao,
+                text_vbo,
+                text_texture,
                 grid_vao,
                 grid_vbo,
                 grid_vertex_count,
@@ -509,6 +523,9 @@ impl GlowRenderer {
                 u_brightness,
                 u_color,
                 u_use_vertex_color,
+                text_u_mvp,
+                text_u_color,
+                text_u_tex,
             })
         }
     }
@@ -822,9 +839,8 @@ impl GlowRenderer {
 
             if !takeoff_fixtures.is_empty() {
                 set_use_vertex_color(gl, &self.u_use_vertex_color, false);
-                let strokes = build_takeoff_logo_strokes();
                 for fixture in takeoff_fixtures {
-                    self.draw_takeoff_sign(gl, projection, view, fixture, &strokes);
+                    self.draw_takeoff_sign(gl, projection, view, fixture);
                 }
             }
 
@@ -866,9 +882,10 @@ impl GlowRenderer {
                 }
             }
 
+            gl.disable(glow::DEPTH_TEST);
+
             gl.bind_vertex_array(None);
             gl.use_program(None);
-            gl.disable(glow::DEPTH_TEST);
             gl.disable(glow::SCISSOR_TEST);
         }
     }
@@ -940,7 +957,6 @@ impl GlowRenderer {
         projection: [f32; 16],
         view: [f32; 16],
         fixture: &RenderFixture,
-        strokes: &[Stroke],
     ) {
         let base_rot = mat4_rotation_euler(fixture.rotation);
         let up = mat4_transform_dir(base_rot, Vec3::new(0.0, 1.0, 0.0)).normalize();
@@ -953,8 +969,11 @@ impl GlowRenderer {
             ),
         );
 
-        let word_width = takeoff_logo_word_width();
-        let word_height = TAKEOFF_LOGO_H;
+        let text_scale = TAKEOFF_TEXT_HEIGHT / FONT_GLYPH_H as f32;
+        let text_width = text_line_width(TAKEOFF_TEXT, text_scale);
+        let text_height = FONT_GLYPH_H as f32 * text_scale;
+        let word_width = text_width;
+        let word_height = text_height;
         let back_model = mat4_mul(
             sign_base,
             mat4_mul(
@@ -999,37 +1018,72 @@ impl GlowRenderer {
             (fixture.beam_color[1] * intensity).clamp(0.0, 1.0),
             (fixture.beam_color[2] * intensity).clamp(0.0, 1.0),
         ];
-
+        let text_color = [glow_color[0], glow_color[1], glow_color[2], 0.85];
+        let text_model = mat4_mul(
+            sign_base,
+            mat4_mul(
+                mat4_translation(0.0, TAKEOFF_TEXT_Y, TAKEOFF_TEXT_Z),
+                mat4_scale(1.0, -1.0, 1.0),
+            ),
+        );
+        let text_mvp = mat4_mul(projection, mat4_mul(view, text_model));
+        self.draw_text(
+            gl,
+            text_mvp,
+            -text_width * 0.5,
+            -text_height * 0.5,
+            text_scale,
+            TAKEOFF_TEXT,
+            text_color,
+        );
         unsafe {
-            if let Some(loc) = &self.u_color {
-                gl.uniform_3_f32(Some(loc), glow_color[0], glow_color[1], glow_color[2]);
+            gl.use_program(Some(self.program));
+            gl.bind_vertex_array(Some(self.cube_vao));
+        }
+    }
+
+    fn draw_text(
+        &self,
+        gl: &Arc<glow::Context>,
+        mvp: [f32; 16],
+        x: f32,
+        y: f32,
+        scale: f32,
+        text: &str,
+        color: [f32; 4],
+    ) {
+        let verts = build_text_vertices(text, x, y, scale);
+        if verts.is_empty() {
+            return;
+        }
+        unsafe {
+            gl.use_program(Some(self.text_program));
+            gl.bind_vertex_array(Some(self.text_vao));
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.text_vbo));
+            gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&verts),
+                glow::DYNAMIC_DRAW,
+            );
+
+            if let Some(loc) = &self.text_u_mvp {
+                gl.uniform_matrix_4_f32_slice(Some(loc), false, &mvp);
+            }
+            if let Some(loc) = &self.text_u_color {
+                gl.uniform_4_f32(Some(loc), color[0], color[1], color[2], color[3]);
+            }
+            if let Some(loc) = &self.text_u_tex {
+                gl.uniform_1_i32(Some(loc), 0);
             }
 
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.text_texture));
             gl.enable(glow::BLEND);
-            gl.blend_func(glow::ONE, glow::ONE);
-            for stroke in strokes {
-                let stroke_model = mat4_mul(
-                    sign_base,
-                    mat4_mul(
-                        mat4_translation(stroke.center.x, stroke.center.y, stroke.center.z),
-                        mat4_mul(
-                            mat4_rotation_z(stroke.rot_z),
-                            mat4_scale(stroke.size.x, stroke.size.y, stroke.size.z),
-                        ),
-                    ),
-                );
-                let stroke_mvp = mat4_mul(projection, mat4_mul(view, stroke_model));
-                if let Some(loc) = &self.u_mvp {
-                    gl.uniform_matrix_4_f32_slice(Some(loc), false, &stroke_mvp);
-                }
-                gl.draw_elements(
-                    glow::TRIANGLES,
-                    self.cube_index_count,
-                    glow::UNSIGNED_SHORT,
-                    0,
-                );
-            }
+            gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+            gl.draw_arrays(glow::TRIANGLES, 0, (verts.len() / 5) as i32);
             gl.disable(glow::BLEND);
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            gl.bind_vertex_array(None);
         }
     }
 }
@@ -1038,9 +1092,13 @@ impl Drop for GlowRenderer {
     fn drop(&mut self) {
         unsafe {
             self.gl.delete_program(self.program);
+            self.gl.delete_program(self.text_program);
             self.gl.delete_vertex_array(self.cube_vao);
             self.gl.delete_buffer(self.cube_vbo);
             self.gl.delete_buffer(self.cube_ebo);
+            self.gl.delete_vertex_array(self.text_vao);
+            self.gl.delete_buffer(self.text_vbo);
+            self.gl.delete_texture(self.text_texture);
             self.gl.delete_vertex_array(self.cube_edges_vao);
             self.gl.delete_buffer(self.cube_edges_vbo);
             self.gl.delete_vertex_array(self.grid_vao);
@@ -1107,6 +1165,49 @@ void main() {
         let log = gl.get_program_info_log(program);
         gl.delete_program(program);
         return Err(format!("Program link failed: {log}"));
+    }
+
+    Ok(program)
+}
+
+unsafe fn create_text_program(gl: &Arc<glow::Context>) -> Result<glow::Program, String> {
+    let vertex_shader_source = r#"#version 330
+layout (location = 0) in vec3 a_pos;
+layout (location = 1) in vec2 a_uv;
+uniform mat4 u_mvp;
+out vec2 v_uv;
+void main() {
+    v_uv = a_uv;
+    gl_Position = u_mvp * vec4(a_pos, 1.0);
+}"#;
+
+    let fragment_shader_source = r#"#version 330
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform vec4 u_color;
+out vec4 color;
+void main() {
+    float alpha = texture(u_tex, v_uv).a;
+    color = vec4(u_color.rgb, u_color.a * alpha);
+}"#;
+
+    let program = gl
+        .create_program()
+        .map_err(|e| format!("Text program create failed: {e}"))?;
+    let vs = compile_shader(gl, glow::VERTEX_SHADER, vertex_shader_source)?;
+    let fs = compile_shader(gl, glow::FRAGMENT_SHADER, fragment_shader_source)?;
+
+    gl.attach_shader(program, vs);
+    gl.attach_shader(program, fs);
+    gl.link_program(program);
+
+    gl.delete_shader(vs);
+    gl.delete_shader(fs);
+
+    if !gl.get_program_link_status(program) {
+        let log = gl.get_program_info_log(program);
+        gl.delete_program(program);
+        return Err(format!("Text program link failed: {log}"));
     }
 
     Ok(program)
@@ -1399,6 +1500,185 @@ unsafe fn create_dynamic_mesh(
     Ok((vao, vbo))
 }
 
+unsafe fn create_text_buffers(
+    gl: &Arc<glow::Context>,
+) -> Result<(glow::VertexArray, glow::Buffer), String> {
+    let vao = gl
+        .create_vertex_array()
+        .map_err(|e| format!("Text VAO create failed: {e}"))?;
+    let vbo = gl
+        .create_buffer()
+        .map_err(|e| format!("Text VBO create failed: {e}"))?;
+
+    gl.bind_vertex_array(Some(vao));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+    gl.buffer_data_size(glow::ARRAY_BUFFER, 0, glow::DYNAMIC_DRAW);
+
+    let stride = 5 * std::mem::size_of::<f32>() as i32;
+    gl.enable_vertex_attrib_array(0);
+    gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
+    gl.enable_vertex_attrib_array(1);
+    gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, stride, 12);
+
+    gl.bind_vertex_array(None);
+
+    Ok((vao, vbo))
+}
+
+unsafe fn create_font_texture(gl: &Arc<glow::Context>) -> Result<glow::Texture, String> {
+    let texture = gl
+        .create_texture()
+        .map_err(|e| format!("Font texture create failed: {e}"))?;
+    gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MIN_FILTER,
+        glow::NEAREST as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MAG_FILTER,
+        glow::NEAREST as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_S,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_T,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+
+    let data = build_font_atlas_rgba();
+    gl.tex_image_2d(
+        glow::TEXTURE_2D,
+        0,
+        glow::RGBA as i32,
+        FONT_ATLAS_W as i32,
+        FONT_ATLAS_H as i32,
+        0,
+        glow::RGBA,
+        glow::UNSIGNED_BYTE,
+        glow::PixelUnpackData::Slice(Some(data.as_slice())),
+    );
+
+    gl.bind_texture(glow::TEXTURE_2D, None);
+    Ok(texture)
+}
+
+fn build_font_atlas_rgba() -> Vec<u8> {
+    let mut data = vec![0u8; FONT_ATLAS_W * FONT_ATLAS_H * 4];
+    for glyph_index in 0..128 {
+        let glyph = font8x8_glyph(glyph_index as u8);
+        let col = glyph_index % FONT_ATLAS_COLS;
+        let row = glyph_index / FONT_ATLAS_COLS;
+        for y in 0..FONT_GLYPH_H {
+            let row_bits = glyph[y];
+            for x in 0..FONT_GLYPH_W {
+                let on = (row_bits >> (7 - x)) & 1 == 1;
+                let dst_x = col * FONT_GLYPH_W + x;
+                let dst_y = row * FONT_GLYPH_H + y;
+                let idx = (dst_y * FONT_ATLAS_W + dst_x) * 4;
+                data[idx] = 255;
+                data[idx + 1] = 255;
+                data[idx + 2] = 255;
+                data[idx + 3] = if on { 255 } else { 0 };
+            }
+        }
+    }
+    data
+}
+
+fn font8x8_glyph(code: u8) -> [u8; 8] {
+    match code {
+        b' ' => [0x00; 8],
+        b':' => [0x00, 0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00],
+        b'?' => [0x38, 0x44, 0x04, 0x18, 0x10, 0x00, 0x10, 0x00],
+        b'T' => [0x7c, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00],
+        b'a' => [0x00, 0x00, 0x38, 0x04, 0x3c, 0x44, 0x3c, 0x00],
+        b'f' => [0x18, 0x24, 0x20, 0x70, 0x20, 0x20, 0x20, 0x00],
+        b'k' => [0x40, 0x40, 0x48, 0x50, 0x60, 0x50, 0x48, 0x00],
+        b'o' => [0x00, 0x00, 0x38, 0x44, 0x44, 0x44, 0x38, 0x00],
+        b'0' => [0x38, 0x44, 0x44, 0x44, 0x44, 0x44, 0x38, 0x00],
+        b'1' => [0x10, 0x30, 0x10, 0x10, 0x10, 0x10, 0x38, 0x00],
+        b'2' => [0x38, 0x44, 0x04, 0x18, 0x20, 0x40, 0x7c, 0x00],
+        b'3' => [0x78, 0x04, 0x04, 0x38, 0x04, 0x04, 0x78, 0x00],
+        b'4' => [0x48, 0x48, 0x48, 0x7c, 0x08, 0x08, 0x08, 0x00],
+        b'5' => [0x7c, 0x40, 0x40, 0x78, 0x04, 0x04, 0x78, 0x00],
+        b'6' => [0x38, 0x40, 0x40, 0x78, 0x44, 0x44, 0x38, 0x00],
+        b'7' => [0x7c, 0x04, 0x08, 0x10, 0x20, 0x20, 0x20, 0x00],
+        b'8' => [0x38, 0x44, 0x44, 0x38, 0x44, 0x44, 0x38, 0x00],
+        b'9' => [0x38, 0x44, 0x44, 0x3c, 0x04, 0x04, 0x38, 0x00],
+        b'F' => [0x7c, 0x40, 0x40, 0x78, 0x40, 0x40, 0x40, 0x00],
+        b'e' => [0x00, 0x38, 0x44, 0x7c, 0x40, 0x38, 0x00, 0x00],
+        b'i' => [0x00, 0x10, 0x00, 0x10, 0x10, 0x10, 0x10, 0x00],
+        b'r' => [0x00, 0x58, 0x64, 0x40, 0x40, 0x40, 0x00, 0x00],
+        b's' => [0x00, 0x3c, 0x40, 0x38, 0x04, 0x78, 0x00, 0x00],
+        b't' => [0x10, 0x78, 0x10, 0x10, 0x10, 0x18, 0x00, 0x00],
+        b'u' => [0x00, 0x44, 0x44, 0x44, 0x44, 0x3c, 0x00, 0x00],
+        b'x' => [0x00, 0x44, 0x28, 0x10, 0x28, 0x44, 0x00, 0x00],
+        _ => [0x00; 8],
+    }
+}
+
+fn build_text_vertices(text: &str, origin_x: f32, origin_y: f32, scale: f32) -> Vec<f32> {
+    let mut verts = Vec::with_capacity(text.len() * 6 * 5);
+    let mut cursor_x = origin_x;
+    let mut cursor_y = origin_y;
+    let cell_w = FONT_GLYPH_W as f32 * scale;
+    let cell_h = FONT_GLYPH_H as f32 * scale;
+    let advance = cell_w + FONT_GLYPH_SPACING * scale;
+    for ch in text.chars() {
+        if ch == '\n' {
+            cursor_x = origin_x;
+            cursor_y += cell_h + FONT_LINE_GAP * scale;
+            continue;
+        }
+        let glyph_index = if ch as u32 >= 128 {
+            '?' as usize
+        } else {
+            ch as usize
+        };
+        let col = glyph_index % FONT_ATLAS_COLS;
+        let row = glyph_index / FONT_ATLAS_COLS;
+        let u0 = col as f32 * FONT_GLYPH_W as f32 / FONT_ATLAS_W as f32;
+        let u1 = (col + 1) as f32 * FONT_GLYPH_W as f32 / FONT_ATLAS_W as f32;
+        let v0 = 1.0 - (row as f32 * FONT_GLYPH_H as f32) / FONT_ATLAS_H as f32;
+        let v1 = 1.0 - ((row + 1) as f32 * FONT_GLYPH_H as f32) / FONT_ATLAS_H as f32;
+        let x0 = cursor_x;
+        let y0 = cursor_y;
+        let x1 = cursor_x + cell_w;
+        let y1 = cursor_y + cell_h;
+        verts.extend_from_slice(&[
+            x0, y0, 0.0, u0, v0, x1, y0, 0.0, u1, v0, x1, y1, 0.0, u1, v1, x0, y0, 0.0, u0,
+            v0, x1, y1, 0.0, u1, v1, x0, y1, 0.0, u0, v1,
+        ]);
+        cursor_x += advance;
+    }
+    verts
+}
+
+fn text_line_width(text: &str, scale: f32) -> f32 {
+    let cell_w = FONT_GLYPH_W as f32 * scale;
+    let mut max_width: f32 = 0.0;
+    let mut line_width: f32 = 0.0;
+    for ch in text.chars() {
+        if ch == '\n' {
+            max_width = max_width.max(line_width);
+            line_width = 0.0;
+            continue;
+        }
+        if line_width > 0.0 {
+            line_width += FONT_GLYPH_SPACING * scale;
+        }
+        line_width += cell_w;
+    }
+    max_width.max(line_width)
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Vec3 {
     x: f32,
@@ -1459,155 +1739,6 @@ fn basis_from_dir(dir: Vec3) -> (Vec3, Vec3) {
     let right = up_ref.cross(forward).normalize();
     let up = forward.cross(right).normalize();
     (right, up)
-}
-
-fn build_takeoff_logo_strokes() -> Vec<Stroke> {
-    let centers = takeoff_logo_centers();
-    let mut strokes = Vec::new();
-    for (offset_x, letter) in centers
-        .into_iter()
-        .zip(TAKEOFF_LOGO_LETTERS.iter().copied())
-    {
-        add_letter_strokes(&mut strokes, letter, offset_x);
-    }
-    strokes
-}
-
-fn takeoff_logo_word_width() -> f32 {
-    let count = TAKEOFF_LOGO_LETTERS.len() as f32;
-    let mut width = TAKEOFF_LOGO_W * count + TAKEOFF_LOGO_SPACING * (count - 1.0);
-    for idx in 1..TAKEOFF_LOGO_LETTERS.len() {
-        width += takeoff_logo_kerning(
-            TAKEOFF_LOGO_LETTERS[idx - 1],
-            TAKEOFF_LOGO_LETTERS[idx],
-        );
-    }
-    width
-}
-
-fn takeoff_logo_centers() -> Vec<f32> {
-    let mut centers = Vec::with_capacity(TAKEOFF_LOGO_LETTERS.len());
-    let mut cursor_x = 0.0;
-    centers.push(0.0);
-    for idx in 1..TAKEOFF_LOGO_LETTERS.len() {
-        let kern = takeoff_logo_kerning(
-            TAKEOFF_LOGO_LETTERS[idx - 1],
-            TAKEOFF_LOGO_LETTERS[idx],
-        );
-        cursor_x += TAKEOFF_LOGO_W + TAKEOFF_LOGO_SPACING + kern;
-        centers.push(cursor_x);
-    }
-
-    let half_w = TAKEOFF_LOGO_W * 0.5;
-    let min_x = centers.first().copied().unwrap_or(0.0) - half_w;
-    let max_x = centers.last().copied().unwrap_or(0.0) + half_w;
-    let shift = -0.5 * (min_x + max_x);
-    for center in &mut centers {
-        *center += shift;
-    }
-    centers
-}
-
-fn takeoff_logo_kerning(prev: char, next: char) -> f32 {
-    match (prev, next) {
-        ('E', 'O') => TAKEOFF_LOGO_KERNING_EO,
-        ('O', 'F') => TAKEOFF_LOGO_KERNING_OF,
-        ('F', 'F') => TAKEOFF_LOGO_KERNING_FF,
-        _ => 0.0,
-    }
-}
-
-fn add_letter_strokes(strokes: &mut Vec<Stroke>, letter: char, offset_x: f32) {
-    let half_w = TAKEOFF_LOGO_W * 0.5;
-    let half_h = TAKEOFF_LOGO_H * 0.5;
-    let top_y = half_h - TAKEOFF_LOGO_STROKE * 0.5;
-    let bottom_y = -half_h + TAKEOFF_LOGO_STROKE * 0.5;
-
-    match letter {
-        'T' => {
-            add_h(strokes, offset_x, -half_w, half_w, top_y);
-            add_v(strokes, offset_x, 0.0, -half_h, half_h);
-        }
-        'A' => {
-            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_v(strokes, offset_x, half_w - TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_h(strokes, offset_x, -half_w, half_w, top_y);
-            add_h(strokes, offset_x, -half_w * 0.6, half_w * 0.6, 0.0);
-        }
-        'K' => {
-            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            let diag_len = TAKEOFF_LOGO_H * 0.95;
-            add_diag(
-                strokes,
-                offset_x,
-                0.1,
-                0.25,
-                diag_len,
-                std::f32::consts::FRAC_PI_4,
-            );
-            add_diag(
-                strokes,
-                offset_x,
-                0.1,
-                -0.25,
-                diag_len,
-                -std::f32::consts::FRAC_PI_4,
-            );
-        }
-        'E' => {
-            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_h(strokes, offset_x, -half_w, half_w, top_y);
-            add_h(strokes, offset_x, -half_w, half_w * 0.65, 0.0);
-            add_h(strokes, offset_x, -half_w, half_w, bottom_y);
-        }
-        'O' => {
-            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_v(strokes, offset_x, half_w - TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_h(strokes, offset_x, -half_w, half_w, top_y);
-            add_h(strokes, offset_x, -half_w, half_w, bottom_y);
-        }
-        'F' => {
-            add_v(strokes, offset_x, -half_w + TAKEOFF_LOGO_STROKE * 0.5, -half_h, half_h);
-            add_h(strokes, offset_x, -half_w, half_w, top_y);
-            add_h(strokes, offset_x, -half_w, half_w * 0.6, 0.0);
-        }
-        _ => {}
-    }
-}
-
-fn add_h(strokes: &mut Vec<Stroke>, offset_x: f32, x0: f32, x1: f32, y: f32) {
-    let center = Vec3::new(offset_x + (x0 + x1) * 0.5, y, 0.0);
-    let width = (x1 - x0).abs();
-    strokes.push(Stroke {
-        center,
-        size: Vec3::new(width, TAKEOFF_LOGO_STROKE, TAKEOFF_LOGO_DEPTH),
-        rot_z: 0.0,
-    });
-}
-
-fn add_v(strokes: &mut Vec<Stroke>, offset_x: f32, x: f32, y0: f32, y1: f32) {
-    let center = Vec3::new(offset_x + x, (y0 + y1) * 0.5, 0.0);
-    let height = (y1 - y0).abs();
-    strokes.push(Stroke {
-        center,
-        size: Vec3::new(TAKEOFF_LOGO_STROKE, height, TAKEOFF_LOGO_DEPTH),
-        rot_z: 0.0,
-    });
-}
-
-fn add_diag(
-    strokes: &mut Vec<Stroke>,
-    offset_x: f32,
-    center_x: f32,
-    center_y: f32,
-    length: f32,
-    angle: f32,
-) {
-    strokes.push(Stroke {
-        center: Vec3::new(offset_x + center_x, center_y, 0.0),
-        size: Vec3::new(length, TAKEOFF_LOGO_STROKE, TAKEOFF_LOGO_DEPTH),
-        rot_z: angle,
-    });
 }
 
 fn mat4_perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> [f32; 16] {

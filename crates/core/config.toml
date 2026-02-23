@@ -12,19 +12,19 @@ last_open_showfile = "/home/mik/BL_DBG.json"
 [stream]
 channel_count = 2
 fft_resolution = 4096
-refresh_rate = 60
 gravity = 100.0
+refresh_rate = 60
 
 [stream.processor]
-sampling_rate = 48000
 frequency_bounds = [
     40,
     20000,
 ]
+interpolation = "Cubic"
+position_normalisation = "Harmonic"
+sampling_rate = 48000
 volume = 1.0
 volume_normalisation = "Mixture"
-position_normalisation = "Harmonic"
-interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"
