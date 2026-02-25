@@ -1,10 +1,12 @@
 mod button;
+mod button_new;
 mod clickable;
 mod color;
 mod dialog;
 mod fader;
 mod fixtures_shared;
 mod graph;
+mod horizontal_nav;
 mod id_selection_dialog;
 mod knob;
 mod log;
@@ -20,12 +22,14 @@ mod text;
 mod text_input;
 
 pub use button::*;
+pub use button_new::*;
 pub use clickable::*;
 pub use color::*;
 pub use dialog::*;
 pub use fader::*;
 pub use fixtures_shared::*;
 pub use graph::*;
+pub use horizontal_nav::*;
 pub use id_selection_dialog::*;
 pub use knob::*;
 pub use log::*;

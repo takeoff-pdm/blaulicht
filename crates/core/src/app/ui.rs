@@ -1,11 +1,11 @@
-use crate::app::{theme, BlaulichtApp, PopupSpec};
-use crate::state::ScreenId;
+use crate::app::{components, theme, BlaulichtApp, PopupSpec};
 use crate::state::AppStateWrapper;
+use crate::state::ScreenId;
 
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;
 
-use egui::Context;
+use egui::{Context, Frame};
 use strum::IntoEnumIterator;
 
 pub enum FileDialogOpenOrigin {
@@ -116,6 +116,14 @@ impl BlaulichtApp {
     fn render_main_screen(&mut self, ctx: &Context) {
         // Navbar
         self.show_navbar(ctx);
+
+        egui::TopBottomPanel::bottom("horizontal_nav")
+            .resizable(false)
+            .frame(Frame::NONE)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                components::horizontal_nav(ui);
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // // Update animation time for continuous rendering
