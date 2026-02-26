@@ -1,5 +1,5 @@
 use blaulicht_shared::AppPage;
-use egui::Context;
+use egui::{Context, Frame, Separator, Widget};
 use strum::IntoEnumIterator;
 
 use crate::app::components::{self, ButtonSize};
@@ -45,30 +45,46 @@ impl Navbar {
         egui::SidePanel::left("navbar")
             .resizable(false)
             .default_width(WIDTH)
+            .frame(Frame::NONE)
             .show(ctx, |ui| {
-                let button_count = AppPage::iter().count();
-                let spacing_top_bottom = 3.0;
-                let spacing = 6.0;
-                let button_height = ui.available_height() / button_count as f32;
-                let button_size = ButtonSize::Large
-                    .with_height(button_height - spacing - spacing_top_bottom)
-                    .with_width(WIDTH)
-                    .with_font_size(20.0);
+                ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
-                ui.add_space(spacing_top_bottom);
+                let button_count = AppPage::iter().count();
+                // let spacing_top_bottom = 3.0;
+                // let spacing = 6.0;
+                let sep_spacing = 3.0;
+                let button_height = (ui.available_height()
+                    - (sep_spacing * (button_count - 1) as f32))
+                    / button_count as f32;
+
+                // println!("a: {}", button_height);
+
+                let button_size = ButtonSize::Large
+                    .with_height(button_height)
+                    .with_width(WIDTH)
+                    .with_font_size(14.5);
+
+                // ui.add_space(spacing_top_bottom);
 
                 for (idx, page) in AppPage::iter().enumerate() {
                     let is_selected = self.current_page == page;
                     // let label = page.short().to_uppercase();
                     let label = app_page_to_icon(&page);
 
-                    if components::button(ui, is_selected, &label, button_size) && !is_selected {
-                        self.current_page = page.clone();
-                        changed = Some(page.clone());
+                    if components::Button::new(&label, button_size).ui(ui, is_selected) {
+                        if !is_selected {
+                            self.current_page = page.clone();
+                            changed = Some(page.clone());
+                        }
                     }
 
+                    // if components::button(ui, is_selected, &label, button_size) && !is_selected {
+                    // }
+
                     if idx + 1 < button_count {
-                        ui.add_space(spacing);
+                        // ui.add_space(spacing);
+                        // ui.separator();
+                        Separator::default().spacing(sep_spacing).ui(ui);
                     }
                 }
             });
