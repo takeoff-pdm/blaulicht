@@ -27,6 +27,11 @@ position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
 [[plugins]]
+file_path = "../plugins/bundle_debug/player.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
 file_path = "../plugins/bundle_debug/midi_all.wasm"
 enabled = false
 enable_watcher = true

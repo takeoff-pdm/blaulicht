@@ -151,6 +151,30 @@ pub(crate) fn render_plugin_ops(
                 ui.label(text);
                 *idx += 1;
             }
+            Op::LabelStyled {
+                text,
+                size,
+                monospace,
+            } => {
+                let mut rich = egui::RichText::new(text).size(*size as f32);
+                if *monospace {
+                    rich = rich.monospace();
+                }
+                ui.label(rich);
+                *idx += 1;
+            }
+            Op::SetMaxWidth { width } => {
+                if *width > 0 {
+                    ui.set_max_width(*width as f32);
+                }
+                *idx += 1;
+            }
+            Op::SetMinWidth { width } => {
+                if *width >= 0 {
+                    ui.set_min_width(*width as f32);
+                }
+                *idx += 1;
+            }
             Op::Separator => {
                 ui.separator();
                 *idx += 1;
@@ -158,6 +182,59 @@ pub(crate) fn render_plugin_ops(
             Op::Button { label, id } => {
                 if ui.button(label).clicked() {
                     let evt = ControlEvent::PluginUi(PluginUiEvent::Button { id: *id }, plugin_id);
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                }
+                *idx += 1;
+            }
+            Op::ButtonStyled { label, id, enabled } => {
+                let clicked = components::button(ui, *enabled, label, components::ButtonSize::Medium);
+                if *enabled && clicked {
+                    let evt = ControlEvent::PluginUi(PluginUiEvent::Button { id: *id }, plugin_id);
+                    data.event_bus_connection
+                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                }
+                *idx += 1;
+            }
+            Op::ComboBox {
+                label,
+                id,
+                options,
+                selected,
+            } => {
+                let combo_id = ui.make_persistent_id(format!("plugin_combo_{}_{}", plugin_id, id));
+                let mut current = *selected;
+                let mut changed = false;
+                let selected_text = options
+                    .get(current as usize)
+                    .map(|s| s.as_str())
+                    .unwrap_or("<none>");
+                ui.horizontal(|ui| {
+                    if !label.is_empty() {
+                        ui.label(label);
+                    }
+                    egui::ComboBox::from_id_source(combo_id)
+                        .selected_text(selected_text)
+                        .show_ui(ui, |ui| {
+                            for (idx_opt, label) in options.iter().enumerate() {
+                                if ui
+                                    .selectable_value(&mut current, idx_opt as u8, label)
+                                    .changed()
+                                {
+                                    changed = true;
+                                }
+                            }
+                        });
+                });
+
+                if changed {
+                    let evt = ControlEvent::PluginUi(
+                        PluginUiEvent::ComboBox {
+                            id: *id,
+                            selected: current,
+                        },
+                        plugin_id,
+                    );
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
@@ -251,10 +328,15 @@ pub(crate) fn render_plugin_ops(
             }
             Op::TextEdit { label, id, text } => {
                 let edit_id = ui.make_persistent_id(format!("text_edit_{}", id));
-                let mut s = ui.data_mut(|d| {
-                    d.get_temp::<String>(edit_id)
-                        .unwrap_or_else(|| text.clone())
-                });
+                let has_focus = ui.memory(|m| m.has_focus(edit_id));
+                let mut s = if has_focus {
+                    ui.data_mut(|d| {
+                        d.get_temp::<String>(edit_id)
+                            .unwrap_or_else(|| text.clone())
+                    })
+                } else {
+                    text.clone()
+                };
 
                 let response = ui.text_edit_singleline(&mut s);
 
@@ -337,6 +419,61 @@ pub(crate) fn render_plugin_ops(
                         ui.vertical(|ui| {
                             ui.label(egui::RichText::new(title).strong());
                             ui.separator();
+                            render_plugin_ops(ui, ops, idx, data, plugin_id);
+                        });
+                        if px > 0.0 {
+                            ui.add_space(px);
+                        }
+                    });
+                    ui.add_space(py);
+                });
+                if my > 0.0 {
+                    ui.add_space(my);
+                }
+            }
+            Op::BeginFrameStyledBorder {
+                id: _,
+                title,
+                pad_x,
+                pad_y,
+                margin_x,
+                margin_y,
+                border_r,
+                border_g,
+                border_b,
+                border_a,
+                border_thickness,
+            } => {
+                *idx += 1;
+                let px = (*pad_x).max(0) as f32;
+                let py = (*pad_y).max(0) as f32;
+                let _mx = (*margin_x).max(0) as f32;
+                let my = (*margin_y).max(0) as f32;
+                let stroke = egui::Stroke::new(
+                    (*border_thickness).max(0) as f32,
+                    egui::Color32::from_rgba_unmultiplied(
+                        *border_r,
+                        *border_g,
+                        *border_b,
+                        *border_a,
+                    ),
+                );
+                if my > 0.0 {
+                    ui.add_space(my);
+                }
+                let mut frame = egui::Frame::group(ui.style());
+                frame.stroke = stroke;
+                frame.show(ui, |ui| {
+                    ui.add_space(py);
+                    ui.horizontal(|ui| {
+                        if px > 0.0 {
+                            ui.add_space(px);
+                        }
+                        ui.vertical(|ui| {
+                            if !title.is_empty() {
+                                ui.label(egui::RichText::new(title).strong());
+                                ui.separator();
+                            }
                             render_plugin_ops(ui, ops, idx, data, plugin_id);
                         });
                         if px > 0.0 {

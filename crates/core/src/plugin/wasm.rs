@@ -536,6 +536,62 @@ impl PluginManager {
         )?;
 
         let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_label_styled",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  size: i32,
+                  monospace: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+                let text = String::from_utf8_lossy(&buffer).to_string();
+
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::LabelStyled {
+                        text,
+                        size,
+                        monospace: monospace != 0,
+                    });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_set_max_width",
+            move |_caller: Caller<'_, ()>, plugin_id: i32, width: i32| {
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::SetMaxWidth { width });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_set_min_width",
+            move |_caller: Caller<'_, ()>, plugin_id: i32, width: i32| {
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::SetMinWidth { width });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>("blaulicht", "ui_separator", move |plugin_id: i32| {
             let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
             map.entry(plugin_id as u8)
@@ -569,6 +625,84 @@ impl PluginManager {
                     .push(WasmUiOp::Button {
                         label,
                         id: id as u8,
+                    });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_button_styled",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  id: i32,
+                  enabled: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+                let label = String::from_utf8_lossy(&buffer).to_string();
+
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::ButtonStyled {
+                        label,
+                        id: id as u8,
+                        enabled: enabled != 0,
+                    });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_combo_box",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  label_ptr: i32,
+                  label_len: i32,
+                  id: i32,
+                  options_ptr: i32,
+                  options_len: i32,
+                  selected: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut label_buf = vec![0u8; label_len as usize];
+                memory
+                    .read(&caller, label_ptr as usize, &mut label_buf)
+                    .expect("failed to read memory");
+                let label = String::from_utf8_lossy(&label_buf).to_string();
+
+                let mut options_buf = vec![0u8; options_len as usize];
+                memory
+                    .read(&caller, options_ptr as usize, &mut options_buf)
+                    .expect("failed to read memory");
+                let options_str = String::from_utf8_lossy(&options_buf).to_string();
+                let options: Vec<String> = if options_str.is_empty() {
+                    Vec::new()
+                } else {
+                    options_str.split('\n').map(|s| s.to_string()).collect()
+                };
+
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::ComboBox {
+                        label,
+                        id: id as u8,
+                        options,
+                        selected: selected as u8,
                     });
             },
         )?;
@@ -1153,6 +1287,54 @@ impl PluginManager {
                         pad_y,
                         margin_x,
                         margin_y,
+                    });
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_frame_styled_border",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  id: i32,
+                  title_ptr: i32,
+                  title_len: i32,
+                  pad_x: i32,
+                  pad_y: i32,
+                  margin_x: i32,
+                  margin_y: i32,
+                  border_r: i32,
+                  border_g: i32,
+                  border_b: i32,
+                  border_a: i32,
+                  border_thickness: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; title_len as usize];
+                memory
+                    .read(&caller, title_ptr as usize, &mut buffer)
+                    .expect("failed to read memory");
+                let title = String::from_utf8_lossy(&buffer).to_string();
+
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginFrameStyledBorder {
+                        id: id as u8,
+                        title,
+                        pad_x,
+                        pad_y,
+                        margin_x,
+                        margin_y,
+                        border_r: border_r as u8,
+                        border_g: border_g as u8,
+                        border_b: border_b as u8,
+                        border_a: border_a as u8,
+                        border_thickness,
                     });
             },
         )?;

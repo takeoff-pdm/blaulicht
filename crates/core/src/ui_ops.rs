@@ -1,10 +1,32 @@
 #[derive(Debug, Clone)]
 pub enum WasmUiOp {
     Label(String),
+    LabelStyled {
+        text: String,
+        size: i32,
+        monospace: bool,
+    },
+    SetMaxWidth {
+        width: i32,
+    },
+    SetMinWidth {
+        width: i32,
+    },
     Separator,
     Button {
         label: String,
         id: u8,
+    },
+    ButtonStyled {
+        label: String,
+        id: u8,
+        enabled: bool,
+    },
+    ComboBox {
+        label: String,
+        id: u8,
+        options: Vec<String>,
+        selected: u8,
     },
     Checkbox {
         label: String,
@@ -148,6 +170,19 @@ pub enum WasmUiOp {
         pad_y: i32,
         margin_x: i32,
         margin_y: i32,
+    },
+    BeginFrameStyledBorder {
+        id: u8,
+        title: String,
+        pad_x: i32,
+        pad_y: i32,
+        margin_x: i32,
+        margin_y: i32,
+        border_r: u8,
+        border_g: u8,
+        border_b: u8,
+        border_a: u8,
+        border_thickness: i32,
     },
     EndFrame,
     BeginCollapsing {
