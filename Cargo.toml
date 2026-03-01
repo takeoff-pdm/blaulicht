@@ -33,5 +33,6 @@ exclude = [
     "./crates/plugins/test",
     "./crates/plugins/ddj_200",
     "./crates/plugins/console",
+    "./crates/plugins/player/",
 ]
 resolver = "2"

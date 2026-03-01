@@ -44,12 +44,31 @@ extern "C" {
     // Egui UI host imports
     fn ui_begin(plugin_id: u8);
     fn ui_label(plugin_id: u8, ptr: *const u8, len: usize);
+    fn ui_label_styled(
+        plugin_id: u8,
+        ptr: *const u8,
+        len: usize,
+        size: i32,
+        monospace: i32,
+    );
+    fn ui_set_max_width(plugin_id: u8, width: i32);
+    fn ui_set_min_width(plugin_id: u8, width: i32);
     fn ui_separator(plugin_id: u8);
     fn ui_button(plugin_id: u8, ptr: *const u8, len: usize, id: u8);
+    fn ui_button_styled(plugin_id: u8, ptr: *const u8, len: usize, id: u8, enabled: i32);
     fn ui_checkbox(plugin_id: u8, ptr: *const u8, len: usize, id: u8, checked: i32);
     fn ui_switch(plugin_id: u8, ptr: *const u8, len: usize, id: u8, value: i32);
     fn ui_slider(plugin_id: u8, ptr: *const u8, len: usize, id: u8, min: i32, max: i32, value: i32);
     fn ui_hfader(plugin_id: u8, ptr: *const u8, len: usize, id: u8, min: i32, max: i32, value: i32);
+    fn ui_combo_box(
+        plugin_id: u8,
+        label_ptr: *const u8,
+        label_len: usize,
+        id: u8,
+        options_ptr: *const u8,
+        options_len: usize,
+        selected: u8,
+    );
     fn ui_text_edit(
         plugin_id: u8,
         label_ptr: *const u8,
@@ -167,6 +186,21 @@ extern "C" {
         pad_y: i32,
         margin_x: i32,
         margin_y: i32,
+    );
+    fn ui_begin_frame_styled_border(
+        plugin_id: u8,
+        id: u8,
+        title_ptr: *const u8,
+        title_len: usize,
+        pad_x: i32,
+        pad_y: i32,
+        margin_x: i32,
+        margin_y: i32,
+        border_r: i32,
+        border_g: i32,
+        border_b: i32,
+        border_a: i32,
+        border_thickness: i32,
     );
     fn ui_end_frame(plugin_id: u8);
     fn ui_begin_collapsing(plugin_id: u8, id: u8, ptr: *const u8, len: usize, default_open: i32);
@@ -304,14 +338,18 @@ pub mod ui {
     use super::{
         ui_begin as host_ui_begin, ui_begin_collapsing as host_ui_begin_collapsing,
         ui_begin_frame as host_ui_begin_frame, ui_begin_frame_styled as host_ui_begin_frame_styled,
+        ui_begin_frame_styled_border as host_ui_begin_frame_styled_border,
         ui_begin_horizontal as host_ui_begin_horizontal, ui_begin_tab as host_ui_begin_tab,
         ui_begin_tabs as host_ui_begin_tabs, ui_begin_vertical as host_ui_begin_vertical,
-        ui_button as host_ui_button, ui_checkbox as host_ui_checkbox,
+        ui_button as host_ui_button, ui_button_styled as host_ui_button_styled,
+        ui_checkbox as host_ui_checkbox, ui_combo_box as host_ui_combo_box,
+        ui_label as host_ui_label, ui_label_styled as host_ui_label_styled,
+        ui_set_max_width as host_ui_set_max_width, ui_set_min_width as host_ui_set_min_width,
         ui_color_picker as host_ui_color_picker, ui_end_collapsing as host_ui_end_collapsing,
         ui_end_frame as host_ui_end_frame, ui_end_horizontal as host_ui_end_horizontal,
         ui_end_tab as host_ui_end_tab, ui_end_tabs as host_ui_end_tabs,
         ui_end_vertical as host_ui_end_vertical, ui_hfader as host_ui_hfader,
-        ui_label as host_ui_label, ui_painter_begin as host_ui_painter_begin,
+        ui_painter_begin as host_ui_painter_begin,
         ui_painter_circle as host_ui_painter_circle,
         ui_painter_circle_stroke as host_ui_painter_circle_stroke,
         ui_painter_cubic_bezier as host_ui_painter_cubic_bezier,
@@ -332,6 +370,26 @@ pub mod ui {
         unsafe { host_ui_label(unsafe { PLUGIN_ID }, text.as_ptr(), text.len()) };
     }
 
+    pub fn label_styled(text: &str, size: i32, monospace: bool) {
+        unsafe {
+            host_ui_label_styled(
+                unsafe { PLUGIN_ID },
+                text.as_ptr(),
+                text.len(),
+                size,
+                if monospace { 1 } else { 0 },
+            )
+        };
+    }
+
+    pub fn set_max_width(width: i32) {
+        unsafe { host_ui_set_max_width(unsafe { PLUGIN_ID }, width) };
+    }
+
+    pub fn set_min_width(width: i32) {
+        unsafe { host_ui_set_min_width(unsafe { PLUGIN_ID }, width) };
+    }
+
     pub fn separator() {
         unsafe { host_ui_separator(unsafe { PLUGIN_ID }) };
     }
@@ -339,6 +397,34 @@ pub mod ui {
     /// Enqueue a button with a stable `id` byte. When clicked on host, a ControlEvent::MiscEvent will be sent back with descriptor=id, value=1.
     pub fn button(label: &str, id: u8) {
         unsafe { host_ui_button(unsafe { PLUGIN_ID }, label.as_ptr(), label.len(), id) };
+    }
+
+    /// Enqueue a styled button using core ButtonSize::Medium.
+    pub fn button_styled(label: &str, id: u8, enabled: bool) {
+        unsafe {
+            host_ui_button_styled(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                if enabled { 1 } else { 0 },
+            )
+        };
+    }
+
+    pub fn combo_box(label: &str, id: u8, options: &[String], selected: u8) {
+        let joined = options.join("\n");
+        unsafe {
+            host_ui_combo_box(
+                unsafe { PLUGIN_ID },
+                label.as_ptr(),
+                label.len(),
+                id,
+                joined.as_ptr(),
+                joined.len(),
+                selected,
+            )
+        };
     }
 
     pub fn checkbox(label: &str, id: u8, checked: bool) {
@@ -630,6 +716,38 @@ pub mod ui {
                 pad_y,
                 margin_x,
                 margin_y,
+            )
+        };
+    }
+
+    pub fn begin_frame_styled_border(
+        id: u8,
+        title: &str,
+        pad_x: i32,
+        pad_y: i32,
+        margin_x: i32,
+        margin_y: i32,
+        border_r: u8,
+        border_g: u8,
+        border_b: u8,
+        border_a: u8,
+        border_thickness: i32,
+    ) {
+        unsafe {
+            host_ui_begin_frame_styled_border(
+                unsafe { PLUGIN_ID },
+                id,
+                title.as_ptr(),
+                title.len(),
+                pad_x,
+                pad_y,
+                margin_x,
+                margin_y,
+                border_r as i32,
+                border_g as i32,
+                border_b as i32,
+                border_a as i32,
+                border_thickness,
             )
         };
     }

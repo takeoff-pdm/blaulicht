@@ -384,6 +384,10 @@ pub enum PluginUiEvent {
         id: u8,
         text: String,
     },
+    ComboBox {
+        id: u8,
+        selected: u8,
+    },
     Color {
         id: u8,
         r: u8,
