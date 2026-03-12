@@ -41,6 +41,7 @@ pub struct CuePoint {
     speed_index: u8,
     brightness: u8,
     overlay: bool,
+    ui_id: u8,
 }
 
 #[derive(Clone)]
@@ -63,6 +64,7 @@ impl Default for CuePoint {
             speed_index: DEFAULT_SPEED_INDEX,
             brightness: 255,
             overlay: false,
+            ui_id: 0,
         }
     }
 }
@@ -131,7 +133,6 @@ impl TimelinePlugin {
             }
         }
         self.normalize_state();
-        self.sort_cues_by_time(true);
     }
 
     fn normalize_state(&mut self) {
@@ -151,6 +152,32 @@ impl TimelinePlugin {
 
         if self.state.start_at_text.len() > 16 {
             self.state.start_at_text.truncate(16);
+        }
+
+        self.ensure_cue_ids();
+    }
+
+    fn ensure_cue_ids(&mut self) {
+        let mut used = vec![false; MAX_CUES];
+        for cue in &mut self.state.cues {
+            if let Some(slot) = cue_id_slot(cue.ui_id) {
+                if !used[slot] {
+                    used[slot] = true;
+                    continue;
+                }
+            }
+            cue.ui_id = 0;
+        }
+
+        for cue in &mut self.state.cues {
+            if cue.ui_id == 0 {
+                if let Some((slot, base_id)) = next_available_cue_base_id_from_used(&used) {
+                    cue.ui_id = base_id;
+                    used[slot] = true;
+                } else {
+                    println!("Timeline: ran out of cue ids; cue will be read-only");
+                }
+            }
         }
     }
 
@@ -218,6 +245,15 @@ impl TimelinePlugin {
             return;
         }
 
+        self.ensure_cue_ids();
+        let ui_id = match self.next_available_cue_base_id() {
+            Some(id) => id,
+            None => {
+                println!("Timeline: ran out of cue ids; cannot add cue");
+                return;
+            }
+        };
+
         let max_time = self
             .state
             .cues
@@ -234,11 +270,11 @@ impl TimelinePlugin {
             speed_index: DEFAULT_SPEED_INDEX,
             brightness: 255,
             overlay: false,
+            ui_id,
         };
 
         self.state.cues.push(cue);
         self.dirty = true;
-        self.sort_cues_by_time(true);
     }
 
     fn start_at_ms(&self) -> u32 {
@@ -287,16 +323,27 @@ impl TimelinePlugin {
     }
 
     fn decode_cue_id(&self, id: u8) -> Option<(usize, u8)> {
-        if id < CUE_ID_BASE {
-            return None;
+        for (row, cue) in self.state.cues.iter().enumerate() {
+            if let Some(base_id) = cue_base_id(cue) {
+                if id >= base_id {
+                    let offset = id - base_id;
+                    if offset < CUE_ID_STRIDE {
+                        return Some((row, offset));
+                    }
+                }
+            }
         }
-        let offset = id - CUE_ID_BASE;
-        let row = (offset / CUE_ID_STRIDE) as usize;
-        let field = offset % CUE_ID_STRIDE;
-        if row >= self.state.cues.len() {
-            return None;
+        None
+    }
+
+    fn next_available_cue_base_id(&self) -> Option<u8> {
+        let mut used = vec![false; MAX_CUES];
+        for cue in &self.state.cues {
+            if let Some(slot) = cue_id_slot(cue.ui_id) {
+                used[slot] = true;
+            }
         }
-        Some((row, field))
+        next_available_cue_base_id_from_used(&used).map(|(_, base_id)| base_id)
     }
 
     fn handle_ui_event(&mut self, event: &PluginUiEvent, now: u32) {
@@ -340,7 +387,6 @@ impl TimelinePlugin {
                             _ => {}
                         }
                         self.dirty = true;
-                        self.sort_cues_by_time(true);
                     }
                 }
                 if *id == ID_START_AT_TEXT {
@@ -514,9 +560,9 @@ impl TimelinePlugin {
         let editing_enabled = !self.running;
 
         for (idx, cue) in self.state.cues.iter().enumerate() {
-            let base_id = match cue_base_id(idx) {
+            let base_id = match cue_base_id(cue) {
                 Some(id) => id,
-                None => break,
+                None => continue,
             };
 
             let fired = self.fired.get(idx).copied().unwrap_or(false);
@@ -730,12 +776,49 @@ fn scene_choice_index(choices: &[SceneChoice], scene_text: &str) -> u8 {
     0
 }
 
-fn cue_base_id(index: usize) -> Option<u8> {
+fn cue_id_slot(id: u8) -> Option<usize> {
+    if id < CUE_ID_BASE {
+        return None;
+    }
+    let offset = id - CUE_ID_BASE;
+    if offset % CUE_ID_STRIDE != 0 {
+        return None;
+    }
+    let slot = (offset / CUE_ID_STRIDE) as usize;
+    if slot >= MAX_CUES {
+        return None;
+    }
+    let max_id = id as usize + CUE_ID_REMOVE as usize;
+    if max_id > u8::MAX as usize {
+        return None;
+    }
+    Some(slot)
+}
+
+fn cue_base_id_from_slot(slot: usize) -> Option<u8> {
+    if slot >= MAX_CUES {
+        return None;
+    }
     let stride = CUE_ID_STRIDE as usize;
-    let base = CUE_ID_BASE as usize + index * stride;
+    let base = CUE_ID_BASE as usize + slot * stride;
     let max_id = base + CUE_ID_REMOVE as usize;
     if max_id > u8::MAX as usize {
         return None;
     }
     Some(base as u8)
+}
+
+fn cue_base_id(cue: &CuePoint) -> Option<u8> {
+    cue_id_slot(cue.ui_id).map(|_| cue.ui_id)
+}
+
+fn next_available_cue_base_id_from_used(used: &[bool]) -> Option<(usize, u8)> {
+    for slot in 0..MAX_CUES {
+        if !used[slot] {
+            if let Some(base_id) = cue_base_id_from_slot(slot) {
+                return Some((slot, base_id));
+            }
+        }
+    }
+    None
 }

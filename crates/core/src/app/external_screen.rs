@@ -92,7 +92,7 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
         Frame::NONE
             .outer_margin(Margin::same(0))
             .inner_margin(Margin::same(8))
-            .stroke(Stroke::new(2.0, Color32::RED))
+            .stroke(Stroke::new(2.0, Color32::GRAY))
             .show(ui, |ui| {
                 let (rect, _response) = ui.allocate_exact_size(vec2(723.0, 480.0), Sense::empty());
                 let mut child_ui = ui.new_child(

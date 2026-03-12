@@ -1,13 +1,13 @@
 port = 1234
 dmx_out_devices = [
-    "/dev/dmx_out_0",
+    "/dev/ttyUSB0",
     "/dev/dmx_out_0",
 ]
 default_audio_device = "pipewire"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/BL_DBG.json"
+last_open_showfile = "/home/mik/BL_LILLY.json"
 
 [stream]
 channel_count = 2
@@ -27,48 +27,8 @@ position_normalisation = "Harmonic"
 interpolation = "Cubic"
 
 [[plugins]]
-file_path = "../plugins/bundle_debug/player.wasm"
+file_path = "../plugins/bundle_release/test.wasm"
 enabled = true
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/midi_all.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/sample_egui_plugin.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/drums.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/visualizer.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/test.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/videowall.wasm"
-enabled = false
-enable_watcher = true
-
-[[plugins]]
-file_path = "../plugins/bundle_debug/console.wasm"
-enabled = false
 enable_watcher = true
 
 [plugin_state]

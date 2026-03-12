@@ -1,6 +1,6 @@
 use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
-use blaulicht_plugin_framework::{ui, Plugin};
+use blaulicht_plugin_framework::{ui, Plugin, midi::MidiConnection};
 use blaulicht_shared::{
     AppPage, ControlEvent, ControlEventMessage, MainUiEvent, PluginUiEvent, TickInput,
 };
@@ -30,7 +30,7 @@ impl Default for SaveState {
 pub struct SamplePlugin {
     state: SaveState,
     // midi_handle_out: Option<MidiConnection>,
-    // midi_handle_in: Option<MidiConnection>,
+    midi_handle_in: Option<MidiConnection>,
     saved: bool,
 
     last_print: u32,
@@ -40,7 +40,7 @@ impl Default for SamplePlugin {
     fn default() -> Self {
         Self {
             state: SaveState::default(), // midi_handle_out: None,
-            // midi_handle_in: None,
+            midi_handle_in: None,
             saved: false,
             last_print: 0,
         }
@@ -129,56 +129,15 @@ impl Plugin for SamplePlugin {
 
         self.save();
 
-        // self.midi_handle_out = Some(MidiConnection::open("Blaulicht OUT").unwrap());
-        // self.midi_handle_in = Some(MidiConnection::open("Blaulicht IN").unwrap());
+        self.midi_handle_in = Some(MidiConnection::open("U2MIDI Pro").unwrap());
     }
 
     fn run(&mut self, input: TickInput) {
         let _state = bpf::get_dmx();
 
-        if input.clock - self.last_print > 1000 {
-            println!("A");
-            self.last_print = input.clock;
-        }
-
-        for ev in &input.events.events {
-            println!("TEST-EV: {ev:?}");
-
-            match ev.body() {
-                ControlEvent::MainUi(main_ui_event) => match main_ui_event {
-                    blaulicht_shared::MainUiEvent::NavigatePage(app_page) => {
-                        // bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(
-                        //     AppPage::Audio,
-                        // )));
-                    }
-                    blaulicht_shared::MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
-                        println!("FOO: {plugin_id} | {open}");
-                        // bpf::send_event(ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
-                        //     plugin_id,
-                        //     open: false,
-                        // }));
-                    }
-                    _ => {}
-                },
-                ControlEvent::PluginUi(ui_event, plugin_id) => {
-                    self.handle_ui_event(&ui_event, plugin_id, input.id);
-                }
-                _ => {}
-            }
-        }
-
-        // let ev = self.midi_handle_out.unwrap().poll();
-        // for e in &ev {
-        //     println!("E: {e:?}");
-        // }
-        //
-        // self.midi_handle_in.unwrap().send(127, 42, 69);
-
-        self.render_ui();
-
-        if !self.saved {
-            self.save();
-            self.saved = true;
+        let ev = self.midi_handle_in.unwrap().poll();
+        for e in &ev {
+            println!("E: {e:?}");
         }
     }
 }
