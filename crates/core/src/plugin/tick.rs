@@ -160,12 +160,7 @@ impl PluginManager {
                     ret = Some(err);
                 }
 
-                self.system_out
-                    .send(SystemMessage::Log(
-                        format!("Disabling plugin with error(s): (id={})...", plugin_key),
-                        LogLevel::Warn,
-                    ))
-                    .unwrap();
+                tracing::warn!("Disabling plugin with error(s): (id={plugin_key})...");
 
                 plugins.get_mut(&plugin_key).unwrap().set_errored(true);
             }

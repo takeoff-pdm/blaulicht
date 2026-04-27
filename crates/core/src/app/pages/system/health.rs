@@ -66,7 +66,7 @@ pub fn render_dmx_or_artnet_health_box(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         ui.painter().rect_stroke(
             frame_inner_response.response.rect,
-            egui::Rounding::same(2),
+            egui::CornerRadius::same(2),
             egui::Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
             egui::StrokeKind::Middle,
         );
@@ -94,7 +94,7 @@ impl BlaulichtApp {
         let background_color = ui.visuals().widgets.active.bg_fill;
         let label_text = label.text().to_string();
 
-        let frame_inner_response = Frame::none()
+        let frame_inner_response = Frame::NONE
             .fill(background_color)
             .outer_margin(Margin::same(0))
             .inner_margin(Margin::same(8))
@@ -134,7 +134,7 @@ impl BlaulichtApp {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             ui.painter().rect_stroke(
                 frame_inner_response.response.rect,
-                egui::Rounding::same(2),
+                egui::CornerRadius::same(2),
                 egui::Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
                 egui::StrokeKind::Middle,
             );

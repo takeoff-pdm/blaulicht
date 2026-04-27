@@ -54,7 +54,7 @@ impl<'a> Widget for Knob<'a> {
         let mut value = (*self.value).clamp(range_min, range_max);
 
         if response.hovered() {
-            let scroll = ui.ctx().input(|i| i.raw_scroll_delta.y);
+            let scroll = ui.ctx().input(|i| i.smooth_scroll_delta.y);
 
             if scroll != 0.0 {
                 let absvalue = if scroll.abs() < 10.0 {

@@ -213,7 +213,7 @@ pub(crate) fn render_plugin_ops(
                     if !label.is_empty() {
                         ui.label(label);
                     }
-                    egui::ComboBox::from_id_source(combo_id)
+                    egui::ComboBox::from_id_salt(combo_id)
                         .selected_text(selected_text)
                         .show_ui(ui, |ui| {
                             for (idx_opt, label) in options.iter().enumerate() {

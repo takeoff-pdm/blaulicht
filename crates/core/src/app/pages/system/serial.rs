@@ -36,7 +36,7 @@ impl BlaulichtApp {
 
                 ui.add_space(12.0);
 
-                Frame::none()
+                Frame::NONE
                     .inner_margin(Margin::symmetric(16, 0))
                     .show(ui, |frame_ui| {
                         let table = TableBuilder::new(frame_ui)

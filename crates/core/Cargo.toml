@@ -62,21 +62,23 @@ serialport = "4.7.3"
 # enttecopendmx = "0.1.1"
 
 # Egui
-egui = "0.32"
-egui_extras = { version = "0.32", features = ["svg"] }
-egui_dock = "0.17"
-eframe = { version = "0.32", default-features = false, features = [
+egui = "0.34.1"
+egui_extras = { version = "0.34.1", features = ["svg"] }
+egui_dock = "0.19.1"
+eframe = { version = "0.34.1", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     #"persistence",   # Enable restoring app state when restarting the app.
 ] }
-egui_plot = "0.33.0"
-egui_file = "0.23.1"
-egui-phosphor = "0.10.0"
-egui_code_editor = { version = "=0.2.14" }
-egui_glow = "0.32"
+egui_plot = "0.35.0"
+# egui_file = "0.26.0"
+egui-phosphor = "0.12.0"
+egui_code_editor = { version = "=0.2.24" }
+egui_glow = "0.34.1"
+egui-file-dialog = "0.13.0"
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 bytemuck = "1.14.3"
+sysinfo = "0.30.13"
 
 
 tempdir = "0.3.7"
@@ -84,9 +86,6 @@ tracing = "0.1.44"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-
-[patch.crates-io]
-egui = { version = "0.32" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"

@@ -159,7 +159,7 @@ impl BlaulichtApp {
 
                                 ui.add_space(6.0);
 
-                                Frame::none()
+                                Frame::NONE
                                     .fill(ui.visuals().faint_bg_color)
                                     .inner_margin(Margin::symmetric(12, 4))
                                     .show(ui, |ui| {

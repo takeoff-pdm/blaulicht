@@ -56,7 +56,7 @@ impl<'a> Widget for SpeedKnob<'a> {
 
         let mut scrolled = false;
         if response.hovered() {
-            let scroll = ui.ctx().input(|i| i.raw_scroll_delta.y);
+            let scroll = ui.ctx().input(|i| i.smooth_scroll_delta.y);
 
             if scroll != 0.0 {
                 let to_add: isize = match scroll > 0.0 {

@@ -25,18 +25,18 @@ impl<T> SystemEventBusConnection<T> {
         match self.from_exchange_receiver.try_recv() {
             Ok(event) => Some(event),
             Err(TryRecvError::Disconnected) => {
-                unreachable!("[BUS] Exchange disconnected (possible crash)")
+                tracing::debug!("[BUS] Exchange disconnected.");
+                None
             }
             Err(TryRecvError::Empty) => None,
         }
     }
 
-    /// Panics.
     pub fn send(&self, event: T) {
         match self.to_exchange_sender.try_send(event) {
             Ok(_) => {}
             Err(TrySendError::Disconnected(_)) => {
-                unreachable!("[BUS] Exchange disconnected (possible crash)")
+                tracing::debug!("[BUS] Exchange disconnected.");
             }
             Err(TrySendError::Full(_)) => {
                 tracing::debug!("[BUS] Exchange buffer is full.")
@@ -108,9 +108,15 @@ where
         count
     }
 
-    pub fn run(&mut self) -> ! {
+    pub fn run(&mut self) {
         loop {
-            let msg = self.receiver.recv().unwrap();
+            let msg = match self.receiver.recv() {
+                Ok(msg) => msg,
+                Err(_) => {
+                    tracing::warn!("[BUS] Exchange disconnected, stopping event bus.");
+                    break;
+                }
+            };
             debug_assert!({
                 tracing::debug!("[BUS] ---> {msg:?}");
                 true

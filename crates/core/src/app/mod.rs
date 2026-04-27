@@ -22,6 +22,7 @@ use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
     collections::VecDeque,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -102,6 +103,7 @@ impl ExternalScreen {
 
 pub struct BlaulichtApp {
     desktop_mode: bool,
+    showfile_home: Option<PathBuf>,
     navbar: Navbar,
 
     main_screen_desktop_mode: ExternalScreen,
@@ -249,9 +251,14 @@ pub struct BlaulichtApp {
 }
 
 impl BlaulichtApp {
-    fn new_default(data: AppStateWrapper, desktop_mode: bool) -> Self {
+    fn new_default(
+        data: AppStateWrapper,
+        desktop_mode: bool,
+        showfile_home: Option<PathBuf>,
+    ) -> Self {
         Self {
             desktop_mode,
+            showfile_home,
             navbar: Navbar::new(AppPage::Logs),
             main_screen_desktop_mode: ExternalScreen::new(),
             external_screens: vec![],

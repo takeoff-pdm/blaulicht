@@ -6,43 +6,29 @@ use blaulicht_shared::EventOriginator;
 use blaulicht_shared::LogLevel;
 use blaulicht_shared::PluginStateLocation;
 
-
 use egui::ahash::HashMapExt;
-use tracing::{debug, error, info, warn};
 use std::sync::Arc;
 use std::u8;
 use std::{collections::HashMap, fs, net::UdpSocket};
+// use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "wasmtime")]
 use super::PluginWasmState;
 #[cfg(feature = "wasmtime")]
 use wasmtime::*;
 
+use crate::command::Command;
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::ui_ops::WasmUiOp;
 use crate::{
     msg::SystemMessage,
-    plugin::{
-        Plugin, PluginManager,
-    },
+    plugin::{Plugin, PluginManager},
 };
 
 // TODO: optimize this module:
 // Load multiple plugins at once, not just one.
 // Manage plugins and their health / allow activation / deactivation.
-
-// struct PluginError {
-//     pub message: String,
-//     pub plugin_id: u8,
-// }
-//
-// impl From<PluginError> for anyhow::Error {
-//     fn from(err: PluginError) -> Self {
-//         anyhow!("ID: {} | {}", err.plugin_id, err.message)
-//     }
-// }
-//
 
 // TODO: do this!
 
@@ -72,12 +58,7 @@ impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
         use tempdir::TempDir;
 
-        self.system_out
-            .send(SystemMessage::Log(
-                "[WASM] subsystem initializing...".to_string(),
-                LogLevel::Debug,
-            ))
-            .unwrap();
+        tracing::debug!("[WASM] subsystem initializing...");
 
         //
         // basic engine setup.
@@ -93,10 +74,12 @@ impl PluginManager {
         config.memory_guard_size(1 << 16);
 
         let wasmtime_cache_dir = TempDir::new("blaulicht_wasm_cache")?;
-        info!(
+
+        tracing::info!(
             "[WASM] Cache dir at {}",
             wasmtime_cache_dir.path().to_string_lossy()
         );
+
         let path = wasmtime_cache_dir.path().join("config.toml");
         fs::write(&path, include_bytes!("../../wasmtime-cache-config.toml"))?;
         config.cache_config_load(path)?;
@@ -110,23 +93,13 @@ impl PluginManager {
 
         for (plugin_id, plugin) in self.plugin_config.iter().enumerate() {
             if !plugin.enabled {
-                self.system_out
-                    .send(SystemMessage::Log(
-                        format!("Plugin <{}> is disabled, skipping.", plugin.file_path),
-                        LogLevel::Warn,
-                    ))
-                    .unwrap();
+                tracing::warn!("Plugin <{}> is disabled, skipping.", plugin.file_path);
                 continue;
             }
 
             let plugin_name = plugin.file_path.to_string();
 
-            self.system_out
-                .send(SystemMessage::Log(
-                    "[WASM] Initializing plugin <{plugin_name}>...".to_string(),
-                    LogLevel::Debug,
-                ))
-                .unwrap();
+            tracing::debug!("[WASM] Initializing plugin <{plugin_name}>...");
 
             let wasm_bytes = fs::read(&plugin.file_path)
                 .with_context(|| format!("failed to read wasm file: <{plugin_name}>"))?;
@@ -145,12 +118,7 @@ impl PluginManager {
             // initialize data.
             //
 
-            self.system_out
-                .send(SystemMessage::Log(
-                    "[WASM] Loaded plugin <{plugin_name}>".to_string(),
-                    LogLevel::Info,
-                ))
-                .unwrap();
+            tracing::info!("[WASM] Loaded plugin <{plugin_name}>");
 
             // store the instance and store for future use
             let plugin_wasm_state = PluginWasmState {
@@ -182,15 +150,10 @@ impl PluginManager {
             self.plugins.insert(plugin_id as u8, plugin);
         }
 
-        self.system_out
-            .send(SystemMessage::Log(
-                format!(
-                    "[WASM]: loaded and instantiated {} wasm modules.",
-                    self.plugins.len()
-                ),
-                LogLevel::Debug,
-            ))
-            .unwrap();
+        tracing::debug!(
+            "[WASM]: loaded and instantiated {} wasm modules.",
+            self.plugins.len()
+        );
 
         Ok(())
     }
@@ -240,7 +203,6 @@ impl PluginManager {
             },
         )?;
 
-        use std::process::Command;
         let so = self.system_out.clone();
 
         linker.func_wrap::<_, ()>(
@@ -262,21 +224,10 @@ impl PluginManager {
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
 
-                let received_string = String::from_utf8_lossy(&buffer).to_string();
-
-                let output = Command::new("bash").arg("-c").arg(received_string).output();
-
                 let report_memory_error =
                     |action: &str, err: wasmtime::MemoryAccessError| {
                         let msg = format!("WASM: {action}: {err}");
-                        error!("{msg}");
-                        if let Err(send_err) =
-                            so.send(SystemMessage::Log(msg.clone(), LogLevel::Err))
-                        {
-                            warn!(
-                                "WASM: Failed to forward memory access error to system output: {send_err}"
-                            );
-                        }
+                        tracing::error!("{msg}");
                     };
 
                 let write_stdout_to_guest = |caller: &mut Caller<'_, ()>,
@@ -322,6 +273,14 @@ impl PluginManager {
                     true
                 };
 
+                let received_string = String::from_utf8_lossy(&buffer).to_string();
+
+                let output = Command::new("bash")
+                    .arg("-c")
+                    .arg(received_string)
+                    .run()
+                    .and_then(|handle| handle.wait());
+
                 match output {
                     Ok(o) => {
                         let stdout_bytes = &o.stdout;
@@ -331,47 +290,26 @@ impl PluginManager {
                             let capacity = output_str_capacity.max(0) as usize;
                             let max_payload = capacity.saturating_sub(1);
                             if capacity > 0 && stdout_bytes.len() > max_payload {
-                                so.send(SystemMessage::Log(
-                                    format!(
-                                        "WASM: Command STDOUT truncated to fit into buffer of size {capacity}"
-                                    ),
-                                    LogLevel::Warn,
-                                ))
-                                .unwrap();
+                                tracing::warn!(
+                                        "WASM: Command STDOUT truncated to fit into buffer of size {capacity}");
                             }
                         }
 
                         let stdout = String::from_utf8_lossy(stdout_bytes);
 
-                        so.send(SystemMessage::Log(
-                            format!("WASM: Command STDOUT: {stdout}"),
-                            LogLevel::Debug,
-                        ))
-                        .unwrap();
+                        tracing::debug!("WASM: Command STDOUT: {stdout}");
 
-                        so.send(SystemMessage::Log(
-                            format!("WASM: Command STDERR: {stderr}"),
-                            LogLevel::Debug,
-                        ))
-                        .unwrap();
+                        tracing::debug!("WASM: Command STDERR: {stderr}");
 
                         if !o.status.success() {
                             let code = o.status.code().unwrap_or(199);
-                            so.send(SystemMessage::Log(
-                                format!("WASM: Command failed with code: {code}"),
-                                LogLevel::Err,
-                            ))
-                            .unwrap();
+                            tracing::error!("WASM: Command failed with code: {code}");
                         }
                     }
                     Err(err) => {
                         write_stdout_to_guest(&mut caller, &[]);
 
-                        so.send(SystemMessage::Log(
-                            format!("WASM: Command invocation error: {err}"),
-                            LogLevel::Err,
-                        ))
-                        .unwrap();
+                        tracing::error!("WASM: Command invocation error: {err}");
                     }
                 }
             },
@@ -400,11 +338,11 @@ impl PluginManager {
 
                 let level : LogLevel =
                     level_raw.try_into().unwrap_or_else(|_|  {
-                        error!("a plugin called blaulicht::log with an illegal log-level-integer: {level_raw}");
+                        tracing::error!("a plugin called blaulicht::log with an illegal log-level-integer: {level_raw}");
                         LogLevel::Info
                     });
 
-                debug!("WASM: {received_string}");
+                tracing::debug!("WASM: {received_string}");
 
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
@@ -430,65 +368,19 @@ impl PluginManager {
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
 
-                // todo: may panic.
-                let event = ControlEvent::deserialize(&buffer);
+                let event = match std::panic::catch_unwind(|| ControlEvent::deserialize(&buffer)) {
+                    Ok(event) => event,
+                    Err(_) => {
+                        tracing::warn!(
+                            "WASM: Failed to deserialize ControlEvent (len={})",
+                            str_len
+                        );
+                        return;
+                    }
+                };
                 event_bus.send(ControlEventMessage::new(EventOriginator::Plugin, event));
             },
         )?;
-
-        // let so = self.system_out.clone();
-        // linker.func_wrap::<_, ()>(
-        //     "blaulicht",
-        //     "controls_log",
-        //     move |mut caller: Caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
-        //         let memory = caller
-        //             .get_export("memory")
-        //             .and_then(|export| export.into_memory())
-        //             .expect("failed to find memory");
-        //
-        //         let mut buffer = vec![0u8; str_len as usize];
-        //         memory
-        //             .read(&caller, str_pointer as usize, &mut buffer)
-        //             .expect("failed to read memory");
-        //
-        //         let received_string = String::from_utf8_lossy(&buffer).to_string();
-        //
-        //         so.send(SystemMessage::WasmControlsLog(WasmControlsLog {
-        //             x: x as u8,
-        //             y: y as u8,
-        //             value: received_string,
-        //         }))
-        //         .expect("failed to send controls log message");
-        //     },
-        // )?;
-        //
-        // let so = self.system_out.clone();
-        // linker.func_wrap::<_, ()>(
-        //     "blaulicht",
-        //     "controls_set",
-        //     move |mut _caller: Caller<'_, ()>, x: i32, y: i32, value: i32| {
-        //         so.send(SystemMessage::WasmControlsSet(WasmControlsSet {
-        //             x: x as u8,
-        //             y: y as u8,
-        //             value: value != 0,
-        //         }))
-        //         .expect("failed to send controls set message");
-        //     },
-        // )?;
-        //
-        // let so = self.system_out.clone();
-        // linker.func_wrap::<_, ()>(
-        //     "blaulicht",
-        //     "controls_config",
-        //     move |mut _caller: Caller<'_, ()>, x: i32, y: i32| {
-        //         so.send(SystemMessage::WasmControlsConfig(WasmControlsConfig {
-        //             x: x as u8,
-        //             y: y as u8,
-        //         }))
-        //         .expect("failed to send controls config message");
-        //         tracing::debug!("[wasm] controls_config: {x} {y}");
-        //     },
-        // )?;
 
         // ---- egui UI bridging ----
         let state_ref = Arc::clone(&self.state_ref);
@@ -1447,11 +1339,6 @@ impl PluginManager {
             },
         )?;
 
-        // linker.func_wrap::<_, ()>("blaulicht", "bl_report_panic", move || {
-        //     println!("report panic!");
-        //     // todo: do we really need this?
-        // })?;
-
         let so = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
@@ -1469,7 +1356,7 @@ impl PluginManager {
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                debug!("WASM: {received_string}");
+                tracing::debug!("***WASM PANIC***: {received_string}");
 
                 let msg = format!("***PANIC***:\n{received_string}");
 
@@ -1511,7 +1398,7 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                info!("open midi device: {}", device_name);
+                tracing::debug!("open midi device: {}", device_name);
 
                 let mut midi_manager = midi_manager.lock().unwrap();
                 midi_manager.request_device(&device_name).unwrap_or(u8::MAX) as u32
@@ -1523,8 +1410,6 @@ impl PluginManager {
             "blaulicht",
             "bl_enumerate_midi_devices",
             move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
-                
-
                 let midi_manager = midi_manager.lock().unwrap();
                 let devices = midi_manager
                     .enumerate_devices()
@@ -1570,7 +1455,7 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                info!("open serial device: {}", device_name);
+                tracing::debug!("open serial device: {}", device_name);
 
                 let mut serial_manager = serial_manager.lock().unwrap();
                 serial_manager
@@ -1579,10 +1464,33 @@ impl PluginManager {
             },
         )?;
 
+        let serial_manager = Arc::clone(&self.serial_manager_ref);
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_enumerate_serial_devices",
-            move |_caller: Caller<'_, ()>, _buffer_ptr: i32, _buffer_len: i32| todo!(""),
+            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
+                let serial_manager = serial_manager.lock().unwrap();
+                let devices = serial_manager
+                    .enumerate_devices()
+                    .unwrap_or_else(|_| Vec::new());
+                let json = serde_json::to_string(&devices).unwrap_or_else(|_| "[]".to_string());
+                let json_bytes = json.as_bytes();
+
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+
+                if write_len > 0 {
+                    memory
+                        .write(&mut caller, buffer_ptr as usize, &json_bytes[..write_len])
+                        .expect("failed to write memory");
+                }
+
+                write_len as u32
+            },
         )?;
 
         //
@@ -1612,10 +1520,10 @@ impl PluginManager {
 
                 let state_data = String::from_utf8_lossy(&buf).to_string();
                 let plugin_name = format!("plugin_{}", plugin_id);
-                let location =
-                    PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
+                let location = PluginStateLocation::try_from(location as u8)
+                    .unwrap_or(PluginStateLocation::Showfile);
 
-                debug!(
+                tracing::debug!(
                     "Saving plugin state for {}: {} bytes",
                     plugin_name,
                     state_data.len()
@@ -1637,7 +1545,7 @@ impl PluginManager {
                         location,
                     })
                     .unwrap_or_else(|e| {
-                        error!("Failed to send save plugin state message: {}", e);
+                        tracing::error!("Failed to send save plugin state message: {}", e);
                     });
             },
         )?;
@@ -1653,10 +1561,10 @@ impl PluginManager {
                   buffer_ptr: i32,
                   buffer_len: i32| {
                 let plugin_name = format!("plugin_{}", plugin_id);
-                let location =
-                    PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
+                let location = PluginStateLocation::try_from(location as u8)
+                    .unwrap_or(PluginStateLocation::Showfile);
 
-                debug!("Loading plugin state for {}", plugin_name);
+                tracing::trace!("Loading plugin state for {}", plugin_name);
 
                 let storage = match location {
                     PluginStateLocation::Showfile => Arc::clone(&showfile_state_storage),
@@ -1678,13 +1586,14 @@ impl PluginManager {
                         .write(&mut caller, buffer_ptr as usize, &bytes[..write_len])
                         .expect("failed to write memory");
 
-                    debug!(
+                    tracing::debug!(
                         "Loaded {} bytes of plugin state for {}",
-                        write_len, plugin_name
+                        write_len,
+                        plugin_name
                     );
                     write_len as u32
                 } else {
-                    debug!("No saved state found for {}", plugin_name);
+                    tracing::debug!("No saved state found for {}", plugin_name);
                     0u32
                 }
             },
@@ -1693,341 +1602,6 @@ impl PluginManager {
         Ok(())
     }
 }
-
-// -------------------------------------------------------------
-
-// pub struct tickengine {
-//     timer_start: instant,
-//     data: vec<i32>,
-//     midi_out: sender<midievent>,
-//     system_out: sender<systemmessage>,
-// }
-
-// impl tickengine {
-//     pub fn create(midi_out: sender<midievent>, system_out: sender<systemmessage>) -> result<self> {
-//         let mut engine = tickengine {
-//             timer_start: instant::now(),
-//             data: vec![0; 1000],
-//             midi_out,
-//             system_out,
-//         };
-
-//         engine.init_wasm()?;
-//         engine.first_tick()?;
-
-//         ok(engine)
-//     }
-
-//     pub fn dmx(&self) -> &[u8] {
-//         &self.dmx
-//     }
-
-//     fn init_wasm(&mut self) -> result<()> {
-//         let mut config = config::new();
-//         config.strategy(wasmtime::strategy::cranelift);
-//         config.cranelift_opt_level(wasmtime::optlevel::speed);
-
-//         let engine = engine::new(&config)?;
-//         let module = module::from_file(&engine, "./wasm/output.wasm")?;
-
-//         let mut store = store::new(&engine, ());
-
-//         let mut linker = linker::new(&engine);
-
-//         // udp support.
-//         let socket = udpsocket::bind("0.0.0.0:0")?;
-
-//         let so = self.system_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "udp",
-//             move |mut caller: caller<'_, ()>,
-//                   target_addr_pointer: i32,
-//                   target_addr_len: i32,
-//                   byte_arr_pointer: i32,
-//                   byte_arr_len: i32| {
-//                 let memory = caller
-//                     .get_export("memory")
-//                     .and_then(|export| export.into_memory())
-//                     .expect("failed to find memory");
-
-//                 let mut body_buffer = vec![0u8; byte_arr_len as usize];
-//                 memory
-//                     .read(&caller, byte_arr_pointer as usize, &mut body_buffer)
-//                     .expect("failed to read memory");
-
-//                 let mut addr_buffer = vec![0u8; target_addr_len as usize];
-//                 memory
-//                     .read(&caller, target_addr_pointer as usize, &mut addr_buffer)
-//                     .expect("failed to read memory");
-
-//                 let target_addr = string::from_utf8_lossy(&addr_buffer).to_string();
-
-//                 socket
-//                     .send_to(&body_buffer, target_addr.clone())
-//                     .unwrap_or_else(|e| {
-//                         so.send(systemmessage::log(format!(
-//                             "udp error: send to {target_addr}: {e}"
-//                         )))
-//                         .expect("failed to send log message");
-//                         0
-//                     });
-//             },
-//         )?;
-
-//         let so = self.system_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "log",
-//             move |mut caller: caller<'_, ()>, str_pointer: i32, str_len: i32| {
-//                 let memory = caller
-//                     .get_export("memory")
-//                     .and_then(|export| export.into_memory())
-//                     .expect("failed to find memory");
-
-//                 let mut buffer = vec![0u8; str_len as usize];
-//                 memory
-//                     .read(&caller, str_pointer as usize, &mut buffer)
-//                     .expect("failed to read memory");
-
-//                 let received_string = string::from_utf8_lossy(&buffer).to_string();
-
-//                 tracing::debug!("[wasm] {received_string}");
-
-//                 so.send(systemmessage::wasmlog(received_string))
-//                     .expect("failed to send log message");
-//             },
-//         )?;
-
-//         let so = self.system_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "controls_log",
-//             move |mut caller: caller<'_, ()>, x: i32, y: i32, str_pointer: i32, str_len: i32| {
-//                 let memory = caller
-//                     .get_export("memory")
-//                     .and_then(|export| export.into_memory())
-//                     .expect("failed to find memory");
-
-//                 let mut buffer = vec![0u8; str_len as usize];
-//                 memory
-//                     .read(&caller, str_pointer as usize, &mut buffer)
-//                     .expect("failed to read memory");
-
-//                 let received_string = string::from_utf8_lossy(&buffer).to_string();
-
-//                 so.send(systemmessage::wasmcontrolslog(wasmcontrolslog {
-//                     x: x as u8,
-//                     y: y as u8,
-//                     value: received_string,
-//                 }))
-//                 .expect("failed to send controls log message");
-//             },
-//         )?;
-
-//         let so = self.system_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "controls_set",
-//             move |mut _caller: caller<'_, ()>, x: i32, y: i32, value: i32| {
-//                 so.send(systemmessage::wasmcontrolsset(wasmcontrolsset {
-//                     x: x as u8,
-//                     y: y as u8,
-//                     value: value != 0,
-//                 }))
-//                 .expect("failed to send controls set message");
-//             },
-//         )?;
-
-//         let so = self.system_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "controls_config",
-//             move |mut _caller: caller<'_, ()>, x: i32, y: i32| {
-//                 so.send(systemmessage::wasmcontrolsconfig(wasmcontrolsconfig {
-//                     x: x as u8,
-//                     y: y as u8,
-//                 }))
-//                 .expect("failed to send controls config message");
-//                 tracing::debug!("[wasm] controls_config: {x} {y}");
-//             },
-//         )?;
-
-//         let mo = self.midi_out.clone();
-//         linker.func_wrap(
-//             "blaulicht",
-//             "bl_midi",
-//             move |device: i32, status: i32, kind: i32, value: i32| {
-//                 mo.send(midievent {
-//                     device: device as u8,
-//                     status: status as u8,
-//                     data0: kind as u8,
-//                     data1: value as u8,
-//                 })
-//                 .unwrap();
-//             },
-//         )?;
-
-//         let instance = linker.instantiate(&mut store, &module)?;
-
-//         let memory = instance
-//             .get_memory(&mut store, "memory")
-//             .expect("memory not found");
-
-//         // initialize dmx.
-//         let dmx_array_offset = 0x20000; // todo: make this offset a const.
-//         let mut dmx_array_bytes: vec<u8> = vec![0; dmx_len];
-//         for &num in &self.dmx {
-//             dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
-//         }
-//         memory.write(&mut store, dmx_array_offset, &dmx_array_bytes)?;
-
-//         self.wasm = some(wasmengine {
-//             store,
-//             instance,
-//             memory,
-//         });
-
-//         tracing::info!("[wasm] initialized.");
-
-//         ok(())
-//     }
-
-//     pub fn reload(&mut self) -> result<()> {
-//         // reset the data.
-//         self.data.fill(0);
-//         // reset the clock.
-//         self.timer_start = instant::now();
-//         self.init_wasm()?;
-//         self.first_tick()
-//     }
-
-//     pub fn first_tick(&mut self) -> result<()> {
-//         self.tick(
-//             tickinput {
-//                 clock: self.timer_start.elapsed().as_millis() as u32,
-//                 initial: true,
-//             },
-//             &[],
-//         )
-//     }
-
-//     pub fn tick(&mut self, input: tickinput, midi_events: &[midievent]) -> result<()> {
-//         let wasm = self.wasm.as_mut().unwrap();
-
-//         //
-//         // tick function.
-//         //
-//         let func = wasm
-//             .instance
-//             .get_typed_func::<(i32, i32, i32, i32, i32, i32, i32, i32), ()>(
-//                 &mut wasm.store,
-//                 "internal_tick", // todo: external type and name constants.
-//             )?;
-
-//         //
-//         // tick input array.
-//         //
-//         let tick_array_offset = 0x10000; // arbitrary offset
-//         let tick_array_data = input.serialize();
-//         let tick_array_len = tick_array_data.len() as i32;
-//         let mut tick_array_bytes = vec::new();
-//         for &num in &tick_array_data {
-//             tick_array_bytes.extend_from_slice(&num.to_le_bytes());
-//         }
-//         wasm.memory
-//             .write(&mut wasm.store, tick_array_offset, &tick_array_bytes)?;
-
-//         // todo: macro for this array stuff.
-
-//         //
-//         // midi array.
-//         //
-//         let midi_array_offset = 0x80000; // todo: make this offset a const.
-//         let midi_array_len = midi_events.len() as i32;
-
-//         if midi_array_len > 100 {
-//             panic!("too many midi events!");
-//         }
-
-//         let mut midi_array_bytes = vec::new();
-
-//         let midi_events_packed: vec<u32> = midi_events
-//             .iter()
-//             .map(|event| {
-//                 ((event.device as u32) << 24)
-//                     | (event.status as u32) << 16
-//                     | (event.data0 as u32) << 8
-//                     | (event.data1 as u32)
-//             })
-//             .collect::<vec<u32>>();
-
-//         for &num in &midi_events_packed {
-//             midi_array_bytes.extend_from_slice(&num.to_le_bytes());
-//         }
-//         wasm.memory
-//             .write(&mut wasm.store, midi_array_offset, &midi_array_bytes)?;
-
-//         // for &num in &self.dmx {
-//         //     dmx_array_bytes.extend_from_slice(&num.to_le_bytes());
-//         // }
-//         // wasm.memory
-//         //     .write(&mut wasm.store, dmx_array_offset, &dmx_array_bytes)?;
-
-//         //
-//         // data array.
-//         //
-//         let data_array_offset = 0x90000; // arbitrary offset
-//         let data_array_len = self.data.len();
-//         // let mut data_array_bytes = vec::new();
-//         // for &num in &self.data {
-//         //     data_array_bytes.extend_from_slice(&num.to_le_bytes());
-//         // }
-//         // wasm.memory
-//         //     .write(&mut wasm.store, data_array_offset, &data_array_bytes)?;
-
-//         let dmx_array_offset = 0x20000; // todo: make this offset a const.
-
-//         // call the function with the pointer and length
-//         func.call(
-//             &mut wasm.store,
-//             (
-//                 tick_array_offset as i32,
-//                 tick_array_len,
-//                 dmx_array_offset as i32,
-//                 dmx_len as i32,
-//                 data_array_offset,
-//                 data_array_len as i32,
-//                 midi_array_offset as i32,
-//                 midi_array_len,
-//             ),
-//         )?;
-
-//         //
-//         // Read back the modified DMX array
-//         //
-//         // let mut dmx_array_bytes: Vec<u8> = Vec::with_capacity(dmx_array_len as usize);
-//         let mut updated_dmx_bytes = vec![0u8; DMX_LEN];
-//         wasm.memory
-//             .read(&mut wasm.store, dmx_array_offset, &mut updated_dmx_bytes)?;
-//         self.dmx = updated_dmx_bytes;
-
-//         //
-//         // Read back data array.
-//         //
-//         // let mut updated_data_bytes = vec![0u8; data_array_bytes.len()];
-//         // wasm.memory
-//         //     .read(&mut wasm.store, data_array_offset, &mut updated_data_bytes)?;
-//         // let updated_data_bytes: Vec<i32> = updated_data_bytes
-//         //     .chunks_exact(4)
-//         //     .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
-//         //     .collect();
-//         // self.data = updated_data_bytes;
-
-//         Ok(())
-//     }
-// }
-//
 
 #[derive(Debug, Clone)]
 pub struct AddrDescriptor {
@@ -2059,7 +1633,7 @@ impl AddrDescriptor {
 #[cfg(feature = "wasmtime")]
 impl Plugin {
     fn acquire_midi_buffer_addresses(&mut self) -> anyhow::Result<()> {
-        debug!("Acquiring MIDI buffer addresses for plugin: {}", self.path);
+        tracing::trace!("Acquiring MIDI buffer addresses for plugin: {}", self.path);
         //
         // Get midi buffer start address.
         //
@@ -2085,16 +1659,14 @@ impl Plugin {
             length_start_addr: midi_buffer_length_start_addr,
         };
 
-        debug!("Acquired MIDI buffer addresses: {:?}", addrs);
+        tracing::debug!("Acquired MIDI buffer addresses: {:?}", addrs);
 
         self.midi_buffers = addrs;
         Ok(())
     }
 
     fn acquire_serial_buffer_addresses(&mut self) -> anyhow::Result<()> {
-        
-
-        debug!(
+        tracing::trace!(
             "Acquiring SERIAL buffer addresses for plugin: {}",
             self.path
         );
@@ -2123,14 +1695,14 @@ impl Plugin {
             length_start_addr: serial_buffer_length_start_addr,
         };
 
-        debug!("Acquired SERIAL buffer addresses: {:?}", addrs);
+        tracing::debug!("Acquired SERIAL buffer addresses: {:?}", addrs);
 
         self.serial_buffers = addrs;
         Ok(())
     }
 
     fn acquire_state_buffer_address(&mut self) -> anyhow::Result<()> {
-        debug!("Acquiring state buffer address for plugin: {}", self.path);
+        tracing::trace!("Acquiring state buffer address for plugin: {}", self.path);
         //
         // Get state buffer start address.
         //
@@ -2156,7 +1728,7 @@ impl Plugin {
             length_start_addr: state_buffer_length_start_addr,
         };
 
-        debug!("Acquired State buffer addresses: {:?}", addrs);
+        tracing::debug!("Acquired State buffer addresses: {:?}", addrs);
 
         self.state_buffers = addrs;
         Ok(())

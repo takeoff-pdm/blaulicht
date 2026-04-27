@@ -28,8 +28,9 @@ impl BlaulichtApp {
         state: AppStateWrapper,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
+        showfile_home: Option<std::path::PathBuf>,
     ) -> Self {
-        let mut app = Self::new_default(state, desktop_mode);
+        let mut app = Self::new_default(state, desktop_mode, showfile_home);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 
@@ -56,7 +57,8 @@ impl BlaulichtApp {
 
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx();
         // Continuous rendering - always request repaints
         // TODO: try to get actual screen FPS from X11 / wayland
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
@@ -106,9 +108,9 @@ impl eframe::App for BlaulichtApp {
                 self.main_screen_desktop_mode = screen;
             }
             false => {
-                self.render_main_screen(ctx);
-            }
-        }
+        self.render_main_screen(ctx);
+    }
+}
     }
 }
 

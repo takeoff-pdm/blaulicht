@@ -1,5 +1,5 @@
 use crate::{app::ui::FileDialogOpenOrigin, state::NUM_DMX_UNIVERSES};
-use egui_file::FileDialog;
+use egui_file_dialog::FileDialog;
 
 pub mod artnet;
 pub mod dmx;

@@ -123,7 +123,7 @@ impl Numberpad {
         if let Some((min, max)) = self.range {
             let min_t = T::from_f64(min);
             let max_t = T::from_f64(max);
-            drag_value = drag_value.clamp_range(min_t..=max_t);
+            drag_value = drag_value.range(min_t..=max_t);
         }
         let response = ui.add_sized(button_size, drag_value);
         let now = ui.input(|i| i.time);

@@ -65,7 +65,7 @@ impl BlaulichtApp {
                         } else {
                             for device in &available_devices {
                                 ui.add_space(6.0);
-                                Frame::none()
+                                Frame::NONE
                                     .fill(ui.visuals().faint_bg_color)
                                     .inner_margin(Margin::symmetric(12, 4))
                                     .show(ui, |ui| {
@@ -95,7 +95,7 @@ impl BlaulichtApp {
                         } else {
                             for (name, state) in &device_states {
                                 ui.add_space(6.0);
-                                Frame::none()
+                                Frame::NONE
                                     .fill(ui.visuals().faint_bg_color)
                                     .inner_margin(Margin::symmetric(12, 6))
                                     .show(ui, |card_ui| {

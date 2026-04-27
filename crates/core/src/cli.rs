@@ -16,4 +16,8 @@ pub struct CliArgs {
     /// Config file location.
     #[arg(short, long)]
     pub config_file: Option<PathBuf>,
+
+    /// Default directory for showfiles.
+    #[arg(long, value_name = "DIR")]
+    pub showfile_home: Option<PathBuf>,
 }

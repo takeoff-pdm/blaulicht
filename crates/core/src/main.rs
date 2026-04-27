@@ -11,7 +11,7 @@ use blaulicht_shared::LogLevel;
 use clap::Parser;
 use crossbeam_channel::Sender;
 use tracing::{info, Event, Level, Subscriber};
-use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::layer::{Context as TraceContext, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 use std::path::PathBuf;
@@ -63,7 +63,7 @@ impl<S> Layer<S> for SystemOutLayer
 where
     S: Subscriber,
 {
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+    fn on_event(&self, event: &Event<'_>, _ctx: TraceContext<'_, S>) {
         let level = match *event.metadata().level() {
             Level::ERROR => LogLevel::Err,
             Level::WARN => LogLevel::Warn,
@@ -269,6 +269,7 @@ fn main() -> anyhow::Result<()> {
                 state_wrapper,
                 initial_popup,
                 args.desktop_mode,
+                args.showfile_home.clone(),
             )))
         }),
     )

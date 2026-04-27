@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Context};
 use blaulicht_shared::CollectedAudioSnapshot;
 use crossbeam_channel::{Receiver, Sender};
-use log;
 use notify::{
     event::{DataChange, ModifyKind},
     EventKind, RecommendedWatcher, RecursiveMode, Watcher,

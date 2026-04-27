@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod audio;
+pub mod command;
 pub mod config;
 pub mod dmx;
 pub mod event;

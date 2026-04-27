@@ -101,7 +101,7 @@ impl DmxSimulator {
         const CARD_MARGIN: f32 = 5.0;
 
         egui::ScrollArea::vertical()
-            .id_source(("dmx_fixture_map", universe_no))
+            .id_salt(("dmx_fixture_map", universe_no))
             .show(ui, |ui| {
                 ui.scope(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
