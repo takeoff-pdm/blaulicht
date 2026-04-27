@@ -7,7 +7,7 @@ use std::{
 
 use blaulicht_audio_engine::SpectrogramDisplayOptions;
 use egui::ColorImage;
-use log::{info, warn};
+use tracing::{info, warn};
 
 use crate::state::AppState;
 

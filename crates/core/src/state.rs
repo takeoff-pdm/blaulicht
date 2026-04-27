@@ -279,7 +279,7 @@ impl AppState {
 
     pub fn log(&self, msg: Cow<'static, str>) {
         // TODO: is this the right place to log to stdout?
-        log::info!("{msg}");
+        tracing::info!("{msg}");
         let mut logs = self.logs.lock().unwrap();
         logs.push_back(msg);
         if logs.len() == logs.capacity() {
@@ -346,7 +346,7 @@ impl PluginState {
     }
 
     pub fn log(&mut self, msg: Cow<'static, str>) {
-        log::debug!("[WASM] [{}] {msg}", self.path);
+        tracing::debug!("[WASM] [{}] {msg}", self.path);
         self.logs.push_back(msg);
         if self.logs.len() == self.logs.capacity() {
             // If the buffer is full, remove 1/4 of its first contents.

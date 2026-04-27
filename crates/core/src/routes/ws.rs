@@ -71,7 +71,7 @@
 //                     panic!("not a string");
 //                 };
 
-//                 log::info!("[WS] Selected INPUT: <{}>", &device_name);
+//                 tracing::info!("[WS] Selected INPUT: <{}>", &device_name);
 //                 let device = device_from_name(device_name.clone());
 
 //                 // Update config file.
@@ -260,7 +260,7 @@
 //     let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
 //     let ip = req.connection_info().peer_addr().unwrap().to_string();
 //     let id = Uuid::new_v4().to_string();
-//     log::trace!("[WS] new IP connected: {ip}: {id}");
+//     tracing::trace!("[WS] new IP connected: {ip}: {id}");
 //     {
 //         let mut consumers = data.to_frontend_consumers.lock().unwrap();
 //         consumers.insert(id.clone(), unified_sender);
@@ -362,7 +362,7 @@
 //             }
 //         }
 
-//         log::trace!("[WS] disconnected IP: {ip}");
+//         tracing::trace!("[WS] disconnected IP: {ip}");
 //         let mut a = b.lock().unwrap();
 //         *a = false;
 
@@ -386,7 +386,7 @@
 //     let (unified_sender, unified_receiver) = crossbeam_channel::unbounded();
 //     let ip = req.connection_info().peer_addr().unwrap().to_string();
 //     let id = Uuid::new_v4().to_string();
-//     log::trace!("[DMX-WS] new IP connected: {ip}: {id}");
+//     tracing::trace!("[DMX-WS] new IP connected: {ip}: {id}");
 //     {
 //         let mut consumers = data.to_frontend_consumers.lock().unwrap();
 //         consumers.insert(id.clone(), unified_sender);
@@ -451,7 +451,7 @@
 //         let mut a = b.lock().unwrap();
 //         *a = false;
 
-//         log::trace!("[DMX-WS] disconnected IP: {ip}");
+//         tracing::trace!("[DMX-WS] disconnected IP: {ip}");
 
 //         {
 //             let mut consumers = data.to_frontend_consumers.lock().unwrap();

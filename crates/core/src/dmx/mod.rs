@@ -21,7 +21,7 @@ use blaulicht_shared::{
     CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
-use log::{debug, error, warn};
+use tracing::{debug, error, warn};
 use std::{
     collections::BTreeMap,
     mem,
@@ -256,7 +256,7 @@ impl DmxEngine {
 
     fn write_to_artnet(&mut self) {
         let Some(ref mut socket) = self.artnet_output.socket else {
-            // println!("NO ARTNET");
+            // debug!("NO ARTNET");
             return;
         };
 
@@ -288,7 +288,7 @@ impl DmxEngine {
                 }
 
                 if let Err(err) = socket.send_to(&bytes, destination.address) {
-                    log::error!("Send ArtNet UDP to {}: {err:?}", destination.address);
+                    error!("Send ArtNet UDP to {}: {err:?}", destination.address);
                 }
             }
         }
@@ -319,7 +319,7 @@ impl DmxEngine {
 
                 let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
 
-                println!("SETUP T: {time}");
+                debug!("SETUP T: {time}");
 
                 let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
                     .write()
@@ -561,7 +561,7 @@ impl DmxEngine {
                 state.0.selection_stack.push_front(selection.clone());
                 state.0.selection.clear();
 
-                println!("new selection after push: {selection:?}");
+                debug!("new selection after push: {selection:?}");
 
                 (None, None)
             }
@@ -574,7 +574,7 @@ impl DmxEngine {
                 }
             }
             ControlEvent::MiscEvent { descriptor, value } => {
-                println!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
+                warn!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
                 (None, None)
             }
             ControlEvent::RemoveChange {
@@ -652,7 +652,7 @@ impl DmxEngine {
                         // TODO: this can be done prettier.
                         let animation_sync = anim.spec_cloned.sync_mode();
                         anim.set_timers(animation_sync);
-                        println!("Reset animation: {anim_id}");
+                        debug!("Reset animation: {anim_id}");
                     }
                 }
                 (None, None)
@@ -707,7 +707,7 @@ impl DmxEngine {
                         for (anim_id, anim) in anim_set.iter_mut() {
                             let animation_sync = anim.spec_cloned.sync_mode();
                             anim.set_timers(animation_sync);
-                            println!("Reset animation: {anim_id}");
+                            debug!("Reset animation: {anim_id}");
                         }
                     }
                 }
@@ -729,7 +729,7 @@ impl DmxEngine {
 
                 state.0.current_overlay_scenes.clear();
 
-                println!("SET OVERLAYS: {overlays:?}");
+                debug!("SET OVERLAYS: {overlays:?}");
 
                 for scene in &overlays {
                     // let animations = state.0.animation_templates.clone();
@@ -749,7 +749,7 @@ impl DmxEngine {
                                 // let anim = match animations.get(anim_id) {
                                 //     Some(a) => a,
                                 //     None => {
-                                //         println!("WARN: animation not found");
+                                //         debug!("WARN: animation not found");
                                 //         continue;
                                 //     }
                                 // };
@@ -758,7 +758,7 @@ impl DmxEngine {
                                 anim.spec_cloned.sync_mode()
                             };
                             anim.set_timers(animation_sync);
-                            println!("Reset animation: {anim_id}");
+                            debug!("Reset animation: {anim_id}");
                         }
                     }
 
@@ -823,7 +823,7 @@ impl DmxEngine {
                 }
             }
             ControlEvent::SetAnimationSpeed(id, md) => {
-                println!("set speed anim");
+                debug!("set speed anim");
 
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
 
@@ -843,12 +843,12 @@ impl DmxEngine {
                         match selec_anim.get_mut(&id) {
                             None => (Some("Animation not applied to selection"), None, None),
                             Some(anim) => {
-                                println!("set speed: {md:?}");
+                                debug!("set speed: {md:?}");
 
                                 // Purge selection if empty.
                                 // if selec_anim.is_empty() {
                                 //     this_scene.sink.active_animations.remove(curr_selection);
-                                //     println!("moved selection entirely");
+                                //     debug!("moved selection entirely");
                                 // }
 
                                 anim.speed_factor = md;
@@ -861,7 +861,7 @@ impl DmxEngine {
                 }
             }
             ControlEvent::RemoveAnimation(id) => {
-                println!("REMove anim");
+                debug!("REMove anim");
 
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
 
@@ -871,8 +871,8 @@ impl DmxEngine {
                     .contains_key(curr_selection)
                 {
                     true => {
-                        println!("NO SELEC: {:?}", curr_selection);
-                        println!("NO SELEC 2: {:?}", curr_selection.sorted());
+                        debug!("NO SELEC: {:?}", curr_selection);
+                        debug!("NO SELEC 2: {:?}", curr_selection.sorted());
                         (Some("No animations for this selection"), None, None)
                     }
                     false => {
@@ -885,12 +885,12 @@ impl DmxEngine {
                         match selec_anim.remove(&id) {
                             None => (Some("Animation not applied to selection"), None, None),
                             Some(old_anim) => {
-                                println!("REMOVED");
+                                debug!("REMOVED");
 
                                 // Purge selection if empty.
                                 if selec_anim.is_empty() {
                                     this_scene.sink.active_animations.remove(curr_selection);
-                                    println!("moved selection entirely");
+                                    debug!("moved selection entirely");
                                 }
 
                                 // let animation = state.0.animation_templates.get(&id).unwrap();

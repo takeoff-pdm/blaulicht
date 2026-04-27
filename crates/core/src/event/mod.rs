@@ -39,7 +39,7 @@ impl<T> SystemEventBusConnection<T> {
                 unreachable!("[BUS] Exchange disconnected (possible crash)")
             }
             Err(TrySendError::Full(_)) => {
-                log::debug!("[BUS] Exchange buffer is full.")
+                tracing::debug!("[BUS] Exchange buffer is full.")
             }
         }
     }
@@ -97,7 +97,7 @@ where
         let mut members = self.broadcast_members.lock().unwrap();
         members.insert(id, to_connection_sender);
 
-        log::debug!("[BUS] new connection: {id}");
+        tracing::debug!("[BUS] new connection: {id}");
 
         conn
     }
@@ -112,7 +112,7 @@ where
         loop {
             let msg = self.receiver.recv().unwrap();
             debug_assert!({
-                log::debug!("[BUS] ---> {msg:?}");
+                tracing::debug!("[BUS] ---> {msg:?}");
                 true
             });
 
@@ -123,7 +123,7 @@ where
                 match client.try_send(msg.clone()) {
                     Ok(_) => {}
                     Err(TrySendError::Full(_)) => {
-                        log::warn!("[BUS] System event bus buffer is full");
+                        tracing::warn!("[BUS] System event bus buffer is full");
                     }
                     Err(TrySendError::Disconnected(_)) => match members_to_remove {
                         Some(ref mut mem) => {

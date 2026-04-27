@@ -8,8 +8,7 @@ use blaulicht_shared::PluginStateLocation;
 
 
 use egui::ahash::HashMapExt;
-use log::error;
-use log::{debug, warn};
+use tracing::{debug, error, info, warn};
 use std::sync::Arc;
 use std::u8;
 use std::{collections::HashMap, fs, net::UdpSocket};
@@ -94,7 +93,7 @@ impl PluginManager {
         config.memory_guard_size(1 << 16);
 
         let wasmtime_cache_dir = TempDir::new("blaulicht_wasm_cache")?;
-        log::info!(
+        info!(
             "[WASM] Cache dir at {}",
             wasmtime_cache_dir.path().to_string_lossy()
         );
@@ -487,7 +486,7 @@ impl PluginManager {
         //             y: y as u8,
         //         }))
         //         .expect("failed to send controls config message");
-        //         log::debug!("[wasm] controls_config: {x} {y}");
+        //         tracing::debug!("[wasm] controls_config: {x} {y}");
         //     },
         // )?;
 
@@ -1512,7 +1511,7 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                println!("open midi device: {}", device_name);
+                info!("open midi device: {}", device_name);
 
                 let mut midi_manager = midi_manager.lock().unwrap();
                 midi_manager.request_device(&device_name).unwrap_or(u8::MAX) as u32
@@ -1571,7 +1570,7 @@ impl PluginManager {
 
                 let device_name = String::from_utf8_lossy(&buffer).to_string();
 
-                println!("open serial device: {}", device_name);
+                info!("open serial device: {}", device_name);
 
                 let mut serial_manager = serial_manager.lock().unwrap();
                 serial_manager
@@ -1616,7 +1615,7 @@ impl PluginManager {
                 let location =
                     PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
 
-                println!(
+                debug!(
                     "Saving plugin state for {}: {} bytes",
                     plugin_name,
                     state_data.len()
@@ -1657,7 +1656,7 @@ impl PluginManager {
                 let location =
                     PluginStateLocation::try_from(location as u8).unwrap_or(PluginStateLocation::Showfile);
 
-                println!("Loading plugin state for {}", plugin_name);
+                debug!("Loading plugin state for {}", plugin_name);
 
                 let storage = match location {
                     PluginStateLocation::Showfile => Arc::clone(&showfile_state_storage),
@@ -1679,13 +1678,13 @@ impl PluginManager {
                         .write(&mut caller, buffer_ptr as usize, &bytes[..write_len])
                         .expect("failed to write memory");
 
-                    println!(
+                    debug!(
                         "Loaded {} bytes of plugin state for {}",
                         write_len, plugin_name
                     );
                     write_len as u32
                 } else {
-                    println!("No saved state found for {}", plugin_name);
+                    debug!("No saved state found for {}", plugin_name);
                     0u32
                 }
             },
@@ -1793,7 +1792,7 @@ impl PluginManager {
 
 //                 let received_string = string::from_utf8_lossy(&buffer).to_string();
 
-//                 log::debug!("[wasm] {received_string}");
+//                 tracing::debug!("[wasm] {received_string}");
 
 //                 so.send(systemmessage::wasmlog(received_string))
 //                     .expect("failed to send log message");
@@ -1850,7 +1849,7 @@ impl PluginManager {
 //                     y: y as u8,
 //                 }))
 //                 .expect("failed to send controls config message");
-//                 log::debug!("[wasm] controls_config: {x} {y}");
+//                 tracing::debug!("[wasm] controls_config: {x} {y}");
 //             },
 //         )?;
 
@@ -1889,7 +1888,7 @@ impl PluginManager {
 //             memory,
 //         });
 
-//         log::info!("[wasm] initialized.");
+//         tracing::info!("[wasm] initialized.");
 
 //         ok(())
 //     }

@@ -4,7 +4,7 @@ use blaulicht_shared::{
     scene::{EngineSink, Scene},
     AnimationTimerState,
 };
-use log::debug;
+use tracing::debug;
 
 impl EngineState {
     pub fn delete_animation(&mut self, id: u8) {

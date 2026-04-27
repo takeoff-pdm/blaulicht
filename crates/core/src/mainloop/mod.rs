@@ -182,7 +182,7 @@ pub fn run(
                 match midi_manager.lock() {
                     Ok(mut manager) => manager.reload(),
                     // TODO: i think this can never happen.
-                    Err(err) => log::warn!(
+                    Err(err) => tracing::warn!(
                         "[ENGINE] Failed to acquire MIDI manager lock during reload: {err}"
                     ),
                 }

@@ -11,10 +11,10 @@ pub fn increase_thread_priority(system_sender: Sender<SystemMessage>) {
 
 fn conservative(system_sender: Sender<SystemMessage>) {
     match thread_priority::set_current_thread_priority(ThreadPriority::Max) {
-        Ok(_) => log::info!("SUCCESS: set thread priority"),
+        Ok(_) => tracing::info!("SUCCESS: set thread priority"),
         Err(err) => {
             let msg = format!("FAILED: set thread priority: {err}");
-            log::error!("{msg}");
+            tracing::error!("{msg}");
             system_sender.send(SystemMessage::Log(msg, LogLevel::Warn));
         }
     }
@@ -23,11 +23,11 @@ fn conservative(system_sender: Sender<SystemMessage>) {
 fn realtime(system_sender: Sender<SystemMessage>) {
     match promote_current_thread_to_real_time(512, 44100) {
         Ok(_h) => {
-            log::info!("SUCCESS: set thread priority to REALTIME");
+            tracing::info!("SUCCESS: set thread priority to REALTIME");
         }
         Err(e) => {
             let msg = format!("FAILED: set thread priority to REALTIME: {e}");
-            log::error!("{msg}");
+            tracing::error!("{msg}");
             system_sender.send(SystemMessage::Log(msg, LogLevel::Warn));
         }
     }

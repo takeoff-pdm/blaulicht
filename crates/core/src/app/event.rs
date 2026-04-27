@@ -20,7 +20,7 @@ impl BlaulichtApp {
                                 self.navbar.navigate_to(app_page)
                             }
                             MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
-                                log::debug!("[UI] Set plugin <{plugin_id}> visibility to: {open}");
+                                tracing::debug!("[UI] Set plugin <{plugin_id}> visibility to: {open}");
                                 let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
                                 if let Entry::Occupied(ref mut entry) = map.entry(plugin_id) {
                                     entry.get_mut().open = open;
@@ -96,7 +96,7 @@ impl BlaulichtApp {
                             let config_path = PathBuf::from(self.data.config_path.clone());
                             if let Err(err) = config::write_config(config_path, config_mut.clone())
                             {
-                                log::error!("Failed to write config after global state save: {err}");
+                                tracing::error!("Failed to write config after global state save: {err}");
                             }
                         }
                     }

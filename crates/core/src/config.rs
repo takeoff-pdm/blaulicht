@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use blaulicht_shared::{EngineState, LogLevel, SaveEngineState, Showfile};
 use crossbeam_channel::Sender;
-use log::debug;
+use tracing::debug;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,

@@ -52,20 +52,20 @@ impl<'engine> EngineState {
         let groups = other.groups.clone();
 
         let overrides = self.0.overrides.clone();
-        println!("ov: {overrides:?}");
+        tracing::debug!("ov: {overrides:?}");
 
         let current_scene_focus = match &other.scenes.contains_key(&other.current_scene_focus) {
             true => other.current_scene_focus,
             false => {
-                println!("Loading backup scene... | SCENES: {:?}", other.scenes);
+                tracing::debug!("Loading backup scene... | SCENES: {:?}", other.scenes);
 
                 if other.scenes.is_empty() {
                     other.new_scene("Empty Scene".to_string());
-                    println!("CREATE BACKUP SCENE...");
+                    tracing::debug!("CREATE BACKUP SCENE...");
                 }
 
                 let backup_id = other.scenes.keys().next().unwrap();
-                println!("LOADED BACKUP ID: {backup_id}");
+                tracing::debug!("LOADED BACKUP ID: {backup_id}");
                 *backup_id
             }
         };
@@ -83,7 +83,7 @@ impl<'engine> EngineState {
                     for (fid, _) in &group.fixtures {
                         let selec = (*gid, *fid);
                         if fixture_states.get(&selec).is_none() {
-                            println!("============ FIX!!!");
+                            tracing::debug!("============ FIX!!!");
                             fixture_states.insert(selec, FixtureState::default());
                         }
                     }

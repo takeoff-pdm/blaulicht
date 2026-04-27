@@ -192,7 +192,7 @@ impl PluginManager {
 
         // Ignore any tick log::errors caused by misbehaving plugins.
         // Only return on serious log::errors.
-        log::debug!("[Wasm] Running initial tick...");
+        tracing::debug!("[Wasm] Running initial tick...");
         if self
             .tick(CollectedAudioSnapshot::default(), &[], vec![], None)
             .is_err()
@@ -236,20 +236,20 @@ impl PluginManager {
         // Watch each file of the plugins to watch.
         for file in &files_to_watch {
             if let Err(err) = watcher.watch(file, RecursiveMode::NonRecursive) {
-                log::error!("Watching file: {:?} failed: {}", file, err);
+                tracing::error!("Watching file: {:?} failed: {}", file, err);
             } else {
-                log::debug!("Watching file: {:?}", file);
+                tracing::debug!("Watching file: {:?}", file);
             }
         }
 
-        log::debug!("Watching {} files...", files_to_watch.len());
+        tracing::debug!("Watching {} files...", files_to_watch.len());
 
         // Process events
         loop {
             match rx.recv_timeout(Duration::from_secs(1)) {
                 Ok(event) => {
                     if let Ok(event) = event {
-                        log::trace!("Plugin file change event: {:?}", event);
+                        tracing::trace!("Plugin file change event: {:?}", event);
                         if !matches!(
                             event.kind,
                             EventKind::Modify(ModifyKind::Data(DataChange::Any))
@@ -258,7 +258,7 @@ impl PluginManager {
                             continue;
                         }
 
-                        log::info!(
+                        tracing::info!(
                             "Change detected in: {:?} (kind: {:?}) ----> RELOADING...",
                             event.paths,
                             event.kind

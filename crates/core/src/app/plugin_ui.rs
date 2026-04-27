@@ -621,7 +621,7 @@ pub(crate) fn render_plugin_ops(
             Op::PainterBegin { id, width, height } => {
                 *idx += 1;
                 let available_size = ui.available_size();
-                println!(
+                tracing::debug!(
                     "[Host] PainterBegin: canvas_id={}, requested={}x{}, available={:?}",
                     id, width, height, available_size
                 );
@@ -638,13 +638,13 @@ pub(crate) fn render_plugin_ops(
                 } else {
                     egui::vec2(effective_available.x, effective_available.x / aspect_ratio)
                 };
-                println!(
+                tracing::debug!(
                     "[Host] PainterBegin: scaled_size={:?}, rect will be allocated",
                     scaled_size
                 );
                 let (rect, resp) =
                     ui.allocate_exact_size(scaled_size, egui::Sense::click_and_drag());
-                println!("[Host] PainterBegin: allocated rect={:?}", rect);
+                tracing::debug!("[Host] PainterBegin: allocated rect={:?}", rect);
 
                 let scale_x = *width as f32 / scaled_size.x;
                 let scale_y = *height as f32 / scaled_size.y;

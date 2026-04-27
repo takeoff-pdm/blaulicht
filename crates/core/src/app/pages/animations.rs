@@ -412,7 +412,7 @@ impl Default for AnimationEditState {
 
 impl AnimationEditState {
     pub fn load_state(&mut self, spec: AnimationSpec) {
-        println!("UI load state");
+        tracing::debug!("UI load state");
         self.working_state = spec;
         self.sync_mode_dialog_open = false;
         self.math_base_fn_dialog_open = false;

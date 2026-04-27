@@ -53,9 +53,9 @@ impl BlaulichtApp {
                             .expect("Failed to execute shutdown command");
 
                         if status.success() {
-                            println!("Shutdown command executed successfully.");
+                            tracing::info!("Shutdown command executed successfully.");
                         } else {
-                            eprintln!("Shutdown command failed!");
+                            tracing::error!("Shutdown command failed!");
                         }
 
                         self.system_ui_state.confirm_shutdown_open = false;

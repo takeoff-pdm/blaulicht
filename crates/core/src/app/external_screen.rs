@@ -113,7 +113,7 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
-        log::info!("Closed tab: {}", tab.label());
+        tracing::info!("Closed tab: {}", tab.label());
         OnCloseResponse::Close
     }
 }

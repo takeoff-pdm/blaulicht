@@ -40,7 +40,7 @@ pub fn supervisor_thread(
     event_bus_connection_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) {
-    log::info!("[SUPERVISOR] Thread started!");
+    tracing::info!("[SUPERVISOR] Thread started!");
 
     // Start background worker.
     {
@@ -69,7 +69,7 @@ pub fn supervisor_thread(
 
     loop {
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
-            log::warn!("[SUPERVISOR] Shutting down...");
+            tracing::warn!("[SUPERVISOR] Shutting down...");
 
             signal_mainloop(
                 Arc::clone(&audio_thread_control_signal),
@@ -83,7 +83,7 @@ pub fn supervisor_thread(
 
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
-                log::info!("[SUPERVISOR] Got reload request");
+                tracing::info!("[SUPERVISOR] Got reload request");
 
                 if AudioThreadControlSignal::from(
                     audio_thread_control_signal.load(Ordering::Relaxed),
@@ -101,7 +101,7 @@ pub fn supervisor_thread(
                 device_changed = true;
             }
             Err(TryRecvError::Disconnected) => {
-                log::warn!("[SUPERVISOR] Shutting down.");
+                tracing::warn!("[SUPERVISOR] Shutting down.");
 
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
@@ -197,7 +197,7 @@ pub fn supervisor_thread(
                         bus_connection_dmx,
                         Arc::clone(&app_state),
                     ) {
-                        log::error!("[audio] THREAD CRASH: {err}");
+                        tracing::error!("[audio] THREAD CRASH: {err}");
                         syslog!(sys, format!("[audio] {err}"), LogLevel::Err);
 
                         signal_mainloop(
@@ -216,7 +216,7 @@ pub fn supervisor_thread(
             }
 
             device_changed = false;
-            log::info!(
+            tracing::info!(
                 "[AUDIO] Main thread started: <{}>",
                 audio_device.clone().unwrap().name().unwrap()
             );

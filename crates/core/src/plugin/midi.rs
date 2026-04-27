@@ -1,6 +1,6 @@
 use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use log::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -298,7 +298,7 @@ impl MidiManager {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     // TODO: how to handle this?
-                    log::warn!("[MIDI] Terminating...");
+                    tracing::warn!("[MIDI] Terminating...");
                     return Ok(vec![]);
                 }
             };

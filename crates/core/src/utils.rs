@@ -1,18 +1,18 @@
 #![allow(unused)]
 
-use log::LevelFilter;
 use std::io::{Read, Write};
 use std::process::exit;
+use tracing_subscriber::EnvFilter;
 
 use crate::msg::{AudioDeviceT, AudioHostT};
 
 pub fn init_logger() {
-    simple_logger::SimpleLogger::new()
-        .with_level(LevelFilter::Debug)
-        .with_colors(true)
-        .with_utc_timestamps()
-        .init()
-        .unwrap();
+    let _ = tracing_log::LogTracer::init();
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .try_init();
 }
 
 #[macro_export]

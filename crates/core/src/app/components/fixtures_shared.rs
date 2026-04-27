@@ -40,7 +40,7 @@ impl DmxSimulator {
                 .ui(ui)
                 .changed()
             {
-                println!("changed map fixtures");
+                tracing::debug!("changed map fixtures");
             }
 
             match self.map_fixtures {
@@ -1088,7 +1088,7 @@ impl BlaulichtApp {
 
                         let tup = (r, g, b);
                         if RGBColor::from(tup) != b_color {
-                            println!(
+                            tracing::debug!(
                                 "RGBColor::from(tup) != b_color ({:?} != {:?})",
                                 RGBColor::from(tup),
                                 b_color

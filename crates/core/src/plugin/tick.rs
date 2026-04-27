@@ -72,7 +72,7 @@ impl PluginManager {
             }
             Err(err) => {
                 if !self.has_crashed {
-                    log::error!("[Plugin] Wasm engine crash: {err}");
+                    tracing::error!("[Plugin] Wasm engine crash: {err}");
                     self.has_crashed = true;
                 }
                 Duration::from_micros(0)
@@ -224,7 +224,7 @@ impl Plugin {
 
             if midi_array_len > 100 {
                 midi_events = &midi_events[0..100];
-                log::warn!("TOO many MIDI events! TRUNCATING");
+                tracing::warn!("TOO many MIDI events! TRUNCATING");
             }
 
             let mut midi_array_bytes = Vec::new();

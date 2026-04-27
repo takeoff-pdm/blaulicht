@@ -53,7 +53,7 @@ impl DmxEngine {
         match &spec.body {
             AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
             AnimationSpecBody::AudioVolume(_) => {
-                println!("volume: {}", audio_snapshot.snapshot.volume);
+                tracing::debug!("volume: {}", audio_snapshot.snapshot.volume);
                 audio_snapshot.snapshot.volume as u16
             }
             AnimationSpecBody::BPMValue(_) => audio_snapshot.snapshot.bpm as u16,
@@ -177,14 +177,14 @@ impl DmxEngine {
 
                         // TODO: limited by tick speed
 
-                        // println!("{}", now - animation.last_tick_time);
+                        // tracing::debug!("{}", now - animation.last_tick_time);
 
                         let mut num_ticks = 1;
 
                         let millis = DMX_TICK_TIME.as_millis();
                         if transition_time < millis as f64 {
                             num_ticks = (millis as f64 / transition_time) as usize;
-                            // println!("NUM TICKS: {num_ticks} | millis = {millis} | trans = {transition_time} | factor = {}", animation.speed_factor.as_float());
+                            // tracing::debug!("NUM TICKS: {num_ticks} | millis = {millis} | trans = {transition_time} | factor = {}", animation.speed_factor.as_float());
                         }
 
                         // let spec = animations.get(animation_id).unwrap();
@@ -221,7 +221,7 @@ impl DmxEngine {
                         //      - Syncing shall be displayed graphically
                         //      - Running animations shall also be displayed graphically
                         //      - Each phaser can be absolute / relative!
-                        // println!("{}", fixture_anim_state.last_tick_time);
+                        // tracing::debug!("{}", fixture_anim_state.last_tick_time);
                         if now.saturating_sub(fixture_anim_state.last_tick_time)
                             >= transition_time as u64
                         {

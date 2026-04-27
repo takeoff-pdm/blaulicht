@@ -1,5 +1,5 @@
 use blaulicht_shared::SerialReceived;
-use log::{debug, error};
+use tracing::{debug, error};
 use serialport::{available_ports, ErrorKind as SerialPortErrorKind, SerialPort};
 use std::collections::HashMap;
 use std::fmt;
