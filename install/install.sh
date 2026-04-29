@@ -23,7 +23,7 @@ blaulicht_binary() {
     rm -r ./blaulicht-dist || echo "No junk yet..."
 
     wget --no-check-certificate -qO- https://api.github.com/repos/takeoff-pdm/blaulicht/releases/latest |
-        jq -r '.assets[] | select(.name | endswith("-x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url' |
+        jq -r '.assets[] | select(.name | endswith("-x86_64-all-linux-gnu.tar.gz")) | .browser_download_url' |
         xargs wget -O blaulicht-latest.tar.gz || echo "WARNING: Download"
 
     tar xvf blaulicht-latest.tar.gz
