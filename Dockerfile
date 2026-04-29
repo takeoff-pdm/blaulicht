@@ -1,5 +1,5 @@
-# Cross compilation environment for radio
-# Most of the configuration is taken from 'https://github.com/librespot-org/librespot/blob/dev/contrib/Dockerfile'
+# Cross compilation environment for blaulicht
+# Most of the configuration is taken from 'https://github.com/mikmuellerdev/radio'
 FROM debian:trixie
 
 # Update stretch repositories
@@ -11,8 +11,8 @@ RUN apt-get update
 
 RUN apt-get install -y\
     curl git\
-    build-essential pkg-config libasound2-dev \
-    libudev-dev
+    build-essential pkg-config \
+    libasound2-dev libdbus-1-dev libudev-dev
 
 # RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin/:${PATH}"
