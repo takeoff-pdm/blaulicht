@@ -1,4 +1,4 @@
-use crate::app::{components, theme, BlaulichtApp, PopupSpec};
+use crate::app::{components, theme, BlaulichtApp, ExternalScreen, PopupSpec};
 use crate::state::AppStateWrapper;
 use crate::state::ScreenId;
 
@@ -29,6 +29,7 @@ impl BlaulichtApp {
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
+        external_screens: Vec<(usize, usize)>,
     ) -> Self {
         let mut app = Self::new_default(state, desktop_mode, showfile_home);
 
@@ -49,7 +50,9 @@ impl BlaulichtApp {
 
         // Create external window if specified in cli args.
         // TODO: add clap CLI parsing.
-        app.external_screens = vec![];
+        app.external_screens = external_screens
+            .iter()
+            .map(|(dim_x, dim_y)| ExternalScreen::new(egui::vec2(*dim_x as f32, *dim_y as f32))).collect();
 
         app
     }
@@ -108,9 +111,9 @@ impl eframe::App for BlaulichtApp {
                 self.main_screen_desktop_mode = screen;
             }
             false => {
-        self.render_main_screen(ctx);
-    }
-}
+                self.render_main_screen(ctx);
+            }
+        }
     }
 }
 

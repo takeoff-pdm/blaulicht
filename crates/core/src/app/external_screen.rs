@@ -126,14 +126,14 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
 impl BlaulichtApp {
     pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
         let viewport_id =
-            egui::ViewportId::from_hash_of(format!("blaulicht_external_screen: {screen_idx}"));
+            egui::ViewportId::from_hash_of(format!("bl_ext_{screen_idx}"));
 
         let screen = self.external_screens[screen_idx].clone();
 
         ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
-                .with_title(format!("blaulicht_ext: {screen_idx}"))
+                .with_title(format!("bl_ext_{screen_idx}"))
                 .with_inner_size([screen.dimensions.x, screen.dimensions.y])
                 .with_resizable(true),
             |ctx, _class| {

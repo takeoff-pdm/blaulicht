@@ -16,8 +16,8 @@ xrandr --addmode VGA-1 "800x480_60.00"
 # xrandr --output VGA-1 --mode "1024x600_60.00"
 xrandr --output VGA-1 --mode "800x480_60.00"
 
-# Launch blaulicht
-blaulicht
+# Launch blaulicht with minimal external screen.
+blaulicht -e 100,100
 
 xterm -e 'tmux new-session -s rescue "rescue.sh; exec bash"'
 

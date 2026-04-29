@@ -268,6 +268,7 @@ fn main() -> anyhow::Result<()> {
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home.clone(),
+                args.external_screens,
             )))
         }),
     )

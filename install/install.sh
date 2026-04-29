@@ -104,7 +104,7 @@ sudo cp ./fans.sh /usr/bin/fans
 #
 #
 
-sudo apt install -y rsync wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
+sudo apt install -y rsync curl btop wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
 
 blaulicht_binary
 
@@ -113,7 +113,7 @@ cp ./openbox-autostart ~/.config/openbox/autostart || exit 1
 chmod +x ~/.config/openbox/autostart || exit 1
 
 mkdir -p ~/.config/devilspie2
-cp ./blaulicht.lua ~/.config/devilspie2/
+cp ./devilspie2.lua ~/.config/devilspie2/blaulicht.lua
 
 # TOOD: autostart?
 # AUTOSTART_BASE_DIR=~/.config/autostart/
