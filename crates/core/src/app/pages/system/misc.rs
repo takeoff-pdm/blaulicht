@@ -1,8 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, Dialog},
-        external_screen,
-        BlaulichtApp, PopupSpec,
+        components::{self, ButtonSize, Dialog}, external_screen, BlaulichtApp, ExternalScreen, PopupSpec
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
@@ -66,6 +64,10 @@ impl BlaulichtApp {
                     }
                 });
             });
+    }
+
+    fn attach_external_screen(&mut self) {
+        self.external_screens.push(ExternalScreen::default());
     }
 
     pub fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context, screen_id: ScreenId) {
@@ -152,7 +154,7 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, false, "Add Screen", button_size) {
-                        self.external_screens.push(external_screen::create());
+                        self.attach_external_screen();
                     }
                 });
 

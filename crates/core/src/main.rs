@@ -10,15 +10,16 @@ use blaulicht_core::{config, mainloop, utils};
 use blaulicht_shared::LogLevel;
 use clap::Parser;
 use crossbeam_channel::Sender;
-use tracing::{info, Event, Level, Subscriber};
-use tracing_subscriber::layer::{Context as TraceContext, SubscriberExt};
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tracing::{info, Event, Level, Subscriber};
+use tracing_subscriber::layer::{Context as TraceContext, SubscriberExt};
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
+use winit::event_loop::EventLoop;
 
 #[cfg(feature = "dhat")]
 #[global_allocator]
@@ -80,16 +81,13 @@ where
             None => event.metadata().target().to_string(),
         };
 
-        let _ = self
-            .system_out
-            .send(SystemMessage::Log(message, level));
+        let _ = self.system_out.send(SystemMessage::Log(message, level));
     }
 }
 
 fn init_tracing(system_out: Sender<SystemMessage>) {
     let _ = tracing_log::LogTracer::init();
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let subscriber = tracing_subscriber::registry()
         .with(env_filter)

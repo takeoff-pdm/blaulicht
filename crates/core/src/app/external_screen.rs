@@ -3,9 +3,7 @@
 use crate::app::{BlaulichtApp, ExternalScreen};
 use crate::state::ScreenId;
 use blaulicht_shared::AppPage;
-use egui::{
-    vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, WidgetText,
-};
+use egui::{vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2, WidgetText};
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Style};
 use strum::IntoEnumIterator;
@@ -39,18 +37,25 @@ impl Pane {
     }
 }
 
-pub fn create() -> ExternalScreen {
-    ExternalScreen::new()
+// pub fn create(dimensions: Vec2) -> ExternalScreen {
+//     ExternalScreen::new(dimensions)
+// }
+
+impl Default for ExternalScreen {
+    fn default() -> Self {
+        Self::new(egui::vec2(1920.0, 1080.0))
+    }
 }
 
 impl ExternalScreen {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(dimensions: Vec2) -> Self {
         // let tabs = (1..=8).map(|idx| Pane::new(format!("Tab {idx}"))).collect();
 
         let tabs = AppPage::iter().map(|page| Pane::new(page)).collect();
 
         Self {
             dock_state: DockState::new(tabs),
+            dimensions,
         }
     }
 
@@ -122,11 +127,14 @@ impl BlaulichtApp {
     pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
         let viewport_id =
             egui::ViewportId::from_hash_of(format!("blaulicht_external_screen: {screen_idx}"));
+
+        let screen = self.external_screens[screen_idx].clone();
+
         ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
-                .with_title(format!("blaulicht_external_screen: {screen_idx}"))
-                .with_inner_size([1920.0, 1080.0])
+                .with_title(format!("blaulicht_ext: {screen_idx}"))
+                .with_inner_size([screen.dimensions.x, screen.dimensions.y])
                 .with_resizable(true),
             |ctx, _class| {
                 let mut screen = self.external_screens[screen_idx].clone();

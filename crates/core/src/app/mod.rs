@@ -17,7 +17,7 @@ use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
-use egui::{Color32, ColorImage, TextureHandle};
+use egui::{Color32, ColorImage, TextureHandle, Vec2};
 use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
@@ -89,11 +89,12 @@ impl PopupSpec {
 #[derive(Clone)]
 pub struct ExternalScreen {
     dock_state: DockState<Pane>,
+    dimensions: Vec2,
 }
 
 impl ExternalScreen {
     pub fn mock() -> Self {
-        Self::new()
+        Self::new(egui::vec2(1920.0, 1080.0))
     }
 
     pub(crate) fn dock_state(&mut self) -> &mut DockState<Pane> {
@@ -260,7 +261,7 @@ impl BlaulichtApp {
             desktop_mode,
             showfile_home,
             navbar: Navbar::new(AppPage::Logs),
-            main_screen_desktop_mode: ExternalScreen::new(),
+            main_screen_desktop_mode: ExternalScreen::default(),
             external_screens: vec![],
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
