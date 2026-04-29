@@ -27,7 +27,7 @@ blaulicht_binary() {
         xargs wget -O blaulicht-latest.tar.gz || echo "WARNING: Download"
 
     tar xvf blaulicht-latest.tar.gz
-    mv ./blaulicht-dist/blaulicht ./blaulicht
+    mv ./blaulicht-dist/blaulicht-x64-haswell ./blaulicht
     sudo cp blaulicht /usr/bin/blaulicht || exit 1
     sudo chmod +x /usr/bin/blaulicht || exit 1
 }
