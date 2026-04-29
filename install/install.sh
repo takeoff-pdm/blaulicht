@@ -15,17 +15,7 @@ if [ "$USER" = "root" ]; then
     exit 1
 fi
 
-detect_cpu_features() {
-    echo "TODO"
-    exit 42
-}
-
 blaulicht_binary() {
-    echo "Detecting host CPU features..."
-    cpu_version=$(detect_cpu_features)
-
-    echo "Found CPU features: >= ${cpu_version}"
-
     sudo killall blaulicht || echo "Blaulicht not running"
 
     rm blaulicht-latest.tar.gz || echo "No junk yet"
@@ -75,7 +65,7 @@ sudo find /usr/share/xsessions/ ! -name openbox.desktop ! -name blaulicht.deskto
 sudo apt purge gnome-session gnome-shell -y || echo "Gnome removal completed with error"
 
 # TODO: detect if installed before installing
-# Delete appamor and other bloat
+# Delete appamor and other bluat
 sudo systemctl stop apparmor || echo "No appamor"
 sudo systemctl disable apparmor || echo "No appamor"
 sudo apt purge -y apparmor || echo "Remove appamor"
@@ -114,7 +104,7 @@ sudo cp ./fans.sh /usr/bin/fans
 #
 #
 
-sudo apt install -y btop rsync wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
+sudo apt install -y rsync wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 1
 
 blaulicht_binary
 
