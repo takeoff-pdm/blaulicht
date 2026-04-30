@@ -15,3 +15,4 @@ target_wasm
 .direnv
 blaulicht-*
 *.tar.gz
+install/blaulicht
