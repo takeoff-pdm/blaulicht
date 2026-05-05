@@ -33,7 +33,6 @@ impl Default for SamplePlugin {
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.state.restart_timer += 1;
-        bpf::Command
     }
 
     fn run(&mut self, input: TickInput) {}
