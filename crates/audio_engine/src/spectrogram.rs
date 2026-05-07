@@ -160,32 +160,42 @@ pub fn create_spectrogram_image(
     let pad_top = 5;
     let pad_left = 5;
 
-    let height = height_outer - pad_btm - pad_top;
+    let Some(height) = height_outer.checked_sub(pad_btm + pad_top) else {
+        return;
+    };
     // let mut pixels = vec![Color32::BLACK; width * height_outer];
 
     let total_cols = spec.max_columns;
 
-    let avail_width = width - pad_left;
-    let pixels_per_column = avail_width as f32 / total_cols as f32 ;
+    let Some(avail_width) = width.checked_sub(pad_left) else {
+        return;
+    };
+
+    if height == 0 || avail_width == 0 || total_cols == 0 {
+        return;
+    }
+
+    let pixels_per_column = avail_width as f32 / total_cols as f32;
 
     // NOTE: downsampling does nothing for vertical issues.
     // QUESTION: is this really efficient?
     // An alternative would be to just increase the image size?
 
-    let columns_data = match pixels_per_column < 1.0 {
+    let columns_data: Vec<CollectorOutput> = match pixels_per_column < 1.0 {
         true => {
             println!("WARN: downsample() Pixel per column: {pixels_per_column} need to downsample");
             let mut chunks_cont = spec.columns.clone();
             let columns_data = chunks_cont.make_contiguous();
-            let columns_data = downsample(columns_data, pixels_per_column);
-            let columns_data = VecDeque::from(columns_data);
-            columns_data.iter();
-            todo!();
+            downsample(columns_data, pixels_per_column)
         }
-        false => spec.columns.iter(),
+        false => spec.columns.iter().cloned().collect(),
     };
 
-    let pixels_per_column = (avail_width as f32 / columns_data.len() as f32).floor() as usize;
+    if columns_data.is_empty() {
+        return;
+    }
+
+    let pixels_per_column = (avail_width / columns_data.len()).max(1);
 
     // println!("pixels per column: {pixels_per_column}");
 
@@ -197,7 +207,7 @@ pub fn create_spectrogram_image(
 
     // Sanity check: every line has same column size.
     let mut bin_count_per_column = 0;
-    for column in columns_data.clone() {
+    for column in columns_data.iter() {
         if bin_count_per_column == 0 {
             bin_count_per_column = column.current_audio_colunn.len();
         }
@@ -223,7 +233,7 @@ pub fn create_spectrogram_image(
     // println!("bucket_height: {bucket_height} | bin_count_per_column: {bin_count_per_column}");
 
     if bucket_height < 1.0 {
-        panic!("too small");
+        return;
     }
 
     let bucket_height = bucket_height.floor() as usize;
@@ -252,9 +262,13 @@ pub fn create_spectrogram_image(
         let y_min = y_max - bucket_height;
         // pad_top + ((bucket_index + 1) as f32 * bucket_height).min(height as f32) as usize;
 
-        for (column_index, column) in columns_data.clone().enumerate() {
+        for (column_index, column) in columns_data.iter().enumerate() {
             let x_start = pad_left + (column_index * pixels_per_column);
-            let x_end = x_start + pixels_per_column;
+            let x_end = (x_start + pixels_per_column).min(width);
+
+            if x_start >= x_end {
+                continue;
+            }
 
             let bucket_color = spectrogram_color(column.current_audio_colunn[bin_index].volume);
             for y in y_min..y_max {
@@ -266,6 +280,10 @@ pub fn create_spectrogram_image(
             // Draw beat marker.
             {
                 if options.include_beat_markers {
+                    if x_start >= width {
+                        continue;
+                    }
+
                     if column.snapshot.beat_trigger {
                         for y in 0..height_outer {
                             image_buffer.pixels[y * width + x_start] = Color32::RED;
@@ -278,7 +296,9 @@ pub fn create_spectrogram_image(
                         // }
 
                         let dot_size = x_end - x_start;
-                        for y in (height + (pad_btm / 2) - dot_size)..height + (pad_btm / 2) {
+                        let y_end = (height + (pad_btm / 2)).min(height_outer);
+                        let y_start = y_end.saturating_sub(dot_size);
+                        for y in y_start..y_end {
                             image_buffer.pixels[y * width + x_start] = Color32::MAGENTA;
                         }
                     }
@@ -309,7 +329,7 @@ pub fn create_spectrogram_image_with_freqs(
     let total_cols = spec.max_columns;
 
     let avail_width = width - pad_left;
-    let pixels_per_column = avail_width as f32 / total_cols as f32 ;
+    let pixels_per_column = avail_width as f32 / total_cols as f32;
 
     let mut chunks_cont = spec.columns.clone();
     let columns_data = chunks_cont.make_contiguous();
@@ -541,4 +561,64 @@ fn spectrogram_color(intensity: u8) -> Color32 {
     };
 
     Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AudioBucket;
+
+    fn spectrogram_with_onset_column() -> AudioSpectrogram {
+        let mut spec = AudioSpectrogram::new(128, 2, Duration::from_millis(20));
+        let mut output = CollectorOutput::default();
+        output.snapshot.actual_onset_peak = true;
+        output.current_audio_colunn = vec![
+            AudioBucket {
+                volume: 64,
+                ..AudioBucket::default()
+            };
+            2
+        ];
+        spec.push_data(output);
+        spec
+    }
+
+    #[test]
+    fn spectrogram_image_handles_wide_single_onset_column() {
+        let spec = spectrogram_with_onset_column();
+        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+
+        create_spectrogram_image(
+            &spec,
+            723,
+            160,
+            &SpectrogramDisplayOptions {
+                include_beat_markers: true,
+            },
+            &mut image,
+        );
+
+        assert_eq!(image.size, [723, 160]);
+    }
+
+    #[test]
+    fn spectrogram_image_handles_tiny_allocations() {
+        let spec = spectrogram_with_onset_column();
+
+        for (width, height) in [(0, 0), (4, 160), (10, 24), (10, 25)] {
+            let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+
+            create_spectrogram_image(
+                &spec,
+                width,
+                height,
+                &SpectrogramDisplayOptions {
+                    include_beat_markers: true,
+                },
+                &mut image,
+            );
+
+            assert_eq!(image.size, [width, height]);
+        }
+    }
 }
