@@ -24,12 +24,7 @@ extern "C" {
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
 
-    fn bl_save_plugin_state(
-        plugin_id: u8,
-        location: u8,
-        data_ptr: *const u8,
-        data_len: usize,
-    );
+    fn bl_save_plugin_state(plugin_id: u8, location: u8, data_ptr: *const u8, data_len: usize);
     fn bl_load_plugin_state(
         plugin_id: u8,
         location: u8,
@@ -43,14 +38,10 @@ extern "C" {
 
     // Egui UI host imports
     fn ui_begin(plugin_id: u8);
+    fn ui_is_open(plugin_id: u8) -> i32;
+    fn ui_maximize_screen(plugin_id: u8);
     fn ui_label(plugin_id: u8, ptr: *const u8, len: usize);
-    fn ui_label_styled(
-        plugin_id: u8,
-        ptr: *const u8,
-        len: usize,
-        size: i32,
-        monospace: i32,
-    );
+    fn ui_label_styled(plugin_id: u8, ptr: *const u8, len: usize, size: i32, monospace: i32);
     fn ui_set_max_width(plugin_id: u8, width: i32);
     fn ui_set_min_width(plugin_id: u8, width: i32);
     fn ui_separator(plugin_id: u8);
@@ -342,21 +333,21 @@ pub mod ui {
         ui_begin_horizontal as host_ui_begin_horizontal, ui_begin_tab as host_ui_begin_tab,
         ui_begin_tabs as host_ui_begin_tabs, ui_begin_vertical as host_ui_begin_vertical,
         ui_button as host_ui_button, ui_button_styled as host_ui_button_styled,
-        ui_checkbox as host_ui_checkbox, ui_combo_box as host_ui_combo_box,
-        ui_label as host_ui_label, ui_label_styled as host_ui_label_styled,
-        ui_set_max_width as host_ui_set_max_width, ui_set_min_width as host_ui_set_min_width,
-        ui_color_picker as host_ui_color_picker, ui_end_collapsing as host_ui_end_collapsing,
+        ui_checkbox as host_ui_checkbox, ui_color_picker as host_ui_color_picker,
+        ui_combo_box as host_ui_combo_box, ui_end_collapsing as host_ui_end_collapsing,
         ui_end_frame as host_ui_end_frame, ui_end_horizontal as host_ui_end_horizontal,
         ui_end_tab as host_ui_end_tab, ui_end_tabs as host_ui_end_tabs,
         ui_end_vertical as host_ui_end_vertical, ui_hfader as host_ui_hfader,
-        ui_painter_begin as host_ui_painter_begin,
-        ui_painter_circle as host_ui_painter_circle,
+        ui_is_open as host_ui_is_open, ui_label as host_ui_label,
+        ui_label_styled as host_ui_label_styled, ui_maximize_screen as host_ui_maximize_screen,
+        ui_painter_begin as host_ui_painter_begin, ui_painter_circle as host_ui_painter_circle,
         ui_painter_circle_stroke as host_ui_painter_circle_stroke,
         ui_painter_cubic_bezier as host_ui_painter_cubic_bezier,
         ui_painter_end as host_ui_painter_end, ui_painter_line as host_ui_painter_line,
         ui_painter_rect as host_ui_painter_rect,
         ui_painter_rect_stroke as host_ui_painter_rect_stroke,
         ui_painter_text as host_ui_painter_text, ui_separator as host_ui_separator,
+        ui_set_max_width as host_ui_set_max_width, ui_set_min_width as host_ui_set_min_width,
         ui_slider as host_ui_slider, ui_switch as host_ui_switch,
         ui_text_edit as host_ui_text_edit, ui_text_edit_multiline as host_ui_text_edit_multiline,
         PLUGIN_ID,
@@ -364,6 +355,14 @@ pub mod ui {
 
     pub fn begin() {
         unsafe { host_ui_begin(unsafe { PLUGIN_ID }) };
+    }
+
+    pub fn is_open() -> bool {
+        unsafe { host_ui_is_open(unsafe { PLUGIN_ID }) != 0 }
+    }
+
+    pub fn maximize_screen() {
+        unsafe { host_ui_maximize_screen(unsafe { PLUGIN_ID }) };
     }
 
     pub fn label(text: &str) {

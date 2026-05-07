@@ -5,6 +5,10 @@ edition = "2021"
 
 [workspace]
 
+[features]
+default = []
+debug-without-ddj = []
+
 [lib]
 crate-type = ["cdylib"]
 

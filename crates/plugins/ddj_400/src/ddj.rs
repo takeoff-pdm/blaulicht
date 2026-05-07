@@ -18,6 +18,12 @@ const KNOB_CC_BYTES: [u8; COUNT_FADERS] = [0x17, 0x18];
 
 const VIEW_SELECT_BUTTON_BASE_ID: u8 = 10;
 const VIEW_SELECT_OPTION_BASE_ID: u8 = 80;
+const ALLOW_MISSING_DDJ_400: bool = cfg!(debug_assertions) || cfg!(feature = "debug-without-ddj");
+const VIEW_BUTTON_COUNT: usize = 18;
+const DDJ_CANVAS_ID: u8 = 5;
+const DDJ_CANVAS_WIDTH: i32 = 760;
+const DDJ_CANVAS_HEIGHT: i32 = 320;
+const PAD_EVENT_HIGHLIGHT_MS: u32 = 650;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Deck {
@@ -45,11 +51,6 @@ impl Deck {
 enum ViewButtonKind {
     Pad(u8),
     Cue,
-    LoopIn4Beat,
-    LoopOut,
-    ReloopExit,
-    CueLoopPrevious,
-    CueLoopNext,
 }
 
 impl ViewButtonKind {
@@ -60,11 +61,6 @@ impl ViewButtonKind {
                     && (kind == pad.saturating_sub(1) || kind == 0x60 + pad.saturating_sub(1))
             }
             ViewButtonKind::Cue => status == deck.note_status() && kind == 0x0C,
-            ViewButtonKind::LoopIn4Beat => status == deck.note_status() && kind == 0x10,
-            ViewButtonKind::LoopOut => status == deck.note_status() && kind == 0x11,
-            ViewButtonKind::ReloopExit => status == deck.note_status() && kind == 0x4D,
-            ViewButtonKind::CueLoopPrevious => status == deck.note_status() && kind == 0x51,
-            ViewButtonKind::CueLoopNext => status == deck.note_status() && kind == 0x53,
         }
     }
 }
@@ -82,7 +78,7 @@ impl ViewButtonDefinition {
     }
 }
 
-const VIEW_BUTTONS: [ViewButtonDefinition; 28] = [
+const VIEW_BUTTONS: [ViewButtonDefinition; VIEW_BUTTON_COUNT] = [
     ViewButtonDefinition {
         label: "Deck 1 Pad 1",
         deck: Deck::Left,
@@ -173,56 +169,6 @@ const VIEW_BUTTONS: [ViewButtonDefinition; 28] = [
         deck: Deck::Right,
         kind: ViewButtonKind::Cue,
     },
-    ViewButtonDefinition {
-        label: "Deck 1 Loop In/4Beat",
-        deck: Deck::Left,
-        kind: ViewButtonKind::LoopIn4Beat,
-    },
-    ViewButtonDefinition {
-        label: "Deck 1 Loop Out",
-        deck: Deck::Left,
-        kind: ViewButtonKind::LoopOut,
-    },
-    ViewButtonDefinition {
-        label: "Deck 1 Reloop/Exit",
-        deck: Deck::Left,
-        kind: ViewButtonKind::ReloopExit,
-    },
-    ViewButtonDefinition {
-        label: "Deck 1 Cue/Loop Call <",
-        deck: Deck::Left,
-        kind: ViewButtonKind::CueLoopPrevious,
-    },
-    ViewButtonDefinition {
-        label: "Deck 1 Cue/Loop Call >",
-        deck: Deck::Left,
-        kind: ViewButtonKind::CueLoopNext,
-    },
-    ViewButtonDefinition {
-        label: "Deck 2 Loop In/4Beat",
-        deck: Deck::Right,
-        kind: ViewButtonKind::LoopIn4Beat,
-    },
-    ViewButtonDefinition {
-        label: "Deck 2 Loop Out",
-        deck: Deck::Right,
-        kind: ViewButtonKind::LoopOut,
-    },
-    ViewButtonDefinition {
-        label: "Deck 2 Reloop/Exit",
-        deck: Deck::Right,
-        kind: ViewButtonKind::ReloopExit,
-    },
-    ViewButtonDefinition {
-        label: "Deck 2 Cue/Loop Call <",
-        deck: Deck::Right,
-        kind: ViewButtonKind::CueLoopPrevious,
-    },
-    ViewButtonDefinition {
-        label: "Deck 2 Cue/Loop Call >",
-        deck: Deck::Right,
-        kind: ViewButtonKind::CueLoopNext,
-    },
 ];
 
 #[derive(Serialize, Deserialize)]
@@ -277,7 +223,7 @@ impl ViewInfo {
 }
 
 pub struct DDJSubSystem {
-    midi_handle: MidiConnection,
+    midi_handle: Option<MidiConnection>,
     last_sync: u32,
 
     fader_vals: [u8; COUNT_FADERS],
@@ -290,13 +236,15 @@ pub struct DDJSubSystem {
     available_views: Vec<ViewInfo>,
     button_view_ids: Vec<Option<u8>>,
     view_selector_open: Option<usize>,
+    pad_event_times: [Option<u32>; VIEW_BUTTON_COUNT],
+    current_time: u32,
     log: VecDeque<String>,
 }
 
 impl Default for DDJSubSystem {
     fn default() -> Self {
         Self {
-            midi_handle: unsafe { MidiConnection::dummy() },
+            midi_handle: None,
             last_sync: 0,
 
             fader_vals: [0; COUNT_FADERS],
@@ -309,6 +257,8 @@ impl Default for DDJSubSystem {
             available_views: vec![],
             button_view_ids: vec![None; VIEW_BUTTONS.len()],
             view_selector_open: None,
+            pad_event_times: [None; VIEW_BUTTON_COUNT],
+            current_time: 0,
             log: VecDeque::new(),
         }
     }
@@ -321,22 +271,34 @@ impl DDJSubSystem {
         println!("[DDJ_400] initializing...");
 
         let name = "DDJ-400";
-        let midi_handle = MidiConnection::open(name).unwrap();
-        println!(
-            "Got MIDI handle to device! HANDLE ID: {}",
-            midi_handle.get_meta().device_id
-        );
-
-        self.midi_handle = midi_handle;
+        match MidiConnection::open(name) {
+            Ok(midi_handle) => {
+                println!(
+                    "Got MIDI handle to device! HANDLE ID: {}",
+                    midi_handle.get_meta().device_id
+                );
+                self.midi_handle = Some(midi_handle);
+            }
+            Err(err) if ALLOW_MISSING_DDJ_400 => {
+                println!("[DDJ_400] MIDI device unavailable, continuing without hardware: {err}");
+                self.push_log("DDJ-400 not connected; UI debug mode active");
+            }
+            Err(err) => {
+                panic!("DDJ-400 MIDI device unavailable: {err}");
+            }
+        }
 
         println!("[DDJ_400] done.");
     }
 
     pub fn run(&mut self, input: TickInput) {
+        self.current_time = input.clock;
         self.sync(input.clock);
 
-        let res = self.midi_handle.poll();
-        self.midi_in(res);
+        if let Some(midi_handle) = self.midi_handle {
+            let res = midi_handle.poll();
+            self.midi_in(res, input.clock);
+        }
 
         for i in 0..COUNT_FADERS {
             self.handle_fader_input(i);
@@ -363,7 +325,10 @@ impl DDJSubSystem {
             }
         }
 
-        self.normalize_button_view_ids();
+        if self.normalize_button_view_ids() {
+            self.push_log("Removed obsolete DDJ-400 loop-control assignments");
+            self.save_state();
+        }
     }
 
     fn normalize_button_view_ids(&mut self) -> bool {
@@ -446,7 +411,7 @@ impl DDJSubSystem {
         Some((id - VIEW_SELECT_OPTION_BASE_ID) as usize)
     }
 
-    fn midi_in(&mut self, ev: Vec<MidiEvent>) {
+    fn midi_in(&mut self, ev: Vec<MidiEvent>, current_time: u32) {
         for e in ev {
             match (e.status, e.kind, e.value) {
                 (fader_status, FADER_CC, value) if FADER_STATUS_BYTES.contains(&fader_status) => {
@@ -464,9 +429,12 @@ impl DDJSubSystem {
                 }
                 (status, kind, value) if value > 0 => {
                     if let Some(button_idx) = self.view_button_for_midi(status, kind) {
+                        if self.is_deck_pad_button(button_idx) {
+                            self.pad_event_times[button_idx] = Some(current_time);
+                        }
                         self.activate_view(button_idx);
                     } else {
-                        println!("{}: {:?}", self.midi_handle.get_meta().device_id, e);
+                        println!("DDJ-400 MIDI: {:?}", e);
                     }
                 }
                 _ => {}
@@ -478,6 +446,21 @@ impl DDJSubSystem {
         VIEW_BUTTONS
             .iter()
             .position(|button| button.matches(status, kind))
+    }
+
+    fn is_deck_pad_button(&self, button_idx: usize) -> bool {
+        VIEW_BUTTONS
+            .get(button_idx)
+            .map(|button| matches!(button.kind, ViewButtonKind::Pad(_)))
+            .unwrap_or(false)
+    }
+
+    fn pad_position(&self, button_idx: usize) -> Option<(Deck, u8)> {
+        let button = VIEW_BUTTONS.get(button_idx)?;
+        match button.kind {
+            ViewButtonKind::Pad(pad) => Some((button.deck, pad)),
+            _ => None,
+        }
     }
 
     fn activate_view(&mut self, button_idx: usize) {
@@ -596,6 +579,175 @@ impl DDJSubSystem {
         bpf::send_event(ControlEvent::SetSceneMasterSpeed(scene_id, speed));
     }
 
+    fn deck_rect(deck: Deck) -> (i32, i32, i32, i32) {
+        match deck {
+            Deck::Left => (28, 62, 310, 220),
+            Deck::Right => (422, 62, 310, 220),
+        }
+    }
+
+    fn pad_rect(deck: Deck, pad: u8) -> Option<(i32, i32, i32, i32)> {
+        if !(1..=8).contains(&pad) {
+            return None;
+        }
+
+        let (deck_x, deck_y, _, _) = Self::deck_rect(deck);
+        let col = ((pad - 1) % 4) as i32;
+        let row = ((pad - 1) / 4) as i32;
+        let w = 50;
+        let h = 38;
+        let gap = 9;
+        let x = deck_x + 82 + col * (w + gap);
+        let y = deck_y + 132 + row * (h + gap);
+
+        Some((x, y, w, h))
+    }
+
+    fn pad_button_at_canvas(&self, x: i32, y: i32) -> Option<usize> {
+        VIEW_BUTTONS
+            .iter()
+            .enumerate()
+            .filter_map(|(button_idx, _)| {
+                let (deck, pad) = self.pad_position(button_idx)?;
+                let (pad_x, pad_y, pad_w, pad_h) = Self::pad_rect(deck, pad)?;
+                Some((button_idx, pad_x, pad_y, pad_w, pad_h))
+            })
+            .find(|(_, pad_x, pad_y, pad_w, pad_h)| {
+                x >= *pad_x && x <= *pad_x + *pad_w && y >= *pad_y && y <= *pad_y + *pad_h
+            })
+            .map(|(button_idx, _, _, _, _)| button_idx)
+    }
+
+    fn pad_fill_color(&self, button_idx: usize) -> (u8, u8, u8) {
+        let selected = self.view_selector_open == Some(button_idx);
+        let active = self.pad_event_times[button_idx]
+            .map(|event_time| {
+                self.current_time.saturating_sub(event_time) <= PAD_EVENT_HIGHLIGHT_MS
+            })
+            .unwrap_or(false);
+        let assigned = self
+            .button_view_ids
+            .get(button_idx)
+            .copied()
+            .flatten()
+            .is_some();
+
+        if active {
+            (235, 160, 36)
+        } else if selected {
+            (55, 140, 220)
+        } else if assigned {
+            (42, 82, 125)
+        } else {
+            (55, 60, 70)
+        }
+    }
+
+    fn draw_deck(&self, deck: Deck, title: &str) {
+        let (x, y, w, h) = Self::deck_rect(deck);
+        ui::painter_rect(x, y, w, h, 26, 31, 38, 255);
+        ui::painter_rect_stroke(x, y, w, h, 90, 98, 112, 255, 2);
+        ui::painter_text(x + 14, y + 12, 16, 218, 222, 230, 255, title);
+
+        ui::painter_circle(x + 80, y + 82, 54, 44, 48, 56, 255);
+        ui::painter_circle_stroke(x + 80, y + 82, 54, 120, 130, 145, 255, 2);
+        ui::painter_circle_stroke(x + 80, y + 82, 28, 78, 86, 98, 255, 2);
+        ui::painter_rect(x + 164, y + 34, 100, 14, 58, 65, 78, 255);
+        ui::painter_rect(x + 164, y + 60, 100, 14, 58, 65, 78, 255);
+
+        for (button_idx, _) in VIEW_BUTTONS.iter().enumerate() {
+            let Some((button_deck, pad)) = self.pad_position(button_idx) else {
+                continue;
+            };
+            if button_deck != deck {
+                continue;
+            }
+            let Some((pad_x, pad_y, pad_w, pad_h)) = Self::pad_rect(deck, pad) else {
+                continue;
+            };
+
+            let (r, g, b) = self.pad_fill_color(button_idx);
+            ui::painter_rect(pad_x, pad_y, pad_w, pad_h, r, g, b, 255);
+            let selected = self.view_selector_open == Some(button_idx);
+            let (sr, sg, sb) = if selected {
+                (250, 218, 90)
+            } else {
+                (125, 136, 150)
+            };
+            ui::painter_rect_stroke(pad_x, pad_y, pad_w, pad_h, sr, sg, sb, 255, 2);
+            ui::painter_text(
+                pad_x + 6,
+                pad_y + 5,
+                12,
+                236,
+                240,
+                246,
+                255,
+                &format!("P{pad}"),
+            );
+
+            if let Some(view_id) = self.button_view_ids.get(button_idx).copied().flatten() {
+                let label = self
+                    .view_info(view_id)
+                    .map(|info| info.view.name.as_str())
+                    .unwrap_or("?");
+                let short_label = label.chars().take(7).collect::<String>();
+                ui::painter_text(pad_x + 6, pad_y + 21, 10, 230, 235, 242, 235, &short_label);
+            }
+        }
+    }
+
+    fn draw_digital_twin(&self) {
+        ui::painter_begin(DDJ_CANVAS_ID, DDJ_CANVAS_WIDTH, DDJ_CANVAS_HEIGHT);
+        ui::painter_rect(0, 0, DDJ_CANVAS_WIDTH, DDJ_CANVAS_HEIGHT, 16, 18, 23, 255);
+        ui::painter_rect_stroke(
+            0,
+            0,
+            DDJ_CANVAS_WIDTH,
+            DDJ_CANVAS_HEIGHT,
+            72,
+            80,
+            94,
+            255,
+            2,
+        );
+        ui::painter_text(22, 18, 18, 232, 236, 244, 255, "DDJ-400");
+
+        ui::painter_rect(346, 62, 68, 220, 22, 26, 32, 255);
+        ui::painter_rect_stroke(346, 62, 68, 220, 82, 90, 104, 255, 2);
+        ui::painter_rect(371, 84, 18, 142, 58, 65, 78, 255);
+        ui::painter_rect(366, 226, 28, 36, 42, 48, 58, 255);
+
+        self.draw_deck(Deck::Left, "Deck 1");
+        self.draw_deck(Deck::Right, "Deck 2");
+
+        ui::painter_text(
+            28,
+            292,
+            12,
+            160,
+            168,
+            180,
+            255,
+            "Click a deck pad to assign a view",
+        );
+        ui::painter_end();
+    }
+
+    fn draw_view_options(&self) {
+        ui::begin_vertical();
+        for (view_idx, view_info) in self.available_views.iter().enumerate() {
+            if view_idx > (u8::MAX - VIEW_SELECT_OPTION_BASE_ID) as usize {
+                ui::label("View list truncated");
+                break;
+            }
+
+            let option_id = VIEW_SELECT_OPTION_BASE_ID + view_idx as u8;
+            ui::button(&view_info.option_label(), option_id);
+        }
+        ui::end_vertical();
+    }
+
     fn draw_ui(&mut self, events: &[ControlEventMessage], plugin_id: u8) {
         ui::begin();
 
@@ -605,16 +757,25 @@ impl DDJSubSystem {
             ui::label("No views available.");
         }
 
+        self.draw_digital_twin();
+
+        if let Some(button_idx) = self.view_selector_open {
+            if self.is_deck_pad_button(button_idx) {
+                ui::label(&format!("Assign {}", VIEW_BUTTONS[button_idx].label));
+                self.draw_view_options();
+            }
+        }
+
+        let mut cue_section_started = false;
         for (button_idx, button) in VIEW_BUTTONS.iter().enumerate() {
-            if button_idx == 0 {
+            if self.is_deck_pad_button(button_idx) {
+                continue;
+            }
+
+            if !cue_section_started {
                 ui::separator();
-                ui::label("Deck 1 cue buttons");
-            } else if button_idx == 9 {
-                ui::separator();
-                ui::label("Deck 2 cue buttons");
-            } else if button_idx == 18 {
-                ui::separator();
-                ui::label("Loop controls");
+                ui::label("Cue buttons");
+                cue_section_started = true;
             }
 
             let Some(view_button_id) = Self::view_selector_button_id(button_idx) else {
@@ -633,17 +794,7 @@ impl DDJSubSystem {
             ui::button(&view_button_label, view_button_id);
 
             if self.view_selector_open == Some(button_idx) {
-                ui::begin_vertical();
-                for (view_idx, view_info) in self.available_views.iter().enumerate() {
-                    if view_idx > (u8::MAX - VIEW_SELECT_OPTION_BASE_ID) as usize {
-                        ui::label("View list truncated");
-                        break;
-                    }
-
-                    let option_id = VIEW_SELECT_OPTION_BASE_ID + view_idx as u8;
-                    ui::button(&view_info.option_label(), option_id);
-                }
-                ui::end_vertical();
+                self.draw_view_options();
             }
 
             ui::end_horizontal();
@@ -662,33 +813,42 @@ impl DDJSubSystem {
                     continue;
                 }
 
-                if let PluginUiEvent::Button { id } = ui_event {
-                    if let Some(button_idx) = Self::decode_view_selector_button(id) {
-                        if self.view_selector_open == Some(button_idx) {
-                            self.view_selector_open = None;
-                        } else {
-                            self.view_selector_open = Some(button_idx);
-                        }
-                    } else if let Some(view_idx) = Self::decode_view_option(id) {
-                        if let Some(button_idx) = self.view_selector_open.take() {
-                            if button_idx < VIEW_BUTTONS.len()
-                                && view_idx < self.available_views.len()
-                            {
-                                let view_info = self.available_views[view_idx].clone();
-                                if let Some(slot) = self.button_view_ids.get_mut(button_idx) {
-                                    *slot = Some(view_info.id);
-                                }
-                                self.push_log(format!(
-                                    "{} mapped to {}",
-                                    VIEW_BUTTONS[button_idx].label,
-                                    view_info.option_label()
-                                ));
-                                self.save_state();
+                match ui_event {
+                    PluginUiEvent::Button { id } => {
+                        if let Some(button_idx) = Self::decode_view_selector_button(id) {
+                            if self.view_selector_open == Some(button_idx) {
+                                self.view_selector_open = None;
                             } else {
-                                self.push_log("View selection out of range");
+                                self.view_selector_open = Some(button_idx);
+                            }
+                        } else if let Some(view_idx) = Self::decode_view_option(id) {
+                            if let Some(button_idx) = self.view_selector_open.take() {
+                                if button_idx < VIEW_BUTTONS.len()
+                                    && view_idx < self.available_views.len()
+                                {
+                                    let view_info = self.available_views[view_idx].clone();
+                                    if let Some(slot) = self.button_view_ids.get_mut(button_idx) {
+                                        *slot = Some(view_info.id);
+                                    }
+                                    self.push_log(format!(
+                                        "{} mapped to {}",
+                                        VIEW_BUTTONS[button_idx].label,
+                                        view_info.option_label()
+                                    ));
+                                    self.save_state();
+                                } else {
+                                    self.push_log("View selection out of range");
+                                }
                             }
                         }
                     }
+                    PluginUiEvent::CanvasClick { id, x, y } if id == DDJ_CANVAS_ID => {
+                        if let Some(button_idx) = self.pad_button_at_canvas(x, y) {
+                            self.view_selector_open = Some(button_idx);
+                            self.push_log(format!("Selected {}", VIEW_BUTTONS[button_idx].label));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
