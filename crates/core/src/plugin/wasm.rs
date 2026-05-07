@@ -4,6 +4,7 @@ use blaulicht_shared::ControlEvent;
 use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
 use blaulicht_shared::LogLevel;
+use blaulicht_shared::MainUiEvent;
 use blaulicht_shared::PluginStateLocation;
 
 use egui::ahash::HashMapExt;
@@ -20,6 +21,7 @@ use wasmtime::*;
 use crate::command::Command;
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
+use crate::state::PluginOpenState;
 use crate::ui_ops::WasmUiOp;
 use crate::{
     msg::SystemMessage,
@@ -401,6 +403,51 @@ impl PluginManager {
 
             // Start a fresh back buffer for recording
             back_map.insert(pid, Vec::new());
+        })?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, i32>("blaulicht", "ui_is_open", move |plugin_id: i32| {
+            let pid = plugin_id as u8;
+            let map = state_ref.plugin_ui_visibility.read().unwrap();
+            if map.get(&pid).is_some_and(|visibility| visibility.open) {
+                1
+            } else {
+                0
+            }
+        })?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        let event_bus = self.event_bus.clone();
+        linker.func_wrap::<_, ()>("blaulicht", "ui_maximize_screen", move |plugin_id: i32| {
+            let pid = plugin_id as u8;
+
+            let was_open = {
+                let mut map = state_ref.plugin_ui_visibility.write().unwrap();
+                let entry = map.entry(pid).or_insert(PluginOpenState::CLOSED);
+                let was_open = entry.open;
+                entry.open = true;
+                was_open
+            };
+
+            {
+                let mut map = state_ref.plugin_ui_popped_out.write().unwrap();
+                map.insert(pid, true);
+            }
+
+            {
+                let mut map = state_ref.plugin_ui_maximize_requested.write().unwrap();
+                map.insert(pid, true);
+            }
+
+            if !was_open {
+                event_bus.send(ControlEventMessage::new(
+                    EventOriginator::Plugin,
+                    ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
+                        plugin_id: pid,
+                        open: true,
+                    }),
+                ));
+            }
         })?;
 
         let state_ref = Arc::clone(&self.state_ref);

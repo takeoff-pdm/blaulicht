@@ -136,13 +136,14 @@ impl BlaulichtApp {
         // Navbar
         self.show_navbar(ctx);
 
-        egui::TopBottomPanel::bottom("horizontal_nav")
-            .resizable(false)
-            .frame(Frame::NONE)
-            .show_separator_line(true)
-            .show(ctx, |ui| {
-                components::horizontal_nav(ui);
-            });
+        // TODO: experimental -> add back later.
+        // egui::TopBottomPanel::bottom("horizontal_nav")
+        //     .resizable(false)
+        //     .frame(Frame::NONE)
+        //     .show_separator_line(true)
+        //     .show(ctx, |ui| {
+        //         components::horizontal_nav(ui);
+        //     });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // // Update animation time for continuous rendering

@@ -1,25 +1,15 @@
 use crate::{
     app::{
-        components::{self, ButtonSize, Dialog}, external_screen, BlaulichtApp, ExternalScreen, PopupSpec
+        components::{self, ButtonSize, Dialog},
+        external_screen, BlaulichtApp, ExternalScreen, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
-    state::{
-        PluginOpenState, ScreenId, NUM_DMX_UNIVERSES,
-    },
+    state::{PluginOpenState, ScreenId, NUM_DMX_UNIVERSES},
 };
-use blaulicht_shared::{
-    ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
-};
-use egui::{
-    Color32, Context, FontId, RichText, ThemePreference,
-};
-use std::{
-    mem,
-    path::Path,
-    process::Command,
-    time::Duration,
-};
+use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
+use egui::{Color32, Context, FontId, RichText, ThemePreference};
+use std::{mem, path::Path, process::Command, time::Duration};
 
 impl BlaulichtApp {
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
@@ -83,10 +73,16 @@ impl BlaulichtApp {
         self.render_plugin_popup(ctx, screen_id);
 
         let button_size = ButtonSize::Medium.with_width(110.0);
+        const HEALTH_COLUMN_WIDTH: f32 = 136.0;
 
         ui.horizontal(|ui| {
+            let default_item_spacing = ui.spacing().item_spacing;
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let main_column_width = (ui.available_width() - HEALTH_COLUMN_WIDTH - 1.0).max(0.0);
+
             ui.vertical(|ui| {
-                ui.set_width(625.0);
+                ui.spacing_mut().item_spacing = default_item_spacing;
+                ui.set_width(main_column_width);
                 ui.horizontal(|ui| {
                     let showfile = self
                         .data
@@ -170,30 +166,15 @@ impl BlaulichtApp {
 
                         ui.label(format!("LOOP {:?}", signal));
 
-                        let bg_color = match signal {
-                            AudioThreadControlSignal::CONTINUE => egui::Color32::from_gray(40),
+                        let disabled = match signal {
+                            AudioThreadControlSignal::CONTINUE => false,
                             AudioThreadControlSignal::ABORT
                             | AudioThreadControlSignal::ABORTED
-                            | AudioThreadControlSignal::CRASHED => egui::Color32::DARK_RED,
-                            AudioThreadControlSignal::RELOAD => {
-                                egui::Color32::from_rgb(60, 120, 200)
-                            }
+                            | AudioThreadControlSignal::CRASHED
+                            | AudioThreadControlSignal::RELOAD => true,
                         };
 
-                        let rect =
-                            ui.allocate_exact_size(egui::vec2(90.0, 60.0), egui::Sense::click());
-                        let painter = ui.painter();
-                        painter.rect_filled(rect.0, 0.0, bg_color);
-
-                        painter.text(
-                            rect.0.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "RELOAD",
-                            egui::FontId::proportional(16.0),
-                            egui::Color32::WHITE,
-                        );
-
-                        if rect.1.clicked() && signal != AudioThreadControlSignal::RELOAD {
+                        if components::button(ui, !disabled, "Reload", button_size) && !disabled {
                             self.data
                                 .from_frontend_sender
                                 .send(FromFrontend::Reload)
@@ -205,16 +186,20 @@ impl BlaulichtApp {
                             ));
                         }
                     }
-
-                    {}
                 });
             });
 
-            ui.separator();
+            let (separator_rect, _) = ui
+                .allocate_exact_size(egui::vec2(1.0, ui.available_height()), egui::Sense::hover());
+            ui.painter().vline(
+                separator_rect.center().x,
+                separator_rect.y_range(),
+                ui.visuals().widgets.noninteractive.bg_stroke,
+            );
 
             ui.allocate_ui_with_layout(
-                egui::vec2(70.0, ui.available_height()),
-                egui::Layout::top_down(egui::Align::Center),
+                egui::vec2(HEALTH_COLUMN_WIDTH, ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     self.render_health_indicators(ui);
                 },

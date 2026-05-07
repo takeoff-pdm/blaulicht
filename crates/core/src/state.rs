@@ -209,7 +209,8 @@ pub struct AppState {
     // This is (plugin-id, screen_id) to visibility.
     pub plugin_ui_visibility: RwLock<HashMap<u8, PluginOpenState>>,
     pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
-    pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>, // (plugin_id, tabs_id) -> tab_id
+    pub plugin_ui_maximize_requested: RwLock<HashMap<u8, bool>>, // one-shot per-plugin viewport maximize request
+    pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>,  // (plugin_id, tabs_id) -> tab_id
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -243,7 +244,7 @@ impl AppState {
         let mut plugin_ui_popped_out = HashMap::new();
         for (i, _) in plugins.iter().enumerate() {
             plugin_ui_visibility.insert(i as u8, PluginOpenState::CLOSED);
-            plugin_ui_popped_out.insert(i as u8 , false);
+            plugin_ui_popped_out.insert(i as u8, false);
         }
 
         Self {
@@ -271,6 +272,7 @@ impl AppState {
             plugin_ui_ops_back: RwLock::new(HashMap::new()),
             plugin_ui_visibility: RwLock::new(plugin_ui_visibility),
             plugin_ui_popped_out: RwLock::new(plugin_ui_popped_out),
+            plugin_ui_maximize_requested: RwLock::new(HashMap::new()),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
