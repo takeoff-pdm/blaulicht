@@ -11,7 +11,7 @@ use crate::{
         },
     },
     msg::TickSpeeds,
-    state::{AppStateWrapper, NUM_DMX_UNIVERSES},
+    state::{AppStateWrapper, ScreenId, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
@@ -21,7 +21,7 @@ use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -110,6 +110,7 @@ pub struct BlaulichtApp {
 
     main_screen_desktop_mode: ExternalScreen,
     external_screens: Vec<ExternalScreen>,
+    plugin_ui_visible_tabs: HashSet<(ScreenId, u8)>,
 
     // Example stuff:
     // label: String,
@@ -264,6 +265,7 @@ impl BlaulichtApp {
             navbar: Navbar::new(AppPage::Logs),
             main_screen_desktop_mode: ExternalScreen::default(),
             external_screens: vec![],
+            plugin_ui_visible_tabs: HashSet::new(),
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
                 "Volume".to_string(),

@@ -2,41 +2,76 @@
 
 use crate::{
     app::{BlaulichtApp, ExternalScreen},
-    config::{ShowfileDockNode, ShowfileDockSplitAxis, ShowfileExternalScreen, ShowfileUiState},
-    state::ScreenId,
+    config::{
+        ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab, ShowfileExternalScreen,
+        ShowfileUiState,
+    },
+    state::{PluginOpenState, ScreenId},
 };
 use blaulicht_shared::AppPage;
 use egui::{pos2, vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2, WidgetText};
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Node, NodeIndex, Split, Style, Tree};
+use std::collections::HashSet;
 use strum::IntoEnumIterator;
 
 #[derive(Clone)]
 pub(crate) struct Pane {
-    page: AppPage,
+    kind: PaneKind,
+}
+
+#[derive(Clone, Copy)]
+enum PaneKind {
+    Page(AppPage),
+    PluginUi { plugin_id: u8 },
 }
 
 impl Pane {
     fn new(page: AppPage) -> Self {
-        Self { page }
+        Self {
+            kind: PaneKind::Page(page),
+        }
     }
 
-    fn label(&self) -> &str {
-        match self.page {
-            AppPage::Logs => "Logs",
-            AppPage::System => "System",
-            AppPage::Audio => "Audio",
-            AppPage::FixturesSetup => "Fixtures Setup",
-            AppPage::View => "View",
-            AppPage::ViewPerformance => "View Performance",
-            AppPage::FixturesPerformance => "Fixtures Performance",
-            AppPage::Animations => "Animations",
-            AppPage::Visualizer => "Visualizer",
+    fn plugin_ui(plugin_id: u8) -> Self {
+        Self {
+            kind: PaneKind::PluginUi { plugin_id },
+        }
+    }
+
+    fn label(&self) -> String {
+        match self.kind {
+            PaneKind::Page(AppPage::Logs) => "Logs".to_string(),
+            PaneKind::Page(AppPage::System) => "System".to_string(),
+            PaneKind::Page(AppPage::Audio) => "Audio".to_string(),
+            PaneKind::Page(AppPage::FixturesSetup) => "Fixtures Setup".to_string(),
+            PaneKind::Page(AppPage::View) => "View".to_string(),
+            PaneKind::Page(AppPage::ViewPerformance) => "View Performance".to_string(),
+            PaneKind::Page(AppPage::FixturesPerformance) => "Fixtures Performance".to_string(),
+            PaneKind::Page(AppPage::Animations) => "Animations".to_string(),
+            PaneKind::Page(AppPage::Visualizer) => "Visualizer".to_string(),
+            PaneKind::PluginUi { plugin_id } => format!("Plugin UI #{plugin_id}"),
         }
     }
 
     fn title_text(&self) -> WidgetText {
         self.label().into()
+    }
+
+    fn to_showfile_tab(&self) -> ShowfileDockTab {
+        match self.kind {
+            PaneKind::Page(page) => ShowfileDockTab::Page(page),
+            PaneKind::PluginUi { plugin_id } => ShowfileDockTab::PluginUi { plugin_id },
+        }
+    }
+}
+
+impl From<ShowfileDockTab> for Pane {
+    fn from(tab: ShowfileDockTab) -> Self {
+        match tab {
+            ShowfileDockTab::Page(page) => Pane::new(page),
+            ShowfileDockTab::PluginUi { plugin_id } => Pane::plugin_ui(plugin_id),
+        }
     }
 }
 
@@ -63,17 +98,33 @@ impl ExternalScreen {
         }
     }
 
-    fn ensure_core_tabs(&mut self) {
+    fn ensure_tabs(&mut self, plugin_ids: &[u8]) {
         let present_pages = {
             let mut pages = Vec::new();
             for surface in self.dock_state.iter_surfaces() {
                 for (_, pane) in surface.iter_all_tabs() {
-                    if !pages.contains(&pane.page) {
-                        pages.push(pane.page);
+                    if let PaneKind::Page(page) = pane.kind {
+                        if !pages.contains(&page) {
+                            pages.push(page);
+                        }
                     }
                 }
             }
             pages
+        };
+
+        let present_plugin_ids = {
+            let mut ids = Vec::new();
+            for surface in self.dock_state.iter_surfaces() {
+                for (_, pane) in surface.iter_all_tabs() {
+                    if let PaneKind::PluginUi { plugin_id } = pane.kind {
+                        if !ids.contains(&plugin_id) {
+                            ids.push(plugin_id);
+                        }
+                    }
+                }
+            }
+            ids
         };
 
         for page in AppPage::iter() {
@@ -81,6 +132,17 @@ impl ExternalScreen {
                 self.dock_state.push_to_first_leaf(Pane::new(page));
             }
         }
+
+        for plugin_id in plugin_ids {
+            if !present_plugin_ids.contains(plugin_id) {
+                self.dock_state
+                    .push_to_first_leaf(Pane::plugin_ui(*plugin_id));
+            }
+        }
+    }
+
+    fn ensure_core_tabs(&mut self) {
+        self.ensure_tabs(&[]);
     }
 
     pub(crate) fn to_showfile(&self) -> ShowfileExternalScreen {
@@ -130,7 +192,7 @@ impl ExternalScreen {
 
 fn default_saved_dock_node() -> ShowfileDockNode {
     ShowfileDockNode::Leaf {
-        tabs: AppPage::iter().collect(),
+        tabs: AppPage::iter().map(ShowfileDockTab::Page).collect(),
         active: 0,
     }
 }
@@ -149,7 +211,7 @@ fn seed_tabs_for_saved_node(node: &ShowfileDockNode) -> Vec<Pane> {
     if tabs.is_empty() {
         vec![Pane::new(AppPage::Logs)]
     } else {
-        tabs.into_iter().map(Pane::new).collect()
+        tabs.into_iter().map(Pane::from).collect()
     }
 }
 
@@ -160,7 +222,7 @@ fn saved_dock_node(tree: &Tree<Pane>, index: NodeIndex) -> Option<ShowfileDockNo
 
     match &tree[index] {
         Node::Leaf(leaf) => Some(ShowfileDockNode::Leaf {
-            tabs: leaf.tabs.iter().map(|pane| pane.page).collect(),
+            tabs: leaf.tabs.iter().map(Pane::to_showfile_tab).collect(),
             active: leaf.active.0,
         }),
         Node::Horizontal(split) => Some(ShowfileDockNode::Split {
@@ -184,7 +246,7 @@ fn apply_saved_dock_node(tree: &mut Tree<Pane>, index: NodeIndex, node: &Showfil
         ShowfileDockNode::Leaf { tabs, active } => {
             if let Ok(leaf) = tree.leaf_mut(index) {
                 if !tabs.is_empty() {
-                    leaf.tabs = tabs.iter().copied().map(Pane::new).collect();
+                    leaf.tabs = tabs.iter().copied().map(Pane::from).collect();
                 }
 
                 if !leaf.tabs.is_empty() {
@@ -218,6 +280,7 @@ struct TabViewer<'bl, 'ct> {
     app: &'bl mut BlaulichtApp,
     ctx: &'ct Context,
     screen_id: ScreenId,
+    visible_plugin_tabs: &'bl mut Vec<u8>,
 }
 
 impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
@@ -242,12 +305,20 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
 
                 child_ui.set_clip_rect(rect);
 
-                self.app.page_content_based_on_tab(
-                    tab.page,
-                    &mut child_ui,
-                    self.ctx,
-                    self.screen_id,
-                );
+                match tab.kind {
+                    PaneKind::Page(page) => {
+                        self.app.page_content_based_on_tab(
+                            page,
+                            &mut child_ui,
+                            self.ctx,
+                            self.screen_id,
+                        );
+                    }
+                    PaneKind::PluginUi { plugin_id } => {
+                        self.visible_plugin_tabs.push(plugin_id);
+                        self.app.render_plugin_ui_contents(&mut child_ui, plugin_id);
+                    }
+                }
             });
     }
 
@@ -258,6 +329,78 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
 }
 
 impl BlaulichtApp {
+    fn plugin_ui_tab_ids(&self) -> Vec<u8> {
+        let mut plugin_ids: Vec<u8> = self
+            .data
+            .state
+            .plugins
+            .read()
+            .unwrap()
+            .keys()
+            .copied()
+            .collect();
+        plugin_ids.sort_unstable();
+        plugin_ids
+    }
+
+    fn sync_plugin_ui_tab_visibility(&mut self, screen_id: ScreenId, visible_plugin_tabs: &[u8]) {
+        let current_visible: HashSet<u8> = visible_plugin_tabs.iter().copied().collect();
+        let previous_visible: HashSet<u8> = self
+            .plugin_ui_visible_tabs
+            .iter()
+            .filter_map(|(visible_screen_id, plugin_id)| {
+                (*visible_screen_id == screen_id).then_some(*plugin_id)
+            })
+            .collect();
+
+        for plugin_id in current_visible.difference(&previous_visible) {
+            self.set_plugin_ui_tab_open(*plugin_id, screen_id, true);
+        }
+
+        for plugin_id in previous_visible.difference(&current_visible) {
+            let visible_elsewhere =
+                self.plugin_ui_visible_tabs
+                    .iter()
+                    .any(|(visible_screen_id, visible_plugin_id)| {
+                        *visible_plugin_id == *plugin_id && *visible_screen_id != screen_id
+                    });
+
+            if !visible_elsewhere {
+                self.set_plugin_ui_tab_open(*plugin_id, screen_id, false);
+            }
+        }
+
+        self.plugin_ui_visible_tabs
+            .retain(|(visible_screen_id, _)| *visible_screen_id != screen_id);
+        self.plugin_ui_visible_tabs.extend(
+            current_visible
+                .into_iter()
+                .map(|plugin_id| (screen_id, plugin_id)),
+        );
+    }
+
+    fn set_plugin_ui_tab_open(&mut self, plugin_id: u8, screen_id: ScreenId, open: bool) {
+        let changed = {
+            let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+            let entry = map.entry(plugin_id).or_insert(PluginOpenState::CLOSED);
+
+            if !open && entry.screen_id != screen_id {
+                return;
+            }
+
+            let changed = entry.open != open;
+            entry.open = open;
+            if open {
+                entry.screen_id = screen_id;
+            }
+            changed
+        };
+
+        if changed {
+            super::plugin_ui::notify_plugin_ui_open(&self.data, plugin_id, open);
+        }
+    }
+
     pub(crate) fn showfile_ui_state(&self) -> ShowfileUiState {
         ShowfileUiState {
             main_screen_desktop_mode: Some(self.main_screen_desktop_mode.to_showfile()),
@@ -313,23 +456,30 @@ impl BlaulichtApp {
         screen: &mut ExternalScreen,
     ) {
         screen.update_viewport_geometry(ctx);
-        self.render_plugin_ui(ctx, screen_id);
+        let plugin_ids = self.plugin_ui_tab_ids();
+        screen.ensure_tabs(&plugin_ids);
 
-        let mut tab_viewer = TabViewer {
-            app: self,
-            ctx,
-            screen_id,
-        };
+        let mut visible_plugin_tabs = Vec::new();
 
-        DockArea::new(screen.dock_state())
-            .id(Id::new(("external_screen_dock", screen_id)))
-            .style(Style::from_egui(ctx.style().as_ref()))
-            .show_close_buttons(false)
-            .show_leaf_close_all_buttons(false)
-            .show_leaf_collapse_buttons(false)
-            .show(ctx, &mut tab_viewer);
+        {
+            let mut tab_viewer = TabViewer {
+                app: self,
+                ctx,
+                screen_id,
+                visible_plugin_tabs: &mut visible_plugin_tabs,
+            };
 
-        screen.ensure_core_tabs();
+            DockArea::new(screen.dock_state())
+                .id(Id::new(("external_screen_dock", screen_id)))
+                .style(Style::from_egui(ctx.style().as_ref()))
+                .show_close_buttons(false)
+                .show_leaf_close_all_buttons(false)
+                .show_leaf_collapse_buttons(false)
+                .show(ctx, &mut tab_viewer);
+        }
+
+        self.sync_plugin_ui_tab_visibility(screen_id, &visible_plugin_tabs);
+        screen.ensure_tabs(&plugin_ids);
     }
 }
 
@@ -362,6 +512,23 @@ mod tests {
                 assert!((fraction - 0.35).abs() < f32::EPSILON);
             }
             ShowfileDockNode::Leaf { .. } => panic!("expected split layout"),
+        }
+    }
+
+    #[test]
+    fn external_screen_showfile_round_trip_keeps_plugin_tabs() {
+        let mut screen = ExternalScreen::new(vec2(1024.0, 768.0));
+        screen.ensure_tabs(&[2]);
+
+        let saved = screen.to_showfile();
+        let restored = ExternalScreen::from_showfile(saved);
+        let saved_again = restored.to_showfile();
+
+        match saved_again.layout {
+            ShowfileDockNode::Leaf { tabs, .. } => {
+                assert!(tabs.contains(&ShowfileDockTab::PluginUi { plugin_id: 2 }));
+            }
+            ShowfileDockNode::Split { .. } => panic!("expected leaf layout"),
         }
     }
 }

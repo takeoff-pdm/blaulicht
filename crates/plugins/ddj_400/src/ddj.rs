@@ -16,13 +16,12 @@ const FADER_CC: u8 = 0x13;
 const KNOB_STATUS: u8 = 0xB6;
 const KNOB_CC_BYTES: [u8; COUNT_FADERS] = [0x17, 0x18];
 
-const VIEW_SELECT_BUTTON_BASE_ID: u8 = 10;
 const VIEW_SELECT_OPTION_BASE_ID: u8 = 80;
 const ALLOW_MISSING_DDJ_400: bool = cfg!(debug_assertions) || cfg!(feature = "debug-without-ddj");
-const VIEW_BUTTON_COUNT: usize = 18;
+const VIEW_BUTTON_COUNT: usize = 16;
 const DDJ_CANVAS_ID: u8 = 5;
 const DDJ_CANVAS_WIDTH: i32 = 760;
-const DDJ_CANVAS_HEIGHT: i32 = 320;
+const DDJ_CANVAS_HEIGHT: i32 = 280;
 const PAD_EVENT_HIGHLIGHT_MS: u32 = 650;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -32,13 +31,6 @@ enum Deck {
 }
 
 impl Deck {
-    fn note_status(self) -> u8 {
-        match self {
-            Deck::Left => 0x90,
-            Deck::Right => 0x91,
-        }
-    }
-
     fn pad_status(self) -> u8 {
         match self {
             Deck::Left => 0x97,
@@ -50,7 +42,6 @@ impl Deck {
 #[derive(Clone, Copy, PartialEq)]
 enum ViewButtonKind {
     Pad(u8),
-    Cue,
 }
 
 impl ViewButtonKind {
@@ -60,7 +51,6 @@ impl ViewButtonKind {
                 status == deck.pad_status()
                     && (kind == pad.saturating_sub(1) || kind == 0x60 + pad.saturating_sub(1))
             }
-            ViewButtonKind::Cue => status == deck.note_status() && kind == 0x0C,
         }
     }
 }
@@ -120,11 +110,6 @@ const VIEW_BUTTONS: [ViewButtonDefinition; VIEW_BUTTON_COUNT] = [
         kind: ViewButtonKind::Pad(8),
     },
     ViewButtonDefinition {
-        label: "Deck 1 Cue",
-        deck: Deck::Left,
-        kind: ViewButtonKind::Cue,
-    },
-    ViewButtonDefinition {
         label: "Deck 2 Pad 1",
         deck: Deck::Right,
         kind: ViewButtonKind::Pad(1),
@@ -164,11 +149,6 @@ const VIEW_BUTTONS: [ViewButtonDefinition; VIEW_BUTTON_COUNT] = [
         deck: Deck::Right,
         kind: ViewButtonKind::Pad(8),
     },
-    ViewButtonDefinition {
-        label: "Deck 2 Cue",
-        deck: Deck::Right,
-        kind: ViewButtonKind::Cue,
-    },
 ];
 
 #[derive(Serialize, Deserialize)]
@@ -205,10 +185,6 @@ impl ViewInfo {
             })
             .collect::<Vec<_>>()
             .join(", ")
-    }
-
-    fn button_label(&self) -> String {
-        format!("{} (#{})", self.view.name, self.id)
     }
 
     fn option_label(&self) -> String {
@@ -326,13 +302,19 @@ impl DDJSubSystem {
         }
 
         if self.normalize_button_view_ids() {
-            self.push_log("Removed obsolete DDJ-400 loop-control assignments");
+            self.push_log("Removed obsolete DDJ-400 non-pad assignments");
             self.save_state();
         }
     }
 
     fn normalize_button_view_ids(&mut self) -> bool {
         let mut changed = false;
+
+        if self.button_view_ids.len() >= 18 {
+            self.button_view_ids.remove(17);
+            self.button_view_ids.remove(8);
+            changed = true;
+        }
 
         if self.button_view_ids.len() < VIEW_BUTTONS.len() {
             self.button_view_ids.resize(VIEW_BUTTONS.len(), None);
@@ -379,28 +361,6 @@ impl DDJSubSystem {
                 self.view_selector_open = None;
             }
         }
-    }
-
-    fn view_selector_button_id(button_idx: usize) -> Option<u8> {
-        let max_offset = (VIEW_SELECT_OPTION_BASE_ID - VIEW_SELECT_BUTTON_BASE_ID - 1) as usize;
-        if button_idx > max_offset {
-            return None;
-        }
-
-        Some(VIEW_SELECT_BUTTON_BASE_ID + button_idx as u8)
-    }
-
-    fn decode_view_selector_button(id: u8) -> Option<usize> {
-        if id < VIEW_SELECT_BUTTON_BASE_ID || id >= VIEW_SELECT_OPTION_BASE_ID {
-            return None;
-        }
-
-        let button_idx = (id - VIEW_SELECT_BUTTON_BASE_ID) as usize;
-        if button_idx >= VIEW_BUTTONS.len() {
-            return None;
-        }
-
-        Some(button_idx)
     }
 
     fn decode_view_option(id: u8) -> Option<usize> {
@@ -459,7 +419,6 @@ impl DDJSubSystem {
         let button = VIEW_BUTTONS.get(button_idx)?;
         match button.kind {
             ViewButtonKind::Pad(pad) => Some((button.deck, pad)),
-            _ => None,
         }
     }
 
@@ -581,8 +540,8 @@ impl DDJSubSystem {
 
     fn deck_rect(deck: Deck) -> (i32, i32, i32, i32) {
         match deck {
-            Deck::Left => (28, 62, 310, 220),
-            Deck::Right => (422, 62, 310, 220),
+            Deck::Left => (54, 34, 270, 210),
+            Deck::Right => (436, 34, 270, 210),
         }
     }
 
@@ -597,8 +556,8 @@ impl DDJSubSystem {
         let w = 50;
         let h = 38;
         let gap = 9;
-        let x = deck_x + 82 + col * (w + gap);
-        let y = deck_y + 132 + row * (h + gap);
+        let x = deck_x + 20 + col * (w + gap);
+        let y = deck_y + 126 + row * (h + gap);
 
         Some((x, y, w, h))
     }
@@ -643,17 +602,37 @@ impl DDJSubSystem {
         }
     }
 
-    fn draw_deck(&self, deck: Deck, title: &str) {
-        let (x, y, w, h) = Self::deck_rect(deck);
-        ui::painter_rect(x, y, w, h, 26, 31, 38, 255);
-        ui::painter_rect_stroke(x, y, w, h, 90, 98, 112, 255, 2);
-        ui::painter_text(x + 14, y + 12, 16, 218, 222, 230, 255, title);
+    fn draw_fader(&self, index: usize, x: i32, y: i32, label: &str) {
+        let track_w = 16;
+        let track_h = 148;
+        let thumb_h = 26;
+        let value = self.fader_vals[index].min(127) as i32;
+        let thumb_y = y + ((127 - value) * (track_h - thumb_h) / 127);
 
-        ui::painter_circle(x + 80, y + 82, 54, 44, 48, 56, 255);
-        ui::painter_circle_stroke(x + 80, y + 82, 54, 120, 130, 145, 255, 2);
-        ui::painter_circle_stroke(x + 80, y + 82, 28, 78, 86, 98, 255, 2);
-        ui::painter_rect(x + 164, y + 34, 100, 14, 58, 65, 78, 255);
-        ui::painter_rect(x + 164, y + 60, 100, 14, 58, 65, 78, 255);
+        ui::painter_text(x - 4, y - 24, 12, 185, 194, 208, 255, label);
+        ui::painter_rect(x, y, track_w, track_h, 48, 55, 67, 255);
+        ui::painter_rect_stroke(x, y, track_w, track_h, 106, 116, 132, 255, 1);
+        ui::painter_rect(x - 7, thumb_y, track_w + 14, thumb_h, 72, 130, 180, 255);
+        ui::painter_rect_stroke(x - 7, thumb_y, track_w + 14, thumb_h, 158, 182, 208, 255, 2);
+        ui::painter_text(
+            x - 8,
+            y + track_h + 8,
+            10,
+            165,
+            174,
+            188,
+            255,
+            &format!("{}", self.fader_vals[index]),
+        );
+    }
+
+    fn draw_deck(&self, deck: Deck, label: &str) {
+        let (x, y, _, _) = Self::deck_rect(deck);
+
+        ui::painter_circle(x + 134, y + 58, 54, 45, 50, 59, 255);
+        ui::painter_circle_stroke(x + 134, y + 58, 54, 125, 136, 154, 255, 2);
+        ui::painter_circle_stroke(x + 134, y + 58, 28, 78, 86, 100, 255, 2);
+        ui::painter_text(x + 124, y + 50, 13, 188, 198, 214, 220, label);
 
         for (button_idx, _) in VIEW_BUTTONS.iter().enumerate() {
             let Some((button_deck, pad)) = self.pad_position(button_idx) else {
@@ -711,19 +690,14 @@ impl DDJSubSystem {
             255,
             2,
         );
-        ui::painter_text(22, 18, 18, 232, 236, 244, 255, "DDJ-400");
-
-        ui::painter_rect(346, 62, 68, 220, 22, 26, 32, 255);
-        ui::painter_rect_stroke(346, 62, 68, 220, 82, 90, 104, 255, 2);
-        ui::painter_rect(371, 84, 18, 142, 58, 65, 78, 255);
-        ui::painter_rect(366, 226, 28, 36, 42, 48, 58, 255);
-
-        self.draw_deck(Deck::Left, "Deck 1");
-        self.draw_deck(Deck::Right, "Deck 2");
+        self.draw_deck(Deck::Left, "D1");
+        self.draw_deck(Deck::Right, "D2");
+        self.draw_fader(0, 360, 58, "L");
+        self.draw_fader(1, 392, 58, "R");
 
         ui::painter_text(
             28,
-            292,
+            252,
             12,
             160,
             168,
@@ -766,40 +740,6 @@ impl DDJSubSystem {
             }
         }
 
-        let mut cue_section_started = false;
-        for (button_idx, button) in VIEW_BUTTONS.iter().enumerate() {
-            if self.is_deck_pad_button(button_idx) {
-                continue;
-            }
-
-            if !cue_section_started {
-                ui::separator();
-                ui::label("Cue buttons");
-                cue_section_started = true;
-            }
-
-            let Some(view_button_id) = Self::view_selector_button_id(button_idx) else {
-                continue;
-            };
-
-            ui::begin_horizontal();
-            ui::label(button.label);
-            let view_button_label = self
-                .button_view_ids
-                .get(button_idx)
-                .copied()
-                .flatten()
-                .and_then(|view_id| self.view_info(view_id).map(|info| info.button_label()))
-                .unwrap_or_else(|| "Unassigned".to_string());
-            ui::button(&view_button_label, view_button_id);
-
-            if self.view_selector_open == Some(button_idx) {
-                self.draw_view_options();
-            }
-
-            ui::end_horizontal();
-        }
-
         if !self.log.is_empty() {
             ui::separator();
             for item in &self.log {
@@ -815,13 +755,7 @@ impl DDJSubSystem {
 
                 match ui_event {
                     PluginUiEvent::Button { id } => {
-                        if let Some(button_idx) = Self::decode_view_selector_button(id) {
-                            if self.view_selector_open == Some(button_idx) {
-                                self.view_selector_open = None;
-                            } else {
-                                self.view_selector_open = Some(button_idx);
-                            }
-                        } else if let Some(view_idx) = Self::decode_view_option(id) {
+                        if let Some(view_idx) = Self::decode_view_option(id) {
                             if let Some(button_idx) = self.view_selector_open.take() {
                                 if button_idx < VIEW_BUTTONS.len()
                                     && view_idx < self.available_views.len()

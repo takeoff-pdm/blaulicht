@@ -91,7 +91,7 @@ pub struct ShowfileExternalScreen {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ShowfileDockNode {
     Leaf {
-        tabs: Vec<AppPage>,
+        tabs: Vec<ShowfileDockTab>,
         active: usize,
     },
     Split {
@@ -100,6 +100,13 @@ pub enum ShowfileDockNode {
         first: Box<ShowfileDockNode>,
         second: Box<ShowfileDockNode>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ShowfileDockTab {
+    Page(AppPage),
+    PluginUi { plugin_id: u8 },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
