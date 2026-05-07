@@ -84,23 +84,7 @@ impl DDJSubSystem {
 
 impl DDJSubSystem {
     fn midi_in(&mut self, ev: Vec<MidiEvent>) {
-        // self.midi_handle.send(0x90, 46, 127);
-
-        // for i in 0..255 {
-        //     self.midi_handle.send(0xC1, i, 127);
-        // }
-
-        // conn.send(0x91, 102, 127);
-
-        // for i in 0..2 {
-        //     for j in 0..10 {/s
-        //         conn.send(0x91 + i, j, 127);
-        //     }
-        // }
-
         for e in ev {
-            // println!("KORG EVENT: {:?}", e);
-
             match (e.status, e.kind, e.value) {
                 // Faders
                 (fader_byte, 19, value) if FADER_BYTES.contains(&fader_byte) => {
@@ -114,7 +98,7 @@ impl DDJSubSystem {
                     self.knob_vals_updated[index] = true;
                 }
                 _ => {
-                    // println!("{}: {:?}", self.midi_handle.get_meta().device_id, e);
+                    println!("{}: {:?}", self.midi_handle.get_meta().device_id, e);
                 }
             }
         }
@@ -142,6 +126,8 @@ impl DDJSubSystem {
             let alpha = self.fader_vals[fader];
             let alpha = (alpha as u16).map_range(0..127, 0..100) as u8;
 
+            // TODO: translate into selected scene.
+
             let Some(scene_id) = self.scenes.get(fader) else {
                 return;
             };
@@ -162,6 +148,8 @@ impl DDJSubSystem {
             };
 
             let speed = AnimationSpeedModifier::from_index(index as usize);
+
+            // TODO: translate into selected scene.
 
             bpf::send_event(ControlEvent::SetSceneMasterSpeed(*scene_id, speed));
         }
