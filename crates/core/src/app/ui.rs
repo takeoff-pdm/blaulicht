@@ -1,4 +1,5 @@
 use crate::app::{components, theme, BlaulichtApp, ExternalScreen, PopupSpec};
+use crate::config;
 use crate::state::AppStateWrapper;
 use crate::state::ScreenId;
 
@@ -52,7 +53,20 @@ impl BlaulichtApp {
         // TODO: add clap CLI parsing.
         app.external_screens = external_screens
             .iter()
-            .map(|(dim_x, dim_y)| ExternalScreen::new(egui::vec2(*dim_x as f32, *dim_y as f32))).collect();
+            .map(|(dim_x, dim_y)| ExternalScreen::new(egui::vec2(*dim_x as f32, *dim_y as f32)))
+            .collect();
+
+        let startup_ui_state = {
+            let config_guard = app.data.config.lock().unwrap();
+            config_guard
+                .last_open_showfile
+                .clone()
+                .and_then(|path| config::read_showfile_ui_state(path).ok().flatten())
+        };
+
+        if let Some(ui_state) = startup_ui_state {
+            app.apply_showfile_ui_state(ui_state);
+        }
 
         app
     }

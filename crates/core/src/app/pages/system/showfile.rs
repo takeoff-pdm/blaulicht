@@ -9,7 +9,7 @@ use crate::{
 };
 use blaulicht_shared::{
     LogLevel, SaveEngineState,
-    Showfile, ShowfileArtNetReceiver, ShowfileArtNetState,
+    ShowfileArtNetReceiver, ShowfileArtNetState,
 };
 use egui::{Context, FontFamily, FontId, Ui};
 use egui_file_dialog::{FileDialog, Filter};
@@ -97,10 +97,11 @@ impl BlaulichtApp {
                     }
                 };
 
-                let showfile = Showfile {
+                let showfile = config::CoreShowfile {
                     engine: SaveEngineState::from(engine_snapshot),
                     artnet: artnet_state,
                     plugin_state,
+                    ui: Some(self.showfile_ui_state()),
                 };
 
                 let serialized =
@@ -439,7 +440,7 @@ impl BlaulichtApp {
 
                         let mut dmx = self.data.state.dmx_engine.write().unwrap();
                         let mut artnet = self.data.state.artnet_output.write().unwrap();
-                        config::read_showfile(
+                        let ui_state = config::read_showfile(
                             file.to_path_buf(),
                             &mut dmx,
                             &mut artnet,
@@ -463,6 +464,10 @@ impl BlaulichtApp {
                             .unwrap();
 
                         mem::drop(config);
+
+                        if let Some(ui_state) = ui_state {
+                            self.apply_showfile_ui_state(ui_state);
+                        }
 
                         self.show_popup(PopupSpec::with_duration(
                             Duration::from_secs(2),

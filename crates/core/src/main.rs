@@ -239,7 +239,7 @@ fn main() -> anyhow::Result<()> {
     if let Some(showfile) = cfg.last_open_showfile {
         let mut dmx = app_state.dmx_engine.write().unwrap();
         let mut artnet = app_state.artnet_output.write().unwrap();
-        config::read_showfile(
+        let _ = config::read_showfile(
             showfile.clone(),
             &mut dmx,
             &mut artnet,

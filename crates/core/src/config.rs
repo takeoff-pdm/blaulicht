@@ -4,9 +4,8 @@ use crate::{
     state::{ArtNetOutput, ArtNetReceiver},
 };
 use anyhow::{anyhow, Context, Result};
-use blaulicht_shared::{EngineState, LogLevel, SaveEngineState, Showfile};
+use blaulicht_shared::{AppPage, EngineState, LogLevel, SaveEngineState, ShowfileArtNetState};
 use crossbeam_channel::Sender;
-use tracing::debug;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -15,6 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLockWriteGuard},
 };
+use tracing::debug;
 
 #[cfg(feature = "audio")]
 use audioviz::spectrum::config::StreamConfig;
@@ -58,21 +58,72 @@ pub struct PluginConfig {
     pub enable_watcher: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoreShowfile {
+    pub engine: SaveEngineState,
+    #[serde(default)]
+    pub artnet: ShowfileArtNetState,
+    #[serde(default)]
+    pub plugin_state: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<ShowfileUiState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowfileUiState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_screen_desktop_mode: Option<ShowfileExternalScreen>,
+    #[serde(default)]
+    pub external_screens: Vec<ShowfileExternalScreen>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowfileExternalScreen {
+    pub width: f32,
+    pub height: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<f32>,
+    pub layout: ShowfileDockNode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ShowfileDockNode {
+    Leaf {
+        tabs: Vec<AppPage>,
+        active: usize,
+    },
+    Split {
+        axis: ShowfileDockSplitAxis,
+        fraction: f32,
+        first: Box<ShowfileDockNode>,
+        second: Box<ShowfileDockNode>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ShowfileDockSplitAxis {
+    Horizontal,
+    Vertical,
+}
+
 pub fn read_showfile(
     file: PathBuf,
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
     artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
     system_message_sender: Sender<SystemMessage>,
-) {
+) -> Option<ShowfileUiState> {
     match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
-        Ok(_) => {
+        Ok(ui_state) => {
             system_message_sender
                 .send(SystemMessage::Log(
                     format!("Loaded showfile from {file:?}"),
                     LogLevel::Info,
                 ))
                 .unwrap();
+            ui_state
         }
         Err(e) => {
             system_message_sender
@@ -81,6 +132,7 @@ pub fn read_showfile(
                     LogLevel::Err,
                 ))
                 .unwrap();
+            None
         }
     }
 }
@@ -90,12 +142,12 @@ fn read_showfile_logic(
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
     artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<ShowfileUiState>> {
     debug!("Attempting to read showfile from {file:?}...");
 
     let string = fs::read_to_string(&file)?;
 
-    match serde_json::from_str::<Showfile>(&string) {
+    match serde_json::from_str::<CoreShowfile>(&string) {
         Ok(showfile) => {
             let core_engine: EngineState = showfile
                 .engine
@@ -118,7 +170,7 @@ fn read_showfile_logic(
 
             dmx.load_showfile(core_engine);
 
-            Ok(())
+            Ok(showfile.ui)
         }
         Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
             Ok(deprecated) => {
@@ -135,8 +187,20 @@ fn read_showfile_logic(
                 artnet_output.receivers.clear();
                 dmx.load_showfile(core_format);
 
-                Ok(())
+                Ok(None)
             }
+            Err(_) => Err(anyhow!(showfile_err)),
+        },
+    }
+}
+
+pub fn read_showfile_ui_state(file: PathBuf) -> anyhow::Result<Option<ShowfileUiState>> {
+    let string = fs::read_to_string(&file)?;
+
+    match serde_json::from_str::<CoreShowfile>(&string) {
+        Ok(showfile) => Ok(showfile.ui),
+        Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
+            Ok(_) => Ok(None),
             Err(_) => Err(anyhow!(showfile_err)),
         },
     }

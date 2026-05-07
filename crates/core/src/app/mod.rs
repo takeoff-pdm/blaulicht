@@ -17,7 +17,7 @@ use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
-use egui::{Color32, ColorImage, TextureHandle, Vec2};
+use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
@@ -90,6 +90,7 @@ impl PopupSpec {
 pub struct ExternalScreen {
     dock_state: DockState<Pane>,
     dimensions: Vec2,
+    position: Option<Pos2>,
 }
 
 impl ExternalScreen {
