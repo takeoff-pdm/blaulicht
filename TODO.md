@@ -1,8 +1,10 @@
 - add UDP sink(s) to which a DMX frame can be sent
+  - input or output??
+  - if output was meant, we have this -> artnet
 - make dmx channel writes explicit so that only the updates are sent via UDP (more efficient)
 - make audio signal source persistant
+  - is persisted in config file
 - add audio normalization (don't care what the input signal is)
-
 
 - chaining animations
 - fix stupid frequency animation BS
@@ -11,10 +13,11 @@
 - More forgiving config loading.
 - Configuration checkpoints / diffs.
 - Trigger DMX setup async
-- Flight Recorder
+- Flight Recorder -> trace stuff to reconstruct crashes
 - Export Showfile with a list of feautures [only patches, complete state]
 - Removing changes from a scene
-- Setting a scene to output / selec
+  - most important
+- Setting a scene to output / select??
 - Multiple engine selections or states
 - Track down stupid animation bug with selections
 - Better views UI
@@ -24,8 +27,26 @@
   - 2-state mode?
 - Set Master Hue in scene
 - Enforce fader return-to position
+  - affects plugins
+  - maybe add guardrail in DMX engine to reject changes over 5-10% of the current value?
 - Save audio settings in showfile
+  - why?
 - enable / disable plugins from the UI
+  - please
+  - also reload?
+  - better logs display per-plugin
+    - suggestion: on the terminal page
 - fix beat detection
 - split fixture setup into multiple tabs (scenes, groups)
 - external BPM 'suggestions'
+- monitor plugin
+  - watches number of monitors
+  - reruns the devilspie2 script
+  - kills / starts devilspie2 correctly
+  - sends commands (bpf::emit?) to add / remove external monitors
+  - maybe prompts the user before adding the screen?
+- save shofwiles as zip?
+  - easier overview, avoids messy JSON for the plugin state -> can become massive
+  - also add showfile versioning: check compatibility
+  - is there a framework / rust crate for these incremental file versions?
+  - optimistic parsing?

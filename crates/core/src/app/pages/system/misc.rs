@@ -1,15 +1,15 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
-        external_screen, BlaulichtApp, ExternalScreen, PopupSpec,
+        external_screen, BlaulichtApp, ExternalScreen, PopupSpec, pages::system,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
-    state::{PluginOpenState, ScreenId, NUM_DMX_UNIVERSES},
+    state::{NUM_DMX_UNIVERSES, PluginOpenState, ScreenId},
 };
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
-use std::{mem, path::Path, process::Command, time::Duration};
+use std::{mem, path::Path, process::{self, Command}, time::Duration};
 
 impl BlaulichtApp {
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
@@ -137,7 +137,16 @@ impl BlaulichtApp {
 
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Quit", button_size) {
+                        // TODO: add protections against unsaved changes.
+                        // TODO: use command quit function, both for quitting and restarting
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+
+                    if components::button(ui, false, "Restart", button_size) {
+                        // TODO: should originate from deeper inside the code?
+                        // TODO: add protections against unsaved changes.
+                        // TODO: can we use the viewport command maybe?
+                        process::exit(42);
                     }
 
                     if components::button(ui, false, "Shutdown", button_size) {

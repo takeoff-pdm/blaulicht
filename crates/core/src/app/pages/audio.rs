@@ -2,7 +2,7 @@ use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
-use blaulicht_audio_engine::SpectrogramDisplayOptions;
+use blaulicht_audio_engine::{AudioSpectrogram, SpectrogramDisplayOptions};
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
@@ -14,11 +14,24 @@ use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::cell::Cell;
 use strum::IntoEnumIterator;
 
 // TODO: include snapshot in graphs
 
 impl BlaulichtApp {
+    fn spectrogram_needs_update(&self, spec: &AudioSpectrogram) -> bool {
+        let last_spec_cols = self.last_spectrogram_columns.get();
+        let current_spec_cols = spec.columns.len();
+        last_spec_cols != current_spec_cols
+            || spec
+                .columns
+                .back()
+                .map(|c| c.current_audio_colunn.len())
+                .unwrap_or(0)
+                != self.last_spectrogram_bucket_data_len.get()
+    }
+
     fn render_choose_audio_device_popup(
         &mut self,
         ctx: &egui::Context,
@@ -234,32 +247,42 @@ impl BlaulichtApp {
                                 Color32::GRAY,
                             );
                         } else {
-                            components::create_spectrogram_image(
-                                &spec,
-                                spec_width as usize,
-                                spec_height as usize,
-                                &SpectrogramDisplayOptions {
-                                    include_beat_markers: true,
-                                },
-                                &mut self.spectrogram_image_buffer,
-                            );
+                            if self.spectrogram_needs_update(&spec) {
+                                components::create_spectrogram_image(
+                                    &spec,
+                                    spec_width as usize,
+                                    spec_height as usize,
+                                    &SpectrogramDisplayOptions {
+                                        include_beat_markers: true,
+                                    },
+                                    &mut self.spectrogram_image_buffer,
+                                );
 
-                            match &mut self.spectrogram_texture_handle {
-                                Some(ref mut handle) => {
-                                    handle.set(
-                                        self.spectrogram_image_buffer.clone(),
-                                        egui::TextureOptions::NEAREST,
-                                    );
-                                }
-                                None => {
-                                    let texture = ctx.load_texture(
-                                        "spectrogram",
-                                        self.spectrogram_image_buffer.clone(),
-                                        egui::TextureOptions::NEAREST,
-                                    );
-                                    self.spectrogram_texture_handle = Some(texture);
-                                }
-                            };
+                                match &mut self.spectrogram_texture_handle {
+                                    Some(ref mut handle) => {
+                                        handle.set(
+                                            self.spectrogram_image_buffer.clone(),
+                                            egui::TextureOptions::NEAREST,
+                                        );
+                                    }
+                                    None => {
+                                        let texture = ctx.load_texture(
+                                            "spectrogram",
+                                            self.spectrogram_image_buffer.clone(),
+                                            egui::TextureOptions::NEAREST,
+                                        );
+                                        self.spectrogram_texture_handle = Some(texture);
+                                    }
+                                };
+
+                                self.last_spectrogram_columns.set(spec.columns.len());
+                                self.last_spectrogram_bucket_data_len.set(
+                                    spec.columns
+                                        .back()
+                                        .map(|c| c.current_audio_colunn.len())
+                                        .unwrap_or(0),
+                                );
+                            }
 
                             ui.image(self.spectrogram_texture_handle.as_ref().unwrap());
                         }

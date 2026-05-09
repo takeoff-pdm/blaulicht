@@ -21,6 +21,7 @@ use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
+    cell::Cell,
     collections::{HashSet, VecDeque},
     path::PathBuf,
     time::{Duration, Instant},
@@ -139,6 +140,8 @@ pub struct BlaulichtApp {
     spectro_last_instant: Instant,
     spectrogram_image_buffer: ColorImage,
     spectrogram_texture_handle: Option<TextureHandle>,
+    last_spectrogram_columns: Cell<usize>,
+    last_spectrogram_bucket_data_len: Cell<usize>,
 
     pub data: AppStateWrapper,
 
@@ -312,6 +315,8 @@ impl BlaulichtApp {
             spectro_last_instant: Instant::now(),
             spectrogram_image_buffer: ColorImage::default(),
             spectrogram_texture_handle: None,
+            last_spectrogram_columns: Cell::new(0),
+            last_spectrogram_bucket_data_len: Cell::new(0),
             data,
             tick_speeds: TickSpeeds::default(),
             fps_samples: VecDeque::with_capacity(5),

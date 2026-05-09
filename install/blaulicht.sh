@@ -1,23 +1,116 @@
 #!/bin/bash
-# Disable screensaver and power management
-xset s off
-xset -dpms
-xset s noblank
+set -euo pipefail
 
-# TODO: do something to relays?
+log() {
+    printf '[blaulicht.sh] %s\n' "$*"
+}
+
+setup_xserver() {
+    # Disable screensaver and power management
+    xset s off || true
+    xset -dpms || true
+    xset s noblank || true
+
+    # TODO: do something to relays?
+    #
+
+    xrandr --newmode "1024x600_60.00" 49.00  1024 1064 1168 1312  600 603 613 624 -hsync +vsync || true
+    xrandr --newmode "800x480_60.00" 29.50  800 824 896 992  480 483 493 500 -hsync +vsync || true
+
+    xrandr --addmode VGA-1 "1024x600_60.00" || true
+    xrandr --addmode VGA-1 "800x480_60.00" || true
+
+    # TODO: decide which scaling works better
+    # xrandr --output VGA-1 --mode "1024x600_60.00"
+    xrandr --output VGA-1 --mode "800x480_60.00" || true
+
+    log "X server setup complete."
+}
+
+# Returns monitor count
+determine_monitor_count() {
+    # Wait briefly for monitor info to become available.
+    for _ in {1..20}; do
+    if xrandr --listmonitors >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.5
+    done
+
+    local monitors
+    monitors="$(xrandr --listmonitors 2>/dev/null | awk 'NR==1 {print $2}')"
+    MONITORS="${monitors:-1}"
+    log "Detected monitors: ${MONITORS}"
+}
+
+setup_devilspie2_and_get_blaulicht_flags() {
+    #
+    # Determine Blaulicht launch flags, dependent on monitor count.
+    # If we have an external HDMI monitor attached, tell blaulicht that it needs to attach a second screen.
+    #
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    BLAULICHT_FLAGS=()
+    if (( MONITORS >= 2 )); then
+        log "External monitor detected, generating devilspie2 config."
+        "${script_dir}/generate-devilspie2.sh" --monitor 1
+
+        geom="$(xrandr --listmonitors | awk '$1=="1:" {print $3}' | head -n1)"
+        geom="$(echo "${geom}" | sed -E 's#/[^x+]+##g')"
+
+        if [[ "${geom}" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
+            w="${BASH_REMATCH[1]}"
+            h="${BASH_REMATCH[2]}"
+            BLAULICHT_FLAGS=(-e "${w},${h}")
+            log "Using external screen size: ${w},${h}"
+        else
+            log "Failed to parse monitor geometry '${geom}', launching without -e."
+        fi
+    else
+        log "Single monitor detected, launching without -e."
+    fi
+}
+
+launch_rescue_session() {
+    if tmux has-session -t rescue 2>/dev/null; then
+        log "Rescue tmux session already exists, attaching."
+        xterm -e 'tmux attach -t rescue' &
+    else
+        log "Starting rescue tmux session."
+        xterm -e 'tmux new-session -s rescue "rescue.sh; exec bash"' &
+    fi
+}
+
+#
+# Main start order
 #
 
-xrandr --newmode "1024x600_60.00" 49.00  1024 1064 1168 1312  600 603 613 624 -hsync +vsync
-xrandr --newmode "800x480_60.00" 29.50  800 824 896 992  480 483 493 500 -hsync +vsync
+setup_xserver
 
-xrandr --addmode VGA-1 "1024x600_60.00"
-xrandr --addmode VGA-1 "800x480_60.00"
+while true; do
+    determine_monitor_count
+    setup_devilspie2_and_get_blaulicht_flags
 
-# xrandr --output VGA-1 --mode "1024x600_60.00"
-xrandr --output VGA-1 --mode "800x480_60.00"
+    log "Starting devilspie2."
+    pkill -x devilspie2 >/dev/null 2>&1 || true
+    devilspie2 &
 
-# Launch blaulicht with minimal external screen.
-blaulicht -e 100,100
+    log "Launching blaulicht ${BLAULICHT_FLAGS[*]:-<no flags>}"
+    set +e
+    blaulicht "${BLAULICHT_FLAGS[@]}"
+    exit_code=$?
+    set -e
 
-xterm -e 'tmux new-session -s rescue "rescue.sh; exec bash"'
+    log "blaulicht exited with code ${exit_code}"
+    log "Stopping devilspie2."
+    pkill -x devilspie2 >/dev/null 2>&1 || true
 
+    if [[ "${exit_code}" -eq 42 ]]; then
+        log "Restart requested. Relaunching."
+        continue
+    fi
+
+    log "Quit requested. Dropping into rescue session."
+    launch_rescue_session
+    break
+done
