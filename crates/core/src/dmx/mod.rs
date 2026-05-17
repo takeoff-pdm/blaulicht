@@ -21,7 +21,6 @@ use blaulicht_shared::{
     CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
-use tracing::{debug, error, warn};
 use std::{
     collections::BTreeMap,
     mem,
@@ -29,6 +28,7 @@ use std::{
     sync::{Arc, RwLockWriteGuard},
     time::{Duration, Instant},
 };
+use tracing::{debug, error, warn};
 
 // TODO: maybe fuse this together?
 

@@ -1,11 +1,11 @@
 use blaulicht_shared::SerialReceived;
-use tracing::{debug, error};
 use serialport::{available_ports, ErrorKind as SerialPortErrorKind, SerialPort};
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, error};
 // use wmidi::MidiMessage;
 
 use crate::state::{AppState, SerialDeviceState};

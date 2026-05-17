@@ -232,8 +232,8 @@ impl LogWindow {
             });
 
         const AUTO_SCROLL_EPSILON: f32 = 2.0;
-        let max_offset_y = (scroll_output.content_size.y - scroll_output.inner_rect.height())
-            .max(0.0);
+        let max_offset_y =
+            (scroll_output.content_size.y - scroll_output.inner_rect.height()).max(0.0);
         let at_bottom = scroll_output.state.offset.y >= max_offset_y - AUTO_SCROLL_EPSILON;
         if self.auto_scroll != at_bottom {
             self.auto_scroll = at_bottom;

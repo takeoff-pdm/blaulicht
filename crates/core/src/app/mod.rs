@@ -16,13 +16,14 @@ use crate::{
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
+use blaulicht_shared::AppSubPage;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
 use pages::ViewUI;
 use std::{
     cell::Cell,
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -108,6 +109,7 @@ pub struct BlaulichtApp {
     desktop_mode: bool,
     showfile_home: Option<PathBuf>,
     navbar: Navbar,
+    bottom_nav: HashMap<AppPage, AppSubPage>,
 
     main_screen_desktop_mode: ExternalScreen,
     external_screens: Vec<ExternalScreen>,
@@ -125,6 +127,11 @@ pub struct BlaulichtApp {
     bass_avg_graph: TimeSeriesGraph,
     // bass_avg_short_graph: TimeSeriesGraph,
     collector_snapshot: CollectedAudioSnapshot,
+    beat_marker_index: usize,
+    beat_marker_has_beat: bool,
+    beat_marker_anchor_instant: Instant,
+    beat_marker_interval: Duration,
+    last_beat_marker_snapshot_time: u64,
 
     band_energy_graphs: [TimeSeriesGraph; 3],
     // bpm_graph: TimeSeriesGraph,
@@ -142,6 +149,8 @@ pub struct BlaulichtApp {
     spectrogram_texture_handle: Option<TextureHandle>,
     last_spectrogram_columns: Cell<usize>,
     last_spectrogram_bucket_data_len: Cell<usize>,
+    last_spectrogram_max_columns: Cell<usize>,
+    last_spectrogram_snapshot_time: Cell<u64>,
 
     pub data: AppStateWrapper,
 
@@ -266,6 +275,7 @@ impl BlaulichtApp {
             desktop_mode,
             showfile_home,
             navbar: Navbar::new(AppPage::Logs),
+            bottom_nav: HashMap::new(),
             main_screen_desktop_mode: ExternalScreen::default(),
             external_screens: vec![],
             plugin_ui_visible_tabs: HashSet::new(),
@@ -309,6 +319,11 @@ impl BlaulichtApp {
                     .with_autoscale(),
             ],
             collector_snapshot: CollectedAudioSnapshot::default(),
+            beat_marker_index: 0,
+            beat_marker_has_beat: false,
+            beat_marker_anchor_instant: Instant::now(),
+            beat_marker_interval: Duration::from_millis(1000),
+            last_beat_marker_snapshot_time: 0,
             frame_count: 0,
             animation_time: 0.0,
             spectro_scroll_px_offset: 0.0,
@@ -317,6 +332,8 @@ impl BlaulichtApp {
             spectrogram_texture_handle: None,
             last_spectrogram_columns: Cell::new(0),
             last_spectrogram_bucket_data_len: Cell::new(0),
+            last_spectrogram_max_columns: Cell::new(0),
+            last_spectrogram_snapshot_time: Cell::new(0),
             data,
             tick_speeds: TickSpeeds::default(),
             fps_samples: VecDeque::with_capacity(5),

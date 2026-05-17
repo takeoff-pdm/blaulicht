@@ -5,9 +5,7 @@ use crate::{
     },
     state::SerialDeviceState,
 };
-use egui::{
-    Color32, Context, FontFamily, Frame, Margin, RichText,
-};
+use egui::{Color32, Context, FontFamily, Frame, Margin, RichText};
 use egui_extras::{Column, TableBuilder};
 
 impl BlaulichtApp {

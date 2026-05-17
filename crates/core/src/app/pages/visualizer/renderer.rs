@@ -3,15 +3,14 @@ use std::sync::Arc;
 use egui_glow::glow::{self, HasContext};
 
 use super::constants::{
-    BEAM_ANGLE_DEG, DEBUG_TEXT_OVERLAY, FIXTURE_BODY_COLOR, FIXTURE_EDGE_COLOR,
-    GENERIC_FIXTURE_SIZE, HEAD_BODY_COLOR, JOINT_COLOR, TAKEOFF_BACK_COLOR, TAKEOFF_LOGO_BACK_PADDING,
-    TAKEOFF_LOGO_BACK_THICKNESS, TAKEOFF_LOGO_DEPTH, TAKEOFF_LOGO_SCALE, TAKEOFF_LOGO_Y_OFFSET,
-    TAKEOFF_TEXT, TAKEOFF_TEXT_HEIGHT, TAKEOFF_TEXT_Y, TILT_JOINT_LENGTH, TILT_JOINT_RADIUS,
-    YOKE_HEIGHT, YOKE_RADIUS, BASE_SIZE, PAN_JOINT_HEIGHT, PAN_JOINT_RADIUS, HEAD_SIZE,
+    BASE_SIZE, BEAM_ANGLE_DEG, DEBUG_TEXT_OVERLAY, FIXTURE_BODY_COLOR, FIXTURE_EDGE_COLOR,
+    GENERIC_FIXTURE_SIZE, HEAD_BODY_COLOR, HEAD_SIZE, JOINT_COLOR, PAN_JOINT_HEIGHT,
+    PAN_JOINT_RADIUS, TAKEOFF_BACK_COLOR, TAKEOFF_LOGO_BACK_PADDING, TAKEOFF_LOGO_BACK_THICKNESS,
+    TAKEOFF_LOGO_DEPTH, TAKEOFF_LOGO_SCALE, TAKEOFF_LOGO_Y_OFFSET, TAKEOFF_TEXT,
+    TAKEOFF_TEXT_HEIGHT, TAKEOFF_TEXT_Y, TILT_JOINT_LENGTH, TILT_JOINT_RADIUS, YOKE_HEIGHT,
+    YOKE_RADIUS,
 };
-use super::data::{
-    compute_fixture_pose, BeamCone, FixturePose, RenderFixture, RenderFixtureKind,
-};
+use super::data::{compute_fixture_pose, BeamCone, FixturePose, RenderFixture, RenderFixtureKind};
 use super::gl::{
     create_axes, create_cube, create_cube_edges, create_cylinder, create_dynamic_mesh,
     create_font_texture, create_grid, create_program, create_quad, create_text_buffers,
@@ -71,8 +70,7 @@ impl GlowRenderer {
             let (cube_vao, cube_vbo, cube_ebo, cube_index_count) = create_cube(gl)?;
             let (text_vao, text_vbo) = create_text_buffers(gl)?;
             let text_texture = create_font_texture(gl)?;
-            let (cube_edges_vao, cube_edges_vbo, cube_edges_vertex_count) =
-                create_cube_edges(gl)?;
+            let (cube_edges_vao, cube_edges_vbo, cube_edges_vertex_count) = create_cube_edges(gl)?;
             let (grid_vao, grid_vbo, grid_vertex_count) = create_grid(gl)?;
             let (axes_vao, axes_vbo, axes_vertex_count) = create_axes(gl)?;
             let (cylinder_vao, cylinder_vbo, cylinder_ebo, cylinder_index_count) =
@@ -291,22 +289,13 @@ impl GlowRenderer {
 
                     gl.bind_vertex_array(Some(self.cylinder_vao));
                     if let Some(loc) = &self.u_color {
-                        gl.uniform_3_f32(
-                            Some(loc),
-                            JOINT_COLOR[0],
-                            JOINT_COLOR[1],
-                            JOINT_COLOR[2],
-                        );
+                        gl.uniform_3_f32(Some(loc), JOINT_COLOR[0], JOINT_COLOR[1], JOINT_COLOR[2]);
                     }
                     let pan_model = mat4_mul(
                         mat4_translation(pose.pan_center.x, pose.pan_center.y, pose.pan_center.z),
                         mat4_mul(
                             pose.pan_rot,
-                            mat4_scale(
-                                PAN_JOINT_RADIUS,
-                                PAN_JOINT_HEIGHT * 0.5,
-                                PAN_JOINT_RADIUS,
-                            ),
+                            mat4_scale(PAN_JOINT_RADIUS, PAN_JOINT_HEIGHT * 0.5, PAN_JOINT_RADIUS),
                         ),
                     );
                     let pan_mvp = mat4_mul(projection, mat4_mul(view, pan_model));
@@ -321,7 +310,11 @@ impl GlowRenderer {
                     );
 
                     let yoke_model = mat4_mul(
-                        mat4_translation(pose.yoke_center.x, pose.yoke_center.y, pose.yoke_center.z),
+                        mat4_translation(
+                            pose.yoke_center.x,
+                            pose.yoke_center.y,
+                            pose.yoke_center.z,
+                        ),
                         mat4_mul(
                             pose.pan_rot,
                             mat4_scale(YOKE_RADIUS, YOKE_HEIGHT * 0.5, YOKE_RADIUS),
@@ -403,12 +396,7 @@ impl GlowRenderer {
                             (fixture.beam_color[2] * lens_intensity).clamp(0.0, 1.0),
                         );
                     }
-                    gl.draw_elements(
-                        glow::TRIANGLES,
-                        6,
-                        glow::UNSIGNED_SHORT,
-                        6 * index_stride,
-                    );
+                    gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_SHORT, 6 * index_stride);
 
                     gl.bind_vertex_array(Some(self.cube_edges_vao));
                     if let Some(loc) = &self.u_color {
@@ -550,10 +538,20 @@ impl GlowRenderer {
                     apex_color[2],
                 ]);
                 verts.extend_from_slice(&[
-                    p0.x, p0.y, p0.z, rim_color[0], rim_color[1], rim_color[2],
+                    p0.x,
+                    p0.y,
+                    p0.z,
+                    rim_color[0],
+                    rim_color[1],
+                    rim_color[2],
                 ]);
                 verts.extend_from_slice(&[
-                    p1.x, p1.y, p1.z, rim_color[0], rim_color[1], rim_color[2],
+                    p1.x,
+                    p1.y,
+                    p1.z,
+                    rim_color[0],
+                    rim_color[1],
+                    rim_color[2],
                 ]);
             }
         }
@@ -643,7 +641,11 @@ impl GlowRenderer {
             light_strength,
         ];
         let view_dir = eye.sub(sign_center).normalize();
-        let face_sign = if forward.dot(view_dir) >= 0.0 { 1.0 } else { -1.0 };
+        let face_sign = if forward.dot(view_dir) >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
         let face_rot = if face_sign > 0.0 {
             mat4_identity()
         } else {

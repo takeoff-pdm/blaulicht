@@ -8,12 +8,11 @@ use crate::{
     state::DmxBuffer,
 };
 use blaulicht_shared::{
-    fixture::state::FixtureState,
-    ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
+    fixture::state::FixtureState, ControlEvent, ControlEventMessage, EngineGroups, EventOriginator,
+    FixtureProperty, RGBColor,
 };
 use egui::{
-    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, Vec2,
-    Widget,
+    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, Vec2, Widget,
 };
 use map_range::MapRange;
 use std::{collections::BTreeMap, sync::RwLockReadGuard};

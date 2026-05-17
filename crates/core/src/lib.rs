@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod audio;
+pub mod cli;
 pub mod command;
 pub mod config;
 pub mod dmx;
@@ -15,4 +16,3 @@ pub mod state;
 pub mod ui_ops;
 pub mod util;
 pub mod utils;
-pub mod cli;

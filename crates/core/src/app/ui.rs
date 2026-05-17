@@ -7,7 +7,9 @@ use crate::state::ScreenId;
 // use cpal::traits::DeviceTrait;
 
 use egui::{Context, Frame};
-use strum::IntoEnumIterator;
+use std::time::{Duration, Instant};
+
+const BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION: f32 = 0.90;
 
 pub enum FileDialogOpenOrigin {
     Save,
@@ -110,6 +112,37 @@ impl eframe::App for BlaulichtApp {
             self.bass_avg_graph.update(audio_snapshot.bass_avg as i32);
             // self.bass_avg_short_graph
             //     .update(audio_snapshot.bass_avg_short as i32);
+            if audio_snapshot.beat_trigger
+                && audio_snapshot.time != self.last_beat_marker_snapshot_time
+            {
+                let now = Instant::now();
+                let beat_interval =
+                    Duration::from_millis(audio_snapshot.time_between_beats_millis.max(1) as u64);
+                let elapsed_since_anchor =
+                    now.saturating_duration_since(self.beat_marker_anchor_instant);
+                let debounce_interval = std::cmp::min(self.beat_marker_interval, beat_interval);
+                let accept_trigger = !self.beat_marker_has_beat
+                    || elapsed_since_anchor
+                        >= debounce_interval.mul_f32(BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION);
+
+                if accept_trigger {
+                    if self.beat_marker_has_beat {
+                        let elapsed_beats = (elapsed_since_anchor.as_secs_f32()
+                            / self.beat_marker_interval.as_secs_f32())
+                        .round()
+                        .max(1.0) as usize;
+                        self.beat_marker_index = (self.beat_marker_index + elapsed_beats) % 4;
+                    } else {
+                        self.beat_marker_index = 0;
+                    }
+
+                    self.beat_marker_has_beat = true;
+                    self.beat_marker_anchor_instant = now;
+                    self.beat_marker_interval = beat_interval;
+                }
+
+                self.last_beat_marker_snapshot_time = audio_snapshot.time;
+            }
             self.collector_snapshot = audio_snapshot;
 
             for (i, value) in audio_output.debug_data.band_energies.iter().enumerate() {
@@ -136,21 +169,22 @@ impl BlaulichtApp {
         // Navbar
         self.show_navbar(ctx);
 
+        let page = self.navbar.page();
+
         // TODO: experimental -> add back later.
-        // egui::TopBottomPanel::bottom("horizontal_nav")
-        //     .resizable(false)
-        //     .frame(Frame::NONE)
-        //     .show_separator_line(true)
-        //     .show(ctx, |ui| {
-        //         components::horizontal_nav(ui);
-        //     });
+        egui::TopBottomPanel::bottom("horizontal_nav")
+            .resizable(false)
+            .frame(Frame::NONE)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                components::horizontal_nav_for_tab(ui, page);
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // // Update animation time for continuous rendering
             self.frame_count += 1; // TODO: when does this overflow?
             self.animation_time += 0.016; // 16ms ~= 60fps
 
-            let page = self.navbar.page();
             self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN);
         });
 

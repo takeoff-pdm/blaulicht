@@ -898,10 +898,8 @@ impl BlaulichtApp {
                                                             [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                             Label::new("Rotation X:"),
                                                         );
-                                                        self.edit_fixture_rot_x_numberpad.ui(
-                                                            ui,
-                                                            &mut self.new_fixture_rot_x,
-                                                        );
+                                                        self.edit_fixture_rot_x_numberpad
+                                                            .ui(ui, &mut self.new_fixture_rot_x);
                                                     });
 
                                                     ui.horizontal(|ui| {
@@ -909,10 +907,8 @@ impl BlaulichtApp {
                                                             [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                             Label::new("Rotation Y:"),
                                                         );
-                                                        self.edit_fixture_rot_y_numberpad.ui(
-                                                            ui,
-                                                            &mut self.new_fixture_rot_y,
-                                                        );
+                                                        self.edit_fixture_rot_y_numberpad
+                                                            .ui(ui, &mut self.new_fixture_rot_y);
                                                     });
 
                                                     ui.horizontal(|ui| {
@@ -920,18 +916,16 @@ impl BlaulichtApp {
                                                             [LABEL_W, ButtonSize::Medium.dim().0.y],
                                                             Label::new("Rotation Z:"),
                                                         );
-                                                        self.edit_fixture_rot_z_numberpad.ui(
-                                                            ui,
-                                                            &mut self.new_fixture_rot_z,
-                                                        );
+                                                        self.edit_fixture_rot_z_numberpad
+                                                            .ui(ui, &mut self.new_fixture_rot_z);
                                                     });
                                                 });
 
                                                 ui.add_space(16.0);
 
                                                 ui.vertical(|ui| {
-                                                    let can_save = (1..=512)
-                                                        .contains(&self.new_fixture_addr);
+                                                    let can_save =
+                                                        (1..=512).contains(&self.new_fixture_addr);
                                                     if components::button(
                                                         ui,
                                                         can_save,
@@ -1004,7 +998,8 @@ impl BlaulichtApp {
                                                                 if let Some((&first_fid, _)) =
                                                                     group_mut.fixtures.iter().next()
                                                                 {
-                                                                    self.setup_fixture_id = first_fid;
+                                                                    self.setup_fixture_id =
+                                                                        first_fid;
                                                                 }
 
                                                                 mem::drop(dmx_engine);

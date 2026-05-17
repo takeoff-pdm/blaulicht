@@ -58,7 +58,12 @@ fn font8x8_glyph(code: u8) -> [u8; 8] {
     }
 }
 
-pub(super) fn build_text_vertices(text: &str, origin_x: f32, origin_y: f32, scale: f32) -> Vec<f32> {
+pub(super) fn build_text_vertices(
+    text: &str,
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+) -> Vec<f32> {
     let mut verts = Vec::with_capacity(text.len() * 6 * 5);
     let mut cursor_x = origin_x;
     let mut cursor_y = origin_y;
@@ -87,8 +92,8 @@ pub(super) fn build_text_vertices(text: &str, origin_x: f32, origin_y: f32, scal
         let x1 = cursor_x + cell_w;
         let y1 = cursor_y + cell_h;
         verts.extend_from_slice(&[
-            x0, y0, 0.0, u0, v0, x1, y0, 0.0, u1, v0, x1, y1, 0.0, u1, v1, x0, y0, 0.0, u0,
-            v0, x1, y1, 0.0, u1, v1, x0, y1, 0.0, u0, v1,
+            x0, y0, 0.0, u0, v0, x1, y0, 0.0, u1, v0, x1, y1, 0.0, u1, v1, x0, y0, 0.0, u0, v0, x1,
+            y1, 0.0, u1, v1, x0, y1, 0.0, u0, v1,
         ]);
         cursor_x += advance;
     }

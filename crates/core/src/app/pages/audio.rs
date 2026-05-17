@@ -2,34 +2,232 @@ use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
-use blaulicht_audio_engine::{AudioSpectrogram, SpectrogramDisplayOptions};
+use blaulicht_audio_engine::{AudioSpectrogram, CollectorOutput, SpectrogramDisplayOptions};
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
 
-use egui::{
-    vec2, Color32, FontId, Frame, Margin, RichText, Widget,
-};
-use std::io::Read;
+use egui::{vec2, Color32, FontId, Frame, Margin, RichText, Widget};
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::cell::Cell;
-use strum::IntoEnumIterator;
 
 // TODO: include snapshot in graphs
 
+const SPECTROGRAM_PAD_BOTTOM: usize = 20;
+const SPECTROGRAM_PAD_TOP: usize = 5;
+const SPECTROGRAM_PAD_LEFT: usize = 5;
+
 impl BlaulichtApp {
-    fn spectrogram_needs_update(&self, spec: &AudioSpectrogram) -> bool {
-        let last_spec_cols = self.last_spectrogram_columns.get();
-        let current_spec_cols = spec.columns.len();
-        last_spec_cols != current_spec_cols
-            || spec
-                .columns
+    fn spectrogram_color(intensity: u8) -> Color32 {
+        let t = (intensity as f32 / 255.0).powf(0.5);
+
+        let (r, g, b) = if t < 0.2 {
+            let local_t = t / 0.2;
+            (local_t * 0.5, 0.0, local_t)
+        } else if t < 0.4 {
+            let local_t = (t - 0.2) / 0.2;
+            (0.5 - local_t * 0.5, 0.0, 1.0)
+        } else if t < 0.6 {
+            let local_t = (t - 0.4) / 0.2;
+            (0.0, local_t, 1.0)
+        } else if t < 0.8 {
+            let local_t = (t - 0.6) / 0.2;
+            (local_t, 1.0, 1.0 - local_t)
+        } else {
+            let local_t = (t - 0.8) / 0.2;
+            (1.0, 1.0 - local_t * 0.5, local_t * 0.3)
+        };
+
+        Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+    }
+
+    fn reset_spectrogram_ring_cache(
+        &mut self,
+        spec: &AudioSpectrogram,
+        width: usize,
+        height: usize,
+    ) {
+        components::create_spectrogram_image(
+            spec,
+            width,
+            height,
+            &SpectrogramDisplayOptions {
+                include_beat_markers: true,
+            },
+            &mut self.spectrogram_image_buffer,
+        );
+
+        self.spectro_scroll_px_offset = 0.0;
+        self.last_spectrogram_columns.set(spec.columns.len());
+        self.last_spectrogram_max_columns.set(spec.max_columns);
+        self.last_spectrogram_bucket_data_len.set(
+            spec.columns
                 .back()
                 .map(|c| c.current_audio_colunn.len())
-                .unwrap_or(0)
-                != self.last_spectrogram_bucket_data_len.get()
+                .unwrap_or(0),
+        );
+        self.last_spectrogram_snapshot_time
+            .set(spec.columns.back().map(|c| c.snapshot.time).unwrap_or(0));
+    }
+
+    fn spectrogram_ring_needs_reset(
+        &self,
+        spec: &AudioSpectrogram,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        let current_bucket_count = spec
+            .columns
+            .back()
+            .map(|c| c.current_audio_colunn.len())
+            .unwrap_or(0);
+        let current_time = spec.columns.back().map(|c| c.snapshot.time).unwrap_or(0);
+
+        self.spectrogram_image_buffer.size != [width, height]
+            || self.last_spectrogram_max_columns.get() != spec.max_columns
+            || self.last_spectrogram_bucket_data_len.get() != current_bucket_count
+            || spec.columns.len() < self.last_spectrogram_columns.get()
+            || current_time < self.last_spectrogram_snapshot_time.get()
+    }
+
+    fn shift_spectrogram_ring_left(&mut self, pixels: usize) {
+        let [width, height] = self.spectrogram_image_buffer.size;
+        let data_width = width.saturating_sub(SPECTROGRAM_PAD_LEFT);
+        let pixels = pixels.min(data_width);
+
+        if pixels == 0 {
+            return;
+        }
+
+        for y in 0..height {
+            let row_start = y * width;
+            let row_end = row_start + width;
+            let row = &mut self.spectrogram_image_buffer.pixels[row_start..row_end];
+
+            if pixels < data_width {
+                row.copy_within(SPECTROGRAM_PAD_LEFT + pixels..width, SPECTROGRAM_PAD_LEFT);
+            }
+            row[width - pixels..width].fill(Color32::BLACK);
+        }
+    }
+
+    fn draw_spectrogram_ring_column(
+        &mut self,
+        column: &CollectorOutput,
+        x_start: usize,
+        x_end: usize,
+    ) {
+        let [width, height_outer] = self.spectrogram_image_buffer.size;
+        let Some(height) = height_outer.checked_sub(SPECTROGRAM_PAD_BOTTOM + SPECTROGRAM_PAD_TOP)
+        else {
+            return;
+        };
+
+        let bin_count = column.current_audio_colunn.len();
+        if bin_count == 0 || x_start >= x_end || x_end > width {
+            return;
+        }
+
+        let bucket_height = height as f32 / bin_count as f32;
+        if bucket_height < 1.0 {
+            return;
+        }
+        let bucket_height = bucket_height.floor() as usize;
+
+        for x in x_start..x_end {
+            for y in 0..height_outer {
+                self.spectrogram_image_buffer.pixels[y * width + x] = Color32::BLACK;
+            }
+        }
+
+        for bin_index in 0..bin_count {
+            let y_max = SPECTROGRAM_PAD_TOP + ((bin_count - bin_index) * bucket_height);
+            let y_min = y_max - bucket_height;
+            let color = Self::spectrogram_color(column.current_audio_colunn[bin_index].volume);
+
+            for y in y_min..y_max {
+                let row_start = y * width + x_start;
+                let row_end = row_start + (x_end - x_start);
+                self.spectrogram_image_buffer.pixels[row_start..row_end].fill(color);
+            }
+        }
+
+        if column.snapshot.beat_trigger {
+            for y in 0..height_outer {
+                self.spectrogram_image_buffer.pixels[y * width + x_start] = Color32::RED;
+            }
+        }
+
+        if column.snapshot.actual_onset_peak {
+            let dot_size = x_end - x_start;
+            let y_end = (height + (SPECTROGRAM_PAD_BOTTOM / 2)).min(height_outer);
+            let y_start = y_end.saturating_sub(dot_size);
+            for y in y_start..y_end {
+                self.spectrogram_image_buffer.pixels[y * width + x_start] = Color32::MAGENTA;
+            }
+        }
+    }
+
+    fn advance_spectrogram_ring(&mut self, spec: &AudioSpectrogram) -> bool {
+        let last_time = self.last_spectrogram_snapshot_time.get();
+        let [width, _] = self.spectrogram_image_buffer.size;
+        let data_width = width.saturating_sub(SPECTROGRAM_PAD_LEFT);
+        if data_width == 0 || spec.max_columns == 0 {
+            return false;
+        }
+
+        let pixels_per_column = data_width as f32 / spec.max_columns as f32;
+        let mut changed = false;
+
+        for column in spec.columns.iter().filter(|c| c.snapshot.time > last_time) {
+            self.spectro_scroll_px_offset += pixels_per_column;
+            let pixels_to_advance = self.spectro_scroll_px_offset.floor() as usize;
+            if pixels_to_advance > 0 {
+                self.spectro_scroll_px_offset -= pixels_to_advance as f32;
+                let write_width = pixels_to_advance.min(data_width);
+                self.shift_spectrogram_ring_left(write_width);
+                self.draw_spectrogram_ring_column(column, width - write_width, width);
+                changed = true;
+            }
+
+            self.last_spectrogram_snapshot_time
+                .set(column.snapshot.time);
+        }
+
+        self.last_spectrogram_columns.set(spec.columns.len());
+        changed
+    }
+
+    fn update_spectrogram_ring_texture(
+        &mut self,
+        ctx: &egui::Context,
+        spec: &AudioSpectrogram,
+        width: usize,
+        height: usize,
+    ) {
+        let changed = if self.spectrogram_ring_needs_reset(spec, width, height) {
+            self.reset_spectrogram_ring_cache(spec, width, height);
+            true
+        } else {
+            self.advance_spectrogram_ring(spec)
+        };
+
+        if self.spectrogram_texture_handle.is_none() {
+            let texture = ctx.load_texture(
+                "spectrogram",
+                self.spectrogram_image_buffer.clone(),
+                egui::TextureOptions::NEAREST,
+            );
+            self.spectrogram_texture_handle = Some(texture);
+        } else if changed {
+            if let Some(handle) = &mut self.spectrogram_texture_handle {
+                handle.set(
+                    self.spectrogram_image_buffer.clone(),
+                    egui::TextureOptions::NEAREST,
+                );
+            }
+        }
     }
 
     fn render_choose_audio_device_popup(
@@ -221,7 +419,10 @@ impl BlaulichtApp {
                     let spec_height = 160.0; // compact height
                     let spec_width = ui.available_width();
 
-                    let spec = self.data.state.audio_spectrogram.read().unwrap();
+                    let spec = {
+                        let spec = self.data.state.audio_spectrogram.read().unwrap();
+                        spec.clone()
+                    };
                     let params = self.data.state.audio_params.read().unwrap();
                     let mut volume_value = params.volume as f32;
                     let mut gate_value = params.gate as f32;
@@ -247,43 +448,12 @@ impl BlaulichtApp {
                                 Color32::GRAY,
                             );
                         } else {
-                            if self.spectrogram_needs_update(&spec) {
-                                components::create_spectrogram_image(
-                                    &spec,
-                                    spec_width as usize,
-                                    spec_height as usize,
-                                    &SpectrogramDisplayOptions {
-                                        include_beat_markers: true,
-                                    },
-                                    &mut self.spectrogram_image_buffer,
-                                );
-
-                                match &mut self.spectrogram_texture_handle {
-                                    Some(ref mut handle) => {
-                                        handle.set(
-                                            self.spectrogram_image_buffer.clone(),
-                                            egui::TextureOptions::NEAREST,
-                                        );
-                                    }
-                                    None => {
-                                        let texture = ctx.load_texture(
-                                            "spectrogram",
-                                            self.spectrogram_image_buffer.clone(),
-                                            egui::TextureOptions::NEAREST,
-                                        );
-                                        self.spectrogram_texture_handle = Some(texture);
-                                    }
-                                };
-
-                                self.last_spectrogram_columns.set(spec.columns.len());
-                                self.last_spectrogram_bucket_data_len.set(
-                                    spec.columns
-                                        .back()
-                                        .map(|c| c.current_audio_colunn.len())
-                                        .unwrap_or(0),
-                                );
-                            }
-
+                            self.update_spectrogram_ring_texture(
+                                ctx,
+                                &spec,
+                                spec_width as usize,
+                                spec_height as usize,
+                            );
                             ui.image(self.spectrogram_texture_handle.as_ref().unwrap());
                         }
                     }
@@ -441,7 +611,56 @@ impl BlaulichtApp {
                                         }
                                     });
 
-                                    ui.add_space(1.0);
+                                    ui.add_space(4.0);
+
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(2.0);
+                                        let beat_interval_secs =
+                                            self.beat_marker_interval.as_secs_f32();
+                                        let active_beat_marker = if self.beat_marker_has_beat
+                                            && beat_interval_secs > 0.0
+                                        {
+                                            let elapsed_beats = (self
+                                                .beat_marker_anchor_instant
+                                                .elapsed()
+                                                .as_secs_f32()
+                                                / beat_interval_secs)
+                                                .floor()
+                                                as usize;
+                                            (self.beat_marker_index + elapsed_beats) % 4
+                                        } else {
+                                            self.beat_marker_index
+                                        };
+
+                                        for beat_idx in 0..4 {
+                                            let (beat_rect, beat_painter) = ui.allocate_painter(
+                                                egui::vec2(26.0, 10.0),
+                                                egui::Sense::empty(),
+                                            );
+                                            let active = self.beat_marker_has_beat
+                                                && active_beat_marker == beat_idx;
+                                            let fill = if active {
+                                                Color32::LIGHT_GREEN
+                                            } else {
+                                                Color32::from_rgb(45, 50, 55)
+                                            };
+                                            let stroke = if active {
+                                                egui::Stroke::new(1.0, Color32::WHITE)
+                                            } else {
+                                                egui::Stroke::new(1.0, Color32::from_gray(85))
+                                            };
+
+                                            beat_painter.rect_filled(beat_rect.rect, 2.0, fill);
+                                            beat_painter.rect_stroke(
+                                                beat_rect.rect,
+                                                2.0,
+                                                stroke,
+                                                egui::StrokeKind::Inside,
+                                            );
+                                        }
+                                    });
+
+                                    ui.add_space(3.0);
 
                                     ui.heading(
                                         RichText::new(format!(
@@ -465,6 +684,5 @@ impl BlaulichtApp {
                 },
             );
         });
-
     }
 }

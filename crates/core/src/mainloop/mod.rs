@@ -15,8 +15,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
-    SignalCollectorParams,
+    CollectorOutputSpec, CollectorScratchParameters, SignalCollector, SignalCollectorParams,
 };
 use crossbeam_channel::Sender;
 use std::{

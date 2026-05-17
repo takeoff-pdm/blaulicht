@@ -87,8 +87,7 @@ impl BlaulichtApp {
             let zoom_delta = ui.input(|i| i.smooth_scroll_delta.y);
             if zoom_delta.abs() > 0.0 {
                 self.visualizer_ui_state.camera_radius =
-                    (self.visualizer_ui_state.camera_radius - zoom_delta * 0.02)
-                        .clamp(4.0, 60.0);
+                    (self.visualizer_ui_state.camera_radius - zoom_delta * 0.02).clamp(4.0, 60.0);
             }
         }
 
@@ -132,7 +131,14 @@ impl BlaulichtApp {
             callback: Arc::new(callback),
         }));
 
-        if let Some(err) = self.visualizer_ui_state.shared.lock().unwrap().last_error.as_ref() {
+        if let Some(err) = self
+            .visualizer_ui_state
+            .shared
+            .lock()
+            .unwrap()
+            .last_error
+            .as_ref()
+        {
             ui.add_space(6.0);
             ui.label(format!("Renderer error: {err}"));
         }

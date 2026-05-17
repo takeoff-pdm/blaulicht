@@ -1,7 +1,7 @@
-use blaulicht_shared::AppPage;
 use crate::app::BlaulichtApp;
-use egui::Context;
 use crate::state::ScreenId;
+use blaulicht_shared::AppPage;
+use egui::Context;
 
 impl BlaulichtApp {
     // Page passed as parameter, so that this function can be used on an external screen.

@@ -1,4 +1,7 @@
-use blaulicht_shared::{fixture::{light::Light, FixtureType}, RGBColor};
+use blaulicht_shared::{
+    fixture::{light::Light, FixtureType},
+    RGBColor,
+};
 
 use super::constants::{
     BASE_SIZE, HEAD_SIZE, PAN_JOINT_HEIGHT, PAN_JOINT_RADIUS, TILT_JOINT_LENGTH, TILT_JOINT_RADIUS,
@@ -153,8 +156,7 @@ pub(super) fn compute_fixture_pose(fixture: &RenderFixture) -> FixturePose {
     let base_origin = fixture.pos;
     let base_center = base_origin.add(up.scale(BASE_SIZE.y * 0.5));
     let pan_center = base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT * 0.5));
-    let yoke_center =
-        base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT + YOKE_HEIGHT * 0.5));
+    let yoke_center = base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT + YOKE_HEIGHT * 0.5));
     let tilt_pivot = base_origin.add(up.scale(BASE_SIZE.y + PAN_JOINT_HEIGHT + YOKE_HEIGHT));
     let head_forward = mat4_transform_dir(head_rot, Vec3::new(0.0, 0.0, 1.0)).normalize();
     let head_center = tilt_pivot.add(head_forward.scale(HEAD_SIZE.z * 0.5));

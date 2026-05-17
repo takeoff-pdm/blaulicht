@@ -6,9 +6,7 @@ use crate::{
     plugin::midi::MidiError,
     state::MidiDeviceState,
 };
-use egui::{
-    Color32, Context, FontId, Frame, Label, Margin, RichText,
-};
+use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText};
 
 impl BlaulichtApp {
     pub fn render_midi_dialog(&mut self, ctx: &Context) {

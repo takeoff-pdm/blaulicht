@@ -2,16 +2,13 @@ use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
         pages::health::{
-            render_dmx_or_artnet_health_box, DMX_ICON,
-            DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
+            render_dmx_or_artnet_health_box, DMX_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
         },
         BlaulichtApp,
     },
     state::DmxHealthState,
 };
-use egui::{
-    Color32, Context, FontFamily, Label, RichText,
-};
+use egui::{Color32, Context, FontFamily, Label, RichText};
 
 impl BlaulichtApp {
     pub fn render_dmx_dialog(&mut self, ctx: &Context, universe_number: usize) {

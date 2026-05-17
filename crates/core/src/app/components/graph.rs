@@ -2,7 +2,6 @@
 // Graph component
 //
 
-
 const CAP: usize = 1000;
 const TIME_WINDOW_MS: u64 = 3000;
 const GRAPH_UPDATE_INTERVAL_MS: u64 = 1;

@@ -10,10 +10,7 @@ use crate::{
     state::ArtNetReceiver,
 };
 use blaulicht_shared::LogLevel;
-use egui::{
-    Color32, Context, FontId, Frame, Label, Margin, RichText,
-    Widget,
-};
+use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText, Widget};
 use std::net::SocketAddr;
 
 impl BlaulichtApp {

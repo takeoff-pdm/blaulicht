@@ -1,15 +1,22 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
-        external_screen, BlaulichtApp, ExternalScreen, PopupSpec, pages::system,
+        external_screen,
+        pages::system,
+        BlaulichtApp, ExternalScreen, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
-    state::{NUM_DMX_UNIVERSES, PluginOpenState, ScreenId},
+    state::{PluginOpenState, ScreenId, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
-use std::{mem, path::Path, process::{self, Command}, time::Duration};
+use std::{
+    mem,
+    path::Path,
+    process::{self, Command},
+    time::Duration,
+};
 
 impl BlaulichtApp {
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {

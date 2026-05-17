@@ -7,21 +7,12 @@ use crate::{
     config,
     msg::SystemMessage,
 };
-use blaulicht_shared::{
-    LogLevel, SaveEngineState,
-    ShowfileArtNetReceiver, ShowfileArtNetState,
-};
+use blaulicht_shared::{LogLevel, SaveEngineState, ShowfileArtNetReceiver, ShowfileArtNetState};
 use egui::{Context, FontFamily, FontId, Ui};
 use egui_file_dialog::{FileDialog, Filter};
 use egui_phosphor::regular as ph;
+use std::{collections::HashSet, mem, path::PathBuf, str::FromStr, time::Duration};
 use sysinfo::Disks;
-use std::{
-    collections::HashSet,
-    mem,
-    path::PathBuf,
-    str::FromStr,
-    time::Duration,
-};
 
 fn places_quick_access_entries(showfile_home: Option<PathBuf>) -> Vec<(String, PathBuf)> {
     let disks = Disks::new_with_refreshed_list();
@@ -339,10 +330,7 @@ impl BlaulichtApp {
 
         if popup_dialog {
             let viewport = ctx.viewport_rect().size();
-            let max_size = egui::vec2(
-                (viewport.x - 32.0).max(0.0),
-                (viewport.y - 32.0).max(0.0),
-            );
+            let max_size = egui::vec2((viewport.x - 32.0).max(0.0), (viewport.y - 32.0).max(0.0));
             let desired = egui::vec2(900.0, 560.0);
             let size = egui::vec2(desired.x.min(max_size.x), desired.y.min(max_size.y));
             let config = dialog.config_mut();
@@ -395,84 +383,84 @@ impl BlaulichtApp {
 
             match self.system_ui_state.file_dialog_open_origin {
                 FileDialogOpenOrigin::Save => {
-                        // let dmx = self.data.state.dmx_engine.read().unwrap();
-                        // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                        // std::fs::write(file, serialized).unwrap();
+                    // let dmx = self.data.state.dmx_engine.read().unwrap();
+                    // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
+                    // std::fs::write(file, serialized).unwrap();
 
-                        config.last_open_showfile = Some(file.to_path_buf());
-                        //
-                        // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                        // config::write_config(config_path, config.clone()).unwrap();
-                        //
-                        // self.data
-                        //     .system_message_sender
-                        //     .send(SystemMessage::Log(
-                        //         format!("Saved showfile to {file:?}"),
-                        //         LogLevel::Info,
-                        //     ))
-                        //     .unwrap();
+                    config.last_open_showfile = Some(file.to_path_buf());
+                    //
+                    // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                    // config::write_config(config_path, config.clone()).unwrap();
+                    //
+                    // self.data
+                    //     .system_message_sender
+                    //     .send(SystemMessage::Log(
+                    //         format!("Saved showfile to {file:?}"),
+                    //         LogLevel::Info,
+                    //     ))
+                    //     .unwrap();
 
-                        mem::drop(config);
+                    mem::drop(config);
 
-                        self.save_showfile();
-                    }
+                    self.save_showfile();
+                }
                 FileDialogOpenOrigin::Load => {
-                        config.last_open_showfile = Some(file.to_path_buf());
+                    config.last_open_showfile = Some(file.to_path_buf());
 
-                        // let mut f = File::open(file).expect("no file found");
-                        // let metadata = fs::metadata(file).expect("unable to read metadata");
-                        // let mut buffer = vec![0; metadata.len() as usize];
-                        // f.read(&mut buffer).expect("buffer overflow");
-                        //
-                        // let decoded: blaulicht_shared::EngineState =
-                        //     postcard::from_bytes(&buffer).unwrap();
-                        //
-                        // {
-                        //     let mut plugin_state =
-                        //         self.data.state.plugin_state_storage.lock().unwrap();
-                        //     *plugin_state = decoded.plugin_state.clone();
-                        // }
-                        //
-                        // let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                        // // dmx.overwrite(decoded);
-                        // dmx.load_showfile(decoded);
-                        // mem::drop(dmx);
+                    // let mut f = File::open(file).expect("no file found");
+                    // let metadata = fs::metadata(file).expect("unable to read metadata");
+                    // let mut buffer = vec![0; metadata.len() as usize];
+                    // f.read(&mut buffer).expect("buffer overflow");
+                    //
+                    // let decoded: blaulicht_shared::EngineState =
+                    //     postcard::from_bytes(&buffer).unwrap();
+                    //
+                    // {
+                    //     let mut plugin_state =
+                    //         self.data.state.plugin_state_storage.lock().unwrap();
+                    //     *plugin_state = decoded.plugin_state.clone();
+                    // }
+                    //
+                    // let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                    // // dmx.overwrite(decoded);
+                    // dmx.load_showfile(decoded);
+                    // mem::drop(dmx);
 
-                        let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                        let mut artnet = self.data.state.artnet_output.write().unwrap();
-                        let ui_state = config::read_showfile(
-                            file.to_path_buf(),
-                            &mut dmx,
-                            &mut artnet,
-                            &self.data.state.plugin_state_storage,
-                            self.data.system_message_sender.clone(),
-                        );
-                        mem::drop(artnet);
-                        mem::drop(dmx);
+                    let mut dmx = self.data.state.dmx_engine.write().unwrap();
+                    let mut artnet = self.data.state.artnet_output.write().unwrap();
+                    let ui_state = config::read_showfile(
+                        file.to_path_buf(),
+                        &mut dmx,
+                        &mut artnet,
+                        &self.data.state.plugin_state_storage,
+                        self.data.system_message_sender.clone(),
+                    );
+                    mem::drop(artnet);
+                    mem::drop(dmx);
 
-                        config.last_open_showfile = Some(file.to_path_buf());
+                    config.last_open_showfile = Some(file.to_path_buf());
 
-                        let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                        config::write_config(config_path, config.clone()).unwrap();
+                    let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
+                    config::write_config(config_path, config.clone()).unwrap();
 
-                        self.data
-                            .system_message_sender
-                            .send(SystemMessage::Log(
-                                format!("Loaded showfile from {file:?}"),
-                                LogLevel::Info,
-                            ))
-                            .unwrap();
+                    self.data
+                        .system_message_sender
+                        .send(SystemMessage::Log(
+                            format!("Loaded showfile from {file:?}"),
+                            LogLevel::Info,
+                        ))
+                        .unwrap();
 
-                        mem::drop(config);
+                    mem::drop(config);
 
-                        if let Some(ui_state) = ui_state {
-                            self.apply_showfile_ui_state(ui_state);
-                        }
+                    if let Some(ui_state) = ui_state {
+                        self.apply_showfile_ui_state(ui_state);
+                    }
 
-                        self.show_popup(PopupSpec::with_duration(
-                            Duration::from_secs(2),
-                            "Loaded Showfile".to_string(),
-                        ));
+                    self.show_popup(PopupSpec::with_duration(
+                        Duration::from_secs(2),
+                        "Loaded Showfile".to_string(),
+                    ));
                 }
             }
         }

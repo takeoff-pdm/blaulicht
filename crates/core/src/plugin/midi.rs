@@ -1,9 +1,9 @@
 use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use tracing::{debug, error, info, trace, warn};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{debug, error, info, trace, warn};
 // use wmidi::MidiMessage;
 
 use crate::msg::{MidiEvent, SystemMessage};

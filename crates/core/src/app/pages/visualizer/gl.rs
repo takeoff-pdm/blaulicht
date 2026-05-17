@@ -31,9 +31,7 @@ pub(super) unsafe fn create_program(gl: &Arc<glow::Context>) -> Result<glow::Pro
     Ok(program)
 }
 
-pub(super) unsafe fn create_text_program(
-    gl: &Arc<glow::Context>,
-) -> Result<glow::Program, String> {
+pub(super) unsafe fn create_text_program(gl: &Arc<glow::Context>) -> Result<glow::Program, String> {
     let vertex_shader_source = include_str!("shaders/text.vert.glsl");
     let fragment_shader_source = include_str!("shaders/text.frag.glsl");
 
@@ -82,13 +80,13 @@ pub(super) unsafe fn create_cube(
 ) -> Result<(glow::VertexArray, glow::Buffer, glow::Buffer, i32), String> {
     let vertices: [f32; 48] = [
         -1.0, -1.0, -1.0, 0.2, 0.6, 0.95, // 0
-        1.0, -1.0, -1.0, 0.2, 0.6, 0.95,  // 1
-        1.0, 1.0, -1.0, 0.2, 0.6, 0.95,   // 2
-        -1.0, 1.0, -1.0, 0.2, 0.6, 0.95,  // 3
-        -1.0, -1.0, 1.0, 0.4, 0.8, 1.0,   // 4
-        1.0, -1.0, 1.0, 0.4, 0.8, 1.0,    // 5
-        1.0, 1.0, 1.0, 0.4, 0.8, 1.0,     // 6
-        -1.0, 1.0, 1.0, 0.4, 0.8, 1.0,    // 7
+        1.0, -1.0, -1.0, 0.2, 0.6, 0.95, // 1
+        1.0, 1.0, -1.0, 0.2, 0.6, 0.95, // 2
+        -1.0, 1.0, -1.0, 0.2, 0.6, 0.95, // 3
+        -1.0, -1.0, 1.0, 0.4, 0.8, 1.0, // 4
+        1.0, -1.0, 1.0, 0.4, 0.8, 1.0, // 5
+        1.0, 1.0, 1.0, 0.4, 0.8, 1.0, // 6
+        -1.0, 1.0, 1.0, 0.4, 0.8, 1.0, // 7
     ];
 
     let indices: [u16; 36] = [
@@ -350,9 +348,9 @@ pub(super) unsafe fn create_quad(
     gl: &Arc<glow::Context>,
 ) -> Result<(glow::VertexArray, glow::Buffer, i32), String> {
     let vertices: [f32; 36] = [
-        -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0,
-        0.0, 0.0, 0.0, 0.0,
+        -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0,
+        0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0,
+        0.0, 0.0,
     ];
 
     let vao = gl
@@ -406,9 +404,7 @@ pub(super) unsafe fn create_text_buffers(
     Ok((vao, vbo))
 }
 
-pub(super) unsafe fn create_font_texture(
-    gl: &Arc<glow::Context>,
-) -> Result<glow::Texture, String> {
+pub(super) unsafe fn create_font_texture(gl: &Arc<glow::Context>) -> Result<glow::Texture, String> {
     let texture = gl
         .create_texture()
         .map_err(|e| format!("Font texture create failed: {e}"))?;

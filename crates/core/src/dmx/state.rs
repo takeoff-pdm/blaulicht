@@ -2,8 +2,9 @@ use blaulicht_shared::{
     fixture::state::FixtureState,
     scene::{EngineSink, FixtureSelection, Scene},
     view::View,
-    ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate, AnimationTimerState, EngineGroups, EngineSelection,
-    FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration, PhaserKind, SyncMode,
+    ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate,
+    AnimationTimerState, EngineGroups, EngineSelection, FixtureProperty, MathematicalBaseFunction,
+    MathematicalPhaser, PhaserDuration, PhaserKind, SyncMode,
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
