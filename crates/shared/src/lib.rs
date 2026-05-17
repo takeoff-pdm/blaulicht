@@ -1,8 +1,8 @@
 mod event;
 pub use event::*;
 
-mod page_event;
-pub use page_event::*;
+mod page;
+pub use page::*;
 
 mod abi;
 pub use abi::*;

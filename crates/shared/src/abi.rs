@@ -13,7 +13,6 @@ pub struct TickInput {
     pub events: ControlEventCollection,
 }
 
-
 #[derive(Debug, Clone, Default, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
     pub time: u64,

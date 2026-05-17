@@ -194,7 +194,7 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(ref animation_spec_body_phaser) => {
                 animation_spec_body_phaser.sync
             }
-            | AnimationSpecBody::AudioVolume(_)
+            AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
@@ -210,7 +210,7 @@ impl AnimationSpec {
             AnimationSpecBody::Phaser(animation_spec_body_phaser) => {
                 animation_spec_body_phaser.pin_to_beat
             }
-            | AnimationSpecBody::AudioVolume(_)
+            AnimationSpecBody::AudioVolume(_)
             | AnimationSpecBody::BPMValue(_)
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)

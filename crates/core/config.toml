@@ -31,9 +31,4 @@ file_path = "../plugins/bundle_debug/test.wasm"
 enabled = true
 enable_watcher = true
 
-[[plugins]]
-file_path = "../plugins/bundle_debug/ddj_400.wasm"
-enabled = true
-enable_watcher = true
-
 [plugin_state]

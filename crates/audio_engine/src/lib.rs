@@ -7,7 +7,6 @@ pub mod collector;
 #[cfg(feature = "stream_in")]
 pub mod converter;
 
-
 pub mod signals;
 pub mod spectrogram;
 pub mod types;

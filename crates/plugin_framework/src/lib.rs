@@ -6,9 +6,9 @@ pub mod midi;
 pub mod serial;
 mod state;
 pub use blaulicht::*;
+pub use blaulicht_shared::PluginStateLocation;
 pub use midi::*;
 pub use state::*;
-pub use blaulicht_shared::PluginStateLocation;
 
 pub struct BufferSource<T, const N: usize> {
     buffer: [T; N],

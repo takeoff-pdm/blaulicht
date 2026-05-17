@@ -16,3 +16,4 @@ target_wasm
 blaulicht-*
 *.tar.gz
 install/blaulicht
+*.codex

@@ -63,13 +63,16 @@ impl MovingHead {
                 fixture_channel!(dmx, this, 1) = state.alpha;
 
                 // Color.
-                fixture_channel!(dmx, this, 3) = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 3) =
+                    state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
 
                 // Gobo wheel.
-                fixture_channel!(dmx, this, 11) = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 11) =
+                    state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
 
                 // Gobo rot.
-                fixture_channel!(dmx, this, 5) = state.color.v.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 5) =
+                    state.color.v.map_range(0.0..1.0, 0.0..255.0) as u8;
 
                 // Focus
                 // fixture_channel!(dmx, this, 6) = state.color.h.map_range(0.0..360.0, 0.0..255.0) as u8;
@@ -99,7 +102,8 @@ impl MovingHead {
                     v => v.map_range(1..255, 10..250),
                 };
                 fixture_channel!(dmx, this, 5) = state.focus;
-                fixture_channel!(dmx, this, 6) = state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
+                fixture_channel!(dmx, this, 6) =
+                    state.color.s.map_range(0.0..1.0, 0.0..255.0) as u8;
             }
         }
         // match self {
@@ -114,7 +118,8 @@ impl MovingHead {
                 let strobe_speed = fixture_channel!(dmx, this, 0);
                 let alpha = fixture_channel!(dmx, this, 1);
                 let hue = (fixture_channel!(dmx, this, 3) as f64).map_range(0.0..255.0, 0.0..360.0);
-                let saturation = (fixture_channel!(dmx, this, 11) as f64).map_range(0.0..255.0, 0.0..1.0);
+                let saturation =
+                    (fixture_channel!(dmx, this, 11) as f64).map_range(0.0..255.0, 0.0..1.0);
                 let value = (fixture_channel!(dmx, this, 5) as f64).map_range(0.0..255.0, 0.0..1.0);
                 let pan = fixture_channel!(dmx, this, 12);
                 let tilt = fixture_channel!(dmx, this, 14);
