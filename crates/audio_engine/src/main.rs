@@ -15,7 +15,7 @@ use blaulicht_audio_engine::{
     SpectrogramDisplayOptions,
 };
 use clap::Parser;
-use egui::{ColorImage, mutex::Mutex};
+use egui::{mutex::Mutex, ColorImage};
 use kdam::{tqdm, BarExt};
 
 const FREQ_BUFFER_SIZE: usize = 2048;
@@ -129,7 +129,7 @@ fn main() {
             changed: false,
             bass_freq_low: 0,
             bass_freq_high: 250,
-            bass_volume: 100,
+            bass_volume: 25,
         },
         output,
         blaulicht_audio_engine::CollectorScratchParameters {

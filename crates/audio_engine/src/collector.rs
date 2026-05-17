@@ -167,7 +167,7 @@ impl Default for SignalCollectorParams {
 
             bass_freq_low: 0,
             bass_freq_high: 250,
-            bass_volume: 100,
+            bass_volume: 25,
         }
     }
 }

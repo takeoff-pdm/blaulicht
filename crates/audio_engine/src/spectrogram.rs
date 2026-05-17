@@ -125,6 +125,134 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
     col
 }
 
+#[allow(clippy::too_many_arguments)]
+fn draw_column(
+    image_buffer: &mut ColorImage,
+    width: usize,
+    height_outer: usize,
+    height: usize,
+    pad_top: usize,
+    pad_btm: usize,
+    bucket_height: usize,
+    bin_count: usize,
+    x_start: usize,
+    x_end: usize,
+    column: &CollectorOutput,
+    options: &SpectrogramDisplayOptions,
+) {
+    for bin_index in 0..bin_count {
+        let y_max = pad_top + ((bin_count - bin_index) * bucket_height);
+        let y_min = y_max - bucket_height;
+
+        let bucket_color = spectrogram_color(column.current_audio_colunn[bin_index].volume);
+        for y in y_min..y_max {
+            let row_start = y * width + x_start;
+            let row_end = row_start + (x_end - x_start);
+            image_buffer.pixels[row_start..row_end].fill(bucket_color);
+        }
+    }
+
+    if options.include_beat_markers {
+        draw_markers(
+            image_buffer,
+            width,
+            height_outer,
+            height,
+            pad_btm,
+            x_start,
+            x_end,
+            column.snapshot.beat_trigger,
+            column.snapshot.actual_onset_peak,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_averaged_columns(
+    image_buffer: &mut ColorImage,
+    width: usize,
+    height_outer: usize,
+    height: usize,
+    pad_top: usize,
+    pad_btm: usize,
+    bucket_height: usize,
+    bin_count: usize,
+    x_start: usize,
+    x_end: usize,
+    columns: &std::collections::VecDeque<CollectorOutput>,
+    column_start: usize,
+    column_end: usize,
+    options: &SpectrogramDisplayOptions,
+) {
+    let column_count = column_end - column_start;
+
+    for bin_index in 0..bin_count {
+        let y_max = pad_top + ((bin_count - bin_index) * bucket_height);
+        let y_min = y_max - bucket_height;
+
+        let volume_sum: u32 = (column_start..column_end)
+            .map(|column_index| columns[column_index].current_audio_colunn[bin_index].volume as u32)
+            .sum();
+        let bucket_color = spectrogram_color((volume_sum / column_count as u32) as u8);
+
+        for y in y_min..y_max {
+            let row_start = y * width + x_start;
+            let row_end = row_start + (x_end - x_start);
+            image_buffer.pixels[row_start..row_end].fill(bucket_color);
+        }
+    }
+
+    if options.include_beat_markers {
+        let beat_trigger = (column_start..column_end)
+            .any(|column_index| columns[column_index].snapshot.beat_trigger);
+        let actual_onset_peak = (column_start..column_end)
+            .any(|column_index| columns[column_index].snapshot.actual_onset_peak);
+        draw_markers(
+            image_buffer,
+            width,
+            height_outer,
+            height,
+            pad_btm,
+            x_start,
+            x_end,
+            beat_trigger,
+            actual_onset_peak,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_markers(
+    image_buffer: &mut ColorImage,
+    width: usize,
+    height_outer: usize,
+    height: usize,
+    pad_btm: usize,
+    x_start: usize,
+    x_end: usize,
+    beat_trigger: bool,
+    actual_onset_peak: bool,
+) {
+    if x_start >= width {
+        return;
+    }
+
+    if beat_trigger {
+        for y in 0..height_outer {
+            image_buffer.pixels[y * width + x_start] = Color32::RED;
+        }
+    }
+
+    if actual_onset_peak {
+        let dot_size = x_end - x_start;
+        let y_end = (height + (pad_btm / 2)).min(height_outer);
+        let y_start = y_end.saturating_sub(dot_size);
+        for y in y_start..y_end {
+            image_buffer.pixels[y * width + x_start] = Color32::MAGENTA;
+        }
+    }
+}
+
 pub fn create_spectrogram_image(
     spec: &AudioSpectrogram,
     width: usize,
@@ -164,23 +292,15 @@ pub fn create_spectrogram_image(
         return;
     }
 
-    let pixels_per_column = avail_width as f32 / total_cols as f32;
-
-    let columns_data: Vec<CollectorOutput> = if pixels_per_column < 1.0 {
-        let mut chunks_cont = spec.columns.clone();
-        let columns_data = chunks_cont.make_contiguous();
-        downsample(columns_data, pixels_per_column)
-    } else {
-        spec.columns.iter().cloned().collect()
-    };
-
-    if columns_data.is_empty() {
+    if spec.columns.is_empty() {
         return;
     }
 
-    let pixels_per_column = (avail_width / columns_data.len()).max(1);
+    let first_column_index = spec.columns.len().saturating_sub(total_cols);
+    let visible_column_count = spec.columns.len() - first_column_index;
+    let data_offset = total_cols - visible_column_count;
 
-    let mut iter = columns_data.iter().peekable();
+    let mut iter = spec.columns.iter().skip(first_column_index).peekable();
     let bin_count_per_column = if let Some(first) = iter.peek() {
         first.current_audio_colunn.len()
     } else {
@@ -204,56 +324,75 @@ pub fn create_spectrogram_image(
     }
 
     let bucket_height = bucket_height.floor() as usize;
-    let iter = columns_data.iter().enumerate().peekable();
     let width_usize = width;
     let bin_count_per_column_usize = bin_count_per_column;
 
-    for (column_index, column) in iter {
-        let x_start = pad_left + (column_index * pixels_per_column) as usize;
-        let x_end = (x_start + pixels_per_column as usize).min(width_usize);
+    if total_cols <= avail_width {
+        for visible_index in 0..visible_column_count {
+            let logical_index = data_offset + visible_index;
+            let x_start = pad_left + (logical_index * avail_width) / total_cols;
+            let x_end =
+                (pad_left + ((logical_index + 1) * avail_width) / total_cols).min(width_usize);
 
-        if x_start >= x_end {
-            continue;
-        }
-
-        let column_bin_count = column.current_audio_colunn.len();
-        for bin_index in 0..column_bin_count {
-            let y_max = pad_top + ((bin_count_per_column_usize - bin_index) * bucket_height);
-            let y_min = y_max - bucket_height;
-
-            let bucket_color = spectrogram_color(column.current_audio_colunn[bin_index].volume);
-            for y in y_min..y_max {
-                let row_start = y * width_usize + x_start;
-                let row_end = row_start + (x_end - x_start);
-                image_buffer.pixels[row_start..row_end].fill(bucket_color);
+            if x_start >= x_end {
+                continue;
             }
+
+            draw_column(
+                image_buffer,
+                width_usize,
+                height_outer,
+                height,
+                pad_top,
+                pad_btm,
+                bucket_height,
+                bin_count_per_column_usize,
+                x_start,
+                x_end,
+                &spec.columns[first_column_index + visible_index],
+                options,
+            );
         }
+    } else {
+        let data_logical_start = data_offset;
+        let data_logical_end = data_offset + visible_column_count;
 
-        if options.include_beat_markers {
-            if x_start < width_usize {
-                if column.snapshot.beat_trigger {
-                    let row_start = x_start;
-                    let stride = width_usize;
-                    for y in 0..height_outer {
-                        image_buffer.pixels[y * stride + row_start] = Color32::RED;
-                    }
-                }
+        for pixel_index in 0..avail_width {
+            let logical_start = (pixel_index * total_cols) / avail_width;
+            let logical_end = ((pixel_index + 1) * total_cols) / avail_width;
 
-                if column.snapshot.actual_onset_peak {
-                    let dot_size = x_end - x_start;
-                    let y_end = (height + (pad_btm / 2)).min(height_outer);
-                    let y_start = y_end.saturating_sub(dot_size);
-                    let row_start = x_start;
-                    let stride = width_usize;
-                    for y in y_start..y_end {
-                        image_buffer.pixels[y * stride + row_start] = Color32::MAGENTA;
-                    }
-                }
+            let range_start = logical_start.max(data_logical_start);
+            let range_end = logical_end.min(data_logical_end);
+            if range_start >= range_end {
+                continue;
             }
+
+            let x_start = pad_left + pixel_index;
+            let x_end = (x_start + 1).min(width_usize);
+            if x_start >= x_end {
+                continue;
+            }
+
+            let column_start = first_column_index + (range_start - data_offset);
+            let column_end = first_column_index + (range_end - data_offset);
+            draw_averaged_columns(
+                image_buffer,
+                width_usize,
+                height_outer,
+                height,
+                pad_top,
+                pad_btm,
+                bucket_height,
+                bin_count_per_column_usize,
+                x_start,
+                x_end,
+                &spec.columns,
+                column_start,
+                column_end,
+                options,
+            );
         }
     }
-
-
 
     // let image = egui::ColorImage::new([width, height_outer], pixels);
     // // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
@@ -517,6 +656,22 @@ mod tests {
         spec
     }
 
+    fn spectrogram_with_columns(max_columns: usize, columns: usize) -> AudioSpectrogram {
+        let mut spec = AudioSpectrogram::new(max_columns, 2, Duration::from_millis(20));
+        for _ in 0..columns {
+            let mut output = CollectorOutput::default();
+            output.current_audio_colunn = vec![
+                AudioBucket {
+                    volume: 64,
+                    ..AudioBucket::default()
+                };
+                2
+            ];
+            spec.push_data(output);
+        }
+        spec
+    }
+
     #[test]
     fn spectrogram_image_handles_wide_single_onset_column() {
         let spec = spectrogram_with_onset_column();
@@ -554,5 +709,45 @@ mod tests {
 
             assert_eq!(image.size, [width, height]);
         }
+    }
+
+    #[test]
+    fn spectrogram_image_spreads_downsampled_columns_to_right_edge() {
+        let spec = spectrogram_with_columns(1000, 900);
+        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+
+        create_spectrogram_image(
+            &spec,
+            723,
+            160,
+            &SpectrogramDisplayOptions {
+                include_beat_markers: false,
+            },
+            &mut image,
+        );
+
+        let right_edge_data_pixel = image.pixels[10 * image.width() + image.width() - 1];
+        assert_ne!(right_edge_data_pixel, Color32::BLACK);
+    }
+
+    #[test]
+    fn spectrogram_image_right_aligns_partial_window() {
+        let spec = spectrogram_with_columns(10, 1);
+        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+
+        create_spectrogram_image(
+            &spec,
+            25,
+            60,
+            &SpectrogramDisplayOptions {
+                include_beat_markers: false,
+            },
+            &mut image,
+        );
+
+        let left_data_pixel = image.pixels[10 * image.width() + 5];
+        let right_edge_data_pixel = image.pixels[10 * image.width() + image.width() - 1];
+        assert_eq!(left_data_pixel, Color32::BLACK);
+        assert_ne!(right_edge_data_pixel, Color32::BLACK);
     }
 }

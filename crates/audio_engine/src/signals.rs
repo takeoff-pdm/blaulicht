@@ -37,6 +37,106 @@ impl From<audioviz::spectrum::Frequency> for Frequency {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CollectorOutputSpec, CollectorScratchParameters, SignalCollectorParams};
+
+    #[derive(Clone)]
+    struct StaticAudioSource {
+        freqs: Vec<Frequency>,
+    }
+
+    impl AudioSource for StaticAudioSource {
+        fn get_freq_buffer_size(&self) -> usize {
+            self.freqs.len()
+        }
+
+        fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
+            &self.freqs
+        }
+    }
+
+    fn frequency(freq: f32, volume: f32) -> Frequency {
+        Frequency {
+            volume,
+            freq,
+            position: 0.0,
+        }
+    }
+
+    fn collector_with_freqs(
+        freqs: Vec<Frequency>,
+        bass_volume: usize,
+    ) -> SignalCollector<1, StaticAudioSource> {
+        let source = StaticAudioSource {
+            freqs: freqs.clone(),
+        };
+        let mut collector = SignalCollector::new(
+            SignalCollectorParams {
+                bass_volume,
+                ..SignalCollectorParams::default()
+            },
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            source,
+            0,
+        )
+        .unwrap();
+        collector.freq_buffer = freqs;
+        collector
+    }
+
+    #[test]
+    fn quiet_bass_freezes_onset_history_and_keeps_last_bpm() {
+        let mut collector = collector_with_freqs(
+            vec![
+                frequency(60.0, 0.2),
+                frequency(500.0, 8.0),
+                frequency(4_000.0, 8.0),
+            ],
+            100,
+        );
+        let known_bpm = 123.0;
+        collector.scratch.bpm_estimate = known_bpm;
+        collector.scratch.beat_interval_ms = 60_000.0 / known_bpm;
+        collector.scratch.beat_needs_sync = false;
+        collector.scratch.last_onset_sample_time = 0;
+        collector.scratch.onset_history.extend([0.1, 0.2, 0.1]);
+        let history_len = collector.scratch.onset_history.len();
+
+        collector.bass(ONSET_SAMPLE_PERIOD_MS).unwrap();
+
+        assert_eq!(collector.scratch.onset_history.len(), history_len);
+        assert!((collector.scratch.bpm_estimate - known_bpm).abs() < f32::EPSILON);
+        assert!((collector.current.bpm - known_bpm).abs() < f32::EPSILON);
+        assert_eq!(
+            collector.current.time_between_beats_millis,
+            (60_000.0_f32 / known_bpm).round() as u16
+        );
+        assert!(collector.scratch.beat_needs_sync);
+        assert!(collector.current.bass_avg < collector.params.bass_volume as u8);
+    }
+
+    #[test]
+    fn loud_bass_allows_onset_history_updates() {
+        let mut collector = collector_with_freqs(
+            vec![
+                frequency(60.0, 2.0),
+                frequency(500.0, 1.0),
+                frequency(4_000.0, 1.0),
+            ],
+            100,
+        );
+        collector.scratch.last_onset_sample_time = 0;
+
+        collector.bass(ONSET_SAMPLE_PERIOD_MS).unwrap();
+
+        assert_eq!(collector.scratch.onset_history.len(), 1);
+        assert!(collector.current.bass_avg >= collector.params.bass_volume as u8);
+    }
+}
+
 #[cfg(feature = "stream_in")]
 impl From<&audioviz::spectrum::Frequency> for Frequency {
     fn from(value: &audioviz::spectrum::Frequency) -> Self {
@@ -145,6 +245,8 @@ where
                     .sum::<f64>()
                     / self.scratch.bass_samples.len() as f64
             };
+            let bass_gate_open =
+                bass_moving_average >= lower_volume_limit || bass_sig as f64 >= lower_volume_limit;
 
             let elapsed_since_last_peak = match self.scratch.bass_peaks.iter().last() {
                 Some(last) => now - last,
@@ -155,7 +257,7 @@ where
             // Do not consider values under bass 10.
             let mut peaked = false;
 
-            if bass_moving_average >= lower_volume_limit {
+            if bass_gate_open {
                 let bass_signal_threshold_for_a_peak =
                     (bass_moving_average * 2.0) * (BASS_MODIFIER as f64 / 100.0);
                 if bass_sig >= bass_signal_threshold_for_a_peak as u8
@@ -227,22 +329,30 @@ where
             }
 
             let band_weights = if self.params.auto_weight {
-                let updated = Self::compute_band_weights(
-                    self.scratch.band_weights,
-                    band_energies,
-                    band_onset_peakiness,
-                    band_onset_periodicity,
-                );
-                self.scratch.band_weights = updated;
-                updated
+                if bass_gate_open {
+                    let updated = Self::compute_band_weights(
+                        self.scratch.band_weights,
+                        band_energies,
+                        band_onset_peakiness,
+                        band_onset_periodicity,
+                    );
+                    self.scratch.band_weights = updated;
+                    updated
+                } else {
+                    self.scratch.band_weights
+                }
             } else {
                 self.scratch.band_weights = DEFAULT_BAND_WEIGHTS;
                 DEFAULT_BAND_WEIGHTS
             };
 
-            let onset = band_onsets[0] * band_weights[0]
-                + band_onsets[1] * band_weights[1]
-                + band_onsets[2] * band_weights[2];
+            let onset = if bass_gate_open {
+                band_onsets[0] * band_weights[0]
+                    + band_onsets[1] * band_weights[1]
+                    + band_onsets[2] * band_weights[2]
+            } else {
+                0.0
+            };
             self.scratch.onset_ema += ONSET_EMA_ALPHA * (onset - self.scratch.onset_ema);
 
             let mut onset_peak = false;
@@ -250,32 +360,36 @@ where
 
             if now - self.scratch.last_onset_sample_time >= ONSET_SAMPLE_PERIOD_MS {
                 self.scratch.last_onset_sample_time = now;
-                self.scratch.onset_history.push_back(self.scratch.onset_ema);
-                if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
-                    self.scratch.onset_history.pop_front();
-                }
-                for (idx, onset_val) in band_onsets.iter().enumerate() {
-                    let history = &mut self.scratch.band_onset_history[idx];
-                    history.push_back(*onset_val);
-                    if history.len() > ONSET_HISTORY_FRAMES {
-                        history.pop_front();
+                if bass_gate_open {
+                    self.scratch.onset_history.push_back(self.scratch.onset_ema);
+                    if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
+                        self.scratch.onset_history.pop_front();
                     }
-                }
-
-                let history = self.scratch.onset_history.make_contiguous();
-                bpm_from_onset = Self::estimate_bpm_from_onset(history, ONSET_SAMPLE_PERIOD_MS);
-                let (mean, threshold) = Self::onset_threshold(history);
-                onset_peak = self.scratch.onset_ema > threshold
-                    && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
-
-                if onset_peak {
-                    for idx in 0..3 {
-                        let rise = self.scratch.band_energy_rise_ema[idx];
-                        let fall = self.scratch.band_energy_fall_ema[idx];
-                        let strength = rise / (rise + fall + ONSET_METRIC_EPS);
-                        let history = &mut self.scratch.band_transient_history[idx];
-                        history.push_back((now, strength));
+                    for (idx, onset_val) in band_onsets.iter().enumerate() {
+                        let history = &mut self.scratch.band_onset_history[idx];
+                        history.push_back(*onset_val);
+                        if history.len() > ONSET_HISTORY_FRAMES {
+                            history.pop_front();
+                        }
                     }
+
+                    let history = self.scratch.onset_history.make_contiguous();
+                    bpm_from_onset = Self::estimate_bpm_from_onset(history, ONSET_SAMPLE_PERIOD_MS);
+                    let (mean, threshold) = Self::onset_threshold(history);
+                    onset_peak = self.scratch.onset_ema > threshold
+                        && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
+
+                    if onset_peak {
+                        for idx in 0..3 {
+                            let rise = self.scratch.band_energy_rise_ema[idx];
+                            let fall = self.scratch.band_energy_fall_ema[idx];
+                            let strength = rise / (rise + fall + ONSET_METRIC_EPS);
+                            let history = &mut self.scratch.band_transient_history[idx];
+                            history.push_back((now, strength));
+                        }
+                    }
+                } else {
+                    self.scratch.beat_needs_sync = true;
                 }
             }
 
@@ -306,21 +420,24 @@ where
             };
 
             let mut bpm_from_peaks = 0.0_f32;
-            if bass_moving_average > lower_volume_limit && bass_len > 0 {
+            if bass_gate_open && bass_len > 0 {
                 bpm_from_peaks = (SECONDS_IN_A_MINUTE / avg_bass_peak_durations) as f32;
             }
 
-            if let Some(new_bpm) = bpm_from_onset {
-                let new_bpm = new_bpm.clamp(MIN_BPM, MAX_BPM);
-                if self.scratch.bpm_estimate <= 0.0 {
-                    self.scratch.bpm_estimate = new_bpm;
-                } else {
-                    self.scratch.bpm_estimate = (self.scratch.bpm_estimate * 0.8) + (new_bpm * 0.2);
+            if bass_gate_open {
+                if let Some(new_bpm) = bpm_from_onset {
+                    let new_bpm = new_bpm.clamp(MIN_BPM, MAX_BPM);
+                    if self.scratch.bpm_estimate <= 0.0 {
+                        self.scratch.bpm_estimate = new_bpm;
+                    } else {
+                        self.scratch.bpm_estimate =
+                            (self.scratch.bpm_estimate * 0.8) + (new_bpm * 0.2);
+                    }
                 }
-            }
 
-            if self.scratch.bpm_estimate <= 0.0 && bpm_from_peaks > 0.0 {
-                self.scratch.bpm_estimate = bpm_from_peaks;
+                if self.scratch.bpm_estimate <= 0.0 && bpm_from_peaks > 0.0 {
+                    self.scratch.bpm_estimate = bpm_from_peaks;
+                }
             }
 
             if self.scratch.bpm_estimate > 0.0 {
