@@ -12,11 +12,14 @@ set -o pipefail
 # NOTE: should be changed
 # TODO: add flags to setup the parameters of the installer
 VNC_PASSWORD="blaulicht"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ "$USER" = "root" ]; then
     echo "Please dont run this installer as root. You will be prompted for your sudo password."
     exit 1
 fi
+
+cd "${SCRIPT_DIR}"
 
 blaulicht_binary() {
     sudo killall blaulicht || echo "[kill old instance] Blaulicht not running"
@@ -35,6 +38,33 @@ blaulicht_binary() {
     sudo chmod +x /usr/bin/blaulicht || exit 2
 }
 
+install_runtime_files() {
+    mkdir -p ~/.config/openbox
+    cp ./openbox-autostart ~/.config/openbox/autostart || exit 2
+    chmod +x ~/.config/openbox/autostart || exit 2
+
+    mkdir -p ~/.config/devilspie2
+    cp ./devilspie2.lua ~/.config/devilspie2/blaulicht.lua || exit 2
+
+    sudo cp ./blaulicht.desktop /usr/share/xsessions/ || exit 2
+    sudo chmod +x /usr/share/xsessions/blaulicht.desktop || exit 2
+
+    sudo cp ./blaulicht.sh /usr/bin/blaulicht.sh || exit 2
+    sudo chmod +x /usr/bin/blaulicht.sh || exit 2
+
+    sudo cp ./generate-devilspie2.sh /usr/bin/generate-devilspie2.sh || exit 2
+    sudo chmod +x /usr/bin/generate-devilspie2.sh || exit 2
+
+    sudo cp ./rescue.sh /usr/bin/rescue.sh || exit 2
+    sudo chmod +x /usr/bin/rescue.sh || exit 2
+
+    sudo cp ./shutdown.sh /usr/bin/shutdown.sh || exit 2
+    sudo chmod +x /usr/bin/shutdown.sh || exit 2
+
+    sudo cp ./fans.sh /usr/bin/fans || exit 2
+    sudo cp ./limits.conf /etc/security/limits.d/99-blaulicht-thread-priority.conf || exit 2
+}
+
 #
 # Check if we need to install or update
 #
@@ -48,6 +78,7 @@ install)
 upgrade)
     echo "Running upgrade..."
     blaulicht_binary
+    install_runtime_files
     exit 0
     ;;
 *)
@@ -99,8 +130,6 @@ sudo apt install -y xterm || exit 2
 # Install fan driver
 #
 
-sudo cp ./fans.sh /usr/bin/fans || exit 2
-
 #
 # Install Blaulicht.
 #
@@ -110,21 +139,7 @@ sudo apt install -y rsync curl btop wget jq libxkbcommon-x11-0 x11-xserver-utils
 
 blaulicht_binary
 
-mkdir -p ~/.config/openbox
-cp ./openbox-autostart ~/.config/openbox/autostart || exit 2
-chmod +x ~/.config/openbox/autostart || exit 2
-
-mkdir -p ~/.config/devilspie2
-cp ./devilspie2.lua ~/.config/devilspie2/blaulicht.lua || exit 2
-
-sudo cp ./blaulicht.desktop /usr/share/xsessions/ || exit 2
-sudo chmod +x /usr/share/xsessions/blaulicht.desktop || exit 2
-
-sudo cp blaulicht.sh /usr/bin/blaulicht.sh || exit 2
-sudo chmod +x /usr/bin/blaulicht.sh || exit 2
-
-sudo cp ./generate-devilspie2.sh /usr/bin/generate-devilspie2.sh || exit 2
-sudo chmod +x /usr/bin/generate-devilspie2.sh || exit 2
+install_runtime_files
 
 #
 # Rescue
@@ -132,12 +147,6 @@ sudo chmod +x /usr/bin/generate-devilspie2.sh || exit 2
 
 sudo apt install lm-sensors -y || exit 2
 sudo sensors-detect --auto || echo "[detect sensors] WARNING: Command failed"
-
-sudo cp rescue.sh /usr/bin/rescue.sh || exit 2
-sudo chmod +x /usr/bin/rescue.sh || exit 2
-
-sudo cp shutdown.sh /usr/bin/shutdown.sh || exit 2
-sudo chmod +x /usr/bin/shutdown.sh || exit 2
 
 #
 # Pulseaudio.
@@ -155,8 +164,6 @@ sudo chmod 440 /etc/sudoers.d/blaulicht-fans || exit 2
 #
 # Thread priority adjustments
 #
-
-sudo cp ./limits.conf /etc/security/limits.d/99-blaulicht-thread-priority.conf || exit 2
 
 #
 #

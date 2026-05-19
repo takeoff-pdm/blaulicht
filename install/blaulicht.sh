@@ -20,9 +20,19 @@ setup_xserver() {
     xrandr --addmode VGA-1 "1024x600_60.00" || true
     xrandr --addmode VGA-1 "800x480_60.00" || true
 
-    # TODO: decide which scaling works better
-    # xrandr --output VGA-1 --mode "1024x600_60.00"
-    xrandr --output VGA-1 --mode "800x480_60.00" || true
+    # Keep the touchscreen panel as the primary display at the bottom,
+    # with the HDMI display above it when present.
+    xrandr --output HDMI-1 --mode 1920x1080 --pos 0x0 \
+           --output VGA-1 --primary --mode "800x480_60.00" --pos 0x1080 || \
+    xrandr --output VGA-1 --primary --mode "800x480_60.00" || true
+
+    # The touchscreen should only address the VGA panel, not the combined desktop.
+    xinput map-to-output "eGalaxTouch Virtual Device for Single" VGA-1 || true
+    xinput set-prop "eGalaxTouch Virtual Device for Single" \
+        "Coordinate Transformation Matrix" \
+        0.416667 0 0 \
+        0 0.307692 0.692308 \
+        0 0 1 || true
 
     log "X server setup complete."
 }
@@ -49,14 +59,18 @@ setup_devilspie2_and_get_blaulicht_flags() {
     # If we have an external HDMI monitor attached, tell blaulicht that it needs to attach a second screen.
     #
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local geom=""
 
     BLAULICHT_FLAGS=()
     if (( MONITORS >= 2 )); then
         log "External monitor detected, generating devilspie2 config."
-        "${script_dir}/generate-devilspie2.sh" --monitor 1
+        "${script_dir}/generate-devilspie2.sh" --output-name HDMI-1
 
-        geom="$(xrandr --listmonitors | awk '$1=="1:" {print $3}' | head -n1)"
-        geom="$(echo "${geom}" | sed -E 's#/[^x+]+##g')"
+        geom="$(xrandr --query | awk '$1=="HDMI-1" && $2=="connected" {print $0}' | sed -nE 's/.* ([0-9]+x[0-9]+\+[0-9]+\+[0-9]+).*/\1/p' | head -n1)"
+        if [[ -z "${geom}" ]]; then
+            geom="$(xrandr --listmonitors | awk '$1=="1:" {print $3}' | head -n1)"
+            geom="$(echo "${geom}" | sed -E 's#/[^x+]+##g')"
+        fi
 
         if [[ "${geom}" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
             w="${BASH_REMATCH[1]}"

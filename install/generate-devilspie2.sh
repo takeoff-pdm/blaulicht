@@ -10,22 +10,28 @@ Usage:
 
 Options:
   -m, --monitor IDX    Monitor index from `xrandr --listmonitors` (0-based). Default: 1
+  --output-name NAME   Resolve geometry from a specific xrandr output name, e.g. HDMI-1
   -o, --output PATH    Output lua path. Default: ~/.config/devilspie2/blaulicht.lua
-  --ext-prefix STR     External window title prefix. Default: blaulicht_ext:
+  --ext-prefix STR     External window title prefix. Default: bl_ext_
   --main-title STR     Main window title. Default: blaulicht
   -h, --help           Show this help.
 EOF
 }
 
 monitor_idx=1
+output_name=""
 output="${HOME}/.config/devilspie2/blaulicht.lua"
-ext_prefix="blaulicht_ext:"
+ext_prefix="bl_ext_"
 main_title="blaulicht"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -m|--monitor)
       monitor_idx="${2:-}"
+      shift 2
+      ;;
+    --output-name)
+      output_name="${2:-}"
       shift 2
       ;;
     -o|--output)
@@ -59,11 +65,21 @@ fi
 
 geom=""
 
-# Prefer xrandr --listmonitors (gives monitor indices).
-if listmonitors_out="$(xrandr --listmonitors 2>/dev/null)"; then
-  line="$(echo "$listmonitors_out" | awk -v idx="${monitor_idx}:" '$1 == idx {print $0}')"
+# Prefer resolving by output name when provided.
+if [[ -n "$output_name" ]]; then
+  line="$(xrandr --query | awk -v output_name="$output_name" '$1 == output_name && $2 == "connected" {print $0}')"
   if [[ -n "$line" ]]; then
-    geom="$(echo "$line" | awk '{print $3}')"
+    geom="$(echo "$line" | sed -nE 's/.* ([0-9]+x[0-9]+\+[0-9]+\+[0-9]+).*/\1/p')"
+  fi
+fi
+
+# Otherwise use xrandr --listmonitors (gives monitor indices).
+if [[ -z "$geom" ]]; then
+  if listmonitors_out="$(xrandr --listmonitors 2>/dev/null)"; then
+    line="$(echo "$listmonitors_out" | awk -v idx="${monitor_idx}:" '$1 == idx {print $0}')"
+    if [[ -n "$line" ]]; then
+      geom="$(echo "$line" | awk '{print $3}')"
+    fi
   fi
 fi
 
@@ -76,7 +92,11 @@ if [[ -z "$geom" ]]; then
 fi
 
 if [[ -z "$geom" ]]; then
-  echo "Could not resolve geometry for monitor index ${monitor_idx}." >&2
+  if [[ -n "$output_name" ]]; then
+    echo "Could not resolve geometry for output '${output_name}'." >&2
+  else
+    echo "Could not resolve geometry for monitor index ${monitor_idx}." >&2
+  fi
   exit 1
 fi
 
@@ -103,9 +123,7 @@ local name = get_window_name() or ""
 local ext_prefix = "${ext_prefix}"
 
 if name:sub(1, #ext_prefix) == ext_prefix then
-  set_window_position(${pos_x}, ${pos_y})
-  -- set_window_geometry(${pos_x}, ${pos_y}, ${width}, ${height})
-  maximize()
+  set_window_geometry(${pos_x}, ${pos_y}, ${width}, ${height})
   undecorate_window()
 elseif name == "${main_title}" then
   maximize()
