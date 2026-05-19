@@ -450,6 +450,118 @@ impl PluginManager {
             }
         })?;
 
+        let system_out = self.system_out.clone();
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_alert",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32,
+                  duration_ms: u32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
+                memory
+                    .read(&caller, str_pointer as usize, &mut buffer)
+                    .expect("failed to read memory");
+
+                let label = String::from_utf8_lossy(&buffer).to_string();
+
+                system_out
+                    .send(SystemMessage::PluginAlert {
+                        plugin_id: plugin_id as u8,
+                        label,
+                        duration_ms: duration_ms.max(1),
+                    })
+                    .expect("failed to send plugin alert");
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "ui_list_external_screens",
+            move |mut caller: Caller<'_, ()>, _plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
+                let screens = state_ref.external_screens.read().unwrap().clone();
+                let json = serde_json::to_string(&screens).unwrap_or_else(|_| "[]".to_string());
+                let json_bytes = json.as_bytes();
+
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len.max(0) as usize);
+
+                if write_len > 0 {
+                    memory
+                        .write(&mut caller, buffer_ptr as usize, &json_bytes[..write_len])
+                        .expect("failed to write memory");
+                }
+
+                write_len as u32
+            },
+        )?;
+
+        let event_bus = self.event_bus.clone();
+        linker.func_wrap::<_, i32>(
+            "blaulicht",
+            "ui_create_external_screen",
+            move |plugin_id: i32, width: i32, height: i32| {
+                if width <= 0 || height <= 0 {
+                    tracing::warn!(
+                        "WASM: Refusing to create external screen with invalid size {width}x{height}"
+                    );
+                    return 0;
+                }
+
+                event_bus.send(ControlEventMessage::new(
+                    EventOriginator::Plugin,
+                    ControlEvent::MainUi(MainUiEvent::CreateOwnedExternalScreen {
+                        owner_plugin_id: plugin_id as u8,
+                        width: width as u32,
+                        height: height as u32,
+                    }),
+                ));
+                1
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        let event_bus = self.event_bus.clone();
+        linker.func_wrap::<_, i32>(
+            "blaulicht",
+            "ui_remove_external_screen",
+            move |plugin_id: i32, _index: i32| {
+                let owner_plugin_id = plugin_id as u8;
+                let exists = state_ref
+                    .external_screens
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .any(|screen| screen.owner_plugin_id == Some(owner_plugin_id));
+
+                if !exists {
+                    tracing::warn!(
+                        "WASM: Refusing to remove unknown owned external screen for plugin {owner_plugin_id}"
+                    );
+                    return 0;
+                }
+
+                event_bus.send(ControlEventMessage::new(
+                    EventOriginator::Plugin,
+                    ControlEvent::MainUi(MainUiEvent::RemoveOwnedExternalScreen {
+                        owner_plugin_id,
+                    }),
+                ));
+                1
+            },
+        )?;
+
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
             "blaulicht",

@@ -55,8 +55,37 @@ impl AppPage {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalScreenInfo {
+    pub index: u32,
+    pub width: f32,
+    pub height: f32,
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_plugin_id: Option<u8>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]
 pub enum MainUiEvent {
     NavigatePage(AppPage),
-    SetPluginUIOpen { plugin_id: u8, open: bool },
+    SetPluginUIOpen {
+        plugin_id: u8,
+        open: bool,
+    },
+    CreateExternalScreen {
+        width: u32,
+        height: u32,
+    },
+    RemoveExternalScreen {
+        index: u32,
+    },
+    CreateOwnedExternalScreen {
+        owner_plugin_id: u8,
+        width: u32,
+        height: u32,
+    },
+    RemoveOwnedExternalScreen {
+        owner_plugin_id: u8,
+    },
 }

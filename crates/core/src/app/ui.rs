@@ -70,6 +70,8 @@ impl BlaulichtApp {
             app.apply_showfile_ui_state(ui_state);
         }
 
+        app.sync_external_screen_infos();
+
         app
     }
 }

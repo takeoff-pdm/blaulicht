@@ -93,6 +93,7 @@ pub struct ExternalScreen {
     dock_state: DockState<Pane>,
     dimensions: Vec2,
     position: Option<Pos2>,
+    owner_plugin_id: Option<u8>,
 }
 
 impl ExternalScreen {

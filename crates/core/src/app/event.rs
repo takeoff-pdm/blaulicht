@@ -28,6 +28,28 @@ impl BlaulichtApp {
                                     entry.get_mut().open = open;
                                 };
                             }
+                            MainUiEvent::CreateExternalScreen { width, height } => {
+                                self.add_external_screen_with_dimensions(egui::vec2(
+                                    width as f32,
+                                    height as f32,
+                                ));
+                            }
+                            MainUiEvent::RemoveExternalScreen { index } => {
+                                self.remove_external_screen(index as usize);
+                            }
+                            MainUiEvent::CreateOwnedExternalScreen {
+                                owner_plugin_id,
+                                width,
+                                height,
+                            } => {
+                                self.upsert_external_screen_for_owner(
+                                    owner_plugin_id,
+                                    egui::vec2(width as f32, height as f32),
+                                );
+                            }
+                            MainUiEvent::RemoveOwnedExternalScreen { owner_plugin_id } => {
+                                self.remove_external_screen_for_owner(owner_plugin_id);
+                            }
                         }
                     }
                 }
@@ -103,6 +125,16 @@ impl BlaulichtApp {
                                 );
                             }
                         }
+                    }
+                    SystemMessage::PluginAlert {
+                        plugin_id: _plugin_id,
+                        label,
+                        duration_ms,
+                    } => {
+                        self.show_popup(crate::app::PopupSpec::with_duration(
+                            std::time::Duration::from_millis(duration_ms.max(1) as u64),
+                            label,
+                        ));
                     }
                 },
                 Err(TryRecvError::Empty) => {

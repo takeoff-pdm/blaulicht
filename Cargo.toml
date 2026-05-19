@@ -31,6 +31,7 @@ exclude = [
     "./crates/plugins/433mhz_antenna",
     "./crates/plugins/videowall",
     "./crates/plugins/test",
+    "./crates/plugins/screens",
     "./crates/plugins/ddj_200",
     "./crates/plugins/console",
     "./crates/plugins/player/",

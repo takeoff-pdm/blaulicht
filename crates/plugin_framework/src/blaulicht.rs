@@ -200,6 +200,10 @@ extern "C" {
     fn ui_begin_tab(plugin_id: u8, tabs_id: u8, tab_id: u8, ptr: *const u8, len: usize);
     fn ui_end_tab(plugin_id: u8);
     fn ui_end_tabs(plugin_id: u8);
+    fn ui_alert(plugin_id: u8, ptr: *const u8, len: usize, duration_ms: u32);
+    fn ui_list_external_screens(plugin_id: u8, buffer_ptr: *mut u8, buffer_len: usize) -> u32;
+    fn ui_create_external_screen(plugin_id: u8, width: i32, height: i32) -> i32;
+    fn ui_remove_external_screen(plugin_id: u8, index: i32) -> i32;
 }
 
 pub fn bl_open_midi_device_safe(device_name: &str) -> u8 {
@@ -240,6 +244,37 @@ pub fn bl_enumerate_serial_devices_safe() -> Vec<String> {
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
 
+pub fn bl_list_external_screens_safe() -> Vec<ExternalScreenInfo> {
+    const MAX_BUFFER_SIZE: usize = 4096;
+    let mut buffer = vec![0u8; MAX_BUFFER_SIZE];
+
+    let written_len =
+        unsafe { ui_list_external_screens(PLUGIN_ID, buffer.as_mut_ptr(), MAX_BUFFER_SIZE) };
+
+    if written_len == 0 {
+        return Vec::new();
+    }
+
+    let data = &buffer[..written_len as usize];
+    let json_str = std::str::from_utf8(data).unwrap_or("[]");
+    serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
+}
+
+pub fn bl_create_external_screen_safe(width: u32, height: u32) -> bool {
+    let width = width.min(i32::MAX as u32) as i32;
+    let height = height.min(i32::MAX as u32) as i32;
+    unsafe { ui_create_external_screen(PLUGIN_ID, width, height) != 0 }
+}
+
+pub fn bl_remove_external_screen_safe(index: u32) -> bool {
+    let index = index.min(i32::MAX as u32) as i32;
+    unsafe { ui_remove_external_screen(PLUGIN_ID, index) != 0 }
+}
+
+pub fn bl_alert_safe(text: &str, duration_ms: u32) {
+    unsafe { ui_alert(PLUGIN_ID, text.as_ptr(), text.len(), duration_ms) }
+}
+
 pub fn report_panic(msg: &str) {
     unsafe { bl_report_panic(PLUGIN_ID, msg.as_ptr(), msg.len()) }
 }
@@ -257,7 +292,7 @@ pub fn bl_log(msg: &str, level: LogLevel) {
 }
 
 pub fn system(cmd: &str) -> String {
-    const OUTPUT_BUFFER_SIZE: usize = 1000;
+    const OUTPUT_BUFFER_SIZE: usize = 64 * 1024;
     let mut buffer = vec![0u8; OUTPUT_BUFFER_SIZE];
 
     unsafe {
@@ -352,6 +387,7 @@ pub mod ui {
         ui_text_edit as host_ui_text_edit, ui_text_edit_multiline as host_ui_text_edit_multiline,
         PLUGIN_ID,
     };
+    use std::time::Duration;
 
     pub fn begin() {
         unsafe { host_ui_begin(unsafe { PLUGIN_ID }) };
@@ -363,6 +399,27 @@ pub mod ui {
 
     pub fn maximize_screen() {
         unsafe { host_ui_maximize_screen(unsafe { PLUGIN_ID }) };
+    }
+
+    pub fn alert(text: &str) {
+        super::bl_alert_safe(text, 2_000);
+    }
+
+    pub fn alert_for(text: &str, duration: Duration) {
+        let duration_ms = duration.as_millis().min(u32::MAX as u128) as u32;
+        super::bl_alert_safe(text, duration_ms);
+    }
+
+    pub fn external_screens() -> Vec<super::ExternalScreenInfo> {
+        super::bl_list_external_screens_safe()
+    }
+
+    pub fn create_external_screen(width: u32, height: u32) -> bool {
+        super::bl_create_external_screen_safe(width, height)
+    }
+
+    pub fn remove_external_screen(index: u32) -> bool {
+        super::bl_remove_external_screen_safe(index)
     }
 
     pub fn label(text: &str) {
@@ -875,7 +932,7 @@ macro_rules! elapsed {
 
 use std::fmt::Display;
 
-use blaulicht_shared::{ControlEvent, LogLevel, PluginStateLocation};
+use blaulicht_shared::{ControlEvent, ExternalScreenInfo, LogLevel, PluginStateLocation};
 pub use elapsed;
 
 #[macro_export]

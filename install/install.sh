@@ -55,6 +55,9 @@ install_runtime_files() {
     sudo cp ./generate-devilspie2.sh /usr/bin/generate-devilspie2.sh || exit 2
     sudo chmod +x /usr/bin/generate-devilspie2.sh || exit 2
 
+    sudo cp ./monitor_watcher.sh /usr/bin/monitor_watcher.sh || exit 2
+    sudo chmod +x /usr/bin/monitor_watcher.sh || exit 2
+
     sudo cp ./rescue.sh /usr/bin/rescue.sh || exit 2
     sudo chmod +x /usr/bin/rescue.sh || exit 2
 

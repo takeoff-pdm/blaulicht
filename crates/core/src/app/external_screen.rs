@@ -8,7 +8,7 @@ use crate::{
     },
     state::{PluginOpenState, ScreenId},
 };
-use blaulicht_shared::AppPage;
+use blaulicht_shared::{AppPage, ExternalScreenInfo};
 use egui::{pos2, vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2, WidgetText};
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Node, NodeIndex, Split, Style, Tree};
@@ -87,6 +87,10 @@ impl Default for ExternalScreen {
 
 impl ExternalScreen {
     pub(crate) fn new(dimensions: Vec2) -> Self {
+        Self::new_owned(dimensions, None)
+    }
+
+    pub(crate) fn new_owned(dimensions: Vec2, owner_plugin_id: Option<u8>) -> Self {
         // let tabs = (1..=8).map(|idx| Pane::new(format!("Tab {idx}"))).collect();
 
         let tabs = AppPage::iter().map(|page| Pane::new(page)).collect();
@@ -95,6 +99,7 @@ impl ExternalScreen {
             dock_state: DockState::new(tabs),
             dimensions,
             position: None,
+            owner_plugin_id,
         }
     }
 
@@ -151,6 +156,7 @@ impl ExternalScreen {
             height: self.dimensions.y,
             x: self.position.map(|position| position.x),
             y: self.position.map(|position| position.y),
+            owner_plugin_id: self.owner_plugin_id,
             layout: saved_dock_node(self.dock_state.main_surface(), NodeIndex::root())
                 .unwrap_or_else(default_saved_dock_node),
         }
@@ -168,6 +174,7 @@ impl ExternalScreen {
             dock_state,
             dimensions: vec2(saved.width.max(1.0), saved.height.max(1.0)),
             position: saved.x.zip(saved.y).map(|(x, y)| pos2(x, y)),
+            owner_plugin_id: saved.owner_plugin_id,
         };
         screen.ensure_core_tabs();
         screen
@@ -329,6 +336,129 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
 }
 
 impl BlaulichtApp {
+    fn external_screen_infos(&self) -> Vec<ExternalScreenInfo> {
+        self.external_screens
+            .iter()
+            .enumerate()
+            .map(|(index, screen)| ExternalScreenInfo {
+                index: index as u32,
+                width: screen.dimensions.x,
+                height: screen.dimensions.y,
+                x: screen.position.map(|position| position.x),
+                y: screen.position.map(|position| position.y),
+                owner_plugin_id: screen.owner_plugin_id,
+            })
+            .collect()
+    }
+
+    pub(crate) fn sync_external_screen_infos(&self) {
+        let mut external_screens = self.data.state.external_screens.write().unwrap();
+        *external_screens = self.external_screen_infos();
+    }
+
+    fn reset_external_screen_plugin_ui_tracking(&mut self) {
+        self.plugin_ui_visible_tabs.clear();
+
+        let popped_out = self.data.state.plugin_ui_popped_out.read().unwrap().clone();
+        let mut visibility = self.data.state.plugin_ui_visibility.write().unwrap();
+        for (plugin_id, entry) in visibility.iter_mut() {
+            if entry.screen_id == ScreenId::MAIN {
+                continue;
+            }
+
+            entry.screen_id = ScreenId::MAIN;
+            if !popped_out.get(plugin_id).copied().unwrap_or(false) {
+                entry.open = false;
+            }
+        }
+    }
+
+    pub(crate) fn add_external_screen_with_dimensions(&mut self, dimensions: Vec2) {
+        self.add_external_screen_with_dimensions_owned(dimensions, None);
+    }
+
+    pub(crate) fn add_external_screen_with_dimensions_owned(
+        &mut self,
+        dimensions: Vec2,
+        owner_plugin_id: Option<u8>,
+    ) {
+        self.external_screens
+            .push(ExternalScreen::new_owned(dimensions, owner_plugin_id));
+        self.sync_external_screen_infos();
+    }
+
+    pub(crate) fn add_external_screen(&mut self) {
+        self.add_external_screen_with_dimensions(egui::vec2(1920.0, 1080.0));
+    }
+
+    pub(crate) fn remove_external_screen(&mut self, index: usize) -> bool {
+        if index >= self.external_screens.len() {
+            return false;
+        }
+
+        self.external_screens.remove(index);
+        self.reset_external_screen_plugin_ui_tracking();
+        self.sync_external_screen_infos();
+        true
+    }
+
+    fn external_screen_indices_for_owner(&self, owner_plugin_id: u8) -> Vec<usize> {
+        self.external_screens
+            .iter()
+            .enumerate()
+            .filter_map(|(index, screen)| {
+                (screen.owner_plugin_id == Some(owner_plugin_id)).then_some(index)
+            })
+            .collect()
+    }
+
+    pub(crate) fn upsert_external_screen_for_owner(
+        &mut self,
+        owner_plugin_id: u8,
+        dimensions: Vec2,
+    ) -> bool {
+        let owned_indices = self.external_screen_indices_for_owner(owner_plugin_id);
+        let had_existing = !owned_indices.is_empty();
+
+        if let Some(&primary_index) = owned_indices.first() {
+            if let Some(screen) = self.external_screens.get_mut(primary_index) {
+                screen.dimensions = dimensions;
+                screen.owner_plugin_id = Some(owner_plugin_id);
+            }
+        } else {
+            self.external_screens
+                .push(ExternalScreen::new_owned(dimensions, Some(owner_plugin_id)));
+        }
+
+        let mut removed_any = false;
+        for index in owned_indices.iter().skip(1).rev() {
+            self.external_screens.remove(*index);
+            removed_any = true;
+        }
+
+        if removed_any {
+            self.reset_external_screen_plugin_ui_tracking();
+        }
+
+        self.sync_external_screen_infos();
+        !had_existing || removed_any
+    }
+
+    pub(crate) fn remove_external_screen_for_owner(&mut self, owner_plugin_id: u8) -> bool {
+        let owned_indices = self.external_screen_indices_for_owner(owner_plugin_id);
+        if owned_indices.is_empty() {
+            return false;
+        }
+
+        for index in owned_indices.iter().rev() {
+            self.external_screens.remove(*index);
+        }
+
+        self.reset_external_screen_plugin_ui_tracking();
+        self.sync_external_screen_infos();
+        true
+    }
+
     fn plugin_ui_tab_ids(&self) -> Vec<u8> {
         let mut plugin_ids: Vec<u8> = self
             .data
@@ -422,6 +552,8 @@ impl BlaulichtApp {
             .into_iter()
             .map(ExternalScreen::from_showfile)
             .collect();
+        self.reset_external_screen_plugin_ui_tracking();
+        self.sync_external_screen_infos();
     }
 
     pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
@@ -447,6 +579,7 @@ impl BlaulichtApp {
             // TODO: This is peak bullshit code.
             self.external_screens[screen_idx] = screen;
         });
+        self.sync_external_screen_infos();
     }
 
     pub fn draw_external_screen_contents(
@@ -530,5 +663,16 @@ mod tests {
             }
             ShowfileDockNode::Split { .. } => panic!("expected leaf layout"),
         }
+    }
+
+    #[test]
+    fn external_screen_showfile_round_trip_keeps_owner_plugin_id() {
+        let screen = ExternalScreen::new_owned(vec2(1024.0, 768.0), Some(7));
+
+        let saved = screen.to_showfile();
+        let restored = ExternalScreen::from_showfile(saved);
+        let saved_again = restored.to_showfile();
+
+        assert_eq!(saved_again.owner_plugin_id, Some(7));
     }
 }

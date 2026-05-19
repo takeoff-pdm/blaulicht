@@ -8,6 +8,7 @@ use std::{
 };
 
 use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
+use blaulicht_shared::ExternalScreenInfo;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
@@ -211,6 +212,7 @@ pub struct AppState {
     pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
     pub plugin_ui_maximize_requested: RwLock<HashMap<u8, bool>>, // one-shot per-plugin viewport maximize request
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>,  // (plugin_id, tabs_id) -> tab_id
+    pub external_screens: RwLock<Vec<ExternalScreenInfo>>,
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -274,6 +276,7 @@ impl AppState {
             plugin_ui_popped_out: RwLock::new(plugin_ui_popped_out),
             plugin_ui_maximize_requested: RwLock::new(HashMap::new()),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
+            external_screens: RwLock::new(Vec::new()),
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
         }

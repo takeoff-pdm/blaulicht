@@ -63,6 +63,11 @@ pub enum SystemMessage {
         state_data: String,
         location: PluginStateLocation,
     },
+    PluginAlert {
+        plugin_id: u8,
+        label: String,
+        duration_ms: u32,
+    },
 }
 
 #[derive(Clone, Serialize, Debug)]

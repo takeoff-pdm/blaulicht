@@ -6,7 +6,7 @@ pub mod midi;
 pub mod serial;
 mod state;
 pub use blaulicht::*;
-pub use blaulicht_shared::PluginStateLocation;
+pub use blaulicht_shared::{ExternalScreenInfo, PluginStateLocation};
 pub use midi::*;
 pub use state::*;
 

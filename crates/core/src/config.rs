@@ -85,6 +85,8 @@ pub struct ShowfileExternalScreen {
     pub x: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub y: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_plugin_id: Option<u8>,
     pub layout: ShowfileDockNode,
 }
 
