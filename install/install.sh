@@ -52,6 +52,9 @@ install_runtime_files() {
     sudo cp ./blaulicht.sh /usr/bin/blaulicht.sh || exit 2
     sudo chmod +x /usr/bin/blaulicht.sh || exit 2
 
+    sudo cp ./screen_driver.sh /usr/bin/screen_driver.sh || exit 2
+    sudo chmod +x /usr/bin/screen_driver.sh || exit 2
+
     sudo cp ./generate-devilspie2.sh /usr/bin/generate-devilspie2.sh || exit 2
     sudo chmod +x /usr/bin/generate-devilspie2.sh || exit 2
 

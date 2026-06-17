@@ -29,6 +29,7 @@ configure_monitors_and_get_blaulicht_flags() {
         return
     fi
 
+
     if [[ "$(echo "${watcher_json}" | jq -r '.external_should_exist')" == "true" ]]; then
         width="$(echo "${watcher_json}" | jq -r '.external_output.width')"
         height="$(echo "${watcher_json}" | jq -r '.external_output.height')"

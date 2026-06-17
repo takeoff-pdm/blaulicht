@@ -20,6 +20,11 @@ pub enum Light {
     //
     Generic3ChanNoAlpha,
     //
+    // 0: Color index (hue, 0..255 -> 0..360 deg)
+    // 1: Brightness (alpha)
+    //
+    GenericColorAlphaLight,
+    //
     // 0: Alpha
     // 1: Red
     // 2: Green
@@ -113,6 +118,36 @@ pub enum Light {
     // 5: Focus
     //
     TakeOffLogo,
+    //
+    // 0: Red
+    // 1: Green
+    // 2: Blue
+    // 4: Color macro (kept at 0 -> manual RGB)
+    // 5: Strobe
+    // 6: Color chase (kept at 0 -> chase off)
+    // 7: Brightness
+    //
+    KuzeLEDPar,
+    //
+    // 0: Dimmer
+    // 1: Strobe
+    // 2: Red
+    // 3: Green
+    // 4: Blue
+    // 5: Sound control (kept at 0 -> disabled)
+    //
+    StairvilleWildWash648RGB_6Chan,
+    //
+    // Stairville LED PAR 56 (24x3W RGB MKII), 7-channel mode.
+    // 0: Red
+    // 1: Green
+    // 2: Blue
+    // 3: Color macro (kept at 0 -> manual RGB)
+    // 4: Strobe (0..15 = off, 16..255 = strobe frequency, when ch 5 in 0..31)
+    // 5: Mode (kept at 0 -> strobe-active manual color)
+    // 6: Master dimmer
+    //
+    StairvilleLEDPar56_7Chan,
 }
 
 impl Display for Light {
@@ -125,6 +160,7 @@ impl Light {
     pub fn footprint(&self) -> usize {
         match self {
             Light::Generic3ChanNoAlpha => 3,
+            Light::GenericColorAlphaLight => 2,
             Light::Generic4ChanWithAlpha => 4,
             Light::LEDPartyTCLSpot => 6,
             Light::AdjMegaHexPar => 7,
@@ -136,6 +172,9 @@ impl Light {
             Light::LightMaxxTripleDerbyHP => 4,
             Light::EuroLiteLEDMultiFX_10Chan => 10,
             Light::TakeOffLogo => 6,
+            Light::KuzeLEDPar => 8,
+            Light::StairvilleWildWash648RGB_6Chan => 6,
+            Light::StairvilleLEDPar56_7Chan => 7,
         }
     }
 
@@ -150,6 +189,11 @@ impl Light {
                 fixture_channel!(dmx, this, 0) = (r as f32 / 255.0 * alpha as f32) as u8;
                 fixture_channel!(dmx, this, 1) = (g as f32 / 255.0 * alpha as f32) as u8;
                 fixture_channel!(dmx, this, 2) = (b as f32 / 255.0 * alpha as f32) as u8;
+            }
+            Light::GenericColorAlphaLight => {
+                fixture_channel!(dmx, this, 0) =
+                    (state.color.h.map_range(0.0..360.0, 0.0..255.0)) as u8;
+                fixture_channel!(dmx, this, 1) = state.alpha;
             }
             Light::Generic4ChanWithAlpha => {
                 fixture_channel!(dmx, this, 0) = state.alpha;
@@ -257,6 +301,35 @@ impl Light {
                 fixture_channel!(dmx, this, 4) = state.focus;
                 fixture_channel!(dmx, this, 5) = state.focus;
             }
+            Light::KuzeLEDPar => {
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 4) = 0;
+                fixture_channel!(dmx, this, 5) = state.strobe_speed;
+                fixture_channel!(dmx, this, 6) = 0;
+                fixture_channel!(dmx, this, 7) = state.alpha;
+            }
+            Light::StairvilleWildWash648RGB_6Chan => {
+                fixture_channel!(dmx, this, 0) = state.alpha;
+                fixture_channel!(dmx, this, 1) = state.strobe_speed;
+                fixture_channel!(dmx, this, 2) = color.r;
+                fixture_channel!(dmx, this, 3) = color.g;
+                fixture_channel!(dmx, this, 4) = color.b;
+                fixture_channel!(dmx, this, 5) = 0;
+            }
+            Light::StairvilleLEDPar56_7Chan => {
+                fixture_channel!(dmx, this, 0) = color.r;
+                fixture_channel!(dmx, this, 1) = color.g;
+                fixture_channel!(dmx, this, 2) = color.b;
+                fixture_channel!(dmx, this, 3) = 0;
+                fixture_channel!(dmx, this, 4) = match state.strobe_speed {
+                    0 => 0,
+                    v => v.map_range(0..255, 16..255),
+                };
+                fixture_channel!(dmx, this, 5) = 0;
+                fixture_channel!(dmx, this, 6) = state.alpha;
+            }
         }
     }
 
@@ -269,6 +342,22 @@ impl Light {
                 strobe_speed: 0,
                 focus: 0,
             },
+            Light::GenericColorAlphaLight => {
+                let hue = (fixture_channel!(dmx, this, 0) as f64).map_range(0.0..255.0, 0.0..360.0);
+                let alpha = fixture_channel!(dmx, this, 1);
+
+                FixtureState {
+                    color: HSVColor {
+                        h: hue,
+                        s: 1.0,
+                        v: 1.0,
+                    },
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed: 0,
+                    focus: 0,
+                }
+            }
             Light::Generic4ChanWithAlpha => FixtureState {
                 color: RGBColor::parse_dmx(dmx, this.start_addr + 1).into(),
                 alpha: fixture_channel!(dmx, this, 0),
@@ -428,6 +517,48 @@ impl Light {
                     focus,
                 }
             }
+            Light::KuzeLEDPar => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let strobe_speed = fixture_channel!(dmx, this, 5);
+                let alpha = fixture_channel!(dmx, this, 7);
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            Light::StairvilleWildWash648RGB_6Chan => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 2);
+                let alpha = fixture_channel!(dmx, this, 0);
+                let strobe_speed = fixture_channel!(dmx, this, 1);
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
+            Light::StairvilleLEDPar56_7Chan => {
+                let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
+                let strobe_speed = match fixture_channel!(dmx, this, 4) {
+                    v if v < 16 => 0,
+                    v => v.map_range(16..255, 0..255),
+                };
+                let alpha = fixture_channel!(dmx, this, 6);
+
+                FixtureState {
+                    color: rgb.into(),
+                    alpha,
+                    orientation: FixtureOrientation::default(),
+                    strobe_speed,
+                    focus: 0,
+                }
+            }
         }
     }
 
@@ -436,6 +567,7 @@ impl Light {
     pub fn setup(&self, _this: &Fixture, _time: i32, _state: &FixtureState, _dmx: &mut [u8]) {
         match self {
             Light::Generic3ChanNoAlpha => {}
+            Light::GenericColorAlphaLight => {}
             Light::Generic4ChanWithAlpha => {}
             Light::LEDPartyTCLSpot => {}
             Light::AdjMegaHexPar => {}
@@ -447,6 +579,9 @@ impl Light {
             Light::LightMaxxTripleDerbyHP => {}
             Light::EuroLiteLEDMultiFX_10Chan => {}
             Light::TakeOffLogo => {}
+            Light::KuzeLEDPar => {}
+            Light::StairvilleWildWash648RGB_6Chan => {}
+            Light::StairvilleLEDPar56_7Chan => {}
         }
     }
 }

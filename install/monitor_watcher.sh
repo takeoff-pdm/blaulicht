@@ -88,7 +88,8 @@ EOF
 
 restart_devilspie2() {
     pkill -x devilspie2 >/dev/null 2>&1 || true
-    devilspie2 &
+    # Detach stdio so callers using command substitution do not wait on devilspie2 forever.
+    devilspie2 </dev/null >/tmp/blaulicht-devilspie2.log 2>&1 &
 }
 
 apply_touchscreen_dual() {
