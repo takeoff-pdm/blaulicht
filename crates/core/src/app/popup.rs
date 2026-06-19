@@ -5,6 +5,8 @@ use crate::app::{
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 use std::time::{Duration, Instant};
 
+const DEFAULT_POPUP_LABEL_SIZE: f32 = 24.0;
+
 impl BlaulichtApp {
     pub fn show_popup(&mut self, popup: PopupSpec) {
         self.popup = Some(popup);
@@ -20,6 +22,8 @@ impl BlaulichtApp {
             let label = popup.label.clone();
             let button = popup.button.clone();
             let lifetime_duration = popup.lifetime_duration;
+
+            let size = popup.label_size.unwrap_or(DEFAULT_POPUP_LABEL_SIZE);
 
             let screen_rect = ctx.screen_rect();
             let popup_size = egui::Vec2::new(200.0, 100.0); // desired popup size
@@ -39,7 +43,7 @@ impl BlaulichtApp {
                 .fixed_pos(center_pos)
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new(&label).size(24.0));
+                        ui.label(RichText::new(&label).size(size));
 
                         if let Some(ref btn) = button {
                             ui.add_space(8.0);

@@ -564,6 +564,7 @@ impl BlaulichtApp {
                                         mem::drop(dmx_engine);
                                         self.show_popup(PopupSpec {
                                             label: "Out of Channels".to_string(),
+                                            label_size: Some(18.0),
                                             lifetime_duration: Duration::from_secs(3),
                                             button: Some(PopupButtonSpec {
                                                 label: "OK".to_string(),

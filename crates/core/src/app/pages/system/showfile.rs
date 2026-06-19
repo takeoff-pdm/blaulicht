@@ -98,6 +98,7 @@ impl BlaulichtApp {
                 let serialized =
                     serde_json::to_string_pretty(&showfile).expect("Failed to serialize showfile");
                 std::fs::write(&path, &serialized).expect("Failed to write showfile");
+                self.last_save_time = Some(std::time::Instant::now());
 
                 config_mut.last_open_showfile = Some(path.clone());
 

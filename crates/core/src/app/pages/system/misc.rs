@@ -102,6 +102,22 @@ impl BlaulichtApp {
                             .strong()
                             .font(FontId::monospace(14.0)),
                     );
+
+                    if let Some(saved_at) = self.last_save_time {
+                        let ago = saved_at.elapsed().as_secs();
+                        let label = if ago < 5 {
+                            "just now".to_string()
+                        } else if ago < 60 {
+                            format!("{ago}s ago")
+                        } else {
+                            format!("{}m ago", ago / 60)
+                        };
+                        ui.label(
+                            egui::RichText::new(format!("(saved {label})"))
+                                .color(Color32::from_gray(120))
+                                .font(FontId::monospace(12.0)),
+                        );
+                    }
                 });
 
                 ui.add_space(3.0);

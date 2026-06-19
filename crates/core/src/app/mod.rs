@@ -65,6 +65,7 @@ pub struct PopupButtonSpec {
 #[derive(Clone)]
 pub struct PopupSpec {
     pub label: String,
+    pub label_size: Option<f32>,
     // Auto-close duration
     pub lifetime_duration: Duration,
     pub button: Option<PopupButtonSpec>,
@@ -74,6 +75,7 @@ impl PopupSpec {
     pub fn default(label: String) -> Self {
         Self {
             label,
+            label_size: None,
             lifetime_duration: Duration::from_secs(5),
             button: Some(PopupButtonSpec {
                 label: "Close".to_string(),
@@ -85,6 +87,13 @@ impl PopupSpec {
         let mut s = Self::default(label);
         s.lifetime_duration = duration;
         s
+    }
+
+    pub fn label_size(self, size: f32) -> Self {
+        Self {
+            label_size: Some(size),
+            ..self
+        }
     }
 }
 
@@ -145,7 +154,10 @@ pub struct BlaulichtApp {
 
     // Spectrogram smooth scrolling
     spectro_scroll_px_offset: f32,
-    spectro_last_instant: Instant,
+    spectro_last_instant: Option<Instant>,
+    spectro_last_new_column_instant: Option<Instant>,
+    spectro_pending_beat: bool,
+    spectro_pending_onset: bool,
     spectrogram_image_buffer: ColorImage,
     spectrogram_texture_handle: Option<TextureHandle>,
     last_spectrogram_columns: Cell<usize>,
@@ -157,6 +169,8 @@ pub struct BlaulichtApp {
 
     fps_samples: VecDeque<f32>,
     tick_speeds: TickSpeeds,
+    loop_speed_graph: TimeSeriesGraph,
+    plugin_speed_graph: TimeSeriesGraph,
 
     log_window: LogWindow,
 
@@ -264,6 +278,10 @@ pub struct BlaulichtApp {
     view_perf_ui_state: ViewPerfUI,
     animation_ui_state: AnimationUI,
     visualizer_ui_state: VisualizerUiState,
+
+    last_autosave_check: Instant,
+    last_autosave_hash: u64,
+    last_save_time: Option<Instant>,
 }
 
 impl BlaulichtApp {
@@ -328,7 +346,10 @@ impl BlaulichtApp {
             frame_count: 0,
             animation_time: 0.0,
             spectro_scroll_px_offset: 0.0,
-            spectro_last_instant: Instant::now(),
+            spectro_last_instant: None,
+            spectro_last_new_column_instant: None,
+            spectro_pending_beat: false,
+            spectro_pending_onset: false,
             spectrogram_image_buffer: ColorImage::default(),
             spectrogram_texture_handle: None,
             last_spectrogram_columns: Cell::new(0),
@@ -337,6 +358,20 @@ impl BlaulichtApp {
             last_spectrogram_snapshot_time: Cell::new(0),
             data,
             tick_speeds: TickSpeeds::default(),
+            loop_speed_graph: TimeSeriesGraph::new(
+                "Loop (ms)".to_string(),
+                0,
+                crate::mainloop::DMX_TICK_TIME.as_millis() as i32,
+                egui::Color32::from_rgb(0, 200, 255),
+            )
+            .with_autoscale(),
+            plugin_speed_graph: TimeSeriesGraph::new(
+                "Plugins (µs)".to_string(),
+                0,
+                1000,
+                egui::Color32::from_rgb(255, 200, 0),
+            )
+            .with_autoscale(),
             fps_samples: VecDeque::with_capacity(5),
             log_window: LogWindow::new(100),
             // current_page: AppPage::Logs,
@@ -492,6 +527,9 @@ impl BlaulichtApp {
             },
             system_ui_state: SystemUI::default(),
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
+            last_autosave_check: Instant::now(),
+            last_autosave_hash: 0,
+            last_save_time: None,
         }
     }
 }

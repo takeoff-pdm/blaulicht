@@ -7,6 +7,7 @@ use crate::state::ScreenId;
 // use cpal::traits::DeviceTrait;
 
 use egui::{Context, Frame};
+use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
 const BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION: f32 = 0.90;
@@ -85,6 +86,7 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
+        self.tick_autosave();
 
         if ctx.style().visuals.dark_mode {
             theme::set_theme(ctx, theme::BLUE);
@@ -152,6 +154,12 @@ impl eframe::App for BlaulichtApp {
             }
         }
 
+        // Loop & plugin tick speed over time.
+        self.loop_speed_graph
+            .update(self.tick_speeds.loop_total.as_millis() as i32);
+        self.plugin_speed_graph
+            .update(self.tick_speeds.plugins.as_micros() as i32);
+
         match self.desktop_mode {
             true => {
                 let mut screen = self.main_screen_desktop_mode.clone();
@@ -200,5 +208,69 @@ impl BlaulichtApp {
 
     pub fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         self.log_window.draw(ctx, ui);
+    }
+
+    fn tick_autosave(&mut self) {
+        const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(30);
+
+        if self.last_autosave_check.elapsed() < AUTOSAVE_INTERVAL {
+            return;
+        }
+        self.last_autosave_check = Instant::now();
+
+        let path = {
+            let config = self.data.config.lock().unwrap();
+            match config.last_open_showfile.clone() {
+                Some(p) => p,
+                None => return,
+            }
+        };
+
+        let showfile = self.build_showfile();
+        let serialized = match serde_json::to_string_pretty(&showfile) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let mut hasher = std::hash::DefaultHasher::new();
+        serialized.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        if hash == self.last_autosave_hash {
+            return;
+        }
+        self.last_autosave_hash = hash;
+        self.last_save_time = Some(Instant::now());
+
+        std::thread::spawn(move || {
+            let _ = std::fs::write(&path, &serialized);
+        });
+    }
+
+    fn build_showfile(&self) -> config::CoreShowfile {
+        use blaulicht_shared::{SaveEngineState, ShowfileArtNetReceiver, ShowfileArtNetState};
+
+        let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().0.clone() };
+        let plugin_state = { self.data.state.plugin_state_storage.lock().unwrap().clone() };
+        let artnet_state = {
+            let artnet_output = self.data.state.artnet_output.read().unwrap();
+            ShowfileArtNetState {
+                receivers: artnet_output
+                    .receivers
+                    .iter()
+                    .map(|receiver| ShowfileArtNetReceiver {
+                        address: receiver.address,
+                        enabled: receiver.enabled,
+                    })
+                    .collect(),
+            }
+        };
+
+        config::CoreShowfile {
+            engine: SaveEngineState::from(engine_snapshot),
+            artnet: artnet_state,
+            plugin_state,
+            ui: Some(self.showfile_ui_state()),
+        }
     }
 }
