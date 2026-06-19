@@ -10,8 +10,8 @@ pub struct AudioSourceNoise {
 }
 
 impl AudioSource for AudioSourceNoise {
-    fn get_frequencies(&mut self, now: usize) -> &[Frequency] {
-        self.get_frequencies_at_time(now)
+    fn get_frequencies(&mut self, now: usize) -> (&[Frequency], bool) {
+        (self.get_frequencies_at_time(now), true)
     }
 
     fn get_freq_buffer_size(&self) -> usize {

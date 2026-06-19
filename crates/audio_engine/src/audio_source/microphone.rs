@@ -1,7 +1,6 @@
 use crate::{AudioSource, Frequency};
 use audioviz::io::{Input, InputController};
 use audioviz::spectrum::{config::StreamConfig, stream::Stream};
-use std::time::Instant;
 
 //
 // MICROPHONE SOURCE.
@@ -44,36 +43,28 @@ impl AudioSourceMicrophone {
 }
 
 impl AudioSource for AudioSourceMicrophone {
-    fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
-        let start = Instant::now();
-        let mut pulled_at: Option<Instant> = None;
-        let mut updated_at: Option<Instant> = None;
-        let mut got_freqs_at: Option<Instant> = None;
-
-        // loop {
-        // blocks until CPAL callback pushes a block into the channel
+    fn get_frequencies(&mut self, _now: usize) -> (&[Frequency], bool) {
+        let mut have_new_block = false;
         if let Some(block) = self.controller.try_pull_data() {
             if !block.is_empty() {
-                pulled_at = Some(Instant::now());
                 self.stream.push_data(block);
-                self.stream.update(); // FFT + post-processing on the main thread
-
-                updated_at = Some(Instant::now());
+                self.stream.update();
+                have_new_block = true;
             }
         }
 
-        let frequencies = self.stream.get_frequencies();
-        got_freqs_at = Some(Instant::now());
+        if !have_new_block {
+            return (&self.freq_buffer, false);
+        }
 
-        // Note: use last available freqs (like interpolation but worse)
+        let frequencies = self.stream.get_frequencies();
         if frequencies.is_empty() {
-            return &self.freq_buffer;
+            return (&self.freq_buffer, false);
         }
 
         let mut frequencies = frequencies[0].clone();
-
         if frequencies.is_empty() {
-            return &self.freq_buffer;
+            return (&self.freq_buffer, false);
         }
 
         while frequencies.len() > self.freq_buffer.len() {
@@ -88,17 +79,7 @@ impl AudioSource for AudioSourceMicrophone {
                 position: f.position,
             }));
 
-        // if let (Some(pulled), Some(updated), Some(got)) = (pulled_at, updated_at, got_freqs_at) {
-        //     println!(
-        //         "get_freqs timings (ms): pull_wait={}, update={}, get_freqs={}, copy={}",
-        //         pulled.duration_since(start).as_millis(),
-        //         updated.duration_since(pulled).as_millis(),
-        //         got.duration_since(updated).as_millis(),
-        //         Instant::now().duration_since(got).as_millis()
-        //     );
-        // }
-
-        &self.freq_buffer
+        (&self.freq_buffer, true)
     }
 
     fn get_freq_buffer_size(&self) -> usize {

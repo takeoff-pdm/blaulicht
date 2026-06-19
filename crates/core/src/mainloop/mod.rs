@@ -276,6 +276,11 @@ pub fn run(
         system_message!(now, time_of_last_system_publish, system_out, {
             &[SystemMessage::TickSpeeds(speeds)]
         });
+
+        // The audio source produces ~100 Hz FFT frames; spinning faster than that
+        // just burns CPU on an early-return path inside `sig_collector.tick`.
+        // 1 ms leaves predicted-beat scheduling sub-frame accurate.
+        spin_sleep::sleep(Duration::from_millis(1));
     }
 
     Ok(())

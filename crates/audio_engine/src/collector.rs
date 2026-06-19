@@ -8,8 +8,8 @@ use blaulicht_shared::CollectedAudioSnapshot;
 use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{
-    AudioSource, Frequency, Signal, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
-    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+    AudioSource, Frequency, Signal, BASS_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
+    ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use std::{collections::VecDeque, ops::Range};
 
@@ -56,7 +56,8 @@ pub struct CollectorScratch {
     pub(crate) historic: VecDeque<usize>,
 
     pub(crate) bass_samples: VecDeque<u8>,
-    pub(crate) bass_peaks: VecDeque<usize>,
+    pub(crate) bass_samples_sum: u64,
+    pub(crate) last_bass_gate_open_time: usize,
     pub(crate) time_of_last_bpm_marker: usize, // Time marker
     pub(crate) num_beat_mismatches: usize,
     pub(crate) beat_needs_sync: bool,
@@ -78,6 +79,13 @@ pub struct CollectorScratch {
     pub(crate) beat_interval_ms: f32,
     pub(crate) bpm_estimate: f32,
 
+    // Cached per-frame analysis results, reused while no new FFT frame is available.
+    pub(crate) max_freq_cached: Option<f32>,
+    pub(crate) last_band_energies: [f32; 3],
+    pub(crate) last_band_onset_peakiness: [f32; 3],
+    pub(crate) last_band_onset_periodicity: [f32; 3],
+    pub(crate) last_band_transient_strength: [f32; 3],
+
     pub(crate) last_calibrate_time: usize,
 
     pub(crate) beat_volume_volume_samples_buffer: Vec<usize>,
@@ -89,7 +97,6 @@ pub struct CollectorScratchParameters {
     pub long_historic_frames: usize,
     pub rolling_frames: usize,
     pub bass_frames: usize,
-    pub bass_peak_frames: usize,
 }
 
 impl Default for CollectorScratchParameters {
@@ -99,7 +106,6 @@ impl Default for CollectorScratchParameters {
             long_historic_frames: LONG_HISTORIC_FRAMES,
             rolling_frames: ROLLING_AVERAGE_FRAMES,
             bass_frames: BASS_FRAMES,
-            bass_peak_frames: BASS_PEAK_FRAMES,
         }
     }
 }
@@ -116,7 +122,8 @@ impl CollectorScratch {
             long_historic: VecDeque::with_capacity(params.long_historic_frames),
             historic: VecDeque::with_capacity(params.rolling_frames),
             bass_samples: VecDeque::with_capacity(params.bass_frames),
-            bass_peaks: VecDeque::with_capacity(params.bass_peak_frames),
+            bass_samples_sum: 0,
+            last_bass_gate_open_time: now,
             time_of_last_bpm_marker: now,
             num_beat_mismatches: 0,
             is_on_beat: false,
@@ -134,6 +141,11 @@ impl CollectorScratch {
             band_weights: [0.6, 0.3, 0.1],
             beat_interval_ms: 0.0,
             bpm_estimate: 0.0,
+            max_freq_cached: None,
+            last_band_energies: [0.0; 3],
+            last_band_onset_peakiness: [0.0; 3],
+            last_band_onset_periodicity: [0.0; 3],
+            last_band_transient_strength: [0.0; 3],
             last_calibrate_time: now,
             beat_volume_volume_samples_buffer: vec![0; 2048], // TODO: make this more steerable?
         }
@@ -296,57 +308,49 @@ where
         }
     }
 
-    fn get_frequencies(&mut self, now: usize) {
-        let values_raw = self.audio_source.get_frequencies(now);
+    fn get_frequencies(&mut self, now: usize) -> bool {
+        let (values_raw, has_new) = self.audio_source.get_frequencies(now);
 
-        // Copy into internal buffer.
+        if !has_new {
+            return false;
+        }
+
         self.freq_buffer_raw.clear();
         self.freq_buffer_raw.extend(values_raw);
 
         self.freq_buffer.clear();
         self.freq_buffer.extend(values_raw);
 
-        // self.freq_buffer_raw.copy_from_slice(values_raw);
-        // self.freq_buffer.copy_from_slice(values_raw);
-
-        //
-        // Volume pass.
-        //
         match self.params.volume {
             100 => {}
             adjust_percent => {
+                let adjust = adjust_percent as f32 / 100.0;
                 self.freq_buffer.iter_mut().for_each(|freq| {
-                    let adjust_percent_float = adjust_percent as f32 / 100.0;
-                    freq.volume *= adjust_percent_float;
+                    freq.volume *= adjust;
                 });
             }
         }
 
-        //
-        // Gate pass.
-        //
         match self.params.gate {
             0 => {}
             gate_min => {
                 let min_freq = self.scratch.volume_samples.iter().max().unwrap_or(&0);
                 let min_freq = *min_freq as f32 * (gate_min as f32 / 100.0);
+                let boost = self.params.boost;
 
                 self.freq_buffer.iter_mut().for_each(|freq| {
                     if freq.volume >= min_freq {
-                        match self.params.boost {
-                            Some(b) => {
-                                freq.volume *= (b as f32) / 100.0;
-                            }
-                            None => {}
+                        if let Some(b) = boost {
+                            freq.volume *= (b as f32) / 100.0;
                         }
-
                         return;
                     }
-
                     freq.volume = 0.0;
                 });
             }
         }
+
+        true
     }
 
     pub fn clear(&mut self) {
@@ -357,7 +361,10 @@ where
     }
 
     //
-    // DOES NOT run every ~20 ms. This runs as often as possible.
+    // Runs as often as the mainloop calls it. Heavy analysis is gated on
+    // whether the underlying audio source produced a new FFT frame; the cheap
+    // beat-scheduling logic still runs every tick so predicted beats stay
+    // aligned to wall-clock time.
     //
     pub fn tick(&mut self, now: u64) -> anyhow::Result<()> {
         let now = now as usize;
@@ -366,32 +373,28 @@ where
             self.calibrate(now);
         }
 
-        self.get_frequencies(now);
+        let has_new_frame = self.get_frequencies(now);
 
-        // Volume
-        self.volume()?;
-
-        // Bass
-        self.bass(now)?;
-
-        // Beat Volume
-        self.beat_volume()?;
-
-        {
-            // NOTE: this will cause a missing update if the consumer takes too long.
-            // self.need_to_update_output_beat_trigger = [true; NUM_OUTPUTS];
-            if self.scratch.is_on_beat {
-                self.need_to_update_output_beat_trigger.fill(true);
-                self.scratch.is_on_beat = false;
-            }
-
-            if self.scratch.actual_onset_peak {
-                self.need_to_update_output_beat_onset.fill(true);
-                self.scratch.actual_onset_peak = false;
-            }
+        if has_new_frame {
+            self.volume()?;
+            self.beat_volume()?;
         }
 
-        self.current.time += 1;
+        self.bass(now, has_new_frame)?;
+
+        if self.scratch.is_on_beat {
+            self.need_to_update_output_beat_trigger.fill(true);
+            self.scratch.is_on_beat = false;
+        }
+
+        if self.scratch.actual_onset_peak {
+            self.need_to_update_output_beat_onset.fill(true);
+            self.scratch.actual_onset_peak = false;
+        }
+
+        if has_new_frame {
+            self.current.time += 1;
+        }
 
         Ok(())
     }
