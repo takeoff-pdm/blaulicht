@@ -137,7 +137,6 @@ fn main() {
             long_historic_frames: 1200,
             rolling_frames: 1200,
             bass_frames: 1200,
-            bass_peak_frames: 1200,
         },
         audio_source,
         0,

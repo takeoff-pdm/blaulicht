@@ -19,9 +19,10 @@ pub struct AudioSourceSoundfile {
 }
 
 impl AudioSource for AudioSourceSoundfile {
-    fn get_frequencies(&mut self, now: usize) -> &[Frequency] {
-        // let time = self.start_time.elapsed().as_millis() as f32 / 1000f32;
-        self.get_frequencies_at_time(now)
+    fn get_frequencies(&mut self, now: usize) -> (&[Frequency], bool) {
+        let freqs = self.get_frequencies_at_time(now);
+        let has_new = !freqs.is_empty();
+        (freqs, has_new)
     }
 
     fn get_freq_buffer_size(&self) -> usize {

@@ -1,0 +1,16 @@
+0: Fixing BPM analysis
+
+See the BPM analysis in crates/audio_engine and its usage in the crates/core/src/audio?
+I believe that it does not work as well as i want it to.
+Also, its a bit performance hungry.
+Evaluate it comprehensively and report any potential bugs.
+
+1: Specifying Ordering during Phaser animations
+
+See the animation system and especially AnimationSpecBody::Phaser?
+Currently the order of the fixtures (when using stretched-even or stretched-half-half) is default.
+What would be nice if we have a 'list' from left-to right, also wrapping if there are too many lights
+with the available selection. in Each box, there is a numberpad combonent (a small integer) that determines the ordering of the lamp.
+Also add a toggle above if we allow parrallel order (two lamps using the number 3).
+Furthermore, add an 'identify' shortcut / mode so that we can check which lamp is which.
+For this, output a short override for the phaser property / of the lamp we are idenfitying.
