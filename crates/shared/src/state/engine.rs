@@ -288,6 +288,8 @@ pub struct AnimationSpecBodyPhaser {
     pub time_total: PhaserDuration,
     pub pin_to_beat: bool,
     pub sync: SyncMode,
+    /// If set, reverses the fixture timer assignment order every N full iterations.
+    pub reverse_after_n_iterations: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Encode, Decode)]
@@ -339,6 +341,8 @@ pub enum MathematicalBaseFunction {
     Triangle,
     Square1_2,
     Square1_8,
+    Spike1_8,
+    ExpSpike1_8,
     Sawtooth,
     EaseIn,
     EaseOut,

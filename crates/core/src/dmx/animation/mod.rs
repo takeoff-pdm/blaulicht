@@ -163,6 +163,10 @@ impl DmxEngine {
                         continue;
                     }
 
+                    let fixture_count = animation.fixture_timers.len();
+                    let fixture_keys: Vec<(u8, u8)> =
+                        animation.fixture_timers.keys().cloned().collect();
+
                     for (fixture_index_in_selection, (fixture_selec, fixture_anim_state)) in
                         animation.fixture_timers.iter_mut().enumerate()
                     {
@@ -225,6 +229,8 @@ impl DmxEngine {
                         if now.saturating_sub(fixture_anim_state.last_tick_time)
                             >= transition_time as u64
                         {
+                            let prev_iteration = fixture_anim_state.timer / 360;
+
                             for _ in 0..num_ticks {
                                 fixture_anim_state.tick(now);
                             }
@@ -235,6 +241,46 @@ impl DmxEngine {
                                 fixture_anim_state.needs_reset_on_beat = true;
                             }
 
+                            // Detect iteration boundary crossing on last fixture
+                            if fixture_index_in_selection == fixture_count - 1 {
+                                let new_iteration = fixture_anim_state.timer / 360;
+                                if new_iteration > prev_iteration {
+                                    animation.iteration_count += 1;
+
+                                    if let AnimationSpecBody::Phaser(phaser) =
+                                        &animation.spec_cloned.body
+                                    {
+                                        if let Some(n) = phaser.reverse_after_n_iterations {
+                                            tracing::debug!(
+                                                "reverse check: iteration_count={}, n={}, timer={}",
+                                                animation.iteration_count,
+                                                n,
+                                                fixture_anim_state.timer
+                                            );
+                                            if n > 0 && animation.iteration_count % n == 0 {
+                                                animation.reversed = !animation.reversed;
+                                                tracing::info!(
+                                                    "REVERSED! now reversed={}",
+                                                    animation.reversed
+                                                );
+                                            }
+                                        }
+                                    } else {
+                                        tracing::debug!(
+                                            "iteration crossed but reverse_after_n_iterations is None (timer={})",
+                                            fixture_anim_state.timer
+                                        );
+                                    }
+                                }
+                            }
+
+                            let target_index = if animation.reversed {
+                                fixture_count - 1 - fixture_index_in_selection
+                            } else {
+                                fixture_index_in_selection
+                            };
+                            let target_fixture = &fixture_keys[target_index];
+
                             let v = self.generate_animation_value(
                                 audio_snapshot,
                                 &animation.spec_cloned,
@@ -244,9 +290,8 @@ impl DmxEngine {
                             );
 
                             let fixture_state =
-                                scene.sink.fixture_states.get_mut(fixture_selec).unwrap();
+                                scene.sink.fixture_states.get_mut(target_fixture).unwrap();
 
-                            // TODO: support multiple values?
                             fixture_state.apply_value(v, animation.spec_cloned.property);
                         }
                     }

@@ -605,6 +605,25 @@ impl AnimationEditState {
                         self.clamp_max_numberpad
                             .ui(ui, &mut mathematical_phaser.amplitude_max);
                     });
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        let mut enabled = phaser_mut.reverse_after_n_iterations.is_some();
+                        if ui.checkbox(&mut enabled, "Reverse after N iterations").changed() {
+                            phaser_mut.reverse_after_n_iterations = if enabled { Some(1) } else { None };
+                        }
+
+                        if let Some(ref mut n) = phaser_mut.reverse_after_n_iterations {
+                            let mut n_f32 = *n as f32;
+                            ui.add(
+                                egui::Slider::new(&mut n_f32, 1.0..=32.0)
+                                    .step_by(1.0)
+                                    .text("N"),
+                            );
+                            *n = n_f32 as u32;
+                        }
+                    });
                 }
                 PhaserKind::Keyframed(_keyframed_phaser) => todo!(),
             }

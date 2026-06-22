@@ -117,6 +117,8 @@ impl From<SavedActiveAnimation> for ActiveAnimation {
             enabled: value.enabled,
             fixture_timers: SavedMapEntry::to_btree_map(value.fixture_timers),
             spec_cloned: value.spec,
+            iteration_count: 0,
+            reversed: false,
         }
     }
 }
@@ -393,6 +395,8 @@ mod tests {
                     property: FixtureProperty::Alpha,
                     // sync: SyncMode::StretchedHalfHalf,
                 },
+                iteration_count: 0,
+                reversed: false,
             },
         );
 

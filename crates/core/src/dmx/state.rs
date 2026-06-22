@@ -273,6 +273,7 @@ impl Default for EngineState {
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
                         sync: SyncMode::Synced,
+                        reverse_after_n_iterations: None,
                     }),
                 },
                 1 => AnimationSpec {
@@ -288,6 +289,7 @@ impl Default for EngineState {
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
                         sync: SyncMode::Synced,
+                        reverse_after_n_iterations: None,
                     }),
                 },
                 2 => AnimationSpec {
@@ -303,6 +305,7 @@ impl Default for EngineState {
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
                         sync: SyncMode::Synced,
+                        reverse_after_n_iterations: None,
                     }),
                 },
             }

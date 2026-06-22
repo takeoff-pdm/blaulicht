@@ -60,6 +60,32 @@ pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: u64) -> u16 {
                         min
                     }
                 }
+                MathematicalBaseFunction::Spike1_8 => {
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+                    let spike_width = 360.0 / 8.0;
+
+                    if angle < spike_width {
+                        let phase = angle / spike_width;
+                        let smooth = (phase * PI).sin();
+                        smooth * range + min
+                    } else {
+                        min
+                    }
+                }
+                MathematicalBaseFunction::ExpSpike1_8 => {
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+                    let hold = 360.0 / 8.0;
+                    let ramp = 360.0 - hold;
+
+                    if angle < ramp {
+                        let phase = angle / ramp;
+                        let exp = (phase * 6.0 - 6.0).exp();
+                        exp * range + min
+                    } else {
+                        max
+                    }
+                }
+
                 MathematicalBaseFunction::Sawtooth => {
                     let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
                     let phase = angle / 360.0;

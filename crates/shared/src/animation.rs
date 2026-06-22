@@ -35,6 +35,8 @@ pub struct ActiveAnimation {
     pub fixture_timers: BTreeMap<(u8, u8), AnimationTimerState>,
     // CLONE of the spec.
     pub spec_cloned: AnimationSpec,
+    pub iteration_count: u32,
+    pub reversed: bool,
 }
 
 impl ActiveAnimation {
@@ -114,6 +116,8 @@ impl ActiveAnimation {
             enabled: false,
             fixture_timers,
             spec_cloned,
+            iteration_count: 0,
+            reversed: false,
         }
     }
 }
