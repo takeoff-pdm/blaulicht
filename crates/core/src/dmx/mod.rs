@@ -17,6 +17,7 @@ use crate::{
 use blaulicht_shared::{
     fixture::state::{FixtureState, MergeStrategy},
     scene::{FixtureSelection, FixtureSelector},
+    scene_graph::{AudioConditions, SceneGraphRuntime},
     ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
     CONTROLS_REQUIRING_SELECTION,
 };
@@ -54,6 +55,8 @@ pub struct DmxEngine {
 
     running_setup: bool,
     setup_start_time: Instant,
+
+    scene_graph_runtime: SceneGraphRuntime,
 }
 
 const SETUP_SECS: u64 = 10;
@@ -173,6 +176,7 @@ impl DmxEngine {
             artnet_output,
             running_setup: false,
             setup_start_time: Instant::now(),
+            scene_graph_runtime: SceneGraphRuntime::default(),
         }
     }
 
@@ -205,27 +209,32 @@ impl DmxEngine {
             events.push(ev)
         }
 
-        if !events.is_empty() {
-            let mut state = self.state_ref.dmx_engine.write().unwrap();
+        {
+            if !events.is_empty() {
+                let mut state = self.state_ref.dmx_engine.write().unwrap();
 
-            for ev in events {
-                let (msg, event) = self.apply(&mut state, ev);
+                for ev in events {
+                    let (msg, event) = self.apply(&mut state, ev);
 
-                if let Some(msg) = msg {
-                    self.system_out
-                        .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug))
-                        .unwrap();
-                }
+                    if let Some(msg) = msg {
+                        self.system_out
+                            .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug))
+                            .unwrap();
+                    }
 
-                if let Some(ev) = event {
-                    self.event_bus_connection
-                        .send(ControlEventMessage::new(EventOriginator::DmxEngine, ev));
+                    if let Some(ev) = event {
+                        self.event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::DmxEngine, ev));
+                    }
                 }
             }
         }
 
         // Advance animations.
         self.animation_tick(audio_output);
+
+        // Advance scene graphs.
+        self.scene_graph_tick(&audio_output.snapshot);
 
         self.render_universes();
     }
@@ -338,8 +347,20 @@ impl DmxEngine {
         self.write_to_output();
     }
 
+    fn scene_graph_tick(&mut self, audio_snapshot: &blaulicht_shared::CollectedAudioSnapshot) {
+        let now_ms = self.start_time.elapsed().as_millis() as u64;
+        let audio = AudioConditions {
+            beat_active: audio_snapshot.bass > audio_snapshot.bass_avg,
+            beat_trigger: audio_snapshot.beat_trigger,
+        };
+        let mut state = self.state_ref.dmx_engine.write().unwrap();
+        self.scene_graph_runtime
+            .tick_all(&mut state.0.scene_graphs.graphs, now_ms, &audio);
+    }
+
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
+        let graph_overrides = state.0.scene_graphs.collect_active_scene_overrides();
 
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
@@ -347,12 +368,22 @@ impl DmxEngine {
                 let curr_scene = state.curr_scene();
 
                 // Apply base scene state.
+                let fixture_key = (*group.0, *fixture.0);
                 let mut merged_state = curr_scene
                     .sink
                     .fixture_states
-                    .get(&(*group.0, *fixture.0))
+                    .get(&fixture_key)
                     .unwrap()
                     .clone();
+
+                // Apply palette assignments for this fixture in the base scene.
+                if let Some(palette_ids) = curr_scene.sink.palette_assignments.get(&fixture_key) {
+                    for palette_id in palette_ids {
+                        if let Some(palette) = state.0.palettes.get(palette_id) {
+                            palette.kind.apply_to(&mut merged_state);
+                        }
+                    }
+                }
 
                 // Apply master alpha of this scene on the scene fixture state.
                 //  0-255                         / 0 - 100
@@ -371,9 +402,19 @@ impl DmxEngine {
                     let mut scene_fixture_state = this_scene
                         .sink
                         .fixture_states
-                        .get(&(*group.0, *fixture.0))
+                        .get(&fixture_key)
                         .unwrap()
                         .clone();
+
+                    // Apply palette assignments for overlay scene.
+                    if let Some(palette_ids) = this_scene.sink.palette_assignments.get(&fixture_key)
+                    {
+                        for palette_id in palette_ids {
+                            if let Some(palette) = state.0.palettes.get(palette_id) {
+                                palette.kind.apply_to(&mut scene_fixture_state);
+                            }
+                        }
+                    }
 
                     // Apply master alpha of this scene on the scene fixture state.
                     //  0-255                         / 0 - 100
@@ -388,6 +429,46 @@ impl DmxEngine {
                             &scene_fixture_state,
                             change,
                             MergeStrategy::Highest, // WAS HIGHEST ONCE
+                        );
+                    }
+                }
+
+                // Apply scene graph overrides as additional overlay layers.
+                for graph_override in &graph_overrides {
+                    let Some(this_scene) = state.0.scenes.get(&graph_override.scene_id) else {
+                        continue;
+                    };
+
+                    if graph_override.master_alpha == 0 {
+                        continue;
+                    }
+
+                    let mut scene_fixture_state = this_scene
+                        .sink
+                        .fixture_states
+                        .get(&fixture_key)
+                        .unwrap()
+                        .clone();
+
+                    if let Some(palette_ids) = this_scene.sink.palette_assignments.get(&fixture_key)
+                    {
+                        for palette_id in palette_ids {
+                            if let Some(palette) = state.0.palettes.get(palette_id) {
+                                palette.kind.apply_to(&mut scene_fixture_state);
+                            }
+                        }
+                    }
+
+                    scene_fixture_state.alpha = (scene_fixture_state.alpha as f32 / 100.0
+                        * graph_override.master_alpha as f32)
+                        as u8;
+
+                    let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
+                    for change in changeset {
+                        merged_state.merge_from(
+                            &scene_fixture_state,
+                            change,
+                            MergeStrategy::Highest,
                         );
                     }
                 }
@@ -766,6 +847,44 @@ impl DmxEngine {
                 }
                 (None, None)
             }
+            ControlEvent::CreatePalette(name, kind) => {
+                let new_id = (0..=u8::MAX).find(|id| !state.0.palettes.contains_key(id));
+                match new_id {
+                    Some(id) => {
+                        state
+                            .0
+                            .palettes
+                            .insert(id, blaulicht_shared::palette::Palette { name, kind });
+                        (None, None)
+                    }
+                    None => (Some("Max palettes reached"), None),
+                }
+            }
+            ControlEvent::UpdatePalette(id, kind) => match state.0.palettes.get_mut(&id) {
+                Some(palette) => {
+                    palette.kind = kind;
+                    (None, None)
+                }
+                None => (Some("Palette not found"), None),
+            },
+            ControlEvent::DeletePalette(id) => {
+                if state.0.palettes.remove(&id).is_none() {
+                    return (Some("Palette not found"), None);
+                }
+                for scene in state.0.scenes.values_mut() {
+                    for assignments in scene.sink.palette_assignments.values_mut() {
+                        assignments.retain(|pid| *pid != id);
+                    }
+                }
+                (None, None)
+            }
+            ControlEvent::RenamePalette(id, name) => match state.0.palettes.get_mut(&id) {
+                Some(palette) => {
+                    palette.name = name;
+                    (None, None)
+                }
+                None => (Some("Palette not found"), None),
+            },
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)
@@ -1007,6 +1126,34 @@ impl DmxEngine {
                         }
                     }
                 }
+            }
+            ControlEvent::AssignPalette(palette_id) => {
+                if !state.0.palettes.contains_key(&palette_id) {
+                    return (Some("Palette not found"), None);
+                }
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+                for fixture_key in &curr_selection.fixtures {
+                    let assignments = this_scene
+                        .sink
+                        .palette_assignments
+                        .entry(*fixture_key)
+                        .or_default();
+                    if !assignments.contains(&palette_id) {
+                        assignments.push(palette_id);
+                    }
+                }
+                (None, None, None)
+            }
+            ControlEvent::UnassignPalette(palette_id) => {
+                let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+                for fixture_key in &curr_selection.fixtures {
+                    if let Some(assignments) =
+                        this_scene.sink.palette_assignments.get_mut(fixture_key)
+                    {
+                        assignments.retain(|id| *id != palette_id);
+                    }
+                }
+                (None, None, None)
             }
             _ => {
                 // NOTE: this applies the changeset internally on the sink.

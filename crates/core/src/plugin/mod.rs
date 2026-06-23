@@ -20,13 +20,14 @@ use crate::{
     config::PluginConfig,
     event::SystemEventBusConnectionInst,
     msg::{FromFrontend, MidiEvent, SystemMessage},
-    plugin::{midi::MidiManager, serial::SerialManager, wasm::AddrDescriptor},
+    plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, wasm::AddrDescriptor},
     state::AppState,
     syslog,
 };
 
 pub mod midi;
 pub mod serial;
+pub mod udp;
 mod tick;
 mod wasm;
 
@@ -46,6 +47,7 @@ pub struct PluginManager {
     // todo: this is completely borked; the most intelligent way to do this is to put the midi manager into the plugin manager!
     midi_manager_ref: Arc<Mutex<MidiManager>>,
     serial_manager_ref: Arc<Mutex<SerialManager>>,
+    udp_manager_ref: Arc<Mutex<UdpManager>>,
 
     event_bus: SystemEventBusConnectionInst,
 
@@ -75,6 +77,7 @@ pub struct Plugin {
     midi_buffers: AddrDescriptor,
     serial_buffers: AddrDescriptor,
     state_buffers: AddrDescriptor,
+    udp_buffers: AddrDescriptor,
 
     // When was the last time the engine state was written into that plugin?
     last_dmx_engine_sync: Instant,
@@ -102,6 +105,7 @@ impl Plugin {
             midi_buffers: AddrDescriptor::dummy(),
             state_buffers: AddrDescriptor::dummy(),
             serial_buffers: AddrDescriptor::dummy(),
+            udp_buffers: AddrDescriptor::dummy(),
             last_dmx_engine_sync: Instant::now(),
         })
     }
@@ -116,6 +120,7 @@ impl Plugin {
             midi_buffers: AddrDescriptor::dummy(),
             state_buffers: AddrDescriptor::dummy(),
             serial_buffers: AddrDescriptor::dummy(),
+            udp_buffers: AddrDescriptor::dummy(),
             last_dmx_engine_sync: Instant::now(),
         })
     }
@@ -133,6 +138,7 @@ impl PluginManager {
         system_out: Sender<SystemMessage>,
         midi_manager_ref: Arc<Mutex<MidiManager>>,
         serial_manager_ref: Arc<Mutex<SerialManager>>,
+        udp_manager_ref: Arc<Mutex<UdpManager>>,
         event_bus: SystemEventBusConnectionInst,
         app_state_ref: Arc<AppState>,
     ) -> Self {
@@ -147,6 +153,7 @@ impl PluginManager {
             system_out,
             midi_manager_ref,
             serial_manager_ref,
+            udp_manager_ref,
             event_bus,
             state_ref: app_state_ref,
         }
@@ -193,7 +200,7 @@ impl PluginManager {
         // Only return on serious log::errors.
         tracing::debug!("[Wasm] Running initial tick...");
         if self
-            .tick(CollectedAudioSnapshot::default(), &[], vec![], None)
+            .tick(CollectedAudioSnapshot::default(), &[], vec![], vec![], None)
             .is_err()
         {
             syslog!(self.system_out, "Plugin(s) failed to initialize.");

@@ -76,6 +76,7 @@ egui-phosphor = "0.12.0"
 egui_code_editor = { version = "=0.2.24" }
 egui_glow = "0.34.1"
 egui-file-dialog = "0.13.0"
+egui-snarl = { version = "0.10", features = ["serde"] }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 bytemuck = "1.14.3"
 sysinfo = "0.30.13"

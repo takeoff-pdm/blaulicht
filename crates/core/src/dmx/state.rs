@@ -336,6 +336,8 @@ impl Default for EngineState {
             current_scene_focus: 0,
             current_overlay_scenes: vec![],
             overrides: BTreeMap::new(),
+            scene_graphs: Default::default(),
+            palettes: Default::default(),
         };
 
         Self(state)

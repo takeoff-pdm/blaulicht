@@ -49,6 +49,7 @@ impl Pane {
             PaneKind::Page(AppPage::ViewPerformance) => "View Performance".to_string(),
             PaneKind::Page(AppPage::FixturesPerformance) => "Fixtures Performance".to_string(),
             PaneKind::Page(AppPage::Animations) => "Animations".to_string(),
+            PaneKind::Page(AppPage::SceneGraph) => "Scene Graph".to_string(),
             PaneKind::Page(AppPage::Visualizer) => "Visualizer".to_string(),
             PaneKind::PluginUi { plugin_id } => format!("Plugin UI #{plugin_id}"),
         }

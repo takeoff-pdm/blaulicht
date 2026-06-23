@@ -7,7 +7,9 @@ use crate::{
 use blaulicht_shared::SerialReceived;
 #[cfg(feature = "wasmtime")]
 use blaulicht_shared::SerialReceived;
-use blaulicht_shared::{CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput};
+use blaulicht_shared::{
+    CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput, UdpReceived,
+};
 use std::sync::Arc;
 use std::{
     collections::HashMap,
@@ -24,6 +26,7 @@ impl PluginManager {
         _: CollectedAudioSnapshot,
         _: &[MidiEvent],
         _: Vec<SerialReceived>,
+        _: Vec<UdpReceived>,
         _: Arc<AppState>,
     ) -> Duration {
         Duration::from_secs(0)
@@ -34,6 +37,7 @@ impl PluginManager {
         _: CollectedAudioSnapshot,
         _: &[MidiEvent],
         _: Vec<SerialReceived>,
+        _: Vec<UdpReceived>,
         _: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
         Ok(Duration::from_micros(1))
@@ -57,12 +61,14 @@ impl PluginManager {
         audio_data: CollectedAudioSnapshot,
         midi_events: &[MidiEvent],
         serial_received: Vec<SerialReceived>,
+        udp_received: Vec<UdpReceived>,
         app_state: Arc<AppState>,
     ) -> Duration {
         let tick_duration = match self.tick(
             audio_data,
             midi_events,
             serial_received,
+            udp_received,
             Some(Arc::clone(&app_state)),
         ) {
             Ok(dur) => {
@@ -87,6 +93,7 @@ impl PluginManager {
         audio_data: CollectedAudioSnapshot,
         midi_events: &[MidiEvent],
         serial_received: Vec<SerialReceived>,
+        udp_received: Vec<UdpReceived>,
         // If present and enough (WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES) time has passed, write engine state into plugin.
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<Duration> {
@@ -124,6 +131,7 @@ impl PluginManager {
                     input,
                     midi_events,
                     serial_received.clone(),
+                    udp_received.clone(),
                     app_state.clone(),
                 ) {
                     let path = plugin_key;
@@ -186,6 +194,7 @@ impl Plugin {
         input: TickInput,
         mut midi_events: &[MidiEvent],
         serial_received: Vec<SerialReceived>,
+        udp_received: Vec<UdpReceived>,
         app_state: Option<Arc<AppState>>,
     ) -> anyhow::Result<()> {
         //
@@ -312,6 +321,32 @@ impl Plugin {
                 &mut self.wasm_state.store,
                 self.serial_buffers.buffer_len_addr(),
                 &serial_length_bytes,
+            )?;
+        }
+
+        ////////////////// UDP /////////////////////
+        {
+            let udp_bytes = {
+                use blaulicht_shared::UdpCollector;
+
+                let collector = UdpCollector::new(udp_received);
+                collector.serialize()
+            };
+
+            let udp_array_len = udp_bytes.len() as u32;
+
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.udp_buffers.buffer_addr(),
+                &udp_bytes,
+            )?;
+
+            let mut udp_length_bytes = Vec::new();
+            udp_length_bytes.extend_from_slice(&udp_array_len.to_le_bytes());
+            self.wasm_state.memory.write(
+                &mut self.wasm_state.store,
+                self.udp_buffers.buffer_len_addr(),
+                &udp_length_bytes,
             )?;
         }
 

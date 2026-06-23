@@ -61,3 +61,20 @@ export interface EngineSelection {
 export interface AudioState {
   device_name?: string
 }
+
+export interface Palette {
+  name: string;
+  kind: PaletteKind;
+}
+
+export type PaletteKind =
+  | { Color: HSVColor }
+  | { Position: { pan: number; tilt: number } }
+  | { Beam: { focus: number; strobe_speed: number } }
+  | { Single: [string, number] };
+
+export interface HSVColor {
+  h: number;
+  s: number;
+  v: number;
+}

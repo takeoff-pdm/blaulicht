@@ -14,6 +14,7 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
         AppPage::ViewPerformance => egui_phosphor::regular::GAME_CONTROLLER,
         AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,
         AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
+        AppPage::SceneGraph => egui_phosphor::regular::GRAPH,
         AppPage::Visualizer => egui_phosphor::regular::WAVEFORM,
     }
 }

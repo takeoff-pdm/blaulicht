@@ -147,6 +147,10 @@ impl PluginManager {
                 .acquire_state_buffer_address()
                 .map_err(|e| anyhow!("failed to acquire state buffer addresses: {e}"))?;
 
+            plugin
+                .acquire_udp_buffer_addresses()
+                .map_err(|e| anyhow!("failed to acquire UDP buffer addresses: {e}"))?;
+
             debug_assert!(plugin_id < u8::MAX as usize);
 
             self.plugins.insert(plugin_id as u8, plugin);
@@ -1597,6 +1601,18 @@ impl PluginManager {
         // Serial interface.
         //
 
+        let udp_manager = Arc::clone(&self.udp_manager_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_open_udp_port",
+            move |bind_port: u32| {
+                let mut udp_manager = udp_manager.lock().unwrap();
+                udp_manager
+                    .request_port(bind_port as u16)
+                    .unwrap_or(u8::MAX) as u32
+            },
+        )?;
+
         let serial_manager = Arc::clone(&self.serial_manager_ref);
         linker.func_wrap::<_, u32>(
             "blaulicht",
@@ -1890,6 +1906,34 @@ impl Plugin {
         tracing::debug!("Acquired State buffer addresses: {:?}", addrs);
 
         self.state_buffers = addrs;
+        Ok(())
+    }
+
+    fn acquire_udp_buffer_addresses(&mut self) -> anyhow::Result<()> {
+        tracing::trace!("Acquiring UDP buffer addresses for plugin: {}", self.path);
+
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_udp_buffer_start_addr",
+        )?;
+
+        let udp_buffer_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        let func = self.wasm_state.instance.get_typed_func::<(), i32>(
+            &mut self.wasm_state.store,
+            "__internal_get_global_udp_buffer_length_start_addr",
+        )?;
+
+        let udp_buffer_length_start_addr = func.call(&mut self.wasm_state.store, ())?;
+
+        let addrs = AddrDescriptor {
+            start_addr: udp_buffer_start_addr,
+            length_start_addr: udp_buffer_length_start_addr,
+        };
+
+        tracing::debug!("Acquired UDP buffer addresses: {:?}", addrs);
+
+        self.udp_buffers = addrs;
         Ok(())
     }
 }

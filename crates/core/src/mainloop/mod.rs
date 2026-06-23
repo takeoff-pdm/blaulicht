@@ -9,7 +9,7 @@ use crate::{
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::signal_mainloop,
     msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
-    plugin::{midi::MidiManager, serial::SerialManager, PluginManager},
+    plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
     state::AppState,
     syslog, system_message, util,
 };
@@ -58,6 +58,11 @@ pub fn run(
     let serial_manager = Arc::new(Mutex::new(SerialManager::new(Arc::clone(&app_state))));
 
     //
+    // UDP.
+    //
+    let udp_manager = Arc::new(Mutex::new(UdpManager::new(Arc::clone(&app_state))));
+
+    //
     // Plugin system.
     //
     let p_app_state = Arc::clone(&app_state);
@@ -68,6 +73,7 @@ pub fn run(
         system_out.clone(),
         Arc::clone(&midi_manager),
         Arc::clone(&serial_manager),
+        Arc::clone(&udp_manager),
         event_bus_plugins,
         p_app_state,
     );
@@ -180,10 +186,13 @@ pub fn run(
                 syslog!(system_out, "[ENGINE] Reload start.");
                 match midi_manager.lock() {
                     Ok(mut manager) => manager.reload(),
-                    // TODO: i think this can never happen.
                     Err(err) => tracing::warn!(
                         "[ENGINE] Failed to acquire MIDI manager lock during reload: {err}"
                     ),
+                }
+
+                if let Ok(mut manager) = udp_manager.lock() {
+                    manager.release_all();
                 }
 
                 plugin_manager.reload()?;
@@ -217,11 +226,19 @@ pub fn run(
                     .map_err(|e| anyhow!("Failed to tick serial manager: {e:?}"))?
             };
 
+            let udp = {
+                let mut udp_manager = udp_manager.lock().unwrap();
+                udp_manager
+                    .tick()
+                    .map_err(|e| anyhow!("Failed to tick UDP manager: {e:?}"))?
+            };
+
             // TODO: this is cursed code! - SLOW plugins cause DMX output congestion
             plugin_manager_tick_duration = plugin_manager.tick_external(
                 sig_collector.take_snapshot(),
                 &midi,
                 serial,
+                udp,
                 Arc::clone(&app_state),
             );
 

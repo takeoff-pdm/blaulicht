@@ -6,8 +6,8 @@ use crate::{
         },
         external_screen::Pane,
         pages::{
-            AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SystemUI, ViewPerfUI,
-            VisualizerUiState,
+            AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SceneGraphUI,
+            SystemUI, ViewPerfUI, VisualizerUiState,
         },
     },
     msg::TickSpeeds,
@@ -278,6 +278,7 @@ pub struct BlaulichtApp {
     view_perf_ui_state: ViewPerfUI,
     animation_ui_state: AnimationUI,
     visualizer_ui_state: VisualizerUiState,
+    scene_graph_ui_state: SceneGraphUI,
 
     last_autosave_check: Instant,
     last_autosave_hash: u64,
@@ -468,7 +469,7 @@ impl BlaulichtApp {
             add_fixture_count_numberpad: Numberpad::new()
                 .dialog_title("Fixture Count")
                 .field_width(140.0)
-                .range(1.0, 64.0),
+                .range(1.0, 200.0),
             setup_fixture_id: 0,
             add_fixture_universe_no: 0,
             new_fixture_name: String::new(),
@@ -519,6 +520,7 @@ impl BlaulichtApp {
             view_perf_ui_state: ViewPerfUI::default(),
             animation_ui_state: AnimationUI::default(),
             visualizer_ui_state: VisualizerUiState::default(),
+            scene_graph_ui_state: SceneGraphUI::default(),
             fixture_perf_ui: FixturePerfUi {
                 scene_overview_animation_edit: AnimationEditState::default(),
                 scene_overview_animation_selection_edit: None,

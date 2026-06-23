@@ -148,7 +148,7 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
 }
 
 // Constants.
-pub const BASS_FRAMES: usize = 10000;
+pub const BASS_FRAMES: usize = 300;
 pub const ONSET_SAMPLE_PERIOD_MS: usize = 10;
 pub const ONSET_HISTORY_FRAMES: usize = 600;
 const TRANSIENT_HISTORY_MS: usize = 10_000;
