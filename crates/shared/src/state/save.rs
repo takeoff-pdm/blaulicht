@@ -211,6 +211,7 @@ impl TryFrom<SavedEngineSink> for EngineSink {
             changeset,
             master_alpha_fader: value.master_alpha_fader,
             master_speed: value.master_alpha_speed,
+            palette_assignments: Default::default(),
         })
     }
 }
@@ -308,6 +309,8 @@ impl TryFrom<SaveEngineState> for EngineState {
             current_scene_focus: value.current_scene_focus,
             current_overlay_scenes: value.current_overlay_scenes,
             overrides,
+            scene_graphs: Default::default(),
+            palettes: Default::default(),
         })
     }
 }
@@ -424,6 +427,7 @@ mod tests {
                     changeset,
                     master_alpha_fader: 100,
                     master_speed: AnimationSpeedModifier::_1,
+                    palette_assignments: Default::default(),
                 },
                 name: "Scene 1".to_string(),
             },

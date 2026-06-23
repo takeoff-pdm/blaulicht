@@ -110,6 +110,9 @@ pub struct EngineSink {
     pub master_alpha_fader: u8,
     // Multiply the speeds of all animations in this scene.
     pub master_speed: AnimationSpeedModifier,
+    // Maps (group_id, fixture_id) -> list of assigned palette IDs.
+    #[serde(default)]
+    pub palette_assignments: BTreeMap<(u8, u8), Vec<u8>>,
 }
 
 impl EngineSink {
@@ -175,6 +178,7 @@ impl EngineSink {
             changeset: HashSet::new(),
             master_alpha_fader: 100,
             master_speed: AnimationSpeedModifier::_1,
+            palette_assignments: BTreeMap::new(),
         }
     }
 }

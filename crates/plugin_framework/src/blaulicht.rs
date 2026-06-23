@@ -20,6 +20,8 @@ extern "C" {
         device_name_len: usize,
         baud_rate: u32,
     ) -> u8;
+
+    fn bl_open_udp_port(bind_port: u32) -> u8;
     fn bl_enumerate_serial_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
@@ -227,6 +229,10 @@ pub fn bl_enumerate_midi_devices_safe() -> Vec<String> {
 
 pub fn bl_open_serial_device_safe(device_name: &str, baud_rate: u32) -> u8 {
     unsafe { bl_open_serial_device(device_name.as_ptr(), device_name.len(), baud_rate) }
+}
+
+pub fn bl_open_udp_port_safe(bind_port: u16) -> u8 {
+    unsafe { bl_open_udp_port(bind_port as u32) }
 }
 
 pub fn bl_enumerate_serial_devices_safe() -> Vec<String> {

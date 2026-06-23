@@ -52,7 +52,7 @@ impl LegacyState {
             AppPage::ViewPerformance => 23,
             AppPage::FixturesPerformance => 15,
             AppPage::Animations => 7,
-            AppPage::Visualizer => return None,
+            AppPage::Visualizer | AppPage::SceneGraph => return None,
         };
 
         debug_assert!(APC_PAGE_PADS.contains(&pad));

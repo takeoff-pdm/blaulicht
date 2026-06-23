@@ -4,7 +4,7 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{AnimationSpec, MainUiEvent, scene::FixtureSelection};
+use crate::{AnimationSpec, MainUiEvent, palette::PaletteKind, scene::FixtureSelection};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -299,6 +299,14 @@ pub enum ControlEvent {
 
     // Plugin UI interaction events (ignored by DMX engine; for plugins only)
     PluginUi(PluginUiEvent, u8), // UI event and the Plugin-ID.
+
+    // Palette management.
+    CreatePalette(String, PaletteKind),
+    UpdatePalette(u8, PaletteKind),
+    DeletePalette(u8),
+    RenamePalette(u8, String),
+    AssignPalette(u8),
+    UnassignPalette(u8),
 }
 
 impl ControlEvent {
@@ -329,7 +337,13 @@ impl ControlEvent {
             | ControlEvent::SetChannelOverride(_, _, _)
             | ControlEvent::RemoveChannelOverride(_, _)
             | ControlEvent::MainUi(_)
-            | ControlEvent::PluginUi(_, _) => {
+            | ControlEvent::PluginUi(_, _)
+            | ControlEvent::CreatePalette(_, _)
+            | ControlEvent::UpdatePalette(_, _)
+            | ControlEvent::DeletePalette(_)
+            | ControlEvent::RenamePalette(_, _)
+            | ControlEvent::AssignPalette(_)
+            | ControlEvent::UnassignPalette(_) => {
                 return None;
             }
             ControlEvent::SetEnabled(_) => todo!("Illegal message"),
@@ -440,6 +454,8 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
             | ControlEvent::PlayAnimation(_)
             | ControlEvent::LoadSpecIntoAnimation(_, _)
             | ControlEvent::SetAnimationSpeed(_, _)
+            | ControlEvent::AssignPalette(_)
+            | ControlEvent::UnassignPalette(_)
     };
 }
 
@@ -478,6 +494,10 @@ impl ControlEvent {
             ControlEvent::RemoveChannelOverride(_, _) => false,
             ControlEvent::PluginUi(_, _) => false,
             ControlEvent::MainUi(_) => false,
+            ControlEvent::CreatePalette(_, _) => false,
+            ControlEvent::UpdatePalette(_, _) => false,
+            ControlEvent::DeletePalette(_) => false,
+            ControlEvent::RenamePalette(_, _) => false,
         }
     }
 }

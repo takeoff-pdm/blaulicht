@@ -27,6 +27,7 @@ impl From<IoError> for Error {
 pub enum IoError {
     MidiDeviceNotFound(String),
     SerialDeviceNotFound(String),
+    UdpBindFailed(u16),
 }
 
 impl Display for IoError {
@@ -34,6 +35,7 @@ impl Display for IoError {
         match self {
             IoError::MidiDeviceNotFound(dev) => write!(f, "MIDI device '{dev}' not found"),
             IoError::SerialDeviceNotFound(dev) => write!(f, "SERIAL device '{dev}' not found"),
+            IoError::UdpBindFailed(port) => write!(f, "UDP bind to port {port} failed"),
         }
     }
 }

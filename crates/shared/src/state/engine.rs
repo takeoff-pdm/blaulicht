@@ -1,7 +1,9 @@
 use crate::{
     AnimationSpeedModifier, FixtureProperty, SyncMode,
     fixture::state::{FixtureGroup, FixtureState},
+    palette::Palette,
     scene::{EngineSink, Scene},
+    scene_graph::SceneGraphState,
     view::View,
 };
 use bincode::{Decode, Encode, config};
@@ -80,8 +82,12 @@ pub struct EngineState {
 
     // Overrides a (universe, channel) -> value
     pub overrides: BTreeMap<(usize, usize), u8>,
-    // #[serde(default)]
-    // pub plugin_state: HashMap<String, String>,
+
+    #[serde(default)]
+    pub scene_graphs: SceneGraphState,
+
+    #[serde(default)]
+    pub palettes: BTreeMap<u8, Palette>,
 }
 
 impl EngineState {

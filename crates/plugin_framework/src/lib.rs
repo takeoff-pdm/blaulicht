@@ -4,10 +4,12 @@ pub mod blaulicht;
 mod error;
 pub mod midi;
 pub mod serial;
+pub mod udp;
 mod state;
 pub use blaulicht::*;
-pub use blaulicht_shared::{ExternalScreenInfo, PluginStateLocation};
+pub use blaulicht_shared::{ExternalScreenInfo, PluginStateLocation, UdpReceived};
 pub use midi::*;
+pub use udp::*;
 pub use state::*;
 
 pub struct BufferSource<T, const N: usize> {

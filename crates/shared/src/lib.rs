@@ -16,6 +16,8 @@ pub mod fixture;
 mod state;
 pub use state::*;
 
+pub mod palette;
+
 pub mod scene;
 
 pub mod view;
@@ -26,4 +28,9 @@ pub use animation::*;
 mod serial;
 pub use serial::*;
 
+mod udp;
+pub use udp::*;
+
 pub mod misc_event;
+
+pub mod scene_graph;
