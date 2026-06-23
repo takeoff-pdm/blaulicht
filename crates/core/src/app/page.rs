@@ -37,6 +37,9 @@ impl BlaulichtApp {
             AppPage::Animations => {
                 self.animations_ui(ctx, ui);
             }
+            AppPage::Palettes => {
+                self.palettes_ui(ui, ctx);
+            }
             AppPage::SceneGraph => {
                 self.scene_graph_ui(ui, ctx);
             }

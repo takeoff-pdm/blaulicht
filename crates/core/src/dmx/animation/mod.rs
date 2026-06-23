@@ -4,7 +4,7 @@ use crate::{dmx::DmxEngine, mainloop::DMX_TICK_TIME};
 use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
 pub use phaser::*;
-use std::{cmp, time::Instant};
+use std::time::Instant;
 
 const NUMBER_OF_STEPS: f64 = 360.0;
 
@@ -70,9 +70,6 @@ impl DmxEngine {
                     return 0;
                 }
 
-                // Quantize to reduce dimension of the audio column
-                debug_assert!(audio_snapshot.current_audio_colunn.len() > fixtures_in_selection);
-
                 // Apply per-animation frequency window, gate, and boost adjustments before binning.
                 let processed_bins: Vec<u8> = {
                     const MAX_FREQ_HZ: f32 = 20_000.0;
@@ -117,25 +114,9 @@ impl DmxEngine {
                     return 0;
                 }
 
-                let chunk_size = cmp::max(processed_bins.len() / fixtures_in_selection, 1);
-                let mut quantized_audio_bins: Vec<usize> = processed_bins
-                    .chunks(chunk_size)
-                    .map(|chunk| {
-                        // Compute average
-                        let max = chunk.iter().copied().map(|v| v as usize).max();
-                        // sum / chunk.len()
-                        max.unwrap_or(0)
-                    })
-                    .collect();
-
-                while fixture_index_in_selection >= quantized_audio_bins.len() {
-                    quantized_audio_bins.push(0); // NOOO: this adds 0 padding and bricks it
-                }
-
-                debug_assert!(fixture_index_in_selection < quantized_audio_bins.len());
-
-                let fixture_value = quantized_audio_bins[fixture_index_in_selection];
-                fixture_value as u16
+                let bin_index =
+                    fixture_index_in_selection * processed_bins.len() / fixtures_in_selection;
+                processed_bins[bin_index] as u16
             }
             AnimationSpecBody::AudioBeat(_) => audio_snapshot.snapshot.bass as u16,
             AnimationSpecBody::BeatClock(_) => (audio_snapshot.snapshot.beat_trigger as u16) * 255,

@@ -20,7 +20,7 @@ use blaulicht_shared::AppSubPage;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
-use pages::ViewUI;
+use pages::{PaletteUI, ViewUI};
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet, VecDeque},
@@ -279,6 +279,7 @@ pub struct BlaulichtApp {
     animation_ui_state: AnimationUI,
     visualizer_ui_state: VisualizerUiState,
     scene_graph_ui_state: SceneGraphUI,
+    palette_ui_state: PaletteUI,
 
     last_autosave_check: Instant,
     last_autosave_hash: u64,
@@ -521,6 +522,7 @@ impl BlaulichtApp {
             animation_ui_state: AnimationUI::default(),
             visualizer_ui_state: VisualizerUiState::default(),
             scene_graph_ui_state: SceneGraphUI::default(),
+            palette_ui_state: PaletteUI::default(),
             fixture_perf_ui: FixturePerfUi {
                 scene_overview_animation_edit: AnimationEditState::default(),
                 scene_overview_animation_selection_edit: None,
