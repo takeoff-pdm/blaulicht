@@ -255,5 +255,20 @@ impl BlaulichtApp {
         ) {
             self.system_ui_state.plugin_dialog_open = true;
         }
+
+        let screen_count = self.external_screens.len();
+        let screens_label = format!("Screens ({screen_count})");
+        if Self::render_compact_health_box(
+            ui,
+            &screens_label,
+            egui_phosphor::regular::MONITOR,
+            icon_size,
+            true,
+            screen_count > 0,
+            dimensions,
+            left_inset,
+        ) {
+            self.system_ui_state.screens_dialog_open = true;
+        }
     }
 }

@@ -71,6 +71,7 @@ impl BlaulichtApp {
         self.render_artnet_dialog(ctx);
         self.render_midi_dialog(ctx);
         self.render_serial_dialog(ctx);
+        self.render_screens_dialog(ctx);
         self.render_plugin_popup(ctx, screen_id);
 
         let button_size = ButtonSize::Medium.with_width(110.0);

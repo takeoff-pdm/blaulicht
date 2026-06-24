@@ -1,6 +1,7 @@
 use crate::{AudioSource, Frequency};
-use audioviz::io::{Input, InputController};
+use audioviz::io::{Device, Input, InputController};
 use audioviz::spectrum::{config::StreamConfig, stream::Stream};
+use cpal::traits::{DeviceTrait, HostTrait};
 
 //
 // MICROPHONE SOURCE.
@@ -13,11 +14,51 @@ pub struct AudioSourceMicrophone {
     pub freq_buffer: Vec<Frequency>,
 }
 
+/// Map a selected cpal device to the device identifier audioviz expects.
+///
+/// audioviz (using `cpal::default_host()`) resolves `Device::DefaultInput` via
+/// `default_input_device()` and `Device::Id(n)` via `input_devices().nth(n)`.
+///
+/// We prefer `DefaultInput` whenever the selected device is the host's default input: that path
+/// needs no device enumeration, so it avoids probing (and briefly opening) every other input
+/// device right before audioviz opens the capture stream. Enumerating eagerly here was observed
+/// to leave the capture silent on PipeWire/ALSA setups. We only fall back to locating the device
+/// by index when a genuinely non-default device was chosen.
+fn resolve_audioviz_device(device: &cpal::Device) -> Device {
+    let Ok(target_name) = device.name() else {
+        return Device::DefaultInput;
+    };
+
+    let host = cpal::default_host();
+
+    // Common case: the selected device is the default input. Use it without enumerating.
+    let default_is_target = host
+        .default_input_device()
+        .and_then(|d| d.name().ok())
+        .map(|name| name == target_name)
+        .unwrap_or(false);
+    if default_is_target {
+        return Device::DefaultInput;
+    }
+
+    let index = host.input_devices().ok().and_then(|mut devices| {
+        devices.position(|candidate| {
+            candidate
+                .name()
+                .map(|name| name == target_name)
+                .unwrap_or(false)
+        })
+    });
+
+    match index {
+        Some(index) => Device::Id(index),
+        None => Device::DefaultInput,
+    }
+}
+
 impl AudioSourceMicrophone {
     pub fn new(
-        // TODO: fork audioviz / open issue to allow device pass thru
-        // OR: use the nth-device option in the Device:: enum.
-        _device: cpal::Device,
+        device: cpal::Device,
         config: StreamConfig,
         freq_buffer_size: usize,
     ) -> anyhow::Result<Self> {
@@ -27,10 +68,12 @@ impl AudioSourceMicrophone {
         let frames_10ms_at_48k = stream.config.processor.sampling_rate * latency / 1000;
         let buffer_size = Some(frames_10ms_at_48k);
 
+        let av_device = resolve_audioviz_device(&device);
+
         // set up capture on the same thread; only the CPAL callback runs elsewhere
         let mut input = Input::new();
         let (_channels, _sample_rate, controller) = input
-            .init(&audioviz::io::Device::DefaultInput, buffer_size)
+            .init(&av_device, buffer_size)
             .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
 
         Ok(Self {
@@ -44,6 +87,9 @@ impl AudioSourceMicrophone {
 
 impl AudioSource for AudioSourceMicrophone {
     fn get_frequencies(&mut self, _now: usize) -> (&[Frequency], bool) {
+        // `try_pull_data` already drains the whole capture channel into a single block (and
+        // returns `Some(empty)` rather than `None` when idle), so one pull per call is enough.
+        // Looping on it would spin forever on the empty-but-connected case.
         let mut have_new_block = false;
         if let Some(block) = self.controller.try_pull_data() {
             if !block.is_empty() {

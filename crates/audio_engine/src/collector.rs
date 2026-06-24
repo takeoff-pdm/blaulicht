@@ -90,6 +90,14 @@ pub struct CollectorScratch {
     pub(crate) last_calibrate_time: usize,
 
     pub(crate) beat_volume_volume_samples_buffer: Vec<usize>,
+
+    // Section detection (Breakdown / Drop / ActiveBeat).
+    pub(crate) section_state: blaulicht_shared::SectionState,
+    pub(crate) section_last_update_ms: usize,
+    pub(crate) section_drop_started_ms: usize,
+    pub(crate) section_quiet_accum_ms: usize,
+    pub(crate) section_prev_bass_hit: bool,
+    pub(crate) section_drop_confirm_started_ms: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -150,6 +158,12 @@ impl CollectorScratch {
             last_band_transient_strength: [0.0; 3],
             last_calibrate_time: now,
             beat_volume_volume_samples_buffer: vec![0; 2048], // TODO: make this more steerable?
+            section_state: blaulicht_shared::SectionState::default(),
+            section_last_update_ms: now,
+            section_drop_started_ms: now,
+            section_quiet_accum_ms: 0,
+            section_prev_bass_hit: false,
+            section_drop_confirm_started_ms: None,
         }
     }
 }
@@ -167,6 +181,24 @@ pub struct SignalCollectorParams {
     pub bass_freq_low: usize,
     pub bass_freq_high: usize,
     pub bass_volume: usize,
+
+    /// Drop-detection sensitivity, 0..=100. Higher triggers more easily (lower
+    /// bass-onset threshold + shorter required preceding quiet), at the cost of
+    /// catching a DJ's fake/prank drop. Lower is safer but later.
+    pub drop_sensitivity: u8,
+    /// Minimum instantaneous `bass` level that counts as bass being present.
+    pub drop_bass_min: u8,
+    /// Minimum `bass_avg` (moving average) level that counts as bass being present.
+    pub drop_bass_avg_min: u8,
+    /// If true, both `drop_bass_min` AND `drop_bass_avg_min` must be met for bass
+    /// to count as present; if false, either one is enough.
+    pub drop_require_both: bool,
+    /// How long (ms) bass must stay at/above the gates after a candidate hit
+    /// before committing to `Drop` (the sustain that "creates the effect").
+    pub drop_sustain_ms: u16,
+    /// How long (ms) bass must stay below the gates before falling back to
+    /// `Breakdown`.
+    pub drop_breakdown_hold_ms: u16,
 }
 
 impl Default for SignalCollectorParams {
@@ -182,6 +214,12 @@ impl Default for SignalCollectorParams {
             bass_freq_low: 0,
             bass_freq_high: 250,
             bass_volume: 25,
+            drop_sensitivity: 70,
+            drop_bass_min: 25,
+            drop_bass_avg_min: 15,
+            drop_require_both: false,
+            drop_sustain_ms: 280,
+            drop_breakdown_hold_ms: 1200,
         }
     }
 }
@@ -251,6 +289,9 @@ where
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;
                 self.current.time_between_beats_millis = v.time_between_beats_millis;
+            }
+            Signal::Section(s) => {
+                self.current.section_state = s;
             }
         }
     }

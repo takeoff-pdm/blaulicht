@@ -91,7 +91,7 @@ impl BlaulichtApp {
             }
         }
 
-        let fixtures = collect_fixtures(&self.data.state.dmx_engine.read().unwrap());
+        let fixtures = collect_fixtures(&self.data.state);
         {
             let mut shared = self.visualizer_ui_state.shared.lock().unwrap();
             shared.settings = self.visualizer_ui_state.settings;

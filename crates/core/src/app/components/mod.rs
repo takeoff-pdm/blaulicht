@@ -42,3 +42,14 @@ pub use speed_knob::*;
 pub use switch::*;
 pub use text::*;
 pub use text_input::*;
+
+/// Display label (with a state glyph) and color for a detected audio section.
+/// Shared by the audio page and the scene-graph page so they stay in sync.
+pub fn section_label(state: blaulicht_shared::SectionState) -> (&'static str, egui::Color32) {
+    use blaulicht_shared::SectionState;
+    match state {
+        SectionState::Drop => ("\u{25CF} DROP", egui::Color32::from_rgb(255, 120, 80)),
+        SectionState::ActiveBeat => ("\u{25D0} BEAT ACTIVE", egui::Color32::LIGHT_GREEN),
+        SectionState::Breakdown => ("\u{25CB} BREAKDOWN", egui::Color32::from_gray(140)),
+    }
+}

@@ -65,6 +65,8 @@ pub struct SceneGraphViewer<'a> {
     pub viewport_rect: Rect,
     pub zoom_level: &'a mut f32,
     pub pending_zoom_override: Option<f32>,
+    /// Milliseconds until the active node's soonest time-based edge fires.
+    pub active_countdown_ms: Option<u64>,
 }
 
 #[allow(refining_impl_trait)]
@@ -88,7 +90,7 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
     fn show_input(
         &mut self,
         pin: &InPin,
-        ui: &mut Ui,
+        _ui: &mut Ui,
         snarl: &mut Snarl<SnarlNode>,
     ) -> PinInfo {
         let snarl_node = snarl.get_node(pin.id.node);
@@ -97,12 +99,16 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
             snarl_node.map_or(false, |n| g.active_node == Some(n.node_id))
         });
 
-        if is_active {
-            ui.colored_label(Color32::from_rgb(100, 255, 100), "\u{25CF}");
-            PinInfo::circle().with_fill(Color32::from_rgb(100, 255, 100))
+        // Indicate the active node purely via the pin fill color. Adding/removing
+        // an extra in-node widget here changes the pin's size and egui's auto-id
+        // counter when the active node switches, which resizes the node and trips
+        // egui's "changed id between passes" warning.
+        let fill = if is_active {
+            Color32::from_rgb(100, 255, 100)
         } else {
-            PinInfo::circle().with_fill(Color32::from_rgb(150, 150, 150))
-        }
+            Color32::from_rgb(150, 150, 150)
+        };
+        PinInfo::circle().with_fill(fill)
     }
 
     fn show_output(
@@ -130,9 +136,28 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         let node_id = snarl_node.node_id;
 
         let is_selected = *self.selected_node == Some(node_id);
+        let is_active = self
+            .state
+            .graphs
+            .get(&self.graph_id)
+            .map_or(false, |g| g.active_node == Some(node_id));
         let label = self.title(&snarl[node].clone());
 
-        if ui.selectable_label(is_selected, &label).clicked() {
+        // Append a live countdown to the active node when a time-based edge is
+        // ticking, so it's clear when the next transition will fire.
+        let label = match (is_active, self.active_countdown_ms) {
+            (true, Some(ms)) => format!("{label}  \u{23F1} {:.1}s", ms as f32 / 1000.0),
+            _ => label,
+        };
+
+        // Highlight the currently active node via title color only (no extra
+        // widgets / size changes, so layout and widget ids stay stable).
+        let mut text = egui::RichText::new(&label).strong();
+        if is_active {
+            text = text.color(Color32::from_rgb(100, 255, 100));
+        }
+
+        if ui.selectable_label(is_selected, text).clicked() {
             *self.selected_node = Some(node_id);
         }
     }
@@ -338,6 +363,7 @@ impl BlaulichtApp {
         }
 
         // Controls bar.
+        let current_section = self.collector_snapshot.section_state;
         let mut do_auto_layout = false;
         ui.horizontal(|ui| {
             let graph = state.0.scene_graphs.graphs.get_mut(&graph_id).unwrap();
@@ -376,6 +402,16 @@ impl BlaulichtApp {
                 self.scene_graph_ui_state.pending_zoom_override = Some(zoom);
             }
             ui.label(format!("{:.2}x", self.scene_graph_ui_state.zoom_level));
+
+            ui.separator();
+            let (section_text, section_color) =
+                crate::app::components::section_label(current_section);
+            ui.label(
+                egui::RichText::new(section_text)
+                    .strong()
+                    .color(section_color)
+                    .monospace(),
+            );
 
             if ui.button("Delete Graph").clicked() {
                 state.0.scene_graphs.graphs.remove(&graph_id);
@@ -427,6 +463,7 @@ impl BlaulichtApp {
         // Split: graph on left, node editor on right.
         let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
         let pending_zoom_override = std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
+        let active_countdown_ms = state.0.scene_graphs.active_countdowns.get(&graph_id).copied();
         ui.columns(2, |cols| {
             let viewport_rect = Rect::from_min_size(
                 cols[0].cursor().min,
@@ -442,6 +479,7 @@ impl BlaulichtApp {
                 viewport_rect,
                 zoom_level: &mut self.scene_graph_ui_state.zoom_level,
                 pending_zoom_override,
+                active_countdown_ms,
             };
 
             self.scene_graph_ui_state.snarl.show(
@@ -595,6 +633,8 @@ impl BlaulichtApp {
                             TransitionCondition::AfterBeats(_) => 2,
                             TransitionCondition::OnBeatDrop => 3,
                             TransitionCondition::OnNonBeat => 4,
+                            TransitionCondition::OnEnterDrop => 5,
+                            TransitionCondition::OnEnterBreakdown => 6,
                             _ => 0,
                         };
 
@@ -606,6 +646,8 @@ impl BlaulichtApp {
                                 2 => "After Beats",
                                 3 => "On Beat Drop",
                                 4 => "On Non-Beat",
+                                5 => "On Enter Drop",
+                                6 => "On Enter Breakdown",
                                 _ => "???",
                             })
                             .show_ui(ui, |ui| {
@@ -614,6 +656,8 @@ impl BlaulichtApp {
                                 ui.selectable_value(&mut condition_idx, 2, "After Beats");
                                 ui.selectable_value(&mut condition_idx, 3, "On Beat Drop");
                                 ui.selectable_value(&mut condition_idx, 4, "On Non-Beat");
+                                ui.selectable_value(&mut condition_idx, 5, "On Enter Drop");
+                                ui.selectable_value(&mut condition_idx, 6, "On Enter Breakdown");
                             });
 
                         if condition_idx != prev {
@@ -622,6 +666,8 @@ impl BlaulichtApp {
                                 2 => TransitionCondition::AfterBeats(4),
                                 3 => TransitionCondition::OnBeatDrop,
                                 4 => TransitionCondition::OnNonBeat,
+                                5 => TransitionCondition::OnEnterDrop,
+                                6 => TransitionCondition::OnEnterBreakdown,
                                 _ => TransitionCondition::Manual,
                             };
                         }

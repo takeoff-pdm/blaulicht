@@ -273,18 +273,42 @@ impl BlaulichtApp {
                     .map(|col| col.debug_data.clone())
                     .unwrap_or_default()
             };
-            let (mut auto_weight, mut bass_low_value, mut bass_high_value) = {
+            let (
+                mut auto_weight,
+                mut bass_low_value,
+                mut bass_high_value,
+                mut drop_sensitivity_value,
+                mut drop_bass_min_value,
+                mut drop_bass_avg_min_value,
+                mut drop_require_both,
+                mut drop_sustain_value,
+                mut drop_breakdown_hold_value,
+            ) = {
                 let params = self.data.state.audio_params.read().unwrap();
                 (
                     params.auto_weight,
                     params.bass_freq_low,
                     params.bass_freq_high,
+                    params.drop_sensitivity as f32,
+                    params.drop_bass_min as f32,
+                    params.drop_bass_avg_min as f32,
+                    params.drop_require_both,
+                    params.drop_sustain_ms as f32,
+                    params.drop_breakdown_hold_ms as f32,
                 )
             };
 
+            let header_color = Color32::from_rgb(120, 170, 255);
             components::Dialog::new("Info".to_string(), vec2(540.0, 360.0))
                 .moveable()
                 .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("FREQUENCY BANDS")
+                            .strong()
+                            .color(header_color),
+                    );
+                    ui.separator();
+
                     ui.horizontal(|ui| {
                         ui.label("Auto Weight");
                         if components::Switch::new(&mut auto_weight).ui(ui).changed() {
@@ -354,6 +378,113 @@ impl BlaulichtApp {
                                 ui.label(format!("Weight: {:.2}", debug_data.band_weights[idx]));
                             });
                         });
+                    }
+
+                    ui.add_space(12.0);
+
+                    ui.label(
+                        RichText::new("DROP DETECTION")
+                            .strong()
+                            .color(header_color),
+                    );
+                    ui.separator();
+
+                    // --- Trigger ---
+                    ui.label(
+                        RichText::new("Trigger — how easily a quiet \u{2192} sudden-bass arms a drop")
+                            .small()
+                            .weak(),
+                    );
+                    ui.add_space(2.0);
+                    if ui
+                        .add(
+                            HFader::new(&mut drop_sensitivity_value, 0.0..=100.0)
+                                .with_label("Drop Sensitivity"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.drop_sensitivity = drop_sensitivity_value as u8;
+                        params.changed = true;
+                    }
+
+                    ui.add_space(10.0);
+
+                    // --- Presence gates ---
+                    ui.label(
+                        RichText::new("Bass gates — levels that count as \"bass present\"")
+                            .small()
+                            .weak(),
+                    );
+                    ui.add_space(2.0);
+                    if ui
+                        .add(
+                            HFader::new(&mut drop_bass_min_value, 0.0..=255.0)
+                                .with_label("Min Bass (instant)"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.drop_bass_min = drop_bass_min_value as u8;
+                        params.changed = true;
+                    }
+                    ui.add_space(4.0);
+                    if ui
+                        .add(
+                            HFader::new(&mut drop_bass_avg_min_value, 0.0..=255.0)
+                                .with_label("Min Bass Avg"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.drop_bass_avg_min = drop_bass_avg_min_value as u8;
+                        params.changed = true;
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if components::Switch::new(&mut drop_require_both).ui(ui).changed() {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.drop_require_both = drop_require_both;
+                            params.changed = true;
+                        }
+                        ui.label(if drop_require_both {
+                            "Both gates required"
+                        } else {
+                            "Either gate is enough"
+                        });
+                    });
+
+                    ui.add_space(10.0);
+
+                    // --- Timing ---
+                    ui.label(
+                        RichText::new("Timing — hold to confirm a drop / silence to fall back")
+                            .small()
+                            .weak(),
+                    );
+                    ui.add_space(2.0);
+                    if ui
+                        .add(
+                            HFader::new(&mut drop_sustain_value, 0.0..=2000.0)
+                                .with_label("Drop Sustain (ms)"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.drop_sustain_ms = drop_sustain_value as u16;
+                        params.changed = true;
+                    }
+                    ui.add_space(4.0);
+                    if ui
+                        .add(
+                            HFader::new(&mut drop_breakdown_hold_value, 0.0..=5000.0)
+                                .with_label("Breakdown Hold (ms)"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.drop_breakdown_hold_ms = drop_breakdown_hold_value as u16;
+                        params.changed = true;
                     }
                 });
         }
@@ -610,6 +741,18 @@ impl BlaulichtApp {
                                                 .circle_filled(center, radius, color);
                                         }
                                     });
+
+                                    // Currently-detected audio section, shown below the BPM.
+                                    let (section_text, section_color) =
+                                        components::section_label(
+                                            self.collector_snapshot.section_state,
+                                        );
+                                    ui.label(
+                                        RichText::new(section_text)
+                                            .strong()
+                                            .color(section_color)
+                                            .font(FontId::monospace(20.0)),
+                                    );
 
                                     ui.add_space(4.0);
 

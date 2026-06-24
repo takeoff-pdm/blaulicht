@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use blaulicht_shared::SectionState;
+
 use crate::SignalDebugData;
 
 #[derive(Clone, Copy, Serialize, Debug)]
@@ -18,4 +20,5 @@ pub enum Signal {
     DebugData(SignalDebugData),
     Volume(u8),
     BeatTrigger(bool),
+    Section(SectionState),
 }

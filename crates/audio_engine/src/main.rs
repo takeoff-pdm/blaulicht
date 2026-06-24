@@ -130,6 +130,12 @@ fn main() {
             bass_freq_low: 0,
             bass_freq_high: 250,
             bass_volume: 25,
+            drop_sensitivity: 70,
+            drop_bass_min: 25,
+            drop_bass_avg_min: 15,
+            drop_require_both: false,
+            drop_sustain_ms: 280,
+            drop_breakdown_hold_ms: 1200,
         },
         output,
         blaulicht_audio_engine::CollectorScratchParameters {

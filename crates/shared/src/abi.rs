@@ -13,6 +13,20 @@ pub struct TickInput {
     pub events: ControlEventCollection,
 }
 
+/// Macro musical section of the currently playing track, classified by the
+/// audio engine. Unlike the per-frame `beat_trigger`/`beat_active`, this is a
+/// sustained state describing whether the track is dropping vs. quiet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Encode, Decode)]
+pub enum SectionState {
+    /// No / low sustained bass (quiet section). Default until enough audio seen.
+    #[default]
+    Breakdown,
+    /// Transient state entered on "no bass -> sudden bass"; held ~5s.
+    Drop,
+    /// Sustained driving beat after the `Drop` window expires.
+    ActiveBeat,
+}
+
 #[derive(Debug, Clone, Default, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
     pub time: u64,
@@ -26,6 +40,7 @@ pub struct CollectedAudioSnapshot {
     pub initial: bool,
     pub beat_trigger: bool,
     pub actual_onset_peak: bool,
+    pub section_state: SectionState,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]

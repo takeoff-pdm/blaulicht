@@ -6,6 +6,7 @@ pub mod dmx;
 pub mod health;
 pub mod midi;
 pub mod misc;
+pub mod screens;
 pub mod serial;
 pub mod showfile;
 pub mod speed;
@@ -19,6 +20,7 @@ pub struct SystemUI {
     artnet_dialog_open: bool,
     midi_dialog_open: bool,
     serial_dialog_open: bool,
+    screens_dialog_open: bool,
     dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
     new_artnet_address: String,
     new_artnet_port: String,
@@ -37,6 +39,7 @@ impl Default for SystemUI {
             artnet_dialog_open: false,
             midi_dialog_open: false,
             serial_dialog_open: false,
+            screens_dialog_open: false,
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
             new_artnet_address: String::new(),
             new_artnet_port: String::new(),

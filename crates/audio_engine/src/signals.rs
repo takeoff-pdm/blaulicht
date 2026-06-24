@@ -192,6 +192,20 @@ pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = 100;
 pub const ROLLING_AVERAGE_FRAMES: usize = 100;
 pub const LONG_HISTORIC_FRAMES: usize = ROLLING_AVERAGE_FRAMES * 1000;
 
+// --- Section (Drop / Breakdown / ActiveBeat) detection ---
+// How long the transient `Drop` state is held before settling into `ActiveBeat`.
+const DROP_DURATION_MS: usize = 5000;
+// Required preceding quiet before a sudden bass can count as a drop. Sensitivity
+// interpolates between MAX (safe, needs a long quiet) and MIN (sensitive).
+const DROP_MIN_QUIET_MIN_MS: usize = 300;
+const DROP_MIN_QUIET_MAX_MS: usize = 1500;
+// If bass goes quiet again within the confirm window, abandon the candidate
+// (this is the prank/fake-drop rejection).
+const DROP_CONFIRM_CANCEL_QUIET_MS: usize = 300;
+// Bass-onset (log-flux) threshold at sensitivity 0; scales toward 0 as
+// sensitivity rises so a louder jump is required when less sensitive.
+const DROP_ONSET_THRESH_MAX: f32 = 0.5;
+
 ///
 /// Vector push operations.
 ///
@@ -211,6 +225,93 @@ where
     SourceT: AudioSource,
 {
     #[inline(always)]
+    /// Classify the macro musical section (Breakdown / Drop / ActiveBeat).
+    ///
+    /// `bass_onset` is the bass-band log-flux for this frame. "Bass present" is
+    /// judged from the explicit `drop_bass_min` / `drop_bass_avg_min` thresholds
+    /// combined per the `drop_require_both` toggle. Runs on the FFT-frame cadence.
+    /// See the `DROP_*` / `SECTION_*` constants for the timing tuning.
+    fn update_section(&mut self, now: usize, bass_sig: u8, bass_avg: f64, bass_onset: f32) {
+        use blaulicht_shared::SectionState;
+
+        let dt = now.saturating_sub(self.scratch.section_last_update_ms);
+        self.scratch.section_last_update_ms = now;
+
+        // Sensitivity (0..=100) -> timing/contrast thresholds. Higher = easier.
+        let sens = (self.params.drop_sensitivity.min(100) as f32) / 100.0;
+        let lerp = |max: usize, min: usize| -> usize {
+            (max as f32 - sens * (max - min) as f32) as usize
+        };
+        let min_quiet_ms = lerp(DROP_MIN_QUIET_MAX_MS, DROP_MIN_QUIET_MIN_MS);
+        let onset_thresh = (1.0 - sens) * DROP_ONSET_THRESH_MAX;
+
+        // Explicit durations (ms).
+        let confirm_ms = self.params.drop_sustain_ms as usize;
+        let breakdown_hold_ms = self.params.drop_breakdown_hold_ms as usize;
+
+        // "Bass present" from the explicit level thresholds. Sustained presence is
+        // judged via the quiet accumulator + dwell, so gaps between kicks don't
+        // read as breakdown.
+        let bass_over = bass_sig as f64 >= self.params.drop_bass_min as f64;
+        let avg_over = bass_avg >= self.params.drop_bass_avg_min as f64;
+        let bass_hit = if self.params.drop_require_both {
+            bass_over && avg_over
+        } else {
+            bass_over || avg_over
+        };
+        let was_quiet_enough = self.scratch.section_quiet_accum_ms >= min_quiet_ms;
+        let rising = bass_hit && !self.scratch.section_prev_bass_hit;
+        let strong_onset = bass_onset >= onset_thresh;
+
+        if bass_hit {
+            self.scratch.section_quiet_accum_ms = 0;
+        } else {
+            self.scratch.section_quiet_accum_ms =
+                self.scratch.section_quiet_accum_ms.saturating_add(dt);
+        }
+
+        let beats_regular = self.scratch.beat_interval_ms > 0.0
+            && (now.saturating_sub(self.scratch.time_of_last_bpm_marker) as f32)
+                < SILENCE_BEAT_MULTIPLIER * self.scratch.beat_interval_ms;
+        let bass_gone = self.scratch.section_quiet_accum_ms >= breakdown_hold_ms;
+
+        match self.scratch.section_state {
+            SectionState::Breakdown => match self.scratch.section_drop_confirm_started_ms {
+                Some(started) => {
+                    if self.scratch.section_quiet_accum_ms >= DROP_CONFIRM_CANCEL_QUIET_MS {
+                        // Bass vanished again -> fake/prank drop, abandon candidate.
+                        self.scratch.section_drop_confirm_started_ms = None;
+                    } else if now.saturating_sub(started) >= confirm_ms && beats_regular {
+                        self.scratch.section_state = SectionState::Drop;
+                        self.scratch.section_drop_started_ms = now;
+                        self.scratch.section_drop_confirm_started_ms = None;
+                    }
+                }
+                None => {
+                    // "no bass followed by sudden bass" -> candidate drop.
+                    if rising && was_quiet_enough && strong_onset {
+                        self.scratch.section_drop_confirm_started_ms = Some(now);
+                    }
+                }
+            },
+            SectionState::Drop => {
+                if bass_gone {
+                    self.scratch.section_state = SectionState::Breakdown;
+                } else if now.saturating_sub(self.scratch.section_drop_started_ms) >= DROP_DURATION_MS
+                {
+                    self.scratch.section_state = SectionState::ActiveBeat;
+                }
+            }
+            SectionState::ActiveBeat => {
+                if bass_gone {
+                    self.scratch.section_state = SectionState::Breakdown;
+                }
+            }
+        }
+
+        self.scratch.section_prev_bass_hit = bass_hit;
+    }
+
     pub fn bass(&mut self, now: usize, has_new_frame: bool) -> anyhow::Result<()> {
         let mut onset_peak = false;
         let mut bass_sig = self.current.bass;
@@ -464,6 +565,11 @@ where
             self.scratch.last_band_onset_peakiness = band_onset_peakiness;
             self.scratch.last_band_onset_periodicity = band_onset_periodicity;
             self.scratch.last_band_transient_strength = band_transient_strength;
+
+            // Classify the macro section from the bass band. Uses the per-frame
+            // bass level + moving average + bass onset; beat regularity comes from
+            // the scheduler state (one-frame-stale is fine for this coarse check).
+            self.update_section(now, bass_sig, bass_moving_average, band_onsets[0]);
         }
 
         // Beat scheduling runs every tick so predicted beats stay glued to wall-clock time.
@@ -544,6 +650,7 @@ where
                 }),
                 Signal::BassAvg(bass_moving_average as u8),
                 Signal::DebugData(debug_data),
+                Signal::Section(self.scratch.section_state),
             ]);
         }
 

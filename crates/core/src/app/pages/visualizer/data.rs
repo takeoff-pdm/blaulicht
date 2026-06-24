@@ -55,12 +55,14 @@ pub(super) struct FixturePose {
     pub(super) head_rot: [f32; 16],
 }
 
-pub(super) fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFixture> {
+pub(super) fn collect_fixtures(app_state: &crate::state::AppState) -> Vec<RenderFixture> {
     let mut fixtures = Vec::new();
     let scale = 0.1;
 
-    let scene_id = engine.0.current_scene_focus;
-    let scene = engine.0.scenes.get(&scene_id);
+    // Source from the final, merged DMX output (base scene + overlays + palettes +
+    // master alpha + overrides) rather than a single scene's pre-merge sink, and
+    // decode each fixture's state back from the wire values via `state_from_dmx`.
+    let engine = app_state.dmx_engine.read().unwrap();
 
     let mut min_x = f32::MAX;
     let mut max_x = f32::MIN;
@@ -68,12 +70,14 @@ pub(super) fn collect_fixtures(engine: &crate::dmx::EngineState) -> Vec<RenderFi
     let mut max_z = f32::MIN;
     let mut min_y = f32::MAX;
 
-    for (gid, group) in &engine.0.groups {
-        for (fid, fixture) in &group.fixtures {
-            let state = scene
-                .and_then(|s| s.sink.fixture_states.get(&(*gid, *fid)))
-                .cloned()
-                .unwrap_or_default();
+    for group in engine.0.groups.values() {
+        for fixture in group.fixtures.values() {
+            let state = {
+                let buffer = app_state.dmx_universes[fixture.universe_no]
+                    .read()
+                    .unwrap();
+                fixture.state_from_dmx(&buffer.dmx_buffer)
+            };
             let rgb: RGBColor = state.color.into();
             let alpha = (state.alpha as f32 / 255.0).clamp(0.0, 1.0);
             let pan_deg = (state.orientation.pan as f32 / 255.0) * 540.0 - 270.0;

@@ -2,7 +2,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::AnimationSpeedModifier;
+use crate::{AnimationSpeedModifier, SectionState};
 
 pub type NodeId = u8;
 pub type GraphId = u8;
@@ -12,6 +12,11 @@ pub struct SceneGraphState {
     pub graphs: BTreeMap<GraphId, SceneGraph>,
     #[serde(default)]
     pub focused_graph: Option<GraphId>,
+    /// Runtime-only: milliseconds until the active node's soonest time-based
+    /// (`AfterDuration`) edge fires, per graph. Recomputed every engine tick and
+    /// not persisted to showfiles.
+    #[serde(skip)]
+    pub active_countdowns: BTreeMap<GraphId, u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -77,19 +82,22 @@ pub enum TransitionCondition {
     Manual,
     All(Vec<TransitionCondition>),
     Any(Vec<TransitionCondition>),
+    /// Fires on the rising edge of the audio engine entering the `Drop` section.
+    OnEnterDrop,
+    /// Fires on the rising edge of the audio engine entering the `Breakdown` section.
+    OnEnterBreakdown,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeActivationState {
     pub activated_at_ms: u64,
     pub beats_since_activation: u32,
-    pub has_seen_non_beat: bool,
-    pub has_seen_beat: bool,
 }
 
 pub struct AudioConditions {
     pub beat_active: bool,
     pub beat_trigger: bool,
+    pub section_state: SectionState,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -101,18 +109,78 @@ pub struct SceneGraphRuntime {
 pub struct GraphRuntime {
     pub activation_state: NodeActivationState,
     pub pending_transition: Option<NodeId>,
+    /// The node the runtime last saw as active. Used to detect external changes
+    /// to `graph.active_node` (showfile load, "Set as Start", manual selection)
+    /// so the activation clock is restarted instead of reusing a stale timestamp.
+    pub current_node: Option<NodeId>,
+    /// The audio section seen last tick, used to fire `OnEnter*` edges on the
+    /// rising edge of a section change.
+    pub last_section: SectionState,
 }
 
 impl SceneGraphRuntime {
-    pub fn tick_all(&mut self, graphs: &mut BTreeMap<GraphId, SceneGraph>, now_ms: u64, audio: &AudioConditions) {
+    pub fn tick_all(&mut self, state: &mut SceneGraphState, now_ms: u64, audio: &AudioConditions) {
+        let SceneGraphState {
+            graphs,
+            active_countdowns,
+            ..
+        } = state;
+        active_countdowns.clear();
         for (id, graph) in graphs.iter_mut() {
             let runtime = self.runtimes.entry(*id).or_default();
             Self::tick_graph(graph, runtime, now_ms, audio);
+            if let Some(remaining) = Self::active_node_countdown(graph, runtime, now_ms) {
+                active_countdowns.insert(*id, remaining);
+            }
         }
     }
 
+    /// Milliseconds until the active node's soonest `AfterDuration` edge fires,
+    /// or `None` if the graph is disabled or the active node has no timed edge.
+    fn active_node_countdown(graph: &SceneGraph, runtime: &GraphRuntime, now_ms: u64) -> Option<u64> {
+        if !graph.enabled {
+            return None;
+        }
+        let active = graph.active_node?;
+        let elapsed = now_ms.saturating_sub(runtime.activation_state.activated_at_ms);
+        graph
+            .edges
+            .iter()
+            .filter(|e| e.from == active)
+            .filter_map(|e| match &e.condition {
+                TransitionCondition::AfterDuration(ms) => Some(ms.saturating_sub(elapsed)),
+                _ => None,
+            })
+            .min()
+    }
+
     fn tick_graph(graph: &mut SceneGraph, runtime: &mut GraphRuntime, now_ms: u64, audio: &AudioConditions) {
+        // Detect section rising edges once per tick (consumed every tick, even when
+        // disabled, so re-enabling doesn't fire a stale edge).
+        let entered_drop =
+            audio.section_state == SectionState::Drop && runtime.last_section != SectionState::Drop;
+        let entered_breakdown = audio.section_state == SectionState::Breakdown
+            && runtime.last_section != SectionState::Breakdown;
+        runtime.last_section = audio.section_state;
+
         if !graph.enabled || graph.active_node.is_none() {
+            // Forget the active node so re-enabling (or re-loading) restarts the
+            // activation clock from the moment it becomes active again.
+            runtime.current_node = None;
+            return;
+        }
+
+        // Step 0: Detect external changes to active_node (showfile load,
+        // "Set as Start", manual selection). The runtime never observed this node
+        // being entered, so any leftover activated_at_ms is stale -- restart the
+        // activation clock from now instead of reusing it.
+        if runtime.current_node != graph.active_node {
+            runtime.current_node = graph.active_node;
+            runtime.activation_state = NodeActivationState {
+                activated_at_ms: now_ms,
+                ..Default::default()
+            };
+            runtime.pending_transition = None;
             return;
         }
 
@@ -120,11 +188,10 @@ impl SceneGraphRuntime {
         if let Some(next_node) = runtime.pending_transition.take() {
             if graph.nodes.contains_key(&next_node) {
                 graph.active_node = Some(next_node);
+                runtime.current_node = Some(next_node);
                 runtime.activation_state = NodeActivationState {
                     activated_at_ms: now_ms,
                     beats_since_activation: 0,
-                    has_seen_non_beat: false,
-                    has_seen_beat: false,
                 };
             }
             return;
@@ -133,11 +200,6 @@ impl SceneGraphRuntime {
         // Step 2: Update activation state from audio.
         if audio.beat_trigger {
             runtime.activation_state.beats_since_activation += 1;
-        }
-        if audio.beat_active {
-            runtime.activation_state.has_seen_beat = true;
-        } else {
-            runtime.activation_state.has_seen_non_beat = true;
         }
 
         // Step 3: Evaluate outgoing edges, pick highest priority.
@@ -148,7 +210,14 @@ impl SceneGraphRuntime {
             if edge.from != active {
                 continue;
             }
-            if Self::evaluate_condition(&runtime.activation_state, &edge.condition, now_ms, audio) {
+            if Self::evaluate_condition(
+                &runtime.activation_state,
+                &edge.condition,
+                now_ms,
+                audio,
+                entered_drop,
+                entered_breakdown,
+            ) {
                 match best {
                     None => best = Some((edge.priority, edge.to)),
                     Some((current_priority, _)) if edge.priority > current_priority => {
@@ -170,25 +239,25 @@ impl SceneGraphRuntime {
         condition: &TransitionCondition,
         now_ms: u64,
         audio: &AudioConditions,
+        entered_drop: bool,
+        entered_breakdown: bool,
     ) -> bool {
         match condition {
             TransitionCondition::AfterDuration(duration_ms) => {
                 now_ms.saturating_sub(activation.activated_at_ms) >= *duration_ms
             }
             TransitionCondition::AfterBeats(n) => activation.beats_since_activation >= *n,
-            TransitionCondition::OnBeatDrop => {
-                activation.has_seen_non_beat && audio.beat_trigger
-            }
-            TransitionCondition::OnNonBeat => {
-                activation.has_seen_beat && !audio.beat_active
-            }
+            TransitionCondition::OnBeatDrop => audio.beat_trigger,
+            TransitionCondition::OnNonBeat => !audio.beat_active,
+            TransitionCondition::OnEnterDrop => entered_drop,
+            TransitionCondition::OnEnterBreakdown => entered_breakdown,
             TransitionCondition::Manual => false,
-            TransitionCondition::All(conditions) => {
-                conditions.iter().all(|c| Self::evaluate_condition(activation, c, now_ms, audio))
-            }
-            TransitionCondition::Any(conditions) => {
-                conditions.iter().any(|c| Self::evaluate_condition(activation, c, now_ms, audio))
-            }
+            TransitionCondition::All(conditions) => conditions.iter().all(|c| {
+                Self::evaluate_condition(activation, c, now_ms, audio, entered_drop, entered_breakdown)
+            }),
+            TransitionCondition::Any(conditions) => conditions.iter().any(|c| {
+                Self::evaluate_condition(activation, c, now_ms, audio, entered_drop, entered_breakdown)
+            }),
         }
     }
 

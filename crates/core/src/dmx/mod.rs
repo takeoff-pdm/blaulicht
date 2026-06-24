@@ -57,6 +57,10 @@ pub struct DmxEngine {
     setup_start_time: Instant,
 
     scene_graph_runtime: SceneGraphRuntime,
+    /// Scene IDs the scene graph pushed into `current_overlay_scenes` last tick.
+    /// Used to reconcile (add/remove) graph-driven overlays without clobbering
+    /// manually-added ones. Runtime-only, not persisted.
+    graph_overlay_scenes: Vec<u8>,
 }
 
 const SETUP_SECS: u64 = 10;
@@ -177,6 +181,7 @@ impl DmxEngine {
             running_setup: false,
             setup_start_time: Instant::now(),
             scene_graph_runtime: SceneGraphRuntime::default(),
+            graph_overlay_scenes: Vec::new(),
         }
     }
 
@@ -352,15 +357,46 @@ impl DmxEngine {
         let audio = AudioConditions {
             beat_active: audio_snapshot.bass > audio_snapshot.bass_avg,
             beat_trigger: audio_snapshot.beat_trigger,
+            section_state: audio_snapshot.section_state,
         };
+        let prev_graph_scenes = mem::take(&mut self.graph_overlay_scenes);
         let mut state = self.state_ref.dmx_engine.write().unwrap();
         self.scene_graph_runtime
-            .tick_all(&mut state.0.scene_graphs.graphs, now_ms, &audio);
+            .tick_all(&mut state.0.scene_graphs, now_ms, &audio);
+
+        // Reflect the scenes of every enabled graph's active node into the normal
+        // overlay list, so they show up in the performance view and render through
+        // the standard overlay path (no separate scene-graph render path).
+        let base = state.0.current_scene_focus;
+        let mut new_graph_scenes: Vec<u8> = state
+            .0
+            .scene_graphs
+            .collect_active_scene_overrides()
+            .into_iter()
+            .map(|o| o.scene_id)
+            .filter(|id| *id != base && state.0.scenes.contains_key(id))
+            .collect();
+        new_graph_scenes.sort_unstable();
+        new_graph_scenes.dedup();
+
+        // Remove overlays the graph added last tick but no longer wants; keep
+        // manually-added overlays (those not in the previous graph set) untouched.
+        state
+            .0
+            .current_overlay_scenes
+            .retain(|id| !prev_graph_scenes.contains(id) || new_graph_scenes.contains(id));
+        for id in &new_graph_scenes {
+            if !state.0.current_overlay_scenes.contains(id) {
+                state.0.current_overlay_scenes.push(*id);
+            }
+        }
+
+        mem::drop(state);
+        self.graph_overlay_scenes = new_graph_scenes;
     }
 
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
-        let graph_overrides = state.0.scene_graphs.collect_active_scene_overrides();
 
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
@@ -429,46 +465,6 @@ impl DmxEngine {
                             &scene_fixture_state,
                             change,
                             MergeStrategy::Highest, // WAS HIGHEST ONCE
-                        );
-                    }
-                }
-
-                // Apply scene graph overrides as additional overlay layers.
-                for graph_override in &graph_overrides {
-                    let Some(this_scene) = state.0.scenes.get(&graph_override.scene_id) else {
-                        continue;
-                    };
-
-                    if graph_override.master_alpha == 0 {
-                        continue;
-                    }
-
-                    let mut scene_fixture_state = this_scene
-                        .sink
-                        .fixture_states
-                        .get(&fixture_key)
-                        .unwrap()
-                        .clone();
-
-                    if let Some(palette_ids) = this_scene.sink.palette_assignments.get(&fixture_key)
-                    {
-                        for palette_id in palette_ids {
-                            if let Some(palette) = state.0.palettes.get(palette_id) {
-                                palette.kind.apply_to(&mut scene_fixture_state);
-                            }
-                        }
-                    }
-
-                    scene_fixture_state.alpha = (scene_fixture_state.alpha as f32 / 100.0
-                        * graph_override.master_alpha as f32)
-                        as u8;
-
-                    let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
-                    for change in changeset {
-                        merged_state.merge_from(
-                            &scene_fixture_state,
-                            change,
-                            MergeStrategy::Highest,
                         );
                     }
                 }

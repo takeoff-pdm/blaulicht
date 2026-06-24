@@ -28,7 +28,7 @@ interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/test.wasm"
-enabled = true
+enabled = false
 enable_watcher = true
 
 [[plugins]]
