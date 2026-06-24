@@ -42,6 +42,9 @@ extern "C" {
         buffer_len: usize,
     ) -> u32;
 
+    fn command_spawn(plugin_id: u8, cmd_ptr: *const u8, cmd_len: usize) -> u32;
+    fn command_poll(handle: u32, output_ptr: *mut u8, output_capacity: usize) -> i32;
+
     fn controls_log(x: u8, y: u8, ptr: *const u8, len: usize);
     fn controls_set(x: u8, y: u8, value: bool);
     fn controls_config(x: u8, y: u8);
@@ -364,6 +367,35 @@ pub fn system(cmd: &str) -> String {
 
     let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
     String::from_utf8_lossy(&buffer[..len]).into_owned()
+}
+
+pub enum CommandPollResult {
+    Running,
+    Finished(String),
+    Failed(String),
+}
+
+pub fn command_spawn_bg(cmd: &str) -> u32 {
+    unsafe { command_spawn(PLUGIN_ID, cmd.as_ptr(), cmd.len()) }
+}
+
+pub fn command_poll_result(handle: u32) -> CommandPollResult {
+    const OUTPUT_BUFFER_SIZE: usize = 64 * 1024;
+    let mut buffer = vec![0u8; OUTPUT_BUFFER_SIZE];
+
+    let status = unsafe { command_poll(handle, buffer.as_mut_ptr(), buffer.len()) };
+
+    match status {
+        0 => CommandPollResult::Running,
+        1 => {
+            let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
+            CommandPollResult::Finished(String::from_utf8_lossy(&buffer[..len]).into_owned())
+        }
+        _ => {
+            let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
+            CommandPollResult::Failed(String::from_utf8_lossy(&buffer[..len]).into_owned())
+        }
+    }
 }
 
 pub fn send_event(event: ControlEvent) {

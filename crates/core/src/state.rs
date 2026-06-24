@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     audio::defs::AudioThreadControlSignal,
+    command::SpawnedCommandRegistry,
     config::{Config, PluginConfig},
     dmx::EngineState,
     event::SystemEventBusConnectionInst,
@@ -282,6 +283,7 @@ pub struct AppState {
     pub external_screens: RwLock<Vec<ExternalScreenInfo>>,
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
+    pub spawned_commands: Arc<Mutex<SpawnedCommandRegistry>>,
 }
 
 pub struct DmxBuffer {
@@ -346,6 +348,7 @@ impl AppState {
             external_screens: RwLock::new(Vec::new()),
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
+            spawned_commands: Arc::new(Mutex::new(SpawnedCommandRegistry::new())),
         }
     }
 

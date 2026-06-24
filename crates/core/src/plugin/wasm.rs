@@ -318,6 +318,137 @@ impl PluginManager {
             },
         )?;
 
+        // command_spawn: spawn a shell command on a background thread, return handle
+        let spawned_commands = Arc::clone(&self.state_ref.spawned_commands);
+        linker.func_wrap(
+            "blaulicht",
+            "command_spawn",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  cmd_ptr: i32,
+                  cmd_len: i32|
+                  -> u32 {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; cmd_len as usize];
+                memory
+                    .read(&caller, cmd_ptr as usize, &mut buffer)
+                    .expect("failed to read memory");
+
+                let cmd_string = String::from_utf8_lossy(&buffer).to_string();
+
+                let state = Arc::new(std::sync::Mutex::new(
+                    crate::command::SpawnedCommandState::Running,
+                ));
+                let state_for_thread = Arc::clone(&state);
+
+                let handle = {
+                    let mut registry = spawned_commands.lock().unwrap();
+                    registry.insert(plugin_id as u8, state)
+                };
+
+                std::thread::spawn(move || {
+                    let result = Command::new("bash")
+                        .arg("-c")
+                        .arg(&cmd_string)
+                        .run()
+                        .and_then(|h| h.wait());
+
+                    let new_state = match result {
+                        Ok(output) => {
+                            if output.status.success() {
+                                crate::command::SpawnedCommandState::Finished(output.stdout)
+                            } else {
+                                crate::command::SpawnedCommandState::Failed(output.stderr)
+                            }
+                        }
+                        Err(err) => crate::command::SpawnedCommandState::Failed(
+                            format!("spawn error: {err}").into_bytes(),
+                        ),
+                    };
+
+                    *state_for_thread.lock().unwrap() = new_state;
+                });
+
+                handle
+            },
+        )?;
+
+        // command_poll: poll a spawned command by handle
+        let spawned_commands = Arc::clone(&self.state_ref.spawned_commands);
+        linker.func_wrap(
+            "blaulicht",
+            "command_poll",
+            move |mut caller: Caller<'_, ()>,
+                  handle: u32,
+                  output_ptr: i32,
+                  output_capacity: i32|
+                  -> i32 {
+                let state = {
+                    let registry = spawned_commands.lock().unwrap();
+                    registry.poll(handle)
+                };
+
+                match state {
+                    None => -1,
+                    Some(crate::command::SpawnedCommandState::Running) => 0,
+                    Some(crate::command::SpawnedCommandState::Finished(stdout)) => {
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(|export| export.into_memory())
+                            .expect("failed to find memory");
+
+                        let capacity = output_capacity.max(0) as usize;
+                        let copy_len = stdout.len().min(capacity.saturating_sub(1));
+                        if copy_len > 0 && capacity > 0 {
+                            let _ = memory.write(
+                                &mut caller,
+                                output_ptr as usize,
+                                &stdout[..copy_len],
+                            );
+                            let _ = memory.write(
+                                &mut caller,
+                                output_ptr as usize + copy_len,
+                                &[0u8],
+                            );
+                        }
+
+                        let mut registry = spawned_commands.lock().unwrap();
+                        registry.remove(handle);
+                        1
+                    }
+                    Some(crate::command::SpawnedCommandState::Failed(stderr)) => {
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(|export| export.into_memory())
+                            .expect("failed to find memory");
+
+                        let capacity = output_capacity.max(0) as usize;
+                        let copy_len = stderr.len().min(capacity.saturating_sub(1));
+                        if copy_len > 0 && capacity > 0 {
+                            let _ = memory.write(
+                                &mut caller,
+                                output_ptr as usize,
+                                &stderr[..copy_len],
+                            );
+                            let _ = memory.write(
+                                &mut caller,
+                                output_ptr as usize + copy_len,
+                                &[0u8],
+                            );
+                        }
+
+                        let mut registry = spawned_commands.lock().unwrap();
+                        registry.remove(handle);
+                        -1
+                    }
+                }
+            },
+        )?;
+
         let so = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",

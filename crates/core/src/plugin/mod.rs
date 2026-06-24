@@ -210,11 +210,13 @@ impl PluginManager {
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
         {
-            // Plugin instances are about to be re-instantiated; any Art-Net receivers
-            // they registered belong to the old generation and must be dropped before
-            // the new instances try to re-register them.
             let mut artnet_output = self.state_ref.artnet_output.write().unwrap();
             artnet_output.remove_all_plugin_receivers();
+        }
+
+        {
+            let mut spawned_commands = self.state_ref.spawned_commands.lock().unwrap();
+            spawned_commands.remove_all();
         }
 
         {

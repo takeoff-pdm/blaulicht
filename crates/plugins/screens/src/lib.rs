@@ -1,5 +1,5 @@
 use blaulicht_plugin_framework as bpf;
-use blaulicht_plugin_framework::Plugin;
+use blaulicht_plugin_framework::{CommandPollResult, Plugin};
 use blaulicht_shared::{LogLevel, TickInput};
 use serde::Deserialize;
 use std::time::Duration;
@@ -59,17 +59,40 @@ impl WatcherCommand {
     }
 }
 
-#[derive(Default)]
+enum PendingCommand {
+    Probe { handle: u32 },
+    Apply { handle: u32, probe: MonitorWatcherResult },
+}
+
 pub struct ScreensPlugin {
     plugin_id: u8,
     last_poll_clock: Option<u32>,
     last_transition_notified_signature: Option<String>,
     last_error_fingerprint: Option<String>,
     last_reconciled_signature: Option<String>,
+    pending: Option<PendingCommand>,
+}
+
+impl Default for ScreensPlugin {
+    fn default() -> Self {
+        Self {
+            plugin_id: 0,
+            last_poll_clock: None,
+            last_transition_notified_signature: None,
+            last_error_fingerprint: None,
+            last_reconciled_signature: None,
+            pending: None,
+        }
+    }
 }
 
 impl ScreensPlugin {
-    fn maybe_poll(&mut self, input: &TickInput, force: bool) {
+    fn tick(&mut self, input: &TickInput, force: bool) {
+        if self.pending.is_some() {
+            self.poll_pending();
+            return;
+        }
+
         if !force {
             if let Some(last_poll_clock) = self.last_poll_clock {
                 if input.clock.wrapping_sub(last_poll_clock) < POLL_INTERVAL_MS {
@@ -79,11 +102,45 @@ impl ScreensPlugin {
         }
 
         self.last_poll_clock = Some(input.clock);
-        self.poll_once();
+        self.spawn_probe();
     }
 
-    fn poll_once(&mut self) {
-        let probe = match self.run_watcher(WatcherCommand::Probe) {
+    fn spawn_probe(&mut self) {
+        let cmd = build_watcher_command(WatcherCommand::Probe);
+        let handle = bpf::command_spawn_bg(&cmd);
+        self.log(LogLevel::Debug, format!("probe started (handle={handle})"));
+        self.pending = Some(PendingCommand::Probe { handle });
+    }
+
+    fn poll_pending(&mut self) {
+        let pending = self.pending.take().unwrap();
+        match pending {
+            PendingCommand::Probe { handle } => self.poll_probe(handle),
+            PendingCommand::Apply { handle, probe } => self.poll_apply(handle, probe),
+        }
+    }
+
+    fn poll_probe(&mut self, handle: u32) {
+        match bpf::command_poll_result(handle) {
+            CommandPollResult::Running => {
+                self.pending = Some(PendingCommand::Probe { handle });
+            }
+            CommandPollResult::Finished(output) => {
+                self.log(LogLevel::Debug, format!("probe finished (handle={handle})"));
+                self.handle_probe_result(&output);
+            }
+            CommandPollResult::Failed(err) => {
+                self.log(LogLevel::Debug, format!("probe failed (handle={handle})"));
+                self.log_failure_once(
+                    format!("probe:spawn-error"),
+                    format!("probe command failed: {}", truncate_for_log(&err)),
+                );
+            }
+        }
+    }
+
+    fn handle_probe_result(&mut self, raw_output: &str) {
+        let probe = match self.parse_watcher_output(WatcherCommand::Probe, raw_output) {
             Ok(probe) => probe,
             Err(err) => {
                 self.log_failure_once(format!("probe:{err}"), format!("probe failed: {err}"));
@@ -93,62 +150,117 @@ impl ScreensPlugin {
 
         if probe.changed {
             self.notify_transition(&probe);
-
-            let applied = match self.run_watcher(WatcherCommand::Apply) {
-                Ok(applied) => applied,
-                Err(err) => {
-                    self.log_failure_once(
-                        format!("apply:{err}"),
-                        format!("apply failed for signature {}: {err}", probe.signature),
-                    );
-                    return;
-                }
-            };
-
-            if !applied.applied {
-                let message = format!(
-                    "apply returned success without applied=true for signature {}",
-                    applied.signature
-                );
-                self.log_failure_once(format!("apply-flag:{message}"), message);
-                return;
-            }
-
-            self.log(
-                LogLevel::Info,
-                format!(
-                    "applied monitor layout {} with main {} at {}x{}+{}+{}{} (signature={})",
-                    applied.layout,
-                    applied.main_output.name,
-                    applied.main_output.width,
-                    applied.main_output.height,
-                    applied.main_output.x,
-                    applied.main_output.y,
-                    if applied.main_output.primary {
-                        " [primary]"
-                    } else {
-                        ""
-                    },
-                    applied.signature
-                ),
-            );
-
-            if let Err(err) = self.reconcile_owned_screen(&applied) {
+            let cmd = build_watcher_command(WatcherCommand::Apply);
+            let handle = bpf::command_spawn_bg(&cmd);
+            self.pending = Some(PendingCommand::Apply { handle, probe });
+        } else {
+            if let Err(err) = self.reconcile_owned_screen(&probe) {
                 self.log_failure_once(
                     format!("reconcile:{err}"),
-                    format!("reconcile failed after apply: {err}"),
+                    format!("reconcile failed: {err}"),
                 );
                 return;
             }
-        } else if let Err(err) = self.reconcile_owned_screen(&probe) {
+            self.last_error_fingerprint = None;
+        }
+    }
+
+    fn poll_apply(&mut self, handle: u32, probe: MonitorWatcherResult) {
+        match bpf::command_poll_result(handle) {
+            CommandPollResult::Running => {
+                self.pending = Some(PendingCommand::Apply { handle, probe });
+            }
+            CommandPollResult::Finished(output) => {
+                self.handle_apply_result(&probe, &output);
+            }
+            CommandPollResult::Failed(err) => {
+                self.log_failure_once(
+                    format!("apply:{err}"),
+                    format!(
+                        "apply command failed for signature {}: {}",
+                        probe.signature,
+                        truncate_for_log(&err)
+                    ),
+                );
+            }
+        }
+    }
+
+    fn handle_apply_result(&mut self, probe: &MonitorWatcherResult, raw_output: &str) {
+        let applied = match self.parse_watcher_output(WatcherCommand::Apply, raw_output) {
+            Ok(applied) => applied,
+            Err(err) => {
+                self.log_failure_once(
+                    format!("apply:{err}"),
+                    format!("apply failed for signature {}: {err}", probe.signature),
+                );
+                return;
+            }
+        };
+
+        if !applied.applied {
+            let message = format!(
+                "apply returned success without applied=true for signature {}",
+                applied.signature
+            );
+            self.log_failure_once(format!("apply-flag:{message}"), message);
+            return;
+        }
+
+        self.log(
+            LogLevel::Info,
+            format!(
+                "applied monitor layout {} with main {} at {}x{}+{}+{}{} (signature={})",
+                applied.layout,
+                applied.main_output.name,
+                applied.main_output.width,
+                applied.main_output.height,
+                applied.main_output.x,
+                applied.main_output.y,
+                if applied.main_output.primary {
+                    " [primary]"
+                } else {
+                    ""
+                },
+                applied.signature
+            ),
+        );
+
+        if let Err(err) = self.reconcile_owned_screen(&applied) {
             self.log_failure_once(
                 format!("reconcile:{err}"),
-                format!("reconcile failed: {err}"),
+                format!("reconcile failed after apply: {err}"),
             );
             return;
         }
 
         self.last_error_fingerprint = None;
+    }
+
+    fn parse_watcher_output(
+        &self,
+        command: WatcherCommand,
+        raw: &str,
+    ) -> Result<MonitorWatcherResult, String> {
+        let command_output = parse_command_output(raw)
+            .map_err(|err| format!("{err}; raw={}", truncate_for_log(raw)))?;
+
+        if command_output.status != 0 {
+            return Err(format_command_failure(command, &command_output));
+        }
+
+        let stdout = command_output.stdout.trim();
+        if stdout.is_empty() {
+            return Err(format!("{} returned empty stdout", command.as_str()));
+        }
+
+        serde_json::from_str(stdout).map_err(|err| {
+            format!(
+                "{} returned invalid JSON: {err}; stdout={}",
+                command.as_str(),
+                truncate_for_log(stdout)
+            )
+        })
     }
 
     fn notify_transition(&mut self, state: &MonitorWatcherResult) {
@@ -247,29 +359,6 @@ impl ScreensPlugin {
         Ok(())
     }
 
-    fn run_watcher(&self, command: WatcherCommand) -> Result<MonitorWatcherResult, String> {
-        let output = bpf::system(&build_watcher_command(command));
-        let command_output = parse_command_output(&output)
-            .map_err(|err| format!("{err}; raw={}", truncate_for_log(&output)))?;
-
-        if command_output.status != 0 {
-            return Err(format_command_failure(command, &command_output));
-        }
-
-        let stdout = command_output.stdout.trim();
-        if stdout.is_empty() {
-            return Err(format!("{} returned empty stdout", command.as_str()));
-        }
-
-        serde_json::from_str(stdout).map_err(|err| {
-            format!(
-                "{} returned invalid JSON: {err}; stdout={}",
-                command.as_str(),
-                truncate_for_log(stdout)
-            )
-        })
-    }
-
     fn log_failure_once(&mut self, fingerprint: String, message: String) {
         if self.last_error_fingerprint.as_deref() == Some(fingerprint.as_str()) {
             return;
@@ -287,11 +376,11 @@ impl ScreensPlugin {
 impl Plugin for ScreensPlugin {
     fn initialize(&mut self, input: TickInput) {
         self.plugin_id = input.id;
-        self.maybe_poll(&input, true);
+        self.tick(&input, true);
     }
 
     fn run(&mut self, input: TickInput) {
-        self.maybe_poll(&input, false);
+        self.tick(&input, false);
     }
 }
 

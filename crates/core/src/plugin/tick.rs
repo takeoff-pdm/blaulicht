@@ -171,6 +171,13 @@ impl PluginManager {
             }
         }
 
+        {
+            let mut spawned_commands = self.state_ref.spawned_commands.lock().unwrap();
+            for plugin_key in plugins_err.keys() {
+                spawned_commands.remove_all_for_plugin(*plugin_key);
+            }
+        }
+
         let mut ret = None;
 
         let ret_val = {
