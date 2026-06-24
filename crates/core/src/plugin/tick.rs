@@ -177,11 +177,11 @@ impl PluginManager {
             let mut plugins = self.state_ref.plugins.write().unwrap();
 
             for (plugin_key, err) in plugins_err.into_iter() {
+                tracing::warn!("Disabling plugin with error(s): (id={plugin_key}): {err:#}");
+
                 if ret.is_none() {
                     ret = Some(err);
                 }
-
-                tracing::warn!("Disabling plugin with error(s): (id={plugin_key})...");
 
                 plugins.get_mut(&plugin_key).unwrap().set_errored(true);
             }

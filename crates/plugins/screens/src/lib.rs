@@ -65,6 +65,7 @@ pub struct ScreensPlugin {
     last_poll_clock: Option<u32>,
     last_transition_notified_signature: Option<String>,
     last_error_fingerprint: Option<String>,
+    last_reconciled_signature: Option<String>,
 }
 
 impl ScreensPlugin {
@@ -175,6 +176,9 @@ impl ScreensPlugin {
             .filter(|screen| screen.owner_plugin_id == Some(self.plugin_id))
             .collect();
 
+        let signature_matches =
+            self.last_reconciled_signature.as_deref() == Some(state.signature.as_str());
+
         if state.external_should_exist {
             let external_output = state.external_output.as_ref().ok_or_else(|| {
                 format!(
@@ -183,16 +187,12 @@ impl ScreensPlugin {
                 )
             })?;
 
-            let desired_width = external_output.width;
-            let desired_height = external_output.height;
-
-            let already_matches = owned_screens.len() == 1
-                && dimensions_match(owned_screens[0].width, desired_width)
-                && dimensions_match(owned_screens[0].height, desired_height);
-
-            if already_matches {
+            if signature_matches && owned_screens.len() == 1 {
                 return Ok(());
             }
+
+            let desired_width = external_output.width;
+            let desired_height = external_output.height;
 
             if !bpf::ui::create_external_screen(desired_width, desired_height) {
                 return Err(format!(
@@ -221,10 +221,16 @@ impl ScreensPlugin {
                 ),
             );
 
+            self.last_reconciled_signature = Some(state.signature.clone());
+            return Ok(());
+        }
+
+        if signature_matches && owned_screens.is_empty() {
             return Ok(());
         }
 
         if owned_screens.is_empty() {
+            self.last_reconciled_signature = Some(state.signature.clone());
             return Ok(());
         }
 
@@ -237,6 +243,7 @@ impl ScreensPlugin {
             format!("removed owned external screen after {}", state.signature),
         );
 
+        self.last_reconciled_signature = Some(state.signature.clone());
         Ok(())
     }
 
@@ -294,10 +301,6 @@ fn transition_label(state: &MonitorWatcherResult) -> &'static str {
     } else {
         "External screen removed"
     }
-}
-
-fn dimensions_match(actual: f32, expected: u32) -> bool {
-    actual.round() as u32 == expected
 }
 
 fn build_watcher_command(command: WatcherCommand) -> String {

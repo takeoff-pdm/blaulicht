@@ -22,7 +22,6 @@ use crate::{
     msg::{FromFrontend, MidiEvent, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, wasm::AddrDescriptor},
     state::AppState,
-    syslog,
 };
 
 pub mod midi;
@@ -203,7 +202,7 @@ impl PluginManager {
             .tick(CollectedAudioSnapshot::default(), &[], vec![], vec![], None)
             .is_err()
         {
-            syslog!(self.system_out, "Plugin(s) failed to initialize.");
+            tracing::error!("Plugin(s) failed to initialize.");
         };
 
         Ok(())

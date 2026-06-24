@@ -1,5 +1,5 @@
 DIR := ${CURDIR}
-VERSION = 0.10.0
+VERSION = 0.12.0
 BUILD_OUTPUT_DIR = blaulicht-dist
 PACKAGE = blaulicht-core
 RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./target)

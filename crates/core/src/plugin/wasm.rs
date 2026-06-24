@@ -301,8 +301,8 @@ impl PluginManager {
                             }
                         }
 
-                        tracing::warn!("WASM: Command STDOUT: {stdout}");
-                        tracing::warn!("WASM: Command STDERR: {stderr}");
+                        tracing::debug!("WASM: Command STDOUT: {stdout}");
+                        tracing::debug!("WASM: Command STDERR: {stderr}");
 
                         if !o.status.success() {
                             let code = o.status.code().unwrap_or(199);

@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-core"
-version = "0.10.0"
+version = "0.12.0"
 authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
@@ -44,7 +44,7 @@ blaulicht-assets = { path = "../assets" }
 maplit = "1.0.2"
 map-range = "0.1.2"
 strum = { version = "0.27.2", features = ["derive"] }
-# noise = "0.10.0"
+# noise = "0.12.0"
 chrono = "0.4.42"
 artnet_protocol = "0.4.4"
 dhat = { version = "0.3.3", optional = true }
