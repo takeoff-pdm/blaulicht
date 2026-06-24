@@ -79,6 +79,8 @@ pub struct CollectorScratch {
     pub(crate) band_weights: [f32; 3],
     pub(crate) beat_interval_ms: f32,
     pub(crate) bpm_estimate: f32,
+    pub(crate) bpm_confidence_ema: f32,
+    pub(crate) bass_avg_short: f32,
 
     // Cached per-frame analysis results, reused while no new FFT frame is available.
     pub(crate) max_freq_cached: Option<f32>,
@@ -95,7 +97,9 @@ pub struct CollectorScratch {
     pub(crate) section_state: blaulicht_shared::SectionState,
     pub(crate) section_last_update_ms: usize,
     pub(crate) section_drop_started_ms: usize,
-    pub(crate) section_quiet_accum_ms: usize,
+    pub(crate) section_breakdown_started_ms: usize,
+    pub(crate) section_breakdown_accum_ms: usize,
+    pub(crate) section_active_accum_ms: usize,
     pub(crate) section_prev_bass_hit: bool,
     pub(crate) section_drop_confirm_started_ms: Option<usize>,
 }
@@ -151,6 +155,8 @@ impl CollectorScratch {
             band_weights: [0.6, 0.3, 0.1],
             beat_interval_ms: 0.0,
             bpm_estimate: 0.0,
+            bpm_confidence_ema: 0.0,
+            bass_avg_short: 0.0,
             max_freq_cached: None,
             last_band_energies: [0.0; 3],
             last_band_onset_peakiness: [0.0; 3],
@@ -161,7 +167,9 @@ impl CollectorScratch {
             section_state: blaulicht_shared::SectionState::default(),
             section_last_update_ms: now,
             section_drop_started_ms: now,
-            section_quiet_accum_ms: 0,
+            section_breakdown_started_ms: now,
+            section_breakdown_accum_ms: 0,
+            section_active_accum_ms: 0,
             section_prev_bass_hit: false,
             section_drop_confirm_started_ms: None,
         }
@@ -199,6 +207,24 @@ pub struct SignalCollectorParams {
     /// How long (ms) bass must stay below the gates before falling back to
     /// `Breakdown`.
     pub drop_breakdown_hold_ms: u16,
+    /// Breakdown sensitivity, 0..=100. Sets how far bass must drop *below* the
+    /// presence gates to count as gone: 100 = any dip below the gate counts
+    /// (eager), 0 = bass must vanish entirely (lazy). Creates hysteresis between
+    /// entering ActiveBeat and falling back to Breakdown.
+    pub breakdown_sensitivity: u8,
+    /// If true, also count toward breakdown when the BPM/periodicity confidence
+    /// falls below `breakdown_bpm_confidence_min` (rhythm lost), not just on bass
+    /// level. Catches beatless sections that still carry bass.
+    pub breakdown_on_low_bpm: bool,
+    /// Confidence threshold (0..=100, % of normalized confidence) below which the
+    /// rhythm counts as lost for breakdown when `breakdown_on_low_bpm` is set.
+    pub breakdown_bpm_confidence_min: u8,
+    /// If true, a high bass-band onset *peakiness* can also arm a drop, in
+    /// addition to the raw onset jump.
+    pub drop_use_peakiness: bool,
+    /// Bass-band peakiness (max/mean of onset flux) at or above which a drop is
+    /// armed when `drop_use_peakiness` is set.
+    pub drop_peakiness_min: u8,
 }
 
 impl Default for SignalCollectorParams {
@@ -219,7 +245,12 @@ impl Default for SignalCollectorParams {
             drop_bass_avg_min: 15,
             drop_require_both: false,
             drop_sustain_ms: 280,
-            drop_breakdown_hold_ms: 1200,
+            drop_breakdown_hold_ms: 2500,
+            breakdown_sensitivity: 100,
+            breakdown_on_low_bpm: false,
+            breakdown_bpm_confidence_min: 40,
+            drop_use_peakiness: false,
+            drop_peakiness_min: 6,
         }
     }
 }
@@ -277,9 +308,9 @@ where
             Signal::Bass(v) => {
                 self.current.bass = v;
             }
-            // Signal::BassAvgShort(v) => {
-            //     self.current.bass_avg_short = v;
-            // }
+            Signal::BassAvgShort(v) => {
+                self.current.bass_avg_short = v;
+            }
             Signal::BassAvg(v) => {
                 self.current.bass_avg = v;
             }
@@ -289,6 +320,7 @@ where
             Signal::Bpm(v) => {
                 self.current.bpm = v.bpm;
                 self.current.time_between_beats_millis = v.time_between_beats_millis;
+                self.current.bpm_confidence = v.confidence;
             }
             Signal::Section(s) => {
                 self.current.section_state = s;

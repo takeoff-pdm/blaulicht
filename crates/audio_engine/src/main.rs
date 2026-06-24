@@ -135,7 +135,12 @@ fn main() {
             drop_bass_avg_min: 15,
             drop_require_both: false,
             drop_sustain_ms: 280,
-            drop_breakdown_hold_ms: 1200,
+            drop_breakdown_hold_ms: 2500,
+            breakdown_sensitivity: 100,
+            breakdown_on_low_bpm: false,
+            breakdown_bpm_confidence_min: 40,
+            drop_use_peakiness: false,
+            drop_peakiness_min: 6,
         },
         output,
         blaulicht_audio_engine::CollectorScratchParameters {

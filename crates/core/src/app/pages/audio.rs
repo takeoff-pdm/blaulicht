@@ -283,6 +283,7 @@ impl BlaulichtApp {
                 mut drop_require_both,
                 mut drop_sustain_value,
                 mut drop_breakdown_hold_value,
+                mut breakdown_sensitivity_value,
             ) = {
                 let params = self.data.state.audio_params.read().unwrap();
                 (
@@ -295,13 +296,38 @@ impl BlaulichtApp {
                     params.drop_require_both,
                     params.drop_sustain_ms as f32,
                     params.drop_breakdown_hold_ms as f32,
+                    params.breakdown_sensitivity as f32,
                 )
             };
+            let (
+                mut breakdown_on_low_bpm,
+                mut breakdown_conf_min_value,
+                mut drop_use_peakiness,
+                mut drop_peakiness_min_value,
+            ) = {
+                let params = self.data.state.audio_params.read().unwrap();
+                (
+                    params.breakdown_on_low_bpm,
+                    params.breakdown_bpm_confidence_min as f32,
+                    params.drop_use_peakiness,
+                    params.drop_peakiness_min as f32,
+                )
+            };
+            let bpm_confidence_pct = (self.collector_snapshot.bpm_confidence * 100.0) as i32;
 
             let header_color = Color32::from_rgb(120, 170, 255);
-            components::Dialog::new("Info".to_string(), vec2(540.0, 360.0))
-                .moveable()
+
+            let r = ctx.screen_rect();
+            components::Dialog::new("Info".to_string(), egui::vec2(r.width() / 2.0, r.height()))
+                // .moveable()
+                .with_backdrop()
+                .fixed_pos(egui::vec2(r.width() - 420.0, 0.0))
+                .anchor_right()
                 .show(ctx, |ui| {
+                    if components::button(ui, false, "Info", ButtonSize::Medium) {
+                        self.audio_info_dialog_open = !self.audio_info_dialog_open;
+                    }
+
                     ui.label(
                         RichText::new("FREQUENCY BANDS")
                             .strong()
@@ -382,18 +408,16 @@ impl BlaulichtApp {
 
                     ui.add_space(12.0);
 
-                    ui.label(
-                        RichText::new("DROP DETECTION")
-                            .strong()
-                            .color(header_color),
-                    );
+                    ui.label(RichText::new("DROP DETECTION").strong().color(header_color));
                     ui.separator();
 
                     // --- Trigger ---
                     ui.label(
-                        RichText::new("Trigger — how easily a quiet \u{2192} sudden-bass arms a drop")
-                            .small()
-                            .weak(),
+                        RichText::new(
+                            "Trigger — how easily a quiet \u{2192} sudden-bass arms a drop",
+                        )
+                        .small()
+                        .weak(),
                     );
                     ui.add_space(2.0);
                     if ui
@@ -406,6 +430,32 @@ impl BlaulichtApp {
                         let mut params = self.data.state.audio_params.write().unwrap();
                         params.drop_sensitivity = drop_sensitivity_value as u8;
                         params.changed = true;
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if components::Switch::new(&mut drop_use_peakiness)
+                            .ui(ui)
+                            .changed()
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.drop_use_peakiness = drop_use_peakiness;
+                            params.changed = true;
+                        }
+                        ui.label("Also arm drop on bass peakiness");
+                    });
+                    if drop_use_peakiness {
+                        ui.add_space(2.0);
+                        if ui
+                            .add(
+                                HFader::new(&mut drop_peakiness_min_value, 0.0..=20.0)
+                                    .with_label("Min Bass Peakiness"),
+                            )
+                            .changed()
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.drop_peakiness_min = drop_peakiness_min_value as u8;
+                            params.changed = true;
+                        }
                     }
 
                     ui.add_space(10.0);
@@ -442,7 +492,10 @@ impl BlaulichtApp {
                     }
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if components::Switch::new(&mut drop_require_both).ui(ui).changed() {
+                        if components::Switch::new(&mut drop_require_both)
+                            .ui(ui)
+                            .changed()
+                        {
                             let mut params = self.data.state.audio_params.write().unwrap();
                             params.drop_require_both = drop_require_both;
                             params.changed = true;
@@ -477,6 +530,18 @@ impl BlaulichtApp {
                     ui.add_space(4.0);
                     if ui
                         .add(
+                            HFader::new(&mut breakdown_sensitivity_value, 0.0..=255.0)
+                                .with_label("Bass Avg Short Gate"),
+                        )
+                        .changed()
+                    {
+                        let mut params = self.data.state.audio_params.write().unwrap();
+                        params.breakdown_sensitivity = breakdown_sensitivity_value as u8;
+                        params.changed = true;
+                    }
+                    ui.add_space(4.0);
+                    if ui
+                        .add(
                             HFader::new(&mut drop_breakdown_hold_value, 0.0..=5000.0)
                                 .with_label("Breakdown Hold (ms)"),
                         )
@@ -485,6 +550,41 @@ impl BlaulichtApp {
                         let mut params = self.data.state.audio_params.write().unwrap();
                         params.drop_breakdown_hold_ms = drop_breakdown_hold_value as u16;
                         params.changed = true;
+                    }
+
+                    ui.add_space(10.0);
+
+                    // --- Rhythm confidence ---
+                    ui.label(
+                        RichText::new(format!("Rhythm — BPM confidence: {bpm_confidence_pct}%"))
+                            .small()
+                            .weak(),
+                    );
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        if components::Switch::new(&mut breakdown_on_low_bpm)
+                            .ui(ui)
+                            .changed()
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.breakdown_on_low_bpm = breakdown_on_low_bpm;
+                            params.changed = true;
+                        }
+                        ui.label("Breakdown on weak rhythm");
+                    });
+                    if breakdown_on_low_bpm {
+                        ui.add_space(2.0);
+                        if ui
+                            .add(
+                                HFader::new(&mut breakdown_conf_min_value, 0.0..=100.0)
+                                    .with_label("Min Rhythm Conf (%)"),
+                            )
+                            .changed()
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.breakdown_bpm_confidence_min = breakdown_conf_min_value as u8;
+                            params.changed = true;
+                        }
                     }
                 });
         }
@@ -677,15 +777,13 @@ impl BlaulichtApp {
                             self.bass_avg_graph
                                 .draw(painter_bass_avg, response_bass_avg.rect);
 
-                            // TODO: add another graph here.
-                            // ui.add_space(padding);
-                            // let (response_bass_avg_short, painter_bass_avg_short) = ui
-                            //     .allocate_painter(
-                            //         egui::vec2(graph_width, graph_height),
-                            //         egui::Sense::hover(),
-                            //     );
-                            // self.bass_avg_short_graph
-                            //     .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+                            let (response_bass_avg_short, painter_bass_avg_short) = ui
+                                .allocate_painter(
+                                    egui::vec2(graph_width, graph_height),
+                                    egui::Sense::hover(),
+                                );
+                            self.bass_avg_short_graph
+                                .draw(painter_bass_avg_short, response_bass_avg_short.rect);
                         });
 
                         ui.vertical(|ui| {
@@ -743,10 +841,9 @@ impl BlaulichtApp {
                                     });
 
                                     // Currently-detected audio section, shown below the BPM.
-                                    let (section_text, section_color) =
-                                        components::section_label(
-                                            self.collector_snapshot.section_state,
-                                        );
+                                    let (section_text, section_color) = components::section_label(
+                                        self.collector_snapshot.section_state,
+                                    );
                                     ui.label(
                                         RichText::new(section_text)
                                             .strong()

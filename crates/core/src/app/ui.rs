@@ -114,8 +114,8 @@ impl eframe::App for BlaulichtApp {
                 .update(audio_snapshot.beat_volume as i32);
             self.bass_graph.update(audio_snapshot.bass as i32);
             self.bass_avg_graph.update(audio_snapshot.bass_avg as i32);
-            // self.bass_avg_short_graph
-            //     .update(audio_snapshot.bass_avg_short as i32);
+            self.bass_avg_short_graph
+                .update(audio_snapshot.bass_avg_short as i32);
             if audio_snapshot.beat_trigger
                 && audio_snapshot.time != self.last_beat_marker_snapshot_time
             {

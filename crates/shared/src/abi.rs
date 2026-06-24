@@ -35,12 +35,15 @@ pub struct CollectedAudioSnapshot {
     pub bass: u8,
     // pub bass_avg_short: u8,
     pub bass_avg: u8,
+    pub bass_avg_short: u8,
     pub bpm: f32,
     pub time_between_beats_millis: u16,
     pub initial: bool,
     pub beat_trigger: bool,
     pub actual_onset_peak: bool,
     pub section_state: SectionState,
+    /// Normalized (0..1) confidence of the BPM/periodicity estimate.
+    pub bpm_confidence: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]

@@ -135,7 +135,7 @@ pub struct BlaulichtApp {
     beat_volume_graph: TimeSeriesGraph,
     bass_graph: TimeSeriesGraph,
     bass_avg_graph: TimeSeriesGraph,
-    // bass_avg_short_graph: TimeSeriesGraph,
+    bass_avg_short_graph: TimeSeriesGraph,
     collector_snapshot: CollectedAudioSnapshot,
     beat_marker_index: usize,
     beat_marker_has_beat: bool,
@@ -325,12 +325,12 @@ impl BlaulichtApp {
                 255,
                 egui::Color32::from_rgb(0, 200, 255),
             ),
-            // bass_avg_short_graph: TimeSeriesGraph::new(
-            //     "Bass Avg Short".to_string(),
-            //     0,
-            //     255,
-            //     egui::Color32::from_rgb(0, 200, 255),
-            // ),
+            bass_avg_short_graph: TimeSeriesGraph::new(
+                "Bass Avg Short".to_string(),
+                0,
+                255,
+                egui::Color32::from_rgb(255, 160, 0),
+            ),
             band_energy_graphs: [
                 TimeSeriesGraph::new("Band Low".to_string(), 0, 1000, Color32::RED)
                     .with_autoscale(),

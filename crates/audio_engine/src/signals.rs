@@ -149,6 +149,8 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
 
 // Constants.
 pub const BASS_FRAMES: usize = 300;
+// Short bass EMA alpha — at ~23ms frame rate this gives ~2.8s time constant.
+const BASS_SHORT_ALPHA: f32 = 0.015;
 pub const ONSET_SAMPLE_PERIOD_MS: usize = 10;
 pub const ONSET_HISTORY_FRAMES: usize = 600;
 const TRANSIENT_HISTORY_MS: usize = 10_000;
@@ -197,14 +199,21 @@ pub const LONG_HISTORIC_FRAMES: usize = ROLLING_AVERAGE_FRAMES * 1000;
 const DROP_DURATION_MS: usize = 5000;
 // Required preceding quiet before a sudden bass can count as a drop. Sensitivity
 // interpolates between MAX (safe, needs a long quiet) and MIN (sensitive).
-const DROP_MIN_QUIET_MIN_MS: usize = 300;
-const DROP_MIN_QUIET_MAX_MS: usize = 1500;
+const DROP_MIN_QUIET_MIN_MS: usize = 3000;
+const DROP_MIN_QUIET_MAX_MS: usize = 8000;
+// If bass_avg_short stays above the breakdown gate for this long while in
+// Breakdown, transition directly to ActiveBeat (no Drop needed).
+const ACTIVE_BEAT_DIRECT_MS: usize = 5000;
 // If bass goes quiet again within the confirm window, abandon the candidate
 // (this is the prank/fake-drop rejection).
-const DROP_CONFIRM_CANCEL_QUIET_MS: usize = 300;
 // Bass-onset (log-flux) threshold at sensitivity 0; scales toward 0 as
 // sensitivity rises so a louder jump is required when less sensitive.
 const DROP_ONSET_THRESH_MAX: f32 = 0.5;
+// Raw autocorrelation-peak strength treated as "fully confident" when
+// normalizing BPM confidence to 0..1 for display/use.
+const BPM_CONFIDENCE_REF: f32 = 0.05;
+// EMA smoothing for the (normalized) BPM confidence signal.
+const BPM_CONFIDENCE_ALPHA: f32 = 0.05;
 
 ///
 /// Vector push operations.
@@ -231,7 +240,15 @@ where
     /// judged from the explicit `drop_bass_min` / `drop_bass_avg_min` thresholds
     /// combined per the `drop_require_both` toggle. Runs on the FFT-frame cadence.
     /// See the `DROP_*` / `SECTION_*` constants for the timing tuning.
-    fn update_section(&mut self, now: usize, bass_sig: u8, bass_avg: f64, bass_onset: f32) {
+    fn update_section(
+        &mut self,
+        now: usize,
+        bass_sig: u8,
+        bass_avg_short: f32,
+        bass_onset: f32,
+        bass_peakiness: f32,
+        bpm_confidence: f32,
+    ) {
         use blaulicht_shared::SectionState;
 
         let dt = now.saturating_sub(self.scratch.section_last_update_ms);
@@ -249,54 +266,66 @@ where
         let confirm_ms = self.params.drop_sustain_ms as usize;
         let breakdown_hold_ms = self.params.drop_breakdown_hold_ms as usize;
 
-        // "Bass present" from the explicit level thresholds. Sustained presence is
-        // judged via the quiet accumulator + dwell, so gaps between kicks don't
-        // read as breakdown.
-        let bass_over = bass_sig as f64 >= self.params.drop_bass_min as f64;
-        let avg_over = bass_avg >= self.params.drop_bass_avg_min as f64;
-        let bass_hit = if self.params.drop_require_both {
-            bass_over && avg_over
-        } else {
-            bass_over || avg_over
-        };
-        let was_quiet_enough = self.scratch.section_quiet_accum_ms >= min_quiet_ms;
-        let rising = bass_hit && !self.scratch.section_prev_bass_hit;
-        let strong_onset = bass_onset >= onset_thresh;
+        // Drop pre-condition: must have been in Breakdown for at least min_quiet_ms.
+        let in_breakdown_ms = now.saturating_sub(self.scratch.section_breakdown_started_ms);
+        let was_breakdown_long_enough = self.scratch.section_state == SectionState::Breakdown
+            && in_breakdown_ms >= min_quiet_ms;
 
-        if bass_hit {
-            self.scratch.section_quiet_accum_ms = 0;
+        let bass_hit = bass_sig >= self.params.drop_bass_min;
+        let rising = bass_hit && !self.scratch.section_prev_bass_hit;
+        let strong_onset = bass_onset >= onset_thresh
+            || (self.params.drop_use_peakiness
+                && bass_peakiness >= self.params.drop_peakiness_min as f32);
+
+        // Breakdown: if bass_avg_short stays below the threshold for the hold
+        // duration, we're in a breakdown. The threshold (breakdown_sensitivity,
+        // 0..=255, default 100) is compared directly against bass_avg_short.
+        let breakdown_threshold = self.params.breakdown_sensitivity as f32;
+        let breakdown_bass_present = bass_avg_short >= breakdown_threshold;
+        // Optionally, weak rhythm (low BPM confidence) also counts as "not active"
+        // for breakdown, so beatless-but-bassy sections fall back too.
+        let rhythm_lost = self.params.breakdown_on_low_bpm
+            && bpm_confidence * 100.0 < self.params.breakdown_bpm_confidence_min as f32;
+        if breakdown_bass_present && !rhythm_lost {
+            self.scratch.section_breakdown_accum_ms = 0;
+            self.scratch.section_active_accum_ms =
+                self.scratch.section_active_accum_ms.saturating_add(dt);
         } else {
-            self.scratch.section_quiet_accum_ms =
-                self.scratch.section_quiet_accum_ms.saturating_add(dt);
+            self.scratch.section_breakdown_accum_ms =
+                self.scratch.section_breakdown_accum_ms.saturating_add(dt);
+            self.scratch.section_active_accum_ms = 0;
         }
 
         let beats_regular = self.scratch.beat_interval_ms > 0.0
             && (now.saturating_sub(self.scratch.time_of_last_bpm_marker) as f32)
                 < SILENCE_BEAT_MULTIPLIER * self.scratch.beat_interval_ms;
-        let bass_gone = self.scratch.section_quiet_accum_ms >= breakdown_hold_ms;
+        let bass_gone = self.scratch.section_breakdown_accum_ms >= breakdown_hold_ms;
 
         match self.scratch.section_state {
             SectionState::Breakdown => match self.scratch.section_drop_confirm_started_ms {
                 Some(started) => {
-                    if self.scratch.section_quiet_accum_ms >= DROP_CONFIRM_CANCEL_QUIET_MS {
-                        // Bass vanished again -> fake/prank drop, abandon candidate.
+                    if !bass_hit {
                         self.scratch.section_drop_confirm_started_ms = None;
                     } else if now.saturating_sub(started) >= confirm_ms && beats_regular {
                         self.scratch.section_state = SectionState::Drop;
                         self.scratch.section_drop_started_ms = now;
                         self.scratch.section_drop_confirm_started_ms = None;
+                        self.scratch.section_breakdown_accum_ms = 0;
                     }
                 }
                 None => {
-                    // "no bass followed by sudden bass" -> candidate drop.
-                    if rising && was_quiet_enough && strong_onset {
+                    if rising && was_breakdown_long_enough && strong_onset {
                         self.scratch.section_drop_confirm_started_ms = Some(now);
+                    } else if self.scratch.section_active_accum_ms >= ACTIVE_BEAT_DIRECT_MS {
+                        self.scratch.section_state = SectionState::ActiveBeat;
+                        self.scratch.section_breakdown_accum_ms = 0;
                     }
                 }
             },
             SectionState::Drop => {
                 if bass_gone {
                     self.scratch.section_state = SectionState::Breakdown;
+                    self.scratch.section_breakdown_started_ms = now;
                 } else if now.saturating_sub(self.scratch.section_drop_started_ms) >= DROP_DURATION_MS
                 {
                     self.scratch.section_state = SectionState::ActiveBeat;
@@ -305,6 +334,7 @@ where
             SectionState::ActiveBeat => {
                 if bass_gone {
                     self.scratch.section_state = SectionState::Breakdown;
+                    self.scratch.section_breakdown_started_ms = now;
                 }
             }
         }
@@ -358,6 +388,10 @@ where
                 0.0
             };
             bass_sig = (avg * 100.0) as u8;
+
+            // Short bass EMA for responsive section detection.
+            self.scratch.bass_avg_short +=
+                BASS_SHORT_ALPHA * (bass_sig as f32 - self.scratch.bass_avg_short);
 
             // Incremental moving average over bass_samples (avoids re-summing the deque).
             self.scratch.bass_samples.push_back(bass_sig);
@@ -478,7 +512,7 @@ where
             // the raw signal.
             self.scratch.onset_ema += ONSET_EMA_ALPHA * (flux - self.scratch.onset_ema);
 
-            let mut bpm_from_onset: Option<f32> = None;
+            let mut bpm_from_onset: Option<(f32, f32)> = None;
 
             let elapsed_since_sample = now - self.scratch.last_onset_sample_time;
             if elapsed_since_sample >= ONSET_SAMPLE_PERIOD_MS {
@@ -525,9 +559,19 @@ where
                 } else {
                     self.scratch.beat_needs_sync = true;
                 }
+
+                // Track normalized periodicity confidence. Silence / weak
+                // periodicity pulls it toward 0; a strong autocorrelation peak
+                // toward 1.
+                let conf_target = match bpm_from_onset {
+                    Some((_, raw)) => (raw / BPM_CONFIDENCE_REF).clamp(0.0, 1.0),
+                    None => 0.0,
+                };
+                self.scratch.bpm_confidence_ema +=
+                    BPM_CONFIDENCE_ALPHA * (conf_target - self.scratch.bpm_confidence_ema);
             }
 
-            if let Some(new_bpm) = bpm_from_onset {
+            if let Some((new_bpm, _conf)) = bpm_from_onset {
                 let new_bpm = new_bpm.clamp(MIN_BPM, MAX_BPM);
                 if self.scratch.bpm_estimate <= 0.0 {
                     self.scratch.bpm_estimate = new_bpm;
@@ -567,9 +611,16 @@ where
             self.scratch.last_band_transient_strength = band_transient_strength;
 
             // Classify the macro section from the bass band. Uses the per-frame
-            // bass level + moving average + bass onset; beat regularity comes from
-            // the scheduler state (one-frame-stale is fine for this coarse check).
-            self.update_section(now, bass_sig, bass_moving_average, band_onsets[0]);
+            // bass level + moving average + bass onset (+ optional peakiness /
+            // BPM confidence); beat regularity comes from the scheduler state.
+            self.update_section(
+                now,
+                bass_sig,
+                self.scratch.bass_avg_short,
+                band_onsets[0],
+                band_onset_peakiness[0],
+                self.scratch.bpm_confidence_ema,
+            );
         }
 
         // Beat scheduling runs every tick so predicted beats stay glued to wall-clock time.
@@ -644,9 +695,11 @@ where
             self.send_signals(&[
                 Signal::BeatTrigger(self.scratch.is_on_beat),
                 Signal::Bass(bass_sig),
+                Signal::BassAvgShort(self.scratch.bass_avg_short as u8),
                 Signal::Bpm(BpmInfo {
                     bpm: bpm_f32,
                     time_between_beats_millis,
+                    confidence: self.scratch.bpm_confidence_ema,
                 }),
                 Signal::BassAvg(bass_moving_average as u8),
                 Signal::DebugData(debug_data),
@@ -834,7 +887,7 @@ where
         (mean, std, max)
     }
 
-    fn estimate_bpm_from_onset(history: &[f32], sample_period_ms: usize) -> Option<f32> {
+    fn estimate_bpm_from_onset(history: &[f32], sample_period_ms: usize) -> Option<(f32, f32)> {
         let n = history.len();
         if n < 2 || sample_period_ms == 0 {
             return None;
@@ -928,7 +981,9 @@ where
         }
         let bpm = 60_000.0 / period_ms;
         if bpm.is_finite() && bpm > 0.0 {
-            Some(bpm)
+            // Second element is the winning autocorrelation-peak strength, used as
+            // a periodicity-confidence measure.
+            Some((bpm, best_weighted))
         } else {
             None
         }

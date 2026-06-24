@@ -40,6 +40,9 @@ pub struct DialogBuilder {
     moveable: bool,
     with_backdrop: bool,
     backdrop_color: Option<Color32>,
+    /// Anchor to the top-right of the screen (keeps auto-height) instead of
+    /// centering.
+    anchor_right: bool,
 }
 
 pub struct Dialog {
@@ -59,8 +62,20 @@ impl Dialog {
                 moveable: false,
                 with_backdrop: false,
                 backdrop_color: None,
+                anchor_right: false,
             },
             backdrop_clicked: false,
+        }
+    }
+
+    /// Anchor the dialog to the top-right edge of the screen (auto-height).
+    pub fn anchor_right(self) -> Self {
+        Self {
+            builder: DialogBuilder {
+                anchor_right: true,
+                ..self.builder
+            },
+            ..self
         }
     }
 
@@ -187,10 +202,18 @@ impl Dialog {
         //     screen_rect.center().x,
         //     screen_rect.center().y
         // );
-        let center_pos = egui::Pos2::new(
-            screen_rect.center().x - self.builder.popup_size.x / 2.0,
-            screen_rect.center().y - self.builder.popup_size.y / 2.0,
-        );
+        let center_pos = if self.builder.anchor_right {
+            const MARGIN: f32 = 8.0;
+            egui::Pos2::new(
+                screen_rect.right() - self.builder.popup_size.x - MARGIN,
+                screen_rect.top() + MARGIN,
+            )
+        } else {
+            egui::Pos2::new(
+                screen_rect.center().x - self.builder.popup_size.x / 2.0,
+                screen_rect.center().y - self.builder.popup_size.y / 2.0,
+            )
+        };
 
         // Clamp to screen boundaries
         // center_pos.x = center_pos
