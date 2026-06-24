@@ -6,12 +6,17 @@ use blaulicht_shared::{
     },
     AnimationSpeedModifier,
 };
-use egui::{Color32, Context, Pos2, Ui};
+use egui::{Color32, Context, Painter, Pos2, Rect, Stroke, Style, Ui, Vec2};
 use egui_snarl::{
     InPin, InPinId, OutPin, OutPinId, Snarl,
-    ui::{PinInfo, SnarlStyle, SnarlViewer},
+    ui::{BackgroundPattern, Grid, PinInfo, SnarlStyle, SnarlViewer},
+};
+use fdg_sim::{
+    glam::Vec3, Dimensions, ForceGraph, ForceGraphHelper, Simulation, SimulationParameters,
 };
 use std::collections::BTreeMap;
+
+const CANVAS_HALF_EXTENT: f32 = 1500.0;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SnarlNode {
@@ -22,23 +27,32 @@ pub struct SnarlNode {
 pub struct SceneGraphUI {
     pub snarl: Snarl<SnarlNode>,
     pub style: SnarlStyle,
-    pub selected_graph: Option<GraphId>,
     pub selected_node: Option<NodeId>,
     pub new_graph_name: String,
     pub add_graph_open: bool,
+    last_synced_graph: Option<GraphId>,
     synced: bool,
+    recenter_view: bool,
+    zoom_level: f32,
+    pending_zoom_override: Option<f32>,
 }
 
 impl Default for SceneGraphUI {
     fn default() -> Self {
+        let mut style = SnarlStyle::new();
+        style.bg_pattern = Some(BackgroundPattern::Grid(Grid::new(Vec2::splat(40.0), 0.0)));
+        style.bg_pattern_stroke = Some(Stroke::new(1.0, Color32::from_gray(55)));
         Self {
             snarl: Snarl::new(),
-            style: SnarlStyle::new(),
-            selected_graph: None,
+            style,
             selected_node: None,
             new_graph_name: "New Graph".to_string(),
             add_graph_open: false,
+            last_synced_graph: None,
             synced: false,
+            recenter_view: false,
+            zoom_level: 1.0,
+            pending_zoom_override: None,
         }
     }
 }
@@ -47,6 +61,10 @@ pub struct SceneGraphViewer<'a> {
     pub state: &'a mut SceneGraphState,
     pub graph_id: GraphId,
     pub selected_node: &'a mut Option<NodeId>,
+    pub recenter_view: bool,
+    pub viewport_rect: Rect,
+    pub zoom_level: &'a mut f32,
+    pub pending_zoom_override: Option<f32>,
 }
 
 #[allow(refining_impl_trait)]
@@ -149,6 +167,62 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         snarl.connect(from.id, to.id);
     }
 
+    fn current_transform(
+        &mut self,
+        to_global: &mut egui::emath::TSTransform,
+        snarl: &mut Snarl<SnarlNode>,
+    ) {
+        if self.recenter_view {
+            let mut bb = Rect::NOTHING;
+            for (_, pos, n) in snarl.nodes_pos_ids() {
+                if n.graph_id == self.graph_id {
+                    bb.extend_with(pos);
+                }
+            }
+            if bb.is_finite() {
+                let bb = bb.expand(150.0);
+                let scaling2 = self.viewport_rect.size() / bb.size();
+                let scaling = scaling2.min_elem().clamp(0.1, 1.0);
+                let translation =
+                    self.viewport_rect.center().to_vec2() - scaling * bb.center().to_vec2();
+                *to_global = egui::emath::TSTransform::new(translation, scaling);
+            }
+        } else if let Some(new_scaling) = self.pending_zoom_override {
+            // Zoom around the viewport center while preserving the graph point under it.
+            let center = self.viewport_rect.center();
+            let graph_anchor = to_global.inverse().mul_pos(center);
+            let translation = center.to_vec2() - new_scaling * graph_anchor.to_vec2();
+            *to_global = egui::emath::TSTransform::new(translation, new_scaling);
+        }
+        *self.zoom_level = to_global.scaling;
+    }
+
+    fn draw_background(
+        &mut self,
+        background: Option<&BackgroundPattern>,
+        _viewport: &Rect,
+        snarl_style: &SnarlStyle,
+        style: &Style,
+        painter: &Painter,
+        _snarl: &Snarl<SnarlNode>,
+    ) {
+        let bounds = Rect::from_min_max(
+            Pos2::new(-CANVAS_HALF_EXTENT, -CANVAS_HALF_EXTENT),
+            Pos2::new(CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+        );
+        painter.rect_filled(bounds, 0.0, Color32::from_gray(28));
+        if let Some(background) = background {
+            let clipped = painter.with_clip_rect(bounds);
+            background.draw(&bounds, snarl_style, style, &clipped);
+        }
+        painter.rect_stroke(
+            bounds,
+            0.0,
+            Stroke::new(2.0, Color32::from_gray(90)),
+            egui::StrokeKind::Outside,
+        );
+    }
+
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<SnarlNode>) {
         let from_node = &snarl[from.id.node];
         let to_node = &snarl[to.id.node];
@@ -173,12 +247,12 @@ impl BlaulichtApp {
             ui.label("Graphs:");
 
             let graph_ids: Vec<_> = state.0.scene_graphs.graphs.keys().copied().collect();
+            let focused = state.0.scene_graphs.focused_graph;
             for &gid in &graph_ids {
                 let graph = state.0.scene_graphs.graphs.get(&gid).unwrap();
-                let selected = self.scene_graph_ui_state.selected_graph == Some(gid);
+                let selected = focused == Some(gid);
                 if ui.selectable_label(selected, &graph.name).clicked() {
-                    self.scene_graph_ui_state.selected_graph = Some(gid);
-                    self.scene_graph_ui_state.synced = false;
+                    state.0.scene_graphs.focused_graph = Some(gid);
                     self.scene_graph_ui_state.selected_node = None;
                 }
             }
@@ -197,22 +271,28 @@ impl BlaulichtApp {
                         let mut graph = SceneGraph::default();
                         graph.name = self.scene_graph_ui_state.new_graph_name.clone();
                         state.0.scene_graphs.graphs.insert(new_id, graph);
-                        self.scene_graph_ui_state.selected_graph = Some(new_id);
-                        self.scene_graph_ui_state.synced = false;
+                        state.0.scene_graphs.focused_graph = Some(new_id);
                     }
                     self.scene_graph_ui_state.add_graph_open = false;
                 }
             }
         });
 
-        let Some(graph_id) = self.scene_graph_ui_state.selected_graph else {
+        let Some(graph_id) = state.0.scene_graphs.focused_graph else {
             ui.label("Select or create a graph.");
             return;
         };
 
         if !state.0.scene_graphs.graphs.contains_key(&graph_id) {
-            self.scene_graph_ui_state.selected_graph = None;
+            state.0.scene_graphs.focused_graph = None;
             return;
+        }
+
+        // Resync snarl if the focused graph changed.
+        if self.scene_graph_ui_state.last_synced_graph != Some(graph_id) {
+            self.scene_graph_ui_state.synced = false;
+            self.scene_graph_ui_state.selected_node = None;
+            self.scene_graph_ui_state.last_synced_graph = Some(graph_id);
         }
 
         // Sync snarl from engine state if needed.
@@ -221,8 +301,12 @@ impl BlaulichtApp {
             let graph = state.0.scene_graphs.graphs.get(&graph_id).unwrap();
 
             let mut node_to_snarl: BTreeMap<NodeId, egui_snarl::NodeId> = BTreeMap::new();
-            for (i, (&node_id, _)) in graph.nodes.iter().enumerate() {
-                let pos = Pos2::new(200.0 * i as f32, 100.0);
+            for (i, (&node_id, node)) in graph.nodes.iter().enumerate() {
+                let pos = if node.pos_x == 0.0 && node.pos_y == 0.0 {
+                    Pos2::new(200.0 * i as f32, 100.0)
+                } else {
+                    Pos2::new(node.pos_x, node.pos_y)
+                };
                 let snarl_id = self.scene_graph_ui_state.snarl.insert_node(
                     pos,
                     SnarlNode {
@@ -254,6 +338,7 @@ impl BlaulichtApp {
         }
 
         // Controls bar.
+        let mut do_auto_layout = false;
         ui.horizontal(|ui| {
             let graph = state.0.scene_graphs.graphs.get_mut(&graph_id).unwrap();
             ui.checkbox(&mut graph.enabled, "Enabled");
@@ -273,14 +358,40 @@ impl BlaulichtApp {
                 }
             }
 
+            if ui.button("Auto Layout").clicked() {
+                do_auto_layout = true;
+            }
+
+            ui.separator();
+            ui.label("Zoom:");
+            let mut zoom = self.scene_graph_ui_state.zoom_level;
+            if ui
+                .add(
+                    egui::Slider::new(&mut zoom, 0.1..=2.0)
+                        .logarithmic(true)
+                        .show_value(false),
+                )
+                .changed()
+            {
+                self.scene_graph_ui_state.pending_zoom_override = Some(zoom);
+            }
+            ui.label(format!("{:.2}x", self.scene_graph_ui_state.zoom_level));
+
             if ui.button("Delete Graph").clicked() {
                 state.0.scene_graphs.graphs.remove(&graph_id);
-                self.scene_graph_ui_state.selected_graph = None;
+                state.0.scene_graphs.focused_graph = None;
                 self.scene_graph_ui_state.selected_node = None;
                 self.scene_graph_ui_state.synced = false;
                 return;
             }
         });
+
+        if do_auto_layout {
+            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) {
+                auto_layout_graph(graph, &mut self.scene_graph_ui_state.snarl);
+                self.scene_graph_ui_state.recenter_view = true;
+            }
+        }
 
         if !state.0.scene_graphs.graphs.contains_key(&graph_id) {
             return;
@@ -288,13 +399,49 @@ impl BlaulichtApp {
 
         ui.separator();
 
+        // Persist snarl positions back to scene graph nodes (captures user drags), clamped to canvas.
+        let snarl_updates: Vec<(egui_snarl::NodeId, SnarlNode, Pos2)> = self
+            .scene_graph_ui_state
+            .snarl
+            .nodes_pos_ids()
+            .map(|(id, pos, n)| {
+                let clamped = Pos2::new(
+                    pos.x.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+                    pos.y.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+                );
+                (id, n.clone(), clamped)
+            })
+            .collect();
+        for (snarl_id, snarl_node, clamped) in &snarl_updates {
+            if let Some(info) = self.scene_graph_ui_state.snarl.get_node_info_mut(*snarl_id) {
+                info.pos = *clamped;
+            }
+            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&snarl_node.graph_id) {
+                if let Some(node) = graph.nodes.get_mut(&snarl_node.node_id) {
+                    node.pos_x = clamped.x;
+                    node.pos_y = clamped.y;
+                }
+            }
+        }
+
         // Split: graph on left, node editor on right.
+        let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
+        let pending_zoom_override = std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
         ui.columns(2, |cols| {
+            let viewport_rect = Rect::from_min_size(
+                cols[0].cursor().min,
+                cols[0].available_size_before_wrap(),
+            );
+
             // Left: snarl graph.
             let mut viewer = SceneGraphViewer {
                 state: &mut state.0.scene_graphs,
                 graph_id,
                 selected_node: &mut self.scene_graph_ui_state.selected_node,
+                recenter_view,
+                viewport_rect,
+                zoom_level: &mut self.scene_graph_ui_state.zoom_level,
+                pending_zoom_override,
             };
 
             self.scene_graph_ui_state.snarl.show(
@@ -516,5 +663,57 @@ impl BlaulichtApp {
                 }
             }
         });
+    }
+}
+
+fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
+    if graph.nodes.is_empty() {
+        return;
+    }
+
+    let mut force_graph: ForceGraph<NodeId, ()> = ForceGraph::default();
+    let mut node_to_fdg: BTreeMap<NodeId, fdg_sim::petgraph::graph::NodeIndex> = BTreeMap::new();
+
+    for &node_id in graph.nodes.keys() {
+        let idx = force_graph.add_force_node(format!("{}", node_id), node_id);
+        node_to_fdg.insert(node_id, idx);
+    }
+
+    for edge in &graph.edges {
+        if let (Some(&from), Some(&to)) = (node_to_fdg.get(&edge.from), node_to_fdg.get(&edge.to)) {
+            force_graph.add_edge(from, to, ());
+        }
+    }
+
+    let mut params: SimulationParameters<NodeId, ()> = SimulationParameters::default();
+    params.node_start_size = 400.0;
+    params.dimensions = Dimensions::Two;
+    let mut sim = Simulation::from_graph(force_graph, params);
+    for _ in 0..300 {
+        sim.update(0.035);
+    }
+
+    let scale = 2.5;
+    let mut positions: BTreeMap<NodeId, Vec3> = BTreeMap::new();
+    let result_graph = sim.get_graph();
+    for idx in result_graph.node_indices() {
+        let node = &result_graph[idx];
+        positions.insert(node.data, node.location);
+    }
+
+    let clamp = |v: f32| v.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT);
+    for (node_id, loc) in &positions {
+        if let Some(node) = graph.nodes.get_mut(node_id) {
+            node.pos_x = clamp(loc.x * scale);
+            node.pos_y = clamp(loc.y * scale);
+        }
+    }
+
+    for (snarl_id, _, snarl_node) in snarl.nodes_pos_ids().map(|(id, p, n)| (id, p, n.clone())).collect::<Vec<_>>() {
+        if let Some(loc) = positions.get(&snarl_node.node_id) {
+            if let Some(info) = snarl.get_node_info_mut(snarl_id) {
+                info.pos = Pos2::new(clamp(loc.x * scale), clamp(loc.y * scale));
+            }
+        }
     }
 }

@@ -307,6 +307,9 @@ pub enum ControlEvent {
     RenamePalette(u8, String),
     AssignPalette(u8),
     UnassignPalette(u8),
+
+    // Scene graph focus.
+    SetFocusedSceneGraph(Option<u8>),
 }
 
 impl ControlEvent {
@@ -343,7 +346,8 @@ impl ControlEvent {
             | ControlEvent::DeletePalette(_)
             | ControlEvent::RenamePalette(_, _)
             | ControlEvent::AssignPalette(_)
-            | ControlEvent::UnassignPalette(_) => {
+            | ControlEvent::UnassignPalette(_)
+            | ControlEvent::SetFocusedSceneGraph(_) => {
                 return None;
             }
             ControlEvent::SetEnabled(_) => todo!("Illegal message"),
@@ -498,6 +502,7 @@ impl ControlEvent {
             ControlEvent::UpdatePalette(_, _) => false,
             ControlEvent::DeletePalette(_) => false,
             ControlEvent::RenamePalette(_, _) => false,
+            ControlEvent::SetFocusedSceneGraph(_) => false,
         }
     }
 }

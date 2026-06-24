@@ -327,10 +327,12 @@ where
             let mut band_onset_peakiness = [0.0_f32; 3];
             let mut band_onset_periodicity = [0.0_f32; 3];
             if bpm_gate_open {
+                let period_for_periodicity =
+                    self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
                 for (idx, history) in self.scratch.band_onset_history.iter_mut().enumerate() {
                     band_onset_peakiness[idx] = Self::onset_peakiness(history.make_contiguous());
                     band_onset_periodicity[idx] =
-                        Self::onset_periodicity(history.make_contiguous(), ONSET_SAMPLE_PERIOD_MS);
+                        Self::onset_periodicity(history.make_contiguous(), period_for_periodicity);
                 }
             }
 
@@ -377,7 +379,16 @@ where
 
             let mut bpm_from_onset: Option<f32> = None;
 
-            if now - self.scratch.last_onset_sample_time >= ONSET_SAMPLE_PERIOD_MS {
+            let elapsed_since_sample = now - self.scratch.last_onset_sample_time;
+            if elapsed_since_sample >= ONSET_SAMPLE_PERIOD_MS {
+                // Track the true inter-sample period: onset samples arrive at the FFT
+                // frame rate (~23ms), not the 10ms minimum gate. The autocorrelation
+                // needs this to map lags to BPM correctly. Alpha 0.02 ≈ 1s settling.
+                let elapsed_f = elapsed_since_sample as f32;
+                self.scratch.onset_sample_period_ema_ms = self
+                    .scratch
+                    .onset_sample_period_ema_ms
+                    + 0.02 * (elapsed_f - self.scratch.onset_sample_period_ema_ms);
                 self.scratch.last_onset_sample_time = now;
                 if bpm_gate_open {
                     self.scratch.onset_history.push_back(flux);
@@ -392,9 +403,11 @@ where
                         }
                     }
 
+                    let actual_period =
+                        self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
                     let history = self.scratch.onset_history.make_contiguous();
                     bpm_from_onset =
-                        Self::estimate_bpm_from_onset(history, ONSET_SAMPLE_PERIOD_MS);
+                        Self::estimate_bpm_from_onset(history, actual_period);
                     let (mean, threshold) = Self::onset_threshold(history);
                     onset_peak = self.scratch.onset_ema > threshold
                         && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);

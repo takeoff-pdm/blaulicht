@@ -10,6 +10,8 @@ pub type GraphId = u8;
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
 pub struct SceneGraphState {
     pub graphs: BTreeMap<GraphId, SceneGraph>,
+    #[serde(default)]
+    pub focused_graph: Option<GraphId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -39,6 +41,10 @@ pub struct SceneGraphNode {
     pub scenes: Vec<u8>,
     pub master_alpha: u8,
     pub master_speed: AnimationSpeedModifier,
+    #[serde(default)]
+    pub pos_x: f32,
+    #[serde(default)]
+    pub pos_y: f32,
 }
 
 impl Default for SceneGraphNode {
@@ -48,6 +54,8 @@ impl Default for SceneGraphNode {
             scenes: Vec::new(),
             master_alpha: 100,
             master_speed: AnimationSpeedModifier::_1,
+            pos_x: 0.0,
+            pos_y: 0.0,
         }
     }
 }

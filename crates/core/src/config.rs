@@ -167,14 +167,23 @@ fn read_showfile_logic(
             let mut storage = plugin_state_storage.lock().unwrap();
             *storage = showfile.plugin_state;
 
-            artnet_output.receivers = showfile
-                .artnet
+            // Preserve plugin-owned receivers across showfile load — they belong to the
+            // plugin lifecycle, not the showfile.
+            let preserved: Vec<ArtNetReceiver> = artnet_output
                 .receivers
+                .iter()
+                .filter(|r| r.owner_plugin_id.is_some())
+                .cloned()
+                .collect();
+            artnet_output.receivers = preserved
                 .into_iter()
-                .map(|receiver| ArtNetReceiver {
-                    address: receiver.address,
-                    enabled: receiver.enabled,
-                })
+                .chain(
+                    showfile
+                        .artnet
+                        .receivers
+                        .into_iter()
+                        .map(|receiver| ArtNetReceiver::user(receiver.address, receiver.enabled)),
+                )
                 .collect();
 
             dmx.load_showfile(core_engine);
@@ -193,7 +202,11 @@ fn read_showfile_logic(
                     storage.clear();
                 }
 
-                artnet_output.receivers.clear();
+                // Deprecated showfile format has no receivers — drop user-created ones
+                // but keep plugin-owned receivers, which live outside the showfile.
+                artnet_output
+                    .receivers
+                    .retain(|r| r.owner_plugin_id.is_some());
                 dmx.load_showfile(core_format);
 
                 Ok(None)
@@ -225,7 +238,10 @@ pub fn close_showfile(
     let mut storage = plugin_state_storage.lock().unwrap();
     *storage = HashMap::new();
 
-    artnet_output.receivers.clear();
+    // Drop user-created receivers; plugin-owned receivers live outside the showfile.
+    artnet_output
+        .receivers
+        .retain(|r| r.owner_plugin_id.is_some());
 
     dmx.load_showfile(EngineState::default());
 }

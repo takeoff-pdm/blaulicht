@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Context;
+use blaulicht_shared::ArtNetReceiverInfo;
 use blaulicht_shared::ControlEvent;
 use blaulicht_shared::ControlEventMessage;
 use blaulicht_shared::EventOriginator;
@@ -209,8 +210,6 @@ impl PluginManager {
             },
         )?;
 
-        let so = self.system_out.clone();
-
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "sys",
@@ -290,6 +289,7 @@ impl PluginManager {
                 match output {
                     Ok(o) => {
                         let stdout_bytes = &o.stdout;
+                        let stdout = String::from_utf8_lossy(stdout_bytes);
                         let stderr = String::from_utf8_lossy(&o.stderr);
 
                         if write_stdout_to_guest(&mut caller, stdout_bytes) {
@@ -301,11 +301,8 @@ impl PluginManager {
                             }
                         }
 
-                        let stdout = String::from_utf8_lossy(stdout_bytes);
-
-                        tracing::debug!("WASM: Command STDOUT: {stdout}");
-
-                        tracing::debug!("WASM: Command STDERR: {stderr}");
+                        tracing::warn!("WASM: Command STDOUT: {stdout}");
+                        tracing::warn!("WASM: Command STDERR: {stderr}");
 
                         if !o.status.success() {
                             let code = o.status.code().unwrap_or(199);
@@ -1670,6 +1667,149 @@ impl PluginManager {
 
         //
         // End serial interface.
+        //
+
+        //
+        // Art-Net receiver registration (plugin-owned).
+        //
+
+        let state_ref = Arc::clone(&self.state_ref);
+        let so = self.system_out.clone();
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_artnet_register_receiver",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  addr_ptr: i32,
+                  addr_len: i32|
+                  -> u32 {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let mut buffer = vec![0u8; addr_len as usize];
+                if memory
+                    .read(&caller, addr_ptr as usize, &mut buffer)
+                    .is_err()
+                {
+                    return 0;
+                }
+
+                let addr_str = String::from_utf8_lossy(&buffer).to_string();
+                let socket_addr: std::net::SocketAddr = match addr_str.parse() {
+                    Ok(a) => a,
+                    Err(err) => {
+                        let _ = so.send(SystemMessage::Log(
+                            format!(
+                                "Plugin {plugin_id} tried to register invalid ArtNet \
+                                 receiver address '{addr_str}': {err}"
+                            ),
+                            LogLevel::Warn,
+                        ));
+                        return 0;
+                    }
+                };
+
+                if !socket_addr.is_ipv4() {
+                    let _ = so.send(SystemMessage::Log(
+                        format!(
+                            "Plugin {plugin_id} tried to register non-IPv4 ArtNet \
+                             receiver '{addr_str}'"
+                        ),
+                        LogLevel::Warn,
+                    ));
+                    return 0;
+                }
+
+                let mut artnet_output = state_ref.artnet_output.write().unwrap();
+                let handle =
+                    artnet_output.register_plugin_receiver(plugin_id as u8, socket_addr);
+                drop(artnet_output);
+
+                if handle == 0 {
+                    let _ = so.send(SystemMessage::Log(
+                        format!(
+                            "Plugin {plugin_id} could not register ArtNet receiver \
+                             '{addr_str}' (address conflict)"
+                        ),
+                        LogLevel::Warn,
+                    ));
+                } else {
+                    tracing::debug!(
+                        "Plugin {plugin_id} registered ArtNet receiver '{addr_str}' (handle={handle})"
+                    );
+                }
+
+                handle
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_artnet_unregister_receiver",
+            move |plugin_id: i32, handle: u32| -> u32 {
+                if handle == 0 {
+                    return 0;
+                }
+                let mut artnet_output = state_ref.artnet_output.write().unwrap();
+                let removed =
+                    artnet_output.unregister_plugin_receiver(plugin_id as u8, handle);
+                drop(artnet_output);
+
+                if removed {
+                    tracing::debug!(
+                        "Plugin {plugin_id} unregistered ArtNet receiver handle={handle}"
+                    );
+                    1
+                } else {
+                    0
+                }
+            },
+        )?;
+
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_artnet_enumerate_receivers",
+            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| -> u32 {
+                let infos: Vec<ArtNetReceiverInfo> = {
+                    let artnet_output = state_ref.artnet_output.read().unwrap();
+                    artnet_output
+                        .receivers
+                        .iter()
+                        .map(|r| ArtNetReceiverInfo {
+                            address: r.address.to_string(),
+                            enabled: r.enabled,
+                            owner_plugin_id: r.owner_plugin_id,
+                            handle: r.handle,
+                        })
+                        .collect()
+                };
+
+                let json = serde_json::to_string(&infos).unwrap_or_else(|_| "[]".to_string());
+                let json_bytes = json.as_bytes();
+
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+
+                if write_len > 0 {
+                    memory
+                        .write(&mut caller, buffer_ptr as usize, &json_bytes[..write_len])
+                        .expect("failed to write memory");
+                }
+
+                write_len as u32
+            },
+        )?;
+
+        //
+        // End Art-Net receiver registration.
         //
 
         let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);

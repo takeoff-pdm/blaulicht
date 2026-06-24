@@ -1,14 +1,14 @@
 use std::fmt::Display;
 
 use crate::app::{
-    components::{self, ButtonSize, Dialog},
+    components::{self, ButtonSize, Dialog, HFader},
     BlaulichtApp,
 };
 use blaulicht_shared::{
     palette::{Palette, PaletteKind},
     ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, HSVColor, RGBColor,
 };
-use egui::{Context, RichText};
+use egui::{Context, RichText, Widget};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum PaletteKindSelection {
@@ -315,17 +315,21 @@ impl BlaulichtApp {
         }
     }
 
-    fn render_palette_kind_editor(
+    fn render_palette_meta(
         ui: &mut egui::Ui,
         ctx: &Context,
         state: &mut PaletteUI,
     ) {
-        let kind_button_size = ButtonSize::Medium;
+        ui.label(RichText::new("Name").weak());
+        ui.add(egui::TextEdit::singleline(&mut state.new_name).desired_width(f32::INFINITY));
+        ui.add_space(12.0);
+
+        ui.label(RichText::new("Type").weak());
         if components::button(
             ui,
             state.kind_dialog_open,
             &state.kind_selection.to_string(),
-            kind_button_size,
+            ButtonSize::Medium,
         ) {
             state.kind_dialog_open = true;
         }
@@ -341,44 +345,98 @@ impl BlaulichtApp {
             state.kind_selection = new_kind;
         }
 
-        ui.add_space(8.0);
+        if matches!(state.kind_selection, PaletteKindSelection::Single) {
+            ui.add_space(12.0);
+            ui.label(RichText::new("Property").weak());
+            if components::button(
+                ui,
+                state.property_dialog_open,
+                &state.property_selection.to_string(),
+                ButtonSize::Medium,
+            ) {
+                state.property_dialog_open = true;
+            }
 
+            let (new_prop, prop_changed) = components::selection_dialog(
+                ctx,
+                PropertySelection::ALL,
+                state.property_selection,
+                &mut state.property_dialog_open,
+                "Select Property".to_string(),
+            );
+            if prop_changed {
+                state.property_selection = new_prop;
+            }
+        }
+    }
+
+    fn render_palette_value(ui: &mut egui::Ui, state: &mut PaletteUI) {
         match state.kind_selection {
             PaletteKindSelection::Color => {
-                ui.color_edit_button_rgb(&mut state.color_rgb);
+                let mut color = egui::Color32::from_rgb(
+                    (state.color_rgb[0] * 255.0) as u8,
+                    (state.color_rgb[1] * 255.0) as u8,
+                    (state.color_rgb[2] * 255.0) as u8,
+                );
+                if egui::color_picker::color_picker_color32(
+                    ui,
+                    &mut color,
+                    egui::color_picker::Alpha::Opaque,
+                ) {
+                    state.color_rgb = [
+                        color.r() as f32 / 255.0,
+                        color.g() as f32 / 255.0,
+                        color.b() as f32 / 255.0,
+                    ];
+                }
             }
             PaletteKindSelection::Position => {
-                ui.add(egui::Slider::new(&mut state.pan, 0..=255).text("Pan"));
-                ui.add(egui::Slider::new(&mut state.tilt, 0..=255).text("Tilt"));
+                let mut pan = state.pan as f32;
+                if HFader::new(&mut pan, 0.0..=255.0)
+                    .with_label("Pan")
+                    .ui(ui)
+                    .changed()
+                {
+                    state.pan = pan as u8;
+                }
+                ui.add_space(8.0);
+                let mut tilt = state.tilt as f32;
+                if HFader::new(&mut tilt, 0.0..=255.0)
+                    .with_label("Tilt")
+                    .ui(ui)
+                    .changed()
+                {
+                    state.tilt = tilt as u8;
+                }
             }
             PaletteKindSelection::Beam => {
-                ui.add(egui::Slider::new(&mut state.focus, 0..=255).text("Focus"));
-                ui.add(egui::Slider::new(&mut state.strobe_speed, 0..=255).text("Strobe"));
+                let mut focus = state.focus as f32;
+                if HFader::new(&mut focus, 0.0..=255.0)
+                    .with_label("Focus")
+                    .ui(ui)
+                    .changed()
+                {
+                    state.focus = focus as u8;
+                }
+                ui.add_space(8.0);
+                let mut strobe = state.strobe_speed as f32;
+                if HFader::new(&mut strobe, 0.0..=255.0)
+                    .with_label("Strobe")
+                    .ui(ui)
+                    .changed()
+                {
+                    state.strobe_speed = strobe as u8;
+                }
             }
             PaletteKindSelection::Single => {
-                if components::button(
-                    ui,
-                    state.property_dialog_open,
-                    &state.property_selection.to_string(),
-                    ButtonSize::Medium,
-                ) {
-                    state.property_dialog_open = true;
-                }
-
-                let (new_prop, prop_changed) = components::selection_dialog(
-                    ctx,
-                    PropertySelection::ALL,
-                    state.property_selection,
-                    &mut state.property_dialog_open,
-                    "Select Property".to_string(),
-                );
-                if prop_changed {
-                    state.property_selection = new_prop;
-                }
-
                 let mut val_f = state.single_value as f32;
-                ui.add(egui::Slider::new(&mut val_f, 0.0..=255.0).text("Value"));
-                state.single_value = val_f as u16;
+                if HFader::new(&mut val_f, 0.0..=255.0)
+                    .with_label("Value")
+                    .ui(ui)
+                    .changed()
+                {
+                    state.single_value = val_f as u16;
+                }
             }
         }
     }
@@ -391,22 +449,25 @@ impl BlaulichtApp {
         let mut should_close = false;
         let mut should_create = false;
 
-        Dialog::new("Create Palette".to_string(), egui::vec2(300.0, 280.0))
+        let state = &mut self.palette_ui_state;
+        Dialog::new("Create Palette".to_string(), egui::vec2(720.0, 500.0))
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.text_edit_singleline(&mut self.palette_ui_state.new_name);
-                ui.add_space(8.0);
-
-                Self::render_palette_kind_editor(ui, ctx, &mut self.palette_ui_state);
+                Self::render_palette_dialog_body(ui, ctx, state);
 
                 ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if components::button(ui, false, "Create", ButtonSize::Medium) {
-                        should_create = true;
-                    }
-                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                        should_close = true;
-                    }
+                ui.separator();
+                ui.add_space(8.0);
+
+                ui.vertical_centered(|ui| {
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "Create", ButtonSize::Medium) {
+                            should_create = true;
+                        }
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                            should_close = true;
+                        }
+                    });
                 });
             });
 
@@ -425,6 +486,40 @@ impl BlaulichtApp {
         }
     }
 
+    fn render_palette_dialog_body(
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        state: &mut PaletteUI,
+    ) {
+        let avail_w = ui.available_width();
+        let col_gap = 16.0;
+        let col_w = ((avail_w - col_gap) / 2.0).max(120.0);
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(avail_w, 0.0),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(col_w, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_min_width(col_w);
+                        Self::render_palette_meta(ui, ctx, state);
+                    },
+                );
+                ui.add_space(col_gap);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(col_w, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_min_width(col_w);
+                        Self::render_palette_value(ui, state);
+                    },
+                );
+            },
+        );
+    }
+
     fn render_palette_edit_dialog(&mut self, ctx: &Context) {
         if !self.palette_ui_state.edit_dialog_open {
             return;
@@ -438,22 +533,25 @@ impl BlaulichtApp {
         let mut should_close = false;
         let mut should_save = false;
 
-        Dialog::new("Edit Palette".to_string(), egui::vec2(300.0, 280.0))
+        let state = &mut self.palette_ui_state;
+        Dialog::new("Edit Palette".to_string(), egui::vec2(720.0, 500.0))
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.text_edit_singleline(&mut self.palette_ui_state.new_name);
-                ui.add_space(8.0);
-
-                Self::render_palette_kind_editor(ui, ctx, &mut self.palette_ui_state);
+                Self::render_palette_dialog_body(ui, ctx, state);
 
                 ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if components::button(ui, false, "Save", ButtonSize::Medium) {
-                        should_save = true;
-                    }
-                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
-                        should_close = true;
-                    }
+                ui.separator();
+                ui.add_space(8.0);
+
+                ui.vertical_centered(|ui| {
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "Save", ButtonSize::Medium) {
+                            should_save = true;
+                        }
+                        if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                            should_close = true;
+                        }
+                    });
                 });
             });
 

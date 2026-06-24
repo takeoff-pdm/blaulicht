@@ -22,6 +22,14 @@ extern "C" {
     ) -> u8;
 
     fn bl_open_udp_port(bind_port: u32) -> u8;
+
+    fn bl_artnet_register_receiver(
+        plugin_id: u8,
+        addr_ptr: *const u8,
+        addr_len: usize,
+    ) -> u32;
+    fn bl_artnet_unregister_receiver(plugin_id: u8, handle: u32) -> u32;
+    fn bl_artnet_enumerate_receivers(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn bl_enumerate_serial_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
 
     fn bl_send_event(serialized_buf: *const u8, buf_len: usize);
@@ -233,6 +241,48 @@ pub fn bl_open_serial_device_safe(device_name: &str, baud_rate: u32) -> u8 {
 
 pub fn bl_open_udp_port_safe(bind_port: u16) -> u8 {
     unsafe { bl_open_udp_port(bind_port as u32) }
+}
+
+/// Register an Art-Net receiver owned by the calling plugin. The core will start
+/// shipping rendered DMX universes to `addr` (format: `"ip:port"`, IPv4 only,
+/// typically `"x.x.x.x:6454"`) on every DMX tick until unregistered.
+///
+/// Returns a handle (`> 0`) on success, or `0` on failure (bad address, address
+/// already registered, etc.). The handle is opaque to the plugin and must be
+/// passed to [`bl_artnet_unregister_receiver_safe`] to remove the receiver.
+///
+/// On plugin crash or reload, the host drops all receivers owned by the plugin
+/// automatically — explicit cleanup is only required for graceful shutdowns.
+pub fn bl_artnet_register_receiver_safe(addr: &str) -> u32 {
+    unsafe { bl_artnet_register_receiver(PLUGIN_ID, addr.as_ptr(), addr.len()) }
+}
+
+/// Unregister a previously-registered Art-Net receiver by handle. Returns `true`
+/// if a receiver was actually removed.
+pub fn bl_artnet_unregister_receiver_safe(handle: u32) -> bool {
+    if handle == 0 {
+        return false;
+    }
+    unsafe { bl_artnet_unregister_receiver(PLUGIN_ID, handle) != 0 }
+}
+
+/// Enumerate all Art-Net receivers currently registered on the host (user-created
+/// and plugin-owned alike). Useful for sanity-checking against duplicates or
+/// stale self-owned handles when reconfiguring.
+pub fn bl_artnet_enumerate_receivers_safe() -> Vec<ArtNetReceiverInfo> {
+    const MAX_BUFFER_SIZE: usize = 4096;
+    let mut buffer = vec![0u8; MAX_BUFFER_SIZE];
+
+    let written_len =
+        unsafe { bl_artnet_enumerate_receivers(buffer.as_mut_ptr(), MAX_BUFFER_SIZE) };
+
+    if written_len == 0 {
+        return Vec::new();
+    }
+
+    let data = &buffer[..written_len as usize];
+    let json_str = std::str::from_utf8(data).unwrap_or("[]");
+    serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
 
 pub fn bl_enumerate_serial_devices_safe() -> Vec<String> {
@@ -938,7 +988,9 @@ macro_rules! elapsed {
 
 use std::fmt::Display;
 
-use blaulicht_shared::{ControlEvent, ExternalScreenInfo, LogLevel, PluginStateLocation};
+use blaulicht_shared::{
+    ArtNetReceiverInfo, ControlEvent, ExternalScreenInfo, LogLevel, PluginStateLocation,
+};
 pub use elapsed;
 
 #[macro_export]

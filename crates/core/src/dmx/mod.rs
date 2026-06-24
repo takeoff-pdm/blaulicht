@@ -885,6 +885,15 @@ impl DmxEngine {
                 }
                 None => (Some("Palette not found"), None),
             },
+            ControlEvent::SetFocusedSceneGraph(graph_id) => {
+                if let Some(id) = graph_id {
+                    if !state.0.scene_graphs.graphs.contains_key(&id) {
+                        return (Some("Scene graph not found"), None);
+                    }
+                }
+                state.0.scene_graphs.focused_graph = graph_id;
+                (None, None)
+            }
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)

@@ -153,6 +153,8 @@ impl BlaulichtApp {
                                 let mut row_enabled = receiver.enabled;
                                 let mut toggle_changed = false;
                                 let mut delete_clicked = false;
+                                let owner_plugin_id = receiver.owner_plugin_id;
+                                let is_plugin_owned = owner_plugin_id.is_some();
 
                                 ui.add_space(6.0);
 
@@ -189,34 +191,45 @@ impl BlaulichtApp {
                                                         .strong(),
                                                 );
 
+                                                if let Some(pid) = owner_plugin_id {
+                                                    ui.add_space(8.0);
+                                                    ui.label(
+                                                        RichText::new(format!("PLUGIN({pid})"))
+                                                            .color(Color32::from_rgb(120, 170, 255))
+                                                            .strong(),
+                                                    );
+                                                }
+
                                                 ui.with_layout(
                                                     egui::Layout::right_to_left(egui::Align::Center),
                                                     |ui| {
-                                                        let delete_color =
-                                                            Color32::from_rgb(160, 45, 45);
-                                                        if clickable(
-                                                            ui,
-                                                            false,
-                                                            delete_color,
-                                                            ButtonSize::Medium.with_width(
-                                                                row_height,
-                                                            ),
-                                                            |ui, rect, fg_color| {
-                                                                ui.painter().text(
-                                                                    rect.center(),
-                                                                    egui::Align2::CENTER_CENTER,
-                                                                    egui_phosphor::regular::TRASH,
-                                                                    FontId::monospace(
-                                                                        input_font_size,
-                                                                    ),
-                                                                    fg_color,
-                                                                );
-                                                            },
-                                                        ) {
-                                                            delete_clicked = true;
-                                                        }
+                                                        if !is_plugin_owned {
+                                                            let delete_color =
+                                                                Color32::from_rgb(160, 45, 45);
+                                                            if clickable(
+                                                                ui,
+                                                                false,
+                                                                delete_color,
+                                                                ButtonSize::Medium.with_width(
+                                                                    row_height,
+                                                                ),
+                                                                |ui, rect, fg_color| {
+                                                                    ui.painter().text(
+                                                                        rect.center(),
+                                                                        egui::Align2::CENTER_CENTER,
+                                                                        egui_phosphor::regular::TRASH,
+                                                                        FontId::monospace(
+                                                                            input_font_size,
+                                                                        ),
+                                                                        fg_color,
+                                                                    );
+                                                                },
+                                                            ) {
+                                                                delete_clicked = true;
+                                                            }
 
-                                                        ui.add_space(8.0);
+                                                            ui.add_space(8.0);
+                                                        }
 
                                                         if components::Switch::new(
                                                             &mut row_enabled,
@@ -242,10 +255,14 @@ impl BlaulichtApp {
                                     }
                                 }
 
-                                if delete_clicked {
+                                if delete_clicked && !is_plugin_owned {
                                     let mut artnet_output =
                                         self.data.state.artnet_output.write().unwrap();
-                                    if receiver_index < artnet_output.receivers.len() {
+                                    if receiver_index < artnet_output.receivers.len()
+                                        && artnet_output.receivers[receiver_index]
+                                            .owner_plugin_id
+                                            .is_none()
+                                    {
                                         artnet_output.receivers.remove(receiver_index);
                                     }
                                     drop(artnet_output);

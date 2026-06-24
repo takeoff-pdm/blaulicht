@@ -150,6 +150,11 @@ pub struct AppHealthState {
 pub struct ArtNetReceiver {
     pub address: SocketAddr,
     pub enabled: bool,
+    /// `None` => user-created (persisted to showfile, fully editable in UI).
+    /// `Some(plugin_id)` => owned by a plugin (ephemeral, read-only in UI except enable toggle).
+    pub owner_plugin_id: Option<u8>,
+    /// Opaque handle used by plugin owners to unregister. `0` for user-created receivers.
+    pub handle: u32,
 }
 
 impl ArtNetReceiver {
@@ -157,6 +162,17 @@ impl ArtNetReceiver {
         Self {
             address,
             enabled: true,
+            owner_plugin_id: None,
+            handle: 0,
+        }
+    }
+
+    pub fn user(address: SocketAddr, enabled: bool) -> Self {
+        Self {
+            address,
+            enabled,
+            owner_plugin_id: None,
+            handle: 0,
         }
     }
 }
@@ -164,6 +180,57 @@ impl ArtNetReceiver {
 #[derive(Default, Clone)]
 pub struct ArtNetOutput {
     pub receivers: Vec<ArtNetReceiver>,
+    next_handle: u32,
+}
+
+impl ArtNetOutput {
+    /// Register a plugin-owned receiver. Returns the assigned handle, or `0` if the address
+    /// is already registered (by anyone) or could not be added.
+    pub fn register_plugin_receiver(&mut self, plugin_id: u8, address: SocketAddr) -> u32 {
+        // Idempotent if the same plugin re-registers the same address.
+        if let Some(existing) = self
+            .receivers
+            .iter()
+            .find(|r| r.address == address)
+        {
+            return if existing.owner_plugin_id == Some(plugin_id) {
+                existing.handle
+            } else {
+                0
+            };
+        }
+
+        let handle = self.next_handle.checked_add(1).unwrap_or(1);
+        self.next_handle = handle;
+
+        self.receivers.push(ArtNetReceiver {
+            address,
+            enabled: true,
+            owner_plugin_id: Some(plugin_id),
+            handle,
+        });
+
+        handle
+    }
+
+    /// Unregister a plugin-owned receiver by handle. Returns true if removed.
+    pub fn unregister_plugin_receiver(&mut self, plugin_id: u8, handle: u32) -> bool {
+        let before = self.receivers.len();
+        self.receivers
+            .retain(|r| !(r.handle == handle && r.owner_plugin_id == Some(plugin_id)));
+        self.receivers.len() < before
+    }
+
+    /// Drop all receivers owned by the given plugin (used on plugin crash).
+    pub fn remove_receivers_for_plugin(&mut self, plugin_id: u8) {
+        self.receivers
+            .retain(|r| r.owner_plugin_id != Some(plugin_id));
+    }
+
+    /// Drop all plugin-owned receivers regardless of plugin id (used on plugin manager reload).
+    pub fn remove_all_plugin_receivers(&mut self) {
+        self.receivers.retain(|r| r.owner_plugin_id.is_none());
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

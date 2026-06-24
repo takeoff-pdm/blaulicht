@@ -80,6 +80,7 @@ impl BlaulichtApp {
                         receivers: artnet_output
                             .receivers
                             .iter()
+                            .filter(|receiver| receiver.owner_plugin_id.is_none())
                             .map(|receiver| ShowfileArtNetReceiver {
                                 address: receiver.address,
                                 enabled: receiver.enabled,

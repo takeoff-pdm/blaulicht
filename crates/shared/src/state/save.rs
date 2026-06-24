@@ -3,7 +3,9 @@ use crate::{
     EngineSelection,
     engine::{AnimationSpec, EngineState},
     fixture::state::{Fixture, FixtureGroup, FixtureState},
+    palette::Palette,
     scene::{EngineSink, FixtureSelection, FixtureSelector, Scene},
+    scene_graph::SceneGraphState,
     view::View,
 };
 use bincode::{Decode, Encode};
@@ -69,6 +71,10 @@ pub struct SaveEngineState {
     pub current_scene_focus: u8,
     pub current_overlay_scenes: Vec<u8>,
     pub overrides: Vec<SavedMapEntry<(usize, usize), u8>>,
+    #[serde(default)]
+    pub scene_graphs: SceneGraphState,
+    #[serde(default)]
+    pub palettes: Vec<SavedMapEntry<u8, Palette>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -158,6 +164,7 @@ impl From<Scene> for SavedScene {
                 changeset: value.sink.changeset.into_iter().collect(),
                 master_alpha_fader: value.sink.master_alpha_fader,
                 master_alpha_speed: value.sink.master_speed,
+                palette_assignments: SavedMapEntry::from_btree_map(value.sink.palette_assignments),
             },
             name: value.name,
         }
@@ -185,6 +192,8 @@ pub struct SavedEngineSink {
     pub changeset: Vec<FixtureSelector>,
     pub master_alpha_fader: u8,
     pub master_alpha_speed: AnimationSpeedModifier,
+    #[serde(default)]
+    pub palette_assignments: Vec<SavedMapEntry<(u8, u8), Vec<u8>>>,
 }
 
 impl TryFrom<SavedEngineSink> for EngineSink {
@@ -211,7 +220,7 @@ impl TryFrom<SavedEngineSink> for EngineSink {
             changeset,
             master_alpha_fader: value.master_alpha_fader,
             master_speed: value.master_alpha_speed,
-            palette_assignments: Default::default(),
+            palette_assignments: SavedMapEntry::to_btree_map(value.palette_assignments),
         })
     }
 }
@@ -259,6 +268,8 @@ impl From<EngineState> for SaveEngineState {
             current_scene_focus: value.current_scene_focus,
             current_overlay_scenes: value.current_overlay_scenes,
             overrides: SavedMapEntry::from_btree_map(value.overrides),
+            scene_graphs: value.scene_graphs,
+            palettes: SavedMapEntry::from_btree_map(value.palettes),
         }
     }
 }
@@ -309,8 +320,8 @@ impl TryFrom<SaveEngineState> for EngineState {
             current_scene_focus: value.current_scene_focus,
             current_overlay_scenes: value.current_overlay_scenes,
             overrides,
-            scene_graphs: Default::default(),
-            palettes: Default::default(),
+            scene_graphs: value.scene_graphs,
+            palettes: SavedMapEntry::to_btree_map(value.palettes),
         })
     }
 }

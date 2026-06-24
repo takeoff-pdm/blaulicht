@@ -8,8 +8,8 @@ use blaulicht_shared::CollectedAudioSnapshot;
 use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{
-    AudioSource, Frequency, Signal, BASS_FRAMES, LONG_HISTORIC_FRAMES, ROLLING_AVERAGE_FRAMES,
-    ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
+    AudioSource, Frequency, Signal, BASS_FRAMES, LONG_HISTORIC_FRAMES, ONSET_SAMPLE_PERIOD_MS,
+    ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use std::{collections::VecDeque, ops::Range};
 
@@ -69,6 +69,7 @@ pub struct CollectorScratch {
     pub(crate) onset_history: VecDeque<f32>,
     pub(crate) band_onset_history: [VecDeque<f32>; 3],
     pub(crate) last_onset_sample_time: usize,
+    pub(crate) onset_sample_period_ema_ms: f32,
     pub(crate) onset_ema: f32,
     pub(crate) band_energy_ema: [f32; 3],
     pub(crate) band_energy_ema_short: [f32; 3],
@@ -132,6 +133,7 @@ impl CollectorScratch {
             onset_history: VecDeque::new(),
             band_onset_history: [VecDeque::new(), VecDeque::new(), VecDeque::new()],
             last_onset_sample_time: now,
+            onset_sample_period_ema_ms: ONSET_SAMPLE_PERIOD_MS as f32,
             onset_ema: 0.0,
             band_energy_ema: [0.0; 3],
             band_energy_ema_short: [0.0; 3],

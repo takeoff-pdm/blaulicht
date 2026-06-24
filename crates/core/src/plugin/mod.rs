@@ -211,6 +211,14 @@ impl PluginManager {
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
         {
+            // Plugin instances are about to be re-instantiated; any Art-Net receivers
+            // they registered belong to the old generation and must be dropped before
+            // the new instances try to re-register them.
+            let mut artnet_output = self.state_ref.artnet_output.write().unwrap();
+            artnet_output.remove_all_plugin_receivers();
+        }
+
+        {
             // Reset all plugins which got temporarily disabled due to log::errors.
             let mut plugins = self.state_ref.plugins.write().unwrap();
             for (_, plug) in plugins.iter_mut() {

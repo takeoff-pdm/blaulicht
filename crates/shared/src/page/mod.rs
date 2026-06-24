@@ -15,6 +15,7 @@ pub enum AppPage {
     ViewPerformance,
     FixturesPerformance,
     Animations,
+    Palettes,
     SceneGraph,
     Visualizer,
 }
@@ -30,6 +31,7 @@ impl AppPage {
             AppPage::ViewPerformance => "V. Perf",
             AppPage::FixturesPerformance => "F. Perf",
             AppPage::Animations => "Anim",
+            AppPage::Palettes => "Palettes",
             AppPage::SceneGraph => "Graph",
             AppPage::Visualizer => "Viz",
         }
@@ -52,6 +54,7 @@ impl AppPage {
             AppPage::ViewPerformance => &[],
             AppPage::FixturesPerformance => &[],
             AppPage::Animations => &[],
+            AppPage::Palettes => &[],
             AppPage::SceneGraph => &[],
             AppPage::Visualizer => &[],
         }
@@ -67,6 +70,15 @@ pub struct ExternalScreenInfo {
     pub y: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_plugin_id: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArtNetReceiverInfo {
+    pub address: String,
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_plugin_id: Option<u8>,
+    pub handle: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Encode, Decode, Clone)]

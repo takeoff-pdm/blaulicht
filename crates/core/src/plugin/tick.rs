@@ -158,6 +158,19 @@ impl PluginManager {
         &mut self,
         plugins_err: HashMap<u8, anyhow::Error>,
     ) -> Option<anyhow::Error> {
+        if plugins_err.is_empty() {
+            return None;
+        }
+
+        // Drop any Art-Net receivers owned by failing plugins so the next reload
+        // starts from a clean slate.
+        {
+            let mut artnet_output = self.state_ref.artnet_output.write().unwrap();
+            for plugin_key in plugins_err.keys() {
+                artnet_output.remove_receivers_for_plugin(*plugin_key);
+            }
+        }
+
         let mut ret = None;
 
         let ret_val = {

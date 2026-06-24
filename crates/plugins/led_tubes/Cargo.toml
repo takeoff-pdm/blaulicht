@@ -1,0 +1,25 @@
+[package]
+name = "blaulicht-plugin-led-tubes"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
+blaulicht-shared = { path = "../../shared" }
+blaulicht-plugin-framework = { path = "../../plugin_framework" }
+
+[profile.dev]
+debug = 2
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+overflow-checks = false
+strip = "debuginfo"
