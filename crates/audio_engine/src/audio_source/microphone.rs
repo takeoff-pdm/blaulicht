@@ -1,7 +1,7 @@
 use crate::{AudioSource, Frequency};
-use audioviz::io::{Input, InputController};
+use audioviz::io::{Device, Input, InputController};
 use audioviz::spectrum::{config::StreamConfig, stream::Stream};
-use std::time::Instant;
+use cpal::traits::{DeviceTrait, HostTrait};
 
 //
 // MICROPHONE SOURCE.
@@ -14,11 +14,35 @@ pub struct AudioSourceMicrophone {
     pub freq_buffer: Vec<Frequency>,
 }
 
+/// Map a selected cpal device to the device identifier audioviz expects.
+///
+/// audioviz resolves `Device::Id(n)` as `cpal::default_host().input_devices().nth(n)`, so we
+/// locate the requested device by name within that same enumeration. If it can't be matched
+/// (e.g. it lives on a non-default host, or has no name) we fall back to the default input.
+fn resolve_audioviz_device(device: &cpal::Device) -> Device {
+    let Ok(target_name) = device.name() else {
+        return Device::DefaultInput;
+    };
+
+    let host = cpal::default_host();
+    let index = host.input_devices().ok().and_then(|mut devices| {
+        devices.position(|candidate| {
+            candidate
+                .name()
+                .map(|name| name == target_name)
+                .unwrap_or(false)
+        })
+    });
+
+    match index {
+        Some(index) => Device::Id(index),
+        None => Device::DefaultInput,
+    }
+}
+
 impl AudioSourceMicrophone {
     pub fn new(
-        // TODO: fork audioviz / open issue to allow device pass thru
-        // OR: use the nth-device option in the Device:: enum.
-        _device: cpal::Device,
+        device: cpal::Device,
         config: StreamConfig,
         freq_buffer_size: usize,
     ) -> anyhow::Result<Self> {
@@ -28,10 +52,12 @@ impl AudioSourceMicrophone {
         let frames_10ms_at_48k = stream.config.processor.sampling_rate * latency / 1000;
         let buffer_size = Some(frames_10ms_at_48k);
 
+        let av_device = resolve_audioviz_device(&device);
+
         // set up capture on the same thread; only the CPAL callback runs elsewhere
         let mut input = Input::new();
         let (_channels, _sample_rate, controller) = input
-            .init(&audioviz::io::Device::DefaultInput, buffer_size)
+            .init(&av_device, buffer_size)
             .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
 
         Ok(Self {
@@ -45,25 +71,17 @@ impl AudioSourceMicrophone {
 
 impl AudioSource for AudioSourceMicrophone {
     fn get_frequencies(&mut self, _now: usize) -> &[Frequency] {
-        let start = Instant::now();
-        let mut pulled_at: Option<Instant> = None;
-        let mut updated_at: Option<Instant> = None;
-        let mut got_freqs_at: Option<Instant> = None;
-
-        // loop {
-        // blocks until CPAL callback pushes a block into the channel
-        if let Some(block) = self.controller.try_pull_data() {
+        // Drain every block the CPAL callback has queued since the last call, running the
+        // FFT/post-processing once per block. Draining avoids a growing backlog (and latency)
+        // now that this is polled on a fixed cadence rather than every loop iteration.
+        while let Some(block) = self.controller.try_pull_data() {
             if !block.is_empty() {
-                pulled_at = Some(Instant::now());
                 self.stream.push_data(block);
                 self.stream.update(); // FFT + post-processing on the main thread
-
-                updated_at = Some(Instant::now());
             }
         }
 
         let frequencies = self.stream.get_frequencies();
-        got_freqs_at = Some(Instant::now());
 
         // Note: use last available freqs (like interpolation but worse)
         if frequencies.is_empty() {
@@ -87,16 +105,6 @@ impl AudioSource for AudioSourceMicrophone {
                 freq: f.freq,
                 position: f.position,
             }));
-
-        // if let (Some(pulled), Some(updated), Some(got)) = (pulled_at, updated_at, got_freqs_at) {
-        //     println!(
-        //         "get_freqs timings (ms): pull_wait={}, update={}, get_freqs={}, copy={}",
-        //         pulled.duration_since(start).as_millis(),
-        //         updated.duration_since(pulled).as_millis(),
-        //         got.duration_since(updated).as_millis(),
-        //         Instant::now().duration_since(got).as_millis()
-        //     );
-        // }
 
         &self.freq_buffer
     }

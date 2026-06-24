@@ -101,7 +101,7 @@ mod tests {
         collector.scratch.bpm_estimate = known_bpm;
         collector.scratch.beat_interval_ms = 60_000.0 / known_bpm;
         collector.scratch.beat_needs_sync = false;
-        collector.scratch.last_onset_sample_time = 0;
+        collector.scratch.last_analysis_time = 0;
         collector.scratch.onset_history.extend([0.1, 0.2, 0.1]);
         let history_len = collector.scratch.onset_history.len();
 
@@ -128,7 +128,7 @@ mod tests {
             ],
             100,
         );
-        collector.scratch.last_onset_sample_time = 0;
+        collector.scratch.last_analysis_time = 0;
 
         collector.bass(ONSET_SAMPLE_PERIOD_MS).unwrap();
 
@@ -149,7 +149,10 @@ impl From<&audioviz::spectrum::Frequency> for Frequency {
 }
 
 // Constants.
-pub const BASS_FRAMES: usize = 10000;
+// Window lengths below are counted in analysis samples. Analysis runs at a fixed cadence
+// (ONSET_SAMPLE_PERIOD_MS), so each sample is ~10 ms of real time.
+// BASS_FRAMES = 300 -> ~3 s moving-average window for the bass baseline / gate.
+pub const BASS_FRAMES: usize = 300;
 pub const BASS_PEAK_FRAMES: usize = 800;
 pub const BASS_MODIFIER: usize = 60;
 pub const ONSET_SAMPLE_PERIOD_MS: usize = 10;
@@ -180,7 +183,6 @@ const HIGH_FREQ_HIGH: f32 = 8000.0;
 // TODO: what is this constant even
 pub const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = 100;
 pub const ROLLING_AVERAGE_FRAMES: usize = 100;
-pub const LONG_HISTORIC_FRAMES: usize = ROLLING_AVERAGE_FRAMES * 1000;
 
 ///
 /// Vector push operations.
@@ -358,39 +360,38 @@ where
             let mut onset_peak = false;
             let mut bpm_from_onset: Option<f32> = None;
 
-            if now - self.scratch.last_onset_sample_time >= ONSET_SAMPLE_PERIOD_MS {
-                self.scratch.last_onset_sample_time = now;
-                if bass_gate_open {
-                    self.scratch.onset_history.push_back(self.scratch.onset_ema);
-                    if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
-                        self.scratch.onset_history.pop_front();
-                    }
-                    for (idx, onset_val) in band_onsets.iter().enumerate() {
-                        let history = &mut self.scratch.band_onset_history[idx];
-                        history.push_back(*onset_val);
-                        if history.len() > ONSET_HISTORY_FRAMES {
-                            history.pop_front();
-                        }
-                    }
-
-                    let history = self.scratch.onset_history.make_contiguous();
-                    bpm_from_onset = Self::estimate_bpm_from_onset(history, ONSET_SAMPLE_PERIOD_MS);
-                    let (mean, threshold) = Self::onset_threshold(history);
-                    onset_peak = self.scratch.onset_ema > threshold
-                        && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
-
-                    if onset_peak {
-                        for idx in 0..3 {
-                            let rise = self.scratch.band_energy_rise_ema[idx];
-                            let fall = self.scratch.band_energy_fall_ema[idx];
-                            let strength = rise / (rise + fall + ONSET_METRIC_EPS);
-                            let history = &mut self.scratch.band_transient_history[idx];
-                            history.push_back((now, strength));
-                        }
-                    }
-                } else {
-                    self.scratch.beat_needs_sync = true;
+            // NOTE: this body is sampled at a fixed cadence (ONSET_SAMPLE_PERIOD_MS) by the
+            // caller (`tick`), so every invocation corresponds to exactly one onset sample.
+            if bass_gate_open {
+                self.scratch.onset_history.push_back(self.scratch.onset_ema);
+                if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
+                    self.scratch.onset_history.pop_front();
                 }
+                for (idx, onset_val) in band_onsets.iter().enumerate() {
+                    let history = &mut self.scratch.band_onset_history[idx];
+                    history.push_back(*onset_val);
+                    if history.len() > ONSET_HISTORY_FRAMES {
+                        history.pop_front();
+                    }
+                }
+
+                let history = self.scratch.onset_history.make_contiguous();
+                bpm_from_onset = Self::estimate_bpm_from_onset(history, ONSET_SAMPLE_PERIOD_MS);
+                let (mean, threshold) = Self::onset_threshold(history);
+                onset_peak = self.scratch.onset_ema > threshold
+                    && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
+
+                if onset_peak {
+                    for idx in 0..3 {
+                        let rise = self.scratch.band_energy_rise_ema[idx];
+                        let fall = self.scratch.band_energy_fall_ema[idx];
+                        let strength = rise / (rise + fall + ONSET_METRIC_EPS);
+                        let history = &mut self.scratch.band_transient_history[idx];
+                        history.push_back((now, strength));
+                    }
+                }
+            } else {
+                self.scratch.beat_needs_sync = true;
             }
 
             const SECONDS_IN_A_MINUTE: f64 = 60.0;
@@ -753,6 +754,9 @@ where
                 let b = history[i + lag] - mean;
                 corr += a * b;
             }
+            // Normalize by the number of overlapping samples. Without this, shorter lags
+            // accumulate more terms and the estimator is biased toward higher tempos.
+            corr /= (n - lag) as f32;
             if corr > best_corr {
                 best_corr = corr;
                 best_lag = lag;
@@ -773,32 +777,6 @@ where
         }
     }
 
-    fn gradient(data: &[f64], spacing: f64) -> Vec<f64> {
-        let n = data.len();
-        if n < 2 {
-            panic!("List must have at least 2 numbers to calculate a derivative");
-        }
-
-        let mut deriv = Vec::with_capacity(n);
-
-        // 1. First Point (Forward Difference)
-        // Formula: (y[1] - y[0]) / h
-        deriv.push((data[1] - data[0]) / spacing);
-
-        // 2. Middle Points (Central Difference)
-        // Formula: (y[i+1] - y[i-1]) / 2h
-        for i in 1..n - 1 {
-            let val = (data[i + 1] - data[i - 1]) / (2.0 * spacing);
-            deriv.push(val);
-        }
-
-        // 3. Last Point (Backward Difference)
-        // Formula: (y[n] - y[n-1]) / h
-        deriv.push((data[n - 1] - data[n - 2]) / spacing);
-
-        deriv
-    }
-
     #[inline(always)]
     pub fn beat_volume(&mut self) -> anyhow::Result<()> {
         // 1. Clear buffer 2. Fill it up again
@@ -815,13 +793,6 @@ where
         //     // TODO: only look at the bass line?
         //     .map(|f| f.iter().map(|e| e.volume as usize).max().unwrap())
         //     .collect();
-
-        let curr_unfiltered: usize = self.freq_buffer.iter().map(|f| f.volume as usize).sum();
-        shift_push!(
-            self.scratch.long_historic,
-            LONG_HISTORIC_FRAMES,
-            curr_unfiltered
-        );
 
         let curr_max = self
             .scratch
@@ -862,42 +833,38 @@ where
 
     #[inline(always)]
     pub fn volume(&mut self) -> anyhow::Result<()> {
-        self.send_signals({
-            let volume_mean = ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
-                / (self.scratch.volume_samples.len() as f32)
-                * 10.0) as usize;
+        // Mean volume over the active (non-DC) bins of the current frame.
+        let active_bins = self.freq_buffer.iter().filter(|f| f.freq > 0.0).count();
+        let curr_max = if active_bins == 0 {
+            0
+        } else {
+            (self
+                .freq_buffer
+                .iter()
+                .filter(|f| f.freq > 0.0)
+                .map(|f| f.volume)
+                .sum::<f32>()
+                * 10.0
+                / active_bins as f32) as usize
+        };
 
-            // let volume_sum = self.freqs.iter().map(|f| f.volume).sum::<f32>() * 10.0;
-            // let volume_avg = volume_sum / self.freqs.len() as f32;
-
-            let volume = volume_mean as u8;
-            &[Signal::Volume(volume)]
-        });
-
-        let curr_max = (self
-            .freq_buffer
-            .iter()
-            // .max_by_key(|f| (f.volume * 10.0) as usize)
-            // .unwrap_or(&Frequency {
-            //     volume: 0f32,
-            //     freq: 0f32,
-            //     position: 0f32,
-            // })
-            .filter(|f| f.freq > 0.0)
-            .map(|f| f.volume)
-            .sum::<f32>()
-            * 10.0
-            / self.freq_buffer.iter().filter(|f| f.freq > 0.0).count() as f32)
-            as usize;
-        // .volume as usize;
-
-        // TODO: this is fake, this is not even the average.
-
+        // Push the current sample *before* averaging so the reported value reflects this frame
+        // and we never divide by an empty window (which produced NaN -> 0 on the first frame).
         shift_push!(
             self.scratch.volume_samples,
             ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
             curr_max
         );
+
+        let volume = if self.scratch.volume_samples.is_empty() {
+            0
+        } else {
+            ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
+                / (self.scratch.volume_samples.len() as f32)
+                * 10.0) as u8
+        };
+
+        self.send_signals(&[Signal::Volume(volume)]);
 
         Ok(())
     }

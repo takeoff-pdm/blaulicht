@@ -8,7 +8,7 @@ use blaulicht_shared::CollectedAudioSnapshot;
 use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{
-    AudioSource, Frequency, Signal, BASS_FRAMES, BASS_PEAK_FRAMES, LONG_HISTORIC_FRAMES,
+    AudioSource, Frequency, Signal, BASS_FRAMES, BASS_PEAK_FRAMES, ONSET_SAMPLE_PERIOD_MS,
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
 use std::{collections::VecDeque, ops::Range};
@@ -50,15 +50,11 @@ pub struct CollectorScratch {
     // Beat
     pub(crate) time_of_last_beat_publish: usize, // Time marker
     pub(crate) last_index: usize,
-    // rolling_average_frames = 100;
-    // let long_historic_frames = rolling_average_frames * 1000;
-    pub(crate) long_historic: VecDeque<usize>,
     pub(crate) historic: VecDeque<usize>,
 
     pub(crate) bass_samples: VecDeque<u8>,
     pub(crate) bass_peaks: VecDeque<usize>,
     pub(crate) time_of_last_bpm_marker: usize, // Time marker
-    pub(crate) num_beat_mismatches: usize,
     pub(crate) beat_needs_sync: bool,
 
     pub(crate) is_on_beat: bool,
@@ -67,7 +63,9 @@ pub struct CollectorScratch {
     // Onset + tempo tracking.
     pub(crate) onset_history: VecDeque<f32>,
     pub(crate) band_onset_history: [VecDeque<f32>; 3],
-    pub(crate) last_onset_sample_time: usize,
+    /// Wall-clock time (ms) of the last spectral-analysis sample. Gates analysis to a fixed
+    /// cadence so EMA/onset time constants are defined in real time, not loop iterations.
+    pub(crate) last_analysis_time: usize,
     pub(crate) onset_ema: f32,
     pub(crate) band_energy_ema: [f32; 3],
     pub(crate) band_energy_ema_short: [f32; 3],
@@ -86,7 +84,6 @@ pub struct CollectorScratch {
 #[derive(Clone, Copy)]
 pub struct CollectorScratchParameters {
     pub volume_frames: usize,
-    pub long_historic_frames: usize,
     pub rolling_frames: usize,
     pub bass_frames: usize,
     pub bass_peak_frames: usize,
@@ -96,7 +93,6 @@ impl Default for CollectorScratchParameters {
     fn default() -> Self {
         Self {
             volume_frames: ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
-            long_historic_frames: LONG_HISTORIC_FRAMES,
             rolling_frames: ROLLING_AVERAGE_FRAMES,
             bass_frames: BASS_FRAMES,
             bass_peak_frames: BASS_PEAK_FRAMES,
@@ -113,18 +109,16 @@ impl CollectorScratch {
             volume_samples: VecDeque::with_capacity(params.volume_frames),
             time_of_last_beat_publish: now,
             last_index: 0,
-            long_historic: VecDeque::with_capacity(params.long_historic_frames),
             historic: VecDeque::with_capacity(params.rolling_frames),
             bass_samples: VecDeque::with_capacity(params.bass_frames),
             bass_peaks: VecDeque::with_capacity(params.bass_peak_frames),
             time_of_last_bpm_marker: now,
-            num_beat_mismatches: 0,
             is_on_beat: false,
             actual_onset_peak: false,
             beat_needs_sync: true,
             onset_history: VecDeque::new(),
             band_onset_history: [VecDeque::new(), VecDeque::new(), VecDeque::new()],
-            last_onset_sample_time: now,
+            last_analysis_time: now,
             onset_ema: 0.0,
             band_energy_ema: [0.0; 3],
             band_energy_ema_short: [0.0; 3],
@@ -366,20 +360,27 @@ where
             self.calibrate(now);
         }
 
-        self.get_frequencies(now);
+        // The main loop calls `tick` as fast as it can (no throttle). Run the spectral analysis
+        // at a fixed cadence so EMA time constants, onset sampling, and moving-average windows
+        // are defined in real time instead of in (machine-dependent) loop iterations.
+        if now.saturating_sub(self.scratch.last_analysis_time) >= ONSET_SAMPLE_PERIOD_MS {
+            self.scratch.last_analysis_time = now;
 
-        // Volume
-        self.volume()?;
+            self.get_frequencies(now);
 
-        // Bass
-        self.bass(now)?;
+            // Volume
+            self.volume()?;
 
-        // Beat Volume
-        self.beat_volume()?;
+            // Bass
+            self.bass(now)?;
+
+            // Beat Volume
+            self.beat_volume()?;
+        }
 
         {
-            // NOTE: this will cause a missing update if the consumer takes too long.
-            // self.need_to_update_output_beat_trigger = [true; NUM_OUTPUTS];
+            // Latch time-critical beat flags every loop iteration so a fast consumer never
+            // misses the edge produced during the analysis step above.
             if self.scratch.is_on_beat {
                 self.need_to_update_output_beat_trigger.fill(true);
                 self.scratch.is_on_beat = false;
@@ -401,7 +402,8 @@ where
         let output_spec = self.outputs[OUTPUT_INDEX];
 
         let freqs = match output_spec.raw {
-            true => &self.freq_buffer,
+            // `raw` consumers want the spectrum before the volume/gate passes are applied.
+            true => &self.freq_buffer_raw,
             false => &self.freq_buffer,
         };
 
