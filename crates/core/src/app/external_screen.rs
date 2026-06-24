@@ -424,6 +424,20 @@ impl BlaulichtApp {
 
         if let Some(&primary_index) = owned_indices.first() {
             if let Some(screen) = self.external_screens.get_mut(primary_index) {
+                let dims_match = (screen.dimensions.x.round() as u32 == dimensions.x.round() as u32)
+                    && (screen.dimensions.y.round() as u32 == dimensions.y.round() as u32);
+                if dims_match {
+                    let mut removed_any = false;
+                    for index in owned_indices.iter().skip(1).rev() {
+                        self.external_screens.remove(*index);
+                        removed_any = true;
+                    }
+                    if removed_any {
+                        self.reset_external_screen_plugin_ui_tracking();
+                        self.sync_external_screen_infos();
+                    }
+                    return removed_any;
+                }
                 screen.dimensions = dimensions;
                 screen.owner_plugin_id = Some(owner_plugin_id);
             }

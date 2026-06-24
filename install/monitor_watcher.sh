@@ -78,8 +78,11 @@ if name:sub(1, #ext_prefix) == ext_prefix then
     debug_print("[DS2] Blaulicht external screen ignored in VGA-only mode")
 elseif name == "blaulicht" then
     debug_print("[DS2] Blaulicht main screen")
-    maximize()
     undecorate_window()
+    set_window_fullscreen(false)
+    unmaximize()
+    set_window_geometry(0, 0, 800, 480)
+    maximize()
 else
     debug_print("[DS2] unknown window: " .. tostring(name))
 end
@@ -224,7 +227,7 @@ main() {
         xrandr --output "${HDMI_OUTPUT}" --mode "${HDMI_MODE}" --pos 0x0 \
                --output "${VGA_OUTPUT}" --primary --mode "${VGA_MODE}" --pos 0x1080
         apply_touchscreen_dual
-        bash "${SCRIPT_DIR}/generate-devilspie2.sh" --output-name "${HDMI_OUTPUT}" --output "${OUTPUT_FILE}" >&2
+        bash "${SCRIPT_DIR}/generate-devilspie2.sh" --output-name "${HDMI_OUTPUT}" --main-output-name "${VGA_OUTPUT}" --output "${OUTPUT_FILE}" >&2
     else
         xrandr --output "${HDMI_OUTPUT}" --off \
                --output "${VGA_OUTPUT}" --primary --mode "${VGA_MODE}" --pos 0x0

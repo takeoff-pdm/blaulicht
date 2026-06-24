@@ -322,6 +322,7 @@ pub fn bl_create_external_screen_safe(width: u32, height: u32) -> bool {
     unsafe { ui_create_external_screen(PLUGIN_ID, width, height) != 0 }
 }
 
+
 pub fn bl_remove_external_screen_safe(index: u32) -> bool {
     let index = index.min(i32::MAX as u32) as i32;
     unsafe { ui_remove_external_screen(PLUGIN_ID, index) != 0 }
@@ -473,6 +474,7 @@ pub mod ui {
     pub fn create_external_screen(width: u32, height: u32) -> bool {
         super::bl_create_external_screen_safe(width, height)
     }
+
 
     pub fn remove_external_screen(index: u32) -> bool {
         super::bl_remove_external_screen_safe(index)

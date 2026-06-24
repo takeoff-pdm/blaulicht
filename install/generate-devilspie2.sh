@@ -9,17 +9,19 @@ Usage:
   generate-devilspie2.sh [options]
 
 Options:
-  -m, --monitor IDX    Monitor index from `xrandr --listmonitors` (0-based). Default: 1
-  --output-name NAME   Resolve geometry from a specific xrandr output name, e.g. HDMI-1
-  -o, --output PATH    Output lua path. Default: ~/.config/devilspie2/blaulicht.lua
-  --ext-prefix STR     External window title prefix. Default: bl_ext_
-  --main-title STR     Main window title. Default: blaulicht
-  -h, --help           Show this help.
+  -m, --monitor IDX         Monitor index from `xrandr --listmonitors` (0-based). Default: 1
+  --output-name NAME        Resolve external geometry from a specific xrandr output name, e.g. HDMI-1
+  --main-output-name NAME   Resolve main window geometry from a specific xrandr output name, e.g. VGA-1
+  -o, --output PATH         Output lua path. Default: ~/.config/devilspie2/blaulicht.lua
+  --ext-prefix STR          External window title prefix. Default: bl_ext_
+  --main-title STR          Main window title. Default: blaulicht
+  -h, --help                Show this help.
 EOF
 }
 
 monitor_idx=1
 output_name=""
+main_output_name=""
 output="${HOME}/.config/devilspie2/blaulicht.lua"
 ext_prefix="bl_ext_"
 main_title="blaulicht"
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-name)
       output_name="${2:-}"
+      shift 2
+      ;;
+    --main-output-name)
+      main_output_name="${2:-}"
       shift 2
       ;;
     -o|--output)
@@ -113,6 +119,38 @@ height="${BASH_REMATCH[2]}"
 pos_x="${BASH_REMATCH[3]}"
 pos_y="${BASH_REMATCH[4]}"
 
+# Resolve main output geometry.
+main_geom=""
+if [[ -n "$main_output_name" ]]; then
+  main_line="$(xrandr --query | awk -v output_name="$main_output_name" '$1 == output_name && $2 == "connected" {print $0}')"
+  if [[ -n "$main_line" ]]; then
+    main_geom="$(echo "$main_line" | sed -nE 's/.* ([0-9]+x[0-9]+\+[0-9]+\+[0-9]+).*/\1/p')"
+    main_geom="$(echo "$main_geom" | sed -E 's#/[^x+]+##g')"
+  fi
+fi
+
+if [[ -z "$main_geom" ]]; then
+  # Default: use the primary output.
+  main_line="$(xrandr --query | awk '/ connected primary/ {print $0}' | head -1)"
+  if [[ -n "$main_line" ]]; then
+    main_geom="$(echo "$main_line" | sed -nE 's/.* ([0-9]+x[0-9]+\+[0-9]+\+[0-9]+).*/\1/p')"
+    main_geom="$(echo "$main_geom" | sed -E 's#/[^x+]+##g')"
+  fi
+fi
+
+if [[ -n "$main_geom" ]] && [[ "$main_geom" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
+  main_width="${BASH_REMATCH[1]}"
+  main_height="${BASH_REMATCH[2]}"
+  main_x="${BASH_REMATCH[3]}"
+  main_y="${BASH_REMATCH[4]}"
+else
+  # Fallback: assume main is at 0,0 with the same size as external.
+  main_width="$width"
+  main_height="$height"
+  main_x=0
+  main_y=0
+fi
+
 mkdir -p "$(dirname "$output")"
 
 cat > "$output" <<EOF
@@ -126,9 +164,12 @@ if name:sub(1, #ext_prefix) == ext_prefix then
   set_window_geometry(${pos_x}, ${pos_y}, ${width}, ${height})
   undecorate_window()
 elseif name == "${main_title}" then
-  maximize()
   undecorate_window()
+  set_window_fullscreen(false)
+  unmaximize()
+  set_window_geometry(${main_x}, ${main_y}, ${main_width}, ${main_height})
+  maximize()
 end
 EOF
 
-echo "Wrote ${output} using monitor ${monitor_idx} geometry ${width}x${height}+${pos_x}+${pos_y}"
+echo "Wrote ${output} ext=${width}x${height}+${pos_x}+${pos_y} main=${main_width}x${main_height}+${main_x}+${main_y}"
