@@ -8,7 +8,7 @@ use blaulicht_shared::{
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 //
 // State.
@@ -20,26 +20,73 @@ use std::collections::{BTreeMap, VecDeque};
 pub struct EngineState(pub blaulicht_shared::EngineState);
 
 impl<'engine> EngineState {
-    pub fn get_selection(&self) -> FixtureSelection {
-        let group_ids = self.0.selection.group_ids.clone();
-        let fixtures_in_group = self.0.selection.fixtures_in_group.clone();
+    /// Cheap clone for read-only UI rendering: every scene except the
+    /// currently focused one is replaced with an empty-sink placeholder
+    /// that keeps only the scene name. This avoids the wholesale deep-clone
+    /// of every scene's `fixture_states` (which is O(scenes * fixtures))
+    /// on every frame.
+    ///
+    /// The returned `EngineState` must not be mutated — non-focused scenes
+    /// have lost their state.
+    pub fn clone_for_ui(&self) -> Self {
+        let curr_id = self.0.current_scene_focus;
 
-        // let g_fixtures_mut = &mut group.1.fixtures;
+        let scenes = self
+            .0
+            .scenes
+            .iter()
+            .map(|(id, scene)| {
+                if *id == curr_id {
+                    (*id, scene.clone())
+                } else {
+                    (
+                        *id,
+                        Scene {
+                            name: scene.name.clone(),
+                            sink: EngineSink {
+                                fixture_states: BTreeMap::new(),
+                                active_animations: HashMap::new(),
+                                changeset: HashSet::new(),
+                                master_alpha_fader: scene.sink.master_alpha_fader,
+                                master_speed: scene.sink.master_speed,
+                                palette_assignments: BTreeMap::new(),
+                            },
+                        },
+                    )
+                }
+            })
+            .collect();
+
+        Self(blaulicht_shared::EngineState {
+            groups: self.0.groups.clone(),
+            animation_templates: self.0.animation_templates.clone(),
+            selection: self.0.selection.clone(),
+            selection_stack: self.0.selection_stack.clone(),
+            control_buffer: self.0.control_buffer.clone(),
+            views: self.0.views.clone(),
+            scenes,
+            current_scene_focus: self.0.current_scene_focus,
+            current_overlay_scenes: self.0.current_overlay_scenes.clone(),
+            overrides: self.0.overrides.clone(),
+            scene_graphs: self.0.scene_graphs.clone(),
+            palettes: self.0.palettes.clone(),
+        })
+    }
+
+    pub fn get_selection(&self) -> FixtureSelection {
+        let group_ids = &self.0.selection.group_ids;
+        let fixtures_in_group = &self.0.selection.fixtures_in_group;
 
         let mut fixtures_to_add = vec![];
 
-        let groups_clone = self.0.groups.clone();
-
-        for group in groups_clone.iter().filter(|(k, _)| group_ids.contains(&k)) {
+        for (gid, group) in self.0.groups.iter().filter(|(k, _)| group_ids.contains(k)) {
             if fixtures_in_group.is_empty() {
-                for (fix_id, _) in &group.1.fixtures {
-                    fixtures_to_add.push((*group.0, *fix_id));
+                for fix_id in group.fixtures.keys() {
+                    fixtures_to_add.push((*gid, *fix_id));
                 }
             } else {
-                // let group_fixture = g_fixtures.values_mut();
-                // fixtures.extend(group_fixture);
-                for fix in fixtures_in_group.clone() {
-                    fixtures_to_add.push((*group.0, fix));
+                for fix in fixtures_in_group {
+                    fixtures_to_add.push((*gid, *fix));
                 }
             }
         }

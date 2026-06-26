@@ -50,7 +50,7 @@ impl AudioState {
     }
 }
 
-pub const NUM_DMX_UNIVERSES: usize = 2;
+pub const NUM_DMX_UNIVERSES: usize = 10;
 
 pub enum DmxHealthState {
     Healthy,
@@ -329,7 +329,7 @@ impl AppState {
             }),
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
-            dmx_universes: [RwLock::new(DmxBuffer::new()), RwLock::new(DmxBuffer::new())],
+            dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
             audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             audio_params: RwLock::new(SignalCollectorParams::default()),

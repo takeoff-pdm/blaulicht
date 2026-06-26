@@ -103,7 +103,7 @@ impl BlaulichtApp {
     }
 
     pub fn fixtures_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
+        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
         let groups = dmx_engine.groups();
 
         //
