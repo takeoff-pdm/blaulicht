@@ -117,6 +117,11 @@ impl Numberpad {
     where
         T: egui::emath::Numeric,
     {
+        // Snapshot the value so we can report `.changed()` for edits made
+        // through the pad dialog (Enter / keypad), which write `*value`
+        // directly and would otherwise leave the DragValue response unchanged.
+        let value_before = value.to_f64();
+
         let state = &mut self.state;
         let button_size = self.field_dimensions;
         let mut drag_value = DragValue::new(value);
@@ -125,7 +130,7 @@ impl Numberpad {
             let max_t = T::from_f64(max);
             drag_value = drag_value.range(min_t..=max_t);
         }
-        let response = ui.add_sized(button_size, drag_value);
+        let mut response = ui.add_sized(button_size, drag_value);
         let now = ui.input(|i| i.time);
 
         if response.is_pointer_button_down_on() {
@@ -185,6 +190,12 @@ impl Numberpad {
                 .show(ui.ctx(), |dialog_ui| {
                     render_numberpad_contents(dialog_ui, value, state, self.range)
                 });
+        }
+
+        // Reflect any value change — including edits committed through the pad
+        // dialog — so callers driving stored state off `.changed()` see it.
+        if value.to_f64() != value_before {
+            response.mark_changed();
         }
 
         response

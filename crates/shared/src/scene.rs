@@ -192,6 +192,7 @@ fn sync_fixture_slots(
             Some(winner_id) => {
                 *fixture_state.slot_mut(property) = FixtureValue::PalettePointer {
                     palette_id: *winner_id,
+                    property: None,
                 };
             }
             None => {

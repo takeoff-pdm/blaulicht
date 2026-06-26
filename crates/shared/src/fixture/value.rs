@@ -15,7 +15,19 @@ use crate::{
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Encode, Decode, PartialEq, Eq)]
 pub enum FixtureValue {
     Literal(u16),
-    PalettePointer { palette_id: u8 },
+    /// Points at a palette entry that resolves to a value at output time.
+    ///
+    /// `property` optionally overrides which fixture property is read out of
+    /// the (possibly multi-property) palette. When `None`, the value resolves
+    /// using the property of the slot/context it lives in — this is what plain
+    /// fixture-slot bindings use, where the slot already fixes the property.
+    /// An explicit `Some(p)` is used where the context property is ambiguous
+    /// or irrelevant (e.g. an animation amplitude bound to the `value` channel
+    /// of a color palette).
+    PalettePointer {
+        palette_id: u8,
+        property: Option<FixtureProperty>,
+    },
 }
 
 impl Default for FixtureValue {
@@ -35,7 +47,16 @@ impl FixtureValue {
 
     pub fn palette_id(&self) -> Option<u8> {
         match self {
-            Self::PalettePointer { palette_id } => Some(*palette_id),
+            Self::PalettePointer { palette_id, .. } => Some(*palette_id),
+            _ => None,
+        }
+    }
+
+    /// The explicit per-binding property override, if any. `None` for literals
+    /// and for palette pointers that inherit their slot/context property.
+    pub fn palette_property(&self) -> Option<FixtureProperty> {
+        match self {
+            Self::PalettePointer { property, .. } => *property,
             _ => None,
         }
     }
@@ -52,8 +73,12 @@ impl FixtureValue {
     pub fn resolve(&self, palettes: &BTreeMap<u8, Palette>, property: FixtureProperty) -> u16 {
         match self {
             Self::Literal(v) => *v,
-            Self::PalettePointer { palette_id } => {
-                resolve_via_chain(palettes, *palette_id, property, MAX_PALETTE_CHAIN_DEPTH)
+            Self::PalettePointer {
+                palette_id,
+                property: override_property,
+            } => {
+                let prop = override_property.unwrap_or(property);
+                resolve_via_chain(palettes, *palette_id, prop, MAX_PALETTE_CHAIN_DEPTH)
             }
         }
     }

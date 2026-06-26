@@ -2,7 +2,9 @@ use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
-use blaulicht_audio_engine::{AudioSpectrogram, CollectorOutput, SpectrogramDisplayOptions};
+use blaulicht_audio_engine::{
+    AudioSpectrogram, BpmDetectStatus, CollectorOutput, SpectrogramDisplayOptions,
+};
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
@@ -586,6 +588,82 @@ impl BlaulichtApp {
                             params.changed = true;
                         }
                     }
+
+                    // --- Beat-detection diagnostics (bottom of popup) ---
+                    // Surfaces which gating-chain element the tempo estimator is
+                    // currently stuck on, so it's clear when to expect a BPM.
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.label(
+                        RichText::new("BEAT DETECTION")
+                            .strong()
+                            .color(header_color),
+                    );
+                    ui.add_space(4.0);
+
+                    let ok_color = Color32::from_rgb(120, 220, 140);
+                    let warn_color = Color32::from_rgb(240, 200, 100);
+                    let bad_color = Color32::from_rgb(240, 130, 130);
+
+                    let (status_label, status_detail, status_color) = match debug_data.bpm_status {
+                        BpmDetectStatus::Detecting => (
+                            "Detecting".to_string(),
+                            "Tempo is being estimated from onsets.".to_string(),
+                            ok_color,
+                        ),
+                        BpmDetectStatus::NoEnergy => (
+                            "No energy".to_string(),
+                            "All bands below the noise floor — no audio to analyze.".to_string(),
+                            bad_color,
+                        ),
+                        BpmDetectStatus::Warmup { have, need } => (
+                            "Warming up".to_string(),
+                            format!(
+                                "Filling onset history: {have}/{need} samples (~{:.1}s left).",
+                                ((need.saturating_sub(have)) as f32
+                                    * blaulicht_audio_engine::ONSET_SAMPLE_PERIOD_MS as f32)
+                                    / 1000.0
+                            ),
+                            warn_color,
+                        ),
+                        BpmDetectStatus::FlatOnset => (
+                            "Flat onset".to_string(),
+                            "Bass is present but has no transients (sustained tone) — \
+                             nothing periodic to lock onto."
+                                .to_string(),
+                            warn_color,
+                        ),
+                        BpmDetectStatus::WeakPeriodicity {
+                            strength,
+                            threshold,
+                        } => (
+                            "Weak periodicity".to_string(),
+                            format!(
+                                "Periodicity {strength:.3} below threshold {threshold:.3} — \
+                                 beat too irregular; holding previous estimate."
+                            ),
+                            warn_color,
+                        ),
+                    };
+
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Status:").small().weak());
+                        ui.label(RichText::new(status_label).strong().color(status_color));
+                    });
+                    ui.label(RichText::new(status_detail).small().weak());
+                    ui.add_space(2.0);
+                    ui.label(
+                        RichText::new(if debug_data.bpm_estimate > 0.0 {
+                            format!(
+                                "Latched BPM: {:.1}  •  confidence {bpm_confidence_pct}%",
+                                debug_data.bpm_estimate
+                            )
+                        } else {
+                            format!("Latched BPM: — (none yet)  •  confidence {bpm_confidence_pct}%")
+                        })
+                        .small()
+                        .weak(),
+                    );
                 });
         }
 

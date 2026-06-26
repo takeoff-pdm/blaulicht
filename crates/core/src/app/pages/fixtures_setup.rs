@@ -27,6 +27,22 @@ impl AddFixtureKind {
     pub const ALL: [Self; 3] = [Self::MovingHead, Self::Light, Self::Dimmer];
 }
 
+/// When creating multiple fixtures at once, optionally offset each successive
+/// fixture's position along one axis by a fixed step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AddFixtureIncrementAxis {
+    #[default]
+    None,
+    X,
+    Y,
+    Z,
+}
+
+impl AddFixtureIncrementAxis {
+    /// Position offset applied per fixture index when this axis is selected.
+    const STEP: usize = 10;
+}
+
 impl fmt::Display for AddFixtureKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let label = match self {
@@ -491,6 +507,27 @@ impl BlaulichtApp {
                             self.add_fixture_count_numberpad
                                 .ui(ui, &mut self.add_fixture_count);
                         });
+
+                        // Optionally step one axis by +10 per fixture when creating many.
+                        ui.horizontal(|ui| {
+                            ui.add_sized([LABEL_W, cell_h], Label::new("Step +10:"));
+                            let axis_button_size = ButtonSize::Medium.with_width(70.0);
+                            for (axis, label) in [
+                                (AddFixtureIncrementAxis::None, "Off"),
+                                (AddFixtureIncrementAxis::X, "X"),
+                                (AddFixtureIncrementAxis::Y, "Y"),
+                                (AddFixtureIncrementAxis::Z, "Z"),
+                            ] {
+                                if components::button(
+                                    ui,
+                                    self.add_fixture_increment_axis == axis,
+                                    label,
+                                    axis_button_size,
+                                ) {
+                                    self.add_fixture_increment_axis = axis;
+                                }
+                            }
+                        });
                     });
 
                     ui.add_space(16.0);
@@ -584,7 +621,22 @@ impl BlaulichtApp {
                                         name,
                                         fixture_type.clone(),
                                     );
-                                    fixture.pos = pos.clone();
+                                    // Offset successive fixtures along the chosen axis.
+                                    let mut fixture_pos = pos.clone();
+                                    let offset = i * AddFixtureIncrementAxis::STEP;
+                                    match self.add_fixture_increment_axis {
+                                        AddFixtureIncrementAxis::None => {}
+                                        AddFixtureIncrementAxis::X => {
+                                            fixture_pos.x = fixture_pos.x.saturating_add(offset)
+                                        }
+                                        AddFixtureIncrementAxis::Y => {
+                                            fixture_pos.y = fixture_pos.y.saturating_add(offset)
+                                        }
+                                        AddFixtureIncrementAxis::Z => {
+                                            fixture_pos.z = fixture_pos.z.saturating_add(offset)
+                                        }
+                                    }
+                                    fixture.pos = fixture_pos;
                                     fixture.rotation = rotation.clone();
                                     dmx_engine.add_fixture_to_group(group_id, fixture);
                                     start_addr = start_addr.saturating_add(footprint);

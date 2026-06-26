@@ -80,6 +80,7 @@ pub struct CollectorScratch {
     pub(crate) beat_interval_ms: f32,
     pub(crate) bpm_estimate: f32,
     pub(crate) bpm_confidence_ema: f32,
+    pub(crate) bpm_detect_status: BpmDetectStatus,
     pub(crate) bass_avg_short: f32,
 
     // Cached per-frame analysis results, reused while no new FFT frame is available.
@@ -156,6 +157,7 @@ impl CollectorScratch {
             beat_interval_ms: 0.0,
             bpm_estimate: 0.0,
             bpm_confidence_ema: 0.0,
+            bpm_detect_status: BpmDetectStatus::default(),
             bass_avg_short: 0.0,
             max_freq_cached: None,
             last_band_energies: [0.0; 3],
@@ -521,6 +523,31 @@ pub struct AudioBucket {
     pub freq_bound_upper: u64,
 }
 
+/// Why the tempo estimator is (or isn't) producing a fresh BPM this frame.
+/// Surfaced in the audio-page info popup so it's clear which gating-chain
+/// element is currently missing. See `SignalCollector::estimate_bpm_from_onset`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub enum BpmDetectStatus {
+    /// Producing a fresh tempo estimate from the onset autocorrelation.
+    Detecting,
+    /// No band energy above the noise floor — nothing to analyze (BPM gate closed).
+    NoEnergy,
+    /// Onset history still filling. `have` samples collected, `need` required
+    /// before autocorrelation can run.
+    Warmup { have: usize, need: usize },
+    /// Onset envelope too flat (no transients) to find any period.
+    FlatOnset,
+    /// A period was found but its autocorrelation peak is below the confidence
+    /// threshold, so the previous estimate is held instead.
+    WeakPeriodicity { strength: f32, threshold: f32 },
+}
+
+impl Default for BpmDetectStatus {
+    fn default() -> Self {
+        Self::NoEnergy
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SignalDebugData {
     pub bass_range: Range<f32>,
@@ -529,6 +556,10 @@ pub struct SignalDebugData {
     pub band_onset_periodicity: [f32; 3],
     pub band_transient_strength: [f32; 3],
     pub band_weights: [f32; 3],
+    /// Live tempo-detection gating state (warmup / flat onset / weak periodicity).
+    pub bpm_status: BpmDetectStatus,
+    /// Latched tempo estimate at the time of the snapshot (0 = none yet).
+    pub bpm_estimate: f32,
 }
 
 pub type AudioColumn = Vec<AudioBucket>;

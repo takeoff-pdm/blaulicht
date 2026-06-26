@@ -1,4 +1,4 @@
-use crate::app::components::{text_color_for_bg, ButtonSize};
+use crate::app::components::{paint_button_label, text_color_for_bg, ButtonSize};
 use egui::{Color32, Sense, Ui, Vec2};
 use std::borrow::Cow;
 
@@ -92,13 +92,7 @@ impl<'t> Button<'t> {
             );
         }
 
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            &self.label,
-            egui::FontId::proportional(self.size.dim().1),
-            text_color,
-        );
+        paint_button_label(painter, rect, &self.label, self.size.dim().1, text_color);
 
         response.clicked()
     }

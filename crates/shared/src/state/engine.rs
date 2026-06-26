@@ -212,7 +212,7 @@ impl EngineState {
 
                 for (property, winner_id) in &winners {
                     match fixture_state.slot(*property) {
-                        FixtureValue::PalettePointer { palette_id }
+                        FixtureValue::PalettePointer { palette_id, .. }
                             if palette_id == *winner_id => {}
                         other => {
                             issues.push(format!(
@@ -243,7 +243,7 @@ impl EngineState {
                     }
                 }
                 for property in FixtureProperty::iter() {
-                    if let FixtureValue::PalettePointer { palette_id } =
+                    if let FixtureValue::PalettePointer { palette_id, .. } =
                         fixture_state.slot(property)
                     {
                         match covered.get(&property) {

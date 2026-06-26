@@ -13,9 +13,6 @@ const UI_BRIGHTNESS: u8 = 3;
 const UI_R: u8 = 4;
 const UI_G: u8 = 5;
 const UI_B: u8 = 6;
-const UI_COUNT: u8 = 7;
-const UI_INDEX: u8 = 8;
-const UI_SPAN: u8 = 9;
 const UI_REFRESH: u8 = 10;
 const UI_ALL_OFF: u8 = 11;
 const UI_APPLY: u8 = 12;
@@ -23,6 +20,10 @@ const UI_HOST: u8 = 13;
 const UI_ARTNET_ENABLED: u8 = 14;
 
 const MODES: &[&str] = &["off", "solid", "chase", "pixel", "window", "ruler"];
+
+/// Interval for the automatic temperature/fan status poll, in `TickInput::clock`
+/// milliseconds.
+const STATUS_POLL_INTERVAL_MS: u32 = 10_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -73,7 +74,11 @@ impl Default for SaveState {
 }
 
 enum PendingHttp {
-    Refresh { handle: u32 },
+    /// `/status` poll. `sync_strips` controls whether the per-strip controls are
+    /// updated from the response: the manual button syncs everything, the 10s
+    /// auto-poll only refreshes temperature/fan so in-progress strip edits aren't
+    /// clobbered.
+    Refresh { handle: u32, sync_strips: bool },
     SendStrip { handle: u32, strip_id: usize },
     AllOff { handle: u32 },
 }
@@ -83,6 +88,13 @@ pub struct LedTubesPlugin {
     state: SaveState,
     last_error: Option<String>,
     status_text: Option<String>,
+    // Latest temperature/fan readings from `/status`.
+    temp_c: Option<f32>,
+    temp_valid: bool,
+    temp_error: String,
+    fan_power: Option<u8>,
+    // Clock of the last auto status poll, for the 10s interval.
+    last_poll_clock: Option<u32>,
     // RAII handle; drop = unregister. Reassign on host change to swap atomically.
     artnet: Option<bpf::ArtNetReceiverHandle>,
     pending: Option<PendingHttp>,
@@ -127,24 +139,40 @@ impl LedTubesPlugin {
         self.pending = Some(PendingHttp::AllOff { handle });
     }
 
-    fn spawn_refresh_status(&mut self) {
+    fn auto_refresh_due(&self, clock: u32) -> bool {
+        match self.last_poll_clock {
+            Some(last) => clock.wrapping_sub(last) >= STATUS_POLL_INTERVAL_MS,
+            None => true,
+        }
+    }
+
+    fn spawn_refresh_status(&mut self, sync_strips: bool) {
         let handle = self.spawn_http_get("/status");
-        self.pending = Some(PendingHttp::Refresh { handle });
+        self.pending = Some(PendingHttp::Refresh {
+            handle,
+            sync_strips,
+        });
     }
 
     fn poll_pending(&mut self) {
         let pending = self.pending.take().unwrap();
         match pending {
-            PendingHttp::Refresh { handle } => self.poll_refresh(handle),
+            PendingHttp::Refresh {
+                handle,
+                sync_strips,
+            } => self.poll_refresh(handle, sync_strips),
             PendingHttp::SendStrip { handle, strip_id } => self.poll_send_strip(handle, strip_id),
             PendingHttp::AllOff { handle } => self.poll_all_off(handle),
         }
     }
 
-    fn poll_refresh(&mut self, handle: u32) {
+    fn poll_refresh(&mut self, handle: u32, sync_strips: bool) {
         match bpf::command_poll_result(handle) {
             CommandPollResult::Running => {
-                self.pending = Some(PendingHttp::Refresh { handle });
+                self.pending = Some(PendingHttp::Refresh {
+                    handle,
+                    sync_strips,
+                });
             }
             CommandPollResult::Finished(body) => {
                 let body = body.trim().to_string();
@@ -153,18 +181,24 @@ impl LedTubesPlugin {
                 } else {
                     self.status_text = Some(body.clone());
                     if let Ok(status) = serde_json::from_str::<StatusResponse>(&body) {
-                        for strip in &status.strips {
-                            let idx = (strip.id as usize).saturating_sub(1);
-                            if idx < STRIP_COUNT {
-                                let s = &mut self.state.strips[idx];
-                                s.brightness = strip.brightness.clamp(0, 31) as u8;
-                                s.r = strip.rgb[0].clamp(0, 255) as u8;
-                                s.g = strip.rgb[1].clamp(0, 255) as u8;
-                                s.b = strip.rgb[2].clamp(0, 255) as u8;
-                                s.count = strip.active_segments.clamp(1, 200) as u8;
-                                s.index = strip.index.clamp(0, 199) as u8;
-                                s.span = strip.span.clamp(1, 20) as u8;
-                                s.mode = mode_str_to_index(&strip.mode);
+                        self.temp_c = status.temp_c;
+                        self.temp_valid = status.temp_valid;
+                        self.temp_error = status.temp_error;
+                        self.fan_power = status.fan_power.map(|p| p.clamp(0, 100) as u8);
+                        if sync_strips {
+                            for strip in &status.strips {
+                                let idx = (strip.id as usize).saturating_sub(1);
+                                if idx < STRIP_COUNT {
+                                    let s = &mut self.state.strips[idx];
+                                    s.brightness = strip.brightness.clamp(0, 31) as u8;
+                                    s.r = strip.rgb[0].clamp(0, 255) as u8;
+                                    s.g = strip.rgb[1].clamp(0, 255) as u8;
+                                    s.b = strip.rgb[2].clamp(0, 255) as u8;
+                                    s.count = strip.active_segments.clamp(1, 200) as u8;
+                                    s.index = strip.index.clamp(0, 199) as u8;
+                                    s.span = strip.span.clamp(1, 20) as u8;
+                                    s.mode = mode_str_to_index(&strip.mode);
+                                }
                             }
                         }
                         self.last_error = None;
@@ -343,22 +377,11 @@ impl LedTubesPlugin {
                     UI_B => {
                         self.selected_mut().b = *value;
                     }
-                    UI_COUNT => {
-                        let v = (*value).max(1);
-                        self.selected_mut().count = v;
-                    }
-                    UI_INDEX => {
-                        self.selected_mut().index = *value;
-                    }
-                    UI_SPAN => {
-                        let v = (*value).clamp(1, 20);
-                        self.selected_mut().span = v;
-                    }
                     _ => {}
                 }
             }
             PluginUiEvent::Button { id } => match *id {
-                UI_REFRESH => self.spawn_refresh_status(),
+                UI_REFRESH => self.spawn_refresh_status(true),
                 UI_ALL_OFF => self.spawn_all_off(),
                 UI_APPLY => {
                     let idx = self.state.selected_strip as usize;
@@ -386,6 +409,19 @@ impl LedTubesPlugin {
     fn render_ui(&self) {
         bpf::ui::begin();
         bpf::ui::begin_frame_styled(10, "LED Tubes", 8, 8, 4, 4);
+
+        let temp = match self.temp_c {
+            Some(t) if self.temp_valid => format!("{:.1}C", t),
+            _ if !self.temp_error.is_empty() && self.temp_error != "None" => {
+                format!("n/a ({})", self.temp_error)
+            }
+            _ => "n/a".to_string(),
+        };
+        let fan = match self.fan_power {
+            Some(p) => format!("{}%", p),
+            None => "n/a".to_string(),
+        };
+        bpf::ui::label(&format!("Temp: {}   Fan: {}", temp, fan));
 
         if let Some(err) = &self.last_error {
             bpf::ui::label(&format!("Error: {}", err));
@@ -420,15 +456,6 @@ impl LedTubesPlugin {
         bpf::ui::label(&format!("Brightness: {}", s.brightness));
         bpf::ui::hfader("Brightness", UI_BRIGHTNESS, 0, 31, s.brightness);
 
-        bpf::ui::label(&format!("Count: {}", s.count));
-        bpf::ui::hfader("Count", UI_COUNT, 1, 200, s.count);
-
-        bpf::ui::label(&format!("Index: {}", s.index));
-        bpf::ui::hfader("Index", UI_INDEX, 0, s.count.saturating_sub(1), s.index);
-
-        bpf::ui::label(&format!("Span: {}", s.span));
-        bpf::ui::hfader("Span", UI_SPAN, 1, 20, s.span);
-
         bpf::ui::button("Apply", UI_APPLY);
         bpf::ui::button("All Off", UI_ALL_OFF);
         bpf::ui::button("Refresh Status", UI_REFRESH);
@@ -442,12 +469,16 @@ impl Plugin for LedTubesPlugin {
         self.load_state();
         self.sync_artnet();
         self.process_events(&input);
-        self.spawn_refresh_status();
+        self.last_poll_clock = Some(input.clock);
+        self.spawn_refresh_status(true);
     }
 
     fn run(&mut self, input: TickInput) {
         if self.pending.is_some() {
             self.poll_pending();
+        } else if self.auto_refresh_due(input.clock) {
+            self.last_poll_clock = Some(input.clock);
+            self.spawn_refresh_status(false);
         }
         self.process_events(&input);
         self.render_ui();
@@ -473,6 +504,14 @@ fn mode_str_to_index(mode: &str) -> u8 {
 
 #[derive(Debug, Deserialize)]
 struct StatusResponse {
+    #[serde(default)]
+    temp_c: Option<f32>,
+    #[serde(default)]
+    temp_valid: bool,
+    #[serde(default)]
+    temp_error: String,
+    #[serde(default)]
+    fan_power: Option<i32>,
     #[serde(default)]
     strips: Vec<StripStatus>,
 }

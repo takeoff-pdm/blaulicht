@@ -230,7 +230,10 @@ impl FixtureState {
     /// Binds `property` to `palette_id`. The slider for that property becomes
     /// frozen until explicitly unbound or overwritten with a literal.
     pub fn bind_palette(&mut self, property: FixtureProperty, palette_id: u8) {
-        *self.slot_mut(property) = FixtureValue::PalettePointer { palette_id };
+        *self.slot_mut(property) = FixtureValue::PalettePointer {
+            palette_id,
+            property: None,
+        };
     }
 
     /// Replaces a palette pointer with the current resolved literal. No-op if
@@ -241,8 +244,8 @@ impl FixtureState {
         palettes: &BTreeMap<u8, Palette>,
     ) {
         let slot = self.slot_mut(property);
-        if let FixtureValue::PalettePointer { palette_id } = *slot {
-            let v = FixtureValue::PalettePointer { palette_id }.resolve(palettes, property);
+        if let FixtureValue::PalettePointer { .. } = *slot {
+            let v = slot.resolve(palettes, property);
             *slot = FixtureValue::Literal(v);
         }
     }

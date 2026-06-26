@@ -6,7 +6,8 @@ use crate::{
         },
         external_screen::Pane,
         pages::{
-            AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi, SceneGraphUI,
+            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI, FixturePerfUi,
+            SceneGraphUI,
             SystemUI, ViewPerfUI, VisualizerUiState,
         },
     },
@@ -237,6 +238,8 @@ pub struct BlaulichtApp {
     add_fixture_selected_dimmer: Dimmer,
     // number of fixtures to create in one action
     add_fixture_count: u16,
+    // when creating multiple fixtures, optionally step one axis per fixture
+    add_fixture_increment_axis: AddFixtureIncrementAxis,
     add_fixture_start_addr_numberpad: Numberpad,
     add_fixture_universe_numberpad: Numberpad,
     add_fixture_pos_x_numberpad: Numberpad,
@@ -441,6 +444,7 @@ impl BlaulichtApp {
             add_fixture_selected_light: Light::Generic3ChanNoAlpha,
             add_fixture_selected_dimmer: Dimmer::FogMachineSingle,
             add_fixture_count: 1,
+            add_fixture_increment_axis: AddFixtureIncrementAxis::None,
             add_fixture_start_addr_numberpad: Numberpad::new()
                 .dialog_title("Start Address")
                 .field_width(140.0)

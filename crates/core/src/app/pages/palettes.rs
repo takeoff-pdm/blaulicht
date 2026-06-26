@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use crate::app::{
@@ -5,6 +6,7 @@ use crate::app::{
     BlaulichtApp,
 };
 use blaulicht_shared::{
+    fixture::state::FixtureState,
     palette::{Palette, PaletteKind, PaletteOp},
     ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, HSVColor, RGBColor,
 };
@@ -163,6 +165,33 @@ impl PaletteOpKind {
     }
 }
 
+/// Which property a pointer palette's operations transform. `None` applies the
+/// ops to all of the target's properties; `Some(p)` applies them only to `p`
+/// and passes every other property through untouched.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PointerPropertyOption(Option<FixtureProperty>);
+
+impl Display for PointerPropertyOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            None => write!(f, "All properties"),
+            Some(p) => write!(f, "{p}"),
+        }
+    }
+}
+
+impl PointerPropertyOption {
+    fn all() -> Vec<Self> {
+        let mut options = vec![Self(None)];
+        options.extend(
+            PropertySelection::ALL
+                .iter()
+                .map(|p| Self(Some(p.to_fixture_property()))),
+        );
+        options
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct PaletteTargetOption {
     id: u8,
@@ -192,6 +221,10 @@ pub struct PaletteUI {
     single_value: u16,
     pointer_target: Option<u8>,
     pointer_target_dialog_open: bool,
+    /// Which property the pointer's ops transform. `None` = all; `Some(p)` =
+    /// only `p`, with every other property passing through untouched.
+    pointer_property: Option<FixtureProperty>,
+    pointer_property_dialog_open: bool,
     pointer_ops: Vec<PaletteOp>,
     /// `Some(idx)` while a kind dialog is open for op row `idx`;
     /// `idx == pointer_ops.len()` means the "Add op" dialog.
@@ -217,6 +250,8 @@ impl Default for PaletteUI {
             single_value: 0,
             pointer_target: None,
             pointer_target_dialog_open: false,
+            pointer_property: None,
+            pointer_property_dialog_open: false,
             pointer_ops: Vec::new(),
             pointer_op_kind_dialog: None,
         }
@@ -251,6 +286,7 @@ impl PaletteUI {
             )),
             PaletteKindSelection::Pointer => self.pointer_target.map(|target| PaletteKind::Pointer {
                 target,
+                property: self.pointer_property,
                 ops: self.pointer_ops.clone(),
             }),
         }
@@ -286,9 +322,14 @@ impl PaletteUI {
                 self.property_selection = PropertySelection::from_fixture_property(*prop);
                 self.single_value = *val;
             }
-            PaletteKind::Pointer { target, ops } => {
+            PaletteKind::Pointer {
+                target,
+                property,
+                ops,
+            } => {
                 self.kind_selection = PaletteKindSelection::Pointer;
                 self.pointer_target = Some(*target);
+                self.pointer_property = *property;
                 self.pointer_ops = ops.clone();
             }
         }
@@ -318,6 +359,7 @@ impl BlaulichtApp {
             self.palette_ui_state.new_name = "New Palette".to_string();
             self.palette_ui_state.kind_selection = PaletteKindSelection::Color;
             self.palette_ui_state.pointer_target = None;
+            self.palette_ui_state.pointer_property = None;
             self.palette_ui_state.pointer_ops.clear();
         }
 
@@ -330,25 +372,14 @@ impl BlaulichtApp {
 
         let mut color_update: Option<(u8, HSVColor)> = None;
 
+        // Map view of the snapshot so previews can resolve pointer chains.
+        let palettes_map: BTreeMap<u8, Palette> = palettes_snapshot.iter().cloned().collect();
+
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (id, palette) in &palettes_snapshot {
                 ui.horizontal(|ui| {
-                    if let PaletteKind::Color(c) = &palette.kind {
-                        let rgb: RGBColor = c.clone().into();
-                        let mut color = [
-                            rgb.r as f32 / 255.0,
-                            rgb.g as f32 / 255.0,
-                            rgb.b as f32 / 255.0,
-                        ];
-                        if ui.color_edit_button_rgb(&mut color).changed() {
-                            let new_rgb = RGBColor {
-                                r: (color[0] * 255.0) as u8,
-                                g: (color[1] * 255.0) as u8,
-                                b: (color[2] * 255.0) as u8,
-                            };
-                            let new_hsv: HSVColor = new_rgb.into();
-                            color_update = Some((*id, new_hsv));
-                        }
+                    if let Some(new_hsv) = Self::render_palette_preview(ui, palette, &palettes_map) {
+                        color_update = Some((*id, new_hsv));
                     }
 
                     let kind_label = match &palette.kind {
@@ -405,6 +436,55 @@ impl BlaulichtApp {
                 ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
             ));
         }
+    }
+
+    /// Renders a small color preview for a palette without the caller needing
+    /// to know the palette's kind.
+    ///
+    /// - A direct `Color` palette gets an editable swatch; when the user picks a
+    ///   new color it is returned as `Some(new_hsv)` for the caller to persist.
+    /// - Any other palette that resolves to a color (e.g. a `Pointer` aimed at a
+    ///   color palette, possibly through a chain) gets a read-only swatch.
+    /// - Palettes that don't yield a color (Position, Beam, non-color Single,
+    ///   pointers to those) render nothing.
+    ///
+    /// Always returns `None` for the non-editable cases.
+    fn render_palette_preview(
+        ui: &mut egui::Ui,
+        palette: &Palette,
+        palettes: &BTreeMap<u8, Palette>,
+    ) -> Option<HSVColor> {
+        // Direct color palette: editable swatch.
+        if let PaletteKind::Color(c) = &palette.kind {
+            let rgb: RGBColor = c.clone().into();
+            let mut color = [
+                rgb.r as f32 / 255.0,
+                rgb.g as f32 / 255.0,
+                rgb.b as f32 / 255.0,
+            ];
+            if ui.color_edit_button_rgb(&mut color).changed() {
+                let new_rgb = RGBColor {
+                    r: (color[0] * 255.0) as u8,
+                    g: (color[1] * 255.0) as u8,
+                    b: (color[2] * 255.0) as u8,
+                };
+                return Some(new_rgb.into());
+            }
+            return None;
+        }
+
+        // Anything else that resolves to a color (e.g. a pointer): read-only.
+        // Match the editable color button's footprint (`interact_size`) so the
+        // swatch lines up with direct color palettes.
+        if let Some(rgb) = palette_resolved_rgb(&palette.kind, palettes) {
+            egui::color_picker::show_color(
+                ui,
+                egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b),
+                ui.spacing().interact_size,
+            );
+        }
+
+        None
     }
 
     fn render_palette_meta(ui: &mut egui::Ui, ctx: &Context, state: &mut PaletteUI) {
@@ -590,6 +670,30 @@ impl BlaulichtApp {
         );
         if target_changed {
             state.pointer_target = Some(new_target.id);
+        }
+
+        ui.add_space(12.0);
+        ui.label(RichText::new("Apply operations to").weak());
+
+        let current_property = PointerPropertyOption(state.pointer_property);
+        if components::button(
+            ui,
+            state.pointer_property_dialog_open,
+            &current_property.to_string(),
+            ButtonSize::Medium,
+        ) {
+            state.pointer_property_dialog_open = true;
+        }
+
+        let (new_property, property_changed) = components::selection_dialog(
+            ctx,
+            PointerPropertyOption::all(),
+            current_property,
+            &mut state.pointer_property_dialog_open,
+            "Select Pointer Property".to_string(),
+        );
+        if property_changed {
+            state.pointer_property = new_property.0;
         }
 
         ui.add_space(12.0);
@@ -799,4 +903,22 @@ impl BlaulichtApp {
             self.palette_ui_state.edit_dialog_open = false;
         }
     }
+}
+
+/// Resolves the RGB color a palette would produce, following pointer chains, if
+/// it covers color properties. Returns `None` for palettes that don't yield a
+/// color so previews can skip drawing a swatch.
+fn palette_resolved_rgb(kind: &PaletteKind, palettes: &BTreeMap<u8, Palette>) -> Option<RGBColor> {
+    if !kind
+        .properties(palettes)
+        .contains(&FixtureProperty::ColorHue)
+    {
+        return None;
+    }
+
+    // Run the kind through the same resolution path the engine uses, then read
+    // back the concrete color.
+    let mut state = FixtureState::default();
+    kind.apply_to(&mut state, palettes);
+    Some(state.resolve(palettes).color.into())
 }

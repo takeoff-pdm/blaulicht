@@ -2,7 +2,7 @@
 // Provides analysis on the audio.
 //
 
-use crate::{AudioSource, BpmInfo, Signal, SignalCollector, SignalDebugData};
+use crate::{AudioSource, BpmDetectStatus, BpmInfo, Signal, SignalCollector, SignalDebugData};
 use map_range::MapRange;
 use std::u8;
 
@@ -541,8 +541,10 @@ where
                     let actual_period =
                         self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
                     let history = self.scratch.onset_history.make_contiguous();
-                    bpm_from_onset =
+                    let (estimate, status) =
                         Self::estimate_bpm_from_onset(history, actual_period);
+                    bpm_from_onset = estimate;
+                    self.scratch.bpm_detect_status = status;
                     let (mean, threshold) = Self::onset_threshold(history);
                     onset_peak = self.scratch.onset_ema > threshold
                         && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
@@ -558,6 +560,7 @@ where
                     }
                 } else {
                     self.scratch.beat_needs_sync = true;
+                    self.scratch.bpm_detect_status = BpmDetectStatus::NoEnergy;
                 }
 
                 // Track normalized periodicity confidence. Silence / weak
@@ -690,6 +693,8 @@ where
                 band_onset_periodicity: self.scratch.last_band_onset_periodicity,
                 band_transient_strength: self.scratch.last_band_transient_strength,
                 band_weights: self.scratch.band_weights,
+                bpm_status: self.scratch.bpm_detect_status,
+                bpm_estimate: self.scratch.bpm_estimate,
             };
 
             self.send_signals(&[
@@ -887,10 +892,15 @@ where
         (mean, std, max)
     }
 
-    fn estimate_bpm_from_onset(history: &[f32], sample_period_ms: usize) -> Option<(f32, f32)> {
+    /// Returns the tempo estimate (if any) plus a status describing which gating
+    /// element is currently active, for the audio-page diagnostics readout.
+    fn estimate_bpm_from_onset(
+        history: &[f32],
+        sample_period_ms: usize,
+    ) -> (Option<(f32, f32)>, BpmDetectStatus) {
         let n = history.len();
-        if n < 2 || sample_period_ms == 0 {
-            return None;
+        if sample_period_ms == 0 {
+            return (None, BpmDetectStatus::Warmup { have: n, need: 0 });
         }
 
         let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms as f32)
@@ -900,8 +910,11 @@ where
             .round()
             .max(1.0) as usize;
 
-        if min_lag >= max_lag || n < max_lag * 2 {
-            return None;
+        // Need at least two full periods of the slowest tempo before the
+        // autocorrelation has anything to lock onto.
+        let need = max_lag * 2;
+        if n < 2 || min_lag >= max_lag || n < need {
+            return (None, BpmDetectStatus::Warmup { have: n, need });
         }
 
         let mean = history.iter().sum::<f32>() / n as f32;
@@ -912,7 +925,7 @@ where
         }
         variance /= n as f32;
         if !variance.is_finite() || variance <= ONSET_METRIC_EPS {
-            return None;
+            return (None, BpmDetectStatus::FlatOnset);
         }
         let inv_variance = 1.0 / variance;
 
@@ -948,13 +961,25 @@ where
         }
 
         if !best_weighted.is_finite() || best_weighted <= 0.0 {
-            return None;
+            return (
+                None,
+                BpmDetectStatus::WeakPeriodicity {
+                    strength: best_weighted.max(0.0),
+                    threshold: BPM_CONFIDENCE_THRESHOLD,
+                },
+            );
         }
 
         // Confidence gate: if the winning peak is too weak, the signal lacks
         // clear periodicity — return None to hold the previous BPM estimate.
         if best_weighted < BPM_CONFIDENCE_THRESHOLD {
-            return None;
+            return (
+                None,
+                BpmDetectStatus::WeakPeriodicity {
+                    strength: best_weighted,
+                    threshold: BPM_CONFIDENCE_THRESHOLD,
+                },
+            );
         }
 
         // Parabolic interpolation around the winning peak: gives sub-bin lag accuracy,
@@ -977,15 +1002,15 @@ where
 
         let period_ms = refined_lag * sample_period_ms as f32;
         if period_ms <= 0.0 {
-            return None;
+            return (None, BpmDetectStatus::FlatOnset);
         }
         let bpm = 60_000.0 / period_ms;
         if bpm.is_finite() && bpm > 0.0 {
             // Second element is the winning autocorrelation-peak strength, used as
             // a periodicity-confidence measure.
-            Some((bpm, best_weighted))
+            (Some((bpm, best_weighted)), BpmDetectStatus::Detecting)
         } else {
-            None
+            (None, BpmDetectStatus::FlatOnset)
         }
     }
 

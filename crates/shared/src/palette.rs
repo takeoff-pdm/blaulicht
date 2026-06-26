@@ -27,10 +27,18 @@ pub enum PaletteKind {
     Position(FixtureOrientation),
     Beam { focus: u8, strobe_speed: u8 },
     Single(FixtureProperty, u16),
-    /// Reads the resolved value of `target` for each property it covers,
-    /// applies `ops` in order, and yields that as its own value. The set of
-    /// covered properties is inherited recursively from the target.
-    Pointer { target: u8, ops: Vec<PaletteOp> },
+    /// Reads the resolved value of `target` for each property the target covers
+    /// (inherited recursively) and yields those as its own value.
+    ///
+    /// `property` selects which property the `ops` transform. When `None`, the
+    /// ops apply to every property. When `Some(p)`, the ops apply only to `p`
+    /// and every other property passes through untouched — so e.g. a color
+    /// target keeps its hue/saturation while only the chosen channel is scaled.
+    Pointer {
+        target: u8,
+        property: Option<FixtureProperty>,
+        ops: Vec<PaletteOp>,
+    },
 }
 
 /// A single transformation step applied to a value flowing through a pointer
@@ -92,6 +100,8 @@ impl PaletteKind {
             PaletteKind::Position(_) => vec![FixtureProperty::Pan, FixtureProperty::Tilt],
             PaletteKind::Beam { .. } => vec![FixtureProperty::Focus, FixtureProperty::Strobe],
             PaletteKind::Single(prop, _) => vec![*prop],
+            // A pointer always covers every property its target covers; the
+            // `property` override only narrows *which* property the ops touch.
             PaletteKind::Pointer { target, .. } => {
                 properties_via_chain(palettes, *target, MAX_PALETTE_CHAIN_DEPTH)
             }
@@ -118,7 +128,11 @@ impl PaletteKind {
             PaletteKind::Single(prop, value) => {
                 state.apply_value(*value, *prop);
             }
-            PaletteKind::Pointer { target, ops } => {
+            PaletteKind::Pointer {
+                target,
+                property,
+                ops,
+            } => {
                 let props = properties_via_chain(palettes, *target, MAX_PALETTE_CHAIN_DEPTH);
                 for prop in props {
                     let inner = resolve_via_chain(
@@ -126,12 +140,12 @@ impl PaletteKind {
                         *target,
                         prop,
                         MAX_PALETTE_CHAIN_DEPTH.saturating_sub(1),
-                    ) as f32;
-                    let v = ops
-                        .iter()
-                        .fold(inner, |acc, op| op.apply(acc))
-                        .round()
-                        .clamp(0.0, u16::MAX as f32) as u16;
+                    );
+                    // Ops apply only to the selected property (or to all when
+                    // none is selected). Other properties pass through, so e.g.
+                    // a color target keeps its hue/saturation while only the
+                    // chosen channel is transformed.
+                    let v = apply_pointer_ops(inner, ops, *property, prop);
                     state.apply_value(v, prop);
                 }
             }
@@ -155,15 +169,37 @@ pub fn resolve_via_chain(
         return 0;
     };
     match &palette.kind {
-        PaletteKind::Pointer { target, ops } => {
-            let inner = resolve_via_chain(palettes, *target, property, depth - 1) as f32;
-            ops.iter()
-                .fold(inner, |acc, op| op.apply(acc))
-                .round()
-                .clamp(0.0, u16::MAX as f32) as u16
+        PaletteKind::Pointer {
+            target,
+            property: op_property,
+            ops,
+        } => {
+            // Always pass the requested property through from the target; the
+            // ops only transform the selected property (or all when none).
+            let inner = resolve_via_chain(palettes, *target, property, depth - 1);
+            apply_pointer_ops(inner, ops, *op_property, property)
         }
         kind => extract_leaf_property(kind, property),
     }
+}
+
+/// Applies a pointer's `ops` to `inner` if `property` is the pointer's selected
+/// op-target (`op_property`), or if no target is selected (`None` = all). Other
+/// properties are returned unchanged so the rest of the target's value (e.g. a
+/// color's hue/saturation) survives.
+fn apply_pointer_ops(
+    inner: u16,
+    ops: &[PaletteOp],
+    op_property: Option<FixtureProperty>,
+    property: FixtureProperty,
+) -> u16 {
+    if op_property.is_some_and(|p| p != property) {
+        return inner;
+    }
+    ops.iter()
+        .fold(inner as f32, |acc, op| op.apply(acc))
+        .round()
+        .clamp(0.0, u16::MAX as f32) as u16
 }
 
 fn properties_via_chain(

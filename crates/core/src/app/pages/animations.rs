@@ -651,9 +651,15 @@ impl AnimationEditState {
                             palettes,
                             "Min palette".to_string(),
                         ) {
-                            PaletteBindingAction::Bind(id) => {
+                            PaletteBindingAction::Bind {
+                                palette_id,
+                                property,
+                            } => {
                                 mathematical_phaser.amplitude_min =
-                                    FixtureValue::PalettePointer { palette_id: id };
+                                    FixtureValue::PalettePointer {
+                                        palette_id,
+                                        property,
+                                    };
                             }
                             PaletteBindingAction::Unbind => {
                                 let v = mathematical_phaser
@@ -681,9 +687,15 @@ impl AnimationEditState {
                             palettes,
                             "Max palette".to_string(),
                         ) {
-                            PaletteBindingAction::Bind(id) => {
+                            PaletteBindingAction::Bind {
+                                palette_id,
+                                property,
+                            } => {
                                 mathematical_phaser.amplitude_max =
-                                    FixtureValue::PalettePointer { palette_id: id };
+                                    FixtureValue::PalettePointer {
+                                        palette_id,
+                                        property,
+                                    };
                             }
                             PaletteBindingAction::Unbind => {
                                 let v = mathematical_phaser

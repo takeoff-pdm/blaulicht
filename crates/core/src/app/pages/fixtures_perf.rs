@@ -757,7 +757,8 @@ impl BlaulichtApp {
                                     .get(palette_id)
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("?");
-                                let label = format!("◆ {palette_id}: {name}");
+                                let label =
+                                    format!("{} {palette_id}: {name}", egui_phosphor::regular::LETTER_CIRCLE_P);
                                 if components::button(
                                     ui,
                                     true,

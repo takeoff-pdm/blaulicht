@@ -46,6 +46,35 @@ impl ButtonSize {
     }
 }
 
+/// Paint `label` centered within `rect`, truncating with an ellipsis if it
+/// would otherwise overflow the button horizontally. This keeps long labels
+/// from spilling outside the button bounds and over neighbouring widgets.
+pub fn paint_button_label(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    label: &str,
+    font_size: f32,
+    text_color: Color32,
+) {
+    const H_PADDING: f32 = 4.0;
+
+    let mut job = egui::text::LayoutJob::single_section(
+        label.to_owned(),
+        egui::text::TextFormat {
+            font_id: egui::FontId::proportional(font_size),
+            color: text_color,
+            ..Default::default()
+        },
+    );
+    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - 2.0 * H_PADDING).max(0.0));
+
+    let galley = painter.layout_job(job);
+    let pos = egui::Align2::CENTER_CENTER
+        .anchor_size(rect.center(), galley.size())
+        .min;
+    painter.galley(pos, galley, text_color);
+}
+
 //
 // Button.
 //
@@ -112,13 +141,7 @@ pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool 
         );
     }
 
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(size.dim().1),
-        text_color,
-    );
+    paint_button_label(painter, rect, label, size.dim().1, text_color);
 
     response.clicked()
 }
