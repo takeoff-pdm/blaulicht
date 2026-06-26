@@ -420,11 +420,6 @@ impl LedTubesPlugin {
         bpf::ui::label(&format!("Brightness: {}", s.brightness));
         bpf::ui::hfader("Brightness", UI_BRIGHTNESS, 0, 31, s.brightness);
 
-        bpf::ui::label(&format!("R: {} G: {} B: {}", s.r, s.g, s.b));
-        bpf::ui::hfader("R", UI_R, 0, 255, s.r);
-        bpf::ui::hfader("G", UI_G, 0, 255, s.g);
-        bpf::ui::hfader("B", UI_B, 0, 255, s.b);
-
         bpf::ui::label(&format!("Count: {}", s.count));
         bpf::ui::hfader("Count", UI_COUNT, 1, 200, s.count);
 
