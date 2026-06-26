@@ -1,6 +1,6 @@
 use crate::{
     HSVColor, RGBColor,
-    fixture::state::{FixtureOrientation, FixtureState},
+    fixture::state::{FixtureOrientation, FixtureState, ResolvedFixtureState},
 };
 
 use super::Fixture;
@@ -178,7 +178,7 @@ impl Light {
         }
     }
 
-    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
 
         match self {
@@ -334,8 +334,8 @@ impl Light {
     }
 
     pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
-        match self {
-            Light::Generic3ChanNoAlpha => FixtureState {
+        let resolved: ResolvedFixtureState = match self {
+            Light::Generic3ChanNoAlpha => ResolvedFixtureState {
                 color: RGBColor::parse_dmx(dmx, this.start_addr).into(),
                 alpha: 255,
                 orientation: FixtureOrientation::default(),
@@ -346,7 +346,7 @@ impl Light {
                 let hue = (fixture_channel!(dmx, this, 0) as f64).map_range(0.0..255.0, 0.0..360.0);
                 let alpha = fixture_channel!(dmx, this, 1);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: HSVColor {
                         h: hue,
                         s: 1.0,
@@ -358,7 +358,7 @@ impl Light {
                     focus: 0,
                 }
             }
-            Light::Generic4ChanWithAlpha => FixtureState {
+            Light::Generic4ChanWithAlpha => ResolvedFixtureState {
                 color: RGBColor::parse_dmx(dmx, this.start_addr + 1).into(),
                 alpha: fixture_channel!(dmx, this, 0),
                 orientation: FixtureOrientation::default(),
@@ -369,7 +369,7 @@ impl Light {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
                 let alpha = fixture_channel!(dmx, this, 3);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -381,7 +381,7 @@ impl Light {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
                 let alpha = fixture_channel!(dmx, this, 6);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -393,7 +393,7 @@ impl Light {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
                 let alpha = fixture_channel!(dmx, this, 7);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -401,7 +401,7 @@ impl Light {
                     focus: 0,
                 }
             }
-            Light::VaryTechVP1 => FixtureState {
+            Light::VaryTechVP1 => ResolvedFixtureState {
                 color: HSVColor::BLACK,
                 alpha: fixture_channel!(dmx, this, 0),
                 orientation: FixtureOrientation::default(),
@@ -413,7 +413,7 @@ impl Light {
                 let alpha = fixture_channel!(dmx, this, 0);
                 let strobe_speed = fixture_channel!(dmx, this, 1);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -430,7 +430,7 @@ impl Light {
                     v => v.map_range(11..255, 0..255),
                 };
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -447,7 +447,7 @@ impl Light {
                     let b = fixture_channel!(dmx, this, 2);
                     let alpha = r.max(g).max(b);
 
-                    FixtureState {
+                    ResolvedFixtureState {
                         color: RGBColor::white().into(),
                         alpha,
                         orientation: FixtureOrientation::default(),
@@ -457,7 +457,7 @@ impl Light {
                 } else {
                     let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
 
-                    FixtureState {
+                    ResolvedFixtureState {
                         color: rgb.into(),
                         alpha: 255,
                         orientation: FixtureOrientation::default(),
@@ -472,7 +472,7 @@ impl Light {
                 let strobe_speed = fixture_channel!(dmx, this, 2);
                 let alpha = fixture_channel!(dmx, this, 3);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: HSVColor {
                         h: hue,
                         s: 1.0,
@@ -492,7 +492,7 @@ impl Light {
                 let strobe_speed = fixture_channel!(dmx, this, 2);
                 let focus = fixture_channel!(dmx, this, 8);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: HSVColor {
                         h: hue,
                         s: 1.0,
@@ -509,7 +509,7 @@ impl Light {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr + 1);
                 let focus = fixture_channel!(dmx, this, 5);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -522,7 +522,7 @@ impl Light {
                 let strobe_speed = fixture_channel!(dmx, this, 5);
                 let alpha = fixture_channel!(dmx, this, 7);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -535,7 +535,7 @@ impl Light {
                 let alpha = fixture_channel!(dmx, this, 0);
                 let strobe_speed = fixture_channel!(dmx, this, 1);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -551,7 +551,7 @@ impl Light {
                 };
                 let alpha = fixture_channel!(dmx, this, 6);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: rgb.into(),
                     alpha,
                     orientation: FixtureOrientation::default(),
@@ -559,12 +559,13 @@ impl Light {
                     focus: 0,
                 }
             }
-        }
+        };
+        resolved.into()
     }
 
-    pub fn blackout(&self, _this: &Fixture, _state: &FixtureState, _dmx: &mut [u8]) {}
+    pub fn blackout(&self, _this: &Fixture, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
 
-    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &FixtureState, _dmx: &mut [u8]) {
+    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {
         match self {
             Light::Generic3ChanNoAlpha => {}
             Light::GenericColorAlphaLight => {}

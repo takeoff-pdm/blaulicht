@@ -1,5 +1,5 @@
 use blaulicht_shared::{
-    fixture::state::FixtureState,
+    fixture::{state::FixtureState, value::FixtureValue},
     scene::{EngineSink, FixtureSelection, Scene},
     view::View,
     ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate,
@@ -267,8 +267,8 @@ impl Default for EngineState {
                         kind: PhaserKind::Mathematical(MathematicalPhaser {
                             base: MathematicalBaseFunction::Sin,
                             stretch_factor: 1.0,
-                            amplitude_min: 0,
-                            amplitude_max: 255
+                            amplitude_min: FixtureValue::Literal(0),
+                            amplitude_max: FixtureValue::Literal(255)
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
@@ -283,8 +283,8 @@ impl Default for EngineState {
                         kind: PhaserKind::Mathematical(MathematicalPhaser {
                             base: MathematicalBaseFunction::Sin,
                             stretch_factor: 1.0,
-                            amplitude_min: 0,
-                            amplitude_max: 255
+                            amplitude_min: FixtureValue::Literal(0),
+                            amplitude_max: FixtureValue::Literal(255)
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,
@@ -299,8 +299,8 @@ impl Default for EngineState {
                         kind: PhaserKind::Mathematical(MathematicalPhaser {
                             base: MathematicalBaseFunction::EaseInOut,
                             stretch_factor: 1.0,
-                            amplitude_min: 0,
-                            amplitude_max: 255
+                            amplitude_min: FixtureValue::Literal(0),
+                            amplitude_max: FixtureValue::Literal(255)
                         }),
                         time_total: PhaserDuration::Fixed(1000),
                         pin_to_beat: false,

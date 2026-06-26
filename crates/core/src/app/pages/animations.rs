@@ -1,15 +1,20 @@
 use crate::{
     app::{
-        components::{self, button, ButtonSize, Dialog, HFader, Numberpad, Pagination},
+        components::{
+            self, button, palette_binding_button, ButtonSize, Dialog, HFader, Numberpad,
+            Pagination, PaletteBindingAction, PaletteBindingState,
+        },
         BlaulichtApp,
     },
     dmx::{animation::phaser, EngineState},
 };
 use blaulicht_shared::{
-    AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat, AnimationSpecBodyKind,
-    AnimationSpeedModifier, AnimationTemplate, FixtureProperty, FrequencyNormalization,
-    MathematicalBaseFunction, PhaserDuration, PhaserKind, SyncMode,
+    fixture::value::FixtureValue, palette::Palette, AnimationSpec, AnimationSpecBody,
+    AnimationSpecBodyBeat, AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate,
+    FixtureProperty, FrequencyNormalization, MathematicalBaseFunction, PhaserDuration, PhaserKind,
+    SyncMode,
 };
+use std::collections::BTreeMap;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use strum::IntoEnumIterator;
@@ -332,8 +337,22 @@ impl BlaulichtApp {
                                                 self.animation_ui_state.selected_animation_id;
                                         }
 
+                                        let palettes_snapshot = self
+                                            .data
+                                            .state
+                                            .dmx_engine
+                                            .read()
+                                            .unwrap()
+                                            .0
+                                            .palettes
+                                            .clone();
+
                                         if let Some(value_changed) =
-                                            self.animation_ui_state.edit_state.show(ui, ctx)
+                                            self.animation_ui_state.edit_state.show(
+                                                ui,
+                                                ctx,
+                                                &palettes_snapshot,
+                                            )
                                         {
                                             let mut dmx_engine =
                                                 self.data.state.dmx_engine.write().unwrap();
@@ -367,6 +386,8 @@ pub struct AnimationEditState {
     pub speed_numberpad: Numberpad,
     pub clamp_min_numberpad: Numberpad,
     pub clamp_max_numberpad: Numberpad,
+    pub clamp_min_binding: PaletteBindingState,
+    pub clamp_max_binding: PaletteBindingState,
     pub freq_gate_numberpad: Numberpad,
     pub freq_boost_numberpad: Numberpad,
     pub freq_min_numberpad: Numberpad,
@@ -393,6 +414,8 @@ impl Default for AnimationEditState {
             clamp_max_numberpad: Numberpad::new()
                 .dialog_title("clamp-max-num")
                 .range(0.0, 360.0),
+            clamp_min_binding: PaletteBindingState::default(),
+            clamp_max_binding: PaletteBindingState::default(),
             freq_gate_numberpad: Numberpad::new()
                 .dialog_title("freq-gate-num")
                 .range(0.0, 255.0),
@@ -424,14 +447,19 @@ impl AnimationEditState {
         self.freq_normalization_dialog_open = false;
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> Option<AnimationSpec> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        palettes: &BTreeMap<u8, Palette>,
+    ) -> Option<AnimationSpec> {
         let mut apply_clicked = false;
 
         ui.vertical(|ui| {
             // PATCH: sync properties of the animation that was selected.
 
             match &self.working_state.body {
-                AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx),
+                AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx, palettes),
                 AnimationSpecBody::AudioVolume(_audio) => self.anim_audio_ui(ui),
                 AnimationSpecBody::BPMValue(_) => self.anim_bpm_ui(ui),
                 AnimationSpecBody::AudioFrequencies(_freq) => self.anim_freq_ui(ui),
@@ -453,7 +481,13 @@ impl AnimationEditState {
         }
     }
 
-    pub fn anim_phaser_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub fn anim_phaser_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        palettes: &BTreeMap<u8, Palette>,
+    ) {
+        let preview_property = self.working_state.property;
         let AnimationSpecBody::Phaser(ref mut phaser_mut) = &mut self.working_state.body else {
             return;
         };
@@ -462,7 +496,7 @@ impl AnimationEditState {
 
         let plot_points = (0..(360) * RENDER_WIDTH)
             .map(|x| {
-                let y = phaser::generate(phaser_mut, x as u64);
+                let y = phaser::generate(phaser_mut, x as u64, preview_property, palettes);
                 [x as f64, y as f64]
             })
             .collect::<PlotPoints<'_>>();
@@ -600,10 +634,65 @@ impl AnimationEditState {
                     ui.separator();
 
                     ui.horizontal(|ui| {
-                        self.clamp_min_numberpad
-                            .ui(ui, &mut mathematical_phaser.amplitude_min);
-                        self.clamp_max_numberpad
-                            .ui(ui, &mut mathematical_phaser.amplitude_max);
+                        let min_frozen = mathematical_phaser.amplitude_min.is_frozen();
+                        let mut min_val = mathematical_phaser
+                            .amplitude_min
+                            .resolve(palettes, preview_property);
+                        ui.add_enabled_ui(!min_frozen, |ui| {
+                            if self.clamp_min_numberpad.ui(ui, &mut min_val).changed() {
+                                mathematical_phaser.amplitude_min = FixtureValue::Literal(min_val);
+                            }
+                        });
+                        match palette_binding_button(
+                            ui,
+                            ctx,
+                            &mut self.clamp_min_binding,
+                            mathematical_phaser.amplitude_min,
+                            palettes,
+                            "Min palette".to_string(),
+                        ) {
+                            PaletteBindingAction::Bind(id) => {
+                                mathematical_phaser.amplitude_min =
+                                    FixtureValue::PalettePointer { palette_id: id };
+                            }
+                            PaletteBindingAction::Unbind => {
+                                let v = mathematical_phaser
+                                    .amplitude_min
+                                    .resolve(palettes, preview_property);
+                                mathematical_phaser.amplitude_min = FixtureValue::Literal(v);
+                            }
+                            PaletteBindingAction::None => {}
+                        }
+
+                        let max_frozen = mathematical_phaser.amplitude_max.is_frozen();
+                        let mut max_val = mathematical_phaser
+                            .amplitude_max
+                            .resolve(palettes, preview_property);
+                        ui.add_enabled_ui(!max_frozen, |ui| {
+                            if self.clamp_max_numberpad.ui(ui, &mut max_val).changed() {
+                                mathematical_phaser.amplitude_max = FixtureValue::Literal(max_val);
+                            }
+                        });
+                        match palette_binding_button(
+                            ui,
+                            ctx,
+                            &mut self.clamp_max_binding,
+                            mathematical_phaser.amplitude_max,
+                            palettes,
+                            "Max palette".to_string(),
+                        ) {
+                            PaletteBindingAction::Bind(id) => {
+                                mathematical_phaser.amplitude_max =
+                                    FixtureValue::PalettePointer { palette_id: id };
+                            }
+                            PaletteBindingAction::Unbind => {
+                                let v = mathematical_phaser
+                                    .amplitude_max
+                                    .resolve(palettes, preview_property);
+                                mathematical_phaser.amplitude_max = FixtureValue::Literal(v);
+                            }
+                            PaletteBindingAction::None => {}
+                        }
                     });
 
                     ui.separator();

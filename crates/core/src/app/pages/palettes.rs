@@ -5,7 +5,7 @@ use crate::app::{
     BlaulichtApp,
 };
 use blaulicht_shared::{
-    palette::{Palette, PaletteKind},
+    palette::{Palette, PaletteKind, PaletteOp},
     ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, HSVColor, RGBColor,
 };
 use egui::{Context, RichText, Widget};
@@ -16,6 +16,7 @@ enum PaletteKindSelection {
     Position,
     Beam,
     Single,
+    Pointer,
 }
 
 impl Display for PaletteKindSelection {
@@ -25,12 +26,19 @@ impl Display for PaletteKindSelection {
             Self::Position => write!(f, "Position"),
             Self::Beam => write!(f, "Beam"),
             Self::Single => write!(f, "Single Property"),
+            Self::Pointer => write!(f, "Pointer"),
         }
     }
 }
 
 impl PaletteKindSelection {
-    const ALL: [Self; 4] = [Self::Color, Self::Position, Self::Beam, Self::Single];
+    const ALL: [Self; 5] = [
+        Self::Color,
+        Self::Position,
+        Self::Beam,
+        Self::Single,
+        Self::Pointer,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -99,6 +107,74 @@ impl PropertySelection {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PaletteOpKind {
+    Add,
+    Mul,
+    Div,
+    Clamp,
+    Min,
+    Max,
+}
+
+impl Display for PaletteOpKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Add => write!(f, "Add"),
+            Self::Mul => write!(f, "Mul"),
+            Self::Div => write!(f, "Div"),
+            Self::Clamp => write!(f, "Clamp"),
+            Self::Min => write!(f, "Min"),
+            Self::Max => write!(f, "Max"),
+        }
+    }
+}
+
+impl PaletteOpKind {
+    const ALL: [Self; 6] = [
+        Self::Add,
+        Self::Mul,
+        Self::Div,
+        Self::Clamp,
+        Self::Min,
+        Self::Max,
+    ];
+
+    fn from_op(op: &PaletteOp) -> Self {
+        match op {
+            PaletteOp::Add(_) => Self::Add,
+            PaletteOp::Mul(_) => Self::Mul,
+            PaletteOp::Div(_) => Self::Div,
+            PaletteOp::Clamp { .. } => Self::Clamp,
+            PaletteOp::Min(_) => Self::Min,
+            PaletteOp::Max(_) => Self::Max,
+        }
+    }
+
+    fn default_op(self) -> PaletteOp {
+        match self {
+            Self::Add => PaletteOp::Add(0.0),
+            Self::Mul => PaletteOp::Mul(1.0),
+            Self::Div => PaletteOp::Div(1.0),
+            Self::Clamp => PaletteOp::Clamp { min: 0, max: 255 },
+            Self::Min => PaletteOp::Min(255),
+            Self::Max => PaletteOp::Max(0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PaletteTargetOption {
+    id: u8,
+    label: String,
+}
+
+impl Display for PaletteTargetOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.id, self.label)
+    }
+}
+
 pub struct PaletteUI {
     create_dialog_open: bool,
     edit_dialog_open: bool,
@@ -114,6 +190,12 @@ pub struct PaletteUI {
     focus: u8,
     strobe_speed: u8,
     single_value: u16,
+    pointer_target: Option<u8>,
+    pointer_target_dialog_open: bool,
+    pointer_ops: Vec<PaletteOp>,
+    /// `Some(idx)` while a kind dialog is open for op row `idx`;
+    /// `idx == pointer_ops.len()` means the "Add op" dialog.
+    pointer_op_kind_dialog: Option<usize>,
 }
 
 impl Default for PaletteUI {
@@ -133,12 +215,16 @@ impl Default for PaletteUI {
             focus: 0,
             strobe_speed: 0,
             single_value: 0,
+            pointer_target: None,
+            pointer_target_dialog_open: false,
+            pointer_ops: Vec::new(),
+            pointer_op_kind_dialog: None,
         }
     }
 }
 
 impl PaletteUI {
-    fn build_palette_kind(&self) -> PaletteKind {
+    fn build_palette_kind(&self) -> Option<PaletteKind> {
         match self.kind_selection {
             PaletteKindSelection::Color => {
                 let rgb = RGBColor {
@@ -147,22 +233,26 @@ impl PaletteUI {
                     b: (self.color_rgb[2] * 255.0) as u8,
                 };
                 let hsv: HSVColor = rgb.into();
-                PaletteKind::Color(hsv)
+                Some(PaletteKind::Color(hsv))
             }
-            PaletteKindSelection::Position => {
-                PaletteKind::Position(blaulicht_shared::fixture::state::FixtureOrientation {
+            PaletteKindSelection::Position => Some(PaletteKind::Position(
+                blaulicht_shared::fixture::state::FixtureOrientation {
                     pan: self.pan,
                     tilt: self.tilt,
-                })
-            }
-            PaletteKindSelection::Beam => PaletteKind::Beam {
+                },
+            )),
+            PaletteKindSelection::Beam => Some(PaletteKind::Beam {
                 focus: self.focus,
                 strobe_speed: self.strobe_speed,
-            },
-            PaletteKindSelection::Single => PaletteKind::Single(
+            }),
+            PaletteKindSelection::Single => Some(PaletteKind::Single(
                 self.property_selection.to_fixture_property(),
                 self.single_value,
-            ),
+            )),
+            PaletteKindSelection::Pointer => self.pointer_target.map(|target| PaletteKind::Pointer {
+                target,
+                ops: self.pointer_ops.clone(),
+            }),
         }
     }
 
@@ -196,14 +286,29 @@ impl PaletteUI {
                 self.property_selection = PropertySelection::from_fixture_property(*prop);
                 self.single_value = *val;
             }
+            PaletteKind::Pointer { target, ops } => {
+                self.kind_selection = PaletteKindSelection::Pointer;
+                self.pointer_target = Some(*target);
+                self.pointer_ops = ops.clone();
+            }
         }
     }
 }
 
 impl BlaulichtApp {
     pub fn palettes_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
-        self.render_palette_create_dialog(ctx);
-        self.render_palette_edit_dialog(ctx);
+        let palettes_snapshot: Vec<(u8, Palette)> = {
+            let engine = self.data.state.dmx_engine.read().unwrap();
+            engine
+                .0
+                .palettes
+                .iter()
+                .map(|(id, p)| (*id, p.clone()))
+                .collect()
+        };
+
+        self.render_palette_create_dialog(ctx, &palettes_snapshot);
+        self.render_palette_edit_dialog(ctx, &palettes_snapshot);
 
         ui.heading("Palettes");
         ui.add_space(8.0);
@@ -212,20 +317,13 @@ impl BlaulichtApp {
             self.palette_ui_state.create_dialog_open = true;
             self.palette_ui_state.new_name = "New Palette".to_string();
             self.palette_ui_state.kind_selection = PaletteKindSelection::Color;
+            self.palette_ui_state.pointer_target = None;
+            self.palette_ui_state.pointer_ops.clear();
         }
 
         ui.add_space(12.0);
 
-        let engine = self.data.state.dmx_engine.read().unwrap();
-        let palettes: Vec<(u8, Palette)> = engine
-            .0
-            .palettes
-            .iter()
-            .map(|(id, p)| (*id, p.clone()))
-            .collect();
-        drop(engine);
-
-        if palettes.is_empty() {
+        if palettes_snapshot.is_empty() {
             ui.label(RichText::new("No palettes defined.").weak());
             return;
         }
@@ -233,7 +331,7 @@ impl BlaulichtApp {
         let mut color_update: Option<(u8, HSVColor)> = None;
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for (id, palette) in &palettes {
+            for (id, palette) in &palettes_snapshot {
                 ui.horizontal(|ui| {
                     if let PaletteKind::Color(c) = &palette.kind {
                         let rgb: RGBColor = c.clone().into();
@@ -263,6 +361,7 @@ impl BlaulichtApp {
                             FixtureProperty::Focus => "Focus",
                             _ => "Single",
                         },
+                        PaletteKind::Pointer { .. } => "Pointer",
                     };
 
                     ui.label(
@@ -287,13 +386,6 @@ impl BlaulichtApp {
                             }
                         }
 
-                        if components::button(ui, false, "Assign", ButtonSize::Small) {
-                            self.data.event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::AssignPalette(*id),
-                            ));
-                        }
-
                         if components::button(ui, false, "Unassign", ButtonSize::Small) {
                             self.data.event_bus_connection.send(ControlEventMessage::new(
                                 EventOriginator::Web,
@@ -315,11 +407,7 @@ impl BlaulichtApp {
         }
     }
 
-    fn render_palette_meta(
-        ui: &mut egui::Ui,
-        ctx: &Context,
-        state: &mut PaletteUI,
-    ) {
+    fn render_palette_meta(ui: &mut egui::Ui, ctx: &Context, state: &mut PaletteUI) {
         ui.label(RichText::new("Name").weak());
         ui.add(egui::TextEdit::singleline(&mut state.new_name).desired_width(f32::INFINITY));
         ui.add_space(12.0);
@@ -370,7 +458,13 @@ impl BlaulichtApp {
         }
     }
 
-    fn render_palette_value(ui: &mut egui::Ui, state: &mut PaletteUI) {
+    fn render_palette_value(
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        state: &mut PaletteUI,
+        palettes: &[(u8, Palette)],
+        editing_palette_id: Option<u8>,
+    ) {
         match state.kind_selection {
             PaletteKindSelection::Color => {
                 let mut color = egui::Color32::from_rgb(
@@ -438,10 +532,138 @@ impl BlaulichtApp {
                     state.single_value = val_f as u16;
                 }
             }
+            PaletteKindSelection::Pointer => {
+                Self::render_pointer_editor(ui, ctx, state, palettes, editing_palette_id);
+            }
         }
     }
 
-    fn render_palette_create_dialog(&mut self, ctx: &Context) {
+    fn render_pointer_editor(
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        state: &mut PaletteUI,
+        palettes: &[(u8, Palette)],
+        editing_palette_id: Option<u8>,
+    ) {
+        ui.label(RichText::new("Target").weak());
+
+        let target_options: Vec<PaletteTargetOption> = palettes
+            .iter()
+            .filter(|(id, _)| Some(*id) != editing_palette_id)
+            .map(|(id, p)| PaletteTargetOption {
+                id: *id,
+                label: p.name.clone(),
+            })
+            .collect();
+
+        let current_target_label = match state.pointer_target {
+            Some(id) => match palettes.iter().find(|(pid, _)| *pid == id) {
+                Some((pid, p)) => format!("[{}] {}", pid, p.name),
+                None => format!("[{}] (missing)", id),
+            },
+            None => "Pick target…".to_string(),
+        };
+
+        if components::button(
+            ui,
+            state.pointer_target_dialog_open,
+            &current_target_label,
+            ButtonSize::Medium,
+        ) {
+            state.pointer_target_dialog_open = true;
+        }
+
+        let current_target_option = state
+            .pointer_target
+            .and_then(|id| target_options.iter().find(|opt| opt.id == id).cloned())
+            .unwrap_or(PaletteTargetOption {
+                id: 0,
+                label: String::new(),
+            });
+
+        let (new_target, target_changed) = components::selection_dialog(
+            ctx,
+            target_options.clone(),
+            current_target_option,
+            &mut state.pointer_target_dialog_open,
+            "Select Target Palette".to_string(),
+        );
+        if target_changed {
+            state.pointer_target = Some(new_target.id);
+        }
+
+        ui.add_space(12.0);
+        ui.label(RichText::new("Operations").weak());
+
+        let mut delete_idx: Option<usize> = None;
+        let mut kind_change: Option<(usize, PaletteOpKind)> = None;
+
+        for (idx, op) in state.pointer_ops.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                let kind = PaletteOpKind::from_op(op);
+                let is_open = state.pointer_op_kind_dialog == Some(idx);
+                if components::button(ui, is_open, &kind.to_string(), ButtonSize::Small) {
+                    state.pointer_op_kind_dialog = Some(idx);
+                }
+
+                match op {
+                    PaletteOp::Add(n) | PaletteOp::Mul(n) | PaletteOp::Div(n) => {
+                        ui.add(egui::DragValue::new(n).speed(0.1));
+                    }
+                    PaletteOp::Clamp { min, max } => {
+                        ui.label("min");
+                        ui.add(egui::DragValue::new(min).range(0..=u16::MAX));
+                        ui.label("max");
+                        ui.add(egui::DragValue::new(max).range(0..=u16::MAX));
+                    }
+                    PaletteOp::Min(n) | PaletteOp::Max(n) => {
+                        ui.add(egui::DragValue::new(n).range(0..=u16::MAX));
+                    }
+                }
+
+                if components::button(ui, false, "✕", ButtonSize::Small) {
+                    delete_idx = Some(idx);
+                }
+            });
+
+            // Per-row kind selection dialog (only renders when open).
+            let mut row_dialog_open = state.pointer_op_kind_dialog == Some(idx);
+            if row_dialog_open {
+                let current_kind = PaletteOpKind::from_op(op);
+                let (new_kind, changed) = components::selection_dialog(
+                    ctx,
+                    PaletteOpKind::ALL,
+                    current_kind,
+                    &mut row_dialog_open,
+                    format!("Op {} Type", idx),
+                );
+                if changed {
+                    kind_change = Some((idx, new_kind));
+                }
+                if !row_dialog_open {
+                    state.pointer_op_kind_dialog = None;
+                }
+            }
+
+            ui.add_space(4.0);
+        }
+
+        if let Some(idx) = delete_idx {
+            state.pointer_ops.remove(idx);
+        }
+        if let Some((idx, kind)) = kind_change {
+            if let Some(slot) = state.pointer_ops.get_mut(idx) {
+                *slot = kind.default_op();
+            }
+        }
+
+        ui.add_space(8.0);
+        if components::button(ui, false, "Add Operation", ButtonSize::Small) {
+            state.pointer_ops.push(PaletteOp::Add(0.0));
+        }
+    }
+
+    fn render_palette_create_dialog(&mut self, ctx: &Context, palettes: &[(u8, Palette)]) {
         if !self.palette_ui_state.create_dialog_open {
             return;
         }
@@ -453,7 +675,7 @@ impl BlaulichtApp {
         Dialog::new("Create Palette".to_string(), egui::vec2(720.0, 500.0))
             .with_backdrop()
             .show(ctx, |ui| {
-                Self::render_palette_dialog_body(ui, ctx, state);
+                Self::render_palette_dialog_body(ui, ctx, state, palettes, None);
 
                 ui.add_space(12.0);
                 ui.separator();
@@ -473,12 +695,13 @@ impl BlaulichtApp {
 
         if should_create {
             let name = self.palette_ui_state.new_name.clone();
-            let kind = self.palette_ui_state.build_palette_kind();
-            self.data.event_bus_connection.send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::CreatePalette(name, kind),
-            ));
-            self.palette_ui_state.create_dialog_open = false;
+            if let Some(kind) = self.palette_ui_state.build_palette_kind() {
+                self.data.event_bus_connection.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::CreatePalette(name, kind),
+                ));
+                self.palette_ui_state.create_dialog_open = false;
+            }
         }
 
         if should_close {
@@ -490,6 +713,8 @@ impl BlaulichtApp {
         ui: &mut egui::Ui,
         ctx: &Context,
         state: &mut PaletteUI,
+        palettes: &[(u8, Palette)],
+        editing_palette_id: Option<u8>,
     ) {
         let avail_w = ui.available_width();
         let col_gap = 16.0;
@@ -513,14 +738,14 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.set_min_width(col_w);
-                        Self::render_palette_value(ui, state);
+                        Self::render_palette_value(ui, ctx, state, palettes, editing_palette_id);
                     },
                 );
             },
         );
     }
 
-    fn render_palette_edit_dialog(&mut self, ctx: &Context) {
+    fn render_palette_edit_dialog(&mut self, ctx: &Context, palettes: &[(u8, Palette)]) {
         if !self.palette_ui_state.edit_dialog_open {
             return;
         }
@@ -537,7 +762,7 @@ impl BlaulichtApp {
         Dialog::new("Edit Palette".to_string(), egui::vec2(720.0, 500.0))
             .with_backdrop()
             .show(ctx, |ui| {
-                Self::render_palette_dialog_body(ui, ctx, state);
+                Self::render_palette_dialog_body(ui, ctx, state, palettes, Some(palette_id));
 
                 ui.add_space(12.0);
                 ui.separator();
@@ -557,16 +782,17 @@ impl BlaulichtApp {
 
         if should_save {
             let name = self.palette_ui_state.new_name.clone();
-            let kind = self.palette_ui_state.build_palette_kind();
-            self.data.event_bus_connection.send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::RenamePalette(palette_id, name),
-            ));
-            self.data.event_bus_connection.send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::UpdatePalette(palette_id, kind),
-            ));
-            self.palette_ui_state.edit_dialog_open = false;
+            if let Some(kind) = self.palette_ui_state.build_palette_kind() {
+                self.data.event_bus_connection.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::RenamePalette(palette_id, name),
+                ));
+                self.data.event_bus_connection.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::UpdatePalette(palette_id, kind),
+                ));
+                self.palette_ui_state.edit_dialog_open = false;
+            }
         }
 
         if should_close {

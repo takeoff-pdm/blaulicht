@@ -528,6 +528,8 @@ impl BlaulichtApp {
                 scene_overview_animation_selection_edit: None,
                 scene_overview_animation_selection_edit_need_to_load: false,
                 close_scene_overview_after_child: false,
+                palette_dialog_open: false,
+                active_palettes_cache: HashMap::new(),
             },
             system_ui_state: SystemUI::default(),
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],

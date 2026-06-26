@@ -76,7 +76,7 @@ pub(super) fn collect_fixtures(app_state: &crate::state::AppState) -> Vec<Render
                 let buffer = app_state.dmx_universes[fixture.universe_no]
                     .read()
                     .unwrap();
-                fixture.state_from_dmx(&buffer.dmx_buffer)
+                fixture.state_from_dmx(&buffer.dmx_buffer).resolve(&engine.0.palettes)
             };
             let rgb: RGBColor = state.color.into();
             let alpha = (state.alpha as f32 / 255.0).clamp(0.0, 1.0);

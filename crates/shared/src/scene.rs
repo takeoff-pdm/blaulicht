@@ -3,9 +3,15 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
+use strum::IntoEnumIterator;
+
 use crate::{
     ActiveAnimation, AnimationSpeedModifier, ControlEvent, FixtureProperty,
-    fixture::state::{FixtureGroup, FixtureState},
+    fixture::{
+        state::{FixtureGroup, FixtureState},
+        value::FixtureValue,
+    },
+    palette::Palette,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Encode, Decode)]
@@ -116,24 +122,85 @@ pub struct EngineSink {
 }
 
 impl EngineSink {
-    pub fn apply_with_selection(&mut self, selection: &FixtureSelection, ev: ControlEvent) {
+    /// Returns `true` if any targeted slot was rejected because it is
+    /// currently bound to a palette (and therefore frozen).
+    pub fn apply_with_selection(
+        &mut self,
+        selection: &FixtureSelection,
+        ev: ControlEvent,
+    ) -> bool {
+        let mut any_rejected = false;
         for selector in &selection.fixtures {
-            println!("sink apply: (ev = {ev:?}) on {selector:?}");
-
             let fixture = self
                 .fixture_states
                 .get_mut(selector)
                 .expect("Expected scene sink to contain fixture {selector:?} but was missing");
 
-            let properties = fixture.apply(ev.clone());
-            for property in properties {
+            let outcome = fixture.apply(ev.clone());
+            if outcome.any_rejected() {
+                any_rejected = true;
+            }
+            for property in outcome.changed {
                 self.changeset.insert((*selector, property).into());
             }
         }
+        any_rejected
     }
 
     pub fn active_animations(&self) -> &HashMap<FixtureSelection, BTreeMap<u8, ActiveAnimation>> {
         &self.active_animations
+    }
+
+    /// Re-syncs the property slots of every fixture state to mirror the
+    /// palette IDs currently in `palette_assignments`. The "winning" palette
+    /// for a property is the last one in the list that covers it (matching
+    /// the render-time apply order). Properties no longer covered by any
+    /// assigned palette are unbound to a literal of their resolved value.
+    ///
+    /// Maintains the invariant checked by `validate_palette_mapping_integrity`.
+    pub fn sync_palette_bindings(&mut self, palettes: &BTreeMap<u8, Palette>) {
+        let keys: Vec<(u8, u8)> = self.fixture_states.keys().copied().collect();
+        for key in keys {
+            let palette_ids = self
+                .palette_assignments
+                .get(&key)
+                .cloned()
+                .unwrap_or_default();
+            let fixture_state = self.fixture_states.get_mut(&key).unwrap();
+            sync_fixture_slots(fixture_state, &palette_ids, palettes);
+        }
+    }
+}
+
+fn sync_fixture_slots(
+    fixture_state: &mut FixtureState,
+    palette_ids: &[u8],
+    palettes: &BTreeMap<u8, Palette>,
+) {
+    let mut winners: HashMap<FixtureProperty, u8> = HashMap::new();
+    for palette_id in palette_ids {
+        let Some(palette) = palettes.get(palette_id) else {
+            continue;
+        };
+        for property in palette.kind.properties(palettes) {
+            winners.insert(property, *palette_id);
+        }
+    }
+
+    for property in FixtureProperty::iter() {
+        match winners.get(&property) {
+            Some(winner_id) => {
+                *fixture_state.slot_mut(property) = FixtureValue::PalettePointer {
+                    palette_id: *winner_id,
+                };
+            }
+            None => {
+                if let FixtureValue::PalettePointer { .. } = fixture_state.slot(property) {
+                    let resolved = fixture_state.slot(property).resolve(palettes, property);
+                    *fixture_state.slot_mut(property) = FixtureValue::Literal(resolved);
+                }
+            }
+        }
     }
 }
 

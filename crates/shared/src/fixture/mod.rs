@@ -8,6 +8,7 @@ pub mod dimmer;
 pub mod light;
 pub mod moving_head;
 pub mod state;
+pub mod value;
 
 use bincode::{Decode, Encode};
 use dimmer::*;
@@ -53,7 +54,7 @@ impl FixtureType {
         }
     }
 
-    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         match self {
             FixtureType::MovingHead(moving_head) => moving_head.write(this, state, dmx),
             FixtureType::Light(light) => light.write(this, state, dmx),
@@ -69,7 +70,7 @@ impl FixtureType {
         }
     }
 
-    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn blackout(&self, this: &Fixture, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         match self {
             FixtureType::MovingHead(moving_head) => moving_head.blackout(this, state, dmx),
             FixtureType::Light(light) => light.blackout(this, state, dmx),
@@ -77,7 +78,7 @@ impl FixtureType {
         }
     }
 
-    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: i32, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         match self {
             FixtureType::MovingHead(moving_head) => moving_head.setup(this, time, state, dmx),
             FixtureType::Light(light) => light.setup(this, time, state, dmx),

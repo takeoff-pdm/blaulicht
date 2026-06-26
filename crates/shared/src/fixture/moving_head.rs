@@ -1,6 +1,6 @@
 use crate::{
     HSVColor, RGBColor,
-    fixture::state::{FixtureOrientation, FixtureState, Position},
+    fixture::state::{FixtureOrientation, FixtureState, ResolvedFixtureState},
 };
 
 use super::Fixture;
@@ -42,7 +42,7 @@ impl MovingHead {
         }
     }
 
-    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         let color: RGBColor = state.color.into();
 
         match self {
@@ -113,7 +113,7 @@ impl MovingHead {
     }
 
     pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
-        match self {
+        let resolved: ResolvedFixtureState = match self {
             MovingHead::MartinMac250E => {
                 let strobe_speed = fixture_channel!(dmx, this, 0);
                 let alpha = fixture_channel!(dmx, this, 1);
@@ -124,7 +124,7 @@ impl MovingHead {
                 let pan = fixture_channel!(dmx, this, 12);
                 let tilt = fixture_channel!(dmx, this, 14);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color: HSVColor {
                         h: hue,
                         s: saturation,
@@ -149,7 +149,7 @@ impl MovingHead {
                 let mut color = HSVColor::default();
                 color.s = (fixture_channel!(dmx, this, 6) as f64).map_range(0.0..255.0, 0.0..1.0);
 
-                FixtureState {
+                ResolvedFixtureState {
                     color,
                     alpha,
                     orientation: FixtureOrientation { pan, tilt },
@@ -157,18 +157,19 @@ impl MovingHead {
                     focus,
                 }
             }
-        }
+        };
+        resolved.into()
     }
 
-    pub fn blackout(&self, _this: &Fixture, _state: &FixtureState, _dmx: &mut [u8]) {}
+    pub fn blackout(&self, _this: &Fixture, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
 
-    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, this: &Fixture, time: i32, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         match self {
             MovingHead::MartinMac250E => {
                 // Ensure all other values are not fucked up.
                 self.write(
                     this,
-                    &FixtureState {
+                    &ResolvedFixtureState {
                         orientation: FixtureOrientation {
                             pan: 127,
                             tilt: 127,

@@ -1,5 +1,5 @@
 use blaulicht_plugin_framework as bpf;
-use blaulicht_plugin_framework::Plugin;
+use blaulicht_plugin_framework::{CommandPollResult, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +72,12 @@ impl Default for SaveState {
     }
 }
 
+enum PendingHttp {
+    Refresh { handle: u32 },
+    SendStrip { handle: u32, strip_id: usize },
+    AllOff { handle: u32 },
+}
+
 #[derive(Default)]
 pub struct LedTubesPlugin {
     state: SaveState,
@@ -79,6 +85,7 @@ pub struct LedTubesPlugin {
     status_text: Option<String>,
     // RAII handle; drop = unregister. Reassign on host change to swap atomically.
     artnet: Option<bpf::ArtNetReceiverHandle>,
+    pending: Option<PendingHttp>,
 }
 
 impl LedTubesPlugin {
@@ -90,18 +97,13 @@ impl LedTubesPlugin {
         &mut self.state.strips[self.state.selected_strip as usize]
     }
 
-    fn http_get(&self, path: &str) -> Result<String, String> {
+    fn spawn_http_get(&self, path: &str) -> u32 {
         let url = format!("http://{}{}", self.state.host, path);
         let cmd = format!("curl -sS --max-time 3 '{}'", url);
-        let output = bpf::system(&cmd);
-        if output.trim().is_empty() {
-            Err(format!("no response from {}", path))
-        } else {
-            Ok(output)
-        }
+        bpf::command_spawn_bg(&cmd)
     }
 
-    fn send_strip(&self, strip_id: usize) -> Result<(), String> {
+    fn spawn_send_strip(&mut self, strip_id: usize) {
         let s = &self.state.strips[strip_id];
         let mode = MODES.get(s.mode as usize).unwrap_or(&"off");
         let path = format!(
@@ -116,53 +118,102 @@ impl LedTubesPlugin {
             s.index,
             s.span,
         );
-        self.http_get(&path)?;
-        Ok(())
+        let handle = self.spawn_http_get(&path);
+        self.pending = Some(PendingHttp::SendStrip { handle, strip_id });
     }
 
-    fn send_all_off(&self) -> Result<(), String> {
-        self.http_get("/led?strip=all&mode=off")?;
-        Ok(())
+    fn spawn_all_off(&mut self) {
+        let handle = self.spawn_http_get("/led?strip=all&mode=off");
+        self.pending = Some(PendingHttp::AllOff { handle });
     }
 
-    fn refresh_status(&mut self) {
-        match self.http_get("/status") {
-            Ok(body) => {
-                self.status_text = Some(body.clone());
-                if let Ok(status) = serde_json::from_str::<StatusResponse>(&body) {
-                    for strip in &status.strips {
-                        let idx = (strip.id as usize).saturating_sub(1);
-                        if idx < STRIP_COUNT {
-                            let s = &mut self.state.strips[idx];
-                            s.brightness = strip.brightness.clamp(0, 31) as u8;
-                            s.r = strip.rgb[0].clamp(0, 255) as u8;
-                            s.g = strip.rgb[1].clamp(0, 255) as u8;
-                            s.b = strip.rgb[2].clamp(0, 255) as u8;
-                            s.count = strip.active_segments.clamp(1, 200) as u8;
-                            s.index = strip.index.clamp(0, 199) as u8;
-                            s.span = strip.span.clamp(1, 20) as u8;
-                            s.mode = mode_str_to_index(&strip.mode);
-                        }
-                    }
-                    self.last_error = None;
+    fn spawn_refresh_status(&mut self) {
+        let handle = self.spawn_http_get("/status");
+        self.pending = Some(PendingHttp::Refresh { handle });
+    }
+
+    fn poll_pending(&mut self) {
+        let pending = self.pending.take().unwrap();
+        match pending {
+            PendingHttp::Refresh { handle } => self.poll_refresh(handle),
+            PendingHttp::SendStrip { handle, strip_id } => self.poll_send_strip(handle, strip_id),
+            PendingHttp::AllOff { handle } => self.poll_all_off(handle),
+        }
+    }
+
+    fn poll_refresh(&mut self, handle: u32) {
+        match bpf::command_poll_result(handle) {
+            CommandPollResult::Running => {
+                self.pending = Some(PendingHttp::Refresh { handle });
+            }
+            CommandPollResult::Finished(body) => {
+                let body = body.trim().to_string();
+                if body.is_empty() {
+                    self.last_error = Some("no response from /status".to_string());
                 } else {
-                    self.last_error = Some("failed to parse /status".to_string());
+                    self.status_text = Some(body.clone());
+                    if let Ok(status) = serde_json::from_str::<StatusResponse>(&body) {
+                        for strip in &status.strips {
+                            let idx = (strip.id as usize).saturating_sub(1);
+                            if idx < STRIP_COUNT {
+                                let s = &mut self.state.strips[idx];
+                                s.brightness = strip.brightness.clamp(0, 31) as u8;
+                                s.r = strip.rgb[0].clamp(0, 255) as u8;
+                                s.g = strip.rgb[1].clamp(0, 255) as u8;
+                                s.b = strip.rgb[2].clamp(0, 255) as u8;
+                                s.count = strip.active_segments.clamp(1, 200) as u8;
+                                s.index = strip.index.clamp(0, 199) as u8;
+                                s.span = strip.span.clamp(1, 20) as u8;
+                                s.mode = mode_str_to_index(&strip.mode);
+                            }
+                        }
+                        self.last_error = None;
+                    } else {
+                        self.last_error = Some("failed to parse /status".to_string());
+                    }
                 }
+                self.save_state();
             }
-            Err(e) => {
-                self.last_error = Some(e);
+            CommandPollResult::Failed(err) => {
+                self.last_error = Some(format!("refresh failed: {err}"));
+                self.save_state();
             }
         }
-        self.save_state();
     }
 
-    fn apply_selected(&mut self) {
-        let idx = self.state.selected_strip as usize;
-        match self.send_strip(idx) {
-            Ok(_) => self.last_error = None,
-            Err(e) => self.last_error = Some(e),
+    fn poll_send_strip(&mut self, handle: u32, strip_id: usize) {
+        match bpf::command_poll_result(handle) {
+            CommandPollResult::Running => {
+                self.pending = Some(PendingHttp::SendStrip { handle, strip_id });
+            }
+            CommandPollResult::Finished(_) => {
+                self.last_error = None;
+                self.save_state();
+            }
+            CommandPollResult::Failed(err) => {
+                self.last_error = Some(format!("send strip {} failed: {err}", strip_id + 1));
+                self.save_state();
+            }
         }
-        self.save_state();
+    }
+
+    fn poll_all_off(&mut self, handle: u32) {
+        match bpf::command_poll_result(handle) {
+            CommandPollResult::Running => {
+                self.pending = Some(PendingHttp::AllOff { handle });
+            }
+            CommandPollResult::Finished(_) => {
+                for s in &mut self.state.strips {
+                    s.mode = 0;
+                }
+                self.last_error = None;
+                self.save_state();
+            }
+            CommandPollResult::Failed(err) => {
+                self.last_error = Some(format!("all-off failed: {err}"));
+                self.save_state();
+            }
+        }
     }
 
     /// Reconciles the in-memory Art-Net registration with the desired state
@@ -307,18 +358,12 @@ impl LedTubesPlugin {
                 }
             }
             PluginUiEvent::Button { id } => match *id {
-                UI_REFRESH => self.refresh_status(),
-                UI_ALL_OFF => {
-                    if let Err(e) = self.send_all_off() {
-                        self.last_error = Some(e);
-                    } else {
-                        for s in &mut self.state.strips {
-                            s.mode = 0;
-                        }
-                        self.last_error = None;
-                    }
+                UI_REFRESH => self.spawn_refresh_status(),
+                UI_ALL_OFF => self.spawn_all_off(),
+                UI_APPLY => {
+                    let idx = self.state.selected_strip as usize;
+                    self.spawn_send_strip(idx);
                 }
-                UI_APPLY => self.apply_selected(),
                 _ => {}
             },
             PluginUiEvent::Switch { id, value } if *id == UI_ARTNET_ENABLED => {
@@ -400,15 +445,15 @@ impl LedTubesPlugin {
 impl Plugin for LedTubesPlugin {
     fn initialize(&mut self, input: TickInput) {
         self.load_state();
-        // Register Art-Net before processing events so the receiver is live
-        // for whatever the first tick does. Host wiped any prior registration
-        // on reload, so this is always a fresh registration.
         self.sync_artnet();
         self.process_events(&input);
-        self.refresh_status();
+        self.spawn_refresh_status();
     }
 
     fn run(&mut self, input: TickInput) {
+        if self.pending.is_some() {
+            self.poll_pending();
+        }
         self.process_events(&input);
         self.render_ui();
     }

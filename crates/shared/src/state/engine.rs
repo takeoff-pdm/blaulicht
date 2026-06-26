@@ -1,6 +1,6 @@
 use crate::{
     AnimationSpeedModifier, FixtureProperty, SyncMode,
-    fixture::state::{FixtureGroup, FixtureState},
+    fixture::{state::{FixtureGroup, FixtureState}, value::FixtureValue},
     palette::Palette,
     scene::{EngineSink, Scene},
     scene_graph::SceneGraphState,
@@ -12,7 +12,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::Display,
 };
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SharedFixtureGroup {
@@ -150,6 +150,116 @@ impl EngineState {
         }
 
         true
+    }
+
+    /// Verifies the palette binding invariant across every scene:
+    /// for each fixture in a scene's `palette_assignments`, the property
+    /// slots covered by those palettes must be `FixtureValue::PalettePointer`
+    /// pointing at the "winning" palette (the last one in the list that
+    /// covers the property, matching render-time apply order). Properties
+    /// not covered by any assigned palette must not be PalettePointers.
+    ///
+    /// When `fix` is false, returns the first violation found, if any
+    /// (intended for `debug_assert!`). When `fix` is true, any detected
+    /// violations are logged as warnings and self-healed by stripping
+    /// orphan palette assignments and re-syncing each scene's slots from
+    /// its assignment list; the function then returns `Ok(())`.
+    pub fn validate_palette_mapping_integrity(&mut self, fix: bool) -> Result<(), String> {
+        let issues = self.collect_palette_integrity_issues();
+        if issues.is_empty() {
+            return Ok(());
+        }
+
+        if !fix {
+            return Err(issues.into_iter().next().unwrap());
+        }
+
+        for issue in &issues {
+            tracing::warn!("palette mapping integrity self-heal: {}", issue);
+        }
+
+        let palettes = self.palettes.clone();
+        for scene in self.scenes.values_mut() {
+            let valid: HashSet<(u8, u8)> = scene.sink.fixture_states.keys().copied().collect();
+            scene.sink.palette_assignments.retain(|k, _| valid.contains(k));
+            scene.sink.sync_palette_bindings(&palettes);
+        }
+
+        Ok(())
+    }
+
+    fn collect_palette_integrity_issues(&self) -> Vec<String> {
+        let mut issues = Vec::new();
+
+        for (scene_id, scene) in &self.scenes {
+            for ((gid, fid), palette_ids) in &scene.sink.palette_assignments {
+                let Some(fixture_state) = scene.sink.fixture_states.get(&(*gid, *fid)) else {
+                    issues.push(format!(
+                        "scene {scene_id}: palette assignment for missing fixture ({gid},{fid})"
+                    ));
+                    continue;
+                };
+
+                let mut winners: HashMap<FixtureProperty, u8> = HashMap::new();
+                for palette_id in palette_ids {
+                    let Some(palette) = self.palettes.get(palette_id) else {
+                        continue;
+                    };
+                    for property in palette.kind.properties(&self.palettes) {
+                        winners.insert(property, *palette_id);
+                    }
+                }
+
+                for (property, winner_id) in &winners {
+                    match fixture_state.slot(*property) {
+                        FixtureValue::PalettePointer { palette_id }
+                            if palette_id == *winner_id => {}
+                        other => {
+                            issues.push(format!(
+                                "scene {scene_id} fixture ({gid},{fid}) {property:?}: expected PalettePointer({winner_id}), got {other:?}"
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Also flag stale PalettePointers — slots bound to a palette that
+            // is no longer in the assignment list (or the palette no longer
+            // exists). These would render incorrectly and indicate a sync bug.
+            for ((gid, fid), fixture_state) in &scene.sink.fixture_states {
+                let assigned: Vec<u8> = scene
+                    .sink
+                    .palette_assignments
+                    .get(&(*gid, *fid))
+                    .cloned()
+                    .unwrap_or_default();
+                let mut covered: HashMap<FixtureProperty, u8> = HashMap::new();
+                for palette_id in &assigned {
+                    let Some(palette) = self.palettes.get(palette_id) else {
+                        continue;
+                    };
+                    for property in palette.kind.properties(&self.palettes) {
+                        covered.insert(property, *palette_id);
+                    }
+                }
+                for property in FixtureProperty::iter() {
+                    if let FixtureValue::PalettePointer { palette_id } =
+                        fixture_state.slot(property)
+                    {
+                        match covered.get(&property) {
+                            Some(winner) if *winner == palette_id => {}
+                            _ => {
+                                issues.push(format!(
+                                    "scene {scene_id} fixture ({gid},{fid}) {property:?}: stale PalettePointer({palette_id}); assignment list = {assigned:?}"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        issues
     }
 
     pub fn serialize(&self) -> Vec<u8> {
@@ -336,8 +446,8 @@ pub struct MathematicalPhaser {
     pub base: MathematicalBaseFunction,
     // TODO: this should actually be deprecated!
     pub stretch_factor: f32, // Between 0-1.
-    pub amplitude_min: u16,
-    pub amplitude_max: u16,
+    pub amplitude_min: FixtureValue,
+    pub amplitude_max: FixtureValue,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, EnumIter, PartialEq, Eq, Encode, Decode)]

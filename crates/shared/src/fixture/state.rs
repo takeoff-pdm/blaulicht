@@ -3,7 +3,11 @@ use map_range::MapRange;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::{ControlEvent, FixtureProperty, HSVColor, RGBColor, fixture::FixtureType};
+use crate::{
+    ControlEvent, FixtureProperty, HSVColor, RGBColor,
+    fixture::{FixtureType, value::FixtureValue},
+    palette::Palette,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
 pub enum MergeStrategy {
@@ -12,16 +16,16 @@ pub enum MergeStrategy {
     Interpolate,
 }
 
+/// Concrete pan/tilt as carried by palettes and the resolved view used by
+/// fixture-write paths.
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Encode, Decode)]
 pub struct FixtureOrientation {
     pub pan: u8,
     pub tilt: u8,
-    // pub rotation: u8,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
 pub struct FixtureGroup {
-    // Assigns an ID to a fixture.
     pub name: String,
     pub fixtures: BTreeMap<u8, Fixture>,
 }
@@ -33,7 +37,6 @@ pub struct Fixture {
     pub pos: Position,
     #[serde(default)]
     pub rotation: Rotation,
-    // DMX start address + universe number.
     pub start_addr: usize,
     pub universe_no: usize,
 }
@@ -50,7 +53,7 @@ impl Fixture {
         }
     }
 
-    pub fn write(&self, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn write(&self, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         self.type_.write(self, state, dmx)
     }
 
@@ -58,7 +61,7 @@ impl Fixture {
         self.type_.state_from_dmx(self, dmx)
     }
 
-    pub fn setup(&self, time: i32, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn setup(&self, time: i32, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         self.type_.setup(self, time, state, dmx);
     }
 }
@@ -87,40 +90,124 @@ impl From<(usize, usize)> for Position {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
+/// The editable, palette-aware fixture state.
+///
+/// Each property slot is a [`FixtureValue`] — either a literal value or a
+/// pointer to a palette entry. Resolve into a [`ResolvedFixtureState`] before
+/// writing DMX or rendering visuals.
+#[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode, Default)]
 pub struct FixtureState {
-    // the many values a fixture could have.
+    pub color_h: FixtureValue,
+    pub color_s: FixtureValue,
+    pub color_v: FixtureValue,
+    pub alpha: FixtureValue,
+    pub pan: FixtureValue,
+    pub tilt: FixtureValue,
+    pub strobe_speed: FixtureValue,
+    pub focus: FixtureValue,
+}
+
+/// The concrete, post-resolution fixture state. This is what the fixture
+/// type-specific write functions consume.
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedFixtureState {
     pub color: HSVColor,
     pub alpha: u8,
     pub orientation: FixtureOrientation,
     pub strobe_speed: u8,
     pub focus: u8,
-    // ... todo
 }
 
-impl Default for FixtureState {
-    fn default() -> Self {
-        FixtureState {
-            color: HSVColor::default(),
-            alpha: 0,
-            orientation: FixtureOrientation::default(),
-            strobe_speed: 0,
-            focus: 0,
+impl From<ResolvedFixtureState> for FixtureState {
+    fn from(r: ResolvedFixtureState) -> Self {
+        Self {
+            color_h: FixtureValue::Literal(r.color.h.clamp(0.0, 360.0) as u16),
+            color_s: FixtureValue::Literal(r.color.s.map_range(0.0..1.0, 0.0..255.0) as u16),
+            color_v: FixtureValue::Literal(r.color.v.map_range(0.0..1.0, 0.0..255.0) as u16),
+            alpha: FixtureValue::literal_u8(r.alpha),
+            pan: FixtureValue::literal_u8(r.orientation.pan),
+            tilt: FixtureValue::literal_u8(r.orientation.tilt),
+            strobe_speed: FixtureValue::literal_u8(r.strobe_speed),
+            focus: FixtureValue::literal_u8(r.focus),
         }
     }
 }
 
 impl FixtureState {
-    // Pulls in a changed property of another fixture state.
-    // Uses the specified merge strategy.
+    pub fn slot(&self, property: FixtureProperty) -> FixtureValue {
+        match property {
+            FixtureProperty::Alpha => self.alpha,
+            FixtureProperty::Strobe => self.strobe_speed,
+            FixtureProperty::Focus => self.focus,
+            FixtureProperty::ColorHue => self.color_h,
+            FixtureProperty::ColorSaturation => self.color_s,
+            FixtureProperty::ColorValue => self.color_v,
+            FixtureProperty::Tilt => self.tilt,
+            FixtureProperty::Pan => self.pan,
+        }
+    }
+
+    pub fn slot_mut(&mut self, property: FixtureProperty) -> &mut FixtureValue {
+        match property {
+            FixtureProperty::Alpha => &mut self.alpha,
+            FixtureProperty::Strobe => &mut self.strobe_speed,
+            FixtureProperty::Focus => &mut self.focus,
+            FixtureProperty::ColorHue => &mut self.color_h,
+            FixtureProperty::ColorSaturation => &mut self.color_s,
+            FixtureProperty::ColorValue => &mut self.color_v,
+            FixtureProperty::Tilt => &mut self.tilt,
+            FixtureProperty::Pan => &mut self.pan,
+        }
+    }
+
+    /// Returns the *resolved* `u16` value for `property` in the same units
+    /// the legacy `get_value` returned.
+    pub fn resolved_value(
+        &self,
+        property: FixtureProperty,
+        palettes: &BTreeMap<u8, Palette>,
+    ) -> u16 {
+        self.slot(property).resolve(palettes, property)
+    }
+
+    /// Resolve all slots through `palettes` into a concrete state usable by
+    /// DMX writers and the visualizer.
+    pub fn resolve(&self, palettes: &BTreeMap<u8, Palette>) -> ResolvedFixtureState {
+        let hue = self.color_h.resolve(palettes, FixtureProperty::ColorHue) as f64;
+        let sat = self.color_s.resolve(palettes, FixtureProperty::ColorSaturation) as f64;
+        let val = self.color_v.resolve(palettes, FixtureProperty::ColorValue) as f64;
+
+        ResolvedFixtureState {
+            color: HSVColor {
+                h: hue.clamp(0.0, 360.0),
+                s: sat.map_range(0.0..255.0, 0.0..1.0),
+                v: val.map_range(0.0..255.0, 0.0..1.0),
+            },
+            alpha: self.alpha.resolve(palettes, FixtureProperty::Alpha).min(255) as u8,
+            orientation: FixtureOrientation {
+                pan: self.pan.resolve(palettes, FixtureProperty::Pan).min(255) as u8,
+                tilt: self.tilt.resolve(palettes, FixtureProperty::Tilt).min(255) as u8,
+            },
+            strobe_speed: self
+                .strobe_speed
+                .resolve(palettes, FixtureProperty::Strobe)
+                .min(255) as u8,
+            focus: self.focus.resolve(palettes, FixtureProperty::Focus).min(255) as u8,
+        }
+    }
+
+    /// Merges a single property from another state using the given strategy.
+    /// Resolution happens through `palettes` so a frozen slot still participates
+    /// numerically. The result is written back as a literal.
     pub fn merge_from(
         &mut self,
         other: &FixtureState,
         property: FixtureProperty,
         strategy: MergeStrategy,
+        palettes: &BTreeMap<u8, Palette>,
     ) {
-        let self_value = self.get_value(property);
-        let other_value = other.get_value(property);
+        let self_value = self.resolved_value(property, palettes);
+        let other_value = other.resolved_value(property, palettes);
 
         let new_value = match strategy {
             MergeStrategy::Highest => self_value.max(other_value),
@@ -131,35 +218,32 @@ impl FixtureState {
         self.apply_value(new_value, property);
     }
 
+    /// Writes a literal value into `property`. Palette-bound slots are
+    /// frozen and left untouched; unbind first if you need to overwrite.
     pub fn apply_value(&mut self, value: u16, property: FixtureProperty) {
-        match property {
-            FixtureProperty::Alpha => self.alpha = value as u8,
-            FixtureProperty::Strobe => self.strobe_speed = value as u8,
-            FixtureProperty::Focus => self.focus = value as u8,
-            FixtureProperty::ColorHue => {
-                self.color.h = value as f64;
-            }
-            FixtureProperty::ColorSaturation => {
-                self.color.s = (value as f64).map_range(0.0..255.0, 0.0..1.0)
-            }
-            FixtureProperty::ColorValue => {
-                self.color.v = (value as f64).map_range(0.0..255.0, 0.0..1.0)
-            }
-            FixtureProperty::Tilt => self.orientation.tilt = value as u8,
-            FixtureProperty::Pan => self.orientation.pan = value as u8,
+        if self.slot(property).is_frozen() {
+            return;
         }
+        *self.slot_mut(property) = FixtureValue::Literal(value);
     }
 
-    fn get_value(&self, property: FixtureProperty) -> u16 {
-        match property {
-            FixtureProperty::Alpha => self.alpha as u16,
-            FixtureProperty::Strobe => self.strobe_speed as u16,
-            FixtureProperty::Focus => self.focus as u16,
-            FixtureProperty::ColorHue => self.color.h as u16,
-            FixtureProperty::ColorSaturation => self.color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
-            FixtureProperty::ColorValue => self.color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
-            FixtureProperty::Tilt => self.orientation.tilt as u16,
-            FixtureProperty::Pan => self.orientation.pan as u16,
+    /// Binds `property` to `palette_id`. The slider for that property becomes
+    /// frozen until explicitly unbound or overwritten with a literal.
+    pub fn bind_palette(&mut self, property: FixtureProperty, palette_id: u8) {
+        *self.slot_mut(property) = FixtureValue::PalettePointer { palette_id };
+    }
+
+    /// Replaces a palette pointer with the current resolved literal. No-op if
+    /// the slot is already a literal.
+    pub fn unbind_palette(
+        &mut self,
+        property: FixtureProperty,
+        palettes: &BTreeMap<u8, Palette>,
+    ) {
+        let slot = self.slot_mut(property);
+        if let FixtureValue::PalettePointer { palette_id } = *slot {
+            let v = FixtureValue::PalettePointer { palette_id }.resolve(palettes, property);
+            *slot = FixtureValue::Literal(v);
         }
     }
 
@@ -167,51 +251,121 @@ impl FixtureState {
         *self = Self::default();
     }
 
-    pub fn apply(&mut self, ev: ControlEvent) -> Vec<FixtureProperty> {
+    pub fn apply(&mut self, ev: ControlEvent) -> ApplyOutcome {
+        let mut out = ApplyOutcome::default();
         match ev {
             ControlEvent::SetAlpha(alpha) => {
-                self.alpha = alpha;
-                vec![FixtureProperty::Alpha]
+                if self.alpha.is_frozen() {
+                    out.rejected.push(FixtureProperty::Alpha);
+                } else {
+                    self.alpha = FixtureValue::literal_u8(alpha);
+                    out.changed.push(FixtureProperty::Alpha);
+                }
             }
             ControlEvent::SetStrobeSpeed(speed) => {
-                self.strobe_speed = speed;
-                vec![FixtureProperty::Strobe]
+                if self.strobe_speed.is_frozen() {
+                    out.rejected.push(FixtureProperty::Strobe);
+                } else {
+                    self.strobe_speed = FixtureValue::literal_u8(speed);
+                    out.changed.push(FixtureProperty::Strobe);
+                }
             }
             ControlEvent::SetFocus(v) => {
-                self.focus = v;
-                vec![FixtureProperty::Focus]
+                if self.focus.is_frozen() {
+                    out.rejected.push(FixtureProperty::Focus);
+                } else {
+                    self.focus = FixtureValue::literal_u8(v);
+                    out.changed.push(FixtureProperty::Focus);
+                }
             }
             ControlEvent::SetPan(pan) => {
-                self.orientation.pan = pan;
-                vec![FixtureProperty::Pan]
+                if self.pan.is_frozen() {
+                    out.rejected.push(FixtureProperty::Pan);
+                } else {
+                    self.pan = FixtureValue::literal_u8(pan);
+                    out.changed.push(FixtureProperty::Pan);
+                }
             }
             ControlEvent::SetTilt(tilt) => {
-                self.orientation.tilt = tilt;
-                vec![FixtureProperty::Tilt]
+                if self.tilt.is_frozen() {
+                    out.rejected.push(FixtureProperty::Tilt);
+                } else {
+                    self.tilt = FixtureValue::literal_u8(tilt);
+                    out.changed.push(FixtureProperty::Tilt);
+                }
             }
             ControlEvent::SetColor(clr) => {
-                let color: RGBColor = clr.into();
-                self.color = color.into();
-                vec![
-                    FixtureProperty::ColorHue,
-                    FixtureProperty::ColorSaturation,
-                    FixtureProperty::ColorValue,
-                ]
+                let rgb: RGBColor = clr.into();
+                let hsv: HSVColor = rgb.into();
+                if self.color_h.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorHue);
+                } else {
+                    self.color_h = FixtureValue::Literal(hsv.h.clamp(0.0, 360.0) as u16);
+                    out.changed.push(FixtureProperty::ColorHue);
+                }
+                if self.color_s.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorSaturation);
+                } else {
+                    self.color_s =
+                        FixtureValue::Literal(hsv.s.map_range(0.0..1.0, 0.0..255.0) as u16);
+                    out.changed.push(FixtureProperty::ColorSaturation);
+                }
+                if self.color_v.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorValue);
+                } else {
+                    self.color_v =
+                        FixtureValue::Literal(hsv.v.map_range(0.0..1.0, 0.0..255.0) as u16);
+                    out.changed.push(FixtureProperty::ColorValue);
+                }
             }
             ControlEvent::SetColorHue(hue) => {
-                self.color.h = (hue as f64).clamp(0.0, 360.0);
-                println!("hue: {}", self.color.h);
-                vec![FixtureProperty::ColorHue]
+                if self.color_h.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorHue);
+                } else {
+                    self.color_h = FixtureValue::Literal((hue as u16).min(360));
+                    out.changed.push(FixtureProperty::ColorHue);
+                }
             }
             ControlEvent::SetColorSaturation(sat) => {
-                self.color.s = (sat as f64).map_range(0.0..255.0, 0.0..1.0);
-                vec![FixtureProperty::ColorSaturation]
+                if self.color_s.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorSaturation);
+                } else {
+                    self.color_s = FixtureValue::literal_u8(sat);
+                    out.changed.push(FixtureProperty::ColorSaturation);
+                }
             }
             ControlEvent::SetColorValue(val) => {
-                self.color.v = (val as f64).map_range(0.0..255.0, 0.0..1.0);
-                vec![FixtureProperty::ColorValue]
+                if self.color_v.is_frozen() {
+                    out.rejected.push(FixtureProperty::ColorValue);
+                } else {
+                    self.color_v = FixtureValue::literal_u8(val);
+                    out.changed.push(FixtureProperty::ColorValue);
+                }
+            }
+            ControlEvent::AssignPaletteToProperty(property, palette_id) => {
+                self.bind_palette(property, palette_id);
+                out.changed.push(property);
+            }
+            ControlEvent::UnassignPaletteFromProperty(property) => {
+                *self.slot_mut(property) = FixtureValue::Literal(0);
+                out.changed.push(property);
             }
             other => unreachable!("Not supported: {other:?}"),
         }
+        out
+    }
+}
+
+/// Result of `FixtureState::apply`. `rejected` lists slots that the event
+/// targeted but were left untouched because they are bound to a palette.
+#[derive(Debug, Default, Clone)]
+pub struct ApplyOutcome {
+    pub changed: Vec<FixtureProperty>,
+    pub rejected: Vec<FixtureProperty>,
+}
+
+impl ApplyOutcome {
+    pub fn any_rejected(&self) -> bool {
+        !self.rejected.is_empty()
     }
 }

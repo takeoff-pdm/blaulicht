@@ -1,15 +1,23 @@
-use std::f32::consts::PI;
+use std::{collections::BTreeMap, f32::consts::PI};
 
-use blaulicht_shared::{AnimationSpecBodyPhaser, MathematicalBaseFunction, PhaserKind};
+use blaulicht_shared::{
+    AnimationSpecBodyPhaser, FixtureProperty, MathematicalBaseFunction, PhaserKind,
+    palette::Palette,
+};
 
-pub fn generate(self_: &AnimationSpecBodyPhaser, degrees_raw: u64) -> u16 {
+pub fn generate(
+    self_: &AnimationSpecBodyPhaser,
+    degrees_raw: u64,
+    property: FixtureProperty,
+    palettes: &BTreeMap<u8, Palette>,
+) -> u16 {
     let degrees = (degrees_raw % 360) as f32;
     debug_assert!((0.0..=360.0).contains(&degrees));
 
     let value = match &self_.kind {
         PhaserKind::Mathematical(mathematical_phaser) => {
-            let min = mathematical_phaser.amplitude_min as f32;
-            let max = mathematical_phaser.amplitude_max as f32;
+            let min = mathematical_phaser.amplitude_min.resolve(palettes, property) as f32;
+            let max = mathematical_phaser.amplitude_max.resolve(palettes, property) as f32;
             let range = max - min;
 
             let mut mathematical_phaser = mathematical_phaser.clone();

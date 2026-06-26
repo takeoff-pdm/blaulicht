@@ -2,9 +2,11 @@ pub mod phaser;
 
 use crate::{dmx::DmxEngine, mainloop::DMX_TICK_TIME};
 use blaulicht_audio_engine::CollectorOutput;
-use blaulicht_shared::{AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration};
+use blaulicht_shared::{
+    AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration, palette::Palette,
+};
 pub use phaser::*;
-use std::time::Instant;
+use std::{collections::BTreeMap, time::Instant};
 
 const NUMBER_OF_STEPS: f64 = 360.0;
 
@@ -49,9 +51,12 @@ impl DmxEngine {
         // When having a synced / offsetted animation 'group'
         fixture_index_in_selection: usize,
         fixtures_in_selection: usize,
+        palettes: &BTreeMap<u8, Palette>,
     ) -> u16 {
         match &spec.body {
-            AnimationSpecBody::Phaser(body) => phaser::generate(body, fixture_time),
+            AnimationSpecBody::Phaser(body) => {
+                phaser::generate(body, fixture_time, spec.property, palettes)
+            }
             AnimationSpecBody::AudioVolume(_) => {
                 tracing::debug!("volume: {}", audio_snapshot.snapshot.volume);
                 audio_snapshot.snapshot.volume as u16
@@ -132,6 +137,8 @@ impl DmxEngine {
         let now = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
         let mut state = self.state_ref.dmx_engine.write().unwrap();
         // let animations = state.0.animation_templates.clone();
+
+        let palettes_snapshot = state.0.palettes.clone();
 
         for (_scene_id, scene) in state.0.scenes.iter_mut() {
             let animation_speed_factor = scene.sink.master_speed;
@@ -268,6 +275,7 @@ impl DmxEngine {
                                 fixture_anim_state.timer,
                                 fixture_index_in_selection,
                                 fixtures_in_selection,
+                                &palettes_snapshot,
                             );
 
                             let fixture_state =

@@ -11,13 +11,15 @@ use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
 use egui::{Color32, Context, RichText};
-// use egui_knob::{Knob, KnobStyle, LabelPosition};
+use std::collections::HashMap;
 
 pub struct FixturePerfUi {
     pub scene_overview_animation_edit: AnimationEditState,
     pub scene_overview_animation_selection_edit: Option<(FixtureSelection, u8)>,
     pub scene_overview_animation_selection_edit_need_to_load: bool,
     pub close_scene_overview_after_child: bool,
+    pub palette_dialog_open: bool,
+    pub active_palettes_cache: HashMap<FixtureSelection, Vec<u8>>,
 }
 
 impl BlaulichtApp {
@@ -105,11 +107,17 @@ impl BlaulichtApp {
         let groups = dmx_engine.groups();
 
         //
+        // Refresh the active-palettes cache for the current selection.
+        //
+        self.refresh_active_palettes_cache(&dmx_engine);
+
+        //
         // Dialogs start.
         //
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
         self.render_add_animations_dialog(ctx, &dmx_engine);
+        self.render_palette_assignment_dialog(ctx, &dmx_engine);
 
         //
         // Main UI start.
@@ -165,6 +173,28 @@ impl BlaulichtApp {
                                 self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
                                     ControlEvent::Transaction(instr)));
                                 }
+                            }
+
+                            {
+                                let active_count = self
+                                    .fixture_perf_ui
+                                    .active_palettes_cache
+                                    .get(&dmx_engine.get_selection())
+                                    .map(|v| v.len())
+                                    .unwrap_or(0);
+                                let label = format!("Palettes ({active_count})");
+                                let selection_empty = dmx_engine.selection().is_empty();
+                                ui.add_enabled_ui(!selection_empty, |ui| {
+                                    if components::button(
+                                        ui,
+                                        self.fixture_perf_ui.palette_dialog_open,
+                                        &label,
+                                        ButtonSize::Medium,
+                                    ) {
+                                        self.fixture_perf_ui.palette_dialog_open =
+                                            !self.fixture_perf_ui.palette_dialog_open;
+                                    }
+                                });
                             }
 
                             if components::button(
@@ -504,7 +534,7 @@ impl BlaulichtApp {
                     let new_value_spec = self
                         .fixture_perf_ui
                         .scene_overview_animation_edit
-                        .show(ui, ctx);
+                        .show(ui, ctx, &dmx_engine.0.palettes);
 
                     if let Some(spec) = new_value_spec {
                         self.data
@@ -642,5 +672,156 @@ impl BlaulichtApp {
         if components::button(ui, true, "Close", ButtonSize::Medium) {
             self.current_scene_animations_dialog_open = false;
         }
+    }
+
+    /// Computes the set of palette IDs currently "active" on the selection,
+    /// i.e., palettes assigned to *every* fixture in the selection within the
+    /// current scene's sink. Stores the result keyed by the current selection.
+    fn refresh_active_palettes_cache(&mut self, dmx_engine: &EngineState) {
+        let selection = dmx_engine.get_selection();
+        self.fixture_perf_ui.active_palettes_cache.clear();
+
+        if selection.fixtures.is_empty() {
+            self.fixture_perf_ui
+                .active_palettes_cache
+                .insert(selection, Vec::new());
+            return;
+        }
+
+        let scene = dmx_engine.curr_scene();
+        let mut active: Option<Vec<u8>> = None;
+        for fixture_key in &selection.fixtures {
+            let ids = scene
+                .sink
+                .palette_assignments
+                .get(fixture_key)
+                .cloned()
+                .unwrap_or_default();
+            active = Some(match active {
+                None => ids,
+                Some(prev) => prev.into_iter().filter(|id| ids.contains(id)).collect(),
+            });
+        }
+        let mut active = active.unwrap_or_default();
+        active.sort_unstable();
+        active.dedup();
+        self.fixture_perf_ui
+            .active_palettes_cache
+            .insert(selection, active);
+    }
+
+    fn render_palette_assignment_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if !self.fixture_perf_ui.palette_dialog_open {
+            return;
+        }
+
+        const WIDTH: f32 = 460.0;
+        const HEIGHT: f32 = 440.0;
+
+        let selection = dmx_engine.get_selection();
+        let active: Vec<u8> = self
+            .fixture_perf_ui
+            .active_palettes_cache
+            .get(&selection)
+            .cloned()
+            .unwrap_or_default();
+
+        Dialog::new("Selection Palettes".to_string(), egui::vec2(WIDTH, HEIGHT))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                if selection.fixtures.is_empty() {
+                    ui.label("No selection.");
+                    ui.add_space(8.0);
+                    if components::button(ui, true, "Close", ButtonSize::Medium) {
+                        self.fixture_perf_ui.palette_dialog_open = false;
+                    }
+                    return;
+                }
+
+                ui.label(format!("Selection: {} fixture(s)", selection.fixtures.len()));
+                ui.add_space(8.0);
+
+                ui.heading("Active");
+                ui.separator();
+                if active.is_empty() {
+                    ui.label("None.");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt("active_palettes")
+                        .max_height(120.0)
+                        .show(ui, |ui| {
+                            for palette_id in &active {
+                                let name = dmx_engine
+                                    .0
+                                    .palettes
+                                    .get(palette_id)
+                                    .map(|p| p.name.as_str())
+                                    .unwrap_or("?");
+                                let label = format!("◆ {palette_id}: {name}");
+                                if components::button(
+                                    ui,
+                                    true,
+                                    &label,
+                                    ButtonSize::Medium.with_width(WIDTH - 40.0),
+                                ) {
+                                    self.data.event_bus_connection.send(
+                                        ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            ControlEvent::UnassignPaletteFromSelection(
+                                                *palette_id,
+                                            ),
+                                        ),
+                                    );
+                                }
+                                ui.add_space(2.0);
+                            }
+                        });
+                }
+
+                ui.add_space(10.0);
+                ui.heading("Available");
+                ui.separator();
+
+                let available: Vec<(u8, String)> = dmx_engine
+                    .0
+                    .palettes
+                    .iter()
+                    .filter(|(id, _)| !active.contains(id))
+                    .map(|(id, p)| (*id, p.name.clone()))
+                    .collect();
+
+                if available.is_empty() {
+                    ui.label("No more palettes to assign.");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt("available_palettes")
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for (palette_id, name) in &available {
+                                let label = format!("{palette_id}: {name}");
+                                if components::button(
+                                    ui,
+                                    false,
+                                    &label,
+                                    ButtonSize::Medium.with_width(WIDTH - 40.0),
+                                ) {
+                                    self.data.event_bus_connection.send(
+                                        ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            ControlEvent::AssignPaletteToSelection(*palette_id),
+                                        ),
+                                    );
+                                }
+                                ui.add_space(2.0);
+                            }
+                        });
+                }
+
+                ui.add_space(12.0);
+                ui.separator();
+                if components::button(ui, true, "Close", ButtonSize::Medium) {
+                    self.fixture_perf_ui.palette_dialog_open = false;
+                }
+            });
     }
 }

@@ -15,11 +15,14 @@ use crate::{
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
-    fixture::state::{FixtureState, MergeStrategy},
+    fixture::{
+        state::{FixtureState, MergeStrategy, ResolvedFixtureState},
+        value::FixtureValue,
+    },
     scene::{FixtureSelection, FixtureSelector},
     scene_graph::{AudioConditions, SceneGraphRuntime},
-    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
-    CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    LogLevel, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -169,6 +172,11 @@ impl DmxEngine {
 
         mem::drop(health_state);
 
+        {
+            let mut engine_state = state_ref.dmx_engine.write().unwrap();
+            let _ = engine_state.0.validate_palette_mapping_integrity(true);
+        }
+
         Self {
             state_ref,
             dmx_previous: [0; 513],
@@ -232,6 +240,13 @@ impl DmxEngine {
                             .send(ControlEventMessage::new(EventOriginator::DmxEngine, ev));
                     }
                 }
+
+                let integrity = state.0.validate_palette_mapping_integrity(false);
+                debug_assert!(
+                    integrity.is_ok(),
+                    "palette mapping integrity violated after applying events: {:?}",
+                    integrity
+                );
             }
         }
 
@@ -341,7 +356,7 @@ impl DmxEngine {
 
                 fix.setup(
                     time as i32,
-                    &FixtureState::default(),
+                    &ResolvedFixtureState::default(),
                     &mut buffer.dmx_buffer,
                 );
             }
@@ -397,6 +412,7 @@ impl DmxEngine {
 
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
+        let palettes = &state.0.palettes;
 
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
@@ -416,14 +432,14 @@ impl DmxEngine {
                 if let Some(palette_ids) = curr_scene.sink.palette_assignments.get(&fixture_key) {
                     for palette_id in palette_ids {
                         if let Some(palette) = state.0.palettes.get(palette_id) {
-                            palette.kind.apply_to(&mut merged_state);
+                            palette.kind.apply_to(&mut merged_state, &state.0.palettes);
                         }
                     }
                 }
 
-                // Apply master alpha of this scene on the scene fixture state.
-                //  0-255                         / 0 - 100
-                merged_state.alpha = (merged_state.alpha as f32 / 100.0
+                // Resolve to a concrete state, then apply master alpha.
+                let mut resolved = merged_state.resolve(palettes);
+                resolved.alpha = ((resolved.alpha as f32 / 100.0)
                     * curr_scene.sink.master_alpha_fader as f32)
                     as u8;
 
@@ -447,26 +463,39 @@ impl DmxEngine {
                     {
                         for palette_id in palette_ids {
                             if let Some(palette) = state.0.palettes.get(palette_id) {
-                                palette.kind.apply_to(&mut scene_fixture_state);
+                                palette
+                                    .kind
+                                    .apply_to(&mut scene_fixture_state, &state.0.palettes);
                             }
                         }
                     }
 
-                    // Apply master alpha of this scene on the scene fixture state.
-                    //  0-255                         / 0 - 100
-                    scene_fixture_state.alpha = (scene_fixture_state.alpha as f32 / 100.0
-                        * this_scene.sink.master_alpha_fader as f32)
-                        as u8;
+                    // Apply master alpha as a literal scaling on the overlay's
+                    // resolved alpha before merging.
+                    {
+                        let resolved_alpha = scene_fixture_state
+                            .alpha
+                            .resolve(palettes, FixtureProperty::Alpha)
+                            as f32;
+                        let scaled = ((resolved_alpha / 100.0)
+                            * this_scene.sink.master_alpha_fader as f32)
+                            as u16;
+                        scene_fixture_state.alpha = FixtureValue::Literal(scaled);
+                    }
 
                     let changeset = this_scene.get_fixture_changeset(*group.0, *fixture.0);
+                    // Build a merged FixtureState for property-by-property merge,
+                    // starting from the current resolved snapshot as literals.
+                    let mut merged_for_overlay: FixtureState = resolved.clone().into();
                     for change in changeset {
-                        // TODO: pull change into merged state.
-                        merged_state.merge_from(
+                        merged_for_overlay.merge_from(
                             &scene_fixture_state,
                             change,
                             MergeStrategy::Highest, // WAS HIGHEST ONCE
+                            palettes,
                         );
                     }
+                    resolved = merged_for_overlay.resolve(palettes);
                 }
 
                 // TODO: we will need to use the merged fixture states here and then write them.
@@ -475,7 +504,7 @@ impl DmxEngine {
                     .write()
                     .unwrap();
 
-                fix.write(&merged_state, &mut buffer.dmx_buffer);
+                fix.write(&resolved, &mut buffer.dmx_buffer);
             }
         }
 
@@ -847,6 +876,13 @@ impl DmxEngine {
                 let new_id = (0..=u8::MAX).find(|id| !state.0.palettes.contains_key(id));
                 match new_id {
                     Some(id) => {
+                        if blaulicht_shared::palette::would_create_cycle(
+                            &state.0.palettes,
+                            id,
+                            &kind,
+                        ) {
+                            return (Some("Pointer palette would form a cycle"), None);
+                        }
                         state
                             .0
                             .palettes
@@ -856,21 +892,46 @@ impl DmxEngine {
                     None => (Some("Max palettes reached"), None),
                 }
             }
-            ControlEvent::UpdatePalette(id, kind) => match state.0.palettes.get_mut(&id) {
-                Some(palette) => {
-                    palette.kind = kind;
-                    (None, None)
+            ControlEvent::UpdatePalette(id, kind) => {
+                if blaulicht_shared::palette::would_create_cycle(&state.0.palettes, id, &kind) {
+                    return (Some("Pointer palette would form a cycle"), None);
                 }
-                None => (Some("Palette not found"), None),
-            },
+                match state.0.palettes.get_mut(&id) {
+                    Some(palette) => {
+                        palette.kind = kind;
+                        // Property coverage may have changed; re-sync every scene.
+                        let palettes_snapshot = state.0.palettes.clone();
+                        for scene in state.0.scenes.values_mut() {
+                            scene.sink.sync_palette_bindings(&palettes_snapshot);
+                        }
+                        (None, None)
+                    }
+                    None => (Some("Palette not found"), None),
+                }
+            }
             ControlEvent::DeletePalette(id) => {
                 if state.0.palettes.remove(&id).is_none() {
                     return (Some("Palette not found"), None);
                 }
+                let palettes_snapshot = state.0.palettes.clone();
                 for scene in state.0.scenes.values_mut() {
                     for assignments in scene.sink.palette_assignments.values_mut() {
                         assignments.retain(|pid| *pid != id);
                     }
+                    scene.sink.sync_palette_bindings(&palettes_snapshot);
+                }
+                (None, None)
+            }
+            ControlEvent::UnassignPalette(id) => {
+                if !state.0.palettes.contains_key(&id) {
+                    return (Some("Palette not found"), None);
+                }
+                let palettes_snapshot = state.0.palettes.clone();
+                for scene in state.0.scenes.values_mut() {
+                    for assignments in scene.sink.palette_assignments.values_mut() {
+                        assignments.retain(|pid| *pid != id);
+                    }
+                    scene.sink.sync_palette_bindings(&palettes_snapshot);
                 }
                 (None, None)
             }
@@ -909,8 +970,25 @@ impl DmxEngine {
             ControlEvent::AddAnimation(id) => {
                 // Get the source animation to clone the spec.
                 let animation_template = state.0.animation_templates.get(&id).cloned();
+                let Some(animation_template) = animation_template else {
+                    return (Some("Animation template ID does not exist"), None);
+                };
+
+                let target_property = animation_template.spec.property;
 
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+
+                // Reject if any fixture in the selection has the target
+                // property bound to a palette — the animation could not
+                // actually drive the slot.
+                for fixture_key in &curr_selection.fixtures {
+                    if let Some(fixture_state) = this_scene.sink.fixture_states.get(fixture_key) {
+                        if fixture_state.slot(target_property).is_frozen() {
+                            return (Some("Target property is bound to a palette"), None);
+                        }
+                    }
+                }
+
                 if !this_scene
                     .sink
                     .active_animations
@@ -930,20 +1008,17 @@ impl DmxEngine {
 
                 match selec_anim.contains_key(&id) {
                     true => (Some("Animation already applied"), None, None),
-                    false => match animation_template {
-                        Some(animation_template) => {
-                            let spec_cloned = animation_template.spec.clone();
-                            let effective_property = spec_cloned.property;
+                    false => {
+                        let spec_cloned = animation_template.spec.clone();
+                        let effective_property = spec_cloned.property;
 
-                            selec_anim.insert(
-                                id,
-                                ActiveAnimation::new(&curr_selection.fixtures, spec_cloned),
-                            );
+                        selec_anim.insert(
+                            id,
+                            ActiveAnimation::new(&curr_selection.fixtures, spec_cloned),
+                        );
 
-                            (None, None, Some(vec![effective_property]))
-                        }
-                        None => (Some("Animation template ID does not exist"), None, None),
-                    },
+                        (None, None, Some(vec![effective_property]))
+                    }
                 }
             }
             ControlEvent::SetAnimationSpeed(id, md) => {
@@ -1132,11 +1207,82 @@ impl DmxEngine {
                     }
                 }
             }
-            ControlEvent::AssignPalette(palette_id) => {
-                if !state.0.palettes.contains_key(&palette_id) {
-                    return (Some("Palette not found"), None);
-                }
+            ControlEvent::AssignPaletteToSelection(palette_id) => {
+                let palettes_snapshot = state.0.palettes.clone();
+                let properties = match palettes_snapshot.get(&palette_id) {
+                    Some(p) => p.kind.properties(&palettes_snapshot),
+                    None => return (Some("Palette not found"), None),
+                };
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+
+                // Reject mixed state: either every fixture in the selection
+                // already has this palette assigned, or none of them do.
+                let mut some_active = false;
+                let mut some_inactive = false;
+                for fixture_key in &curr_selection.fixtures {
+                    let active = this_scene
+                        .sink
+                        .palette_assignments
+                        .get(fixture_key)
+                        .map(|ids| ids.contains(&palette_id))
+                        .unwrap_or(false);
+                    if active {
+                        some_active = true;
+                    } else {
+                        some_inactive = true;
+                    }
+                }
+                if some_active && some_inactive {
+                    return (Some("Selection has mixed palette state"), None);
+                }
+
+                // Reject if another assigned palette already covers one of
+                // this palette's properties for any fixture in the selection.
+                for fixture_key in &curr_selection.fixtures {
+                    let Some(existing) =
+                        this_scene.sink.palette_assignments.get(fixture_key)
+                    else {
+                        continue;
+                    };
+                    for other_id in existing {
+                        if *other_id == palette_id {
+                            continue;
+                        }
+                        let Some(other) = palettes_snapshot.get(other_id) else {
+                            continue;
+                        };
+                        for property in &properties {
+                            if other.kind.properties(&palettes_snapshot).contains(property) {
+                                return (
+                                    Some("Property already covered by another palette"),
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Reject if any fixture in the selection has an active
+                // animation driving one of this palette's properties — the
+                // animation would silently no-op once the slot is frozen.
+                for (anim_selection, anims) in &this_scene.sink.active_animations {
+                    let intersects_selection = anim_selection
+                        .fixtures
+                        .iter()
+                        .any(|k| curr_selection.fixtures.contains(k));
+                    if !intersects_selection {
+                        continue;
+                    }
+                    for active in anims.values() {
+                        if properties.contains(&active.spec_cloned.property) {
+                            return (
+                                Some("Property is controlled by an active animation"),
+                                None,
+                            );
+                        }
+                    }
+                }
+
                 for fixture_key in &curr_selection.fixtures {
                     let assignments = this_scene
                         .sink
@@ -1147,10 +1293,30 @@ impl DmxEngine {
                         assignments.push(palette_id);
                     }
                 }
-                (None, None, None)
+                this_scene.sink.sync_palette_bindings(&palettes_snapshot);
+                (None, None, Some(properties))
             }
-            ControlEvent::UnassignPalette(palette_id) => {
+            ControlEvent::UnassignPaletteFromSelection(palette_id) => {
+                let palettes_snapshot = state.0.palettes.clone();
+                let properties = match palettes_snapshot.get(&palette_id) {
+                    Some(p) => p.kind.properties(&palettes_snapshot),
+                    None => return (Some("Palette not found"), None),
+                };
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
+
+                // Palette must be active on every fixture in the selection.
+                for fixture_key in &curr_selection.fixtures {
+                    let active = this_scene
+                        .sink
+                        .palette_assignments
+                        .get(fixture_key)
+                        .map(|ids| ids.contains(&palette_id))
+                        .unwrap_or(false);
+                    if !active {
+                        return (Some("Palette not active on full selection"), None);
+                    }
+                }
+
                 for fixture_key in &curr_selection.fixtures {
                     if let Some(assignments) =
                         this_scene.sink.palette_assignments.get_mut(fixture_key)
@@ -1158,19 +1324,23 @@ impl DmxEngine {
                         assignments.retain(|id| *id != palette_id);
                     }
                 }
-                (None, None, None)
+                this_scene.sink.sync_palette_bindings(&palettes_snapshot);
+                (None, None, Some(properties))
             }
             _ => {
                 // NOTE: this applies the changeset internally on the sink.
                 let this_scene = state.0.scenes.get_mut(&current_scene_focus).unwrap();
 
-                this_scene
+                let rejected = this_scene
                     .sink
                     .apply_with_selection(curr_selection, ev.body());
 
                 // Update control buffer for the UI.
                 state.0.control_buffer.apply(ev.body());
 
+                if rejected {
+                    return (Some("Slot frozen to palette; unbind to edit"), None);
+                }
                 return (None, None);
             }
         };

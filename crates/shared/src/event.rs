@@ -305,8 +305,20 @@ pub enum ControlEvent {
     UpdatePalette(u8, PaletteKind),
     DeletePalette(u8),
     RenamePalette(u8, String),
-    AssignPalette(u8),
+    // Remove a palette from every fixture in every scene.
     UnassignPalette(u8),
+
+    // Per-property palette binding ("freeze" a fixture slot to a palette).
+    AssignPaletteToProperty(FixtureProperty, u8),
+    UnassignPaletteFromProperty(FixtureProperty),
+
+    // Bind/unbind a palette across the current selection. The palette's
+    // covered properties (see `PaletteKind::properties`) are applied to every
+    // fixture in the selection. Rejected if the selection holds an
+    // inconsistent state for those properties (e.g., some fixtures already
+    // bound to a different palette, or mixed Literal/PalettePointer).
+    AssignPaletteToSelection(u8),
+    UnassignPaletteFromSelection(u8),
 
     // Scene graph focus.
     SetFocusedSceneGraph(Option<u8>),
@@ -345,11 +357,14 @@ impl ControlEvent {
             | ControlEvent::UpdatePalette(_, _)
             | ControlEvent::DeletePalette(_)
             | ControlEvent::RenamePalette(_, _)
-            | ControlEvent::AssignPalette(_)
             | ControlEvent::UnassignPalette(_)
+            | ControlEvent::AssignPaletteToSelection(_)
+            | ControlEvent::UnassignPaletteFromSelection(_)
             | ControlEvent::SetFocusedSceneGraph(_) => {
                 return None;
             }
+            ControlEvent::AssignPaletteToProperty(prop, _) => *prop,
+            ControlEvent::UnassignPaletteFromProperty(prop) => *prop,
             ControlEvent::SetEnabled(_) => todo!("Illegal message"),
             ControlEvent::SetAlpha(_) => FixtureProperty::Alpha,
             ControlEvent::SetStrobeSpeed(_) => FixtureProperty::Strobe,
@@ -458,8 +473,10 @@ macro_rules! CONTROLS_REQUIRING_SELECTION {
             | ControlEvent::PlayAnimation(_)
             | ControlEvent::LoadSpecIntoAnimation(_, _)
             | ControlEvent::SetAnimationSpeed(_, _)
-            | ControlEvent::AssignPalette(_)
-            | ControlEvent::UnassignPalette(_)
+            | ControlEvent::AssignPaletteToProperty(_, _)
+            | ControlEvent::UnassignPaletteFromProperty(_)
+            | ControlEvent::AssignPaletteToSelection(_)
+            | ControlEvent::UnassignPaletteFromSelection(_)
     };
 }
 
@@ -501,6 +518,7 @@ impl ControlEvent {
             ControlEvent::CreatePalette(_, _) => false,
             ControlEvent::UpdatePalette(_, _) => false,
             ControlEvent::DeletePalette(_) => false,
+            ControlEvent::UnassignPalette(_) => false,
             ControlEvent::RenamePalette(_, _) => false,
             ControlEvent::SetFocusedSceneGraph(_) => false,
         }

@@ -4,7 +4,7 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::fixture::state::FixtureState;
+use crate::fixture::state::{FixtureState, ResolvedFixtureState};
 
 use super::Fixture;
 
@@ -30,7 +30,7 @@ impl Dimmer {
         }
     }
 
-    pub fn write(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {
+    pub fn write(&self, this: &Fixture, state: &ResolvedFixtureState, dmx: &mut [u8]) {
         match self {
             Dimmer::FogMachineSingle => fixture_channel!(dmx, this, 0) = state.alpha,
             Dimmer::DimmerSingle => fixture_channel!(dmx, this, 0) = state.alpha,
@@ -42,7 +42,7 @@ impl Dimmer {
     }
 
     pub fn state_from_dmx(&self, this: &Fixture, dmx: &[u8]) -> FixtureState {
-        let mut state = FixtureState {
+        let mut state = ResolvedFixtureState {
             alpha: fixture_channel!(dmx, this, 0),
             ..Default::default()
         };
@@ -54,9 +54,9 @@ impl Dimmer {
             }
         }
 
-        state
+        state.into()
     }
 
-    pub fn blackout(&self, this: &Fixture, state: &FixtureState, dmx: &mut [u8]) {}
-    pub fn setup(&self, this: &Fixture, time: i32, state: &FixtureState, dmx: &mut [u8]) {}
+    pub fn blackout(&self, _this: &Fixture, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
+    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
 }

@@ -8,14 +8,18 @@ use crate::{
     state::DmxBuffer,
 };
 use blaulicht_shared::{
-    fixture::state::FixtureState, ControlEvent, ControlEventMessage, EngineGroups, EventOriginator,
-    FixtureProperty, RGBColor,
+    fixture::state::{FixtureState, ResolvedFixtureState},
+    palette::Palette,
+    ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
 use egui::{
     Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, Vec2, Widget,
 };
 use map_range::MapRange;
-use std::{collections::BTreeMap, sync::RwLockReadGuard};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::RwLockReadGuard,
+};
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
@@ -60,11 +64,12 @@ impl DmxSimulator {
             fixture_id: u8,
             name: String,
             start_addr: usize,
-            state: FixtureState,
+            state: ResolvedFixtureState,
         }
 
         ui.set_min_height(300.0);
 
+        let empty_palettes: BTreeMap<u8, Palette> = BTreeMap::new();
         let mut fixtures: Vec<FixtureVisual> = Vec::new();
         for (group_id, group) in groups {
             for (fixture_id, fixture) in &group.fixtures {
@@ -72,7 +77,7 @@ impl DmxSimulator {
                     continue;
                 }
 
-                let state = fixture.state_from_dmx(&dmx.dmx_buffer);
+                let state = fixture.state_from_dmx(&dmx.dmx_buffer).resolve(&empty_palettes);
                 fixtures.push(FixtureVisual {
                     group_id: *group_id,
                     fixture_id: *fixture_id,
@@ -903,201 +908,202 @@ impl BlaulichtApp {
 
             let animations: Vec<u8> = dmx_engine.0.animation_templates.keys().copied().collect();
 
-            self.fixture_controls(
+            let mut frozen_props: HashSet<FixtureProperty> = HashSet::new();
+            let curr_scene = dmx_engine.curr_scene();
+            for (gid, fid) in &dmx_engine.get_selection().fixtures {
+                let Some(fixture_state) = curr_scene.sink.fixture_states.get(&(*gid, *fid)) else {
+                    continue;
+                };
+                for prop in <FixtureProperty as strum::IntoEnumIterator>::iter() {
+                    if fixture_state.slot(prop).is_frozen() {
+                        frozen_props.insert(prop);
+                    }
+                }
+            }
+
+            Self::fixture_controls(
                 ui,
                 &buf,
+                &dmx_engine.0.palettes,
+                &frozen_props,
                 self.data.event_bus_connection.clone(),
                 animations.as_slice(),
             );
-            // todo!("FIXTURE CONTROLS")
         }
     }
 
     fn fixture_controls(
-        &self,
         ui: &mut egui::Ui,
         buf: &FixtureState,
+        palettes: &BTreeMap<u8, Palette>,
+        frozen_props: &HashSet<FixtureProperty>,
         event_bus_connection: SystemEventBusConnectionInst,
         _animations: &[u8],
     ) {
+        let resolved = buf.resolve(palettes);
+
         Frame::new()
             .fill(ui.visuals().widgets.inactive.weak_bg_fill)
             .inner_margin(Margin::symmetric(12, 6))
             .show(ui, |ui| {
                 ui.set_max_width(200.0);
                 ui.vertical(|ui| {
-                    // ui.label("Fixture Controls");
-                    // ui.add_space(8.0);
-
-                    // Alpha slider.
-                    {
-                        let mut brightness = buf.alpha as f32;
-                        if ui
-                            .add(HFader::new(&mut brightness, 0.0..=255.0).with_label("Alpha"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetAlpha(brightness as u8),
-                            ));
+                    let row =
+                        |ui: &mut egui::Ui,
+                         prop: FixtureProperty,
+                         label: &str,
+                         range: std::ops::RangeInclusive<f32>,
+                         resolved_val: f32,
+                         build_event: &dyn Fn(f32) -> ControlEvent| {
+                            let frozen = frozen_props.contains(&prop);
+                            let mut value = resolved_val;
+                            ui.add_enabled_ui(!frozen, |ui| {
+                                if ui
+                                    .add(HFader::new(&mut value, range).with_label(label))
+                                    .changed()
+                                {
+                                    event_bus_connection.send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        build_event(value),
+                                    ));
+                                }
+                            });
                         };
-                    }
+
+                    row(
+                        ui,
+                        FixtureProperty::Alpha,
+                        "Alpha",
+                        0.0..=255.0,
+                        resolved.alpha as f32,
+                        &|v| ControlEvent::SetAlpha(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // Strobe slider.
-                    {
-                        let mut strobe = buf.strobe_speed as f32;
-                        if ui
-                            .add(HFader::new(&mut strobe, 0.0..=255.0).with_label("Strobe"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetStrobeSpeed(strobe as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::Strobe,
+                        "Strobe",
+                        0.0..=255.0,
+                        resolved.strobe_speed as f32,
+                        &|v| ControlEvent::SetStrobeSpeed(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // Focus slider.
-                    {
-                        let mut focus = buf.focus as f32;
-                        if ui
-                            .add(HFader::new(&mut focus, 0.0..=255.0).with_label("Focus"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetFocus(focus as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::Focus,
+                        "Focus",
+                        0.0..=255.0,
+                        resolved.focus as f32,
+                        &|v| ControlEvent::SetFocus(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // Tilt slider.
-                    {
-                        let mut tilt = buf.orientation.tilt as f32;
-                        if ui
-                            .add(HFader::new(&mut tilt, 0.0..=255.0).with_label("Tilt"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetTilt(tilt as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::Tilt,
+                        "Tilt",
+                        0.0..=255.0,
+                        resolved.orientation.tilt as f32,
+                        &|v| ControlEvent::SetTilt(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // Pan slider.
-                    {
-                        let mut pan = buf.orientation.pan as f32;
-                        if ui
-                            .add(HFader::new(&mut pan, 0.0..=255.0).with_label("Pan"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetPan(pan as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::Pan,
+                        "Pan",
+                        0.0..=255.0,
+                        resolved.orientation.pan as f32,
+                        &|v| ControlEvent::SetPan(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // ColorHue slider
-                    {
-                        let mut hue = buf.color.h as f32;
-                        if ui
-                            .add(HFader::new(&mut hue, 0.0..=360.0).with_label("Hue"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetColorHue(hue as u16),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::ColorHue,
+                        "Hue",
+                        0.0..=360.0,
+                        resolved.color.h as f32,
+                        &|v| ControlEvent::SetColorHue(v as u16),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // ColorSaturation slider
-                    {
-                        let mut saturation = buf.color.s.map_range(0.0..1.0, 0.0..255.0) as f32;
-                        if ui
-                            .add(HFader::new(&mut saturation, 0.0..=255.0).with_label("Saturation"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetColorSaturation(saturation as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::ColorSaturation,
+                        "Saturation",
+                        0.0..=255.0,
+                        resolved.color.s.map_range(0.0..1.0, 0.0..255.0) as f32,
+                        &|v| ControlEvent::SetColorSaturation(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
-                    // ColorValue slider
-                    {
-                        let mut value = buf.color.v.map_range(0.0..1.0, 0.0..255.0) as f32;
-                        if ui
-                            .add(HFader::new(&mut value, 0.0..=255.0).with_label("Value"))
-                            .changed()
-                        {
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetColorValue(value as u8),
-                            ));
-                        };
-                    }
+                    row(
+                        ui,
+                        FixtureProperty::ColorValue,
+                        "Value",
+                        0.0..=255.0,
+                        resolved.color.v.map_range(0.0..1.0, 0.0..255.0) as f32,
+                        &|v| ControlEvent::SetColorValue(v as u8),
+                    );
 
                     ui.add_space(3.0);
                     ui.separator();
                     ui.add_space(3.0);
 
                     // Color picker
-                    let b_color: RGBColor = buf.color.into();
+                    let b_color: RGBColor = resolved.color.into();
                     let mut color = [
                         b_color.r as f32 / 255.0,
                         b_color.g as f32 / 255.0,
                         b_color.b as f32 / 255.0,
                     ];
-                    if ui.color_edit_button_rgb(&mut color).changed() {
-                        let r = (color[0] * 255.0) as u8;
-                        let g = (color[1] * 255.0) as u8;
-                        let b = (color[2] * 255.0) as u8;
+                    let color_frozen = frozen_props.contains(&FixtureProperty::ColorHue)
+                        || frozen_props.contains(&FixtureProperty::ColorSaturation)
+                        || frozen_props.contains(&FixtureProperty::ColorValue);
+                    ui.add_enabled_ui(!color_frozen, |ui| {
+                        if ui.color_edit_button_rgb(&mut color).changed() {
+                            let r = (color[0] * 255.0) as u8;
+                            let g = (color[1] * 255.0) as u8;
+                            let b = (color[2] * 255.0) as u8;
 
-                        let tup = (r, g, b);
-                        if RGBColor::from(tup) != b_color {
-                            tracing::debug!(
-                                "RGBColor::from(tup) != b_color ({:?} != {:?})",
-                                RGBColor::from(tup),
-                                b_color
-                            );
-                            event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetColor(tup),
-                            ));
+                            let tup = (r, g, b);
+                            if RGBColor::from(tup) != b_color {
+                                tracing::debug!(
+                                    "RGBColor::from(tup) != b_color ({:?} != {:?})",
+                                    RGBColor::from(tup),
+                                    b_color
+                                );
+                                event_bus_connection.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetColor(tup),
+                                ));
+                            }
                         }
-                    }
+                    });
                 });
             });
     }
