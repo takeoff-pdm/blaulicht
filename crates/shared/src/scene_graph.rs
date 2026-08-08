@@ -1,6 +1,6 @@
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::{AnimationSpeedModifier, SectionState};
 
@@ -272,6 +272,28 @@ impl SceneGraphRuntime {
 }
 
 impl SceneGraphState {
+    /// Removes references to scenes that are no longer present after scene
+    /// deletion or show-file loading.
+    pub fn retain_scene_ids(&mut self, valid_scene_ids: &HashSet<u8>) {
+        if self
+            .focused_graph
+            .is_some_and(|graph_id| !self.graphs.contains_key(&graph_id))
+        {
+            self.focused_graph = None;
+        }
+        self.active_countdowns
+            .retain(|graph_id, _| self.graphs.contains_key(graph_id));
+
+        for graph in self.graphs.values_mut() {
+            for node in graph.nodes.values_mut() {
+                node.scenes.retain(|scene_id| valid_scene_ids.contains(scene_id));
+            }
+            if graph.active_node.is_some_and(|node_id| !graph.nodes.contains_key(&node_id)) {
+                graph.active_node = None;
+            }
+        }
+    }
+
     pub fn collect_active_scene_overrides(&self) -> Vec<SceneOverride> {
         let mut overrides = Vec::new();
         for graph in self.graphs.values() {

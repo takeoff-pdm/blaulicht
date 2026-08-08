@@ -353,7 +353,9 @@ impl FixtureState {
                 *self.slot_mut(property) = FixtureValue::Literal(0);
                 out.changed.push(property);
             }
-            other => unreachable!("Not supported: {other:?}"),
+            other => {
+                tracing::warn!("Ignoring unsupported fixture event: {other:?}");
+            }
         }
         out
     }
@@ -370,5 +372,19 @@ pub struct ApplyOutcome {
 impl ApplyOutcome {
     pub fn any_rejected(&self) -> bool {
         !self.rejected.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_fixture_event_is_ignored() {
+        let mut state = FixtureState::default();
+        let outcome = state.apply(ControlEvent::SetEnabled(true));
+
+        assert!(outcome.changed.is_empty());
+        assert!(outcome.rejected.is_empty());
     }
 }

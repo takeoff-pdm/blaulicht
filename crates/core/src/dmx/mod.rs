@@ -26,7 +26,7 @@ use blaulicht_shared::{
 };
 use crossbeam_channel::Sender;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     mem,
     net::UdpSocket,
     sync::{Arc, RwLockWriteGuard},
@@ -595,6 +595,7 @@ impl DmxEngine {
         // Match event.
         match ev.body() {
             ControlEvent::Transaction(t) => {
+                let snapshot = state.0.clone();
                 for t_ev in t {
                     // debug!("Apply transaction: {:?}", &ev);
 
@@ -603,6 +604,7 @@ impl DmxEngine {
 
                     if err.is_some() {
                         error!("Error during transaction: {err:?}");
+                        state.0 = snapshot;
                         return (err, rollback);
                     }
                 }
@@ -650,6 +652,11 @@ impl DmxEngine {
                 if !state.0.selection.group_ids.insert(group_id) {
                     (Some("Already selected"), None)
                 } else {
+                    if state.0.selection.group_ids.len() != 1
+                        || !state.0.selection.fixtures_in_group.is_empty()
+                    {
+                        state.0.selection.fixtures_in_group.clear();
+                    }
                     (None, None)
                 }
             }
@@ -664,10 +671,19 @@ impl DmxEngine {
                 if !state.0.selection.group_ids.remove(&group_id) {
                     (Some("Not selected"), None)
                 } else {
+                    state.0.selection.fixtures_in_group.clear();
                     (None, None)
                 }
             }
             ControlEvent::LimitSelectionToFixtureInCurrentGroup(fixture_id) => {
+                let Some(&group_id) = state.selection().group_ids.iter().next() else {
+                    return (
+                        Some("Exactly 1 group shall be selected"),
+                        Some(ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(
+                            fixture_id,
+                        )),
+                    );
+                };
                 if state.selection().group_ids.len() != 1 {
                     return (
                         Some("Exactly 1 group shall be selected"),
@@ -675,6 +691,12 @@ impl DmxEngine {
                             fixture_id,
                         )),
                     );
+                }
+                let Some(group) = state.0.groups.get(&group_id) else {
+                    return (Some("Illegal group"), None);
+                };
+                if !group.fixtures.contains_key(&fixture_id) {
+                    return (Some("Illegal fixture"), None);
                 }
 
                 if !state.0.selection.fixtures_in_group.insert(fixture_id) {
@@ -695,9 +717,18 @@ impl DmxEngine {
                 }
             }
             ControlEvent::RemoveSelection => {
-                if state.selection().is_empty() {
+                if state.0.selection.group_ids.is_empty()
+                    && state.0.selection.fixtures_in_group.is_empty()
+                {
                     (Some("No selection"), None)
+                } else if !state.0.selection.fixtures_in_group.is_empty() {
+                    state.0.selection.fixtures_in_group.clear();
+                    (None, None)
                 } else {
+                    let Some(group_id) = state.0.selection.group_ids.iter().next().copied() else {
+                        return (Some("No selection"), None);
+                    };
+                    state.0.selection.group_ids.remove(&group_id);
                     (None, None)
                 }
             }
@@ -806,9 +837,10 @@ impl DmxEngine {
                 for (_selec, anim_set) in anim.iter_mut() {
                     for (anim_id, anim) in anim_set.iter_mut() {
                         // TODO: this can be done prettier.
-                        let animation_sync = anim.spec_cloned.sync_mode();
-                        anim.set_timers(animation_sync);
-                        debug!("Reset animation: {anim_id}");
+                        if anim.enabled {
+                            anim.reset_timers(anim.spec_cloned.sync_mode());
+                            debug!("Reset animation: {anim_id}");
+                        }
                     }
                 }
                 (None, None)
@@ -851,19 +883,17 @@ impl DmxEngine {
                 }
 
                 {
-                    let animations = &mut state
-                        .0
-                        .scenes
-                        .get_mut(&scene_id)
-                        .unwrap()
-                        .sink
-                        .active_animations;
+                    let Some(scene) = state.0.scenes.get_mut(&scene_id) else {
+                        return (Some("Illegal scene"), None);
+                    };
+                    let animations = &mut scene.sink.active_animations;
 
                     for (_selection, anim_set) in animations.iter_mut() {
                         for (anim_id, anim) in anim_set.iter_mut() {
-                            let animation_sync = anim.spec_cloned.sync_mode();
-                            anim.set_timers(animation_sync);
-                            debug!("Reset animation: {anim_id}");
+                            if anim.enabled {
+                                anim.reset_timers(anim.spec_cloned.sync_mode());
+                                debug!("Reset animation: {anim_id}");
+                            }
                         }
                     }
                 }
@@ -876,12 +906,14 @@ impl DmxEngine {
                     return (Some("Base scene cannot appear in overlays"), None);
                 }
 
-                // if !state.0.scenes.get(&id).is_some() {
-                //     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
-                // }
-
-                // PATCH: reset all animations in that scene
-                // state.0.current_scene_focus = id;
+                if overlays.iter().any(|scene_id| {
+                    !state.0.scenes.contains_key(scene_id)
+                }) {
+                    return (Some("Illegal overlay scene"), None);
+                }
+                if overlays.iter().collect::<HashSet<_>>().len() != overlays.len() {
+                    return (Some("Duplicate overlay scene"), None);
+                }
 
                 state.0.current_overlay_scenes.clear();
 
@@ -890,31 +922,14 @@ impl DmxEngine {
                 for scene in &overlays {
                     // let animations = state.0.animation_templates.clone();
 
-                    let anim = &mut state
-                        .0
-                        .scenes
-                        .get_mut(scene)
-                        .unwrap()
-                        .sink
-                        .active_animations;
+                    let anim = &mut state.0.scenes.get_mut(scene).unwrap().sink.active_animations;
 
                     for (_selec, anim_set) in anim.iter_mut() {
                         for (anim_id, anim) in anim_set.iter_mut() {
-                            // anim.reset();
-                            let animation_sync = {
-                                // let anim = match animations.get(anim_id) {
-                                //     Some(a) => a,
-                                //     None => {
-                                //         debug!("WARN: animation not found");
-                                //         continue;
-                                //     }
-                                // };
-                                // let anim = anim.clone();
-
-                                anim.spec_cloned.sync_mode()
-                            };
-                            anim.set_timers(animation_sync);
-                            debug!("Reset animation: {anim_id}");
+                            if anim.enabled {
+                                anim.reset_timers(anim.spec_cloned.sync_mode());
+                                debug!("Reset animation: {anim_id}");
+                            }
                         }
                     }
 

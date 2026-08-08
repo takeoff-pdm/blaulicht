@@ -465,7 +465,9 @@ impl AnimationEditState {
                 AnimationSpecBody::AudioFrequencies(_freq) => self.anim_freq_ui(ui),
                 AnimationSpecBody::AudioBeat(_beat) => self.anim_beat_ui(ui),
                 AnimationSpecBody::BeatClock(_beat) => self.anim_beat_clock_ui(ui),
-                AnimationSpecBody::Wasm(_animation_spec_body_wasm) => todo!(),
+                AnimationSpecBody::Wasm(_) => {
+                    ui.label("WASM animation editing is not supported in the native runtime");
+                }
             }
 
             ui.vertical(|ui| {

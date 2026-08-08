@@ -1,8 +1,8 @@
 use crate::dmx::{EngineState, FixtureState};
 use blaulicht_shared::{
     fixture::state::{Fixture, FixtureGroup},
-    scene::{EngineSink, Scene},
 };
+use std::collections::HashSet;
 use tracing::debug;
 
 impl EngineState {
@@ -39,48 +39,23 @@ impl EngineState {
     pub fn delete_group(&mut self, id: u8) {
         self.0.groups.remove(&id);
         self.0.selection.clear();
+        self.0.selection_stack.clear();
 
-        // Fix any scene animations which include an illegal group.
-        self.0.scenes = self
+        self.purge_fixture_state();
+    }
+
+    fn purge_fixture_state(&mut self) {
+        let valid_keys: HashSet<(u8, u8)> = self
             .0
-            .scenes
-            .clone()
-            .into_iter()
-            .map(|(id, scene)| {
-                (
-                    id,
-                    Scene {
-                        sink: EngineSink {
-                            active_animations: scene
-                                .sink
-                                .active_animations
-                                .into_iter()
-                                .filter(|(selection, _)| {
-                                    let illegal_animation =
-                                        selection.fixtures.iter().any(|(group_id, _)| {
-                                            !self
-                                                .0
-                                                .groups
-                                                .iter()
-                                                .any(|(cmp_id, _)| cmp_id == group_id)
-                                        });
-
-                                    if illegal_animation {
-                                        debug!(
-                                        "Delete scene: purged illegal animation with group: {id}"
-                                    );
-                                    }
-
-                                    !illegal_animation
-                                })
-                                .collect(),
-                            ..scene.sink
-                        },
-                        ..scene
-                    },
-                )
-            })
+            .groups
+            .iter()
+            .flat_map(|(gid, group)| group.fixtures.keys().map(move |fid| (*gid, *fid)))
             .collect();
+
+        for (scene_id, scene) in self.0.scenes.iter_mut() {
+            scene.sink.retain_fixture_keys(&valid_keys);
+            debug!("Reconciled fixture state for scene {scene_id}");
+        }
     }
 
     pub fn create_group(&mut self, name: String) -> Option<u8> {
@@ -130,28 +105,9 @@ impl EngineState {
             return false;
         }
 
-        let fixture_key = (group_id, fixture_id);
         self.0.selection.clear();
         self.0.selection_stack.clear();
-
-        for scene in self.0.scenes.values_mut() {
-            scene.sink.fixture_states.remove(&fixture_key);
-            scene.sink.palette_assignments.remove(&fixture_key);
-
-            // An animation targeting a deleted fixture cannot be meaningfully
-            // continued. Drop that selection so it cannot write stale state.
-            let active_animations = std::mem::take(&mut scene.sink.active_animations);
-            scene.sink.active_animations = active_animations
-                .into_iter()
-                .filter_map(|(selection, animations)| {
-                    if selection.fixtures.contains(&fixture_key) {
-                        None
-                    } else {
-                        Some((selection, animations))
-                    }
-                })
-                .collect();
-        }
+        self.purge_fixture_state();
 
         true
     }

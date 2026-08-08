@@ -2,7 +2,6 @@ use blaulicht_shared::SerialReceived;
 use serialport::{available_ports, ErrorKind as SerialPortErrorKind, SerialPort};
 use std::collections::HashMap;
 use std::fmt;
-use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error};
@@ -11,6 +10,21 @@ use tracing::{debug, error};
 use crate::state::{AppState, SerialDeviceState};
 
 const PORT_TIMEOUT: Duration = Duration::from_millis(3);
+
+fn drain_serial_lines(buffer: &mut Vec<u8>, device: u8) -> Vec<SerialReceived> {
+    let mut events = Vec::new();
+    while let Some(linefeed_end) = buffer.iter().position(|byte| *byte == b'\n') {
+        let mut line: Vec<u8> = buffer.drain(..=linefeed_end).collect();
+        line.pop();
+        if line.last() == Some(&b'\r') {
+            line.pop();
+        }
+        if !line.is_empty() {
+            events.push(SerialReceived { device, body: line });
+        }
+    }
+    events
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SerialError {
@@ -166,49 +180,21 @@ impl SerialManager {
 
                     let sliced_buf = &buf[..n];
 
-                    // Check for linebreaks.
-                    let mut linefeed_index = None;
-
-                    for i in 0..n {
-                        if sliced_buf[i] == b'\n' {
-                            linefeed_index = Some(i);
-                            break;
-                        }
-                    }
-
-
-                    // println!("Read {} bytes: {:?}", n, &sliced_buf);
-
                     port.buffer.extend_from_slice(sliced_buf);
 
-                    // println!("buf_so_far {:?}", port.buffer);
-
-                    if let Some(linefeed_end) = linefeed_index {
-                        // println!("got line feed");
-
-                        let sliced_buf = &sliced_buf[..linefeed_end];
-                        port.buffer.extend_from_slice(sliced_buf);
-
-                        let mut taken = mem::replace(&mut port.buffer, vec![]);
-                        // Trim ending zeroes.
-                        let mut zero_end = 0;
-                        for (index, char) in taken.iter().enumerate() {
-                            if *char == 0x0 {
-                                zero_end = index;
-                                break;
-                            }
-                        }
-
-                        taken.truncate(zero_end);
-                        // let taken = taken[..zero_end].to_vec();
-
-                        if !taken.is_empty() {
-                            incoming_events.push(SerialReceived { device: port.device_id, body:  taken});
-                        }
-                    }
+                    incoming_events.extend(drain_serial_lines(&mut port.buffer, port.device_id));
                 }
                 Ok(_) /* n = 0 */ => {
-                    panic!("Critical serial port error: 0 bytes read.");
+                    let serial_error = SerialError::Other("Serial device disconnected".to_string());
+                    error!("Serial device '{}' returned EOF", port.port_path);
+                    if error.is_none() {
+                        error = Some(serial_error.clone());
+                    }
+                    let mut health_state = self.app_state.health_data.write().unwrap();
+                    health_state.serial_health.devices.insert(
+                        port.port_path.clone(),
+                        SerialDeviceState::Error(serial_error),
+                    );
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
                     // No data available yet, continue polling
@@ -234,5 +220,26 @@ impl SerialManager {
         } else {
             Ok(incoming_events)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serial_parser_preserves_partial_lines_and_plain_text() {
+        let mut buffer = b"first\nsecond".to_vec();
+        let events = drain_serial_lines(&mut buffer, 3);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].body, b"first");
+        assert_eq!(buffer, b"second");
+
+        buffer.extend_from_slice(b"\r\n");
+        let events = drain_serial_lines(&mut buffer, 3);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].body, b"second");
+        assert!(buffer.is_empty());
     }
 }

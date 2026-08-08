@@ -131,10 +131,12 @@ impl EngineSink {
     ) -> bool {
         let mut any_rejected = false;
         for selector in &selection.fixtures {
-            let fixture = self
-                .fixture_states
-                .get_mut(selector)
-                .expect("Expected scene sink to contain fixture {selector:?} but was missing");
+            let Some(fixture) = self.fixture_states.get_mut(selector) else {
+                tracing::warn!(
+                    "Ignoring event for missing fixture state {selector:?}"
+                );
+                continue;
+            };
 
             let outcome = fixture.apply(ev.clone());
             if outcome.any_rejected() {
@@ -169,6 +171,92 @@ impl EngineSink {
             let fixture_state = self.fixture_states.get_mut(&key).unwrap();
             sync_fixture_slots(fixture_state, &palette_ids, palettes);
         }
+    }
+
+    /// Removes scene-local references to fixtures that no longer exist in the
+    /// engine group map. This keeps fixture state, palette bindings,
+    /// changesets, and animation selections aligned after live edits or load.
+    pub fn retain_fixture_keys(&mut self, valid_keys: &HashSet<(u8, u8)>) {
+        self.fixture_states.retain(|key, _| valid_keys.contains(key));
+        self.palette_assignments
+            .retain(|key, _| valid_keys.contains(key));
+        self.changeset
+            .retain(|selector| valid_keys.contains(&(selector.gid, selector.fid)));
+
+        let active_animations = std::mem::take(&mut self.active_animations);
+        self.active_animations = active_animations
+            .into_iter()
+            .filter_map(|(selection, mut animations)| {
+                let fixtures: Vec<_> = selection
+                    .fixtures
+                    .into_iter()
+                    .filter(|key| valid_keys.contains(key))
+                    .collect();
+                if fixtures.is_empty() {
+                    return None;
+                }
+
+                let fixture_set: HashSet<_> = fixtures.iter().copied().collect();
+                for animation in animations.values_mut() {
+                    animation
+                        .fixture_timers
+                        .retain(|key, _| fixture_set.contains(key));
+                }
+                animations.retain(|_, animation| !animation.fixture_timers.is_empty());
+                if animations.is_empty() {
+                    return None;
+                }
+
+                Some((FixtureSelection { fixtures }, animations))
+            })
+            .collect();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ActiveAnimation, AnimationSpec};
+
+    #[test]
+    fn retain_fixture_keys_prunes_all_scene_references() {
+        let selection = FixtureSelection {
+            fixtures: vec![(0, 0), (0, 1)],
+        };
+        let mut animation = ActiveAnimation::new(&selection.fixtures, AnimationSpec::empty());
+        animation.enabled = true;
+
+        let mut sink = EngineSink {
+            fixture_states: BTreeMap::from([((0, 0), FixtureState::default()), ((0, 1), FixtureState::default())]),
+            active_animations: HashMap::from([(selection, BTreeMap::from([(1, animation)]))]),
+            changeset: HashSet::from([((0, 0), FixtureProperty::Alpha).into(), ((0, 1), FixtureProperty::Alpha).into()]),
+            master_alpha_fader: 100,
+            master_speed: AnimationSpeedModifier::_1,
+            palette_assignments: BTreeMap::from([((0, 1), vec![4])]),
+        };
+
+        sink.retain_fixture_keys(&HashSet::from([(0, 0)]));
+
+        assert_eq!(sink.fixture_states.len(), 1);
+        assert!(sink.palette_assignments.is_empty());
+        assert_eq!(sink.changeset.len(), 1);
+        let (selection, animations) = sink.active_animations.iter().next().unwrap();
+        assert_eq!(selection.fixtures, vec![(0, 0)]);
+        assert_eq!(animations[&1].fixture_timers.len(), 1);
+    }
+
+    #[test]
+    fn applying_to_missing_fixture_is_ignored() {
+        let mut sink = EngineSink::from_groups(&BTreeMap::new());
+        let rejected = sink.apply_with_selection(
+            &FixtureSelection {
+                fixtures: vec![(9, 9)],
+            },
+            ControlEvent::SetAlpha(255),
+        );
+
+        assert!(!rejected);
+        assert!(sink.changeset.is_empty());
     }
 }
 

@@ -36,7 +36,7 @@ impl DmxEngine {
                     // We cannot do 0.0 since the loop filters this out.
                     DMX_TICK_TIME.as_millis() as f64 / 2.0
                 }
-                AnimationSpecBody::Wasm(_) => todo!(),
+                AnimationSpecBody::Wasm(_) => DMX_TICK_TIME.as_millis() as f64 / 2.0,
             }
         };
 
@@ -125,7 +125,7 @@ impl DmxEngine {
             }
             AnimationSpecBody::AudioBeat(_) => audio_snapshot.snapshot.bass as u16,
             AnimationSpecBody::BeatClock(_) => (audio_snapshot.snapshot.beat_trigger as u16) * 255,
-            AnimationSpecBody::Wasm(_) => todo!(),
+            AnimationSpecBody::Wasm(_) => 0,
         }
     }
 

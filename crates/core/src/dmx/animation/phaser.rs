@@ -130,7 +130,9 @@ pub fn generate(
                 }
             }
         }
-        PhaserKind::Keyframed(_keyframed_phaser) => todo!(),
+        // Keyframed phasers are not implemented yet. Keep the runtime alive
+        // and leave the driven property at a deterministic safe value.
+        PhaserKind::Keyframed(_keyframed_phaser) => 0.0,
     };
 
     debug_assert!((0.0..=u16::MAX as f32).contains(&value));

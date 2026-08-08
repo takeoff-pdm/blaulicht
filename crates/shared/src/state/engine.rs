@@ -29,15 +29,10 @@ pub struct EngineSelection {
 impl EngineSelection {
     pub fn is_empty(&self) -> bool {
         debug_assert!(
-            (self.group_ids.len() == 1)
-                || (self.group_ids.len() != 1 && self.fixtures_in_group.is_empty())
+            self.fixtures_in_group.is_empty() || self.group_ids.len() <= 1
         );
 
-        // if self.group_ids.is_empty() {
-        //     return true;
-        // }
-
-        // self.fixtures_in_group.is_empty()
+        // A fixture filter without a group is stale state, not a selection.
         self.group_ids.is_empty()
     }
 
@@ -148,6 +143,9 @@ impl EngineState {
                 self.current_scene_focus = new_focus;
             }
         }
+
+        let valid_scene_ids: HashSet<u8> = self.scenes.keys().copied().collect();
+        self.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
         true
     }
@@ -531,3 +529,18 @@ impl Display for FrequencyNormalization {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyWasm {}
+
+#[cfg(test)]
+mod tests {
+    use super::EngineSelection;
+
+    #[test]
+    fn orphaned_fixture_filter_is_empty_selection() {
+        let selection = EngineSelection {
+            fixtures_in_group: [7].into_iter().collect(),
+            ..Default::default()
+        };
+
+        assert!(selection.is_empty());
+    }
+}

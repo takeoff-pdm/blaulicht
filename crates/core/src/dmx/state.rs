@@ -80,13 +80,15 @@ impl<'engine> EngineState {
         let mut fixtures_to_add = vec![];
 
         for (gid, group) in self.0.groups.iter().filter(|(k, _)| group_ids.contains(k)) {
-            if fixtures_in_group.is_empty() {
+            if group_ids.len() != 1 || fixtures_in_group.is_empty() {
                 for fix_id in group.fixtures.keys() {
                     fixtures_to_add.push((*gid, *fix_id));
                 }
             } else {
                 for fix in fixtures_in_group {
-                    fixtures_to_add.push((*gid, *fix));
+                    if group.fixtures.contains_key(fix) {
+                        fixtures_to_add.push((*gid, *fix));
+                    }
                 }
             }
         }
@@ -119,12 +121,17 @@ impl<'engine> EngineState {
         };
 
         let spec_animations = other.animation_templates.clone();
+        let valid_fixture_keys: HashSet<(u8, u8)> = groups
+            .iter()
+            .flat_map(|(gid, group)| group.fixtures.keys().map(move |fid| (*gid, *fid)))
+            .collect();
 
         // This is actually required because the timetamps need to be reset to 0.
         let scenes: BTreeMap<u8, Scene> = other
             .scenes
             .into_iter()
-            .map(|(k, scene)| {
+            .map(|(k, mut scene)| {
+                scene.sink.retain_fixture_keys(&valid_fixture_keys);
                 let mut fixture_states = scene.sink.fixture_states;
 
                 for (gid, group) in &groups {
@@ -136,7 +143,6 @@ impl<'engine> EngineState {
                         }
                     }
                 }
-
                 (
                     k,
                     Scene {
@@ -177,6 +183,8 @@ impl<'engine> EngineState {
         other
             .current_overlay_scenes
             .retain(|scene_id| *scene_id != current_scene_focus && scenes.contains_key(scene_id));
+        let valid_scene_ids: HashSet<u8> = scenes.keys().copied().collect();
+        other.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
         *self = Self(blaulicht_shared::EngineState {
             selection: EngineSelection::default(),
@@ -361,5 +369,40 @@ impl Default for EngineState {
         };
 
         Self(state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blaulicht_shared::fixture::{FixtureType, light::Light, state::{Fixture, FixtureGroup}};
+
+    fn group_with_fixture() -> FixtureGroup {
+        FixtureGroup {
+            fixtures: BTreeMap::from([(
+                0,
+                Fixture::new(
+                    0,
+                    1,
+                    "Fixture".to_string(),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                ),
+            )]),
+            ..FixtureGroup::default()
+        }
+    }
+
+    #[test]
+    fn multi_group_selection_ignores_single_group_fixture_filter() {
+        let mut engine = EngineState::default();
+        engine.0.groups.insert(0, group_with_fixture());
+        engine.0.groups.insert(1, group_with_fixture());
+        engine.0.selection.group_ids.extend([0, 1]);
+        engine.0.selection.fixtures_in_group.insert(0);
+
+        assert_eq!(
+            engine.get_selection().fixtures,
+            vec![(0, 0), (1, 0)]
+        );
     }
 }
