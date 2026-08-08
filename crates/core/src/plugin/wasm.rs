@@ -2073,6 +2073,27 @@ impl AddrDescriptor {
     pub fn buffer_len_addr(&self) -> usize {
         self.length_start_addr as usize
     }
+
+    #[cfg(feature = "wasmtime")]
+    fn validate(&self, memory: &Memory, store: &Store<()>) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.start_addr >= 0 && self.length_start_addr >= 0,
+            "WASM buffer address is negative: {self:?}"
+        );
+
+        let memory_size = memory.data_size(store);
+        anyhow::ensure!(
+            (self.start_addr as usize) < memory_size,
+            "WASM buffer address is outside linear memory: {self:?}, memory size={memory_size}"
+        );
+        anyhow::ensure!(
+            (self.length_start_addr as usize)
+                .checked_add(std::mem::size_of::<u32>())
+                .is_some_and(|end| end <= memory_size),
+            "WASM buffer length address is outside linear memory: {self:?}, memory size={memory_size}"
+        );
+        Ok(())
+    }
 }
 
 //
@@ -2110,6 +2131,7 @@ impl Plugin {
 
         tracing::debug!("Acquired MIDI buffer addresses: {:?}", addrs);
 
+        addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.midi_buffers = addrs;
         Ok(())
     }
@@ -2146,6 +2168,7 @@ impl Plugin {
 
         tracing::debug!("Acquired SERIAL buffer addresses: {:?}", addrs);
 
+        addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.serial_buffers = addrs;
         Ok(())
     }
@@ -2179,6 +2202,7 @@ impl Plugin {
 
         tracing::debug!("Acquired State buffer addresses: {:?}", addrs);
 
+        addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.state_buffers = addrs;
         Ok(())
     }
@@ -2207,6 +2231,7 @@ impl Plugin {
 
         tracing::debug!("Acquired UDP buffer addresses: {:?}", addrs);
 
+        addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.udp_buffers = addrs;
         Ok(())
     }

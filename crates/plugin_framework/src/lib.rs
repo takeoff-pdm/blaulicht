@@ -1,4 +1,5 @@
 use blaulicht_shared::{LogLevel, TickInput};
+use std::cell::RefCell;
 pub mod artnet;
 pub mod blaulicht;
 mod error;
@@ -30,12 +31,12 @@ pub trait Plugin {
     fn ui(&mut self) {}
 }
 
-static mut PLUGIN: Option<Box<dyn Plugin>> = None;
+thread_local! {
+    static PLUGIN: RefCell<Option<Box<dyn Plugin>>> = RefCell::new(None);
+}
 
 pub fn hook_plugin(plugin: Box<dyn Plugin>) {
-    unsafe {
-        PLUGIN = Some(plugin);
-    }
+    PLUGIN.with(|slot| *slot.borrow_mut() = Some(plugin));
 }
 
 //
@@ -74,26 +75,34 @@ pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_len
                 main();
             }
 
-            let Some(plugin) = (unsafe { PLUGIN.as_mut() }) else {
-                blaulicht::report_panic("Plugin did not register itself during initialization");
-                return;
-            };
-
-            plugin.initialize(tick_input)
+            PLUGIN.with(|slot| {
+                let mut plugin_slot = slot.borrow_mut();
+                let Some(plugin) = plugin_slot.as_mut() else {
+                    blaulicht::report_panic(
+                        "Plugin did not register itself during initialization",
+                    );
+                    return;
+                };
+                plugin.initialize(tick_input);
+            });
         }
         false => {
-            if let Some(plugin) = (unsafe { PLUGIN.as_mut() }) {
-                plugin.run(tick_input);
-            } else {
-                blaulicht::report_panic("Plugin tick received before initialization");
-            }
+            PLUGIN.with(|slot| {
+                if let Some(plugin) = slot.borrow_mut().as_mut() {
+                    plugin.run(tick_input);
+                } else {
+                    blaulicht::report_panic("Plugin tick received before initialization");
+                }
+            });
         }
     };
 }
 
 #[no_mangle]
 pub extern "C" fn internal_render_ui() {
-    if let Some(plugin) = (unsafe { PLUGIN.as_mut() }) {
-        plugin.ui();
-    }
+    PLUGIN.with(|slot| {
+        if let Some(plugin) = slot.borrow_mut().as_mut() {
+            plugin.ui();
+        }
+    });
 }
