@@ -21,8 +21,8 @@ use blaulicht_shared::{
     },
     scene::{FixtureSelection, FixtureSelector},
     scene_graph::{AudioConditions, SceneGraphRuntime},
-    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
-    LogLevel, CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, LogLevel,
+    CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -350,9 +350,14 @@ impl DmxEngine {
 
                 debug!("SETUP T: {time}");
 
-                let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
-                    .write()
-                    .unwrap();
+                let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
+                    warn!(
+                        "Skipping fixture {}: universe {} is out of range",
+                        fix.name, fix.universe_no
+                    );
+                    continue;
+                };
+                let mut buffer = universe.write().unwrap();
 
                 fix.setup(
                     time as i32,
@@ -421,12 +426,12 @@ impl DmxEngine {
 
                 // Apply base scene state.
                 let fixture_key = (*group.0, *fixture.0);
-                let mut merged_state = curr_scene
-                    .sink
-                    .fixture_states
-                    .get(&fixture_key)
-                    .unwrap()
-                    .clone();
+                let Some(base_fixture_state) = curr_scene.sink.fixture_states.get(&fixture_key)
+                else {
+                    warn!("Skipping fixture {fixture_key:?}: missing state in base scene");
+                    continue;
+                };
+                let mut merged_state = base_fixture_state.clone();
 
                 // Apply palette assignments for this fixture in the base scene.
                 if let Some(palette_ids) = curr_scene.sink.palette_assignments.get(&fixture_key) {
@@ -444,19 +449,23 @@ impl DmxEngine {
                     as u8;
 
                 for overlay_id in &state.0.current_overlay_scenes {
-                    let this_scene = state.0.scenes.get(overlay_id).unwrap();
+                    let Some(this_scene) = state.0.scenes.get(overlay_id) else {
+                        warn!("Skipping missing overlay scene {overlay_id}");
+                        continue;
+                    };
 
                     if this_scene.sink.master_alpha_fader == 0 {
                         // Skip scene - it is disabled.
                         continue;
                     }
 
-                    let mut scene_fixture_state = this_scene
-                        .sink
-                        .fixture_states
-                        .get(&fixture_key)
-                        .unwrap()
-                        .clone();
+                    let Some(overlay_fixture_state) =
+                        this_scene.sink.fixture_states.get(&fixture_key)
+                    else {
+                        warn!("Skipping fixture {fixture_key:?}: missing state in overlay scene {overlay_id}");
+                        continue;
+                    };
+                    let mut scene_fixture_state = overlay_fixture_state.clone();
 
                     // Apply palette assignments for overlay scene.
                     if let Some(palette_ids) = this_scene.sink.palette_assignments.get(&fixture_key)
@@ -500,9 +509,14 @@ impl DmxEngine {
 
                 // TODO: we will need to use the merged fixture states here and then write them.
                 let fix = fixture.1;
-                let mut buffer = self.state_ref.dmx_universes[fix.universe_no]
-                    .write()
-                    .unwrap();
+                let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
+                    warn!(
+                        "Skipping fixture {}: universe {} is out of range",
+                        fix.name, fix.universe_no
+                    );
+                    continue;
+                };
+                let mut buffer = universe.write().unwrap();
 
                 fix.write(&resolved, &mut buffer.dmx_buffer);
             }
@@ -515,6 +529,10 @@ impl DmxEngine {
                 continue;
             }
             let mut buffer = self.state_ref.dmx_universes[*universe].write().unwrap();
+            if *chan == 0 || *chan >= buffer.dmx_buffer.len() {
+                warn!("Ignoring override: UNI: {universe} CHAN: {chan} -> VAL: {value}; out of channels");
+                continue;
+            }
             buffer.dmx_buffer[*chan] = *value;
         }
 
@@ -561,7 +579,7 @@ impl DmxEngine {
             }
             // Overrides
             ControlEvent::SetChannelOverride(uni, chan, value) => {
-                if chan > 512 {
+                if chan == 0 || chan > 512 {
                     return (
                         Some("Illegal channel no."),
                         Some(ControlEvent::RemoveChannelOverride(uni, chan)),
@@ -1239,8 +1257,7 @@ impl DmxEngine {
                 // Reject if another assigned palette already covers one of
                 // this palette's properties for any fixture in the selection.
                 for fixture_key in &curr_selection.fixtures {
-                    let Some(existing) =
-                        this_scene.sink.palette_assignments.get(fixture_key)
+                    let Some(existing) = this_scene.sink.palette_assignments.get(fixture_key)
                     else {
                         continue;
                     };
@@ -1253,10 +1270,7 @@ impl DmxEngine {
                         };
                         for property in &properties {
                             if other.kind.properties(&palettes_snapshot).contains(property) {
-                                return (
-                                    Some("Property already covered by another palette"),
-                                    None,
-                                );
+                                return (Some("Property already covered by another palette"), None);
                             }
                         }
                     }
@@ -1275,10 +1289,7 @@ impl DmxEngine {
                     }
                     for active in anims.values() {
                         if properties.contains(&active.spec_cloned.property) {
-                            return (
-                                Some("Property is controlled by an active animation"),
-                                None,
-                            );
+                            return (Some("Property is controlled by an active animation"), None);
                         }
                     }
                 }

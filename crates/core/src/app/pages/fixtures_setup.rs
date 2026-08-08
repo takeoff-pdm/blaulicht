@@ -5,6 +5,7 @@ use crate::app::{
 };
 use crate::app::{PopupButtonSpec, PopupSpec};
 use crate::dmx::EngineState;
+use crate::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
@@ -545,6 +546,7 @@ impl BlaulichtApp {
                                 .groups()
                                 .get(&self.add_fixture_group.unwrap())
                                 .is_some()
+                            && (self.add_fixture_universe_no as usize) < NUM_DMX_UNIVERSES
                             && self.add_fixture_start_addr >= 1
                             && self.add_fixture_start_addr <= 512;
 

@@ -26,12 +26,12 @@ pub extern "C" fn __internal_get_global_state_buffer_length_start_addr() -> *mut
 pub fn get_dmx() -> EngineState {
     // Sanity check for memory usage.
     let curr_len = unsafe { GLOBAL_STATE_SOURCE.current_length };
-    if curr_len as usize >= STATE_BUFFER_LEN {
+    if curr_len as usize > STATE_BUFFER_LEN {
         panic!(
             "OOM: The state buffer exceeded the predefined size: {curr_len} vs. {STATE_BUFFER_LEN}",
         )
     }
 
-    let buf = unsafe { GLOBAL_STATE_SOURCE.buffer };
-    EngineState::deserialize(&buf)
+    let buf = unsafe { &GLOBAL_STATE_SOURCE.buffer[..curr_len as usize] };
+    EngineState::deserialize(buf)
 }

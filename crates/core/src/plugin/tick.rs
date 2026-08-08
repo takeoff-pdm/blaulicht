@@ -16,6 +16,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MAX_MIDI_EVENTS: usize = 100;
+const STATE_BUFFER_CAPACITY: usize = 1024 * 100;
+const SERIAL_BUFFER_CAPACITY: usize = 1000 * 1024;
+const UDP_BUFFER_CAPACITY: usize = 256 * 1024;
+
 ///
 /// Mock implementation
 ///
@@ -246,10 +251,12 @@ impl Plugin {
         {
             let midi_array_len = midi_events.len() as u32;
 
-            if midi_array_len > 100 {
-                midi_events = &midi_events[0..100];
+            if midi_array_len as usize > MAX_MIDI_EVENTS {
+                midi_events = &midi_events[0..MAX_MIDI_EVENTS];
                 tracing::warn!("TOO many MIDI events! TRUNCATING");
             }
+
+            let midi_array_len = midi_events.len() as u32;
 
             let mut midi_array_bytes = Vec::new();
 
@@ -298,6 +305,12 @@ impl Plugin {
 
                 let state_array_len = state_array_bytes.len() as u32;
 
+                anyhow::ensure!(
+                    state_array_bytes.len() <= STATE_BUFFER_CAPACITY,
+                    "serialized engine state ({}) exceeds WASM buffer capacity ({STATE_BUFFER_CAPACITY})",
+                    state_array_bytes.len()
+                );
+
                 // Write the state array to memory.
                 self.wasm_state.memory.write(
                     &mut self.wasm_state.store,
@@ -318,11 +331,17 @@ impl Plugin {
 
         ////////////////// Serial /////////////////////
         {
+            let mut serial_received = serial_received;
             let serial_bytes = {
                 use blaulicht_shared::SerialCollector;
 
-                let collector = SerialCollector::new(serial_received);
-                collector.serialize()
+                loop {
+                    let bytes = SerialCollector::new(serial_received.clone()).serialize();
+                    if bytes.len() <= SERIAL_BUFFER_CAPACITY || serial_received.is_empty() {
+                        break bytes;
+                    }
+                    serial_received.pop();
+                }
             };
 
             let serial_array_len = serial_bytes.len() as u32;
@@ -346,11 +365,17 @@ impl Plugin {
 
         ////////////////// UDP /////////////////////
         {
+            let mut udp_received = udp_received;
             let udp_bytes = {
                 use blaulicht_shared::UdpCollector;
 
-                let collector = UdpCollector::new(udp_received);
-                collector.serialize()
+                loop {
+                    let bytes = UdpCollector::new(udp_received.clone()).serialize();
+                    if bytes.len() <= UDP_BUFFER_CAPACITY || udp_received.is_empty() {
+                        break bytes;
+                    }
+                    udp_received.pop();
+                }
             };
 
             let udp_array_len = udp_bytes.len() as u32;

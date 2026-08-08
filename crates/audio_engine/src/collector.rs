@@ -566,30 +566,11 @@ pub type AudioColumn = Vec<AudioBucket>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
 pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
-    debug_assert!(bins > 0);
+    if bins == 0 || values.is_empty() {
+        return Vec::new();
+    }
 
-    let chunk_size = match values.len() % bins == 0 {
-        true => {
-            let primitive = values.len() / bins;
-            if primitive == 0 {
-                1
-            } else {
-                primitive
-            }
-        }
-        false => {
-            // while values.len() % bins != 0 {
-            //     bins -= 1
-            // }
-
-            let new = values.len() / bins;
-
-            debug_assert!(new > 0);
-
-            // println!("new len: {new}");
-            new
-        }
-    };
+    let chunk_size = (values.len() / bins).max(1);
 
     // println!("chunk size: {chunk_size}");
 
@@ -625,4 +606,28 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
         .collect();
 
     chunks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binning_handles_more_bins_than_input() {
+        let values = [Frequency {
+            volume: 1.0,
+            freq: 100.0,
+            position: 0.0,
+        }];
+
+        let output = bin_spectrum_to_u8(&values, 128);
+
+        assert_eq!(output.len(), 1);
+    }
+
+    #[test]
+    fn binning_handles_empty_input_and_zero_bins() {
+        assert!(bin_spectrum_to_u8(&[], 128).is_empty());
+        assert!(bin_spectrum_to_u8(&[Frequency::default()], 0).is_empty());
+    }
 }

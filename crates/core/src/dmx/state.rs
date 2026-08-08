@@ -121,7 +121,7 @@ impl<'engine> EngineState {
         let spec_animations = other.animation_templates.clone();
 
         // This is actually required because the timetamps need to be reset to 0.
-        let scenes = other
+        let scenes: BTreeMap<u8, Scene> = other
             .scenes
             .into_iter()
             .map(|(k, scene)| {
@@ -150,11 +150,16 @@ impl<'engine> EngineState {
                                         s,
                                         animations
                                             .into_iter()
-                                            .map(|(ak, a)| {
-                                                let anim_spec = spec_animations.get(&ak).unwrap();
+                                            .filter_map(|(ak, a)| {
+                                                let Some(anim_spec) = spec_animations.get(&ak) else {
+                                                    tracing::warn!(
+                                                        "Dropping active animation {ak}: template is missing"
+                                                    );
+                                                    return None;
+                                                };
                                                 let amount = a.fixture_timers.len();
 
-                                                (
+                                                Some((
                                                     ak,
                                                     ActiveAnimation {
                                                         fixture_timers: a
@@ -168,11 +173,12 @@ impl<'engine> EngineState {
                                                                     .sync_mode()
                                                                 {
                                                                     SyncMode::Synced => 0,
-                                                                    SyncMode::StretchedEven => {
+                                                                    SyncMode::StretchedEven if amount > 0 => {
                                                                         ((360.0 / amount as f32)
                                                                             * counter as f32)
                                                                             as u64
                                                                     }
+                                                                    SyncMode::StretchedEven => 0,
                                                                     SyncMode::StretchedHalfHalf => {
                                                                         (180 * (counter % 2)) as u64
                                                                     }
@@ -190,7 +196,7 @@ impl<'engine> EngineState {
                                                             .collect(),
                                                         ..a
                                                     },
-                                                )
+                                                ))
                                             })
                                             .collect(),
                                     )
@@ -204,6 +210,10 @@ impl<'engine> EngineState {
                 )
             })
             .collect();
+
+        other
+            .current_overlay_scenes
+            .retain(|scene_id| *scene_id != current_scene_focus && scenes.contains_key(scene_id));
 
         *self = Self(blaulicht_shared::EngineState {
             selection: EngineSelection::default(),

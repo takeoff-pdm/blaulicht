@@ -43,6 +43,7 @@ pub fn hook_plugin(plugin: Box<dyn Plugin>) {
 // END PLUGIN
 //
 
+#[cfg(not(test))]
 extern "C" {
     fn main();
 }
@@ -69,7 +70,10 @@ pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_len
             }));
 
             // Call user-exposed init code.
-            unsafe { main() };
+            #[cfg(not(test))]
+            unsafe {
+                main();
+            }
 
             let plugin = unsafe {
                 #[allow(static_mut_refs)]

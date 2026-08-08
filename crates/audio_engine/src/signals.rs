@@ -256,9 +256,8 @@ where
 
         // Sensitivity (0..=100) -> timing/contrast thresholds. Higher = easier.
         let sens = (self.params.drop_sensitivity.min(100) as f32) / 100.0;
-        let lerp = |max: usize, min: usize| -> usize {
-            (max as f32 - sens * (max - min) as f32) as usize
-        };
+        let lerp =
+            |max: usize, min: usize| -> usize { (max as f32 - sens * (max - min) as f32) as usize };
         let min_quiet_ms = lerp(DROP_MIN_QUIET_MAX_MS, DROP_MIN_QUIET_MIN_MS);
         let onset_thresh = (1.0 - sens) * DROP_ONSET_THRESH_MAX;
 
@@ -326,7 +325,8 @@ where
                 if bass_gone {
                     self.scratch.section_state = SectionState::Breakdown;
                     self.scratch.section_breakdown_started_ms = now;
-                } else if now.saturating_sub(self.scratch.section_drop_started_ms) >= DROP_DURATION_MS
+                } else if now.saturating_sub(self.scratch.section_drop_started_ms)
+                    >= DROP_DURATION_MS
                 {
                     self.scratch.section_state = SectionState::ActiveBeat;
                 }
@@ -520,9 +520,7 @@ where
                 // frame rate (~23ms), not the 10ms minimum gate. The autocorrelation
                 // needs this to map lags to BPM correctly. Alpha 0.02 ≈ 1s settling.
                 let elapsed_f = elapsed_since_sample as f32;
-                self.scratch.onset_sample_period_ema_ms = self
-                    .scratch
-                    .onset_sample_period_ema_ms
+                self.scratch.onset_sample_period_ema_ms = self.scratch.onset_sample_period_ema_ms
                     + 0.02 * (elapsed_f - self.scratch.onset_sample_period_ema_ms);
                 self.scratch.last_onset_sample_time = now;
                 if bpm_gate_open {
@@ -541,8 +539,7 @@ where
                     let actual_period =
                         self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
                     let history = self.scratch.onset_history.make_contiguous();
-                    let (estimate, status) =
-                        Self::estimate_bpm_from_onset(history, actual_period);
+                    let (estimate, status) = Self::estimate_bpm_from_onset(history, actual_period);
                     bpm_from_onset = estimate;
                     self.scratch.bpm_detect_status = status;
                     let (mean, threshold) = Self::onset_threshold(history);
@@ -640,9 +637,7 @@ where
                 // Dead-zone: suppress an onset beat if one already fired very recently
                 // (predicted beat just fired 1-2 ticks ago and set beat_needs_sync).
                 let past_dead_zone = since_last >= MIN_PHASE_WINDOW_MS;
-                if past_dead_zone
-                    && (self.scratch.beat_needs_sync || phase_error.abs() <= window)
-                {
+                if past_dead_zone && (self.scratch.beat_needs_sync || phase_error.abs() <= window) {
                     self.scratch.is_on_beat = true;
                     self.scratch.actual_onset_peak = true;
                     self.scratch.time_of_last_bpm_marker = now;
@@ -686,8 +681,7 @@ where
             };
 
             let debug_data = SignalDebugData {
-                bass_range: (self.params.bass_freq_low as f32)
-                    ..(self.params.bass_freq_high as f32),
+                bass_range: (self.params.bass_freq_low as f32)..(self.params.bass_freq_high as f32),
                 band_energies: self.scratch.last_band_energies,
                 band_onset_peakiness: self.scratch.last_band_onset_peakiness,
                 band_onset_periodicity: self.scratch.last_band_onset_periodicity,
@@ -1077,11 +1071,14 @@ where
 
     #[inline(always)]
     pub fn volume(&mut self) -> anyhow::Result<()> {
+        let volume_mean = if self.scratch.volume_samples.is_empty() {
+            0
+        } else {
+            ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
+                / self.scratch.volume_samples.len() as f32
+                * 10.0) as usize
+        };
         self.send_signals({
-            let volume_mean = ((self.scratch.volume_samples.iter().sum::<usize>() as f32)
-                / (self.scratch.volume_samples.len() as f32)
-                * 10.0) as usize;
-
             // let volume_sum = self.freqs.iter().map(|f| f.volume).sum::<f32>() * 10.0;
             // let volume_avg = volume_sum / self.freqs.len() as f32;
 
@@ -1089,21 +1086,25 @@ where
             &[Signal::Volume(volume)]
         });
 
-        let curr_max = (self
-            .freq_buffer
-            .iter()
-            // .max_by_key(|f| (f.volume * 10.0) as usize)
-            // .unwrap_or(&Frequency {
-            //     volume: 0f32,
-            //     freq: 0f32,
-            //     position: 0f32,
-            // })
-            .filter(|f| f.freq > 0.0)
-            .map(|f| f.volume)
-            .sum::<f32>()
-            * 10.0
-            / self.freq_buffer.iter().filter(|f| f.freq > 0.0).count() as f32)
-            as usize;
+        let positive_count = self.freq_buffer.iter().filter(|f| f.freq > 0.0).count();
+        let curr_max = if positive_count == 0 {
+            0
+        } else {
+            (self
+                .freq_buffer
+                .iter()
+                // .max_by_key(|f| (f.volume * 10.0) as usize)
+                // .unwrap_or(&Frequency {
+                //     volume: 0f32,
+                //     freq: 0f32,
+                //     position: 0f32,
+                // })
+                .filter(|f| f.freq > 0.0)
+                .map(|f| f.volume)
+                .sum::<f32>()
+                * 10.0
+                / positive_count as f32) as usize
+        };
         // .volume as usize;
 
         // TODO: this is fake, this is not even the average.

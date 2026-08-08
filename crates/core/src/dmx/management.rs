@@ -84,33 +84,28 @@ impl EngineState {
             .collect();
     }
 
-    pub fn create_group(&mut self, name: String) -> u8 {
-        // TODO: this is insane code
-        let mut new_id = self.0.groups.len();
-
-        while self.0.groups.contains_key(&(new_id as u8)) {
-            new_id += 1;
-        }
-
-        debug_assert!(new_id < u8::MAX as usize);
+    pub fn create_group(&mut self, name: String) -> Option<u8> {
+        let new_id = (0..=u8::MAX).find(|id| !self.0.groups.contains_key(id))?;
 
         self.0.groups.insert(
-            new_id as u8,
+            new_id,
             FixtureGroup {
                 name,
                 ..FixtureGroup::default()
             },
         );
-        new_id as u8
+        Some(new_id)
     }
 
-    pub fn add_fixture_to_group(&mut self, group_id: u8, fixture: Fixture) -> u8 {
-        let group = self.0.groups.get_mut(&group_id).unwrap();
-        let new_id = group.fixtures.len();
-        debug_assert!(new_id < u8::MAX as usize);
-        group.fixtures.insert(new_id as u8, fixture);
+    pub fn add_fixture_to_group(&mut self, group_id: u8, fixture: Fixture) -> Option<u8> {
+        let new_id = {
+            let group = self.0.groups.get_mut(&group_id)?;
+            let new_id = (0..=u8::MAX).find(|id| !group.fixtures.contains_key(id))?;
+            group.fixtures.insert(new_id, fixture);
+            new_id
+        };
 
-        let fixture_group_key = (group_id, new_id as u8);
+        let fixture_group_key = (group_id, new_id);
 
         // Patch the scenes.
         for (scene_id, scene) in self.0.scenes.iter_mut() {
@@ -129,6 +124,6 @@ impl EngineState {
             debug!("Patched scene {scene_id} with new fixture + anim state");
         }
 
-        new_id as u8
+        Some(new_id)
     }
 }

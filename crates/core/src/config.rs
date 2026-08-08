@@ -175,16 +175,15 @@ fn read_showfile_logic(
                 .filter(|r| r.owner_plugin_id.is_some())
                 .cloned()
                 .collect();
-            artnet_output.receivers = preserved
-                .into_iter()
-                .chain(
-                    showfile
-                        .artnet
-                        .receivers
-                        .into_iter()
-                        .map(|receiver| ArtNetReceiver::user(receiver.address, receiver.enabled)),
-                )
-                .collect();
+            artnet_output.receivers =
+                preserved
+                    .into_iter()
+                    .chain(
+                        showfile.artnet.receivers.into_iter().map(|receiver| {
+                            ArtNetReceiver::user(receiver.address, receiver.enabled)
+                        }),
+                    )
+                    .collect();
 
             dmx.load_showfile(core_engine);
 
@@ -299,7 +298,12 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
         }
         false => {
             // The file does not exist, therefore create a new one
-            fs::create_dir_all(path.parent().unwrap())?;
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                fs::create_dir_all(parent)?;
+            }
             let mut file = File::create(path)?;
             file.write_all(
                 toml::to_string_pretty(&Config::default())
@@ -315,7 +319,12 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
 pub fn write_config(file_path: PathBuf, config: Config) -> Result<Option<Config>> {
     // Either read or create a configuration file based on it's current existence
     let path = Path::new(&file_path);
-    fs::create_dir_all(path.parent().unwrap())?;
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
     let mut file = File::create(path)?;
     file.write_all(toml::to_string_pretty(&config).unwrap().as_bytes())
         .with_context(|| "Failed to write default config file (create new one)")?;

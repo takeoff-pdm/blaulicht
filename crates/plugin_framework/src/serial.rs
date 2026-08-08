@@ -33,14 +33,14 @@ pub extern "C" fn __internal_get_global_serial_buffer_length_start_addr() -> *mu
 fn get_serial() -> Vec<SerialReceived> {
     // Sanity check for memory usage.
     let curr_len = unsafe { GLOBAL_SERIAL_SOURCE.current_length };
-    if curr_len as usize >= SERIAL_BUFFER_LEN {
+    if curr_len as usize > SERIAL_BUFFER_LEN {
         panic!(
             "OOM: The serial buffer exceeded the predefined size: {curr_len} vs. {SERIAL_BUFFER_LEN}",
         )
     }
 
-    let buf = unsafe { GLOBAL_SERIAL_SOURCE.buffer };
-    let collector = SerialCollector::deserialize(&buf);
+    let buf = unsafe { &GLOBAL_SERIAL_SOURCE.buffer[..curr_len as usize] };
+    let collector = SerialCollector::deserialize(buf);
     collector.events()
 }
 
