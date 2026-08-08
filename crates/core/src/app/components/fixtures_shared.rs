@@ -1119,7 +1119,9 @@ impl BlaulichtApp {
             |ui| {
                 let number_of_items_total = dmx_engine.0.scenes.len();
                 const ITEMS_PER_PAGE: usize = 5;
-                let total_pages = number_of_items_total / ITEMS_PER_PAGE;
+                let total_pages = number_of_items_total.div_ceil(ITEMS_PER_PAGE);
+                let last_page = total_pages.saturating_sub(1);
+                self.scene_page_index = self.scene_page_index.min(last_page);
 
                 ui.set_min_width(panel_width);
 
@@ -1135,7 +1137,7 @@ impl BlaulichtApp {
                         }
 
                         if components::button(ui, false, "▶", scene_panel_page_button_sizes)
-                            && self.scene_page_index < total_pages
+                            && self.scene_page_index < last_page
                         {
                             self.scene_page_index += 1;
                         }
@@ -1143,7 +1145,12 @@ impl BlaulichtApp {
 
                     ui.add_space(5.0);
 
-                    ui.label(format!("Page {} / {total_pages}", self.scene_page_index));
+                    let page_display = if total_pages == 0 {
+                        0
+                    } else {
+                        self.scene_page_index + 1
+                    };
+                    ui.label(format!("Page {} / {total_pages}", page_display));
                     ui.label(format!("Scenes: {number_of_items_total}"));
                 });
 

@@ -82,6 +82,8 @@ impl BlaulichtApp {
                         if let Some(id) = self.animation_ui_state.selected_animation_id {
                             let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
                             dmx_engine.delete_animation(id);
+                            self.animation_ui_state.selected_animation_id = None;
+                            self.animation_ui_state.selected_animation_id_before = None;
                             self.animation_ui_state.delete_confirm_open = false;
                         }
                     }
@@ -200,20 +202,30 @@ impl BlaulichtApp {
                         let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
                         let body = AnimationSpecBody::from(self.animation_ui_state.new_mode);
 
-                        let len = dmx_engine.0.animation_templates.len();
-                        dmx_engine.0.animation_templates.insert(
-                            len as u8,
-                            AnimationTemplate {
-                                spec: AnimationSpec {
-                                    name: base_name,
-                                    body,
-                                    property: self.animation_ui_state.new_prop,
+                        if let Some(new_id) = (0..=u8::MAX)
+                            .find(|candidate| !dmx_engine.0.animation_templates.contains_key(candidate))
+                        {
+                            dmx_engine.0.animation_templates.insert(
+                                new_id,
+                                AnimationTemplate {
+                                    spec: AnimationSpec {
+                                        name: base_name,
+                                        body,
+                                        property: self.animation_ui_state.new_prop,
+                                    },
                                 },
-                            },
-                        );
+                            );
 
-                        self.animation_ui_state.create_open = false;
-                        self.animation_ui_state.close_selection_dialogs();
+                            self.animation_ui_state.create_open = false;
+                            self.animation_ui_state.close_selection_dialogs();
+                        } else {
+                            drop(dmx_engine);
+                            self.show_popup(crate::app::PopupSpec::with_duration(
+                                std::time::Duration::from_secs(3),
+                                "Animation limit reached".to_string(),
+                            ));
+                            self.animation_ui_state.new_name = base_name;
+                        }
                     }
                 });
             });
@@ -299,10 +311,10 @@ impl BlaulichtApp {
 
                             if button(
                                 ui,
-                                self.animation_ui_state.create_open,
+                                self.animation_ui_state.selected_animation_id.is_some(),
                                 "Delete",
                                 ButtonSize::Medium,
-                            ) {
+                            ) && self.animation_ui_state.selected_animation_id.is_some() {
                                 self.animation_ui_state.delete_confirm_open =
                                     !self.animation_ui_state.delete_confirm_open;
                             }

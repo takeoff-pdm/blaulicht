@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, ButtonSize},
+        components::{self, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec,
     },
@@ -59,6 +59,103 @@ fn places_quick_access_entries(showfile_home: Option<PathBuf>) -> Vec<(String, P
 }
 
 impl BlaulichtApp {
+    fn close_showfile(&mut self) {
+        let mut conf = self.data.config.lock().unwrap();
+        conf.last_open_showfile = None;
+        let path = PathBuf::from(&self.data.config_path);
+        if let Err(err) = config::write_config(path, conf.clone()) {
+            tracing::error!("Failed to persist closed showfile config: {err}");
+        }
+        drop(conf);
+
+        let mut dmx = self.data.state.dmx_engine.write().unwrap();
+        let mut artnet = self.data.state.artnet_output.write().unwrap();
+        config::close_showfile(
+            &mut dmx,
+            &mut artnet,
+            &self.data.state.plugin_state_storage,
+        );
+    }
+
+    fn load_showfile_path(&mut self, file: PathBuf) {
+        let mut config = self.data.config.lock().unwrap();
+        let mut dmx = self.data.state.dmx_engine.write().unwrap();
+        let mut artnet = self.data.state.artnet_output.write().unwrap();
+        let ui_state = config::read_showfile(
+            file.clone(),
+            &mut dmx,
+            &mut artnet,
+            &self.data.state.plugin_state_storage,
+            self.data.system_message_sender.clone(),
+        );
+        mem::drop(artnet);
+        mem::drop(dmx);
+
+        config.last_open_showfile = Some(file.clone());
+        let config_path = PathBuf::from(&self.data.config_path);
+        if let Err(err) = config::write_config(config_path, config.clone()) {
+            tracing::error!("Failed to persist loaded showfile config: {err}");
+        }
+
+        let _ = self.data.system_message_sender.send(SystemMessage::Log(
+            format!("Loaded showfile from {file:?}"),
+            LogLevel::Info,
+        ));
+        mem::drop(config);
+
+        if let Some(ui_state) = ui_state {
+            self.apply_showfile_ui_state(ui_state);
+        }
+        self.show_popup(PopupSpec::with_duration(
+            Duration::from_secs(2),
+            "Loaded Showfile".to_string(),
+        ));
+    }
+
+    fn render_pending_showfile_load_dialog(&mut self, ctx: &Context) {
+        let Some(file) = self.system_ui_state.pending_load_file.clone() else {
+            return;
+        };
+
+        Dialog::new("Replace Showfile".to_string(), egui::vec2(320.0, 150.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.label("Loading this showfile will replace the current show.");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Load", ButtonSize::Medium) {
+                        self.system_ui_state.pending_load_file = None;
+                        self.load_showfile_path(file.clone());
+                    }
+                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                        self.system_ui_state.pending_load_file = None;
+                    }
+                });
+            });
+    }
+
+    fn render_close_showfile_dialog(&mut self, ctx: &Context) {
+        if !self.system_ui_state.close_showfile_confirm_open {
+            return;
+        }
+
+        Dialog::new("Close Showfile".to_string(), egui::vec2(320.0, 150.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.label("Close the current showfile? Unsaved changes will be lost.");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Close", ButtonSize::Medium) {
+                        self.system_ui_state.close_showfile_confirm_open = false;
+                        self.close_showfile();
+                    }
+                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                        self.system_ui_state.close_showfile_confirm_open = false;
+                    }
+                });
+            });
+    }
+
     //
     // TODO: i need to remove this
     //
@@ -302,25 +399,12 @@ impl BlaulichtApp {
             }
 
             {
-                let mut conf = self.data.config.lock().unwrap();
+                let conf = self.data.config.lock().unwrap();
                 let button_enabled = conf.last_open_showfile.is_some();
                 if components::button(ui, button_enabled, "Close Showfile", button_size)
                     && button_enabled
                 {
-                    conf.last_open_showfile = None;
-                    let path = PathBuf::from(&self.data.config_path);
-                    if let Err(err) = config::write_config(path, conf.clone()) {
-                        tracing::error!("Failed to persist closed showfile config: {err}");
-                    }
-                    let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                    let mut artnet = self.data.state.artnet_output.write().unwrap();
-                    config::close_showfile(
-                        &mut dmx,
-                        &mut artnet,
-                        &self.data.state.plugin_state_storage,
-                    );
-                    mem::drop(artnet);
-                    mem::drop(dmx);
+                    self.system_ui_state.close_showfile_confirm_open = true;
                 }
             }
 
@@ -336,13 +420,16 @@ impl BlaulichtApp {
                 false => ("Save Showfile", false),
             };
 
-            if components::button(ui, allowed, label, button_size) {
+            if components::button(ui, allowed, label, button_size) && allowed {
                 self.save_showfile();
             }
         });
     }
 
     pub fn render_showfile_dialog(&mut self, ctx: &Context) {
+        self.render_pending_showfile_load_dialog(ctx);
+        self.render_close_showfile_dialog(ctx);
+
         let mut dialog = match self.system_ui_state.open_file_dialog.take() {
             Some(dialog) => dialog,
             None => return,
@@ -426,61 +513,8 @@ impl BlaulichtApp {
                     self.save_showfile();
                 }
                 FileDialogOpenOrigin::Load => {
-                    config.last_open_showfile = Some(file.to_path_buf());
-
-                    // let mut f = File::open(file).expect("no file found");
-                    // let metadata = fs::metadata(file).expect("unable to read metadata");
-                    // let mut buffer = vec![0; metadata.len() as usize];
-                    // f.read(&mut buffer).expect("buffer overflow");
-                    //
-                    // let decoded: blaulicht_shared::EngineState =
-                    //     postcard::from_bytes(&buffer).unwrap();
-                    //
-                    // {
-                    //     let mut plugin_state =
-                    //         self.data.state.plugin_state_storage.lock().unwrap();
-                    //     *plugin_state = decoded.plugin_state.clone();
-                    // }
-                    //
-                    // let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                    // // dmx.overwrite(decoded);
-                    // dmx.load_showfile(decoded);
-                    // mem::drop(dmx);
-
-                    let mut dmx = self.data.state.dmx_engine.write().unwrap();
-                    let mut artnet = self.data.state.artnet_output.write().unwrap();
-                    let ui_state = config::read_showfile(
-                        file.to_path_buf(),
-                        &mut dmx,
-                        &mut artnet,
-                        &self.data.state.plugin_state_storage,
-                        self.data.system_message_sender.clone(),
-                    );
-                    mem::drop(artnet);
-                    mem::drop(dmx);
-
-                    config.last_open_showfile = Some(file.to_path_buf());
-
-                    let config_path = PathBuf::from(&self.data.config_path);
-                    if let Err(err) = config::write_config(config_path, config.clone()) {
-                        tracing::error!("Failed to persist loaded showfile config: {err}");
-                    }
-
-                    let _ = self.data.system_message_sender.send(SystemMessage::Log(
-                        format!("Loaded showfile from {file:?}"),
-                        LogLevel::Info,
-                    ));
-
                     mem::drop(config);
-
-                    if let Some(ui_state) = ui_state {
-                        self.apply_showfile_ui_state(ui_state);
-                    }
-
-                    self.show_popup(PopupSpec::with_duration(
-                        Duration::from_secs(2),
-                        "Loaded Showfile".to_string(),
-                    ));
+                    self.system_ui_state.pending_load_file = Some(file.to_path_buf());
                 }
             }
         }

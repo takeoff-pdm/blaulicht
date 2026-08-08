@@ -207,6 +207,8 @@ impl Display for PaletteTargetOption {
 pub struct PaletteUI {
     create_dialog_open: bool,
     edit_dialog_open: bool,
+    delete_dialog_open: bool,
+    delete_palette_id: Option<u8>,
     edit_palette_id: Option<u8>,
     new_name: String,
     kind_selection: PaletteKindSelection,
@@ -236,6 +238,8 @@ impl Default for PaletteUI {
         Self {
             create_dialog_open: false,
             edit_dialog_open: false,
+            delete_dialog_open: false,
+            delete_palette_id: None,
             edit_palette_id: None,
             new_name: "New Palette".to_string(),
             kind_selection: PaletteKindSelection::Color,
@@ -337,6 +341,35 @@ impl PaletteUI {
 }
 
 impl BlaulichtApp {
+    fn render_delete_palette_dialog(&mut self, ctx: &Context) {
+        if !self.palette_ui_state.delete_dialog_open {
+            return;
+        }
+
+        Dialog::new("Delete Palette".to_string(), egui::vec2(260.0, 130.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(RichText::new("Delete this palette?").strong());
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Confirm", ButtonSize::Medium) {
+                        if let Some(id) = self.palette_ui_state.delete_palette_id {
+                            let _ = self.data.event_bus_connection.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::DeletePalette(id),
+                            ));
+                        }
+                        self.palette_ui_state.delete_dialog_open = false;
+                        self.palette_ui_state.delete_palette_id = None;
+                    }
+                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                        self.palette_ui_state.delete_dialog_open = false;
+                        self.palette_ui_state.delete_palette_id = None;
+                    }
+                });
+            });
+    }
+
     pub fn palettes_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         let palettes_snapshot: Vec<(u8, Palette)> = {
             let engine = self.data.state.dmx_engine.read().unwrap();
@@ -350,6 +383,7 @@ impl BlaulichtApp {
 
         self.render_palette_create_dialog(ctx, &palettes_snapshot);
         self.render_palette_edit_dialog(ctx, &palettes_snapshot);
+        self.render_delete_palette_dialog(ctx);
 
         ui.heading("Palettes");
         ui.add_space(8.0);
@@ -402,10 +436,8 @@ impl BlaulichtApp {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if components::button(ui, false, "Delete", ButtonSize::Small) {
-                            self.data.event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::DeletePalette(*id),
-                            ));
+                            self.palette_ui_state.delete_palette_id = Some(*id);
+                            self.palette_ui_state.delete_dialog_open = true;
                         }
 
                         if components::button(ui, false, "Edit", ButtonSize::Small) {

@@ -1,4 +1,4 @@
-use crate::app::BlaulichtApp;
+use crate::app::{components::Dialog, BlaulichtApp};
 use blaulicht_shared::{
     scene_graph::{
         GraphId, NodeId, SceneEdge, SceneGraph, SceneGraphNode, SceneGraphState,
@@ -35,6 +35,8 @@ pub struct SceneGraphUI {
     recenter_view: bool,
     zoom_level: f32,
     pending_zoom_override: Option<f32>,
+    delete_graph_id: Option<GraphId>,
+    delete_node: Option<(GraphId, NodeId)>,
 }
 
 impl Default for SceneGraphUI {
@@ -53,6 +55,8 @@ impl Default for SceneGraphUI {
             recenter_view: false,
             zoom_level: 1.0,
             pending_zoom_override: None,
+            delete_graph_id: None,
+            delete_node: None,
         }
     }
 }
@@ -264,7 +268,62 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
 }
 
 impl BlaulichtApp {
-    pub fn scene_graph_ui(&mut self, ui: &mut Ui, _ctx: &Context) {
+    fn render_scene_graph_delete_dialogs(&mut self, ctx: &Context) {
+        if let Some(graph_id) = self.scene_graph_ui_state.delete_graph_id {
+            Dialog::new("Delete Graph".to_string(), egui::vec2(260.0, 130.0))
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    ui.heading(egui::RichText::new("Delete this graph?").strong());
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Confirm").clicked() {
+                            let mut state = self.data.state.dmx_engine.write().unwrap();
+                            state.0.scene_graphs.graphs.remove(&graph_id);
+                            if state.0.scene_graphs.focused_graph == Some(graph_id) {
+                                state.0.scene_graphs.focused_graph = None;
+                            }
+                            self.scene_graph_ui_state.delete_graph_id = None;
+                            self.scene_graph_ui_state.selected_node = None;
+                            self.scene_graph_ui_state.synced = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.scene_graph_ui_state.delete_graph_id = None;
+                        }
+                    });
+                });
+            return;
+        }
+
+        if let Some((graph_id, node_id)) = self.scene_graph_ui_state.delete_node {
+            Dialog::new("Delete Node".to_string(), egui::vec2(260.0, 130.0))
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    ui.heading(egui::RichText::new("Delete this node?").strong());
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Confirm").clicked() {
+                            let mut state = self.data.state.dmx_engine.write().unwrap();
+                            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) {
+                                graph.nodes.remove(&node_id);
+                                graph.edges.retain(|e| e.from != node_id && e.to != node_id);
+                                if graph.active_node == Some(node_id) {
+                                    graph.active_node = None;
+                                }
+                            }
+                            self.scene_graph_ui_state.delete_node = None;
+                            self.scene_graph_ui_state.selected_node = None;
+                            self.scene_graph_ui_state.synced = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.scene_graph_ui_state.delete_node = None;
+                        }
+                    });
+                });
+        }
+    }
+
+    pub fn scene_graph_ui(&mut self, ui: &mut Ui, ctx: &Context) {
+        self.render_scene_graph_delete_dialogs(ctx);
         let mut state = self.data.state.dmx_engine.write().unwrap();
         let scenes = state.0.scenes.clone();
 
@@ -424,11 +483,7 @@ impl BlaulichtApp {
             );
 
             if ui.button("Delete Graph").clicked() {
-                state.0.scene_graphs.graphs.remove(&graph_id);
-                state.0.scene_graphs.focused_graph = None;
-                self.scene_graph_ui_state.selected_node = None;
-                self.scene_graph_ui_state.synced = false;
-                return;
+                self.scene_graph_ui_state.delete_graph_id = Some(graph_id);
             }
         });
 
@@ -599,15 +654,7 @@ impl BlaulichtApp {
                     graph.active_node = Some(selected_node_id);
                 }
                 if ui.button("Delete Node").clicked() {
-                    graph.nodes.remove(&selected_node_id);
-                    graph
-                        .edges
-                        .retain(|e| e.from != selected_node_id && e.to != selected_node_id);
-                    if graph.active_node == Some(selected_node_id) {
-                        graph.active_node = None;
-                    }
-                    self.scene_graph_ui_state.selected_node = None;
-                    self.scene_graph_ui_state.synced = false;
+                    self.scene_graph_ui_state.delete_node = Some((graph_id, selected_node_id));
                 }
             });
 

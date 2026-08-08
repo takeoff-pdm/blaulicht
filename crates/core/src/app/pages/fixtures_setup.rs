@@ -14,7 +14,7 @@ use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, Frame, Key, Label, Margin, RichText};
 use std::time::Duration;
-use std::{fmt, mem};
+use std::fmt;
 use strum::IntoEnumIterator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +110,36 @@ impl BlaulichtApp {
                     });
                 });
         }
+    }
+
+    fn render_delete_fixture_dialog(&mut self, ctx: &Context) {
+        let Some((group_id, fixture_id)) = self.delete_fixture else {
+            return;
+        };
+
+        Dialog::new("Delete Fixture".to_string(), egui::vec2(280.0, 130.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(RichText::new("Delete this fixture?").strong());
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if components::button(ui, false, "Confirm", ButtonSize::Medium) {
+                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                        if dmx_engine.delete_fixture_from_group(group_id, fixture_id) {
+                            self.setup_fixture_id = dmx_engine
+                                .0
+                                .groups
+                                .get(&group_id)
+                                .and_then(|group| group.fixtures.keys().next().copied())
+                                .unwrap_or_default();
+                        }
+                        self.delete_fixture = None;
+                    }
+                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                        self.delete_fixture = None;
+                    }
+                });
+            });
     }
 
     pub fn render_add_group_dialog(&mut self, ctx: &Context) {
@@ -564,7 +594,7 @@ impl BlaulichtApp {
 
                         if button_pressed && self.add_fixture_group.is_some() {
                             let group_id = self.add_fixture_group.unwrap();
-                            let base_name = std::mem::take(&mut self.add_fixture_name);
+                            let base_name = self.add_fixture_name.clone();
                             let mut start_addr = self.add_fixture_start_addr as usize;
                             let universe_no = self.add_fixture_universe_no as usize;
                             let pos = Position {
@@ -593,66 +623,69 @@ impl BlaulichtApp {
 
                             // Determine channel footprint for address stepping
                             let footprint = fixture_type.footprint();
+                            let count = self.add_fixture_count.max(1) as usize;
 
-                            // Create multiple fixtures if requested
-                            {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                let count = self.add_fixture_count.max(1) as usize;
-                                for i in 0..count {
-                                    if start_addr + fixture_type.footprint() > 513 {
-                                        mem::drop(dmx_engine);
-                                        self.show_popup(PopupSpec {
-                                            label: "Out of Channels".to_string(),
-                                            label_size: Some(18.0),
-                                            lifetime_duration: Duration::from_secs(3),
-                                            button: Some(PopupButtonSpec {
-                                                label: "OK".to_string(),
-                                            }),
-                                        });
-                                        break;
+                            // Validate the complete batch before mutating the engine. This
+                            // avoids creating a partial batch when the final fixture would
+                            // cross the universe boundary.
+                            if start_addr.saturating_add(footprint.saturating_mul(count)) > 513 {
+                                self.show_popup(PopupSpec {
+                                    label: format!(
+                                        "{} fixtures do not fit from channel {}",
+                                        count, self.add_fixture_start_addr
+                                    ),
+                                    label_size: Some(18.0),
+                                    lifetime_duration: Duration::from_secs(3),
+                                    button: Some(PopupButtonSpec {
+                                        label: "OK".to_string(),
+                                    }),
+                                });
+                            } else {
+                                // Create the complete batch only after validation succeeds.
+                                {
+                                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                                    for i in 0..count {
+                                        let name = if count > 1 {
+                                            format!("{} #{}", base_name, i + 1)
+                                        } else {
+                                            base_name.clone()
+                                        };
+                                        let mut fixture = Fixture::new(
+                                            universe_no,
+                                            start_addr,
+                                            name,
+                                            fixture_type.clone(),
+                                        );
+                                        // Offset successive fixtures along the chosen axis.
+                                        let mut fixture_pos = pos.clone();
+                                        let offset = i * AddFixtureIncrementAxis::STEP;
+                                        match self.add_fixture_increment_axis {
+                                            AddFixtureIncrementAxis::None => {}
+                                            AddFixtureIncrementAxis::X => {
+                                                fixture_pos.x = fixture_pos.x.saturating_add(offset)
+                                            }
+                                            AddFixtureIncrementAxis::Y => {
+                                                fixture_pos.y = fixture_pos.y.saturating_add(offset)
+                                            }
+                                            AddFixtureIncrementAxis::Z => {
+                                                fixture_pos.z = fixture_pos.z.saturating_add(offset)
+                                            }
+                                        }
+                                        fixture.pos = fixture_pos;
+                                        fixture.rotation = rotation.clone();
+                                        dmx_engine.add_fixture_to_group(group_id, fixture);
+                                        start_addr = start_addr.saturating_add(footprint);
                                     }
-
-                                    let name = if count > 1 {
-                                        format!("{} #{}", base_name, i + 1)
-                                    } else {
-                                        base_name.clone()
-                                    };
-                                    let mut fixture = Fixture::new(
-                                        universe_no,
-                                        start_addr,
-                                        name,
-                                        fixture_type.clone(),
-                                    );
-                                    // Offset successive fixtures along the chosen axis.
-                                    let mut fixture_pos = pos.clone();
-                                    let offset = i * AddFixtureIncrementAxis::STEP;
-                                    match self.add_fixture_increment_axis {
-                                        AddFixtureIncrementAxis::None => {}
-                                        AddFixtureIncrementAxis::X => {
-                                            fixture_pos.x = fixture_pos.x.saturating_add(offset)
-                                        }
-                                        AddFixtureIncrementAxis::Y => {
-                                            fixture_pos.y = fixture_pos.y.saturating_add(offset)
-                                        }
-                                        AddFixtureIncrementAxis::Z => {
-                                            fixture_pos.z = fixture_pos.z.saturating_add(offset)
-                                        }
-                                    }
-                                    fixture.pos = fixture_pos;
-                                    fixture.rotation = rotation.clone();
-                                    dmx_engine.add_fixture_to_group(group_id, fixture);
-                                    start_addr = start_addr.saturating_add(footprint);
                                 }
+
+                                // Reset some fields and close after a successful batch.
+                                self.add_fixture_open = false;
+                                self.add_fixture_kind_dialog_open = false;
+                                self.add_fixture_model_dialog_open = false;
+                                self.close_add_fixture_numberpads();
+                                self.add_fixture_name = String::from("New Fixture");
                                 skip_rest = true;
                             }
-
-                            // Reset some fields and close
-                            self.add_fixture_open = false;
-                            self.add_fixture_kind_dialog_open = false;
-                            self.add_fixture_model_dialog_open = false;
-                            self.close_add_fixture_numberpads();
-
-                            self.add_fixture_name = String::from("New Fixture");
                         }
                     });
                 });
@@ -679,6 +712,7 @@ impl BlaulichtApp {
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
         self.render_add_group_dialog(ctx);
         self.render_delete_group(ctx);
+        self.render_delete_fixture_dialog(ctx);
 
         // Skipping required because UI breaks at some point.
         let skip_rest = self.render_add_fixture_dialog(ctx, &dmx_engine);
@@ -986,7 +1020,7 @@ impl BlaulichtApp {
                                                         can_save,
                                                         "Save",
                                                         ButtonSize::Medium,
-                                                    ) {
+                                                    ) && can_save {
                                                         // let mut eng =
                                                         //     self.data.state.dmx_engine.write().unwrap();
                                                         let mut dmx_engine = self
@@ -1033,43 +1067,7 @@ impl BlaulichtApp {
                                                         "Delete",
                                                         ButtonSize::Medium,
                                                     ) {
-                                                        // let mut eng =
-                                                        //     self.data.state.dmx_engine.write().unwrap();
-                                                        //
-                                                        let mut dmx_engine = self
-                                                            .data
-                                                            .state
-                                                            .dmx_engine
-                                                            .write()
-                                                            .unwrap();
-
-                                                        if dmx_engine
-                                                            .delete_fixture_from_group(gid, fid)
-                                                        {
-                                                            // Adjust selection to first available fixture in the group, if any.
-                                                            if let Some((&first_fid, _)) = dmx_engine
-                                                                .0
-                                                                .groups
-                                                                .get(&gid)
-                                                                .into_iter()
-                                                                .flat_map(|group| group.fixtures.iter())
-                                                                .next()
-                                                            {
-                                                                self.setup_fixture_id = first_fid;
-                                                            }
-
-                                                            mem::drop(dmx_engine);
-
-                                                            self.show_popup(
-                                                                PopupSpec::with_duration(
-                                                                    Duration::from_millis(750),
-                                                                    format!(
-                                                                        "Deleted fixture #{} from group #{}",
-                                                                        fid, gid
-                                                                    ),
-                                                                ),
-                                                            );
-                                                        }
+                                                        self.delete_fixture = Some((gid, fid));
                                                     }
                                                 });
                                             });

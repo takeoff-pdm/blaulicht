@@ -1,5 +1,6 @@
 use crate::{app::ui::FileDialogOpenOrigin, state::NUM_DMX_UNIVERSES};
 use egui_file_dialog::FileDialog;
+use std::path::PathBuf;
 
 pub mod artnet;
 pub mod dmx;
@@ -13,6 +14,8 @@ pub mod speed;
 
 pub struct SystemUI {
     open_file_dialog: Option<FileDialog>,
+    pending_load_file: Option<PathBuf>,
+    close_showfile_confirm_open: bool,
     file_dialog_open_origin: FileDialogOpenOrigin,
     reload_dialog_open: bool,
     confirm_shutdown_open: bool,
@@ -32,6 +35,8 @@ impl Default for SystemUI {
     fn default() -> Self {
         Self {
             open_file_dialog: None,
+            pending_load_file: None,
+            close_showfile_confirm_open: false,
             file_dialog_open_origin: FileDialogOpenOrigin::Load,
             reload_dialog_open: false,
             confirm_shutdown_open: false,
