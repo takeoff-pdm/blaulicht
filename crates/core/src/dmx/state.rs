@@ -2,9 +2,9 @@ use blaulicht_shared::{
     fixture::{state::FixtureState, value::FixtureValue},
     scene::{EngineSink, FixtureSelection, Scene},
     view::View,
-    ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate,
-    AnimationTimerState, EngineGroups, EngineSelection, FixtureProperty, MathematicalBaseFunction,
-    MathematicalPhaser, PhaserDuration, PhaserKind, SyncMode,
+    AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate, EngineGroups,
+    EngineSelection, FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration,
+    PhaserKind, SyncMode,
 };
 use maplit::hashmap;
 use serde::{Deserialize, Serialize};
@@ -157,46 +157,9 @@ impl<'engine> EngineState {
                                                     );
                                                     return None;
                                                 };
-                                                let amount = a.fixture_timers.len();
-
-                                                Some((
-                                                    ak,
-                                                    ActiveAnimation {
-                                                        fixture_timers: a
-                                                            .fixture_timers
-                                                            .into_iter()
-                                                            .enumerate()
-                                                            .map(|(counter, (k, _v))| {
-                                                                // TODO: is is not acceptible.
-                                                                let timer = match anim_spec
-                                                                    .spec
-                                                                    .sync_mode()
-                                                                {
-                                                                    SyncMode::Synced => 0,
-                                                                    SyncMode::StretchedEven if amount > 0 => {
-                                                                        ((360.0 / amount as f32)
-                                                                            * counter as f32)
-                                                                            as u64
-                                                                    }
-                                                                    SyncMode::StretchedEven => 0,
-                                                                    SyncMode::StretchedHalfHalf => {
-                                                                        (180 * (counter % 2)) as u64
-                                                                    }
-                                                                };
-
-                                                                (
-                                                                    k,
-                                                                    AnimationTimerState {
-                                                                        last_tick_time: 0,
-                                                                        needs_reset_on_beat: false,
-                                                                        timer,
-                                                                    },
-                                                                )
-                                                            })
-                                                            .collect(),
-                                                        ..a
-                                                    },
-                                                ))
+                                                let mut animation = a;
+                                                animation.reset_timers(anim_spec.spec.sync_mode());
+                                                Some((ak, animation))
                                             })
                                             .collect(),
                                     )

@@ -41,38 +41,65 @@ pub struct ActiveAnimation {
 
 impl ActiveAnimation {
     pub fn reset(&mut self) {
-        for t in self.fixture_timers.iter_mut() {
-            *t.1 = AnimationTimerState::default()
-        }
+        self.reset_timers(SyncMode::Synced);
     }
 
     pub fn set_timers(&mut self, animation_sync: SyncMode) {
         self.enabled = true;
+        self.reset_timers(animation_sync);
+    }
+
+    /// Resets timer timestamps and assigns the initial phase for each fixture.
+    /// Unlike [`Self::set_timers`], this preserves whether the animation is enabled.
+    pub fn reset_timers(&mut self, animation_sync: SyncMode) {
+        let amount = self.fixture_timers.len();
 
         // TIMING mode: spread or sync the timing.
-        let amount = self.fixture_timers.len();
-        match animation_sync {
-            SyncMode::Synced => {
-                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
-                    timer_state.last_tick_time = 0;
-                    timer_state.timer = 0;
+        for (counter, timer_state) in self.fixture_timers.values_mut().enumerate() {
+            timer_state.last_tick_time = 0;
+            timer_state.needs_reset_on_beat = false;
+            timer_state.timer = match animation_sync {
+                SyncMode::Synced => 0,
+                SyncMode::StretchedEven if amount > 0 => {
+                    ((360.0 / amount as f32) * counter as f32) as u64
                 }
-            }
-            SyncMode::StretchedEven => {
-                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
-                    timer_state.last_tick_time = 0;
-                    timer_state.timer = ((360.0 / amount as f32) * counter as f32) as u64;
-
-                    println!("timer: {}", timer_state.timer);
-                }
-            }
-            SyncMode::StretchedHalfHalf => {
-                for (counter, (_, timer_state)) in self.fixture_timers.iter_mut().enumerate() {
-                    timer_state.last_tick_time = 0;
-                    timer_state.timer = (180 * (counter % 2)) as u64;
-                }
-            }
+                SyncMode::StretchedEven => 0,
+                SyncMode::StretchedHalfHalf => (180 * (counter % 2)) as u64,
+            };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_timers_assigns_phases_without_enabling_animation() {
+        let mut animation = ActiveAnimation::new(
+            &[(1, 1), (1, 2), (1, 3)],
+            AnimationSpec::empty(),
+        );
+
+        animation.reset_timers(SyncMode::StretchedEven);
+
+        assert!(!animation.enabled);
+        assert_eq!(animation.fixture_timers[&(1, 1)].timer, 0);
+        assert_eq!(animation.fixture_timers[&(1, 2)].timer, 120);
+        assert_eq!(animation.fixture_timers[&(1, 3)].timer, 240);
+    }
+
+    #[test]
+    fn set_timers_enables_and_resets_animation() {
+        let mut animation = ActiveAnimation::new(&[(1, 1)], AnimationSpec::empty());
+        animation.fixture_timers.get_mut(&(1, 1)).unwrap().timer = 42;
+
+        animation.set_timers(SyncMode::Synced);
+
+        assert!(animation.enabled);
+        assert_eq!(animation.fixture_timers[&(1, 1)].timer, 0);
+        assert_eq!(animation.fixture_timers[&(1, 1)].last_tick_time, 0);
+        assert!(!animation.fixture_timers[&(1, 1)].needs_reset_on_beat);
     }
 }
 
