@@ -116,8 +116,14 @@ impl SerialManager {
             }
         };
 
-        let device_id = self.device_id_counter;
-        self.device_id_counter += 1;
+        let Some(device_id) = self.device_id_counter.checked_add(1).map(|next| {
+            let current = self.device_id_counter;
+            self.device_id_counter = next;
+            current
+        }) else {
+            error!("[SERIAL] Device ID space exhausted; refusing '{port_path}'");
+            return None;
+        };
 
         self.connection_map.insert(
             port_path.to_string(),

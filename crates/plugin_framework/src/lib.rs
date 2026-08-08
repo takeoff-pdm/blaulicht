@@ -1,5 +1,4 @@
 use blaulicht_shared::{LogLevel, TickInput};
-use std::mem::MaybeUninit;
 pub mod artnet;
 pub mod blaulicht;
 mod error;
@@ -31,11 +30,11 @@ pub trait Plugin {
     fn ui(&mut self) {}
 }
 
-static mut PLUGIN: MaybeUninit<Box<dyn Plugin>> = MaybeUninit::uninit();
+static mut PLUGIN: Option<Box<dyn Plugin>> = None;
 
 pub fn hook_plugin(plugin: Box<dyn Plugin>) {
     unsafe {
-        PLUGIN.write(plugin);
+        PLUGIN = Some(plugin);
     }
 }
 
@@ -75,29 +74,26 @@ pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_len
                 main();
             }
 
-            let plugin = unsafe {
-                #[allow(static_mut_refs)]
-                PLUGIN.assume_init_mut()
+            let Some(plugin) = (unsafe { PLUGIN.as_mut() }) else {
+                blaulicht::report_panic("Plugin did not register itself during initialization");
+                return;
             };
 
             plugin.initialize(tick_input)
         }
         false => {
-            let plugin = unsafe {
-                #[allow(static_mut_refs)]
-                PLUGIN.assume_init_mut()
-            };
-            plugin.run(tick_input);
+            if let Some(plugin) = (unsafe { PLUGIN.as_mut() }) {
+                plugin.run(tick_input);
+            } else {
+                blaulicht::report_panic("Plugin tick received before initialization");
+            }
         }
     };
 }
 
 #[no_mangle]
 pub extern "C" fn internal_render_ui() {
-    let plugin = unsafe {
-        #[allow(static_mut_refs)]
-        PLUGIN.assume_init_mut()
-    };
-
-    plugin.ui();
+    if let Some(plugin) = (unsafe { PLUGIN.as_mut() }) {
+        plugin.ui();
+    }
 }

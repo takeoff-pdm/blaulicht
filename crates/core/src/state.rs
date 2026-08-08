@@ -367,8 +367,11 @@ impl AppState {
 
     pub fn log_plugin(&self, plugin_key: u8, msg: Cow<'static, str>) {
         let mut plugins = self.plugins.write().unwrap();
-        let plugin = plugins.get_mut(&plugin_key).unwrap();
-        plugin.log(msg);
+        if let Some(plugin) = plugins.get_mut(&plugin_key) {
+            plugin.log(msg);
+        } else {
+            tracing::warn!("Dropping log for missing plugin {plugin_key}");
+        }
     }
 }
 

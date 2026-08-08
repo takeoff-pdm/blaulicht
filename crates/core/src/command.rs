@@ -3,6 +3,8 @@ use std::ffi::OsStr;
 use std::io;
 use std::process::{Child, Command as StdCommand, Output, Stdio};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub struct Command {
     inner: StdCommand,
@@ -43,6 +45,22 @@ impl Command {
 impl CommandHandle {
     pub fn wait(self) -> io::Result<Output> {
         self.child.wait_with_output()
+    }
+
+    pub fn wait_timeout(mut self, timeout: Duration) -> io::Result<Output> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.child.try_wait()?.is_some() {
+                return self.child.wait_with_output();
+            }
+
+            if Instant::now() >= deadline {
+                self.child.kill()?;
+                return self.child.wait_with_output();
+            }
+
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 

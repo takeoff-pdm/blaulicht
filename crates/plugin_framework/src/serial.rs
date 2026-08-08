@@ -34,9 +34,7 @@ fn get_serial() -> Vec<SerialReceived> {
     // Sanity check for memory usage.
     let curr_len = unsafe { GLOBAL_SERIAL_SOURCE.current_length };
     if curr_len as usize > SERIAL_BUFFER_LEN {
-        panic!(
-            "OOM: The serial buffer exceeded the predefined size: {curr_len} vs. {SERIAL_BUFFER_LEN}",
-        )
+        return Vec::new();
     }
 
     let buf = unsafe { &GLOBAL_SERIAL_SOURCE.buffer[..curr_len as usize] };

@@ -11,6 +11,7 @@ use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput, UdpReceived,
 };
 use std::sync::Arc;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -129,7 +130,10 @@ impl PluginManager {
                     },
                 };
 
-                let plugin = self.plugins.get_mut(&plugin_key).unwrap();
+                let Some(plugin) = self.plugins.get_mut(&plugin_key) else {
+                    tracing::warn!("Skipping plugin {plugin_key}: it disappeared during tick");
+                    continue;
+                };
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
                 if let Err(err) = plugin.tick(
@@ -195,7 +199,11 @@ impl PluginManager {
                     ret = Some(err);
                 }
 
-                plugins.get_mut(&plugin_key).unwrap().set_errored(true);
+                if let Some(plugin) = plugins.get_mut(&plugin_key) {
+                    plugin.set_errored(true);
+                } else {
+                    tracing::warn!("Cannot disable missing plugin {plugin_key}");
+                }
             }
 
             ret
@@ -396,10 +404,13 @@ impl Plugin {
         }
 
         // Call the function with the pointer and length
-        func.call(
-            &mut self.wasm_state.store,
-            (tick_array_offset as i32, tick_array_len),
-        )?;
+        catch_unwind(AssertUnwindSafe(|| {
+            func.call(
+                &mut self.wasm_state.store,
+                (tick_array_offset as i32, tick_array_len),
+            )
+        }))
+        .map_err(|_| anyhow::anyhow!("WASM plugin panicked during tick"))??;
 
         Ok(())
     }

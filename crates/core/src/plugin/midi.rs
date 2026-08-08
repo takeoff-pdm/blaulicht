@@ -153,7 +153,12 @@ impl MidiManager {
 
         let in_port = in_ports
             .iter()
-            .find(|p| midi_in.port_name(p).unwrap().contains(device_name))
+            .find(|p| {
+                midi_in
+                    .port_name(p)
+                    .map(|name| name.contains(device_name))
+                    .unwrap_or(false)
+            })
             .ok_or(MidiError::DeviceNotFound)?;
 
         debug!("[MIDI-IN] Connecting to: {device_name}");
@@ -182,14 +187,14 @@ impl MidiManager {
                         }
                     };
 
-                    send.send(MidiEvent {
+                    if let Err(err) = send.send(MidiEvent {
                         device: device_id as u8,
                         status: message[0],
                         data0,
                         data1,
-                    })
-                    .map_err(|e| MidiError::Other(e.to_string()))
-                    .unwrap();
+                    }) {
+                        warn!("[MIDI] Dropping input event: channel disconnected: {err}");
+                    }
                 },
                 (),
             )
@@ -202,7 +207,12 @@ impl MidiManager {
                 let out_ports = midi_out.ports();
                 let out_port = out_ports
                     .iter()
-                    .find(|p| midi_out.port_name(p).unwrap().contains(device_name));
+                    .find(|p| {
+                        midi_out
+                            .port_name(p)
+                            .map(|name| name.contains(device_name))
+                            .unwrap_or(false)
+                    });
 
                 match out_port {
                     Some(port) => {
@@ -259,7 +269,8 @@ impl MidiManager {
                 Ok(data) => incoming_events.push(data),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    unreachable!("MIDI detached")
+                    warn!("[MIDI] Input channel disconnected; stopping input processing");
+                    break;
                 }
             }
         }
@@ -284,12 +295,10 @@ impl MidiManager {
 
                     if let Some(ref mut output) = output_device.output {
                         if let Err(err) = output.send(&[sig.status, sig.data0, sig.data1]) {
-                            self.system_message_sender
-                                .send(SystemMessage::Log(
-                                    format!("MIDI ERROR: {err}"),
-                                    LogLevel::Err,
-                                ))
-                                .unwrap();
+                            let _ = self.system_message_sender.send(SystemMessage::Log(
+                                format!("MIDI ERROR: {err}"),
+                                LogLevel::Err,
+                            ));
                         }
                     } else {
                         debug!("MIDI output not available for device {}", sig.device);

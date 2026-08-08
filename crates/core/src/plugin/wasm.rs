@@ -127,7 +127,7 @@ impl PluginManager {
             let plugin_wasm_state = PluginWasmState {
                 memory: instance
                     .get_memory(&mut store, "memory")
-                    .expect("memory not found"),
+                    .ok_or_else(|| anyhow!("WASM plugin <{plugin_name}> does not export memory"))?,
                 store,
                 instance,
             };
@@ -152,7 +152,10 @@ impl PluginManager {
                 .acquire_udp_buffer_addresses()
                 .map_err(|e| anyhow!("failed to acquire UDP buffer addresses: {e}"))?;
 
-            debug_assert!(plugin_id < u8::MAX as usize);
+            anyhow::ensure!(
+                plugin_id <= u8::MAX as usize,
+                "too many plugins: plugin index {plugin_id} does not fit in u8"
+            );
 
             self.plugins.insert(plugin_id as u8, plugin);
         }
@@ -284,7 +287,7 @@ impl PluginManager {
                     .arg("-c")
                     .arg(received_string)
                     .run()
-                    .and_then(|handle| handle.wait());
+                    .and_then(|handle| handle.wait_timeout(std::time::Duration::from_secs(5)));
 
                 match output {
                     Ok(o) => {

@@ -233,7 +233,7 @@ pub fn bl_enumerate_midi_devices_safe() -> Vec<String> {
         return Vec::new();
     }
 
-    let data = &buffer[..written_len as usize];
+    let data = &buffer[..(written_len as usize).min(buffer.len())];
     let json_str = std::str::from_utf8(data).unwrap_or("[]");
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
@@ -283,7 +283,7 @@ pub fn bl_artnet_enumerate_receivers_safe() -> Vec<ArtNetReceiverInfo> {
         return Vec::new();
     }
 
-    let data = &buffer[..written_len as usize];
+    let data = &buffer[..(written_len as usize).min(buffer.len())];
     let json_str = std::str::from_utf8(data).unwrap_or("[]");
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
@@ -298,7 +298,7 @@ pub fn bl_enumerate_serial_devices_safe() -> Vec<String> {
         return Vec::new();
     }
 
-    let data = &buffer[..written_len as usize];
+    let data = &buffer[..(written_len as usize).min(buffer.len())];
     let json_str = std::str::from_utf8(data).unwrap_or("[]");
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
@@ -314,7 +314,7 @@ pub fn bl_list_external_screens_safe() -> Vec<ExternalScreenInfo> {
         return Vec::new();
     }
 
-    let data = &buffer[..written_len as usize];
+    let data = &buffer[..(written_len as usize).min(buffer.len())];
     let json_str = std::str::from_utf8(data).unwrap_or("[]");
     serde_json::from_str(json_str).unwrap_or_else(|_| Vec::new())
 }
@@ -424,7 +424,7 @@ pub fn load_plugin_state(location: PluginStateLocation) -> Option<String> {
         return None;
     }
 
-    let data = &buffer[..written_len as usize];
+    let data = &buffer[..(written_len as usize).min(buffer.len())];
     Some(String::from_utf8_lossy(data).into_owned())
 }
 
@@ -941,8 +941,10 @@ pub mod ui {
 #[doc(hidden)]
 pub unsafe fn _get_array(array_pointer: *mut u8, array_length: usize) -> &'static mut [u8] {
     // Safety: This is unsafe because we're dealing with raw pointers.
+    if array_pointer.is_null() {
+        return &mut [];
+    }
     let slice = unsafe {
-        assert!(!array_pointer.is_null(), "Pointer is null");
         std::slice::from_raw_parts_mut(array_pointer, array_length)
     };
 
@@ -952,8 +954,10 @@ pub unsafe fn _get_array(array_pointer: *mut u8, array_length: usize) -> &'stati
 #[doc(hidden)]
 pub unsafe fn _get_array_u32(array_pointer: *const u32, array_length: usize) -> &'static [u32] {
     // Safety: This is unsafe because we're dealing with raw pointers.
+    if array_pointer.is_null() {
+        return &[];
+    }
     let slice = unsafe {
-        assert!(!array_pointer.is_null(), "Pointer is null");
         std::slice::from_raw_parts(array_pointer, array_length)
     };
 

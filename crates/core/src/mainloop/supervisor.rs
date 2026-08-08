@@ -131,7 +131,7 @@ pub fn supervisor_thread(
             let mut audio = app_state.audio.write().unwrap();
             audio.device_name = audio_device
                 .as_ref()
-                .map(|dev| dev.name().unwrap().to_string());
+                .and_then(|dev| dev.name().ok());
         }
 
         if audio_device.is_none() {
@@ -139,9 +139,18 @@ pub fn supervisor_thread(
 
             // TODO: add an aggregate log macro which logs to the channel and the console.
 
-            system_out
+            if system_out
                 .send(SystemMessage::AudioDevicesView(devices))
-                .unwrap();
+                .is_err()
+            {
+                tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
+                signal_mainloop(
+                    Arc::clone(&audio_thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORTED,
+                );
+                break;
+            }
 
             if !sent_no_device_available_log_message {
                 syslog!(
@@ -165,13 +174,27 @@ pub fn supervisor_thread(
             }
         } else if device_changed {
             // TODO: just broadcast a state-change message.
-            system_out
-                .send(SystemMessage::AudioSelected(audio_device.clone()))
-                .unwrap();
+            let Some(audio_input_device) = audio_device.clone() else {
+                device_changed = false;
+                continue;
+            };
+
+            if system_out
+                .send(SystemMessage::AudioSelected(Some(audio_input_device.clone())))
+                .is_err()
+            {
+                tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
+                signal_mainloop(
+                    Arc::clone(&audio_thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORTED,
+                );
+                break;
+            }
 
             let sys = system_out.clone();
             {
-                let audio_input_device = audio_device.clone().unwrap();
+                let audio_input_device = audio_input_device.clone();
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
 
                 let sys = sys.clone();
@@ -218,7 +241,7 @@ pub fn supervisor_thread(
             device_changed = false;
             tracing::info!(
                 "[AUDIO] Main thread started: <{}>",
-                audio_device.clone().unwrap().name().unwrap()
+                audio_input_device.name().unwrap_or_else(|_| "unknown".to_string())
             );
 
             syslog!(

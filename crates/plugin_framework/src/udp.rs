@@ -27,7 +27,7 @@ fn get_udp() -> Vec<UdpReceived> {
         return vec![];
     }
     if curr_len as usize > UDP_BUFFER_LEN {
-        panic!("OOM: The UDP buffer exceeded the predefined size: {curr_len} vs. {UDP_BUFFER_LEN}",)
+        return vec![];
     }
 
     let buf = unsafe { &GLOBAL_UDP_SOURCE.buffer[..curr_len as usize] };

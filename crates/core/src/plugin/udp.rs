@@ -55,8 +55,10 @@ impl UdpManager {
         let addr = format!("0.0.0.0:{}", bind_port);
         let socket = match UdpSocket::bind(&addr) {
             Ok(s) => {
-                s.set_nonblocking(true)
-                    .expect("Failed to set UDP socket non-blocking");
+                if let Err(err) = s.set_nonblocking(true) {
+                    error!("[UDP] Failed to set {} non-blocking: {}", addr, err);
+                    return None;
+                }
                 info!("[UDP] Listening on {}", addr);
                 s
             }
@@ -66,8 +68,18 @@ impl UdpManager {
             }
         };
 
-        let port_id = self.port_id_counter;
-        self.port_id_counter += 1;
+        let Some(port_id) = self
+            .port_id_counter
+            .checked_add(1)
+            .map(|next| {
+                let current = self.port_id_counter;
+                self.port_id_counter = next;
+                current
+            })
+        else {
+            error!("[UDP] Port ID space exhausted; refusing {}", addr);
+            return None;
+        };
 
         self.connection_map.insert(
             bind_port,
