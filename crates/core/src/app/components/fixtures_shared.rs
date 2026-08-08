@@ -630,16 +630,16 @@ impl BlaulichtApp {
                         .id_salt("sfixtures")
                         .show(ui, |ui| {
                             ui.set_height(400.0);
-                            for (fix_id, _fixture) in dmx_engine
-                                .groups()
+                            let Some(group) = dmx_engine.groups().get(&group_id) else {
+                                return;
+                            };
+                            for (fix_id, _fixture) in &group.fixtures {
+                            let Some(fixture) = groups
                                 .get(&group_id)
-                                .as_ref()
-                                .unwrap()
-                                .fixtures
-                                .iter()
-                            {
-                                let fixture =
-                                    groups.get(&group_id).unwrap().fixtures.get(fix_id).unwrap();
+                                .and_then(|group| group.fixtures.get(fix_id))
+                            else {
+                                continue;
+                            };
 
                                 let mut name = fixture.name.clone();
                                 name.truncate(10);
@@ -709,9 +709,10 @@ impl BlaulichtApp {
 
         let mut total_fixtures = vec![];
         for g_id in selection.group_ids.iter() {
-            let group = groups
-                .get(g_id)
-                .unwrap_or_else(|| panic!("Selection illegal: {selection:?}"));
+            let Some(group) = groups.get(g_id) else {
+                tracing::warn!("Ignoring stale fixture selection: {selection:?}");
+                continue;
+            };
             if selection.fixtures_in_group.is_empty() {
                 total_fixtures.extend(
                     group
@@ -812,12 +813,12 @@ impl BlaulichtApp {
                                 ui.add_space(8.0);
 
                                 for (group_id, fix_id, fixture_selection) in &total_fixtures {
-                                    let fixture = groups
-                                        .get(&group_id)
-                                        .unwrap()
-                                        .fixtures
-                                        .get(&fix_id)
-                                        .unwrap();
+                                    let Some(fixture) = groups
+                                        .get(group_id)
+                                        .and_then(|group| group.fixtures.get(fix_id))
+                                    else {
+                                        continue;
+                                    };
 
                                     let button_clicked = components::clickable(
                                         ui,

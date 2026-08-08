@@ -274,7 +274,9 @@ impl BlaulichtApp {
             let graph_ids: Vec<_> = state.0.scene_graphs.graphs.keys().copied().collect();
             let focused = state.0.scene_graphs.focused_graph;
             for &gid in &graph_ids {
-                let graph = state.0.scene_graphs.graphs.get(&gid).unwrap();
+                let Some(graph) = state.0.scene_graphs.graphs.get(&gid) else {
+                    continue;
+                };
                 let selected = focused == Some(gid);
                 if ui.selectable_label(selected, &graph.name).clicked() {
                     state.0.scene_graphs.focused_graph = Some(gid);
@@ -323,7 +325,11 @@ impl BlaulichtApp {
         // Sync snarl from engine state if needed.
         if !self.scene_graph_ui_state.synced {
             self.scene_graph_ui_state.snarl = Snarl::new();
-            let graph = state.0.scene_graphs.graphs.get(&graph_id).unwrap();
+            let Some(graph) = state.0.scene_graphs.graphs.get(&graph_id) else {
+                self.scene_graph_ui_state.synced = false;
+                self.scene_graph_ui_state.selected_node = None;
+                return;
+            };
 
             let mut node_to_snarl: BTreeMap<NodeId, egui_snarl::NodeId> = BTreeMap::new();
             for (i, (&node_id, node)) in graph.nodes.iter().enumerate() {
@@ -366,7 +372,11 @@ impl BlaulichtApp {
         let current_section = self.collector_snapshot.section_state;
         let mut do_auto_layout = false;
         ui.horizontal(|ui| {
-            let graph = state.0.scene_graphs.graphs.get_mut(&graph_id).unwrap();
+            let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
+                self.scene_graph_ui_state.selected_node = None;
+                self.scene_graph_ui_state.synced = false;
+                return;
+            };
             ui.checkbox(&mut graph.enabled, "Enabled");
 
             if ui.button("Add Node").clicked() {

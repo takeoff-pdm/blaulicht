@@ -290,7 +290,9 @@ impl BlaulichtApp {
                                                 ui.end_row();
                                             }
 
-                                            let scene_data = dmx_engine.get_scene(*id).unwrap();
+                                            let Some(scene_data) = dmx_engine.get_scene(*id) else {
+                                                continue;
+                                            };
 
                                             self.render_scene_performance(
                                                 ui,

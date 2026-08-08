@@ -110,13 +110,16 @@ impl BlaulichtApp {
         }
 
         let Some(view_id) = self.view_ui_state.scene_picker_view_id else {
-            unreachable!("view id has to be set beforehand");
+            self.view_ui_state.base_picker_open = false;
+            return;
         };
 
         let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().clone() };
 
         let Some(view) = engine_snapshot.0.views.get(&view_id) else {
-            unreachable!("view id has to be valid");
+            self.view_ui_state.base_picker_open = false;
+            self.view_ui_state.scene_picker_view_id = None;
+            return;
         };
 
         let options: Vec<_> = engine_snapshot
@@ -152,7 +155,8 @@ impl BlaulichtApp {
         }
 
         let Some(view_id) = self.view_ui_state.scene_picker_view_id else {
-            unreachable!("view id has to be set beforehand");
+            self.view_ui_state.overlay_picker_open = false;
+            return;
         };
 
         let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().clone() };
@@ -350,7 +354,12 @@ impl BlaulichtApp {
                             return;
                         };
 
-                        let view_snapshot = dmx_engine.0.views.get(&view_id).cloned().unwrap();
+                        let Some(view_snapshot) = dmx_engine.0.views.get(&view_id).cloned() else {
+                            self.view_ui_state.scene_picker_view_id = None;
+                            self.view_ui_state.base_picker_open = false;
+                            self.view_ui_state.overlay_picker_open = false;
+                            return;
+                        };
 
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {

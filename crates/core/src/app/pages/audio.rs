@@ -774,7 +774,9 @@ impl BlaulichtApp {
                                 spec_width as usize,
                                 spec_height as usize,
                             );
-                            ui.image(self.spectrogram_texture_handle.as_ref().unwrap());
+                            if let Some(texture) = self.spectrogram_texture_handle.as_ref() {
+                                ui.image(texture);
+                            }
                         }
                     }
 

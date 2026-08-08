@@ -162,8 +162,10 @@ impl BlaulichtApp {
                                 "UnLmt",
                                 ButtonSize::Medium,
                             ) {
-                                if dmx_engine.selection().group_ids.len() == 1 {
-                                    let curr_group = *dmx_engine.selection().group_ids.iter().next().unwrap();
+                                if let (1, Some(&curr_group)) = (
+                                    dmx_engine.selection().group_ids.len(),
+                                    dmx_engine.selection().group_ids.iter().next(),
+                                ) {
 
                                 let instr = vec![
                                     ControlEvent::RemoveAllSelection,
@@ -203,8 +205,16 @@ impl BlaulichtApp {
                                 "Lmt All",
                                 ButtonSize::Medium,
                             ) {
-                                if dmx_engine.selection().group_ids.len() == 1 {
-                                    let curr_group = *dmx_engine.selection().group_ids.iter().next().unwrap();
+                                if let (1, Some(&curr_group), Some(group)) = (
+                                    dmx_engine.selection().group_ids.len(),
+                                    dmx_engine.selection().group_ids.iter().next(),
+                                    dmx_engine
+                                        .selection()
+                                        .group_ids
+                                        .iter()
+                                        .next()
+                                        .and_then(|id| dmx_engine.groups().get(id)),
+                                ) {
 
                                     if dmx_engine.selection().fixtures_in_group.is_empty() {
                                         let mut instr = vec![
@@ -212,7 +222,7 @@ impl BlaulichtApp {
                                             ControlEvent::SelectGroup(curr_group),
                                         ];
 
-                                        for (fix_id, _) in &dmx_engine.groups().get(&curr_group).unwrap().fixtures {
+                                        for (fix_id, _) in &group.fixtures {
                                             instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id));
                                         }
 
@@ -227,7 +237,7 @@ impl BlaulichtApp {
 
                                         let selec = dmx_engine.selection().clone();
 
-                                        for (fix_id, _) in &dmx_engine.groups().get(&curr_group).unwrap().fixtures {
+                                        for (fix_id, _) in &group.fixtures {
                                             if !selec.fixtures_in_group.contains(fix_id) {
                                                 instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id));
                                             }
@@ -511,13 +521,17 @@ impl BlaulichtApp {
                 if let Some((selec, anim_id)) =
                     &self.fixture_perf_ui.scene_overview_animation_selection_edit
                 {
-                    let animation = scene
+                    let Some(animation) = scene
                         .sink
                         .active_animations()
                         .get(selec)
-                        .unwrap()
-                        .get(anim_id)
-                        .unwrap();
+                        .and_then(|animations| animations.get(anim_id))
+                    else {
+                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
+                        self.fixture_perf_ui
+                            .scene_overview_animation_selection_edit_need_to_load = false;
+                        return;
+                    };
 
                     if self
                         .fixture_perf_ui
