@@ -96,23 +96,40 @@ impl BlaulichtApp {
                     ui: Some(self.showfile_ui_state()),
                 };
 
-                let serialized =
-                    serde_json::to_string_pretty(&showfile).expect("Failed to serialize showfile");
-                std::fs::write(&path, &serialized).expect("Failed to write showfile");
+                let serialized = match serde_json::to_string_pretty(&showfile) {
+                    Ok(serialized) => serialized,
+                    Err(err) => {
+                        tracing::error!("Failed to serialize showfile: {err}");
+                        drop(config_mut);
+                        self.show_popup(PopupSpec::with_duration(
+                            Duration::from_secs(3),
+                            format!("Failed to save showfile: {err}"),
+                        ));
+                        return;
+                    }
+                };
+                if let Err(err) = std::fs::write(&path, &serialized) {
+                    tracing::error!("Failed to write showfile {path:?}: {err}");
+                    drop(config_mut);
+                    self.show_popup(PopupSpec::with_duration(
+                        Duration::from_secs(3),
+                        format!("Failed to save showfile: {err}"),
+                    ));
+                    return;
+                }
                 self.last_save_time = Some(std::time::Instant::now());
 
                 config_mut.last_open_showfile = Some(path.clone());
 
-                let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                config::write_config(config_path, config_mut.clone()).unwrap();
+                let config_path = PathBuf::from(&self.data.config_path);
+                if let Err(err) = config::write_config(config_path, config_mut.clone()) {
+                    tracing::error!("Failed to persist showfile config: {err}");
+                }
 
-                self.data
-                    .system_message_sender
-                    .send(SystemMessage::Log(
-                        format!("Saved showfile to {path:?}"),
-                        LogLevel::Info,
-                    ))
-                    .unwrap();
+                let _ = self.data.system_message_sender.send(SystemMessage::Log(
+                    format!("Saved showfile to {path:?}"),
+                    LogLevel::Info,
+                ));
 
                 mem::drop(config_mut);
 
@@ -291,8 +308,10 @@ impl BlaulichtApp {
                     && button_enabled
                 {
                     conf.last_open_showfile = None;
-                    let path = PathBuf::from_str(&self.data.config_path).unwrap();
-                    config::write_config(path, conf.clone()).unwrap();
+                    let path = PathBuf::from(&self.data.config_path);
+                    if let Err(err) = config::write_config(path, conf.clone()) {
+                        tracing::error!("Failed to persist closed showfile config: {err}");
+                    }
                     let mut dmx = self.data.state.dmx_engine.write().unwrap();
                     let mut artnet = self.data.state.artnet_output.write().unwrap();
                     config::close_showfile(
@@ -442,16 +461,15 @@ impl BlaulichtApp {
 
                     config.last_open_showfile = Some(file.to_path_buf());
 
-                    let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                    config::write_config(config_path, config.clone()).unwrap();
+                    let config_path = PathBuf::from(&self.data.config_path);
+                    if let Err(err) = config::write_config(config_path, config.clone()) {
+                        tracing::error!("Failed to persist loaded showfile config: {err}");
+                    }
 
-                    self.data
-                        .system_message_sender
-                        .send(SystemMessage::Log(
-                            format!("Loaded showfile from {file:?}"),
-                            LogLevel::Info,
-                        ))
-                        .unwrap();
+                    let _ = self.data.system_message_sender.send(SystemMessage::Log(
+                        format!("Loaded showfile from {file:?}"),
+                        LogLevel::Info,
+                    ));
 
                     mem::drop(config);
 

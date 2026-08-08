@@ -126,21 +126,17 @@ pub fn read_showfile(
 ) -> Option<ShowfileUiState> {
     match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
         Ok(ui_state) => {
-            system_message_sender
-                .send(SystemMessage::Log(
-                    format!("Loaded showfile from {file:?}"),
-                    LogLevel::Info,
-                ))
-                .unwrap();
+            let _ = system_message_sender.send(SystemMessage::Log(
+                format!("Loaded showfile from {file:?}"),
+                LogLevel::Info,
+            ));
             ui_state
         }
         Err(e) => {
-            system_message_sender
-                .send(SystemMessage::Log(
-                    format!("Read showfile <{file:?}> ERR: {e}"),
-                    LogLevel::Err,
-                ))
-                .unwrap();
+            let _ = system_message_sender.send(SystemMessage::Log(
+                format!("Read showfile <{file:?}> ERR: {e}"),
+                LogLevel::Err,
+            ));
             None
         }
     }

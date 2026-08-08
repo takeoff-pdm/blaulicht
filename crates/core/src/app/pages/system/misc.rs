@@ -41,14 +41,16 @@ impl BlaulichtApp {
 
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Large) {
-                        let status = Command::new("/usr/bin/shutdown.sh")
-                            .status()
-                            .expect("Failed to execute shutdown command");
-
-                        if status.success() {
-                            tracing::info!("Shutdown command executed successfully.");
-                        } else {
-                            tracing::error!("Shutdown command failed!");
+                        match Command::new("/usr/bin/shutdown.sh").status() {
+                            Ok(status) if status.success() => {
+                                tracing::info!("Shutdown command executed successfully.");
+                            }
+                            Ok(status) => {
+                                tracing::error!("Shutdown command failed: {status}");
+                            }
+                            Err(err) => {
+                                tracing::error!("Failed to execute shutdown command: {err}");
+                            }
                         }
 
                         self.system_ui_state.confirm_shutdown_open = false;
@@ -202,10 +204,14 @@ impl BlaulichtApp {
                         };
 
                         if components::button(ui, !disabled, "Reload", button_size) && !disabled {
-                            self.data
+                            if self
+                                .data
                                 .from_frontend_sender
                                 .send(FromFrontend::Reload)
-                                .unwrap();
+                                .is_err()
+                            {
+                                tracing::warn!("Audio control channel is closed");
+                            }
 
                             self.show_popup(PopupSpec::with_duration(
                                 Duration::from_secs(2),

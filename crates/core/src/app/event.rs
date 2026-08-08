@@ -95,7 +95,7 @@ impl BlaulichtApp {
                             );
                             let items_str = items
                                 .into_iter()
-                                .map(|(_, dev)| dev.name().unwrap())
+                                .filter_map(|(_, dev)| dev.name().ok())
                                 .collect();
                             self.available_audio_devices = items_str;
                         }
@@ -140,9 +140,9 @@ impl BlaulichtApp {
                 Err(TryRecvError::Empty) => {
                     empty += 1;
                 }
-                Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
-                    unreachable!("CANNOT REACH")
+                    tracing::warn!("System message channel disconnected");
+                    break;
                 }
             }
 

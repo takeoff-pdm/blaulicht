@@ -12,7 +12,6 @@ use cpal::traits::DeviceTrait;
 use egui::{vec2, Color32, FontId, Frame, Margin, RichText, Widget};
 use std::mem;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 // TODO: include snapshot in graphs
 
@@ -709,18 +708,30 @@ impl BlaulichtApp {
                     self.render_choose_audio_device_popup(ctx, &mut selected_device);
 
                     if selected_device != before {
-                        let new_dev = selected_device.map(|d| utils::device_from_name(d).unwrap());
-                        self.data
+                        let new_dev = selected_device
+                            .and_then(|d| utils::device_from_name(d))
+                            .or_else(|| {
+                                tracing::warn!("Selected audio device is no longer available");
+                                None
+                            });
+                        if self
+                            .data
                             .from_frontend_sender
                             .send(FromFrontend::SelectInputDevice(new_dev.clone()))
-                            .unwrap();
+                            .is_err()
+                        {
+                            tracing::warn!("Audio control channel is closed");
+                        }
 
                         let mut config_mut = self.data.config.lock().unwrap();
 
-                        config_mut.default_audio_device = new_dev.map(|d| d.name().unwrap());
+                        config_mut.default_audio_device =
+                            new_dev.as_ref().and_then(|d| d.name().ok());
 
-                        let path = PathBuf::from_str(&self.data.config_path).unwrap();
-                        config::write_config(path, config_mut.clone()).unwrap();
+                        let path = PathBuf::from(&self.data.config_path);
+                        if let Err(err) = config::write_config(path, config_mut.clone()) {
+                            tracing::error!("Failed to persist audio device selection: {err}");
+                        }
                     }
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---

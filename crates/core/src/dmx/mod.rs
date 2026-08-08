@@ -309,7 +309,10 @@ impl DmxEngine {
                 ..artnet_protocol::Output::default()
             });
 
-            let bytes = command.write_to_buffer().unwrap();
+            let Ok(bytes) = command.write_to_buffer() else {
+                error!("Failed to serialize Art-Net output for universe {universe_no}");
+                continue;
+            };
 
             for destination in &artnet_out.receivers {
                 if !destination.enabled {
@@ -324,18 +327,47 @@ impl DmxEngine {
     }
 
     fn write_to_serial(&mut self) {
-        for (universe_no, mut port) in self.dmx_universe_ports.iter_mut().enumerate() {
+        for universe_no in 0..self.dmx_universe_ports.len() {
             let buffer = self.state_ref.dmx_universes[universe_no].read().unwrap();
 
-            if let Some(port) = &mut port {
-                port.set_break().unwrap();
-                spin_sleep::sleep(Duration::from_micros(100));
-                port.clear_break().unwrap();
-                spin_sleep::sleep(Duration::from_micros(12));
-
-                // Write frame
-                port.write_all(&buffer.dmx_buffer).unwrap();
+            let Some(mut port) = self.dmx_universe_ports[universe_no].take() else {
+                continue;
             };
+
+            let result = (|| -> anyhow::Result<()> {
+                port.set_break()?;
+                spin_sleep::sleep(Duration::from_micros(100));
+                port.clear_break()?;
+                spin_sleep::sleep(Duration::from_micros(12));
+                Ok(port.write_all(&buffer.dmx_buffer)?)
+            })();
+
+            drop(buffer);
+
+            match result {
+                Ok(()) => self.dmx_universe_ports[universe_no] = Some(port),
+                Err(err) => {
+                    let port_path = self
+                        .state_ref
+                        .health_data
+                        .read()
+                        .ok()
+                        .and_then(|health| {
+                            health
+                                .dmx_universes_healthy
+                                .get(universe_no)
+                                .map(|state| state.port.clone())
+                        })
+                        .unwrap_or_else(|| format!("universe {universe_no}"));
+                    error!("[DMX] Output disconnected on {port_path}: {err}");
+                    if let Ok(mut health) = self.state_ref.health_data.write() {
+                        health.dmx_universes_healthy[universe_no] = DmxHealth::error(
+                            port_path,
+                            format!("DMX output disconnected: {err}"),
+                        );
+                    }
+                }
+            }
         }
     }
 
