@@ -144,20 +144,30 @@ impl DmxEngine {
             let animation_speed_factor = scene.sink.master_speed;
 
             for (selection, scene_animations) in scene.sink.active_animations.iter_mut() {
-                let fixtures_in_selection = selection.len();
-
                 for (_animation_id, animation) in scene_animations.iter_mut() {
                     if !animation.enabled {
                         continue;
                     }
 
-                    let fixture_count = animation.fixture_timers.len();
-                    let fixture_keys: Vec<(u8, u8)> =
-                        animation.fixture_timers.keys().cloned().collect();
+                    // The selection is the source of truth for animation order and membership.
+                    // Timer maps can contain stale entries after older show files or fixture
+                    // deletion, and iterating those entries changes phaser offsets.
+                    let fixture_keys: Vec<(u8, u8)> = selection
+                        .fixtures
+                        .iter()
+                        .copied()
+                        .filter(|key| animation.fixture_timers.contains_key(key))
+                        .collect();
+                    let fixture_count = fixture_keys.len();
+                    let fixtures_in_selection = fixture_count;
 
-                    for (fixture_index_in_selection, (fixture_selec, fixture_anim_state)) in
-                        animation.fixture_timers.iter_mut().enumerate()
+                    for (fixture_index_in_selection, fixture_key) in fixture_keys.iter().enumerate()
                     {
+                        let Some(fixture_anim_state) =
+                            animation.fixture_timers.get_mut(fixture_key)
+                        else {
+                            continue;
+                        };
                         let base_time = Self::animation_base_time(
                             audio_snapshot.snapshot.clone(),
                             &animation.spec_cloned,
@@ -278,10 +288,11 @@ impl DmxEngine {
                                 &palettes_snapshot,
                             );
 
-                            let fixture_state =
-                                scene.sink.fixture_states.get_mut(target_fixture).unwrap();
-
-                            fixture_state.apply_value(v, animation.spec_cloned.property);
+                            if let Some(fixture_state) =
+                                scene.sink.fixture_states.get_mut(target_fixture)
+                            {
+                                fixture_state.apply_value(v, animation.spec_cloned.property);
+                            }
                         }
                     }
                 }

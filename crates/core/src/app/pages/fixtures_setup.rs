@@ -1043,32 +1043,32 @@ impl BlaulichtApp {
                                                             .write()
                                                             .unwrap();
 
-                                                        if let Some(group_mut) =
-                                                            dmx_engine.0.groups.get_mut(&gid)
+                                                        if dmx_engine
+                                                            .delete_fixture_from_group(gid, fid)
                                                         {
-                                                            let removed =
-                                                                group_mut.fixtures.remove(&fid);
-                                                            if removed.is_some() {
-                                                                // Adjust selection to first available fixture in the group, if any
-                                                                if let Some((&first_fid, _)) =
-                                                                    group_mut.fixtures.iter().next()
-                                                                {
-                                                                    self.setup_fixture_id =
-                                                                        first_fid;
-                                                                }
-
-                                                                mem::drop(dmx_engine);
-
-                                                                self.show_popup(
-                                                                    PopupSpec::with_duration(
-                                                                        Duration::from_millis(750),
-                                                                        format!(
-                                                            "Deleted fixture #{} from group #{}",
-                                                            fid, gid
-                                                        ),
-                                                                    ),
-                                                                );
+                                                            // Adjust selection to first available fixture in the group, if any.
+                                                            if let Some((&first_fid, _)) = dmx_engine
+                                                                .0
+                                                                .groups
+                                                                .get(&gid)
+                                                                .into_iter()
+                                                                .flat_map(|group| group.fixtures.iter())
+                                                                .next()
+                                                            {
+                                                                self.setup_fixture_id = first_fid;
                                                             }
+
+                                                            mem::drop(dmx_engine);
+
+                                                            self.show_popup(
+                                                                PopupSpec::with_duration(
+                                                                    Duration::from_millis(750),
+                                                                    format!(
+                                                                        "Deleted fixture #{} from group #{}",
+                                                                        fid, gid
+                                                                    ),
+                                                                ),
+                                                            );
                                                         }
                                                     }
                                                 });

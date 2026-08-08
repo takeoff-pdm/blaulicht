@@ -2,7 +2,6 @@ use crate::dmx::{EngineState, FixtureState};
 use blaulicht_shared::{
     fixture::state::{Fixture, FixtureGroup},
     scene::{EngineSink, Scene},
-    AnimationTimerState,
 };
 use tracing::debug;
 
@@ -114,16 +113,126 @@ impl EngineState {
                 .fixture_states
                 .insert(fixture_group_key, FixtureState::default());
 
-            for (_selection, anim) in scene.sink.active_animations.iter_mut() {
-                for (_anim_id, anim) in anim.iter_mut() {
-                    anim.fixture_timers
-                        .insert(fixture_group_key, AnimationTimerState::default());
-                }
-            }
-
             debug!("Patched scene {scene_id} with new fixture + anim state");
         }
 
         Some(new_id)
+    }
+
+    pub fn delete_fixture_from_group(&mut self, group_id: u8, fixture_id: u8) -> bool {
+        let removed = self
+            .0
+            .groups
+            .get_mut(&group_id)
+            .and_then(|group| group.fixtures.remove(&fixture_id))
+            .is_some();
+        if !removed {
+            return false;
+        }
+
+        let fixture_key = (group_id, fixture_id);
+        self.0.selection.clear();
+        self.0.selection_stack.clear();
+
+        for scene in self.0.scenes.values_mut() {
+            scene.sink.fixture_states.remove(&fixture_key);
+            scene.sink.palette_assignments.remove(&fixture_key);
+
+            // An animation targeting a deleted fixture cannot be meaningfully
+            // continued. Drop that selection so it cannot write stale state.
+            let active_animations = std::mem::take(&mut scene.sink.active_animations);
+            scene.sink.active_animations = active_animations
+                .into_iter()
+                .filter_map(|(selection, animations)| {
+                    if selection.fixtures.contains(&fixture_key) {
+                        None
+                    } else {
+                        Some((selection, animations))
+                    }
+                })
+                .collect();
+        }
+
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blaulicht_shared::{
+        fixture::{light::Light, FixtureType},
+        scene::FixtureSelection,
+        ActiveAnimation, AnimationSpec,
+    };
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn adding_fixture_does_not_reindex_running_animation_timers() {
+        let mut engine = EngineState(blaulicht_shared::EngineState::default());
+        engine.0.groups.insert(
+            0,
+            FixtureGroup {
+                name: "Group".to_string(),
+                fixtures: BTreeMap::new(),
+            },
+        );
+        engine.add_fixture_to_group(
+            0,
+            Fixture::new(
+                0,
+                1,
+                "Existing".to_string(),
+                FixtureType::from(Light::Generic3ChanNoAlpha),
+            ),
+        );
+        engine.0.new_scene("Scene".to_string());
+
+        let selection = FixtureSelection {
+            fixtures: vec![(0, 0)],
+        };
+        let mut animation = ActiveAnimation::new(&selection.fixtures, AnimationSpec::empty());
+        animation.enabled = true;
+        animation.fixture_timers.get_mut(&(0, 0)).unwrap().timer = 123;
+        engine
+            .0
+            .scenes
+            .get_mut(&0)
+            .unwrap()
+            .sink
+            .active_animations
+            .insert(selection, BTreeMap::from([(7, animation)]));
+
+        let new_id = engine.add_fixture_to_group(
+            0,
+            Fixture::new(
+                0,
+                4,
+                "Added".to_string(),
+                FixtureType::from(Light::Generic3ChanNoAlpha),
+            ),
+        );
+
+        assert_eq!(new_id, Some(1));
+        let active = &engine
+            .0
+            .scenes
+            .get(&0)
+            .unwrap()
+            .sink
+            .active_animations
+            .values()
+            .next()
+            .unwrap()[&7];
+        assert_eq!(active.fixture_timers.keys().copied().collect::<Vec<_>>(), vec![(0, 0)]);
+        assert_eq!(active.fixture_timers[&(0, 0)].timer, 123);
+        assert!(engine
+            .0
+            .scenes
+            .get(&0)
+            .unwrap()
+            .sink
+            .fixture_states
+            .contains_key(&(0, 1)));
     }
 }
