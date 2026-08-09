@@ -23,11 +23,7 @@ extern "C" {
 
     fn bl_open_udp_port(bind_port: u32) -> u8;
 
-    fn bl_artnet_register_receiver(
-        plugin_id: u8,
-        addr_ptr: *const u8,
-        addr_len: usize,
-    ) -> u32;
+    fn bl_artnet_register_receiver(plugin_id: u8, addr_ptr: *const u8, addr_len: usize) -> u32;
     fn bl_artnet_unregister_receiver(plugin_id: u8, handle: u32) -> u32;
     fn bl_artnet_enumerate_receivers(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn bl_enumerate_serial_devices(buffer_ptr: *mut u8, buffer_len: usize) -> u32;
@@ -325,7 +321,6 @@ pub fn bl_create_external_screen_safe(width: u32, height: u32) -> bool {
     unsafe { ui_create_external_screen(PLUGIN_ID, width, height) != 0 }
 }
 
-
 pub fn bl_remove_external_screen_safe(index: u32) -> bool {
     let index = index.min(i32::MAX as u32) as i32;
     unsafe { ui_remove_external_screen(PLUGIN_ID, index) != 0 }
@@ -506,7 +501,6 @@ pub mod ui {
     pub fn create_external_screen(width: u32, height: u32) -> bool {
         super::bl_create_external_screen_safe(width, height)
     }
-
 
     pub fn remove_external_screen(index: u32) -> bool {
         super::bl_remove_external_screen_safe(index)
@@ -944,9 +938,7 @@ pub unsafe fn _get_array(array_pointer: *mut u8, array_length: usize) -> &'stati
     if array_pointer.is_null() {
         return &mut [];
     }
-    let slice = unsafe {
-        std::slice::from_raw_parts_mut(array_pointer, array_length)
-    };
+    let slice = unsafe { std::slice::from_raw_parts_mut(array_pointer, array_length) };
 
     slice
 }
@@ -957,9 +949,7 @@ pub unsafe fn _get_array_u32(array_pointer: *const u32, array_length: usize) -> 
     if array_pointer.is_null() {
         return &[];
     }
-    let slice = unsafe {
-        std::slice::from_raw_parts(array_pointer, array_length)
-    };
+    let slice = unsafe { std::slice::from_raw_parts(array_pointer, array_length) };
 
     slice
 }

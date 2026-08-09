@@ -10,12 +10,7 @@ use crate::{
 };
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
-use std::{
-    mem,
-    path::Path,
-    process::Command,
-    time::Duration,
-};
+use std::{mem, path::Path, process::Command, time::Duration};
 
 impl BlaulichtApp {
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
@@ -93,10 +88,8 @@ impl BlaulichtApp {
             egui::pos2(page_rect.min.x, page_rect.max.y - tab_height),
             page_rect.max,
         );
-        let content_rect = egui::Rect::from_min_max(
-            page_rect.min,
-            egui::pos2(page_rect.max.x, tab_rect.min.y),
-        );
+        let content_rect =
+            egui::Rect::from_min_max(page_rect.min, egui::pos2(page_rect.max.x, tab_rect.min.y));
         let mut tab_ui = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(tab_rect)
@@ -323,11 +316,8 @@ impl BlaulichtApp {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
             for tab in SystemTab::ALL {
-                if components::Button::new(
-                    tab.label(),
-                    ButtonSize::Medium.with_width(tab_width),
-                )
-                .ui(ui, self.system_ui_state.active_tab == tab)
+                if components::Button::new(tab.label(), ButtonSize::Medium.with_width(tab_width))
+                    .ui(ui, self.system_ui_state.active_tab == tab)
                 {
                     self.system_ui_state.active_tab = tab;
                 }
@@ -365,10 +355,21 @@ impl BlaulichtApp {
                 let online = health.artnet_health_state;
                 drop(health);
                 ui.colored_label(
-                    if online { Color32::LIGHT_GREEN } else { Color32::LIGHT_RED },
+                    if online {
+                        Color32::LIGHT_GREEN
+                    } else {
+                        Color32::LIGHT_RED
+                    },
                     if online { "ONLINE" } else { "OFFLINE" },
                 );
-                let receivers = self.data.state.artnet_output.read().unwrap().receivers.clone();
+                let receivers = self
+                    .data
+                    .state
+                    .artnet_output
+                    .read()
+                    .unwrap()
+                    .receivers
+                    .clone();
                 if receivers.is_empty() {
                     ui.label("No Art-Net receivers configured.");
                 }
@@ -617,8 +618,7 @@ fn system_tab_bar_height(width: f32) -> f32 {
     let columns = (((width.max(MIN_TAB_WIDTH) + GAP) / (MIN_TAB_WIDTH + GAP)).floor() as usize)
         .clamp(1, SystemTab::ALL.len());
     let rows = SystemTab::ALL.len().div_ceil(columns);
-    1.0 + rows as f32 * ButtonSize::Medium.dim().0.y
-        + rows.saturating_sub(1) as f32 * GAP
+    1.0 + rows as f32 * ButtonSize::Medium.dim().0.y + rows.saturating_sub(1) as f32 * GAP
 }
 
 #[cfg(test)]

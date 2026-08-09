@@ -419,9 +419,9 @@ impl DmxEngine {
         };
         let prev_graph_scenes = mem::take(&mut self.graph_overlay_scenes);
         let mut state = self.state_ref.dmx_engine.write().unwrap();
-        let activated_nodes = self
-            .scene_graph_runtime
-            .tick_all(&mut state.0.scene_graphs, now_ms, &audio);
+        let activated_nodes =
+            self.scene_graph_runtime
+                .tick_all(&mut state.0.scene_graphs, now_ms, &audio);
 
         // Node controls are write-through shortcuts. Apply them once on activation;
         // they remain until another node or a manual control replaces them.
@@ -550,10 +550,8 @@ impl DmxEngine {
                     resolved = merged_for_overlay.resolve(palettes);
                 }
 
-                resolved.alpha = apply_grand_master(
-                    resolved.alpha,
-                    self.state_ref.grand_master_percent(),
-                );
+                resolved.alpha =
+                    apply_grand_master(resolved.alpha, self.state_ref.grand_master_percent());
 
                 // TODO: we will need to use the merged fixture states here and then write them.
                 let fix = fixture.1;
@@ -1478,8 +1476,8 @@ fn apply_scene_graph_node_controls(
 mod grand_master_tests {
     use super::{apply_grand_master, apply_scene_graph_node_controls};
     use blaulicht_shared::{
-        AnimationSpeedModifier,
         scene_graph::{SceneGraph, SceneGraphNode},
+        AnimationSpeedModifier,
     };
     use std::collections::BTreeMap;
 
@@ -1519,7 +1517,10 @@ mod grand_master_tests {
 
         apply_scene_graph_node_controls(&mut state, &[(1, 7)]);
         assert_eq!(state.scenes[&1].sink.master_alpha_fader, 42);
-        assert_eq!(state.scenes[&1].sink.master_speed, AnimationSpeedModifier::_4);
+        assert_eq!(
+            state.scenes[&1].sink.master_speed,
+            AnimationSpeedModifier::_4
+        );
 
         state.scenes.get_mut(&1).unwrap().sink.master_alpha_fader = 73;
         apply_scene_graph_node_controls(&mut state, &[]);

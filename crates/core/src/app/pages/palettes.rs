@@ -422,55 +422,54 @@ impl BlaulichtApp {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (id, palette) in &palettes_snapshot {
                 render_context.horizontal(ui, egui::Align::Center, |ui| {
-                        if let Some(new_hsv) =
-                            Self::render_palette_preview(ui, palette, &palettes_map)
-                        {
-                            color_update = Some((*id, new_hsv));
+                    if let Some(new_hsv) = Self::render_palette_preview(ui, palette, &palettes_map)
+                    {
+                        color_update = Some((*id, new_hsv));
+                    }
+
+                    let kind_label = match &palette.kind {
+                        PaletteKind::Color(_) => "Color",
+                        PaletteKind::Position(_) => "Position",
+                        PaletteKind::Beam { .. } => "Beam",
+                        PaletteKind::Single(prop, _) => match prop {
+                            FixtureProperty::Alpha => "Alpha",
+                            FixtureProperty::Strobe => "Strobe",
+                            FixtureProperty::Focus => "Focus",
+                            _ => "Single",
+                        },
+                        PaletteKind::Pointer { .. } => "Pointer",
+                    };
+
+                    ui.label(
+                        RichText::new(format!("[{}] {} ({})", id, palette.name, kind_label))
+                            .strong(),
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if components::button(ui, false, "Delete", ButtonSize::Small) {
+                            self.palette_ui_state.delete_palette_id = Some(*id);
+                            self.palette_ui_state.delete_dialog_open = true;
                         }
 
-                        let kind_label = match &palette.kind {
-                            PaletteKind::Color(_) => "Color",
-                            PaletteKind::Position(_) => "Position",
-                            PaletteKind::Beam { .. } => "Beam",
-                            PaletteKind::Single(prop, _) => match prop {
-                                FixtureProperty::Alpha => "Alpha",
-                                FixtureProperty::Strobe => "Strobe",
-                                FixtureProperty::Focus => "Focus",
-                                _ => "Single",
-                            },
-                            PaletteKind::Pointer { .. } => "Pointer",
-                        };
-
-                        ui.label(
-                            RichText::new(format!("[{}] {} ({})", id, palette.name, kind_label))
-                                .strong(),
-                        );
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if components::button(ui, false, "Delete", ButtonSize::Small) {
-                                self.palette_ui_state.delete_palette_id = Some(*id);
-                                self.palette_ui_state.delete_dialog_open = true;
+                        if components::button(ui, false, "Edit", ButtonSize::Small) {
+                            let engine = self.data.state.dmx_engine.read().unwrap();
+                            if let Some(p) = engine.0.palettes.get(id) {
+                                self.palette_ui_state.load_from_palette(p);
+                                self.palette_ui_state.edit_palette_id = Some(*id);
+                                self.palette_ui_state.edit_dialog_open = true;
                             }
+                        }
 
-                            if components::button(ui, false, "Edit", ButtonSize::Small) {
-                                let engine = self.data.state.dmx_engine.read().unwrap();
-                                if let Some(p) = engine.0.palettes.get(id) {
-                                    self.palette_ui_state.load_from_palette(p);
-                                    self.palette_ui_state.edit_palette_id = Some(*id);
-                                    self.palette_ui_state.edit_dialog_open = true;
-                                }
-                            }
-
-                            if components::button(ui, false, "Unassign", ButtonSize::Small) {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::UnassignPalette(*id),
-                                    ));
-                            }
-                        });
+                        if components::button(ui, false, "Unassign", ButtonSize::Small) {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::UnassignPalette(*id),
+                                ));
+                        }
                     });
+                });
 
                 ui.separator();
             }

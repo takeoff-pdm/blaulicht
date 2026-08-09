@@ -36,6 +36,7 @@ pub(super) struct RenderStageObject {
     pub(super) color: [f32; 3],
     pub(super) model_key: Option<String>,
     pub(super) prepared_model: Option<Arc<PreparedStageModel>>,
+    pub(super) truss: Option<crate::stage::TrussSpec>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -192,6 +193,10 @@ pub(super) fn collect_fixtures(
         .iter()
         .filter(|(_, object)| object.visible)
         .map(|(id, object)| {
+            let truss = match object.kind {
+                StageObjectKind::ProceduralTruss(spec) => Some(spec),
+                _ => None,
+            };
             let model_key = match object.kind {
                 StageObjectKind::ImportedModel { asset_id } => stage
                     .assets
@@ -215,14 +220,17 @@ pub(super) fn collect_fixtures(
                     object.transform.rotation[1].to_radians(),
                     object.transform.rotation[2].to_radians(),
                 ),
-                scale: Vec3::new(
-                    object.transform.scale[0],
-                    object.transform.scale[1],
-                    object.transform.scale[2],
-                ),
+                scale: truss.map(super::truss::truss_bounds).unwrap_or_else(|| {
+                    Vec3::new(
+                        object.transform.scale[0],
+                        object.transform.scale[1],
+                        object.transform.scale[2],
+                    )
+                }),
                 color: object.color.map(|channel| channel as f32 / 255.0),
                 model_key,
                 prepared_model,
+                truss,
             }
         })
         .collect();

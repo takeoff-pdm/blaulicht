@@ -3,11 +3,11 @@ pub mod phaser;
 use crate::dmx::DmxEngine;
 use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{
-    AnimationSpec, AnimationSpecBody, AudioSourceStatus, PhaserDuration, palette::Palette,
+    palette::Palette, AnimationSpec, AnimationSpecBody, AudioSourceStatus, PhaserDuration,
 };
 pub use phaser::*;
 use std::{
-    collections::{BTreeMap, HashMap, hash_map::DefaultHasher},
+    collections::{hash_map::DefaultHasher, BTreeMap, HashMap},
     hash::{Hash, Hasher},
 };
 

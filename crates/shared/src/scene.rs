@@ -124,17 +124,11 @@ pub struct EngineSink {
 impl EngineSink {
     /// Returns `true` if any targeted slot was rejected because it is
     /// currently bound to a palette (and therefore frozen).
-    pub fn apply_with_selection(
-        &mut self,
-        selection: &FixtureSelection,
-        ev: ControlEvent,
-    ) -> bool {
+    pub fn apply_with_selection(&mut self, selection: &FixtureSelection, ev: ControlEvent) -> bool {
         let mut any_rejected = false;
         for selector in &selection.fixtures {
             let Some(fixture) = self.fixture_states.get_mut(selector) else {
-                tracing::warn!(
-                    "Ignoring event for missing fixture state {selector:?}"
-                );
+                tracing::warn!("Ignoring event for missing fixture state {selector:?}");
                 continue;
             };
 
@@ -177,7 +171,8 @@ impl EngineSink {
     /// engine group map. This keeps fixture state, palette bindings,
     /// changesets, and animation selections aligned after live edits or load.
     pub fn retain_fixture_keys(&mut self, valid_keys: &HashSet<(u8, u8)>) {
-        self.fixture_states.retain(|key, _| valid_keys.contains(key));
+        self.fixture_states
+            .retain(|key, _| valid_keys.contains(key));
         self.palette_assignments
             .retain(|key, _| valid_keys.contains(key));
         self.changeset
@@ -227,9 +222,15 @@ mod tests {
         animation.enabled = true;
 
         let mut sink = EngineSink {
-            fixture_states: BTreeMap::from([((0, 0), FixtureState::default()), ((0, 1), FixtureState::default())]),
+            fixture_states: BTreeMap::from([
+                ((0, 0), FixtureState::default()),
+                ((0, 1), FixtureState::default()),
+            ]),
             active_animations: HashMap::from([(selection, BTreeMap::from([(1, animation)]))]),
-            changeset: HashSet::from([((0, 0), FixtureProperty::Alpha).into(), ((0, 1), FixtureProperty::Alpha).into()]),
+            changeset: HashSet::from([
+                ((0, 0), FixtureProperty::Alpha).into(),
+                ((0, 1), FixtureProperty::Alpha).into(),
+            ]),
             master_alpha_fader: 100,
             master_speed: AnimationSpeedModifier::_1,
             palette_assignments: BTreeMap::from([((0, 1), vec![4])]),

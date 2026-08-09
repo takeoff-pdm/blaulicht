@@ -148,7 +148,11 @@ impl BlaulichtApp {
                     {
                         self.request_showfile_save(true);
                     }
-                    let load_label = if needs_guard { "Discard & Load" } else { "Load" };
+                    let load_label = if needs_guard {
+                        "Discard & Load"
+                    } else {
+                        "Load"
+                    };
                     if components::action_button(
                         ui,
                         !saving,
@@ -198,7 +202,11 @@ impl BlaulichtApp {
                     {
                         self.request_showfile_save(true);
                     }
-                    let close_label = if needs_guard { "Discard & Close" } else { "Close" };
+                    let close_label = if needs_guard {
+                        "Discard & Close"
+                    } else {
+                        "Close"
+                    };
                     if components::action_button(
                         ui,
                         !saving,

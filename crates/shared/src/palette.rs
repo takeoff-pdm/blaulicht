@@ -25,7 +25,10 @@ pub struct Palette {
 pub enum PaletteKind {
     Color(HSVColor),
     Position(FixtureOrientation),
-    Beam { focus: u8, strobe_speed: u8 },
+    Beam {
+        focus: u8,
+        strobe_speed: u8,
+    },
     Single(FixtureProperty, u16),
     /// Reads the resolved value of `target` for each property the target covers
     /// (inherited recursively) and yields those as its own value.
@@ -121,7 +124,10 @@ impl PaletteKind {
                 state.pan = FixtureValue::literal_u8(orientation.pan);
                 state.tilt = FixtureValue::literal_u8(orientation.tilt);
             }
-            PaletteKind::Beam { focus, strobe_speed } => {
+            PaletteKind::Beam {
+                focus,
+                strobe_speed,
+            } => {
                 state.focus = FixtureValue::literal_u8(*focus);
                 state.strobe_speed = FixtureValue::literal_u8(*strobe_speed);
             }
@@ -214,9 +220,7 @@ fn properties_via_chain(
         return vec![];
     };
     match &palette.kind {
-        PaletteKind::Pointer { target, .. } => {
-            properties_via_chain(palettes, *target, depth - 1)
-        }
+        PaletteKind::Pointer { target, .. } => properties_via_chain(palettes, *target, depth - 1),
         PaletteKind::Color(_) => vec![
             FixtureProperty::ColorHue,
             FixtureProperty::ColorSaturation,

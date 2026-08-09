@@ -5,6 +5,7 @@ mod math;
 mod renderer;
 mod state;
 mod text;
+mod truss;
 mod ui;
 
 pub use state::{VisualizerSettings, VisualizerUiState};

@@ -146,6 +146,7 @@ impl Default for VisualizerSettings {
 pub struct VisualizerUiState {
     pub(crate) stage: StageScene,
     pub(super) editor: EditorState,
+    pub(super) attachment_world_cache: BTreeMap<(u8, u8), ([f32; 3], [f32; 3])>,
     pub(super) import_dialog: Option<egui_file_dialog::FileDialog>,
     pub(super) import_receiver: Option<Receiver<Result<StageAsset, String>>>,
     pub(super) import_error: Option<String>,
@@ -201,6 +202,7 @@ pub(super) struct VisualizerRenderTarget {
 impl VisualizerUiState {
     pub(crate) fn load_stage(&mut self, stage: StageScene) {
         self.stage = stage;
+        self.attachment_world_cache.clear();
         self.editor.selection.clear();
         self.editor.undo.clear();
         self.editor.redo.clear();
@@ -311,8 +313,9 @@ impl Default for VisualizerUiState {
                         generation,
                     });
                     let started = std::time::Instant::now();
-                    let result = crate::stage_assets::load_prepared_model(&path)
-                        .map_err(|error| format!("Failed to prepare managed GLB {path:?}: {error}"));
+                    let result = crate::stage_assets::load_prepared_model(&path).map_err(|error| {
+                        format!("Failed to prepare managed GLB {path:?}: {error}")
+                    });
                     let stats = result.as_ref().ok().map(|prepared| prepared.stats);
                     tracing::info!(
                         asset = %key,
@@ -334,6 +337,7 @@ impl Default for VisualizerUiState {
         Self {
             stage: StageScene::default(),
             editor: EditorState::default(),
+            attachment_world_cache: BTreeMap::new(),
             import_dialog: None,
             import_receiver: None,
             import_error: None,

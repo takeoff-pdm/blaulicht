@@ -31,6 +31,8 @@ pub(super) struct GlowRenderer {
     pub(super) gl: Arc<glow::Context>,
     three_context: three_d::Context,
     imported_models: HashMap<String, ImportedGpuAsset>,
+    truss_geometry_cache:
+        HashMap<super::truss::TrussGeometryKey, Arc<[super::truss::TrussPrimitive]>>,
     runtime_error: Option<String>,
     program: glow::Program,
     text_program: glow::Program,
@@ -49,6 +51,7 @@ pub(super) struct GlowRenderer {
     cylinder_vao: glow::VertexArray,
     cylinder_vbo: glow::Buffer,
     cylinder_vertex_count: i32,
+    truss_instance_vbo: glow::Buffer,
     cone_vao: glow::VertexArray,
     cone_vbo: glow::Buffer,
     cone_vertex_count: i32,
@@ -66,9 +69,16 @@ pub(super) struct GlowRenderer {
     u_use_vertex_color: Option<glow::UniformLocation>,
     u_light_direction: Option<glow::UniformLocation>,
     u_use_lighting: Option<glow::UniformLocation>,
+    u_use_instancing: Option<glow::UniformLocation>,
     text_u_mvp: Option<glow::UniformLocation>,
     text_u_color: Option<glow::UniformLocation>,
     text_u_tex: Option<glow::UniformLocation>,
+}
+
+#[derive(Clone, Copy)]
+struct TrussInstance {
+    model: [f32; 16],
+    color: [f32; 3],
 }
 
 struct ImportedGpuModel {
@@ -299,6 +309,7 @@ impl GlowRenderer {
             let (grid_vao, grid_vbo, grid_vertex_count) = create_grid(gl)?;
             let (axes_vao, axes_vbo, axes_vertex_count) = create_axes(gl)?;
             let (cylinder_vao, cylinder_vbo, cylinder_vertex_count) = create_cylinder(gl, 24)?;
+            let truss_instance_vbo = create_truss_instance_buffer(gl, cube_vao, cylinder_vao)?;
             let (cone_vao, cone_vbo) = create_dynamic_mesh(gl)?;
             let (quad_vao, quad_vbo, quad_vertex_count) = create_quad(gl)?;
             let u_mvp = gl.get_uniform_location(program, "u_mvp");
@@ -309,6 +320,7 @@ impl GlowRenderer {
             let u_use_vertex_color = gl.get_uniform_location(program, "u_use_vertex_color");
             let u_light_direction = gl.get_uniform_location(program, "u_light_direction");
             let u_use_lighting = gl.get_uniform_location(program, "u_use_lighting");
+            let u_use_instancing = gl.get_uniform_location(program, "u_use_instancing");
             let text_u_mvp = gl.get_uniform_location(text_program, "u_mvp");
             let text_u_color = gl.get_uniform_location(text_program, "u_color");
             let text_u_tex = gl.get_uniform_location(text_program, "u_tex");
@@ -317,6 +329,7 @@ impl GlowRenderer {
                 gl: gl.clone(),
                 three_context,
                 imported_models: HashMap::new(),
+                truss_geometry_cache: HashMap::new(),
                 runtime_error: None,
                 program,
                 text_program,
@@ -335,6 +348,7 @@ impl GlowRenderer {
                 cylinder_vao,
                 cylinder_vbo,
                 cylinder_vertex_count,
+                truss_instance_vbo,
                 cone_vao,
                 cone_vbo,
                 cone_vertex_count: 0,
@@ -352,6 +366,7 @@ impl GlowRenderer {
                 u_use_vertex_color,
                 u_light_direction,
                 u_use_lighting,
+                u_use_instancing,
                 text_u_mvp,
                 text_u_color,
                 text_u_tex,
@@ -475,14 +490,30 @@ impl GlowRenderer {
                 );
             }
 
+            let mut remaining_truss_primitives = super::truss::MAX_TRUSS_PRIMITIVES_PER_SCENE;
+            let mut truss_cylinders = Vec::new();
+            let mut truss_cubes = Vec::new();
             for object in snapshot.stage_objects.iter() {
                 let gpu_ready = object.model_key.as_ref().is_some_and(|key| {
-                    matches!(self.imported_models.get(key), Some(ImportedGpuAsset::Ready(_)))
+                    matches!(
+                        self.imported_models.get(key),
+                        Some(ImportedGpuAsset::Ready(_))
+                    )
                 });
                 if !gpu_ready {
-                    self.draw_stage_object(gl, projection, view, object);
+                    if object.truss.is_some() {
+                        self.collect_truss_instances(
+                            object,
+                            &mut remaining_truss_primitives,
+                            &mut truss_cylinders,
+                            &mut truss_cubes,
+                        );
+                    } else {
+                        self.draw_stage_object(gl, projection, view, object);
+                    }
                 }
             }
+            self.draw_truss_instances(gl, projection, view, &truss_cylinders, &truss_cubes);
 
             let fixtures = snapshot.fixtures.as_ref();
             let mut head_fixtures: Vec<&RenderFixture> = Vec::new();
@@ -980,26 +1011,17 @@ impl GlowRenderer {
             .retain(|key, _| desired.contains_key(key));
         for (key, prepared) in desired {
             self.imported_models.entry(key).or_insert_with(|| {
-                ImportedGpuAsset::Uploading(GpuModelUpload::new(
-                    &self.three_context,
-                    prepared,
-                ))
+                ImportedGpuAsset::Uploading(GpuModelUpload::new(&self.three_context, prepared))
             });
         }
 
-        let Some(key) = self
-            .imported_models
-            .iter()
-            .find_map(|(key, asset)| {
-                matches!(asset, ImportedGpuAsset::Uploading(_)).then(|| key.clone())
-            })
-        else {
+        let Some(key) = self.imported_models.iter().find_map(|(key, asset)| {
+            matches!(asset, ImportedGpuAsset::Uploading(_)).then(|| key.clone())
+        }) else {
             return;
         };
 
-        unsafe {
-            while self.gl.get_error() != glow::NO_ERROR {}
-        }
+        unsafe { while self.gl.get_error() != glow::NO_ERROR {} }
         let started = std::time::Instant::now();
         let result = {
             let Some(ImportedGpuAsset::Uploading(upload)) = self.imported_models.get_mut(&key)
@@ -1016,7 +1038,9 @@ impl GlowRenderer {
         let result = if gl_error == glow::NO_ERROR {
             result
         } else {
-            Err(format!("OpenGL rejected model resource: error 0x{gl_error:04x}"))
+            Err(format!(
+                "OpenGL rejected model resource: error 0x{gl_error:04x}"
+            ))
         };
         tracing::debug!(
             asset = %key,
@@ -1028,8 +1052,7 @@ impl GlowRenderer {
         match result {
             Ok(false) => {}
             Ok(true) => {
-                if let Some(ImportedGpuAsset::Uploading(upload)) =
-                    self.imported_models.remove(&key)
+                if let Some(ImportedGpuAsset::Uploading(upload)) = self.imported_models.remove(&key)
                 {
                     self.imported_models
                         .insert(key, ImportedGpuAsset::Ready(upload.finish()));
@@ -1061,7 +1084,10 @@ impl GlowRenderer {
     }
 
     pub(super) fn retry_imported_model(&mut self, key: &str) {
-        if matches!(self.imported_models.get(key), Some(ImportedGpuAsset::Failed(_))) {
+        if matches!(
+            self.imported_models.get(key),
+            Some(ImportedGpuAsset::Failed(_))
+        ) {
             self.imported_models.remove(key);
         }
     }
@@ -1105,6 +1131,83 @@ impl GlowRenderer {
             }
             gl.line_width(1.0);
             gl.draw_arrays(glow::LINES, 0, self.cube_edges_vertex_count);
+        }
+    }
+
+    fn collect_truss_instances(
+        &mut self,
+        object: &RenderStageObject,
+        remaining_primitives: &mut usize,
+        cylinders: &mut Vec<TrussInstance>,
+        cubes: &mut Vec<TrussInstance>,
+    ) {
+        let Some(spec) = object.truss else {
+            return;
+        };
+        let world = mat4_mul(
+            mat4_translation(object.pos.x, object.pos.y, object.pos.z),
+            mat4_rotation_euler(object.rotation),
+        );
+        let key = super::truss::TrussGeometryKey::new(spec);
+        let primitives = self
+            .truss_geometry_cache
+            .entry(key)
+            .or_insert_with(|| Arc::from(super::truss::generate_truss(spec)))
+            .clone();
+        let draw_count = primitives.len().min(*remaining_primitives);
+        *remaining_primitives -= draw_count;
+        for primitive in primitives.iter().take(draw_count) {
+            let instance = TrussInstance {
+                model: mat4_mul(world, primitive.model),
+                color: object.color,
+            };
+            match primitive.kind {
+                super::truss::TrussPrimitiveKind::Cylinder => cylinders.push(instance),
+                super::truss::TrussPrimitiveKind::Cube => cubes.push(instance),
+            }
+        }
+    }
+
+    fn draw_truss_instances(
+        &self,
+        gl: &Arc<glow::Context>,
+        projection: [f32; 16],
+        view: [f32; 16],
+        cylinders: &[TrussInstance],
+        cubes: &[TrussInstance],
+    ) {
+        if cylinders.is_empty() && cubes.is_empty() {
+            return;
+        }
+        unsafe {
+            gl.use_program(Some(self.program));
+            set_use_vertex_color(gl, &self.u_use_vertex_color, true);
+            set_use_lighting(gl, &self.u_use_lighting, true);
+            set_alpha(gl, &self.u_alpha, 1.0);
+            if let Some(loc) = &self.u_use_instancing {
+                gl.uniform_1_f32(Some(loc), 1.0);
+            }
+            if let Some(loc) = &self.u_mvp {
+                let view_projection = mat4_mul(projection, view);
+                gl.uniform_matrix_4_f32_slice(Some(loc), false, &view_projection);
+            }
+            draw_instance_batch(
+                gl,
+                self.truss_instance_vbo,
+                self.cylinder_vao,
+                self.cylinder_vertex_count,
+                cylinders,
+            );
+            draw_instance_batch(
+                gl,
+                self.truss_instance_vbo,
+                self.cube_vao,
+                self.cube_vertex_count,
+                cubes,
+            );
+            if let Some(loc) = &self.u_use_instancing {
+                gl.uniform_1_f32(Some(loc), 0.0);
+            }
         }
     }
 
@@ -1407,6 +1510,84 @@ fn room_dimensions(
     (width, depth, height)
 }
 
+unsafe fn create_truss_instance_buffer(
+    gl: &Arc<glow::Context>,
+    cube_vao: glow::VertexArray,
+    cylinder_vao: glow::VertexArray,
+) -> Result<glow::Buffer, String> {
+    let buffer = gl
+        .create_buffer()
+        .map_err(|error| format!("Truss instance buffer create failed: {error}"))?;
+    let mut initial = [0.0_f32; 19];
+    initial[0] = 1.0;
+    initial[5] = 1.0;
+    initial[10] = 1.0;
+    initial[15] = 1.0;
+    initial[16..].fill(1.0);
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
+    gl.buffer_data_u8_slice(
+        glow::ARRAY_BUFFER,
+        bytemuck::cast_slice(&initial),
+        glow::DYNAMIC_DRAW,
+    );
+    let stride = (19 * std::mem::size_of::<f32>()) as i32;
+    for vao in [cube_vao, cylinder_vao] {
+        gl.bind_vertex_array(Some(vao));
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
+        for column in 0..4_u32 {
+            let location = 2 + column;
+            gl.enable_vertex_attrib_array(location);
+            gl.vertex_attrib_pointer_f32(
+                location,
+                4,
+                glow::FLOAT,
+                false,
+                stride,
+                column as i32 * 4 * std::mem::size_of::<f32>() as i32,
+            );
+            gl.vertex_attrib_divisor(location, 1);
+        }
+        gl.enable_vertex_attrib_array(6);
+        gl.vertex_attrib_pointer_f32(
+            6,
+            3,
+            glow::FLOAT,
+            false,
+            stride,
+            16 * std::mem::size_of::<f32>() as i32,
+        );
+        gl.vertex_attrib_divisor(6, 1);
+    }
+    gl.bind_vertex_array(None);
+    gl.bind_buffer(glow::ARRAY_BUFFER, None);
+    Ok(buffer)
+}
+
+unsafe fn draw_instance_batch(
+    gl: &Arc<glow::Context>,
+    instance_vbo: glow::Buffer,
+    vao: glow::VertexArray,
+    vertex_count: i32,
+    instances: &[TrussInstance],
+) {
+    if instances.is_empty() {
+        return;
+    }
+    let mut values = Vec::with_capacity(instances.len() * 19);
+    for instance in instances {
+        values.extend_from_slice(&instance.model);
+        values.extend_from_slice(&instance.color);
+    }
+    gl.bind_vertex_array(Some(vao));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(instance_vbo));
+    gl.buffer_data_u8_slice(
+        glow::ARRAY_BUFFER,
+        bytemuck::cast_slice(&values),
+        glow::DYNAMIC_DRAW,
+    );
+    gl.draw_arrays_instanced(glow::TRIANGLES, 0, vertex_count, instances.len() as i32);
+}
+
 impl Drop for GlowRenderer {
     fn drop(&mut self) {
         unsafe {
@@ -1425,6 +1606,7 @@ impl Drop for GlowRenderer {
             self.gl.delete_buffer(self.axes_vbo);
             self.gl.delete_vertex_array(self.cylinder_vao);
             self.gl.delete_buffer(self.cylinder_vbo);
+            self.gl.delete_buffer(self.truss_instance_vbo);
             self.gl.delete_vertex_array(self.cone_vao);
             self.gl.delete_buffer(self.cone_vbo);
             self.gl.delete_vertex_array(self.quad_vao);

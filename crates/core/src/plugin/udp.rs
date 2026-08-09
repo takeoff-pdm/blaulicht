@@ -68,15 +68,11 @@ impl UdpManager {
             }
         };
 
-        let Some(port_id) = self
-            .port_id_counter
-            .checked_add(1)
-            .map(|next| {
-                let current = self.port_id_counter;
-                self.port_id_counter = next;
-                current
-            })
-        else {
+        let Some(port_id) = self.port_id_counter.checked_add(1).map(|next| {
+            let current = self.port_id_counter;
+            self.port_id_counter = next;
+            current
+        }) else {
             error!("[UDP] Port ID space exhausted; refusing {}", addr);
             return None;
         };

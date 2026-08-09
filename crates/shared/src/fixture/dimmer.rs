@@ -58,5 +58,12 @@ impl Dimmer {
     }
 
     pub fn blackout(&self, _this: &Fixture, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
-    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
+    pub fn setup(
+        &self,
+        _this: &Fixture,
+        _time: i32,
+        _state: &ResolvedFixtureState,
+        _dmx: &mut [u8],
+    ) {
+    }
 }

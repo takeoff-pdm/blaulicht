@@ -243,13 +243,23 @@ impl BlaulichtApp {
         }
         self.last_autosave_check = Instant::now();
 
-        if matches!(self.save_status, ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Failed(_)) {
+        if matches!(
+            self.save_status,
+            ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Failed(_)
+        ) {
             self.request_showfile_save(false);
         }
     }
 
     pub(crate) fn mark_showfile_dirty(&mut self) {
-        if self.data.config.lock().unwrap().last_open_showfile.is_none() {
+        if self
+            .data
+            .config
+            .lock()
+            .unwrap()
+            .last_open_showfile
+            .is_none()
+        {
             return;
         }
         if self.save_in_flight {
@@ -265,7 +275,14 @@ impl BlaulichtApp {
             return;
         }
         self.last_dirty_check = Instant::now();
-        if self.data.config.lock().unwrap().last_open_showfile.is_none() {
+        if self
+            .data
+            .config
+            .lock()
+            .unwrap()
+            .last_open_showfile
+            .is_none()
+        {
             self.save_status = ShowfileSaveStatus::NoShowfile;
             return;
         }
@@ -372,8 +389,18 @@ impl BlaulichtApp {
     }
 
     pub(crate) fn reset_save_tracking(&mut self) {
-        self.last_autosave_hash = self.serialized_showfile().map(|(_, hash)| hash).unwrap_or(0);
-        self.save_status = if self.data.config.lock().unwrap().last_open_showfile.is_some() {
+        self.last_autosave_hash = self
+            .serialized_showfile()
+            .map(|(_, hash)| hash)
+            .unwrap_or(0);
+        self.save_status = if self
+            .data
+            .config
+            .lock()
+            .unwrap()
+            .last_open_showfile
+            .is_some()
+        {
             ShowfileSaveStatus::Clean
         } else {
             ShowfileSaveStatus::NoShowfile
@@ -412,9 +439,7 @@ impl BlaulichtApp {
     ) {
         if matches!(
             self.save_status,
-            ShowfileSaveStatus::Dirty
-                | ShowfileSaveStatus::Saving
-                | ShowfileSaveStatus::Failed(_)
+            ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Saving | ShowfileSaveStatus::Failed(_)
         ) {
             self.pending_lifecycle_action = Some(action);
         } else {

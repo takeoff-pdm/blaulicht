@@ -156,7 +156,10 @@ fn prepare_texture(texture: &mut Texture2D) -> Result<bool> {
         texture.mipmap = Some(three_d_asset::Mipmap::default());
     }
     if texture_bytes(texture) > MAX_TEXTURE_BYTES {
-        bail!("Texture {:?} exceeds the 4 MiB prepared limit", texture.name);
+        bail!(
+            "Texture {:?} exceeds the 4 MiB prepared limit",
+            texture.name
+        );
     }
     Ok(needs_resize)
 }
@@ -165,8 +168,7 @@ fn validate_texture_source(texture: &Texture2D) -> Result<()> {
     if texture.width == 0 || texture.height == 0 {
         bail!("Texture {:?} has zero dimensions", texture.name);
     }
-    if texture.width > MAX_SOURCE_TEXTURE_DIMENSION
-        || texture.height > MAX_SOURCE_TEXTURE_DIMENSION
+    if texture.width > MAX_SOURCE_TEXTURE_DIMENSION || texture.height > MAX_SOURCE_TEXTURE_DIMENSION
     {
         bail!(
             "Texture {:?} is {}x{}; the source safety limit is {}x{}",
@@ -189,7 +191,10 @@ fn validate_texture_source(texture: &Texture2D) -> Result<()> {
         );
     }
     if texture_bytes(texture) > MAX_SOURCE_TEXTURE_BYTES {
-        bail!("Texture {:?} exceeds the 256 MiB source safety limit", texture.name);
+        bail!(
+            "Texture {:?} exceeds the 256 MiB source safety limit",
+            texture.name
+        );
     }
     Ok(())
 }
@@ -199,8 +204,9 @@ fn resize_texture_data(texture: &mut Texture2D, width: u32, height: u32) {
     let source_height = texture.height;
     match &mut texture.data {
         TextureData::RU8(values) => {
-            let image = image::GrayImage::from_raw(source_width, source_height, std::mem::take(values))
-                .expect("validated grayscale texture dimensions");
+            let image =
+                image::GrayImage::from_raw(source_width, source_height, std::mem::take(values))
+                    .expect("validated grayscale texture dimensions");
             *values = image::imageops::resize(
                 &image,
                 width,
@@ -267,14 +273,30 @@ fn resize_texture_data(texture: &mut Texture2D, width: u32, height: u32) {
             .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
             .collect();
         }
-        TextureData::RF16(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgF16(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgbF16(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgbaF16(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RF32(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgF32(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgbF32(values) => *values = resize_nearest(values, source_width, source_height, width, height),
-        TextureData::RgbaF32(values) => *values = resize_nearest(values, source_width, source_height, width, height),
+        TextureData::RF16(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgF16(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgbF16(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgbaF16(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RF32(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgF32(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgbF32(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
+        TextureData::RgbaF32(values) => {
+            *values = resize_nearest(values, source_width, source_height, width, height)
+        }
     }
 }
 

@@ -150,6 +150,14 @@ pub(super) fn mat4_transform_dir(m: [f32; 16], v: Vec3) -> Vec3 {
     )
 }
 
+pub(super) fn mat4_transform_point(m: [f32; 16], v: Vec3) -> Vec3 {
+    Vec3::new(
+        m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12],
+        m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13],
+        m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14],
+    )
+}
+
 pub(super) fn project_point(
     projection: [f32; 16],
     view: [f32; 16],

@@ -1,13 +1,9 @@
 use std::collections::BTreeMap;
 
-use blaulicht_shared::{
-    FixtureProperty,
-    fixture::value::FixtureValue,
-    palette::Palette,
-};
+use blaulicht_shared::{fixture::value::FixtureValue, palette::Palette, FixtureProperty};
 use egui::Context;
 
-use crate::app::components::{self, ButtonSize, id_selection_dialog};
+use crate::app::components::{self, id_selection_dialog, ButtonSize};
 
 /// Tracks the palette-picker dialogs for a given slot. Keep one per slot you
 /// render. Binding is a two-step flow: first pick the palette, then — when the
@@ -86,9 +82,9 @@ pub fn palette_binding_button(
                 .map(|p| p.kind.properties(palettes))
                 .unwrap_or_default();
 
-            let current = value.palette_property().unwrap_or_else(|| {
-                props.first().copied().unwrap_or(FixtureProperty::Alpha)
-            });
+            let current = value
+                .palette_property()
+                .unwrap_or_else(|| props.first().copied().unwrap_or(FixtureProperty::Alpha));
 
             let (selected, changed) = components::selection_dialog(
                 ctx,

@@ -10,8 +10,8 @@ use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput, UdpReceived,
 };
-use std::sync::Arc;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     time::{Duration, Instant},

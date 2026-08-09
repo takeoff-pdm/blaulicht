@@ -205,14 +205,12 @@ impl MidiManager {
         let conn_out = match MidiOutput::new("midi-sender") {
             Ok(midi_out) => {
                 let out_ports = midi_out.ports();
-                let out_port = out_ports
-                    .iter()
-                    .find(|p| {
-                        midi_out
-                            .port_name(p)
-                            .map(|name| name.contains(device_name))
-                            .unwrap_or(false)
-                    });
+                let out_port = out_ports.iter().find(|p| {
+                    midi_out
+                        .port_name(p)
+                        .map(|name| name.contains(device_name))
+                        .unwrap_or(false)
+                });
 
                 match out_port {
                     Some(port) => {

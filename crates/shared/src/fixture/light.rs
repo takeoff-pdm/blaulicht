@@ -565,7 +565,13 @@ impl Light {
 
     pub fn blackout(&self, _this: &Fixture, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {}
 
-    pub fn setup(&self, _this: &Fixture, _time: i32, _state: &ResolvedFixtureState, _dmx: &mut [u8]) {
+    pub fn setup(
+        &self,
+        _this: &Fixture,
+        _time: i32,
+        _state: &ResolvedFixtureState,
+        _dmx: &mut [u8],
+    ) {
         match self {
             Light::Generic3ChanNoAlpha => {}
             Light::GenericColorAlphaLight => {}

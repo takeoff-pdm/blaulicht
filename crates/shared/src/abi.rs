@@ -1,5 +1,5 @@
 use crate::ControlEventCollection;
-use bincode::{config, Decode, Encode};
+use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;

@@ -192,11 +192,7 @@ impl ArtNetOutput {
     /// is already registered (by anyone) or could not be added.
     pub fn register_plugin_receiver(&mut self, plugin_id: u8, address: SocketAddr) -> u32 {
         // Idempotent if the same plugin re-registers the same address.
-        if let Some(existing) = self
-            .receivers
-            .iter()
-            .find(|r| r.address == address)
-        {
+        if let Some(existing) = self.receivers.iter().find(|r| r.address == address) {
             return if existing.owner_plugin_id == Some(plugin_id) {
                 existing.handle
             } else {

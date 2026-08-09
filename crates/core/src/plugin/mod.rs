@@ -26,8 +26,8 @@ use crate::{
 
 pub mod midi;
 pub mod serial;
-pub mod udp;
 mod tick;
+pub mod udp;
 mod wasm;
 
 pub struct PluginManager {

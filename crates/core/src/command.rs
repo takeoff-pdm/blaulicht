@@ -92,7 +92,8 @@ impl SpawnedCommandRegistry {
     pub fn insert(&mut self, plugin_id: u8, state: Arc<Mutex<SpawnedCommandState>>) -> u32 {
         self.next_handle = self.next_handle.checked_add(1).unwrap_or(1);
         let handle = self.next_handle;
-        self.entries.insert(handle, SpawnedCommandEntry { plugin_id, state });
+        self.entries
+            .insert(handle, SpawnedCommandEntry { plugin_id, state });
         handle
     }
 

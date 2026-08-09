@@ -5,12 +5,17 @@ use egui_glow::CallbackFn;
 
 use crate::app::page::PageRenderContext;
 use crate::app::BlaulichtApp;
-use crate::stage::{StageObject, StageObjectKind};
+use crate::stage::{
+    FixtureTrussAttachment, StageObject, StageObjectKind, TrussConnection, TrussEndpointRef,
+    TrussPart, TrussProfile, TrussSpec,
+};
 use crate::state::ScreenId;
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
 use super::data::{collect_fixtures, RenderSceneSnapshot};
-use super::math::{mat4_look_at, mat4_perspective, project_point, Vec3};
+use super::math::{
+    mat4_look_at, mat4_perspective, mat4_rotation_euler, mat4_transform_dir, project_point, Vec3,
+};
 use super::state::{
     EditorSnapshot, EditorTool, EditorView, SelectionKey, VisualizerMode, DEFAULT_CAMERA_PITCH,
     DEFAULT_CAMERA_RADIUS, DEFAULT_CAMERA_YAW,
@@ -25,6 +30,7 @@ impl BlaulichtApp {
         render_context: PageRenderContext,
     ) {
         self.visualizer_import_dialog(ui.ctx());
+        self.reconcile_truss_attachments();
         ui.heading("Visualizer");
         ui.add_space(4.0);
 
@@ -190,12 +196,11 @@ impl BlaulichtApp {
             }
         }
 
-        let minimum_canvas_height =
-            if render_context.is_dynamic() && render_context.short {
-                80.0
-            } else {
-                120.0
-            };
+        let minimum_canvas_height = if render_context.is_dynamic() && render_context.short {
+            80.0
+        } else {
+            120.0
+        };
         let canvas_size = Vec2::new(
             ui.available_width(),
             ui.available_height().max(minimum_canvas_height),
@@ -276,6 +281,11 @@ impl BlaulichtApp {
             egui::PointerButton::Primary
         };
         let projected_items = project_scene_items(rect, &snapshot, &self.visualizer_ui_state);
+        let projected_endpoints = project_selected_truss_endpoints(
+            rect,
+            &self.visualizer_ui_state,
+            &self.visualizer_ui_state.editor.selection,
+        );
 
         if perspective_edit && response.clicked_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
@@ -480,6 +490,12 @@ impl BlaulichtApp {
                     );
                 }
             }
+            for endpoint in projected_endpoints {
+                ui.painter()
+                    .circle_filled(endpoint, 4.0, Color32::LIGHT_GREEN);
+                ui.painter()
+                    .circle_stroke(endpoint, 6.0, Stroke::new(1.0_f32, Color32::BLACK));
+            }
         }
 
         let shared_status = render_target
@@ -505,8 +521,7 @@ impl BlaulichtApp {
             .filter(|state| {
                 matches!(
                     state,
-                    super::state::ModelLoadState::Queued
-                        | super::state::ModelLoadState::Preparing
+                    super::state::ModelLoadState::Queued | super::state::ModelLoadState::Preparing
                 )
             })
             .count();
@@ -515,9 +530,7 @@ impl BlaulichtApp {
             .model_states
             .iter()
             .find_map(|(key, state)| match state {
-                super::state::ModelLoadState::Failed(error) => {
-                    Some((key.clone(), error.clone()))
-                }
+                super::state::ModelLoadState::Failed(error) => Some((key.clone(), error.clone())),
                 _ => None,
             });
         let gpu_failure = gpu_progress.failed_assets.first().cloned();
@@ -591,10 +604,7 @@ impl BlaulichtApp {
                     gpu_progress.completed_steps as f32 / gpu_progress.total_steps as f32
                 };
                 (
-                    format!(
-                        "Uploading {} model(s)...",
-                        gpu_progress.uploading_assets
-                    ),
+                    format!("Uploading {} model(s)...", gpu_progress.uploading_assets),
                     Some(fraction),
                 )
             };
@@ -685,6 +695,7 @@ impl BlaulichtApp {
 
     fn restore_visualizer_snapshot(&mut self, snapshot: EditorSnapshot) {
         self.visualizer_ui_state.stage = snapshot.stage;
+        self.visualizer_ui_state.attachment_world_cache.clear();
         if let Ok(mut engine) = self.data.state.dmx_engine.write() {
             for ((gid, fid), (pos, rotation)) in snapshot.fixtures {
                 if let Some(fixture) = engine
@@ -698,6 +709,102 @@ impl BlaulichtApp {
                 }
             }
         }
+    }
+
+    fn attachment_pose(&self, attachment: &FixtureTrussAttachment) -> Option<([f32; 3], [f32; 3])> {
+        let object = self
+            .visualizer_ui_state
+            .stage
+            .objects
+            .get(&attachment.truss_id)?;
+        let StageObjectKind::ProceduralTruss(spec) = object.kind else {
+            return None;
+        };
+        let mount = super::truss::world_mount(
+            spec,
+            &object.transform,
+            attachment.branch,
+            attachment.distance_m,
+        )?;
+        Some((
+            [mount.x, mount.y, mount.z],
+            [
+                object.transform.rotation[0] + 180.0 + attachment.rotation_offset[0],
+                object.transform.rotation[1] + attachment.rotation_offset[1],
+                object.transform.rotation[2] + attachment.rotation_offset[2],
+            ],
+        ))
+    }
+
+    fn reconcile_truss_attachments(&mut self) {
+        let attachments = self.visualizer_ui_state.stage.fixture_attachments.clone();
+        let desired: Vec<_> = attachments
+            .iter()
+            .filter_map(|attachment| {
+                Some((
+                    (attachment.group_id, attachment.fixture_id),
+                    self.attachment_pose(attachment)?,
+                ))
+            })
+            .collect();
+        let mut detached = std::collections::BTreeSet::new();
+        if let Ok(mut engine) = self.data.state.dmx_engine.write() {
+            for (key, (position, rotation)) in desired {
+                let Some(fixture) = engine
+                    .0
+                    .groups
+                    .get_mut(&key.0)
+                    .and_then(|group| group.fixtures.get_mut(&key.1))
+                else {
+                    detached.insert(key);
+                    continue;
+                };
+                let actual_position = [fixture.pos.x, fixture.pos.y, fixture.pos.z];
+                let actual_rotation = [fixture.rotation.x, fixture.rotation.y, fixture.rotation.z];
+                if let Some((cached_position, cached_rotation)) =
+                    self.visualizer_ui_state.attachment_world_cache.get(&key)
+                {
+                    if !transform_near(actual_position, *cached_position)
+                        || !transform_near(actual_rotation, *cached_rotation)
+                    {
+                        detached.insert(key);
+                        continue;
+                    }
+                }
+                fixture.pos.x = position[0];
+                fixture.pos.y = position[1];
+                fixture.pos.z = position[2];
+                fixture.rotation.x = rotation[0];
+                fixture.rotation.y = rotation[1];
+                fixture.rotation.z = rotation[2];
+                self.visualizer_ui_state
+                    .attachment_world_cache
+                    .insert(key, (position, rotation));
+            }
+        }
+        if !detached.is_empty() {
+            self.visualizer_ui_state
+                .stage
+                .fixture_attachments
+                .retain(|attachment| {
+                    !detached.contains(&(attachment.group_id, attachment.fixture_id))
+                });
+            for key in detached {
+                self.visualizer_ui_state.attachment_world_cache.remove(&key);
+            }
+        }
+    }
+
+    fn detach_fixture_from_truss(&mut self, gid: u8, fid: u8) -> bool {
+        let previous_len = self.visualizer_ui_state.stage.fixture_attachments.len();
+        self.visualizer_ui_state
+            .stage
+            .fixture_attachments
+            .retain(|attachment| attachment.group_id != gid || attachment.fixture_id != fid);
+        self.visualizer_ui_state
+            .attachment_world_cache
+            .remove(&(gid, fid));
+        previous_len != self.visualizer_ui_state.stage.fixture_attachments.len()
     }
 
     fn visualizer_undo(&mut self) {
@@ -775,7 +882,6 @@ impl BlaulichtApp {
             ui.menu_button("Add", |ui| {
                 for (label, kind) in [
                     ("Platform", StageObjectKind::Platform),
-                    ("Truss", StageObjectKind::Truss),
                     ("Wall", StageObjectKind::Wall),
                     ("Speaker", StageObjectKind::Speaker),
                     ("Screen", StageObjectKind::Screen),
@@ -797,6 +903,36 @@ impl BlaulichtApp {
                         ui.close();
                     }
                 }
+                ui.separator();
+                ui.menu_button("Truss", |ui| {
+                    for profile in TrussProfile::ALL {
+                        ui.menu_button(profile.label(), |ui| {
+                            for part in TrussPart::ALL {
+                                if ui.button(part.label()).clicked() {
+                                    let before = self.capture_visualizer_snapshot();
+                                    let index = self.visualizer_ui_state.stage.objects.len() + 1;
+                                    let id = self.visualizer_ui_state.stage.add_object(
+                                        StageObject::truss_preset(
+                                            index,
+                                            TrussSpec {
+                                                profile,
+                                                part,
+                                                ..Default::default()
+                                            },
+                                        ),
+                                    );
+                                    self.visualizer_ui_state.editor.selection.clear();
+                                    self.visualizer_ui_state
+                                        .editor
+                                        .selection
+                                        .insert(SelectionKey::Object(id));
+                                    self.visualizer_ui_state.editor.push_undo(before);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                });
             });
             let has_showfile = self
                 .data
@@ -847,6 +983,74 @@ impl BlaulichtApp {
                     SelectionKey::Fixture(_, _) => None,
                 })
                 .collect();
+            let selected_fixture =
+                self.visualizer_ui_state
+                    .editor
+                    .selection
+                    .iter()
+                    .find_map(|key| match key {
+                        SelectionKey::Fixture(gid, fid) => Some((*gid, *fid)),
+                        SelectionKey::Object(_) => None,
+                    });
+            let selected_truss = selected_objects
+                .iter()
+                .copied()
+                .find(|id| self.visualizer_ui_state.stage.truss_spec(*id).is_some());
+            let can_attach = self.visualizer_ui_state.editor.selection.len() == 2
+                && selected_objects.len() == 1
+                && selected_fixture.is_some()
+                && selected_truss.is_some();
+            if ui
+                .add_enabled(can_attach, egui::Button::new("Attach"))
+                .on_disabled_hover_text("Select one fixture and one truss")
+                .clicked()
+            {
+                let (gid, fid) = selected_fixture.unwrap();
+                let truss_id = selected_truss.unwrap();
+                let fixture_position = self.data.state.dmx_engine.read().ok().and_then(|engine| {
+                    let fixture = engine.0.groups.get(&gid)?.fixtures.get(&fid)?;
+                    Some(Vec3::new(fixture.pos.x, fixture.pos.y, fixture.pos.z))
+                });
+                let mount = fixture_position.and_then(|position| {
+                    let object = self.visualizer_ui_state.stage.objects.get(&truss_id)?;
+                    let spec = self.visualizer_ui_state.stage.truss_spec(truss_id)?;
+                    super::truss::nearest_mount(spec, &object.transform, position)
+                });
+                if let Some((branch, distance_m, _)) = mount {
+                    let before = self.capture_visualizer_snapshot();
+                    self.detach_fixture_from_truss(gid, fid);
+                    self.visualizer_ui_state.stage.fixture_attachments.push(
+                        FixtureTrussAttachment {
+                            group_id: gid,
+                            fixture_id: fid,
+                            truss_id,
+                            branch,
+                            distance_m,
+                            rotation_offset: [0.0; 3],
+                        },
+                    );
+                    self.reconcile_truss_attachments();
+                    self.visualizer_ui_state.editor.push_undo(before);
+                }
+            }
+            let can_detach = selected_fixture.is_some_and(|key| {
+                self.visualizer_ui_state
+                    .stage
+                    .fixture_attachments
+                    .iter()
+                    .any(|attachment| {
+                        attachment.group_id == key.0 && attachment.fixture_id == key.1
+                    })
+            });
+            if ui
+                .add_enabled(can_detach, egui::Button::new("Detach"))
+                .clicked()
+            {
+                let before = self.capture_visualizer_snapshot();
+                let (gid, fid) = selected_fixture.unwrap();
+                self.detach_fixture_from_truss(gid, fid);
+                self.visualizer_ui_state.editor.push_undo(before);
+            }
             let only_objects = !selected_objects.is_empty()
                 && selected_objects.len() == self.visualizer_ui_state.editor.selection.len();
             if ui
@@ -964,10 +1168,9 @@ impl BlaulichtApp {
                             .insert(key, super::state::ModelLoadState::Ready(stats));
                     }
                     Err(error) => {
-                        self.visualizer_ui_state.model_states.insert(
-                            key,
-                            super::state::ModelLoadState::Failed(error.clone()),
-                        );
+                        self.visualizer_ui_state
+                            .model_states
+                            .insert(key, super::state::ModelLoadState::Failed(error.clone()));
                         self.visualizer_ui_state.import_error = Some(error);
                     }
                 },
@@ -1002,10 +1205,9 @@ impl BlaulichtApp {
                 Ok(path) => path,
                 Err(error) => {
                     let error = error.to_string();
-                    self.visualizer_ui_state.model_states.insert(
-                        key,
-                        super::state::ModelLoadState::Failed(error.clone()),
-                    );
+                    self.visualizer_ui_state
+                        .model_states
+                        .insert(key, super::state::ModelLoadState::Failed(error.clone()));
                     self.visualizer_ui_state.import_error = Some(error);
                     continue;
                 }
@@ -1015,7 +1217,11 @@ impl BlaulichtApp {
                 path,
                 generation: self.visualizer_ui_state.model_generation,
             };
-            match self.visualizer_ui_state.model_request_sender.try_send(request) {
+            match self
+                .visualizer_ui_state
+                .model_request_sender
+                .try_send(request)
+            {
                 Ok(()) => {
                     self.visualizer_ui_state
                         .model_states
@@ -1024,10 +1230,9 @@ impl BlaulichtApp {
                 Err(crossbeam_channel::TrySendError::Full(_)) => break,
                 Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
                     let error = "Visualizer model loader is unavailable".to_string();
-                    self.visualizer_ui_state.model_states.insert(
-                        key,
-                        super::state::ModelLoadState::Failed(error.clone()),
-                    );
+                    self.visualizer_ui_state
+                        .model_states
+                        .insert(key, super::state::ModelLoadState::Failed(error.clone()));
                     self.visualizer_ui_state.import_error = Some(error);
                 }
             }
@@ -1099,6 +1304,7 @@ impl BlaulichtApp {
             return;
         };
         let before_object = object.clone();
+        let connected = self.visualizer_ui_state.stage.is_truss_connected(id);
         ui.horizontal_wrapped(|ui| {
             ui.text_edit_singleline(&mut object.name);
             ui.checkbox(&mut object.visible, "Visible");
@@ -1119,19 +1325,134 @@ impl BlaulichtApp {
                         .suffix(" deg"),
                 );
             }
-            for (axis, label) in ["SX", "SY", "SZ"].into_iter().enumerate() {
-                ui.label(label);
-                ui.add(
-                    egui::DragValue::new(&mut object.transform.scale[axis])
-                        .range(0.01..=1_000.0)
-                        .speed(0.05),
-                );
+            if let StageObjectKind::ProceduralTruss(spec) = &mut object.kind {
+                ui.add_enabled_ui(!connected, |ui| {
+                    egui::ComboBox::from_id_salt(("truss-profile", id))
+                        .selected_text(spec.profile.label())
+                        .show_ui(ui, |ui| {
+                            for profile in TrussProfile::ALL {
+                                ui.selectable_value(&mut spec.profile, profile, profile.label());
+                            }
+                        });
+                    egui::ComboBox::from_id_salt(("truss-part", id))
+                        .selected_text(spec.part.label())
+                        .show_ui(ui, |ui| {
+                            for part in TrussPart::ALL {
+                                ui.selectable_value(&mut spec.part, part, part.label());
+                            }
+                        });
+                })
+                .response
+                .on_disabled_hover_text("Disconnect all endpoints before changing truss type");
+                if spec.part == TrussPart::Straight {
+                    ui.add_enabled(
+                        !connected,
+                        egui::DragValue::new(&mut spec.length_m)
+                            .range(0.25..=50.0)
+                            .speed(0.25)
+                            .suffix(" m"),
+                    )
+                    .on_disabled_hover_text("Disconnect all endpoints before changing length");
+                    spec.sanitize();
+                    let breakdown = spec
+                        .section_breakdown()
+                        .into_iter()
+                        .map(|length| format!("{length}m"))
+                        .collect::<Vec<_>>()
+                        .join(" + ");
+                    ui.label(breakdown);
+                }
+            } else {
+                for (axis, label) in ["SX", "SY", "SZ"].into_iter().enumerate() {
+                    ui.label(label);
+                    ui.add(
+                        egui::DragValue::new(&mut object.transform.scale[axis])
+                            .range(0.01..=1_000.0)
+                            .speed(0.05),
+                    );
+                }
             }
         });
+        if matches!(object.kind, StageObjectKind::ProceduralTruss(_)) {
+            ui.horizontal(|ui| {
+                if ui.button("Select Connected").clicked() {
+                    for connected_id in self.visualizer_ui_state.stage.connected_trusses(id) {
+                        self.visualizer_ui_state
+                            .editor
+                            .selection
+                            .insert(SelectionKey::Object(connected_id));
+                    }
+                }
+                if ui
+                    .add_enabled(connected, egui::Button::new("Disconnect"))
+                    .clicked()
+                {
+                    let before = self.capture_visualizer_snapshot();
+                    self.visualizer_ui_state.stage.disconnect_truss(id);
+                    self.visualizer_ui_state.editor.push_undo(before);
+                }
+            });
+        }
         object.transform.sanitize();
         if object != before_object {
             let before = self.capture_visualizer_snapshot();
+            let connected_ids = self.visualizer_ui_state.stage.connected_trusses(id);
+            let translation_delta = [
+                object.transform.translation[0] - before_object.transform.translation[0],
+                object.transform.translation[1] - before_object.transform.translation[1],
+                object.transform.translation[2] - before_object.transform.translation[2],
+            ];
+            let rotation_delta = [
+                object.transform.rotation[0] - before_object.transform.rotation[0],
+                object.transform.rotation[1] - before_object.transform.rotation[1],
+                object.transform.rotation[2] - before_object.transform.rotation[2],
+            ];
             self.visualizer_ui_state.stage.objects.insert(id, object);
+            if connected_ids.len() > 1 {
+                let pivot = Vec3::new(
+                    before_object.transform.translation[0],
+                    before_object.transform.translation[1],
+                    before_object.transform.translation[2],
+                );
+                let rotation_matrix = mat4_rotation_euler(Vec3::new(
+                    rotation_delta[0].to_radians(),
+                    rotation_delta[1].to_radians(),
+                    rotation_delta[2].to_radians(),
+                ));
+                for connected_id in connected_ids {
+                    if connected_id == id {
+                        continue;
+                    }
+                    if let Some(connected_object) = self
+                        .visualizer_ui_state
+                        .stage
+                        .objects
+                        .get_mut(&connected_id)
+                    {
+                        let offset = Vec3::new(
+                            connected_object.transform.translation[0] - pivot.x,
+                            connected_object.transform.translation[1] - pivot.y,
+                            connected_object.transform.translation[2] - pivot.z,
+                        );
+                        let rotated = mat4_transform_dir(rotation_matrix, offset);
+                        connected_object.transform.translation = [
+                            pivot.x + rotated.x + translation_delta[0],
+                            pivot.y + rotated.y + translation_delta[1],
+                            pivot.z + rotated.z + translation_delta[2],
+                        ];
+                        for (rotation, delta) in connected_object
+                            .transform
+                            .rotation
+                            .iter_mut()
+                            .zip(rotation_delta)
+                        {
+                            *rotation += delta;
+                        }
+                    }
+                }
+            }
+            self.visualizer_ui_state.stage.sanitize();
+            self.reconcile_truss_attachments();
             self.visualizer_ui_state.editor.push_undo(before);
         }
     }
@@ -1176,6 +1497,7 @@ impl BlaulichtApp {
         });
         if pos != old_pos || rotation != old_rotation {
             let before = self.capture_visualizer_snapshot();
+            self.detach_fixture_from_truss(gid, fid);
             if let Ok(mut engine) = self.data.state.dmx_engine.write() {
                 if let Some(fixture) = engine
                     .0
@@ -1307,14 +1629,15 @@ impl BlaulichtApp {
             if !object.visible {
                 continue;
             }
+            let footprint = object_footprint(object);
             let object_rect = Rect::from_center_size(
                 to_screen(
                     object.transform.translation[0],
                     object.transform.translation[2],
                 ),
                 Vec2::new(
-                    object.transform.scale[0] * pixels_per_meter,
-                    object.transform.scale[2] * pixels_per_meter,
+                    footprint[0] * pixels_per_meter,
+                    footprint[1] * pixels_per_meter,
                 ),
             );
             let selected = self
@@ -1322,24 +1645,71 @@ impl BlaulichtApp {
                 .editor
                 .selection
                 .contains(&SelectionKey::Object(*id));
-            painter.rect_filled(
-                object_rect,
-                1.0,
-                Color32::from_rgb(object.color[0], object.color[1], object.color[2]),
-            );
-            painter.rect_stroke(
-                object_rect,
-                1.0,
-                Stroke::new(
-                    if selected { 2.0_f32 } else { 1.0_f32 },
-                    if selected {
-                        Color32::LIGHT_BLUE
-                    } else {
-                        Color32::from_gray(145)
-                    },
-                ),
-                egui::StrokeKind::Inside,
-            );
+            let object_color = Color32::from_rgb(object.color[0], object.color[1], object.color[2]);
+            if let StageObjectKind::ProceduralTruss(spec) = object.kind {
+                if spec.part == TrussPart::BasePlate {
+                    painter.rect_filled(object_rect, 1.0, object_color);
+                    painter.rect_stroke(
+                        object_rect,
+                        1.0,
+                        Stroke::new(
+                            if selected { 2.0_f32 } else { 1.0_f32 },
+                            if selected {
+                                Color32::LIGHT_BLUE
+                            } else {
+                                Color32::from_gray(145)
+                            },
+                        ),
+                        egui::StrokeKind::Inside,
+                    );
+                } else {
+                    let outer_width =
+                        (crate::stage::TRUSS_PROFILE_SIZE_M * pixels_per_meter).clamp(5.0, 18.0);
+                    for branch in super::truss::world_branches(spec, &object.transform) {
+                        let points = [
+                            to_screen(branch.start.x, branch.start.z),
+                            to_screen(branch.end.x, branch.end.z),
+                        ];
+                        painter.line_segment(
+                            points,
+                            Stroke::new(
+                                outer_width + if selected { 3.0 } else { 1.0 },
+                                if selected {
+                                    Color32::LIGHT_BLUE
+                                } else {
+                                    Color32::from_gray(145)
+                                },
+                            ),
+                        );
+                        painter.line_segment(points, Stroke::new(outer_width, object_color));
+                        painter.line_segment(points, Stroke::new(1.0_f32, Color32::from_gray(45)));
+                    }
+                }
+            } else {
+                painter.rect_filled(object_rect, 1.0, object_color);
+                painter.rect_stroke(
+                    object_rect,
+                    1.0,
+                    Stroke::new(
+                        if selected { 2.0_f32 } else { 1.0_f32 },
+                        if selected {
+                            Color32::LIGHT_BLUE
+                        } else {
+                            Color32::from_gray(145)
+                        },
+                    ),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if selected {
+                if let StageObjectKind::ProceduralTruss(spec) = object.kind {
+                    for endpoint in super::truss::world_endpoints(spec, &object.transform) {
+                        let center = to_screen(endpoint.position.x, endpoint.position.z);
+                        painter.circle_filled(center, 4.0, Color32::LIGHT_GREEN);
+                        painter.circle_stroke(center, 6.0, Stroke::new(1.0_f32, Color32::BLACK));
+                    }
+                }
+            }
         }
         for (id, _name, position) in &fixtures {
             let center = to_screen(position[0], position[1]);
@@ -1533,31 +1903,31 @@ impl BlaulichtApp {
                     .iter()
                     .copied()
                     .collect();
+                let fixtures: Vec<_> = selection
+                    .iter()
+                    .filter_map(|key| match key {
+                        SelectionKey::Fixture(gid, fid) => Some((*gid, *fid)),
+                        SelectionKey::Object(_) => None,
+                    })
+                    .collect();
+                for (gid, fid) in &fixtures {
+                    self.detach_fixture_from_truss(*gid, *fid);
+                }
                 if let Ok(mut engine) = self.data.state.dmx_engine.write() {
-                    for key in selection {
-                        match key {
-                            SelectionKey::Fixture(gid, fid) => {
-                                if let Some(fixture) = engine
-                                    .0
-                                    .groups
-                                    .get_mut(&gid)
-                                    .and_then(|group| group.fixtures.get_mut(&fid))
-                                {
-                                    fixture.rotation.y += degrees;
-                                }
-                            }
-                            SelectionKey::Object(id) => {
-                                if let Some(object) =
-                                    self.visualizer_ui_state.stage.objects.get_mut(&id)
-                                {
-                                    if !object.locked {
-                                        object.transform.rotation[1] += degrees;
-                                    }
-                                }
-                            }
+                    for (gid, fid) in fixtures {
+                        if let Some(fixture) = engine
+                            .0
+                            .groups
+                            .get_mut(&gid)
+                            .and_then(|group| group.fixtures.get_mut(&fid))
+                        {
+                            fixture.rotation.y += degrees;
                         }
                     }
                 }
+                let objects = self.expanded_selected_objects();
+                self.rotate_stage_objects(&objects, degrees);
+                self.reconcile_truss_attachments();
             }
             EditorTool::Scale => {
                 let factor = (delta.x * 0.01).exp().clamp(0.1, 10.0);
@@ -1573,7 +1943,9 @@ impl BlaulichtApp {
                     .collect();
                 for id in selected {
                     if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(&id) {
-                        if !object.locked {
+                        if !object.locked
+                            && !matches!(object.kind, StageObjectKind::ProceduralTruss(_))
+                        {
                             for value in &mut object.transform.scale {
                                 *value = (*value * factor).clamp(0.01, 1_000.0);
                             }
@@ -1592,29 +1964,91 @@ impl BlaulichtApp {
             .iter()
             .copied()
             .collect();
+        let fixtures: Vec<_> = selection
+            .iter()
+            .filter_map(|key| match key {
+                SelectionKey::Fixture(gid, fid) => Some((*gid, *fid)),
+                SelectionKey::Object(_) => None,
+            })
+            .collect();
+        for (gid, fid) in &fixtures {
+            self.detach_fixture_from_truss(*gid, *fid);
+        }
         if let Ok(mut engine) = self.data.state.dmx_engine.write() {
-            for key in selection {
-                match key {
-                    SelectionKey::Fixture(gid, fid) => {
-                        if let Some(fixture) = engine
-                            .0
-                            .groups
-                            .get_mut(&gid)
-                            .and_then(|group| group.fixtures.get_mut(&fid))
-                        {
-                            fixture.pos.x += dx;
-                            fixture.pos.z += dz;
-                        }
-                    }
-                    SelectionKey::Object(id) => {
-                        if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(&id) {
-                            if !object.locked {
-                                object.transform.translation[0] += dx;
-                                object.transform.translation[2] += dz;
-                            }
-                        }
-                    }
+            for (gid, fid) in fixtures {
+                if let Some(fixture) = engine
+                    .0
+                    .groups
+                    .get_mut(&gid)
+                    .and_then(|group| group.fixtures.get_mut(&fid))
+                {
+                    fixture.pos.x += dx;
+                    fixture.pos.z += dz;
                 }
+            }
+        }
+        for id in self.expanded_selected_objects() {
+            if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(&id) {
+                if !object.locked {
+                    object.transform.translation[0] += dx;
+                    object.transform.translation[2] += dz;
+                }
+            }
+        }
+        self.reconcile_truss_attachments();
+    }
+
+    fn expanded_selected_objects(&self) -> std::collections::BTreeSet<u64> {
+        let mut result = std::collections::BTreeSet::new();
+        for id in self
+            .visualizer_ui_state
+            .editor
+            .selection
+            .iter()
+            .filter_map(|key| match key {
+                SelectionKey::Object(id) => Some(*id),
+                SelectionKey::Fixture(_, _) => None,
+            })
+        {
+            if self.visualizer_ui_state.stage.truss_spec(id).is_some() {
+                result.extend(self.visualizer_ui_state.stage.connected_trusses(id));
+            } else {
+                result.insert(id);
+            }
+        }
+        result
+    }
+
+    fn rotate_stage_objects(&mut self, ids: &std::collections::BTreeSet<u64>, degrees: f32) {
+        if ids.is_empty() {
+            return;
+        }
+        let (sum_x, sum_z, count) = ids.iter().fold((0.0, 0.0, 0_u32), |acc, id| {
+            let Some(object) = self.visualizer_ui_state.stage.objects.get(id) else {
+                return acc;
+            };
+            (
+                acc.0 + object.transform.translation[0],
+                acc.1 + object.transform.translation[2],
+                acc.2 + 1,
+            )
+        });
+        if count == 0 {
+            return;
+        }
+        let pivot = [sum_x / count as f32, sum_z / count as f32];
+        let radians = degrees.to_radians();
+        let (sin, cos) = radians.sin_cos();
+        for id in ids {
+            if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(id) {
+                if object.locked {
+                    continue;
+                }
+                let x = object.transform.translation[0] - pivot[0];
+                let z = object.transform.translation[2] - pivot[1];
+                object.transform.translation[0] = pivot[0] + x * cos + z * sin;
+                object.transform.translation[2] = pivot[1] - x * sin + z * cos;
+                object.transform.rotation[1] += degrees;
             }
         }
     }
@@ -1633,6 +2067,17 @@ impl BlaulichtApp {
             .selection
             .iter()
             .copied()
+            .collect();
+        let connected_trusses: std::collections::BTreeSet<_> = selection
+            .iter()
+            .filter_map(|key| match key {
+                SelectionKey::Object(id)
+                    if self.visualizer_ui_state.stage.is_truss_connected(*id) =>
+                {
+                    Some(*id)
+                }
+                _ => None,
+            })
             .collect();
         if let Ok(mut engine) = self.data.state.dmx_engine.write() {
             for key in selection {
@@ -1658,6 +2103,9 @@ impl BlaulichtApp {
                     }
                     SelectionKey::Object(id) => {
                         if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(&id) {
+                            if connected_trusses.contains(&id) {
+                                continue;
+                            }
                             match tool {
                                 EditorTool::Translate => {
                                     object.transform.translation[0] =
@@ -1670,8 +2118,10 @@ impl BlaulichtApp {
                                         snap(object.transform.rotation[1], rotation_step);
                                 }
                                 EditorTool::Scale => {
-                                    for value in &mut object.transform.scale {
-                                        *value = snap(*value, scale_step).max(0.01);
+                                    if !matches!(object.kind, StageObjectKind::ProceduralTruss(_)) {
+                                        for value in &mut object.transform.scale {
+                                            *value = snap(*value, scale_step).max(0.01);
+                                        }
                                     }
                                 }
                                 EditorTool::Select => {}
@@ -1681,6 +2131,135 @@ impl BlaulichtApp {
                 }
             }
         }
+        if matches!(tool, EditorTool::Translate | EditorTool::Rotate) {
+            self.snap_truss_endpoints();
+            self.reconcile_truss_attachments();
+        }
+    }
+
+    fn snap_truss_endpoints(&mut self) {
+        const SNAP_DISTANCE_M: f32 = 0.2;
+        const SNAP_ANGLE_DEG: f32 = 25.0;
+        let moving = self.expanded_selected_objects();
+        if moving.is_empty()
+            || moving
+                .iter()
+                .any(|id| self.visualizer_ui_state.stage.truss_spec(*id).is_none())
+        {
+            return;
+        }
+        let occupied: std::collections::BTreeSet<_> = self
+            .visualizer_ui_state
+            .stage
+            .truss_connections
+            .iter()
+            .flat_map(|connection| [connection.a, connection.b])
+            .collect();
+        let mut best: Option<(f32, TrussEndpointRef, TrussEndpointRef, Vec3, Vec3, f32)> = None;
+        for moving_id in &moving {
+            let Some(moving_object) = self.visualizer_ui_state.stage.objects.get(moving_id) else {
+                continue;
+            };
+            let Some(moving_spec) = self.visualizer_ui_state.stage.truss_spec(*moving_id) else {
+                continue;
+            };
+            for (moving_endpoint, moving_world) in
+                super::truss::world_endpoints(moving_spec, &moving_object.transform)
+                    .into_iter()
+                    .enumerate()
+            {
+                let moving_ref = TrussEndpointRef {
+                    object_id: *moving_id,
+                    endpoint: moving_endpoint as u8,
+                };
+                if occupied.contains(&moving_ref) {
+                    continue;
+                }
+                for (fixed_id, fixed_object) in &self.visualizer_ui_state.stage.objects {
+                    if moving.contains(fixed_id) {
+                        continue;
+                    }
+                    let Some(fixed_spec) = self.visualizer_ui_state.stage.truss_spec(*fixed_id)
+                    else {
+                        continue;
+                    };
+                    if fixed_spec.profile != moving_spec.profile {
+                        continue;
+                    }
+                    for (fixed_endpoint, fixed_world) in
+                        super::truss::world_endpoints(fixed_spec, &fixed_object.transform)
+                            .into_iter()
+                            .enumerate()
+                    {
+                        let fixed_ref = TrussEndpointRef {
+                            object_id: *fixed_id,
+                            endpoint: fixed_endpoint as u8,
+                        };
+                        if occupied.contains(&fixed_ref) {
+                            continue;
+                        }
+                        let distance = moving_world.position.sub(fixed_world.position).norm();
+                        if distance > SNAP_DISTANCE_M {
+                            continue;
+                        }
+                        let moving_angle = moving_world.direction.z.atan2(moving_world.direction.x);
+                        let target_direction = fixed_world.direction.scale(-1.0);
+                        if (moving_world.direction.y - target_direction.y).abs() > 0.1 {
+                            continue;
+                        }
+                        let moving_horizontal =
+                            moving_world.direction.x.hypot(moving_world.direction.z);
+                        let target_horizontal = target_direction.x.hypot(target_direction.z);
+                        if (moving_horizontal < 0.01) != (target_horizontal < 0.01) {
+                            continue;
+                        }
+                        let target_angle = target_direction.z.atan2(target_direction.x);
+                        let yaw_delta = if moving_horizontal < 0.01 {
+                            0.0
+                        } else {
+                            normalize_angle(moving_angle - target_angle)
+                        };
+                        if yaw_delta.to_degrees().abs() > SNAP_ANGLE_DEG {
+                            continue;
+                        }
+                        if best.as_ref().is_none_or(|current| distance < current.0) {
+                            best = Some((
+                                distance,
+                                moving_ref,
+                                fixed_ref,
+                                moving_world.position,
+                                fixed_world.position,
+                                yaw_delta,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        let Some((_, moving_ref, fixed_ref, pivot, target, yaw_delta)) = best else {
+            return;
+        };
+        let (sin, cos) = yaw_delta.sin_cos();
+        for id in &moving {
+            if let Some(object) = self.visualizer_ui_state.stage.objects.get_mut(id) {
+                let x = object.transform.translation[0] - pivot.x;
+                let z = object.transform.translation[2] - pivot.z;
+                object.transform.translation[0] = pivot.x + x * cos + z * sin;
+                object.transform.translation[2] = pivot.z - x * sin + z * cos;
+                object.transform.rotation[1] += yaw_delta.to_degrees();
+                object.transform.translation[0] += target.x - pivot.x;
+                object.transform.translation[1] += target.y - pivot.y;
+                object.transform.translation[2] += target.z - pivot.z;
+            }
+        }
+        self.visualizer_ui_state.stage.truss_connections.push(
+            TrussConnection {
+                a: moving_ref,
+                b: fixed_ref,
+            }
+            .normalized(),
+        );
+        self.visualizer_ui_state.stage.sanitize();
     }
 }
 
@@ -1695,14 +2274,15 @@ fn hit_test_top(
         if !object.visible || object.locked {
             continue;
         }
+        let footprint = object_footprint(object);
         let rect = Rect::from_center_size(
             to_screen(
                 object.transform.translation[0],
                 object.transform.translation[2],
             ),
             Vec2::new(
-                object.transform.scale[0] * pixels_per_meter,
-                object.transform.scale[2] * pixels_per_meter,
+                footprint[0] * pixels_per_meter,
+                footprint[1] * pixels_per_meter,
             ),
         );
         if rect.expand(4.0).contains(pointer) {
@@ -1713,6 +2293,23 @@ fn hit_test_top(
         (to_screen(position[0], position[1]).distance(pointer) <= 12.0)
             .then_some(SelectionKey::Fixture(id.0, id.1))
     })
+}
+
+fn object_footprint(object: &StageObject) -> [f32; 2] {
+    let base = match object.kind {
+        StageObjectKind::ProceduralTruss(spec) => super::truss::truss_bounds(spec),
+        _ => Vec3::new(
+            object.transform.scale[0],
+            object.transform.scale[1],
+            object.transform.scale[2],
+        ),
+    };
+    let yaw = object.transform.rotation[1].to_radians();
+    let (sin, cos) = yaw.sin_cos();
+    [
+        base.x * cos.abs() + base.z * sin.abs(),
+        base.x * sin.abs() + base.z * cos.abs(),
+    ]
 }
 
 fn project_scene_items(
@@ -1770,6 +2367,64 @@ fn project_scene_items(
     items
 }
 
+fn project_selected_truss_endpoints(
+    rect: Rect,
+    state: &super::state::VisualizerUiState,
+    selection: &std::collections::BTreeSet<SelectionKey>,
+) -> Vec<Pos2> {
+    if rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return Vec::new();
+    }
+    let projection = mat4_perspective(
+        45.0_f32.to_radians(),
+        rect.width() / rect.height(),
+        0.1,
+        200.0,
+    );
+    let (eye, target) = if state.free_camera {
+        (
+            state.camera_position,
+            state
+                .camera_position
+                .add(camera_forward(state.camera_yaw, state.camera_pitch)),
+        )
+    } else {
+        let cp = state.camera_pitch.cos();
+        (
+            Vec3::new(
+                state.camera_radius * state.camera_yaw.sin() * cp,
+                state.camera_radius * state.camera_pitch.sin(),
+                state.camera_radius * state.camera_yaw.cos() * cp,
+            ),
+            Vec3::new(0.0, 0.0, 0.0),
+        )
+    };
+    let view = mat4_look_at(eye, target, Vec3::new(0.0, 1.0, 0.0));
+    selection
+        .iter()
+        .filter_map(|key| match key {
+            SelectionKey::Object(id) => Some(*id),
+            SelectionKey::Fixture(_, _) => None,
+        })
+        .flat_map(|id| {
+            let Some(object) = state.stage.objects.get(&id) else {
+                return Vec::new();
+            };
+            let StageObjectKind::ProceduralTruss(spec) = object.kind else {
+                return Vec::new();
+            };
+            super::truss::world_endpoints(spec, &object.transform)
+        })
+        .filter_map(|endpoint| {
+            let point = project_point(projection, view, endpoint.position)?;
+            Some(Pos2::new(
+                rect.left() + (point[0] + 1.0) * 0.5 * rect.width(),
+                rect.top() + (1.0 - point[1]) * 0.5 * rect.height(),
+            ))
+        })
+        .collect()
+}
+
 fn hit_test_projected(
     pointer: Pos2,
     items: &[(SelectionKey, Pos2)],
@@ -1795,6 +2450,16 @@ fn finite_or(value: f32, fallback: f32) -> f32 {
     } else {
         fallback
     }
+}
+
+fn transform_near(a: [f32; 3], b: [f32; 3]) -> bool {
+    a.into_iter()
+        .zip(b)
+        .all(|(left, right)| (left - right).abs() <= 0.001)
+}
+
+fn normalize_angle(angle: f32) -> f32 {
+    (angle + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
 }
 
 fn snap(value: f32, step: f32) -> f32 {

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-    fixture::{value::FixtureValue, FixtureType},
-    palette::Palette,
     ControlEvent, FixtureProperty, HSVColor, RGBColor,
+    fixture::{FixtureType, value::FixtureValue},
+    palette::Palette,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]

@@ -66,7 +66,8 @@ pub fn paint_button_label(
             ..Default::default()
         },
     );
-    job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - 2.0 * H_PADDING).max(0.0));
+    job.wrap =
+        egui::text::TextWrapping::truncate_at_width((rect.width() - 2.0 * H_PADDING).max(0.0));
 
     let galley = painter.layout_job(job);
     let pos = egui::Align2::CENTER_CENTER

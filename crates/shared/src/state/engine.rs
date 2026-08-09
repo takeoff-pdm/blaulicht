@@ -1,6 +1,9 @@
 use crate::{
     AnimationSpeedModifier, FixtureProperty, SyncMode,
-    fixture::{state::{FixtureGroup, FixtureState}, value::FixtureValue},
+    fixture::{
+        state::{FixtureGroup, FixtureState},
+        value::FixtureValue,
+    },
     palette::Palette,
     scene::{EngineSink, Scene},
     scene_graph::SceneGraphState,
@@ -28,9 +31,7 @@ pub struct EngineSelection {
 
 impl EngineSelection {
     pub fn is_empty(&self) -> bool {
-        debug_assert!(
-            self.fixtures_in_group.is_empty() || self.group_ids.len() <= 1
-        );
+        debug_assert!(self.fixtures_in_group.is_empty() || self.group_ids.len() <= 1);
 
         // A fixture filter without a group is stale state, not a selection.
         self.group_ids.is_empty()
@@ -179,7 +180,10 @@ impl EngineState {
         let palettes = self.palettes.clone();
         for scene in self.scenes.values_mut() {
             let valid: HashSet<(u8, u8)> = scene.sink.fixture_states.keys().copied().collect();
-            scene.sink.palette_assignments.retain(|k, _| valid.contains(k));
+            scene
+                .sink
+                .palette_assignments
+                .retain(|k, _| valid.contains(k));
             scene.sink.sync_palette_bindings(&palettes);
         }
 

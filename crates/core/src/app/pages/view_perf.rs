@@ -262,9 +262,7 @@ impl BlaulichtApp {
                         )
                         .changed()
                     {
-                        self.data
-                            .state
-                            .set_grand_master_percent(grand_master as u8);
+                        self.data.state.set_grand_master_percent(grand_master as u8);
                     }
                     if components::action_button(
                         ui,
@@ -275,12 +273,7 @@ impl BlaulichtApp {
                     ) {
                         self.data.state.set_grand_master_percent(100);
                     }
-                    if components::button(
-                        ui,
-                        grand_master == 0,
-                        "BLACKOUT",
-                        ButtonSize::Medium,
-                    ) {
+                    if components::button(ui, grand_master == 0, "BLACKOUT", ButtonSize::Medium) {
                         self.data
                             .state
                             .set_grand_master_percent(if grand_master == 0 { 100 } else { 0 });
@@ -345,7 +338,6 @@ impl BlaulichtApp {
                                         }
                                     });
                             });
-
                     },
                 );
             },
