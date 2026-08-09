@@ -12,6 +12,8 @@ pub mod mainloop;
 pub mod msg;
 pub mod plugin;
 pub mod routes;
+pub mod stage;
+pub mod stage_assets;
 pub mod state;
 pub mod ui_ops;
 pub mod util;

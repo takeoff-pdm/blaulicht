@@ -59,16 +59,19 @@ impl BlaulichtApp {
             .map(|(dim_x, dim_y)| ExternalScreen::new(egui::vec2(*dim_x as f32, *dim_y as f32)))
             .collect();
 
-        let startup_ui_state = {
+        let startup_showfile_state = {
             let config_guard = app.data.config.lock().unwrap();
             config_guard
                 .last_open_showfile
                 .clone()
-                .and_then(|path| config::read_showfile_ui_state(path).ok().flatten())
+                .and_then(|path| config::read_showfile_ui_state(path).ok())
         };
 
-        if let Some(ui_state) = startup_ui_state {
-            app.apply_showfile_ui_state(ui_state);
+        if let Some(showfile_state) = startup_showfile_state {
+            app.visualizer_ui_state.load_stage(showfile_state.stage);
+            if let Some(ui_state) = showfile_state.ui {
+                app.apply_showfile_ui_state(ui_state);
+            }
         }
 
         app.sync_external_screen_infos();
@@ -243,7 +246,7 @@ impl BlaulichtApp {
         self.last_save_time = Some(Instant::now());
 
         std::thread::spawn(move || {
-            let _ = std::fs::write(&path, &serialized);
+            let _ = config::write_atomic(&path, serialized.as_bytes());
         });
     }
 
@@ -268,9 +271,11 @@ impl BlaulichtApp {
         };
 
         config::CoreShowfile {
+            format_version: config::current_showfile_version(),
             engine: SaveEngineState::from(engine_snapshot),
             artnet: artnet_state,
             plugin_state,
+            stage: self.visualizer_ui_state.stage.clone(),
             ui: Some(self.showfile_ui_state()),
         }
     }

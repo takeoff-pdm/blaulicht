@@ -117,6 +117,20 @@ impl PluginManager {
                 .instantiate(&mut store, &module)
                 .map_err(|e| anyhow!("failed to instantiate wasm module linker: {e}"))?;
 
+            let abi_version = instance
+                .get_typed_func::<(), i32>(&mut store, "__blaulicht_plugin_abi_version")
+                .and_then(|function| function.call(&mut store, ()))
+                .ok()
+                .map(|version| version as u32);
+            if abi_version != Some(blaulicht_shared::PLUGIN_ABI_VERSION) {
+                tracing::error!(
+                    "[WASM] Plugin <{plugin_name}> uses unsupported ABI {:?}; expected {}. Rebuild the plugin.",
+                    abi_version,
+                    blaulicht_shared::PLUGIN_ABI_VERSION
+                );
+                continue;
+            }
+
             //
             // initialize data.
             //
@@ -326,11 +340,7 @@ impl PluginManager {
         linker.func_wrap(
             "blaulicht",
             "command_spawn",
-            move |mut caller: Caller<'_, ()>,
-                  plugin_id: i32,
-                  cmd_ptr: i32,
-                  cmd_len: i32|
-                  -> u32 {
+            move |mut caller: Caller<'_, ()>, plugin_id: i32, cmd_ptr: i32, cmd_len: i32| -> u32 {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -407,16 +417,10 @@ impl PluginManager {
                         let capacity = output_capacity.max(0) as usize;
                         let copy_len = stdout.len().min(capacity.saturating_sub(1));
                         if copy_len > 0 && capacity > 0 {
-                            let _ = memory.write(
-                                &mut caller,
-                                output_ptr as usize,
-                                &stdout[..copy_len],
-                            );
-                            let _ = memory.write(
-                                &mut caller,
-                                output_ptr as usize + copy_len,
-                                &[0u8],
-                            );
+                            let _ =
+                                memory.write(&mut caller, output_ptr as usize, &stdout[..copy_len]);
+                            let _ =
+                                memory.write(&mut caller, output_ptr as usize + copy_len, &[0u8]);
                         }
 
                         let mut registry = spawned_commands.lock().unwrap();
@@ -432,16 +436,10 @@ impl PluginManager {
                         let capacity = output_capacity.max(0) as usize;
                         let copy_len = stderr.len().min(capacity.saturating_sub(1));
                         if copy_len > 0 && capacity > 0 {
-                            let _ = memory.write(
-                                &mut caller,
-                                output_ptr as usize,
-                                &stderr[..copy_len],
-                            );
-                            let _ = memory.write(
-                                &mut caller,
-                                output_ptr as usize + copy_len,
-                                &[0u8],
-                            );
+                            let _ =
+                                memory.write(&mut caller, output_ptr as usize, &stderr[..copy_len]);
+                            let _ =
+                                memory.write(&mut caller, output_ptr as usize + copy_len, &[0u8]);
                         }
 
                         let mut registry = spawned_commands.lock().unwrap();
@@ -1733,16 +1731,12 @@ impl PluginManager {
         //
 
         let udp_manager = Arc::clone(&self.udp_manager_ref);
-        linker.func_wrap::<_, u32>(
-            "blaulicht",
-            "bl_open_udp_port",
-            move |bind_port: u32| {
-                let mut udp_manager = udp_manager.lock().unwrap();
-                udp_manager
-                    .request_port(bind_port as u16)
-                    .unwrap_or(u8::MAX) as u32
-            },
-        )?;
+        linker.func_wrap::<_, u32>("blaulicht", "bl_open_udp_port", move |bind_port: u32| {
+            let mut udp_manager = udp_manager.lock().unwrap();
+            udp_manager
+                .request_port(bind_port as u16)
+                .unwrap_or(u8::MAX) as u32
+        })?;
 
         let serial_manager = Arc::clone(&self.serial_manager_ref);
         linker.func_wrap::<_, u32>(
@@ -1888,8 +1882,7 @@ impl PluginManager {
                     return 0;
                 }
                 let mut artnet_output = state_ref.artnet_output.write().unwrap();
-                let removed =
-                    artnet_output.unregister_plugin_receiver(plugin_id as u8, handle);
+                let removed = artnet_output.unregister_plugin_receiver(plugin_id as u8, handle);
                 drop(artnet_output);
 
                 if removed {

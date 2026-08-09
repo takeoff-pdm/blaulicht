@@ -80,6 +80,9 @@ egui-snarl = { version = "0.10", features = ["serde"] }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 bytemuck = "1.14.3"
 sysinfo = "0.30.13"
+sha2 = "0.10"
+three-d = { version = "0.19", default-features = false }
+three-d-asset = { version = "0.10", default-features = false, features = ["gltf", "png", "jpeg"] }
 
 
 tempdir = "0.3.7"

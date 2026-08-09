@@ -19,7 +19,7 @@ pub struct AnimationTimerState {
 impl AnimationTimerState {
     // Advances the timer variable
     pub fn tick(&mut self, now: u64) {
-        self.timer += 1;
+        self.timer = self.timer.saturating_add(1);
         self.last_tick_time = now;
     }
 }
@@ -76,10 +76,7 @@ mod tests {
 
     #[test]
     fn reset_timers_assigns_phases_without_enabling_animation() {
-        let mut animation = ActiveAnimation::new(
-            &[(1, 1), (1, 2), (1, 3)],
-            AnimationSpec::empty(),
-        );
+        let mut animation = ActiveAnimation::new(&[(1, 1), (1, 2), (1, 3)], AnimationSpec::empty());
 
         animation.reset_timers(SyncMode::StretchedEven);
 

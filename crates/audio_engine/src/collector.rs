@@ -42,6 +42,12 @@ pub struct CollectorOutput {
     pub debug_data: SignalDebugData,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AudioEventCursor {
+    pub beat_event_id: u64,
+    pub onset_event_id: u64,
+}
+
 pub struct CollectorScratch {
     // Volume.
     pub(crate) time_of_last_volume_publish: usize, // Time marker
@@ -91,6 +97,7 @@ pub struct CollectorScratch {
     pub(crate) last_band_transient_strength: [f32; 3],
 
     pub(crate) last_calibrate_time: usize,
+    pub(crate) last_frame_time: usize,
 
     pub(crate) beat_volume_volume_samples_buffer: Vec<usize>,
 
@@ -165,6 +172,7 @@ impl CollectorScratch {
             last_band_onset_periodicity: [0.0; 3],
             last_band_transient_strength: [0.0; 3],
             last_calibrate_time: now,
+            last_frame_time: now,
             beat_volume_volume_samples_buffer: vec![0; 2048], // TODO: make this more steerable?
             section_state: blaulicht_shared::SectionState::default(),
             section_last_update_ms: now,
@@ -275,19 +283,31 @@ where
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
     pub need_to_update_output_beat_onset: [bool; NUM_OUTPUTS],
+    pub output_event_cursors: [AudioEventCursor; NUM_OUTPUTS],
 }
 
 impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
 where
     SourceT: AudioSource,
 {
-    //
-    // NOTE: not idempotent.
-    // If the audio snapshot includes the beat-trigger flag, it WILL BE cleared after a call to
-    // this function.
-    //
+    /// Returns continuous values without consuming transient events.
+    /// Consumers should use `snapshot_for` when they need beat/onset delivery.
     pub fn take_snapshot(&self) -> CollectedAudioSnapshot {
-        self.current.clone()
+        let mut snapshot = self.current.clone();
+        snapshot.beat_trigger = false;
+        snapshot.actual_onset_peak = false;
+        snapshot
+    }
+
+    pub fn snapshot_for(&self, cursor: &mut AudioEventCursor) -> CollectedAudioSnapshot {
+        let mut snapshot = self.take_snapshot();
+        snapshot.beat_trigger =
+            self.current.beat_event_id != 0 && self.current.beat_event_id != cursor.beat_event_id;
+        snapshot.actual_onset_peak = self.current.onset_event_id != 0
+            && self.current.onset_event_id != cursor.onset_event_id;
+        cursor.beat_event_id = self.current.beat_event_id;
+        cursor.onset_event_id = self.current.onset_event_id;
+        snapshot
     }
 
     pub fn send_signals(&mut self, signals: &[Signal]) {
@@ -341,7 +361,9 @@ where
     ) -> anyhow::Result<Self> {
         let freq_buffer_size = audio_source.get_freq_buffer_size();
 
-        debug_assert!(freq_buffer_size > 0);
+        if freq_buffer_size == 0 {
+            anyhow::bail!("audio source returned a zero-sized frequency buffer");
+        }
 
         Ok(Self {
             params,
@@ -354,6 +376,7 @@ where
             outputs,
             need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
             need_to_update_output_beat_onset: [true; NUM_OUTPUTS],
+            output_event_cursors: [AudioEventCursor::default(); NUM_OUTPUTS],
             audio_source,
         })
     }
@@ -392,11 +415,22 @@ where
             return false;
         }
 
+        self.current.source_status = blaulicht_shared::AudioSourceStatus::Active;
+        self.current.frame_age_ms = 0;
+        self.scratch.last_frame_time = now;
+
         self.freq_buffer_raw.clear();
         self.freq_buffer_raw.extend(values_raw);
 
         self.freq_buffer.clear();
         self.freq_buffer.extend(values_raw);
+        for freq in &mut self.freq_buffer {
+            if !freq.volume.is_finite() || !freq.freq.is_finite() || !freq.position.is_finite() {
+                *freq = Frequency::default();
+            } else {
+                freq.volume = freq.volume.max(0.0);
+            }
+        }
 
         match self.params.volume {
             100 => {}
@@ -435,6 +469,7 @@ where
         self.scratch = CollectorScratch::new(self.scratch_params, 0);
         self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS];
         self.need_to_update_output_beat_onset = [false; NUM_OUTPUTS];
+        self.output_event_cursors = [AudioEventCursor::default(); NUM_OUTPUTS];
     }
 
     //
@@ -446,25 +481,56 @@ where
     pub fn tick(&mut self, now: u64) -> anyhow::Result<()> {
         let now = now as usize;
 
+        // Event booleans describe this analysis tick only. Consumers use the
+        // event IDs to retain delivery semantics across different tick rates.
+        self.current.beat_trigger = false;
+        self.current.actual_onset_peak = false;
+
         if self.params.auto_calibrate {
             self.calibrate(now);
         }
 
         let has_new_frame = self.get_frequencies(now);
 
+        if !has_new_frame {
+            self.current.source_status = blaulicht_shared::AudioSourceStatus::NoFrame;
+            self.current.frame_age_ms = now
+                .saturating_sub(self.scratch.last_frame_time)
+                .min(u32::MAX as usize) as u32;
+            if self.current.frame_age_ms >= 500 {
+                self.current.source_status = blaulicht_shared::AudioSourceStatus::Disconnected;
+                self.current.volume = 0;
+                self.current.beat_volume = 0;
+                self.current.bass = 0;
+                self.current.bass_avg = 0;
+                self.current.bass_avg_short = 0;
+                self.current.bpm = 0.0;
+                self.current.time_between_beats_millis = 0;
+                self.scratch.beat_interval_ms = 0.0;
+            }
+        }
+
         if has_new_frame {
             self.volume()?;
             self.beat_volume()?;
         }
 
-        self.bass(now, has_new_frame)?;
+        // Once the source has been silent long enough to be considered gone,
+        // do not let the predictor synthesize beats from stale history.
+        if has_new_frame
+            || self.current.source_status != blaulicht_shared::AudioSourceStatus::Disconnected
+        {
+            self.bass(now, has_new_frame)?;
+        }
 
         if self.scratch.is_on_beat {
+            self.current.beat_event_id = self.current.beat_event_id.wrapping_add(1).max(1);
             self.need_to_update_output_beat_trigger.fill(true);
             self.scratch.is_on_beat = false;
         }
 
         if self.scratch.actual_onset_peak {
+            self.current.onset_event_id = self.current.onset_event_id.wrapping_add(1).max(1);
             self.need_to_update_output_beat_onset.fill(true);
             self.scratch.actual_onset_peak = false;
         }
@@ -481,7 +547,7 @@ where
         let output_spec = self.outputs[OUTPUT_INDEX];
 
         let freqs = match output_spec.raw {
-            true => &self.freq_buffer,
+            true => &self.freq_buffer_raw,
             false => &self.freq_buffer,
         };
 
@@ -491,23 +557,17 @@ where
             None => vec![],
         };
 
-        let mut output = CollectorOutput {
-            snapshot: self.take_snapshot(),
+        let mut cursor = self.output_event_cursors[OUTPUT_INDEX];
+        let snapshot = self.snapshot_for(&mut cursor);
+        self.output_event_cursors[OUTPUT_INDEX] = cursor;
+
+        let output = CollectorOutput {
+            snapshot,
             debug_data: self.debug_data.clone(),
             current_audio_colunn,
         };
 
         // Ensure time-critical flags are set.
-        if self.need_to_update_output_beat_trigger[OUTPUT_INDEX] {
-            output.snapshot.beat_trigger = true;
-            self.need_to_update_output_beat_trigger[OUTPUT_INDEX] = false;
-        }
-
-        if self.need_to_update_output_beat_onset[OUTPUT_INDEX] {
-            output.snapshot.actual_onset_peak = true;
-            self.need_to_update_output_beat_onset[OUTPUT_INDEX] = false;
-        }
-
         output
     }
 }
@@ -580,26 +640,29 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
         .map(|c| {
             let volume = c
                 .iter()
-                .map(|datapoint| datapoint.volume * 15.0)
+                .filter(|datapoint| datapoint.volume.is_finite())
+                .map(|datapoint| datapoint.volume.max(0.0) * 15.0)
                 .sum::<f32>()
-                / c.len() as f32;
+                / c.len().max(1) as f32;
 
             let freq_low = c
                 .iter()
-                .map(|datapoint| datapoint.freq as u64)
+                .filter(|datapoint| datapoint.freq.is_finite())
+                .map(|datapoint| datapoint.freq.max(0.0) as u64)
                 .min()
                 .unwrap_or(0);
 
             let freq_high = c
                 .iter()
-                .map(|datapoint| datapoint.freq as u64)
+                .filter(|datapoint| datapoint.freq.is_finite())
+                .map(|datapoint| datapoint.freq.max(0.0) as u64)
                 .max()
                 .unwrap_or(freq_low + 1);
 
             (volume, freq_low, freq_high)
         })
         .map(|(vol, freq_low, freq_high)| AudioBucket {
-            volume: vol as u8,
+            volume: vol.clamp(0.0, u8::MAX as f32) as u8,
             freq_bound_lower: freq_low,
             freq_bound_upper: freq_high,
         })
@@ -629,5 +692,113 @@ mod tests {
     fn binning_handles_empty_input_and_zero_bins() {
         assert!(bin_spectrum_to_u8(&[], 128).is_empty());
         assert!(bin_spectrum_to_u8(&[Frequency::default()], 0).is_empty());
+    }
+
+    #[test]
+    fn binning_sanitizes_non_finite_values() {
+        let output = bin_spectrum_to_u8(
+            &[Frequency {
+                volume: f32::NAN,
+                freq: f32::INFINITY,
+                position: f32::NEG_INFINITY,
+            }],
+            1,
+        );
+
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].volume, 0);
+        assert_eq!(output[0].freq_bound_lower, 0);
+        assert_eq!(output[0].freq_bound_upper, 1);
+    }
+
+    #[test]
+    fn event_delivery_is_once_per_consumer() {
+        let source = StaticSourceForTest::default();
+        let mut collector = SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            source,
+            0,
+        )
+        .unwrap();
+        collector.current.beat_event_id = 7;
+        collector.current.onset_event_id = 3;
+
+        let mut first_consumer = AudioEventCursor::default();
+        let first = collector.snapshot_for(&mut first_consumer);
+        let second = collector.snapshot_for(&mut first_consumer);
+        assert!(first.beat_trigger && first.actual_onset_peak);
+        assert!(!second.beat_trigger && !second.actual_onset_peak);
+
+        let mut independent_consumer = AudioEventCursor::default();
+        let independent = collector.snapshot_for(&mut independent_consumer);
+        assert!(independent.beat_trigger && independent.actual_onset_peak);
+    }
+
+    #[test]
+    fn disconnected_source_is_neutralized_without_predicted_events() {
+        let mut collector = SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            StaticSourceForTest::default(),
+            0,
+        )
+        .unwrap();
+        collector.current.bpm = 120.0;
+        collector.scratch.beat_interval_ms = 500.0;
+
+        collector.tick(500).unwrap();
+
+        assert_eq!(
+            collector.current.source_status,
+            blaulicht_shared::AudioSourceStatus::Disconnected
+        );
+        assert_eq!(collector.current.volume, 0);
+        assert_eq!(collector.current.bpm, 0.0);
+        assert_eq!(collector.current.beat_event_id, 0);
+    }
+
+    #[test]
+    fn zero_sized_source_is_rejected() {
+        let result = SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            EmptySourceForTest,
+            0,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[derive(Default)]
+    struct StaticSourceForTest;
+
+    impl AudioSource for StaticSourceForTest {
+        fn get_freq_buffer_size(&self) -> usize {
+            1
+        }
+        fn get_frequencies(&mut self, _now: usize) -> (&[Frequency], bool) {
+            static FREQS: [Frequency; 1] = [Frequency {
+                volume: 0.0,
+                freq: 0.0,
+                position: 0.0,
+            }];
+            (&FREQS, false)
+        }
+    }
+
+    struct EmptySourceForTest;
+
+    impl AudioSource for EmptySourceForTest {
+        fn get_freq_buffer_size(&self) -> usize {
+            0
+        }
+
+        fn get_frequencies(&mut self, _now: usize) -> (&[Frequency], bool) {
+            (&[], false)
+        }
     }
 }

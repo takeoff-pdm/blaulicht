@@ -13,8 +13,8 @@ use blaulicht_shared::fixture::state::{Fixture, Position, Rotation};
 use blaulicht_shared::fixture::FixtureType;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 use egui::{Color32, Context, Frame, Key, Label, Margin, RichText};
-use std::time::Duration;
 use std::fmt;
+use std::time::Duration;
 use strum::IntoEnumIterator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -600,7 +600,7 @@ impl BlaulichtApp {
                             let pos = Position {
                                 x: self.add_fixture_pos_x,
                                 y: self.add_fixture_pos_y,
-                                z: 0,
+                                z: 0.0,
                             };
                             let rotation = Rotation {
                                 x: self.add_fixture_rot_x,
@@ -643,7 +643,8 @@ impl BlaulichtApp {
                             } else {
                                 // Create the complete batch only after validation succeeds.
                                 {
-                                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                                    let mut dmx_engine =
+                                        self.data.state.dmx_engine.write().unwrap();
                                     for i in 0..count {
                                         let name = if count > 1 {
                                             format!("{} #{}", base_name, i + 1)
@@ -658,18 +659,12 @@ impl BlaulichtApp {
                                         );
                                         // Offset successive fixtures along the chosen axis.
                                         let mut fixture_pos = pos.clone();
-                                        let offset = i * AddFixtureIncrementAxis::STEP;
+                                        let offset = (i * AddFixtureIncrementAxis::STEP) as f32;
                                         match self.add_fixture_increment_axis {
                                             AddFixtureIncrementAxis::None => {}
-                                            AddFixtureIncrementAxis::X => {
-                                                fixture_pos.x = fixture_pos.x.saturating_add(offset)
-                                            }
-                                            AddFixtureIncrementAxis::Y => {
-                                                fixture_pos.y = fixture_pos.y.saturating_add(offset)
-                                            }
-                                            AddFixtureIncrementAxis::Z => {
-                                                fixture_pos.z = fixture_pos.z.saturating_add(offset)
-                                            }
+                                            AddFixtureIncrementAxis::X => fixture_pos.x += offset,
+                                            AddFixtureIncrementAxis::Y => fixture_pos.y += offset,
+                                            AddFixtureIncrementAxis::Z => fixture_pos.z += offset,
                                         }
                                         fixture.pos = fixture_pos;
                                         fixture.rotation = rotation.clone();
@@ -1020,7 +1015,8 @@ impl BlaulichtApp {
                                                         can_save,
                                                         "Save",
                                                         ButtonSize::Medium,
-                                                    ) && can_save {
+                                                    ) && can_save
+                                                    {
                                                         // let mut eng =
                                                         //     self.data.state.dmx_engine.write().unwrap();
                                                         let mut dmx_engine = self

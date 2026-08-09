@@ -375,7 +375,11 @@ impl Default for EngineState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blaulicht_shared::fixture::{FixtureType, light::Light, state::{Fixture, FixtureGroup}};
+    use blaulicht_shared::fixture::{
+        light::Light,
+        state::{Fixture, FixtureGroup},
+        FixtureType,
+    };
 
     fn group_with_fixture() -> FixtureGroup {
         FixtureGroup {
@@ -400,9 +404,6 @@ mod tests {
         engine.0.selection.group_ids.extend([0, 1]);
         engine.0.selection.fixtures_in_group.insert(0);
 
-        assert_eq!(
-            engine.get_selection().fixtures,
-            vec![(0, 0), (1, 0)]
-        );
+        assert_eq!(engine.get_selection().fixtures, vec![(0, 0), (1, 0)]);
     }
 }

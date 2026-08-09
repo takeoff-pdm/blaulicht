@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-    ControlEvent, FixtureProperty, HSVColor, RGBColor,
-    fixture::{FixtureType, value::FixtureValue},
+    fixture::{value::FixtureValue, FixtureType},
     palette::Palette,
+    ControlEvent, FixtureProperty, HSVColor, RGBColor,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
@@ -68,9 +68,9 @@ impl Fixture {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
 pub struct Position {
-    pub x: usize,
-    pub y: usize,
-    pub z: usize,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Encode, Decode)]
@@ -83,9 +83,9 @@ pub struct Rotation {
 impl From<(usize, usize)> for Position {
     fn from(value: (usize, usize)) -> Self {
         Self {
-            x: value.0,
-            y: value.1,
-            z: 0,
+            x: value.0 as f32,
+            y: value.1 as f32,
+            z: 0.0,
         }
     }
 }
@@ -174,7 +174,9 @@ impl FixtureState {
     /// DMX writers and the visualizer.
     pub fn resolve(&self, palettes: &BTreeMap<u8, Palette>) -> ResolvedFixtureState {
         let hue = self.color_h.resolve(palettes, FixtureProperty::ColorHue) as f64;
-        let sat = self.color_s.resolve(palettes, FixtureProperty::ColorSaturation) as f64;
+        let sat = self
+            .color_s
+            .resolve(palettes, FixtureProperty::ColorSaturation) as f64;
         let val = self.color_v.resolve(palettes, FixtureProperty::ColorValue) as f64;
 
         ResolvedFixtureState {
@@ -183,7 +185,10 @@ impl FixtureState {
                 s: sat.map_range(0.0..255.0, 0.0..1.0),
                 v: val.map_range(0.0..255.0, 0.0..1.0),
             },
-            alpha: self.alpha.resolve(palettes, FixtureProperty::Alpha).min(255) as u8,
+            alpha: self
+                .alpha
+                .resolve(palettes, FixtureProperty::Alpha)
+                .min(255) as u8,
             orientation: FixtureOrientation {
                 pan: self.pan.resolve(palettes, FixtureProperty::Pan).min(255) as u8,
                 tilt: self.tilt.resolve(palettes, FixtureProperty::Tilt).min(255) as u8,
@@ -192,7 +197,10 @@ impl FixtureState {
                 .strobe_speed
                 .resolve(palettes, FixtureProperty::Strobe)
                 .min(255) as u8,
-            focus: self.focus.resolve(palettes, FixtureProperty::Focus).min(255) as u8,
+            focus: self
+                .focus
+                .resolve(palettes, FixtureProperty::Focus)
+                .min(255) as u8,
         }
     }
 
@@ -238,11 +246,7 @@ impl FixtureState {
 
     /// Replaces a palette pointer with the current resolved literal. No-op if
     /// the slot is already a literal.
-    pub fn unbind_palette(
-        &mut self,
-        property: FixtureProperty,
-        palettes: &BTreeMap<u8, Palette>,
-    ) {
+    pub fn unbind_palette(&mut self, property: FixtureProperty, palettes: &BTreeMap<u8, Palette>) {
         let slot = self.slot_mut(property);
         if let FixtureValue::PalettePointer { .. } = *slot {
             let v = slot.resolve(palettes, property);

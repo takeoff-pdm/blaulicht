@@ -3,7 +3,7 @@ pub mod phaser;
 use crate::{dmx::DmxEngine, mainloop::DMX_TICK_TIME};
 use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{
-    AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration, palette::Palette,
+    palette::Palette, AnimationSpec, AnimationSpecBody, CollectedAudioSnapshot, PhaserDuration,
 };
 pub use phaser::*;
 use std::{collections::BTreeMap, time::Instant};
@@ -75,53 +75,44 @@ impl DmxEngine {
                     return 0;
                 }
 
-                // Apply per-animation frequency window, gate, and boost adjustments before binning.
-                let processed_bins: Vec<u8> = {
-                    const MAX_FREQ_HZ: f32 = 20_000.0;
-
-                    let freq_min =
-                        (freqs.freq_min.min(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
-                    let freq_max =
-                        (freqs.freq_min.max(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
-
-                    let denom = (audio_snapshot.current_audio_colunn.len() - 1).max(1) as f32;
-
-                    let gate_threshold = freqs.gate as f32;
-                    let boost = freqs.boost;
-
-                    audio_snapshot
-                        .current_audio_colunn
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, audio_bucket)| {
-                            let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
-
-                            if bin_freq < freq_min || bin_freq > freq_max {
-                                return None;
-                            }
-
-                            let mut value = audio_bucket.volume as f32;
-
-                            if value < gate_threshold {
-                                return None;
-                            }
-
-                            if boost > 0 {
-                                value = (value + boost as f32).min(u8::MAX as f32);
-                            }
-
-                            Some(value.round().clamp(0.0, u8::MAX as f32) as u8)
-                        })
-                        .collect()
-                };
-
-                if processed_bins.is_empty() {
+                // Apply the per-animation window without allocating a temporary
+                // vector for every fixture on every DMX tick.
+                const MAX_FREQ_HZ: f32 = 20_000.0;
+                let freq_min = (freqs.freq_min.min(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
+                let freq_max = (freqs.freq_min.max(freqs.freq_max) as f32).clamp(0.0, MAX_FREQ_HZ);
+                let denom = (audio_snapshot.current_audio_colunn.len() - 1).max(1) as f32;
+                let gate_threshold = freqs.gate as f32;
+                let valid = audio_snapshot
+                    .current_audio_colunn
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, bucket)| {
+                        let bin_freq = (*idx as f32 / denom) * MAX_FREQ_HZ;
+                        bin_freq >= freq_min
+                            && bin_freq <= freq_max
+                            && bucket.volume as f32 >= gate_threshold
+                    })
+                    .count();
+                if valid == 0 {
                     return 0;
                 }
-
-                let bin_index =
-                    fixture_index_in_selection * processed_bins.len() / fixtures_in_selection;
-                processed_bins[bin_index] as u16
+                let target = fixture_index_in_selection * valid / fixtures_in_selection;
+                let mut seen = 0;
+                for (idx, bucket) in audio_snapshot.current_audio_colunn.iter().enumerate() {
+                    let bin_freq = (idx as f32 / denom) * MAX_FREQ_HZ;
+                    if bin_freq < freq_min
+                        || bin_freq > freq_max
+                        || (bucket.volume as f32) < gate_threshold
+                    {
+                        continue;
+                    }
+                    if seen == target {
+                        let value = (bucket.volume as u16 + freqs.boost as u16).min(u8::MAX as u16);
+                        return value;
+                    }
+                    seen += 1;
+                }
+                0
             }
             AnimationSpecBody::AudioBeat(_) => audio_snapshot.snapshot.bass as u16,
             AnimationSpecBody::BeatClock(_) => (audio_snapshot.snapshot.beat_trigger as u16) * 255,
@@ -184,8 +175,13 @@ impl DmxEngine {
                         let mut num_ticks = 1;
 
                         let millis = DMX_TICK_TIME.as_millis();
+                        if !transition_time.is_finite() || transition_time <= 0.0 {
+                            continue;
+                        }
                         if transition_time < millis as f64 {
-                            num_ticks = (millis as f64 / transition_time) as usize;
+                            // Bound catch-up work. A scheduler stall must not turn
+                            // into an unbounded loop inside the realtime worker.
+                            num_ticks = ((millis as f64 / transition_time).ceil() as usize).min(8);
                             // tracing::debug!("NUM TICKS: {num_ticks} | millis = {millis} | trans = {transition_time} | factor = {}", animation.speed_factor.as_float());
                         }
 
@@ -202,7 +198,7 @@ impl DmxEngine {
                             fixture_anim_state.needs_reset_on_beat = false;
                         }
 
-                        if transition_time == 0.0 || fixture_anim_state.needs_reset_on_beat {
+                        if fixture_anim_state.needs_reset_on_beat {
                             continue;
                         }
 

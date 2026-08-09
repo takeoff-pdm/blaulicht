@@ -12,8 +12,21 @@ pub(super) unsafe fn create_program(gl: &Arc<glow::Context>) -> Result<glow::Pro
     let program = gl
         .create_program()
         .map_err(|e| format!("Program create failed: {e}"))?;
-    let vs = compile_shader(gl, glow::VERTEX_SHADER, vertex_shader_source)?;
-    let fs = compile_shader(gl, glow::FRAGMENT_SHADER, fragment_shader_source)?;
+    let vs = match compile_shader(gl, glow::VERTEX_SHADER, vertex_shader_source) {
+        Ok(shader) => shader,
+        Err(err) => {
+            gl.delete_program(program);
+            return Err(err);
+        }
+    };
+    let fs = match compile_shader(gl, glow::FRAGMENT_SHADER, fragment_shader_source) {
+        Ok(shader) => shader,
+        Err(err) => {
+            gl.delete_shader(vs);
+            gl.delete_program(program);
+            return Err(err);
+        }
+    };
 
     gl.attach_shader(program, vs);
     gl.attach_shader(program, fs);
@@ -38,8 +51,21 @@ pub(super) unsafe fn create_text_program(gl: &Arc<glow::Context>) -> Result<glow
     let program = gl
         .create_program()
         .map_err(|e| format!("Text program create failed: {e}"))?;
-    let vs = compile_shader(gl, glow::VERTEX_SHADER, vertex_shader_source)?;
-    let fs = compile_shader(gl, glow::FRAGMENT_SHADER, fragment_shader_source)?;
+    let vs = match compile_shader(gl, glow::VERTEX_SHADER, vertex_shader_source) {
+        Ok(shader) => shader,
+        Err(err) => {
+            gl.delete_program(program);
+            return Err(err);
+        }
+    };
+    let fs = match compile_shader(gl, glow::FRAGMENT_SHADER, fragment_shader_source) {
+        Ok(shader) => shader,
+        Err(err) => {
+            gl.delete_shader(vs);
+            gl.delete_program(program);
+            return Err(err);
+        }
+    };
 
     gl.attach_shader(program, vs);
     gl.attach_shader(program, fs);
@@ -77,16 +103,16 @@ pub(super) unsafe fn compile_shader(
 
 pub(super) unsafe fn create_cube(
     gl: &Arc<glow::Context>,
-) -> Result<(glow::VertexArray, glow::Buffer, glow::Buffer, i32), String> {
-    let vertices: [f32; 48] = [
-        -1.0, -1.0, -1.0, 0.2, 0.6, 0.95, // 0
-        1.0, -1.0, -1.0, 0.2, 0.6, 0.95, // 1
-        1.0, 1.0, -1.0, 0.2, 0.6, 0.95, // 2
-        -1.0, 1.0, -1.0, 0.2, 0.6, 0.95, // 3
-        -1.0, -1.0, 1.0, 0.4, 0.8, 1.0, // 4
-        1.0, -1.0, 1.0, 0.4, 0.8, 1.0, // 5
-        1.0, 1.0, 1.0, 0.4, 0.8, 1.0, // 6
-        -1.0, 1.0, 1.0, 0.4, 0.8, 1.0, // 7
+) -> Result<(glow::VertexArray, glow::Buffer, i32), String> {
+    let base_vertices: [[f32; 6]; 8] = [
+        [-1.0, -1.0, -1.0, 0.2, 0.6, 0.95], // 0
+        [1.0, -1.0, -1.0, 0.2, 0.6, 0.95],  // 1
+        [1.0, 1.0, -1.0, 0.2, 0.6, 0.95],   // 2
+        [-1.0, 1.0, -1.0, 0.2, 0.6, 0.95],  // 3
+        [-1.0, -1.0, 1.0, 0.4, 0.8, 1.0],   // 4
+        [1.0, -1.0, 1.0, 0.4, 0.8, 1.0],    // 5
+        [1.0, 1.0, 1.0, 0.4, 0.8, 1.0],     // 6
+        [-1.0, 1.0, 1.0, 0.4, 0.8, 1.0],    // 7
     ];
 
     let indices: [u16; 36] = [
@@ -98,16 +124,17 @@ pub(super) unsafe fn create_cube(
         0, 1, 5, 5, 4, 0, // bottom
     ];
 
+    let vertices: Vec<f32> = indices
+        .iter()
+        .flat_map(|&index| base_vertices[index as usize])
+        .collect();
+
     let vao = gl
         .create_vertex_array()
         .map_err(|e| format!("VAO create failed: {e}"))?;
     let vbo = gl
         .create_buffer()
         .map_err(|e| format!("VBO create failed: {e}"))?;
-    let ebo = gl
-        .create_buffer()
-        .map_err(|e| format!("EBO create failed: {e}"))?;
-
     gl.bind_vertex_array(Some(vao));
     gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
     gl.buffer_data_u8_slice(
@@ -115,13 +142,6 @@ pub(super) unsafe fn create_cube(
         bytemuck::cast_slice(&vertices),
         glow::STATIC_DRAW,
     );
-    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-    gl.buffer_data_u8_slice(
-        glow::ELEMENT_ARRAY_BUFFER,
-        bytemuck::cast_slice(&indices),
-        glow::STATIC_DRAW,
-    );
-
     let stride = 6 * std::mem::size_of::<f32>() as i32;
     gl.enable_vertex_attrib_array(0);
     gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, stride, 0);
@@ -130,13 +150,13 @@ pub(super) unsafe fn create_cube(
 
     gl.bind_vertex_array(None);
 
-    Ok((vao, vbo, ebo, indices.len() as i32))
+    Ok((vao, vbo, (vertices.len() / 6) as i32))
 }
 
 pub(super) unsafe fn create_cylinder(
     gl: &Arc<glow::Context>,
     segments: usize,
-) -> Result<(glow::VertexArray, glow::Buffer, glow::Buffer, i32), String> {
+) -> Result<(glow::VertexArray, glow::Buffer, i32), String> {
     let segs = segments.max(3);
     let mut vertices: Vec<f32> = Vec::with_capacity((segs + 3) * 12);
     let mut indices: Vec<u16> = Vec::new();
@@ -176,27 +196,25 @@ pub(super) unsafe fn create_cylinder(
         indices.extend_from_slice(&[bottom_center_index, bottom_i, bottom_next]);
     }
 
+    let expanded_vertices: Vec<f32> = indices
+        .iter()
+        .flat_map(|&index| {
+            let start = index as usize * 6;
+            vertices[start..start + 6].iter().copied()
+        })
+        .collect();
+
     let vao = gl
         .create_vertex_array()
         .map_err(|e| format!("Cylinder VAO create failed: {e}"))?;
     let vbo = gl
         .create_buffer()
         .map_err(|e| format!("Cylinder VBO create failed: {e}"))?;
-    let ebo = gl
-        .create_buffer()
-        .map_err(|e| format!("Cylinder EBO create failed: {e}"))?;
-
     gl.bind_vertex_array(Some(vao));
     gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
     gl.buffer_data_u8_slice(
         glow::ARRAY_BUFFER,
-        bytemuck::cast_slice(&vertices),
-        glow::STATIC_DRAW,
-    );
-    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-    gl.buffer_data_u8_slice(
-        glow::ELEMENT_ARRAY_BUFFER,
-        bytemuck::cast_slice(&indices),
+        bytemuck::cast_slice(&expanded_vertices),
         glow::STATIC_DRAW,
     );
 
@@ -208,7 +226,7 @@ pub(super) unsafe fn create_cylinder(
 
     gl.bind_vertex_array(None);
 
-    Ok((vao, vbo, ebo, indices.len() as i32))
+    Ok((vao, vbo, (expanded_vertices.len() / 6) as i32))
 }
 
 pub(super) unsafe fn create_cube_edges(

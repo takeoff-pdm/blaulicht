@@ -24,7 +24,7 @@ use blaulicht_shared::{
     ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, LogLevel,
     CONTROLS_REQUIRING_SELECTION,
 };
-use crossbeam_channel::Sender;
+use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
     collections::{BTreeMap, HashSet},
     mem,
@@ -53,8 +53,7 @@ pub struct DmxEngine {
     // animation_base_times: BTreeMap<u8, f64>,
     start_time: Instant,
 
-    pub dmx_universe_ports: [Option<Box<dyn SerialPort>>; 2],
-    artnet_output: DmxEngineArtnetOutput,
+    output_tx: Sender<DmxOutputFrame>,
 
     running_setup: bool,
     setup_start_time: Instant,
@@ -66,18 +65,102 @@ pub struct DmxEngine {
     graph_overlay_scenes: Vec<u8>,
 }
 
+#[derive(Clone, Copy)]
+struct DmxOutputFrame {
+    universes: [[u8; 513]; NUM_DMX_UNIVERSES],
+}
+
+fn output_worker(
+    receiver: Receiver<DmxOutputFrame>,
+    mut ports: [Option<Box<dyn SerialPort>>; 2],
+    mut artnet: DmxEngineArtnetOutput,
+    state_ref: Arc<AppState>,
+) {
+    while let Ok(frame) = receiver.recv() {
+        let mut artnet_failed = false;
+        if let Some(ref mut socket) = artnet.socket {
+            let receivers = state_ref
+                .artnet_output
+                .read()
+                .map(|output| output.receivers.clone())
+                .unwrap_or_default();
+            for (universe_no, universe) in frame.universes.iter().enumerate() {
+                artnet.universe_buffers[universe_no].copy_from_slice(&universe[1..]);
+                let command = ArtCommand::Output(artnet_protocol::Output {
+                    port_address: (universe_no as u8).into(),
+                    physical: universe_no as u8,
+                    data: artnet.universe_buffers[universe_no].clone().into(),
+                    ..artnet_protocol::Output::default()
+                });
+                let Ok(bytes) = command.write_to_buffer() else {
+                    error!("Failed to serialize Art-Net output for universe {universe_no}");
+                    continue;
+                };
+                for destination in receivers.iter().filter(|destination| destination.enabled) {
+                    if let Err(err) = socket.send_to(&bytes, destination.address) {
+                        error!("Send ArtNet UDP to {}: {err:?}", destination.address);
+                        artnet_failed = true;
+                        if let Ok(mut health) = state_ref.health_data.write() {
+                            health.artnet_health_state = false;
+                        }
+                        break;
+                    }
+                }
+                if artnet_failed {
+                    break;
+                }
+            }
+        }
+        if artnet_failed {
+            artnet.socket = None;
+        }
+
+        for (universe_no, port_slot) in ports.iter_mut().enumerate() {
+            let Some(mut port) = port_slot.take() else {
+                continue;
+            };
+            let result = (|| -> anyhow::Result<()> {
+                port.set_break()?;
+                spin_sleep::sleep(Duration::from_micros(100));
+                port.clear_break()?;
+                spin_sleep::sleep(Duration::from_micros(12));
+                port.write_all(&frame.universes[universe_no])?;
+                Ok(())
+            })();
+            if let Err(err) = result {
+                let port_path = state_ref
+                    .health_data
+                    .read()
+                    .ok()
+                    .and_then(|health| {
+                        health
+                            .dmx_universes_healthy
+                            .get(universe_no)
+                            .map(|state| state.port.clone())
+                    })
+                    .unwrap_or_else(|| format!("universe {universe_no}"));
+                error!("[DMX] Output disabled on {port_path}: {err}");
+                if let Ok(mut health) = state_ref.health_data.write() {
+                    health.dmx_universes_healthy[universe_no] =
+                        DmxHealth::error(port_path, format!("DMX output disabled: {err}"));
+                }
+            } else {
+                *port_slot = Some(port);
+            }
+        }
+    }
+}
+
 const SETUP_SECS: u64 = 10;
 
 impl DmxEngine {
     pub fn start_setup(&mut self) {
         self.running_setup = true;
         self.setup_start_time = Instant::now();
-        self.system_out
-            .send(SystemMessage::Log(
-                "[DMX] Engine setup started...".to_string(),
-                LogLevel::Debug,
-            ))
-            .unwrap();
+        let _ = self.system_out.send(SystemMessage::Log(
+            "[DMX] Engine setup started...".to_string(),
+            LogLevel::Debug,
+        ));
     }
 
     fn open_hw_interface(
@@ -97,17 +180,15 @@ impl DmxEngine {
             .open()
         {
             Ok(port) => {
-                sys.send(SystemMessage::Log(
+                let _ = sys.send(SystemMessage::Log(
                     format!("[DMX] iface {port_path} (baud = {baud_rate}): OK"),
                     LogLevel::Info,
-                ))
-                .unwrap();
+                ));
                 (Some(port), DmxHealth::healthy(port_path.to_string()))
             }
             Err(err) => {
                 let error_message = format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}");
-                sys.send(SystemMessage::Log(error_message.clone(), LogLevel::Err))
-                    .unwrap();
+                let _ = sys.send(SystemMessage::Log(error_message.clone(), LogLevel::Err));
                 (None, DmxHealth::error(port_path.to_string(), error_message))
             }
         }
@@ -143,24 +224,20 @@ impl DmxEngine {
                 Ok(s) => {
                     health_state.artnet_health_state = true;
 
-                    system_out
-                        .send(SystemMessage::Log(
-                            "Initialized ArtNet".to_string(),
-                            LogLevel::Debug,
-                        ))
-                        .unwrap();
+                    let _ = system_out.send(SystemMessage::Log(
+                        "Initialized ArtNet".to_string(),
+                        LogLevel::Debug,
+                    ));
 
                     Some(s)
                 }
                 Err(err) => {
                     health_state.artnet_health_state = false;
 
-                    system_out
-                        .send(SystemMessage::Log(
-                            format!("Could not create ARTNET socket: {err}"),
-                            LogLevel::Err,
-                        ))
-                        .unwrap();
+                    let _ = system_out.send(SystemMessage::Log(
+                        format!("Could not create ARTNET socket: {err}"),
+                        LogLevel::Err,
+                    ));
                     None
                 }
             }
@@ -171,6 +248,17 @@ impl DmxEngine {
         };
 
         mem::drop(health_state);
+
+        let (output_tx, output_rx) = bounded(2);
+        let output_state = Arc::clone(&state_ref);
+        let worker_result = std::thread::Builder::new()
+            .name("dmx-output".to_string())
+            .spawn(move || {
+                output_worker(output_rx, dmx_universe_ports, artnet_output, output_state)
+            });
+        if let Err(err) = worker_result {
+            error!("[DMX] Failed to start output worker: {err}");
+        }
 
         {
             let mut engine_state = state_ref.dmx_engine.write().unwrap();
@@ -184,8 +272,7 @@ impl DmxEngine {
             system_out,
             // animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
-            dmx_universe_ports,
-            artnet_output,
+            output_tx,
             running_setup: false,
             setup_start_time: Instant::now(),
             scene_graph_runtime: SceneGraphRuntime::default(),
@@ -205,12 +292,10 @@ impl DmxEngine {
 
             if self.setup_start_time.elapsed().as_secs() >= SETUP_SECS {
                 self.running_setup = false;
-                self.system_out
-                    .send(SystemMessage::Log(
-                        "[DMX] Engine setup complete.".to_string(),
-                        LogLevel::Info,
-                    ))
-                    .unwrap();
+                let _ = self.system_out.send(SystemMessage::Log(
+                    "[DMX] Engine setup complete.".to_string(),
+                    LogLevel::Info,
+                ));
             }
 
             return;
@@ -230,9 +315,9 @@ impl DmxEngine {
                     let (msg, event) = self.apply(&mut state, ev);
 
                     if let Some(msg) = msg {
-                        self.system_out
-                            .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug))
-                            .unwrap();
+                        let _ = self
+                            .system_out
+                            .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug));
                     }
 
                     if let Some(ev) = event {
@@ -266,11 +351,7 @@ impl DmxEngine {
             now.elapsed()
         };
 
-        let dmx_write = {
-            let now = Instant::now();
-            self.write_to_output();
-            now.elapsed()
-        };
+        let dmx_write = self.submit_output_frame();
 
         DmxTickSpeeds {
             dmx_engine,
@@ -278,97 +359,21 @@ impl DmxEngine {
         }
     }
 
-    fn write_to_output(&mut self) {
-        self.write_to_artnet();
-        self.write_to_serial();
-    }
-
-    fn write_to_artnet(&mut self) {
-        let Some(ref mut socket) = self.artnet_output.socket else {
-            // debug!("NO ARTNET");
-            return;
+    fn submit_output_frame(&self) -> Duration {
+        let now = Instant::now();
+        let mut frame = DmxOutputFrame {
+            universes: [[0; 513]; NUM_DMX_UNIVERSES],
         };
-
-        let artnet_out = self.state_ref.artnet_output.read().unwrap();
-
-        for (universe_no, universe_lock) in self.state_ref.dmx_universes.iter().enumerate() {
-            let buffer = universe_lock.read().unwrap();
-
-            // NOTE: removing the first element since internally, we use a length of 513.
-            self.artnet_output.universe_buffers[universe_no]
-                .copy_from_slice(&buffer.dmx_buffer[1..]);
-
-            let command = ArtCommand::Output(artnet_protocol::Output {
-                port_address: (universe_no as u8).into(),
-                sequence: 0, // 3. Disable sequence checking for stability
-                physical: universe_no as u8,
-                // TODO: this is evil.
-                data: self.artnet_output.universe_buffers[universe_no]
-                    .clone()
-                    .into(),
-                ..artnet_protocol::Output::default()
-            });
-
-            let Ok(bytes) = command.write_to_buffer() else {
-                error!("Failed to serialize Art-Net output for universe {universe_no}");
-                continue;
-            };
-
-            for destination in &artnet_out.receivers {
-                if !destination.enabled {
-                    continue;
-                }
-
-                if let Err(err) = socket.send_to(&bytes, destination.address) {
-                    error!("Send ArtNet UDP to {}: {err:?}", destination.address);
-                }
+        for (index, universe) in self.state_ref.dmx_universes.iter().enumerate() {
+            if let Ok(buffer) = universe.read() {
+                frame.universes[index] = buffer.dmx_buffer;
             }
         }
-    }
-
-    fn write_to_serial(&mut self) {
-        for universe_no in 0..self.dmx_universe_ports.len() {
-            let buffer = self.state_ref.dmx_universes[universe_no].read().unwrap();
-
-            let Some(mut port) = self.dmx_universe_ports[universe_no].take() else {
-                continue;
-            };
-
-            let result = (|| -> anyhow::Result<()> {
-                port.set_break()?;
-                spin_sleep::sleep(Duration::from_micros(100));
-                port.clear_break()?;
-                spin_sleep::sleep(Duration::from_micros(12));
-                Ok(port.write_all(&buffer.dmx_buffer)?)
-            })();
-
-            drop(buffer);
-
-            match result {
-                Ok(()) => self.dmx_universe_ports[universe_no] = Some(port),
-                Err(err) => {
-                    let port_path = self
-                        .state_ref
-                        .health_data
-                        .read()
-                        .ok()
-                        .and_then(|health| {
-                            health
-                                .dmx_universes_healthy
-                                .get(universe_no)
-                                .map(|state| state.port.clone())
-                        })
-                        .unwrap_or_else(|| format!("universe {universe_no}"));
-                    error!("[DMX] Output disconnected on {port_path}: {err}");
-                    if let Ok(mut health) = self.state_ref.health_data.write() {
-                        health.dmx_universes_healthy[universe_no] = DmxHealth::error(
-                            port_path,
-                            format!("DMX output disconnected: {err}"),
-                        );
-                    }
-                }
-            }
+        match self.output_tx.try_send(frame) {
+            Ok(()) | Err(TrySendError::Full(_)) => {}
+            Err(TrySendError::Disconnected(_)) => error!("[DMX] Output worker is unavailable"),
         }
+        now.elapsed()
     }
 
     fn run_setup(&mut self) {
@@ -400,8 +405,6 @@ impl DmxEngine {
         }
 
         mem::drop(state);
-
-        self.write_to_output();
     }
 
     fn scene_graph_tick(&mut self, audio_snapshot: &blaulicht_shared::CollectedAudioSnapshot) {
@@ -906,9 +909,10 @@ impl DmxEngine {
                     return (Some("Base scene cannot appear in overlays"), None);
                 }
 
-                if overlays.iter().any(|scene_id| {
-                    !state.0.scenes.contains_key(scene_id)
-                }) {
+                if overlays
+                    .iter()
+                    .any(|scene_id| !state.0.scenes.contains_key(scene_id))
+                {
                     return (Some("Illegal overlay scene"), None);
                 }
                 if overlays.iter().collect::<HashSet<_>>().len() != overlays.len() {
@@ -922,7 +926,13 @@ impl DmxEngine {
                 for scene in &overlays {
                     // let animations = state.0.animation_templates.clone();
 
-                    let anim = &mut state.0.scenes.get_mut(scene).unwrap().sink.active_animations;
+                    let anim = &mut state
+                        .0
+                        .scenes
+                        .get_mut(scene)
+                        .unwrap()
+                        .sink
+                        .active_animations;
 
                     for (_selec, anim_set) in anim.iter_mut() {
                         for (anim_id, anim) in anim_set.iter_mut() {

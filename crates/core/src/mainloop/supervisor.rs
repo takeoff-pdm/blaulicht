@@ -54,6 +54,7 @@ pub fn supervisor_thread(
 
     let mut audio_device: Option<AudioDeviceT> = None;
     let mut device_changed = false;
+    let mut audio_thread: Option<thread::JoinHandle<()>> = None;
 
     signal_mainloop(
         Arc::clone(&audio_thread_control_signal),
@@ -109,6 +110,10 @@ pub fn supervisor_thread(
                     AudioThreadControlSignal::ABORTED,
                 );
 
+                if let Some(handle) = audio_thread.take() {
+                    let _ = handle.join();
+                }
+
                 break;
             }
             Err(TryRecvError::Empty) => {}
@@ -129,9 +134,7 @@ pub fn supervisor_thread(
         // Syncronize to config file.
         if device_changed {
             let mut audio = app_state.audio.write().unwrap();
-            audio.device_name = audio_device
-                .as_ref()
-                .and_then(|dev| dev.name().ok());
+            audio.device_name = audio_device.as_ref().and_then(|dev| dev.name().ok());
         }
 
         if audio_device.is_none() {
@@ -172,6 +175,11 @@ pub fn supervisor_thread(
                     AudioThreadControlSignal::ABORT,
                 );
             }
+            if let Some(handle) = audio_thread.take() {
+                if handle.join().is_err() {
+                    tracing::warn!("[SUPERVISOR] Audio worker did not exit cleanly");
+                }
+            }
         } else if device_changed {
             // TODO: just broadcast a state-change message.
             let Some(audio_input_device) = audio_device.clone() else {
@@ -180,7 +188,9 @@ pub fn supervisor_thread(
             };
 
             if system_out
-                .send(SystemMessage::AudioSelected(Some(audio_input_device.clone())))
+                .send(SystemMessage::AudioSelected(Some(
+                    audio_input_device.clone(),
+                )))
                 .is_err()
             {
                 tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
@@ -193,6 +203,16 @@ pub fn supervisor_thread(
             }
 
             let sys = system_out.clone();
+            if let Some(handle) = audio_thread.take() {
+                signal_mainloop(
+                    Arc::clone(&audio_thread_control_signal),
+                    Arc::clone(&app_state),
+                    AudioThreadControlSignal::ABORT,
+                );
+                if handle.join().is_err() {
+                    tracing::warn!("[SUPERVISOR] Previous audio worker did not exit cleanly");
+                }
+            }
             {
                 let audio_input_device = audio_input_device.clone();
                 let audio_thread_control_signal = audio_thread_control_signal.clone();
@@ -204,7 +224,7 @@ pub fn supervisor_thread(
 
                 let app_state = Arc::clone(&app_state);
 
-                thread::spawn(move || {
+                audio_thread = Some(thread::spawn(move || {
                     signal_mainloop(
                         Arc::clone(&audio_thread_control_signal),
                         Arc::clone(&app_state),
@@ -230,18 +250,19 @@ pub fn supervisor_thread(
                         );
                     }
 
-                    sys.send(SystemMessage::Log(
+                    let _ = sys.send(SystemMessage::Log(
                         "[audio] Thread died.".into(),
                         LogLevel::Warn,
-                    ))
-                    .unwrap();
-                });
+                    ));
+                }));
             }
 
             device_changed = false;
             tracing::info!(
                 "[AUDIO] Main thread started: <{}>",
-                audio_input_device.name().unwrap_or_else(|_| "unknown".to_string())
+                audio_input_device
+                    .name()
+                    .unwrap_or_else(|_| "unknown".to_string())
             );
 
             syslog!(

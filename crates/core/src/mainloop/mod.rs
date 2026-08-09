@@ -15,7 +15,8 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    CollectorOutputSpec, CollectorScratchParameters, SignalCollector, SignalCollectorParams,
+    AudioEventCursor, CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
+    SignalCollectorParams,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -149,8 +150,6 @@ pub fn run(
     )
     .with_context(|| "Failed to create signal collector")?;
 
-    let _plugin_wasm_engine_crashed = false;
-
     // Loop speed.
     let mut time_of_last_system_publish = 0;
     let mainloop_begin_time = Instant::now();
@@ -159,6 +158,7 @@ pub fn run(
     let mut dmx_time_of_last_tick = Instant::now();
     let mut plugins_time_of_last_tick = Instant::now();
     let mut spectrogram_time_of_last_tick = Instant::now();
+    let mut plugin_audio_cursor = AudioEventCursor::default();
 
     // Speeds.
     let mut plugin_manager_tick_duration = Duration::default();
@@ -206,10 +206,18 @@ pub fn run(
                 );
             }
             AudioThreadControlSignal::CRASHED | AudioThreadControlSignal::ABORTED => {
-                unreachable!("Illegal state: {control:?}")
+                return Err(anyhow!("Audio mainloop stopped unexpectedly: {control:?}"));
             }
             _ => {}
         }
+
+        let start = Instant::now();
+
+        // Publish one fresh collector state before any consumer reads it. This
+        // keeps plugin and DMX consumers on the same audio frame.
+        sig_collector
+            .tick(now)
+            .with_context(|| "Failed to tick audio input")?;
 
         if plugins_time_of_last_tick.elapsed() >= PLUGINS_TICK_TIME {
             let midi = {
@@ -235,7 +243,7 @@ pub fn run(
 
             // TODO: this is cursed code! - SLOW plugins cause DMX output congestion
             plugin_manager_tick_duration = plugin_manager.tick_external(
-                sig_collector.take_snapshot(),
+                sig_collector.snapshot_for(&mut plugin_audio_cursor),
                 &midi,
                 serial,
                 udp,
@@ -252,13 +260,7 @@ pub fn run(
             dmx_time_of_last_tick = Instant::now();
         }
 
-        let start = Instant::now();
-        sig_collector
-            .tick(now)
-            .with_context(|| "Failed to tick audio input")?;
-
         if spectrogram_time_of_last_tick.elapsed() >= spec_period {
-            // deadlock issues here!
             {
                 let mut ui_params = app_state.audio_params.write().unwrap();
                 if ui_params.changed {
@@ -275,8 +277,7 @@ pub fn run(
                 .audio_spectrogram
                 .write()
                 .unwrap()
-                .push_data(output.clone());
-
+                .push_data(output);
             spectrogram_time_of_last_tick = Instant::now();
         }
 

@@ -5,16 +5,32 @@ pub mod blaulicht;
 mod error;
 pub mod midi;
 pub mod serial;
-pub mod udp;
 mod state;
+pub mod udp;
 pub use artnet::*;
 pub use blaulicht::*;
 pub use blaulicht_shared::{
     ArtNetReceiverInfo, ExternalScreenInfo, PluginStateLocation, UdpReceived,
 };
 pub use midi::*;
-pub use udp::*;
 pub use state::*;
+pub use udp::*;
+
+#[no_mangle]
+pub extern "C" fn __blaulicht_plugin_abi_version() -> u32 {
+    blaulicht_shared::PLUGIN_ABI_VERSION
+}
+
+#[cfg(test)]
+mod abi_tests {
+    #[test]
+    fn exported_abi_version_matches_shared_protocol() {
+        assert_eq!(
+            super::__blaulicht_plugin_abi_version(),
+            blaulicht_shared::PLUGIN_ABI_VERSION
+        );
+    }
+}
 
 pub struct BufferSource<T, const N: usize> {
     buffer: [T; N],
@@ -78,9 +94,7 @@ pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_len
             PLUGIN.with(|slot| {
                 let mut plugin_slot = slot.borrow_mut();
                 let Some(plugin) = plugin_slot.as_mut() else {
-                    blaulicht::report_panic(
-                        "Plugin did not register itself during initialization",
-                    );
+                    blaulicht::report_panic("Plugin did not register itself during initialization");
                     return;
                 };
                 plugin.initialize(tick_input);

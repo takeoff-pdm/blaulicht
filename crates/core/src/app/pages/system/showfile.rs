@@ -70,18 +70,16 @@ impl BlaulichtApp {
 
         let mut dmx = self.data.state.dmx_engine.write().unwrap();
         let mut artnet = self.data.state.artnet_output.write().unwrap();
-        config::close_showfile(
-            &mut dmx,
-            &mut artnet,
-            &self.data.state.plugin_state_storage,
-        );
+        config::close_showfile(&mut dmx, &mut artnet, &self.data.state.plugin_state_storage);
+        self.visualizer_ui_state
+            .load_stage(crate::stage::StageScene::default());
     }
 
     fn load_showfile_path(&mut self, file: PathBuf) {
         let mut config = self.data.config.lock().unwrap();
         let mut dmx = self.data.state.dmx_engine.write().unwrap();
         let mut artnet = self.data.state.artnet_output.write().unwrap();
-        let ui_state = config::read_showfile(
+        let loaded_state = config::read_showfile(
             file.clone(),
             &mut dmx,
             &mut artnet,
@@ -103,8 +101,11 @@ impl BlaulichtApp {
         ));
         mem::drop(config);
 
-        if let Some(ui_state) = ui_state {
-            self.apply_showfile_ui_state(ui_state);
+        if let Some(loaded_state) = loaded_state {
+            self.visualizer_ui_state.load_stage(loaded_state.stage);
+            if let Some(ui_state) = loaded_state.ui {
+                self.apply_showfile_ui_state(ui_state);
+            }
         }
         self.show_popup(PopupSpec::with_duration(
             Duration::from_secs(2),
@@ -187,9 +188,11 @@ impl BlaulichtApp {
                 };
 
                 let showfile = config::CoreShowfile {
+                    format_version: config::current_showfile_version(),
                     engine: SaveEngineState::from(engine_snapshot),
                     artnet: artnet_state,
                     plugin_state,
+                    stage: self.visualizer_ui_state.stage.clone(),
                     ui: Some(self.showfile_ui_state()),
                 };
 
@@ -205,7 +208,7 @@ impl BlaulichtApp {
                         return;
                     }
                 };
-                if let Err(err) = std::fs::write(&path, &serialized) {
+                if let Err(err) = config::write_atomic(&path, serialized.as_bytes()) {
                     tracing::error!("Failed to write showfile {path:?}: {err}");
                     drop(config_mut);
                     self.show_popup(PopupSpec::with_duration(
@@ -485,7 +488,7 @@ impl BlaulichtApp {
         }
 
         if let Some(file) = picked {
-            let mut config = self.data.config.lock().unwrap();
+            let config = self.data.config.lock().unwrap();
 
             self.system_ui_state.open_file_dialog = None;
 
@@ -495,6 +498,25 @@ impl BlaulichtApp {
                     // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
                     // std::fs::write(file, serialized).unwrap();
 
+                    let previous_showfile = config.last_open_showfile.clone();
+                    mem::drop(config);
+                    if let Some(previous_showfile) = previous_showfile {
+                        match crate::stage_assets::copy_assets_for_save_as(
+                            &self.visualizer_ui_state.stage,
+                            &previous_showfile,
+                            &file,
+                        ) {
+                            Ok(stage) => self.visualizer_ui_state.stage = stage,
+                            Err(error) => {
+                                self.show_popup(PopupSpec::with_duration(
+                                    Duration::from_secs(4),
+                                    format!("Failed to copy stage assets: {error}"),
+                                ));
+                                return;
+                            }
+                        }
+                    }
+                    let mut config = self.data.config.lock().unwrap();
                     config.last_open_showfile = Some(file.to_path_buf());
                     //
                     // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();

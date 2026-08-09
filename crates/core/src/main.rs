@@ -253,6 +253,10 @@ fn main() -> anyhow::Result<()> {
             .with_inner_size([800.0, 480.0])
             .with_resizable(args.desktop_mode)
             .with_decorations(args.window_decorations),
+        // The visualizer is rendered in an egui GL callback and requires a
+        // real depth attachment for opaque fixture geometry and outlines.
+        depth_buffer: 24,
+        multisampling: 4,
         ..Default::default()
     };
 

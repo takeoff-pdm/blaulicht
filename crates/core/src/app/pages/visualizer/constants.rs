@@ -1,9 +1,15 @@
 use super::math::Vec3;
 
-pub(super) const FIXTURE_BODY_COLOR: [f32; 3] = [0.35, 0.35, 0.36];
-pub(super) const FIXTURE_EDGE_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
-pub(super) const JOINT_COLOR: [f32; 3] = [0.26, 0.26, 0.28];
-pub(super) const HEAD_BODY_COLOR: [f32; 3] = [0.18, 0.18, 0.2];
+pub(super) const FIXTURE_BODY_COLOR: [f32; 3] = [0.42, 0.44, 0.48];
+pub(super) const FIXTURE_EDGE_COLOR: [f32; 3] = [0.48, 0.58, 0.7];
+pub(super) const JOINT_COLOR: [f32; 3] = [0.34, 0.36, 0.4];
+pub(super) const HEAD_BODY_COLOR: [f32; 3] = [0.3, 0.32, 0.36];
+pub(super) const ROOM_FLOOR_COLOR: [f32; 3] = [0.1, 0.11, 0.14];
+pub(super) const ROOM_WALL_COLOR: [f32; 3] = [0.14, 0.15, 0.19];
+pub(super) const DEFAULT_ROOM_WIDTH: f32 = 24.0;
+pub(super) const DEFAULT_ROOM_DEPTH: f32 = 18.0;
+pub(super) const MIN_ROOM_DIMENSION: f32 = 8.0;
+pub(super) const MAX_ROOM_DIMENSION: f32 = 60.0;
 
 pub(super) const BASE_SIZE: Vec3 = Vec3 {
     x: 0.9,

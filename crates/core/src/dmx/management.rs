@@ -1,7 +1,5 @@
 use crate::dmx::{EngineState, FixtureState};
-use blaulicht_shared::{
-    fixture::state::{Fixture, FixtureGroup},
-};
+use blaulicht_shared::fixture::state::{Fixture, FixtureGroup};
 use std::collections::HashSet;
 use tracing::debug;
 
@@ -180,7 +178,10 @@ mod tests {
             .values()
             .next()
             .unwrap()[&7];
-        assert_eq!(active.fixture_timers.keys().copied().collect::<Vec<_>>(), vec![(0, 0)]);
+        assert_eq!(
+            active.fixture_timers.keys().copied().collect::<Vec<_>>(),
+            vec![(0, 0)]
+        );
         assert_eq!(active.fixture_timers[&(0, 0)].timer, 123);
         assert!(engine
             .0

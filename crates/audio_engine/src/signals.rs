@@ -180,10 +180,12 @@ const SILENCE_BEAT_MULTIPLIER: f32 = 2.0;
 // toward a plausible tempo without overriding strong evidence elsewhere.
 // Standard Davies & Plumbley weighting; librosa uses a log-normal variant.
 const TEMPO_PRIOR_CENTER_BPM: f32 = 120.0;
-// Minimum weighted autocorrelation peak to accept a new BPM estimate. Below
-// this, periodicity is too ambiguous — hold the previous BPM instead of
-// drifting to noise. Value tuned so typical 4/4 music passes easily.
-const BPM_CONFIDENCE_THRESHOLD: f32 = 0.01;
+// Minimum weighted autocorrelation peak to accept a new BPM estimate. The
+// weighted score includes a tempo prior, so quiet or heavily layered tracks
+// can have a stable rhythm below the old 0.01 cutoff. 0.008 retains the
+// confidence gate while admitting those tracks without accepting near-zero
+// correlation noise.
+const BPM_CONFIDENCE_THRESHOLD: f32 = 0.008;
 const MIN_BPM: f32 = 80.0;
 const MAX_BPM: f32 = 200.0;
 const MID_FREQ_HIGH: f32 = 2000.0;

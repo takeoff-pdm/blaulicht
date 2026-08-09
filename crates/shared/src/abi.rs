@@ -1,8 +1,11 @@
 use crate::ControlEventCollection;
-use bincode::{Decode, Encode, config};
-use serde::Serialize;
-use std::{fmt::Display, ops::Range};
+use bincode::{config, Decode, Encode};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use strum::EnumIter;
+
+/// Binary protocol version used for host-to-plugin snapshots.
+pub const PLUGIN_ABI_VERSION: u32 = 2;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
@@ -13,10 +16,26 @@ pub struct TickInput {
     pub events: ControlEventCollection,
 }
 
+/// State of the audio source as observed by the analysis worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub enum AudioSourceStatus {
+    Active,
+    NoFrame,
+    Disconnected,
+    Ended,
+    Error,
+}
+
+impl Default for AudioSourceStatus {
+    fn default() -> Self {
+        Self::NoFrame
+    }
+}
+
 /// Macro musical section of the currently playing track, classified by the
 /// audio engine. Unlike the per-frame `beat_trigger`/`beat_active`, this is a
 /// sustained state describing whether the track is dropping vs. quiet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Encode, Decode)]
 pub enum SectionState {
     /// No / low sustained bass (quiet section). Default until enough audio seen.
     #[default]
@@ -27,7 +46,7 @@ pub enum SectionState {
     ActiveBeat,
 }
 
-#[derive(Debug, Clone, Default, Encode, Decode)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Encode, Decode)]
 pub struct CollectedAudioSnapshot {
     pub time: u64,
     pub volume: u8,
@@ -44,6 +63,17 @@ pub struct CollectedAudioSnapshot {
     pub section_state: SectionState,
     /// Normalized (0..1) confidence of the BPM/periodicity estimate.
     pub bpm_confidence: f32,
+    /// Monotonic event identity. Zero means that no event has been observed.
+    #[serde(default)]
+    pub beat_event_id: u64,
+    /// Monotonic event identity. Zero means that no event has been observed.
+    #[serde(default)]
+    pub onset_event_id: u64,
+    /// Age of the source frame used for the continuous values.
+    #[serde(default)]
+    pub frame_age_ms: u32,
+    #[serde(default)]
+    pub source_status: AudioSourceStatus,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]

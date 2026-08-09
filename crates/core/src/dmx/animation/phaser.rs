@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, f32::consts::PI};
 
 use blaulicht_shared::{
-    AnimationSpecBodyPhaser, FixtureProperty, MathematicalBaseFunction, PhaserKind,
-    palette::Palette,
+    palette::Palette, AnimationSpecBodyPhaser, FixtureProperty, MathematicalBaseFunction,
+    PhaserKind,
 };
 
 pub fn generate(
@@ -16,8 +16,12 @@ pub fn generate(
 
     let value = match &self_.kind {
         PhaserKind::Mathematical(mathematical_phaser) => {
-            let min = mathematical_phaser.amplitude_min.resolve(palettes, property) as f32;
-            let max = mathematical_phaser.amplitude_max.resolve(palettes, property) as f32;
+            let min = mathematical_phaser
+                .amplitude_min
+                .resolve(palettes, property) as f32;
+            let max = mathematical_phaser
+                .amplitude_max
+                .resolve(palettes, property) as f32;
             let range = max - min;
 
             let mut mathematical_phaser = mathematical_phaser.clone();
