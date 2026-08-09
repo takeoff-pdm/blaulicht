@@ -55,3 +55,17 @@ pub fn section_label(state: blaulicht_shared::SectionState) -> (&'static str, eg
         SectionState::Breakdown => ("\u{25CB} BREAKDOWN", egui::Color32::from_gray(140)),
     }
 }
+
+/// A bounded divider for horizontal toolbars. `Ui::separator` uses the full
+/// available cross-axis and can make a toolbar consume the entire page height.
+pub fn toolbar_separator(ui: &mut egui::Ui, height: f32) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(1.0, height.max(1.0)),
+        egui::Sense::hover(),
+    );
+    ui.painter().vline(
+        rect.center().x,
+        rect.y_range(),
+        ui.visuals().widgets.noninteractive.bg_stroke,
+    );
+}

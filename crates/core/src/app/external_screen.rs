@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use crate::{
-    app::{BlaulichtApp, ExternalScreen},
+    app::{page::PageRenderContext, BlaulichtApp, ExternalScreen},
     config::{
-        ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab, ShowfileExternalScreen,
-        ShowfileUiState,
+        PageRenderMode, ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab,
+        ShowfileExternalScreen, ShowfileUiState,
     },
     state::{PluginOpenState, ScreenId},
 };
@@ -18,6 +18,7 @@ use strum::IntoEnumIterator;
 #[derive(Clone)]
 pub(crate) struct Pane {
     kind: PaneKind,
+    render_mode: PageRenderMode,
 }
 
 #[derive(Clone, Copy)]
@@ -30,12 +31,14 @@ impl Pane {
     fn new(page: AppPage) -> Self {
         Self {
             kind: PaneKind::Page(page),
+            render_mode: PageRenderMode::Default,
         }
     }
 
     fn plugin_ui(plugin_id: u8) -> Self {
         Self {
             kind: PaneKind::PluginUi { plugin_id },
+            render_mode: PageRenderMode::Default,
         }
     }
 
@@ -57,13 +60,23 @@ impl Pane {
     }
 
     fn title_text(&self) -> WidgetText {
-        self.label().into()
+        if self.render_mode == PageRenderMode::Dynamic {
+            format!("{} {}", self.label(), egui_phosphor::regular::ARROWS_OUT).into()
+        } else {
+            self.label().into()
+        }
     }
 
     fn to_showfile_tab(&self) -> ShowfileDockTab {
         match self.kind {
-            PaneKind::Page(page) => ShowfileDockTab::Page(page),
-            PaneKind::PluginUi { plugin_id } => ShowfileDockTab::PluginUi { plugin_id },
+            PaneKind::Page(page) => ShowfileDockTab::PageConfig {
+                page,
+                render_mode: self.render_mode,
+            },
+            PaneKind::PluginUi { plugin_id } => ShowfileDockTab::PluginUi {
+                plugin_id,
+                render_mode: self.render_mode,
+            },
         }
     }
 }
@@ -72,7 +85,17 @@ impl From<ShowfileDockTab> for Pane {
     fn from(tab: ShowfileDockTab) -> Self {
         match tab {
             ShowfileDockTab::Page(page) => Pane::new(page),
-            ShowfileDockTab::PluginUi { plugin_id } => Pane::plugin_ui(plugin_id),
+            ShowfileDockTab::PageConfig { page, render_mode } => Self {
+                kind: PaneKind::Page(page),
+                render_mode,
+            },
+            ShowfileDockTab::PluginUi {
+                plugin_id,
+                render_mode,
+            } => Self {
+                kind: PaneKind::PluginUi { plugin_id },
+                render_mode,
+            },
         }
     }
 }
@@ -201,7 +224,12 @@ impl ExternalScreen {
 
 fn default_saved_dock_node() -> ShowfileDockNode {
     ShowfileDockNode::Leaf {
-        tabs: AppPage::iter().map(ShowfileDockTab::Page).collect(),
+        tabs: AppPage::iter()
+            .map(|page| ShowfileDockTab::PageConfig {
+                page,
+                render_mode: PageRenderMode::Default,
+            })
+            .collect(),
         active: 0,
     }
 }
@@ -305,7 +333,11 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
             .inner_margin(Margin::same(8))
             .stroke(Stroke::new(2.0, Color32::GRAY))
             .show(ui, |ui| {
-                let (rect, _response) = ui.allocate_exact_size(vec2(723.0, 480.0), Sense::empty());
+                let requested_size = match tab.render_mode {
+                    PageRenderMode::Default => vec2(723.0, 480.0),
+                    PageRenderMode::Dynamic => ui.available_size().max(vec2(1.0, 1.0)),
+                };
+                let (rect, _response) = ui.allocate_exact_size(requested_size, Sense::empty());
                 let mut child_ui = ui.new_child(
                     egui::UiBuilder::new()
                         .max_rect(rect)
@@ -313,6 +345,7 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
                 );
 
                 child_ui.set_clip_rect(rect);
+                let render_context = PageRenderContext::new(tab.render_mode, rect.size());
 
                 match tab.kind {
                     PaneKind::Page(page) => {
@@ -321,6 +354,7 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
                             &mut child_ui,
                             self.ctx,
                             self.screen_id,
+                            render_context,
                         );
                     }
                     PaneKind::PluginUi { plugin_id } => {
@@ -329,6 +363,52 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
                     }
                 }
             });
+    }
+
+    fn context_menu(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, _path: egui_dock::NodePath) {
+        ui.label("Rendering");
+        if ui
+            .radio_value(
+                &mut tab.render_mode,
+                PageRenderMode::Default,
+                "Default (723 x 480)",
+            )
+            .clicked()
+        {
+            self.app.mark_showfile_dirty();
+            ui.close();
+        }
+        if ui
+            .radio_value(
+                &mut tab.render_mode,
+                PageRenderMode::Dynamic,
+                "Dynamic (fill tile)",
+            )
+            .clicked()
+        {
+            self.app.mark_showfile_dirty();
+            ui.close();
+        }
+    }
+
+    fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
+        let mode = match tab.render_mode {
+            PageRenderMode::Default => "Default rendering: fixed 723 x 480 canvas",
+            PageRenderMode::Dynamic => "Dynamic rendering: fills and reflows with the tile",
+        };
+        response.clone().on_hover_text(mode);
+    }
+
+    fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
+        match (tab.render_mode, tab.kind) {
+            (PageRenderMode::Default, _) => [true, true],
+            (
+                PageRenderMode::Dynamic,
+                PaneKind::Page(AppPage::Visualizer | AppPage::SceneGraph),
+            ) => [false, false],
+            (PageRenderMode::Dynamic, PaneKind::PluginUi { .. }) => [true, true],
+            (PageRenderMode::Dynamic, PaneKind::Page(_)) => [false, true],
+        }
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
@@ -424,7 +504,8 @@ impl BlaulichtApp {
 
         if let Some(&primary_index) = owned_indices.first() {
             if let Some(screen) = self.external_screens.get_mut(primary_index) {
-                let dims_match = (screen.dimensions.x.round() as u32 == dimensions.x.round() as u32)
+                let dims_match = (screen.dimensions.x.round() as u32
+                    == dimensions.x.round() as u32)
                     && (screen.dimensions.y.round() as u32 == dimensions.y.round() as u32);
                 if dims_match {
                     let mut removed_any = false;
@@ -675,7 +756,10 @@ mod tests {
 
         match saved_again.layout {
             ShowfileDockNode::Leaf { tabs, .. } => {
-                assert!(tabs.contains(&ShowfileDockTab::PluginUi { plugin_id: 2 }));
+                assert!(tabs.contains(&ShowfileDockTab::PluginUi {
+                    plugin_id: 2,
+                    render_mode: PageRenderMode::Default,
+                }));
             }
             ShowfileDockNode::Split { .. } => panic!("expected leaf layout"),
         }
@@ -690,5 +774,48 @@ mod tests {
         let saved_again = restored.to_showfile();
 
         assert_eq!(saved_again.owner_plugin_id, Some(7));
+    }
+
+    #[test]
+    fn legacy_page_tabs_load_as_default_rendering() {
+        let pane = Pane::from(ShowfileDockTab::Page(AppPage::Audio));
+        assert_eq!(pane.render_mode, PageRenderMode::Default);
+        assert!(matches!(pane.kind, PaneKind::Page(AppPage::Audio)));
+    }
+
+    #[test]
+    fn dynamic_modes_survive_split_layout_round_trip() {
+        let mut screen = ExternalScreen::new(vec2(1600.0, 900.0));
+        let mut visualizer = Pane::new(AppPage::Visualizer);
+        visualizer.render_mode = PageRenderMode::Dynamic;
+        let mut plugin = Pane::plugin_ui(9);
+        plugin.render_mode = PageRenderMode::Dynamic;
+        screen.dock_state = DockState::new(vec![visualizer]);
+        screen
+            .dock_state
+            .main_surface_mut()
+            .split_right(NodeIndex::root(), 0.6, vec![plugin]);
+
+        let restored = ExternalScreen::from_showfile(screen.to_showfile());
+        let saved = restored.to_showfile();
+        let ShowfileDockNode::Split { first, second, .. } = saved.layout else {
+            panic!("expected split layout");
+        };
+
+        let tabs = [first, second]
+            .into_iter()
+            .flat_map(|node| match *node {
+                ShowfileDockNode::Leaf { tabs, .. } => tabs,
+                ShowfileDockNode::Split { .. } => Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        assert!(tabs.contains(&ShowfileDockTab::PageConfig {
+            page: AppPage::Visualizer,
+            render_mode: PageRenderMode::Dynamic,
+        }));
+        assert!(tabs.contains(&ShowfileDockTab::PluginUi {
+            plugin_id: 9,
+            render_mode: PageRenderMode::Dynamic,
+        }));
     }
 }

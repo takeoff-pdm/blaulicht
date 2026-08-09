@@ -80,31 +80,66 @@ pub fn paint_button_label(
 //
 
 pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool {
+    button_enabled(ui, true, active, label, size, None)
+}
+
+pub fn action_button(
+    ui: &mut Ui,
+    enabled: bool,
+    label: &str,
+    size: ButtonSize,
+    disabled_reason: Option<&str>,
+) -> bool {
+    button_enabled(ui, enabled, false, label, size, disabled_reason)
+}
+
+fn button_enabled(
+    ui: &mut Ui,
+    enabled: bool,
+    active: bool,
+    label: &str,
+    size: ButtonSize,
+    disabled_reason: Option<&str>,
+) -> bool {
     const RADIUS: f32 = 1.0;
     // const BORDER_WIDTH: f32 = 6.0;
 
     let (rect, response) = ui.allocate_exact_size(
         size.dim().0,
-        Sense::click().union(Sense::focusable_noninteractive()),
+        if enabled {
+            Sense::click().union(Sense::focusable_noninteractive())
+        } else {
+            Sense::hover()
+        },
     );
 
     let is_focussed = response.has_focus();
 
     let painter = ui.painter();
 
-    let normal_bg_color = match active {
-        true => match ui.visuals().dark_mode {
-            true => Color32::from_rgb(90, 150, 230),
-            false => Color32::from_rgb(60, 120, 200),
-        },
-        false => ui.visuals().widgets.active.bg_fill,
+    let normal_bg_color = if !enabled {
+        ui.visuals().widgets.inactive.bg_fill.gamma_multiply(0.65)
+    } else {
+        match active {
+            true => match ui.visuals().dark_mode {
+                true => Color32::from_rgb(90, 150, 230),
+                false => Color32::from_rgb(60, 120, 200),
+            },
+            false => ui.visuals().widgets.active.bg_fill,
+        }
     };
 
-    let text_color = text_color_for_bg(ui, normal_bg_color);
+    let text_color = if enabled {
+        text_color_for_bg(ui, normal_bg_color)
+    } else {
+        ui.visuals().weak_text_color()
+    };
 
     let is_pressed = response.is_pointer_button_down_on();
 
-    let bg_color = if is_pressed {
+    let bg_color = if !enabled {
+        normal_bg_color
+    } else if is_pressed {
         normal_bg_color.gamma_multiply(1.2)
     } else if response.hovered() {
         normal_bg_color.gamma_multiply(1.4)
@@ -136,12 +171,19 @@ pub fn button(ui: &mut Ui, active: bool, label: &str, size: ButtonSize) -> bool 
         ui.painter().rect_stroke(
             rect,
             egui::CornerRadius::same(1),
-            egui::Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
+            egui::Stroke::new(1.0_f32, Color32::from_rgb(255, 255, 255)),
             egui::StrokeKind::Middle,
         );
     }
 
     paint_button_label(painter, rect, label, size.dim().1, text_color);
 
-    response.clicked()
+    if !enabled {
+        if let Some(reason) = disabled_reason {
+            response.on_hover_text(reason);
+        }
+        false
+    } else {
+        response.clicked()
+    }
 }

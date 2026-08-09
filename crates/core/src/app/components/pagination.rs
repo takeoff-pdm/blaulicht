@@ -100,7 +100,52 @@ impl Pagination {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, page_ui: impl FnOnce(&mut Ui)) {
+        self.ui_responsive(ui, false, page_ui);
+    }
+
+    pub fn ui_responsive(
+        &mut self,
+        ui: &mut egui::Ui,
+        compact: bool,
+        page_ui: impl FnOnce(&mut Ui),
+    ) {
         debug_assert!(self.prepared_items, "{}", Self::ENSURE_PREPARED_ASSERT_MSG);
+
+        if compact {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 150.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    let has_prev = self.current_page_index > 0;
+                    let has_next =
+                        self.total_pages > 0 && self.current_page_index + 1 < self.total_pages;
+                    let page_button =
+                        ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
+                    let (current, total) = if self.total_pages == 0 {
+                        (0, 0)
+                    } else {
+                        (self.current_page_index + 1, self.total_pages)
+                    };
+
+                    ui.horizontal_wrapped(|ui| {
+                        if components::button(ui, false, "◀", page_button) && has_prev {
+                            self.current_page_index -= 1;
+                        }
+                        if components::button(ui, false, "▶", page_button) && has_next {
+                            self.current_page_index += 1;
+                        }
+                        ui.label(format!("Page {current} / {total}"));
+                        ui.label(format!("Total: {}", self.total_items));
+                    });
+                    ui.separator();
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Min).with_main_wrap(true),
+                        page_ui,
+                    );
+                },
+            );
+            return;
+        }
 
         ui.allocate_ui_with_layout(
             egui::vec2(self.ui_width, ui.available_height()), // fixed width, max height

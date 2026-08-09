@@ -134,6 +134,53 @@ mod tests {
         assert_eq!(collector.scratch.onset_history.len(), 1);
         assert!(collector.current.bass_avg >= collector.params.bass_volume as u8);
     }
+
+    #[test]
+    fn first_tempo_lock_anchors_at_now_without_replaying_backlog() {
+        let mut collector =
+            collector_with_freqs(vec![frequency(60.0, 2.0), frequency(500.0, 1.0)], 100);
+        collector.scratch.bpm_estimate = 150.0;
+
+        collector.bass(22_630, true).unwrap();
+
+        assert!(collector.scratch.beat_scheduler_initialized);
+        assert_eq!(collector.scratch.beat_marker_ms, 22_630.0);
+        assert!(!collector.scratch.is_on_beat);
+    }
+
+    #[test]
+    fn overdue_scheduler_emits_at_most_one_current_beat() {
+        let mut collector = collector_with_freqs(vec![frequency(60.0, 2.0)], 100);
+        collector.scratch.beat_scheduler_initialized = true;
+        collector.scratch.beat_interval_ms = 400.0;
+        collector.scratch.beat_marker_ms = 0.0;
+        collector.scratch.last_bass_gate_open_time = 5_000;
+
+        collector.schedule_beat(5_000, false);
+        assert!(collector.scratch.is_on_beat);
+        assert_eq!(collector.scratch.beat_marker_ms, 4_800.0);
+
+        collector.scratch.is_on_beat = false;
+        collector.schedule_beat(5_010, false);
+        assert!(!collector.scratch.is_on_beat);
+        assert_eq!(collector.scratch.beat_marker_ms, 4_800.0);
+    }
+
+    #[test]
+    fn onset_inside_refractory_window_corrects_without_duplicate() {
+        let mut collector = collector_with_freqs(vec![frequency(60.0, 2.0)], 100);
+        collector.scratch.beat_scheduler_initialized = true;
+        collector.scratch.beat_interval_ms = 400.0;
+        collector.scratch.beat_marker_ms = 400.0;
+        collector.scratch.time_of_last_bpm_marker = 400;
+        collector.scratch.beat_needs_sync = true;
+
+        collector.schedule_beat(420, true);
+
+        assert!(!collector.scratch.is_on_beat);
+        assert!(!collector.scratch.actual_onset_peak);
+        assert!((collector.scratch.beat_marker_ms - 402.0).abs() < 0.001);
+    }
 }
 
 #[cfg(feature = "stream_in")]
@@ -585,6 +632,14 @@ where
 
             if self.scratch.bpm_estimate > 0.0 {
                 self.scratch.beat_interval_ms = 60000.0 / self.scratch.bpm_estimate;
+                if !self.scratch.beat_scheduler_initialized {
+                    // A tempo can lock several seconds after startup. Anchor at lock time
+                    // instead of replaying every beat between process start and now.
+                    self.scratch.beat_marker_ms = now as f64;
+                    self.scratch.time_of_last_bpm_marker = now;
+                    self.scratch.beat_scheduler_initialized = true;
+                    self.scratch.beat_needs_sync = true;
+                }
             }
 
             // Trim transient history + compute average strength for debug data.
@@ -625,54 +680,7 @@ where
             );
         }
 
-        // Beat scheduling runs every tick so predicted beats stay glued to wall-clock time.
-        if self.scratch.beat_interval_ms > 0.0 {
-            let now_f = now as f32;
-            let expected =
-                self.scratch.time_of_last_bpm_marker as f32 + self.scratch.beat_interval_ms;
-            let window =
-                (self.scratch.beat_interval_ms * PHASE_WINDOW_FRACTION).max(MIN_PHASE_WINDOW_MS);
-
-            if onset_peak {
-                let since_last = now_f - self.scratch.time_of_last_bpm_marker as f32;
-                let phase_error = now_f - expected;
-                // Dead-zone: suppress an onset beat if one already fired very recently
-                // (predicted beat just fired 1-2 ticks ago and set beat_needs_sync).
-                let past_dead_zone = since_last >= MIN_PHASE_WINDOW_MS;
-                if past_dead_zone && (self.scratch.beat_needs_sync || phase_error.abs() <= window) {
-                    self.scratch.is_on_beat = true;
-                    self.scratch.actual_onset_peak = true;
-                    self.scratch.time_of_last_bpm_marker = now;
-                    self.scratch.beat_needs_sync = false;
-
-                    let adjusted = self.scratch.beat_interval_ms + phase_error * PHASE_CORRECTION;
-                    self.scratch.beat_interval_ms =
-                        adjusted.clamp(60000.0 / MAX_BPM, 60000.0 / MIN_BPM);
-                }
-            }
-
-            if !self.scratch.is_on_beat && now_f >= expected {
-                // Snap marker to the predicted instant, not `now`. This stops phase drift
-                // when the mainloop polls a tiny bit later than the beat.
-                let expected_marker = expected.max(0.0) as usize;
-                let silence_threshold =
-                    (SILENCE_BEAT_MULTIPLIER * self.scratch.beat_interval_ms) as usize;
-                let elapsed_silence = now.saturating_sub(self.scratch.last_bass_gate_open_time);
-
-                if elapsed_silence < silence_threshold {
-                    self.scratch.is_on_beat = true;
-                    self.scratch.time_of_last_bpm_marker = expected_marker;
-                    if !onset_peak {
-                        self.scratch.beat_needs_sync = true;
-                    }
-                } else {
-                    // Bass has been silent for too long; advance the marker without
-                    // firing so we don't dump a backlog of predicted beats when sound returns.
-                    self.scratch.time_of_last_bpm_marker = expected_marker;
-                    self.scratch.beat_needs_sync = true;
-                }
-            }
-        }
+        self.schedule_beat(now, onset_peak);
 
         if has_new_frame {
             let bpm_f32 = self.scratch.bpm_estimate;
@@ -709,6 +717,61 @@ where
         }
 
         Ok(())
+    }
+
+    fn schedule_beat(&mut self, now: usize, onset_peak: bool) {
+        if !self.scratch.beat_scheduler_initialized || self.scratch.beat_interval_ms <= 0.0 {
+            return;
+        }
+
+        let now_f = now as f64;
+        let interval = self.scratch.beat_interval_ms as f64;
+        let expected = self.scratch.beat_marker_ms + interval;
+        let window = (interval * PHASE_WINDOW_FRACTION as f64).max(MIN_PHASE_WINDOW_MS as f64);
+        let refractory = (interval * 0.35).max(MIN_PHASE_WINDOW_MS as f64);
+
+        if onset_peak {
+            let since_last = (now_f - self.scratch.beat_marker_ms).max(0.0);
+            let phase_error = now_f - expected;
+            if since_last >= refractory
+                && (self.scratch.beat_needs_sync || phase_error.abs() <= window)
+            {
+                self.scratch.is_on_beat = true;
+                self.scratch.actual_onset_peak = true;
+                self.scratch.beat_marker_ms = now_f;
+                self.scratch.time_of_last_bpm_marker = now;
+                self.scratch.beat_needs_sync = false;
+            } else if since_last < refractory && self.scratch.beat_needs_sync {
+                // A predicted beat already fired. Pull its anchor toward the nearby
+                // onset without publishing a second beat event.
+                self.scratch.beat_marker_ms += since_last * PHASE_CORRECTION as f64;
+                self.scratch.time_of_last_bpm_marker =
+                    self.scratch.beat_marker_ms.max(0.0).round() as usize;
+            }
+        }
+
+        if !self.scratch.is_on_beat && now_f >= expected {
+            // Jump directly to the most recent due beat. This emits at most one
+            // event after a scheduler stall and never drains a historical backlog.
+            let periods_due = ((now_f - self.scratch.beat_marker_ms) / interval)
+                .floor()
+                .max(1.0);
+            let expected_marker = self.scratch.beat_marker_ms + periods_due * interval;
+            let silence_threshold =
+                (SILENCE_BEAT_MULTIPLIER * self.scratch.beat_interval_ms) as usize;
+            let elapsed_silence = now.saturating_sub(self.scratch.last_bass_gate_open_time);
+
+            if elapsed_silence < silence_threshold {
+                self.scratch.is_on_beat = true;
+                if !onset_peak {
+                    self.scratch.beat_needs_sync = true;
+                }
+            } else {
+                self.scratch.beat_needs_sync = true;
+            }
+            self.scratch.beat_marker_ms = expected_marker;
+            self.scratch.time_of_last_bpm_marker = expected_marker.round() as usize;
+        }
     }
 
     fn onset_threshold(history: &[f32]) -> (f32, f32) {

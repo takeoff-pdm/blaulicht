@@ -267,7 +267,7 @@ impl BlaulichtApp {
         }
     }
 
-    fn view_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+    fn view_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
         // TODO: can we do this without the allocation?
         let raw_items: Vec<_> = dmx_engine.0.views.iter().collect();
         let paginated_views = self
@@ -281,37 +281,44 @@ impl BlaulichtApp {
         let selected_view_id = self.view_ui_state.selected_view_id;
         let page_width = self.view_ui_state.pagination.width();
 
-        self.view_ui_state.pagination.ui(ui, |ui| {
-            for (id, view) in paginated_views {
-                let id = **id;
+        self.view_ui_state
+            .pagination
+            .ui_responsive(ui, compact, |ui| {
+                for (id, view) in paginated_views {
+                    let id = **id;
 
-                let label = format!("{id} | {}", view.name);
-                let is_selected = selected_view_id == Some(id);
-                if components::button(
-                    ui,
-                    is_selected,
-                    &label,
-                    ButtonSize::Large
-                        .with_width(page_width - 2.0 * panel_padding)
-                        .with_font_size(12.0),
-                ) {
-                    // Toggle group selection
-                    if !is_selected {
-                        selected_id = Some(id);
-                        changed = true;
-                    };
+                    let label = format!("{id} | {}", view.name);
+                    let is_selected = selected_view_id == Some(id);
+                    if components::button(
+                        ui,
+                        is_selected,
+                        &label,
+                        ButtonSize::Large
+                            .with_width(page_width - 2.0 * panel_padding)
+                            .with_font_size(12.0),
+                    ) {
+                        // Toggle group selection
+                        if !is_selected {
+                            selected_id = Some(id);
+                            changed = true;
+                        };
+                    }
+
+                    ui.add_space(5.0);
                 }
-
-                ui.add_space(5.0);
-            }
-        });
+            });
 
         if changed {
             self.view_ui_state.selected_view_id = selected_id;
         }
     }
 
-    pub fn view_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn view_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         self.render_add_view_dialog(ctx);
         self.render_delete_view(ctx);
         self.render_overlay_picker_dialog(ctx);
@@ -319,10 +326,10 @@ impl BlaulichtApp {
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
-            egui::Layout::left_to_right(egui::Align::Min),
+            render_context.primary_layout(),
             |ui| {
                 let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-                self.view_pagination(ui, &dmx_engine);
+                self.view_pagination(ui, &dmx_engine, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -330,7 +337,7 @@ impl BlaulichtApp {
                     egui::vec2(ui.available_width(), ui.available_height()),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.horizontal(|ui| {
+                        render_context.horizontal(ui, egui::Align::Min, |ui| {
                             if components::button(ui, false, "Add View", ButtonSize::Medium) {
                                 self.view_ui_state.new_view_name =
                                     DEFAULT_NEW_VIEW_NAME.to_string();
@@ -339,9 +346,13 @@ impl BlaulichtApp {
 
                             let can_delete = self.view_ui_state.selected_view_id.is_some()
                                 && dmx_engine.0.views.len() > 1;
-                            if components::button(ui, false, "Delete View", ButtonSize::Medium)
-                                && can_delete
-                            {
+                            if components::action_button(
+                                ui,
+                                can_delete,
+                                "Delete View",
+                                ButtonSize::Medium,
+                                Some("Select a view; the final remaining view cannot be deleted"),
+                            ) {
                                 self.view_ui_state.delete_view_open = true;
                                 self.view_ui_state.delete_view_id =
                                     self.view_ui_state.selected_view_id;

@@ -3,7 +3,10 @@ use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc, Mutex, RwLock,
+    },
     time::Duration,
 };
 
@@ -263,6 +266,7 @@ pub struct AppState {
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
+    grand_master_percent: AtomicU8,
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     pub artnet_output: RwLock<ArtNetOutput>,
@@ -329,6 +333,7 @@ impl AppState {
             }),
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
+            grand_master_percent: AtomicU8::new(100),
             dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
             audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
@@ -350,6 +355,15 @@ impl AppState {
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
             spawned_commands: Arc::new(Mutex::new(SpawnedCommandRegistry::new())),
         }
+    }
+
+    pub fn grand_master_percent(&self) -> u8 {
+        self.grand_master_percent.load(Ordering::Relaxed)
+    }
+
+    pub fn set_grand_master_percent(&self, percent: u8) {
+        self.grand_master_percent
+            .store(percent.min(100), Ordering::Relaxed);
     }
 
     pub fn log(&self, msg: Cow<'static, str>) {

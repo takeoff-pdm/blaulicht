@@ -1,4 +1,7 @@
-use crate::app::{components::Dialog, BlaulichtApp};
+use crate::app::{
+    components::{self, Dialog},
+    BlaulichtApp,
+};
 use blaulicht_shared::{
     scene_graph::{
         GraphId, NodeId, SceneEdge, SceneGraph, SceneGraphNode, SceneGraphState,
@@ -8,8 +11,8 @@ use blaulicht_shared::{
 };
 use egui::{Color32, Context, Painter, Pos2, Rect, Stroke, Style, Ui, Vec2};
 use egui_snarl::{
-    InPin, InPinId, OutPin, OutPinId, Snarl,
     ui::{BackgroundPattern, Grid, PinInfo, SnarlStyle, SnarlViewer},
+    InPin, InPinId, OutPin, OutPinId, Snarl,
 };
 use fdg_sim::{
     glam::Vec3, Dimensions, ForceGraph, ForceGraphHelper, Simulation, SimulationParameters,
@@ -91,12 +94,7 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         1
     }
 
-    fn show_input(
-        &mut self,
-        pin: &InPin,
-        _ui: &mut Ui,
-        snarl: &mut Snarl<SnarlNode>,
-    ) -> PinInfo {
+    fn show_input(&mut self, pin: &InPin, _ui: &mut Ui, snarl: &mut Snarl<SnarlNode>) -> PinInfo {
         let snarl_node = snarl.get_node(pin.id.node);
         let graph = self.state.graphs.get(&self.graph_id);
         let is_active = graph.map_or(false, |g| {
@@ -260,7 +258,9 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         let to_id = to_node.node_id;
 
         if let Some(graph) = self.state.graphs.get_mut(&graph_id) {
-            graph.edges.retain(|e| !(e.from == from_id && e.to == to_id));
+            graph
+                .edges
+                .retain(|e| !(e.from == from_id && e.to == to_id));
         }
 
         snarl.disconnect(from.id, to.id);
@@ -322,12 +322,17 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn scene_graph_ui(&mut self, ui: &mut Ui, ctx: &Context) {
+    pub fn scene_graph_ui(
+        &mut self,
+        ui: &mut Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         self.render_scene_graph_delete_dialogs(ctx);
         let mut state = self.data.state.dmx_engine.write().unwrap();
         let scenes = state.0.scenes.clone();
 
-        ui.horizontal(|ui| {
+        render_context.horizontal(ui, egui::Align::Min, |ui| {
             ui.label("Graphs:");
 
             let graph_ids: Vec<_> = state.0.scene_graphs.graphs.keys().copied().collect();
@@ -351,8 +356,8 @@ impl BlaulichtApp {
             if self.scene_graph_ui_state.add_graph_open {
                 ui.text_edit_singleline(&mut self.scene_graph_ui_state.new_graph_name);
                 if ui.button("Create").clicked() {
-                    let new_id = (0..=u8::MAX)
-                        .find(|id| !state.0.scene_graphs.graphs.contains_key(id));
+                    let new_id =
+                        (0..=u8::MAX).find(|id| !state.0.scene_graphs.graphs.contains_key(id));
                     if let Some(new_id) = new_id {
                         let mut graph = SceneGraph::default();
                         graph.name = self.scene_graph_ui_state.new_graph_name.clone();
@@ -397,13 +402,10 @@ impl BlaulichtApp {
                 } else {
                     Pos2::new(node.pos_x, node.pos_y)
                 };
-                let snarl_id = self.scene_graph_ui_state.snarl.insert_node(
-                    pos,
-                    SnarlNode {
-                        node_id,
-                        graph_id,
-                    },
-                );
+                let snarl_id = self
+                    .scene_graph_ui_state
+                    .snarl
+                    .insert_node(pos, SnarlNode { node_id, graph_id });
                 node_to_snarl.insert(node_id, snarl_id);
             }
 
@@ -430,7 +432,7 @@ impl BlaulichtApp {
         // Controls bar.
         let current_section = self.collector_snapshot.section_state;
         let mut do_auto_layout = false;
-        ui.horizontal(|ui| {
+        render_context.horizontal(ui, egui::Align::Min, |ui| {
             let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
                 self.scene_graph_ui_state.selected_node = None;
                 self.scene_graph_ui_state.synced = false;
@@ -457,7 +459,7 @@ impl BlaulichtApp {
                 do_auto_layout = true;
             }
 
-            ui.separator();
+            components::toolbar_separator(ui, ui.spacing().interact_size.y);
             ui.label("Zoom:");
             let mut zoom = self.scene_graph_ui_state.zoom_level;
             if ui
@@ -472,7 +474,7 @@ impl BlaulichtApp {
             }
             ui.label(format!("{:.2}x", self.scene_graph_ui_state.zoom_level));
 
-            ui.separator();
+            components::toolbar_separator(ui, ui.spacing().interact_size.y);
             let (section_text, section_color) =
                 crate::app::components::section_label(current_section);
             ui.label(
@@ -525,247 +527,301 @@ impl BlaulichtApp {
             }
         }
 
-        // Split: graph on left, node editor on right.
+        // Use a vertical split in narrow dynamic tiles so both workspaces remain usable.
         let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
-        let pending_zoom_override = std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
-        let active_countdown_ms = state.0.scene_graphs.active_countdowns.get(&graph_id).copied();
-        ui.columns(2, |cols| {
-            let viewport_rect = Rect::from_min_size(
-                cols[0].cursor().min,
-                cols[0].available_size_before_wrap(),
-            );
-
-            // Left: snarl graph.
-            let mut viewer = SceneGraphViewer {
-                state: &mut state.0.scene_graphs,
-                graph_id,
-                selected_node: &mut self.scene_graph_ui_state.selected_node,
-                recenter_view,
-                viewport_rect,
-                zoom_level: &mut self.scene_graph_ui_state.zoom_level,
-                pending_zoom_override,
-                active_countdown_ms,
+        let pending_zoom_override =
+            std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
+        let active_countdown_ms = state
+            .0
+            .scene_graphs
+            .active_countdowns
+            .get(&graph_id)
+            .copied();
+        let available = ui.available_size_before_wrap().max(egui::vec2(1.0, 1.0));
+        let (workspace_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
+        let gap = ui.spacing().item_spacing.x;
+        let (graph_rect, editor_rect) = if render_context.is_narrow_dynamic() {
+            let graph_height = (workspace_rect.height() * 0.58).max(1.0);
+            (
+                Rect::from_min_max(
+                    workspace_rect.min,
+                    egui::pos2(workspace_rect.max.x, workspace_rect.min.y + graph_height),
+                ),
+                Rect::from_min_max(
+                    egui::pos2(
+                        workspace_rect.min.x,
+                        (workspace_rect.min.y + graph_height + gap).min(workspace_rect.max.y),
+                    ),
+                    workspace_rect.max,
+                ),
+            )
+        } else {
+            let graph_fraction = match (render_context.is_dynamic(), render_context.width_class) {
+                (true, crate::app::page::PageWidthClass::Wide) => 0.68,
+                (true, _) => 0.62,
+                (false, _) => 0.5,
             };
+            let graph_width = (workspace_rect.width() * graph_fraction).max(1.0);
+            (
+                Rect::from_min_max(
+                    workspace_rect.min,
+                    egui::pos2(workspace_rect.min.x + graph_width, workspace_rect.max.y),
+                ),
+                Rect::from_min_max(
+                    egui::pos2(
+                        (workspace_rect.min.x + graph_width + gap).min(workspace_rect.max.x),
+                        workspace_rect.min.y,
+                    ),
+                    workspace_rect.max,
+                ),
+            )
+        };
+        let mut graph_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(graph_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let mut editor_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(editor_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let viewport_rect =
+            Rect::from_min_size(graph_ui.cursor().min, graph_ui.available_size_before_wrap());
 
-            self.scene_graph_ui_state.snarl.show(
-                &mut viewer,
-                &self.scene_graph_ui_state.style,
-                egui::Id::new("scene_graph_snarl"),
-                &mut cols[0],
-            );
+        // Left: snarl graph.
+        let mut viewer = SceneGraphViewer {
+            state: &mut state.0.scene_graphs,
+            graph_id,
+            selected_node: &mut self.scene_graph_ui_state.selected_node,
+            recenter_view,
+            viewport_rect,
+            zoom_level: &mut self.scene_graph_ui_state.zoom_level,
+            pending_zoom_override,
+            active_countdown_ms,
+        };
 
-            // Right: node editor panel.
-            let Some(selected_node_id) = self.scene_graph_ui_state.selected_node else {
-                cols[1].centered_and_justified(|ui| {
-                    ui.label("Click a node to edit it.");
-                });
-                return;
-            };
+        self.scene_graph_ui_state.snarl.show(
+            &mut viewer,
+            &self.scene_graph_ui_state.style,
+            egui::Id::new("scene_graph_snarl"),
+            &mut graph_ui,
+        );
 
-            let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
-                return;
-            };
-
-            let Some(scene_node) = graph.nodes.get_mut(&selected_node_id) else {
-                self.scene_graph_ui_state.selected_node = None;
-                return;
-            };
-
-            let ui = &mut cols[1];
-
-            ui.heading(&scene_node.name.clone());
-            ui.separator();
-
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(&mut scene_node.name);
+        // Right: node editor panel.
+        let Some(selected_node_id) = self.scene_graph_ui_state.selected_node else {
+            editor_ui.centered_and_justified(|ui| {
+                ui.label("Click a node to edit it.");
             });
+            return;
+        };
 
-            ui.add_space(4.0);
+        let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
+            return;
+        };
 
-            ui.horizontal(|ui| {
-                ui.label("Alpha:");
-                let mut alpha = scene_node.master_alpha as f32;
-                if ui
-                    .add(egui::Slider::new(&mut alpha, 0.0..=100.0).suffix("%"))
-                    .changed()
-                {
-                    scene_node.master_alpha = alpha as u8;
-                }
-            });
+        let Some(scene_node) = graph.nodes.get_mut(&selected_node_id) else {
+            self.scene_graph_ui_state.selected_node = None;
+            return;
+        };
 
-            ui.horizontal(|ui| {
-                ui.label("Speed:");
-                let speed_idx = scene_node.master_speed.as_index();
-                let mut idx = speed_idx;
-                egui::ComboBox::from_id_salt("node_speed")
-                    .selected_text(scene_node.master_speed.as_str())
-                    .show_ui(ui, |ui| {
-                        for (i, s) in AnimationSpeedModifier::ALL.iter().enumerate() {
-                            ui.selectable_value(&mut idx, i, s.as_str());
-                        }
-                    });
-                if idx != speed_idx {
-                    scene_node.master_speed = AnimationSpeedModifier::from_index(idx);
-                }
-            });
+        let ui = &mut editor_ui;
 
-            ui.add_space(8.0);
-            ui.label("Scenes:");
-            let mut to_remove = None;
-            for (i, scene_id) in scene_node.scenes.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    let name = scenes
-                        .get(scene_id)
-                        .map(|s| s.name.as_str())
-                        .unwrap_or("???");
-                    ui.label(format!("  {} (ID {})", name, scene_id));
-                    if ui.small_button("x").clicked() {
-                        to_remove = Some(i);
-                    }
-                });
-            }
-            if let Some(i) = to_remove {
-                scene_node.scenes.remove(i);
-            }
+        ui.heading(&scene_node.name.clone());
+        ui.separator();
 
-            let mut add_scene_id: Option<u8> = None;
-            egui::ComboBox::from_id_salt("node_add_scene")
-                .selected_text("+ Add Scene")
-                .show_ui(ui, |ui| {
-                    for (id, scene) in scenes.iter() {
-                        if !scene_node.scenes.contains(id)
-                            && ui.selectable_label(false, &scene.name).clicked()
-                        {
-                            add_scene_id = Some(*id);
-                        }
-                    }
-                });
-            if let Some(id) = add_scene_id {
-                scene_node.scenes.push(id);
-            }
+        ui.horizontal(|ui| {
+            ui.label("Name:");
+            ui.text_edit_singleline(&mut scene_node.name);
+        });
 
-            ui.add_space(12.0);
-            ui.separator();
+        ui.add_space(4.0);
 
-            // Node actions.
-            ui.horizontal(|ui| {
-                if ui.button("Set as Start").clicked() {
-                    graph.active_node = Some(selected_node_id);
-                }
-                if ui.button("Delete Node").clicked() {
-                    self.scene_graph_ui_state.delete_node = Some((graph_id, selected_node_id));
-                }
-            });
-
-            // Edge conditions for this node's outgoing edges.
-            let outgoing_edges: Vec<_> = graph
-                .edges
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.from == selected_node_id)
-                .map(|(i, e)| (i, e.to, e.priority))
-                .collect();
-
-            if !outgoing_edges.is_empty() {
-                ui.add_space(12.0);
-                ui.separator();
-                ui.label("Outgoing Edges:");
-
-                for (edge_idx, to_id, _priority) in &outgoing_edges {
-                    let to_name = graph
-                        .nodes
-                        .get(to_id)
-                        .map(|n| n.name.as_str())
-                        .unwrap_or("???");
-
-                    ui.group(|ui| {
-                        ui.label(format!("-> {}", to_name));
-
-                        let edge = &mut graph.edges[*edge_idx];
-
-                        let mut condition_idx = match &edge.condition {
-                            TransitionCondition::Manual => 0,
-                            TransitionCondition::AfterDuration(_) => 1,
-                            TransitionCondition::AfterBeats(_) => 2,
-                            TransitionCondition::OnBeatDrop => 3,
-                            TransitionCondition::OnNonBeat => 4,
-                            TransitionCondition::OnEnterDrop => 5,
-                            TransitionCondition::OnEnterBreakdown => 6,
-                            _ => 0,
-                        };
-
-                        let prev = condition_idx;
-                        egui::ComboBox::from_id_salt(format!("edge_cond_{}", edge_idx))
-                            .selected_text(match condition_idx {
-                                0 => "Manual",
-                                1 => "After Duration",
-                                2 => "After Beats",
-                                3 => "On Beat Drop",
-                                4 => "On Non-Beat",
-                                5 => "On Enter Drop",
-                                6 => "On Enter Breakdown",
-                                _ => "???",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut condition_idx, 0, "Manual");
-                                ui.selectable_value(&mut condition_idx, 1, "After Duration");
-                                ui.selectable_value(&mut condition_idx, 2, "After Beats");
-                                ui.selectable_value(&mut condition_idx, 3, "On Beat Drop");
-                                ui.selectable_value(&mut condition_idx, 4, "On Non-Beat");
-                                ui.selectable_value(&mut condition_idx, 5, "On Enter Drop");
-                                ui.selectable_value(&mut condition_idx, 6, "On Enter Breakdown");
-                            });
-
-                        if condition_idx != prev {
-                            edge.condition = match condition_idx {
-                                1 => TransitionCondition::AfterDuration(1000),
-                                2 => TransitionCondition::AfterBeats(4),
-                                3 => TransitionCondition::OnBeatDrop,
-                                4 => TransitionCondition::OnNonBeat,
-                                5 => TransitionCondition::OnEnterDrop,
-                                6 => TransitionCondition::OnEnterBreakdown,
-                                _ => TransitionCondition::Manual,
-                            };
-                        }
-
-                        match &mut edge.condition {
-                            TransitionCondition::AfterDuration(ms) => {
-                                let mut secs = *ms as f32 / 1000.0;
-                                if ui
-                                    .add(
-                                        egui::Slider::new(&mut secs, 0.1..=30.0)
-                                            .suffix("s")
-                                            .logarithmic(true),
-                                    )
-                                    .changed()
-                                {
-                                    *ms = (secs * 1000.0) as u64;
-                                }
-                            }
-                            TransitionCondition::AfterBeats(n) => {
-                                let mut beats = *n as i32;
-                                if ui
-                                    .add(egui::Slider::new(&mut beats, 1..=64).suffix(" beats"))
-                                    .changed()
-                                {
-                                    *n = beats as u32;
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        ui.horizontal(|ui| {
-                            ui.label("Priority:");
-                            let mut p = edge.priority as i32;
-                            if ui.add(egui::DragValue::new(&mut p).range(0..=255)).changed() {
-                                edge.priority = p as u8;
-                            }
-                        });
-                    });
-                }
+        ui.horizontal(|ui| {
+            ui.label("Alpha:");
+            let mut alpha = scene_node.master_alpha as f32;
+            if ui
+                .add(egui::Slider::new(&mut alpha, 0.0..=100.0).suffix("%"))
+                .changed()
+            {
+                scene_node.master_alpha = alpha as u8;
             }
         });
+
+        ui.horizontal(|ui| {
+            ui.label("Speed:");
+            let speed_idx = scene_node.master_speed.as_index();
+            let mut idx = speed_idx;
+            egui::ComboBox::from_id_salt("node_speed")
+                .selected_text(scene_node.master_speed.as_str())
+                .show_ui(ui, |ui| {
+                    for (i, s) in AnimationSpeedModifier::ALL.iter().enumerate() {
+                        ui.selectable_value(&mut idx, i, s.as_str());
+                    }
+                });
+            if idx != speed_idx {
+                scene_node.master_speed = AnimationSpeedModifier::from_index(idx);
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label("Scenes:");
+        let mut to_remove = None;
+        for (i, scene_id) in scene_node.scenes.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let name = scenes
+                    .get(scene_id)
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("???");
+                ui.label(format!("  {} (ID {})", name, scene_id));
+                if ui.small_button("x").clicked() {
+                    to_remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = to_remove {
+            scene_node.scenes.remove(i);
+        }
+
+        let mut add_scene_id: Option<u8> = None;
+        egui::ComboBox::from_id_salt("node_add_scene")
+            .selected_text("+ Add Scene")
+            .show_ui(ui, |ui| {
+                for (id, scene) in scenes.iter() {
+                    if !scene_node.scenes.contains(id)
+                        && ui.selectable_label(false, &scene.name).clicked()
+                    {
+                        add_scene_id = Some(*id);
+                    }
+                }
+            });
+        if let Some(id) = add_scene_id {
+            scene_node.scenes.push(id);
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+
+        // Node actions.
+        ui.horizontal(|ui| {
+            if ui.button("Set as Start").clicked() {
+                graph.active_node = Some(selected_node_id);
+            }
+            if ui.button("Delete Node").clicked() {
+                self.scene_graph_ui_state.delete_node = Some((graph_id, selected_node_id));
+            }
+        });
+
+        // Edge conditions for this node's outgoing edges.
+        let outgoing_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.from == selected_node_id)
+            .map(|(i, e)| (i, e.to, e.priority))
+            .collect();
+
+        if !outgoing_edges.is_empty() {
+            ui.add_space(12.0);
+            ui.separator();
+            ui.label("Outgoing Edges:");
+
+            for (edge_idx, to_id, _priority) in &outgoing_edges {
+                let to_name = graph
+                    .nodes
+                    .get(to_id)
+                    .map(|n| n.name.as_str())
+                    .unwrap_or("???");
+
+                ui.group(|ui| {
+                    ui.label(format!("-> {}", to_name));
+
+                    let edge = &mut graph.edges[*edge_idx];
+
+                    let mut condition_idx = match &edge.condition {
+                        TransitionCondition::Manual => 0,
+                        TransitionCondition::AfterDuration(_) => 1,
+                        TransitionCondition::AfterBeats(_) => 2,
+                        TransitionCondition::OnBeatDrop => 3,
+                        TransitionCondition::OnNonBeat => 4,
+                        TransitionCondition::OnEnterDrop => 5,
+                        TransitionCondition::OnEnterBreakdown => 6,
+                        _ => 0,
+                    };
+
+                    let prev = condition_idx;
+                    egui::ComboBox::from_id_salt(format!("edge_cond_{}", edge_idx))
+                        .selected_text(match condition_idx {
+                            0 => "Manual",
+                            1 => "After Duration",
+                            2 => "After Beats",
+                            3 => "On Beat Drop",
+                            4 => "On Non-Beat",
+                            5 => "On Enter Drop",
+                            6 => "On Enter Breakdown",
+                            _ => "???",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut condition_idx, 0, "Manual");
+                            ui.selectable_value(&mut condition_idx, 1, "After Duration");
+                            ui.selectable_value(&mut condition_idx, 2, "After Beats");
+                            ui.selectable_value(&mut condition_idx, 3, "On Beat Drop");
+                            ui.selectable_value(&mut condition_idx, 4, "On Non-Beat");
+                            ui.selectable_value(&mut condition_idx, 5, "On Enter Drop");
+                            ui.selectable_value(&mut condition_idx, 6, "On Enter Breakdown");
+                        });
+
+                    if condition_idx != prev {
+                        edge.condition = match condition_idx {
+                            1 => TransitionCondition::AfterDuration(1000),
+                            2 => TransitionCondition::AfterBeats(4),
+                            3 => TransitionCondition::OnBeatDrop,
+                            4 => TransitionCondition::OnNonBeat,
+                            5 => TransitionCondition::OnEnterDrop,
+                            6 => TransitionCondition::OnEnterBreakdown,
+                            _ => TransitionCondition::Manual,
+                        };
+                    }
+
+                    match &mut edge.condition {
+                        TransitionCondition::AfterDuration(ms) => {
+                            let mut secs = *ms as f32 / 1000.0;
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut secs, 0.1..=30.0)
+                                        .suffix("s")
+                                        .logarithmic(true),
+                                )
+                                .changed()
+                            {
+                                *ms = (secs * 1000.0) as u64;
+                            }
+                        }
+                        TransitionCondition::AfterBeats(n) => {
+                            let mut beats = *n as i32;
+                            if ui
+                                .add(egui::Slider::new(&mut beats, 1..=64).suffix(" beats"))
+                                .changed()
+                            {
+                                *n = beats as u32;
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label("Priority:");
+                        let mut p = edge.priority as i32;
+                        if ui
+                            .add(egui::DragValue::new(&mut p).range(0..=255))
+                            .changed()
+                        {
+                            edge.priority = p as u8;
+                        }
+                    });
+                });
+            }
+        }
     }
 }
 
@@ -812,7 +868,11 @@ fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
         }
     }
 
-    for (snarl_id, _, snarl_node) in snarl.nodes_pos_ids().map(|(id, p, n)| (id, p, n.clone())).collect::<Vec<_>>() {
+    for (snarl_id, _, snarl_node) in snarl
+        .nodes_pos_ids()
+        .map(|(id, p, n)| (id, p, n.clone()))
+        .collect::<Vec<_>>()
+    {
         if let Some(loc) = positions.get(&snarl_node.node_id) {
             if let Some(info) = snarl.get_node_info_mut(snarl_id) {
                 info.pos = Pos2::new(clamp(loc.x * scale), clamp(loc.y * scale));

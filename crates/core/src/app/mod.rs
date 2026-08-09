@@ -16,7 +16,6 @@ use crate::{
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
-use blaulicht_shared::AppSubPage;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
 use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
 use egui_dock::DockState;
@@ -71,6 +70,27 @@ pub struct PopupSpec {
     pub button: Option<PopupButtonSpec>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ShowfileSaveStatus {
+    NoShowfile,
+    Clean,
+    Dirty,
+    Saving,
+    Failed(String),
+}
+
+struct SaveCompletion {
+    hash: u64,
+    manual: bool,
+    result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum GuardedLifecycleAction {
+    Quit,
+    Restart,
+}
+
 impl PopupSpec {
     pub fn default(label: String) -> Self {
         Self {
@@ -119,7 +139,6 @@ pub struct BlaulichtApp {
     desktop_mode: bool,
     showfile_home: Option<PathBuf>,
     navbar: Navbar,
-    bottom_nav: HashMap<AppPage, AppSubPage>,
 
     main_screen_desktop_mode: ExternalScreen,
     external_screens: Vec<ExternalScreen>,
@@ -285,8 +304,17 @@ pub struct BlaulichtApp {
     palette_ui_state: PaletteUI,
 
     last_autosave_check: Instant,
+    last_dirty_check: Instant,
     last_autosave_hash: u64,
     last_save_time: Option<Instant>,
+    save_status: ShowfileSaveStatus,
+    save_in_flight: bool,
+    save_pending: bool,
+    save_completion_sender: crossbeam_channel::Sender<SaveCompletion>,
+    save_completion_receiver: crossbeam_channel::Receiver<SaveCompletion>,
+    pending_lifecycle_action: Option<GuardedLifecycleAction>,
+    lifecycle_action_after_save: Option<GuardedLifecycleAction>,
+    allow_close_once: bool,
 }
 
 impl BlaulichtApp {
@@ -295,11 +323,11 @@ impl BlaulichtApp {
         desktop_mode: bool,
         showfile_home: Option<PathBuf>,
     ) -> Self {
+        let (save_completion_sender, save_completion_receiver) = crossbeam_channel::unbounded();
         Self {
             desktop_mode,
             showfile_home,
             navbar: Navbar::new(AppPage::Logs),
-            bottom_nav: HashMap::new(),
             main_screen_desktop_mode: ExternalScreen::default(),
             external_screens: vec![],
             plugin_ui_visible_tabs: HashSet::new(),
@@ -539,8 +567,17 @@ impl BlaulichtApp {
             system_ui_state: SystemUI::default(),
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
             last_autosave_check: Instant::now(),
+            last_dirty_check: Instant::now(),
             last_autosave_hash: 0,
             last_save_time: None,
+            save_status: ShowfileSaveStatus::NoShowfile,
+            save_in_flight: false,
+            save_pending: false,
+            save_completion_sender,
+            save_completion_receiver,
+            pending_lifecycle_action: None,
+            lifecycle_action_after_save: None,
+            allow_close_once: false,
         }
     }
 }

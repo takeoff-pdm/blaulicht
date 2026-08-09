@@ -59,6 +59,7 @@ pub struct DmxEngine {
     setup_start_time: Instant,
 
     scene_graph_runtime: SceneGraphRuntime,
+    animation_clock: animation::AnimationClockRuntime,
     /// Scene IDs the scene graph pushed into `current_overlay_scenes` last tick.
     /// Used to reconcile (add/remove) graph-driven overlays without clobbering
     /// manually-added ones. Runtime-only, not persisted.
@@ -276,6 +277,7 @@ impl DmxEngine {
             running_setup: false,
             setup_start_time: Instant::now(),
             scene_graph_runtime: SceneGraphRuntime::default(),
+            animation_clock: animation::AnimationClockRuntime::default(),
             graph_overlay_scenes: Vec::new(),
         }
     }
@@ -335,11 +337,12 @@ impl DmxEngine {
             }
         }
 
+        // Scene graph activations can write scene speed/alpha controls, so they
+        // must be applied before this frame's animation phase is evaluated.
+        self.scene_graph_tick(&audio_output.snapshot);
+
         // Advance animations.
         self.animation_tick(audio_output);
-
-        // Advance scene graphs.
-        self.scene_graph_tick(&audio_output.snapshot);
 
         self.render_universes();
     }
@@ -416,8 +419,13 @@ impl DmxEngine {
         };
         let prev_graph_scenes = mem::take(&mut self.graph_overlay_scenes);
         let mut state = self.state_ref.dmx_engine.write().unwrap();
-        self.scene_graph_runtime
+        let activated_nodes = self
+            .scene_graph_runtime
             .tick_all(&mut state.0.scene_graphs, now_ms, &audio);
+
+        // Node controls are write-through shortcuts. Apply them once on activation;
+        // they remain until another node or a manual control replaces them.
+        apply_scene_graph_node_controls(&mut state.0, &activated_nodes);
 
         // Reflect the scenes of every enabled graph's active node into the normal
         // overlay list, so they show up in the performance view and render through
@@ -541,6 +549,11 @@ impl DmxEngine {
                     }
                     resolved = merged_for_overlay.resolve(palettes);
                 }
+
+                resolved.alpha = apply_grand_master(
+                    resolved.alpha,
+                    self.state_ref.grand_master_percent(),
+                );
 
                 // TODO: we will need to use the merged fixture states here and then write them.
                 let fix = fixture.1;
@@ -1430,5 +1443,86 @@ impl DmxEngine {
         }
 
         (msg, undo)
+    }
+}
+
+fn apply_grand_master(alpha: u8, percent: u8) -> u8 {
+    ((alpha as u16 * percent.min(100) as u16) / 100) as u8
+}
+
+fn apply_scene_graph_node_controls(
+    state: &mut blaulicht_shared::EngineState,
+    activated_nodes: &[(u8, u8)],
+) {
+    let base = state.current_scene_focus;
+    for (graph_id, node_id) in activated_nodes {
+        let Some(node) = state
+            .scene_graphs
+            .graphs
+            .get(graph_id)
+            .and_then(|graph| graph.nodes.get(node_id))
+            .cloned()
+        else {
+            continue;
+        };
+        for scene_id in node.scenes.into_iter().filter(|scene_id| *scene_id != base) {
+            if let Some(scene) = state.scenes.get_mut(&scene_id) {
+                scene.sink.master_alpha_fader = node.master_alpha.min(100);
+                scene.sink.master_speed = node.master_speed;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod grand_master_tests {
+    use super::{apply_grand_master, apply_scene_graph_node_controls};
+    use blaulicht_shared::{
+        AnimationSpeedModifier,
+        scene_graph::{SceneGraph, SceneGraphNode},
+    };
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn grand_master_at_full_preserves_alpha() {
+        assert_eq!(apply_grand_master(255, 100), 255);
+        assert_eq!(apply_grand_master(37, 100), 37);
+    }
+
+    #[test]
+    fn grand_master_scales_and_blackout_is_exact() {
+        assert_eq!(apply_grand_master(200, 50), 100);
+        assert_eq!(apply_grand_master(255, 0), 0);
+        assert_eq!(apply_grand_master(255, 200), 255);
+    }
+
+    #[test]
+    fn graph_node_controls_write_once_and_remain_until_replaced() {
+        let mut state = blaulicht_shared::EngineState::default();
+        state.new_scene("Base".to_string());
+        state.new_scene("Overlay".to_string());
+        state.scene_graphs.graphs.insert(
+            1,
+            SceneGraph {
+                nodes: BTreeMap::from([(
+                    7,
+                    SceneGraphNode {
+                        scenes: vec![1],
+                        master_alpha: 42,
+                        master_speed: AnimationSpeedModifier::_4,
+                        ..Default::default()
+                    },
+                )]),
+                ..Default::default()
+            },
+        );
+
+        apply_scene_graph_node_controls(&mut state, &[(1, 7)]);
+        assert_eq!(state.scenes[&1].sink.master_alpha_fader, 42);
+        assert_eq!(state.scenes[&1].sink.master_speed, AnimationSpeedModifier::_4);
+
+        state.scenes.get_mut(&1).unwrap().sink.master_alpha_fader = 73;
+        apply_scene_graph_node_controls(&mut state, &[]);
+        assert_eq!(state.scenes[&1].sink.master_alpha_fader, 73);
     }
 }

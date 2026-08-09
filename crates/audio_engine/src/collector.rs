@@ -65,6 +65,8 @@ pub struct CollectorScratch {
     pub(crate) bass_samples_sum: u64,
     pub(crate) last_bass_gate_open_time: usize,
     pub(crate) time_of_last_bpm_marker: usize, // Time marker
+    pub(crate) beat_marker_ms: f64,
+    pub(crate) beat_scheduler_initialized: bool,
     pub(crate) num_beat_mismatches: usize,
     pub(crate) beat_needs_sync: bool,
 
@@ -146,6 +148,8 @@ impl CollectorScratch {
             bass_samples_sum: 0,
             last_bass_gate_open_time: now,
             time_of_last_bpm_marker: now,
+            beat_marker_ms: now as f64,
+            beat_scheduler_initialized: false,
             num_beat_mismatches: 0,
             is_on_beat: false,
             actual_onset_peak: false,
@@ -505,8 +509,17 @@ where
                 self.current.bass_avg = 0;
                 self.current.bass_avg_short = 0;
                 self.current.bpm = 0.0;
+                self.current.bpm_confidence = 0.0;
                 self.current.time_between_beats_millis = 0;
                 self.scratch.beat_interval_ms = 0.0;
+                self.scratch.bpm_estimate = 0.0;
+                self.scratch.bpm_confidence_ema = 0.0;
+                self.scratch.beat_scheduler_initialized = false;
+                self.scratch.beat_needs_sync = true;
+                self.scratch.onset_history.clear();
+                for history in &mut self.scratch.band_onset_history {
+                    history.clear();
+                }
             }
         }
 
@@ -758,6 +771,8 @@ mod tests {
         assert_eq!(collector.current.volume, 0);
         assert_eq!(collector.current.bpm, 0.0);
         assert_eq!(collector.current.beat_event_id, 0);
+        assert_eq!(collector.scratch.bpm_estimate, 0.0);
+        assert!(!collector.scratch.beat_scheduler_initialized);
     }
 
     #[test]

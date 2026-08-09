@@ -3,8 +3,10 @@ use std::sync::Arc;
 use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_glow::CallbackFn;
 
+use crate::app::page::PageRenderContext;
 use crate::app::BlaulichtApp;
 use crate::stage::{StageObject, StageObjectKind};
+use crate::state::ScreenId;
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
 use super::data::{collect_fixtures, RenderSceneSnapshot};
@@ -15,7 +17,13 @@ use super::state::{
 };
 
 impl BlaulichtApp {
-    pub fn visualizer_ui(&mut self, ui: &mut egui::Ui, _ctx: &Context) {
+    pub fn visualizer_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        _ctx: &Context,
+        screen_id: ScreenId,
+        render_context: PageRenderContext,
+    ) {
         self.visualizer_import_dialog(ui.ctx());
         ui.heading("Visualizer");
         ui.add_space(4.0);
@@ -23,7 +31,7 @@ impl BlaulichtApp {
         let spacing = ui.spacing().item_spacing;
         ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.selectable_value(
                 &mut self.visualizer_ui_state.editor.mode,
                 VisualizerMode::View,
@@ -79,7 +87,7 @@ impl BlaulichtApp {
         self.visualizer_ui_state.settings.room_depth = self.visualizer_ui_state.stage.room.depth;
         self.visualizer_ui_state.settings.room_height = self.visualizer_ui_state.stage.room.height;
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut self.visualizer_ui_state.settings.show_grid, "Grid");
             ui.checkbox(&mut self.visualizer_ui_state.settings.show_axes, "Axes");
             ui.checkbox(&mut self.visualizer_ui_state.settings.show_beams, "Beams");
@@ -116,7 +124,7 @@ impl BlaulichtApp {
             self.visualizer_ui_state.camera_position = Vec3::new(0.0, 0.0, 0.0);
         }
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Bright");
             let mut brightness_pct =
                 (self.visualizer_ui_state.settings.brightness * 100.0).round() as i32;
@@ -182,7 +190,16 @@ impl BlaulichtApp {
             }
         }
 
-        let canvas_size = Vec2::new(ui.available_width(), (ui.available_height()).max(120.0));
+        let minimum_canvas_height =
+            if render_context.is_dynamic() && render_context.short {
+                80.0
+            } else {
+                120.0
+            };
+        let canvas_size = Vec2::new(
+            ui.available_width(),
+            ui.available_height().max(minimum_canvas_height),
+        );
         let (rect, _response) = ui.allocate_exact_size(canvas_size, Sense::hover());
         let canvas_id = ui.make_persistent_id("visualizer_canvas");
         let response = ui.interact(rect, canvas_id, Sense::drag());
@@ -387,8 +404,13 @@ impl BlaulichtApp {
             }
         }
 
+        // A screen can contain multiple visualizer tiles. Each callback needs its
+        // own GL resources and frame snapshot so one tile cannot overwrite another.
+        let render_target = self
+            .visualizer_ui_state
+            .render_target(egui::Id::new((screen_id, canvas_id)));
         {
-            if let Ok(mut frame) = self.visualizer_ui_state.frame.lock() {
+            if let Ok(mut frame) = render_target.frame.lock() {
                 frame.settings = self.visualizer_ui_state.settings;
                 frame.camera_yaw = self.visualizer_ui_state.camera_yaw;
                 frame.camera_pitch = self.visualizer_ui_state.camera_pitch;
@@ -404,8 +426,8 @@ impl BlaulichtApp {
             }
         }
 
-        let shared = self.visualizer_ui_state.shared.clone();
-        let frame = self.visualizer_ui_state.frame.clone();
+        let shared = render_target.shared.clone();
+        let frame = render_target.frame.clone();
         let callback = CallbackFn::new(move |info, painter| {
             let Ok(frame) = frame.lock() else {
                 return;
@@ -460,13 +482,139 @@ impl BlaulichtApp {
             }
         }
 
-        let shared_status = self
-            .visualizer_ui_state
+        let shared_status = render_target
             .shared
             .lock()
             .ok()
             .map(|shared| (shared.last_error.clone(),));
-        let frame_status = self.visualizer_ui_state.frame.lock().ok().map(|frame| {
+        let gpu_progress = render_target
+            .shared
+            .lock()
+            .ok()
+            .and_then(|shared| {
+                shared
+                    .renderer
+                    .as_ref()
+                    .map(|renderer| renderer.imported_model_progress())
+            })
+            .unwrap_or_default();
+        let cpu_loading = self
+            .visualizer_ui_state
+            .model_states
+            .values()
+            .filter(|state| {
+                matches!(
+                    state,
+                    super::state::ModelLoadState::Queued
+                        | super::state::ModelLoadState::Preparing
+                )
+            })
+            .count();
+        let cpu_failure = self
+            .visualizer_ui_state
+            .model_states
+            .iter()
+            .find_map(|(key, state)| match state {
+                super::state::ModelLoadState::Failed(error) => {
+                    Some((key.clone(), error.clone()))
+                }
+                _ => None,
+            });
+        let gpu_failure = gpu_progress.failed_assets.first().cloned();
+        let asset_failure = cpu_failure.or(gpu_failure);
+        if let Some((key, error)) = asset_failure {
+            let asset_name = self
+                .visualizer_ui_state
+                .stage
+                .assets
+                .values()
+                .find(|asset| asset.content_hash == key)
+                .map(|asset| asset.original_name.clone())
+                .unwrap_or_else(|| "Imported model".to_string());
+            egui::Area::new(canvas_id.with("asset_error"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.center() - egui::vec2(180.0, 70.0))
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_width(360.0);
+                        ui.strong(format!("Could not load {asset_name}"));
+                        ui.colored_label(Color32::LIGHT_RED, &error);
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Retry").clicked() {
+                                self.visualizer_ui_state.model_states.remove(&key);
+                                self.visualizer_ui_state.model_cache.remove(&key);
+                                if let Ok(mut shared) = render_target.shared.lock() {
+                                    if let Some(renderer) = shared.renderer.as_mut() {
+                                        renderer.retry_imported_model(&key);
+                                    }
+                                }
+                                self.visualizer_ui_state.import_error = None;
+                            }
+                            if ui.button("Remove from Stage").clicked() {
+                                let asset_ids: std::collections::BTreeSet<_> = self
+                                    .visualizer_ui_state
+                                    .stage
+                                    .assets
+                                    .iter()
+                                    .filter_map(|(id, asset)| {
+                                        (asset.content_hash == key).then_some(*id)
+                                    })
+                                    .collect();
+                                self.visualizer_ui_state.stage.objects.retain(|_, object| {
+                                    !matches!(
+                                        object.kind,
+                                        StageObjectKind::ImportedModel { asset_id }
+                                            if asset_ids.contains(&asset_id)
+                                    )
+                                });
+                                self.visualizer_ui_state
+                                    .stage
+                                    .assets
+                                    .retain(|id, _| !asset_ids.contains(id));
+                                self.visualizer_ui_state.model_states.remove(&key);
+                                self.visualizer_ui_state.model_cache.remove(&key);
+                                self.visualizer_ui_state.editor.selection.clear();
+                                self.visualizer_ui_state.import_error = None;
+                                self.mark_showfile_dirty();
+                            }
+                        });
+                    });
+                });
+        } else if cpu_loading > 0 || gpu_progress.uploading_assets > 0 {
+            let (phase, progress) = if cpu_loading > 0 {
+                (format!("Preparing {cpu_loading} model(s)..."), None)
+            } else {
+                let fraction = if gpu_progress.total_steps == 0 {
+                    0.0
+                } else {
+                    gpu_progress.completed_steps as f32 / gpu_progress.total_steps as f32
+                };
+                (
+                    format!(
+                        "Uploading {} model(s)...",
+                        gpu_progress.uploading_assets
+                    ),
+                    Some(fraction),
+                )
+            };
+            egui::Area::new(canvas_id.with("asset_loading"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.center() - egui::vec2(130.0, 34.0))
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_width(260.0);
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.strong(phase);
+                        });
+                        if let Some(progress) = progress {
+                            ui.add(egui::ProgressBar::new(progress.clamp(0.0, 1.0)));
+                        }
+                    });
+                });
+        }
+        let frame_status = render_target.frame.lock().ok().map(|frame| {
             (
                 frame.snapshot.skipped_fixtures,
                 frame.snapshot.fixtures.len(),
@@ -478,7 +626,7 @@ impl BlaulichtApp {
             if let Some(err) = err {
                 ui.colored_label(egui::Color32::LIGHT_RED, format!("Renderer error: {err}"));
                 if ui.small_button("Retry Renderer").clicked() {
-                    if let Ok(mut shared) = self.visualizer_ui_state.shared.lock() {
+                    if let Ok(mut shared) = render_target.shared.lock() {
                         shared.retry_renderer();
                     }
                 }
@@ -792,15 +940,38 @@ impl BlaulichtApp {
     }
 
     fn sync_visualizer_models(&mut self) {
-        while let Ok((key, result)) = self.visualizer_ui_state.model_receiver.try_recv() {
-            self.visualizer_ui_state.model_loading.remove(&key);
-            match result {
-                Ok(model) => {
+        while let Ok(event) = self.visualizer_ui_state.model_event_receiver.try_recv() {
+            match event {
+                super::state::ModelWorkerEvent::Started { key, generation }
+                    if generation == self.visualizer_ui_state.model_generation =>
+                {
                     self.visualizer_ui_state
-                        .model_cache
-                        .insert(key, Arc::new(model));
+                        .model_states
+                        .insert(key, super::state::ModelLoadState::Preparing);
                 }
-                Err(error) => self.visualizer_ui_state.import_error = Some(error),
+                super::state::ModelWorkerEvent::Finished {
+                    key,
+                    generation,
+                    result,
+                } if generation == self.visualizer_ui_state.model_generation => match result {
+                    Ok(prepared) => {
+                        let stats = prepared.stats;
+                        self.visualizer_ui_state
+                            .model_cache
+                            .insert(key.clone(), Arc::new(prepared));
+                        self.visualizer_ui_state
+                            .model_states
+                            .insert(key, super::state::ModelLoadState::Ready(stats));
+                    }
+                    Err(error) => {
+                        self.visualizer_ui_state.model_states.insert(
+                            key,
+                            super::state::ModelLoadState::Failed(error.clone()),
+                        );
+                        self.visualizer_ui_state.import_error = Some(error);
+                    }
+                },
+                _ => {}
             }
         }
 
@@ -823,25 +994,43 @@ impl BlaulichtApp {
         for asset in assets {
             let key = asset.content_hash.clone();
             if self.visualizer_ui_state.model_cache.contains_key(&key)
-                || self.visualizer_ui_state.model_loading.contains(&key)
+                || self.visualizer_ui_state.model_states.contains_key(&key)
             {
                 continue;
             }
             let path = match crate::stage_assets::resolve_asset(&showfile, &asset) {
                 Ok(path) => path,
                 Err(error) => {
-                    self.visualizer_ui_state.import_error = Some(error.to_string());
+                    let error = error.to_string();
+                    self.visualizer_ui_state.model_states.insert(
+                        key,
+                        super::state::ModelLoadState::Failed(error.clone()),
+                    );
+                    self.visualizer_ui_state.import_error = Some(error);
                     continue;
                 }
             };
-            self.visualizer_ui_state.model_loading.insert(key.clone());
-            let sender = self.visualizer_ui_state.model_sender.clone();
-            std::thread::spawn(move || {
-                let result = three_d_asset::io::load_and_deserialize::<three_d_asset::Scene>(&path)
-                    .map(three_d_asset::Model::from)
-                    .map_err(|error| format!("Failed to load managed GLB {path:?}: {error}"));
-                let _ = sender.send((key, result));
-            });
+            let request = super::state::ModelWorkerRequest {
+                key: key.clone(),
+                path,
+                generation: self.visualizer_ui_state.model_generation,
+            };
+            match self.visualizer_ui_state.model_request_sender.try_send(request) {
+                Ok(()) => {
+                    self.visualizer_ui_state
+                        .model_states
+                        .insert(key, super::state::ModelLoadState::Queued);
+                }
+                Err(crossbeam_channel::TrySendError::Full(_)) => break,
+                Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                    let error = "Visualizer model loader is unavailable".to_string();
+                    self.visualizer_ui_state.model_states.insert(
+                        key,
+                        super::state::ModelLoadState::Failed(error.clone()),
+                    );
+                    self.visualizer_ui_state.import_error = Some(error);
+                }
+            }
         }
     }
 

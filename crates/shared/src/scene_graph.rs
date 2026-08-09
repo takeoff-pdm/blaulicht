@@ -119,25 +119,38 @@ pub struct GraphRuntime {
 }
 
 impl SceneGraphRuntime {
-    pub fn tick_all(&mut self, state: &mut SceneGraphState, now_ms: u64, audio: &AudioConditions) {
+    pub fn tick_all(
+        &mut self,
+        state: &mut SceneGraphState,
+        now_ms: u64,
+        audio: &AudioConditions,
+    ) -> Vec<(GraphId, NodeId)> {
         let SceneGraphState {
             graphs,
             active_countdowns,
             ..
         } = state;
         active_countdowns.clear();
+        let mut activated_nodes = Vec::new();
         for (id, graph) in graphs.iter_mut() {
             let runtime = self.runtimes.entry(*id).or_default();
-            Self::tick_graph(graph, runtime, now_ms, audio);
+            if let Some(node_id) = Self::tick_graph(graph, runtime, now_ms, audio) {
+                activated_nodes.push((*id, node_id));
+            }
             if let Some(remaining) = Self::active_node_countdown(graph, runtime, now_ms) {
                 active_countdowns.insert(*id, remaining);
             }
         }
+        activated_nodes
     }
 
     /// Milliseconds until the active node's soonest `AfterDuration` edge fires,
     /// or `None` if the graph is disabled or the active node has no timed edge.
-    fn active_node_countdown(graph: &SceneGraph, runtime: &GraphRuntime, now_ms: u64) -> Option<u64> {
+    fn active_node_countdown(
+        graph: &SceneGraph,
+        runtime: &GraphRuntime,
+        now_ms: u64,
+    ) -> Option<u64> {
         if !graph.enabled {
             return None;
         }
@@ -154,7 +167,12 @@ impl SceneGraphRuntime {
             .min()
     }
 
-    fn tick_graph(graph: &mut SceneGraph, runtime: &mut GraphRuntime, now_ms: u64, audio: &AudioConditions) {
+    fn tick_graph(
+        graph: &mut SceneGraph,
+        runtime: &mut GraphRuntime,
+        now_ms: u64,
+        audio: &AudioConditions,
+    ) -> Option<NodeId> {
         // Detect section rising edges once per tick (consumed every tick, even when
         // disabled, so re-enabling doesn't fire a stale edge).
         let entered_drop =
@@ -167,7 +185,7 @@ impl SceneGraphRuntime {
             // Forget the active node so re-enabling (or re-loading) restarts the
             // activation clock from the moment it becomes active again.
             runtime.current_node = None;
-            return;
+            return None;
         }
 
         // Step 0: Detect external changes to active_node (showfile load,
@@ -181,7 +199,7 @@ impl SceneGraphRuntime {
                 ..Default::default()
             };
             runtime.pending_transition = None;
-            return;
+            return graph.active_node;
         }
 
         // Step 1: Execute pending transition from last tick.
@@ -193,8 +211,9 @@ impl SceneGraphRuntime {
                     activated_at_ms: now_ms,
                     beats_since_activation: 0,
                 };
+                return Some(next_node);
             }
-            return;
+            return None;
         }
 
         // Step 2: Update activation state from audio.
@@ -232,6 +251,7 @@ impl SceneGraphRuntime {
         if let Some((_, target)) = best {
             runtime.pending_transition = Some(target);
         }
+        None
     }
 
     fn evaluate_condition(
@@ -253,15 +273,34 @@ impl SceneGraphRuntime {
             TransitionCondition::OnEnterBreakdown => entered_breakdown,
             TransitionCondition::Manual => false,
             TransitionCondition::All(conditions) => conditions.iter().all(|c| {
-                Self::evaluate_condition(activation, c, now_ms, audio, entered_drop, entered_breakdown)
+                Self::evaluate_condition(
+                    activation,
+                    c,
+                    now_ms,
+                    audio,
+                    entered_drop,
+                    entered_breakdown,
+                )
             }),
             TransitionCondition::Any(conditions) => conditions.iter().any(|c| {
-                Self::evaluate_condition(activation, c, now_ms, audio, entered_drop, entered_breakdown)
+                Self::evaluate_condition(
+                    activation,
+                    c,
+                    now_ms,
+                    audio,
+                    entered_drop,
+                    entered_breakdown,
+                )
             }),
         }
     }
 
-    pub fn trigger_manual_transition(&mut self, graph_id: GraphId, to: NodeId, graphs: &BTreeMap<GraphId, SceneGraph>) {
+    pub fn trigger_manual_transition(
+        &mut self,
+        graph_id: GraphId,
+        to: NodeId,
+        graphs: &BTreeMap<GraphId, SceneGraph>,
+    ) {
         if let Some(graph) = graphs.get(&graph_id) {
             if graph.nodes.contains_key(&to) {
                 let runtime = self.runtimes.entry(graph_id).or_default();
@@ -286,9 +325,13 @@ impl SceneGraphState {
 
         for graph in self.graphs.values_mut() {
             for node in graph.nodes.values_mut() {
-                node.scenes.retain(|scene_id| valid_scene_ids.contains(scene_id));
+                node.scenes
+                    .retain(|scene_id| valid_scene_ids.contains(scene_id));
             }
-            if graph.active_node.is_some_and(|node_id| !graph.nodes.contains_key(&node_id)) {
+            if graph
+                .active_node
+                .is_some_and(|node_id| !graph.nodes.contains_key(&node_id))
+            {
                 graph.active_node = None;
             }
         }
@@ -319,4 +362,64 @@ pub struct SceneOverride {
     pub scene_id: u8,
     pub master_alpha: u8,
     pub master_speed: AnimationSpeedModifier,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audio() -> AudioConditions {
+        AudioConditions {
+            beat_active: false,
+            beat_trigger: false,
+            section_state: SectionState::Breakdown,
+        }
+    }
+
+    #[test]
+    fn active_node_is_reported_once_when_runtime_observes_it() {
+        let mut state = SceneGraphState::default();
+        state.graphs.insert(
+            2,
+            SceneGraph {
+                enabled: true,
+                active_node: Some(7),
+                nodes: BTreeMap::from([(7, SceneGraphNode::default())]),
+                ..SceneGraph::default()
+            },
+        );
+        let mut runtime = SceneGraphRuntime::default();
+
+        assert_eq!(runtime.tick_all(&mut state, 100, &audio()), vec![(2, 7)]);
+        assert!(runtime.tick_all(&mut state, 125, &audio()).is_empty());
+    }
+
+    #[test]
+    fn transition_reports_destination_when_it_becomes_active() {
+        let mut state = SceneGraphState::default();
+        state.graphs.insert(
+            1,
+            SceneGraph {
+                enabled: true,
+                active_node: Some(0),
+                nodes: BTreeMap::from([
+                    (0, SceneGraphNode::default()),
+                    (1, SceneGraphNode::default()),
+                ]),
+                edges: vec![SceneEdge {
+                    from: 0,
+                    to: 1,
+                    condition: TransitionCondition::AfterDuration(100),
+                    priority: 1,
+                }],
+                ..SceneGraph::default()
+            },
+        );
+        let mut runtime = SceneGraphRuntime::default();
+
+        assert_eq!(runtime.tick_all(&mut state, 0, &audio()), vec![(1, 0)]);
+        assert!(runtime.tick_all(&mut state, 100, &audio()).is_empty());
+        assert_eq!(runtime.tick_all(&mut state, 125, &audio()), vec![(1, 1)]);
+        assert_eq!(state.graphs[&1].active_node, Some(1));
+    }
 }

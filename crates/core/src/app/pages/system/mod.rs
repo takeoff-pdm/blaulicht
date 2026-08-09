@@ -12,7 +12,43 @@ pub mod serial;
 pub mod showfile;
 pub mod speed;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemTab {
+    General,
+    Dmx,
+    ArtNet,
+    Plugins,
+    Midi,
+    Serial,
+    Screens,
+}
+
+impl SystemTab {
+    pub const ALL: [Self; 7] = [
+        Self::General,
+        Self::Dmx,
+        Self::ArtNet,
+        Self::Plugins,
+        Self::Midi,
+        Self::Serial,
+        Self::Screens,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Dmx => "DMX",
+            Self::ArtNet => "Art-Net",
+            Self::Plugins => "Plugins",
+            Self::Midi => "MIDI",
+            Self::Serial => "Serial",
+            Self::Screens => "Screens",
+        }
+    }
+}
+
 pub struct SystemUI {
+    pub active_tab: SystemTab,
     open_file_dialog: Option<FileDialog>,
     pending_load_file: Option<PathBuf>,
     close_showfile_confirm_open: bool,
@@ -34,6 +70,7 @@ pub struct SystemUI {
 impl Default for SystemUI {
     fn default() -> Self {
         Self {
+            active_tab: SystemTab::General,
             open_file_dialog: None,
             pending_load_file: None,
             close_showfile_confirm_open: false,

@@ -1,14 +1,16 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
+    path::PathBuf,
     sync::{
         mpsc::{Receiver, Sender},
         Arc, Mutex,
     },
 };
 
-use egui::Pos2;
+use egui::{Id, Pos2};
 
 use crate::stage::{StageAsset, StageScene};
+use crate::stage_assets::PreparedStageModel;
 use blaulicht_shared::fixture::state::{Position, Rotation};
 
 use super::constants::{DEFAULT_ROOM_DEPTH, DEFAULT_ROOM_WIDTH};
@@ -147,10 +149,11 @@ pub struct VisualizerUiState {
     pub(super) import_dialog: Option<egui_file_dialog::FileDialog>,
     pub(super) import_receiver: Option<Receiver<Result<StageAsset, String>>>,
     pub(super) import_error: Option<String>,
-    pub(super) model_cache: HashMap<String, Arc<three_d_asset::Model>>,
-    pub(super) model_loading: HashSet<String>,
-    pub(super) model_sender: Sender<(String, Result<three_d_asset::Model, String>)>,
-    pub(super) model_receiver: Receiver<(String, Result<three_d_asset::Model, String>)>,
+    pub(super) model_cache: HashMap<String, Arc<PreparedStageModel>>,
+    pub(super) model_states: HashMap<String, ModelLoadState>,
+    pub(super) model_request_sender: crossbeam_channel::Sender<ModelWorkerRequest>,
+    pub(super) model_event_receiver: crossbeam_channel::Receiver<ModelWorkerEvent>,
+    pub(super) model_generation: u64,
     pub(super) settings: VisualizerSettings,
     pub(super) camera_yaw: f32,
     pub(super) camera_pitch: f32,
@@ -160,6 +163,37 @@ pub struct VisualizerUiState {
     pub(super) drag_start_yaw: Option<f32>,
     pub(super) drag_start_pitch: Option<f32>,
     pub(super) drag_last_pos: Option<Pos2>,
+    render_targets: HashMap<Id, VisualizerRenderTarget>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum ModelLoadState {
+    Queued,
+    Preparing,
+    Ready(crate::stage_assets::StageModelStats),
+    Failed(String),
+}
+
+pub(super) struct ModelWorkerRequest {
+    pub(super) key: String,
+    pub(super) path: PathBuf,
+    pub(super) generation: u64,
+}
+
+pub(super) enum ModelWorkerEvent {
+    Started {
+        key: String,
+        generation: u64,
+    },
+    Finished {
+        key: String,
+        generation: u64,
+        result: Result<PreparedStageModel, String>,
+    },
+}
+
+#[derive(Clone)]
+pub(super) struct VisualizerRenderTarget {
     pub(super) shared: Arc<Mutex<GlowShared>>,
     pub(super) frame: Arc<Mutex<VisualizerFrame>>,
 }
@@ -175,7 +209,8 @@ impl VisualizerUiState {
         self.editor.drag_last_pointer = None;
         self.editor.box_select_start = None;
         self.model_cache.clear();
-        self.model_loading.clear();
+        self.model_states.clear();
+        self.model_generation = self.model_generation.wrapping_add(1);
         self.import_error = None;
     }
 
@@ -196,6 +231,16 @@ impl VisualizerUiState {
             camera_position: Vec3::new(0.0, 0.0, 0.0),
             snapshot: RenderSceneSnapshot::default(),
         }))
+    }
+
+    pub(super) fn render_target(&mut self, target_id: Id) -> VisualizerRenderTarget {
+        self.render_targets
+            .entry(target_id)
+            .or_insert_with(|| VisualizerRenderTarget {
+                shared: Self::new_shared(),
+                frame: Self::new_frame(),
+            })
+            .clone()
     }
 }
 
@@ -250,7 +295,42 @@ impl GlowShared {
 
 impl Default for VisualizerUiState {
     fn default() -> Self {
-        let (model_sender, model_receiver) = std::sync::mpsc::channel();
+        let (model_request_sender, model_request_receiver) = crossbeam_channel::bounded(4);
+        let (model_event_sender, model_event_receiver) = crossbeam_channel::unbounded();
+        std::thread::Builder::new()
+            .name("visualizer-model-loader".to_string())
+            .spawn(move || {
+                while let Ok(request) = model_request_receiver.recv() {
+                    let ModelWorkerRequest {
+                        key,
+                        path,
+                        generation,
+                    } = request;
+                    let _ = model_event_sender.send(ModelWorkerEvent::Started {
+                        key: key.clone(),
+                        generation,
+                    });
+                    let started = std::time::Instant::now();
+                    let result = crate::stage_assets::load_prepared_model(&path)
+                        .map_err(|error| format!("Failed to prepare managed GLB {path:?}: {error}"));
+                    let stats = result.as_ref().ok().map(|prepared| prepared.stats);
+                    tracing::info!(
+                        asset = %key,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        success = result.is_ok(),
+                        triangles = stats.map_or(0, |stats| stats.triangles),
+                        texture_bytes = stats.map_or(0, |stats| stats.texture_bytes),
+                        textures_downscaled = stats.map_or(0, |stats| stats.textures_downscaled),
+                        "Visualizer model preparation finished"
+                    );
+                    let _ = model_event_sender.send(ModelWorkerEvent::Finished {
+                        key,
+                        generation,
+                        result,
+                    });
+                }
+            })
+            .expect("visualizer model loader thread must start");
         Self {
             stage: StageScene::default(),
             editor: EditorState::default(),
@@ -258,9 +338,10 @@ impl Default for VisualizerUiState {
             import_receiver: None,
             import_error: None,
             model_cache: HashMap::new(),
-            model_loading: HashSet::new(),
-            model_sender,
-            model_receiver,
+            model_states: HashMap::new(),
+            model_request_sender,
+            model_event_receiver,
+            model_generation: 0,
             settings: VisualizerSettings::default(),
             camera_yaw: DEFAULT_CAMERA_YAW,
             camera_pitch: DEFAULT_CAMERA_PITCH,
@@ -270,8 +351,25 @@ impl Default for VisualizerUiState {
             drag_start_yaw: None,
             drag_start_pitch: None,
             drag_last_pos: None,
-            shared: Self::new_shared(),
-            frame: Self::new_frame(),
+            render_targets: HashMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_targets_are_stable_and_isolated_per_visualizer_instance() {
+        let mut state = VisualizerUiState::default();
+        let main = state.render_target(Id::new("main_visualizer"));
+        let main_again = state.render_target(Id::new("main_visualizer"));
+        let external = state.render_target(Id::new("external_visualizer"));
+
+        assert!(Arc::ptr_eq(&main.shared, &main_again.shared));
+        assert!(Arc::ptr_eq(&main.frame, &main_again.frame));
+        assert!(!Arc::ptr_eq(&main.shared, &external.shared));
+        assert!(!Arc::ptr_eq(&main.frame, &external.frame));
     }
 }

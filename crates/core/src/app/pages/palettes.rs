@@ -288,11 +288,13 @@ impl PaletteUI {
                 self.property_selection.to_fixture_property(),
                 self.single_value,
             )),
-            PaletteKindSelection::Pointer => self.pointer_target.map(|target| PaletteKind::Pointer {
-                target,
-                property: self.pointer_property,
-                ops: self.pointer_ops.clone(),
-            }),
+            PaletteKindSelection::Pointer => {
+                self.pointer_target.map(|target| PaletteKind::Pointer {
+                    target,
+                    property: self.pointer_property,
+                    ops: self.pointer_ops.clone(),
+                })
+            }
         }
     }
 
@@ -354,10 +356,13 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Medium) {
                         if let Some(id) = self.palette_ui_state.delete_palette_id {
-                            let _ = self.data.event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::DeletePalette(id),
-                            ));
+                            let _ = self
+                                .data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::DeletePalette(id),
+                                ));
                         }
                         self.palette_ui_state.delete_dialog_open = false;
                         self.palette_ui_state.delete_palette_id = None;
@@ -370,7 +375,12 @@ impl BlaulichtApp {
             });
     }
 
-    pub fn palettes_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn palettes_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         let palettes_snapshot: Vec<(u8, Palette)> = {
             let engine = self.data.state.dmx_engine.read().unwrap();
             engine
@@ -411,62 +421,68 @@ impl BlaulichtApp {
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (id, palette) in &palettes_snapshot {
-                ui.horizontal(|ui| {
-                    if let Some(new_hsv) = Self::render_palette_preview(ui, palette, &palettes_map) {
-                        color_update = Some((*id, new_hsv));
-                    }
-
-                    let kind_label = match &palette.kind {
-                        PaletteKind::Color(_) => "Color",
-                        PaletteKind::Position(_) => "Position",
-                        PaletteKind::Beam { .. } => "Beam",
-                        PaletteKind::Single(prop, _) => match prop {
-                            FixtureProperty::Alpha => "Alpha",
-                            FixtureProperty::Strobe => "Strobe",
-                            FixtureProperty::Focus => "Focus",
-                            _ => "Single",
-                        },
-                        PaletteKind::Pointer { .. } => "Pointer",
-                    };
-
-                    ui.label(
-                        RichText::new(format!("[{}] {} ({})", id, palette.name, kind_label))
-                            .strong(),
-                    );
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if components::button(ui, false, "Delete", ButtonSize::Small) {
-                            self.palette_ui_state.delete_palette_id = Some(*id);
-                            self.palette_ui_state.delete_dialog_open = true;
+                render_context.horizontal(ui, egui::Align::Center, |ui| {
+                        if let Some(new_hsv) =
+                            Self::render_palette_preview(ui, palette, &palettes_map)
+                        {
+                            color_update = Some((*id, new_hsv));
                         }
 
-                        if components::button(ui, false, "Edit", ButtonSize::Small) {
-                            let engine = self.data.state.dmx_engine.read().unwrap();
-                            if let Some(p) = engine.0.palettes.get(id) {
-                                self.palette_ui_state.load_from_palette(p);
-                                self.palette_ui_state.edit_palette_id = Some(*id);
-                                self.palette_ui_state.edit_dialog_open = true;
+                        let kind_label = match &palette.kind {
+                            PaletteKind::Color(_) => "Color",
+                            PaletteKind::Position(_) => "Position",
+                            PaletteKind::Beam { .. } => "Beam",
+                            PaletteKind::Single(prop, _) => match prop {
+                                FixtureProperty::Alpha => "Alpha",
+                                FixtureProperty::Strobe => "Strobe",
+                                FixtureProperty::Focus => "Focus",
+                                _ => "Single",
+                            },
+                            PaletteKind::Pointer { .. } => "Pointer",
+                        };
+
+                        ui.label(
+                            RichText::new(format!("[{}] {} ({})", id, palette.name, kind_label))
+                                .strong(),
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if components::button(ui, false, "Delete", ButtonSize::Small) {
+                                self.palette_ui_state.delete_palette_id = Some(*id);
+                                self.palette_ui_state.delete_dialog_open = true;
                             }
-                        }
 
-                        if components::button(ui, false, "Unassign", ButtonSize::Small) {
-                            self.data.event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::UnassignPalette(*id),
-                            ));
-                        }
+                            if components::button(ui, false, "Edit", ButtonSize::Small) {
+                                let engine = self.data.state.dmx_engine.read().unwrap();
+                                if let Some(p) = engine.0.palettes.get(id) {
+                                    self.palette_ui_state.load_from_palette(p);
+                                    self.palette_ui_state.edit_palette_id = Some(*id);
+                                    self.palette_ui_state.edit_dialog_open = true;
+                                }
+                            }
+
+                            if components::button(ui, false, "Unassign", ButtonSize::Small) {
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::UnassignPalette(*id),
+                                    ));
+                            }
+                        });
                     });
-                });
 
                 ui.separator();
             }
         });
 
         if let Some((id, new_color)) = color_update {
-            self.data.event_bus_connection.send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
-            ));
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
+                ));
         }
     }
 
@@ -832,10 +848,12 @@ impl BlaulichtApp {
         if should_create {
             let name = self.palette_ui_state.new_name.clone();
             if let Some(kind) = self.palette_ui_state.build_palette_kind() {
-                self.data.event_bus_connection.send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::CreatePalette(name, kind),
-                ));
+                self.data
+                    .event_bus_connection
+                    .send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        ControlEvent::CreatePalette(name, kind),
+                    ));
                 self.palette_ui_state.create_dialog_open = false;
             }
         }
@@ -919,14 +937,18 @@ impl BlaulichtApp {
         if should_save {
             let name = self.palette_ui_state.new_name.clone();
             if let Some(kind) = self.palette_ui_state.build_palette_kind() {
-                self.data.event_bus_connection.send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::RenamePalette(palette_id, name),
-                ));
-                self.data.event_bus_connection.send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::UpdatePalette(palette_id, kind),
-                ));
+                self.data
+                    .event_bus_connection
+                    .send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        ControlEvent::RenamePalette(palette_id, name),
+                    ));
+                self.data
+                    .event_bus_connection
+                    .send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        ControlEvent::UpdatePalette(palette_id, kind),
+                    ));
                 self.palette_ui_state.edit_dialog_open = false;
             }
         }

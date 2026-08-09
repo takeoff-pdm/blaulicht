@@ -17,6 +17,36 @@ use std::fmt;
 use std::time::Duration;
 use strum::IntoEnumIterator;
 
+#[cfg(test)]
+mod layout_tests {
+    use crate::app::components::{self, ButtonSize};
+
+    #[test]
+    fn toolbar_divider_does_not_expand_horizontal_row() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let row = ui.horizontal_top(|ui| {
+                    ui.button("Before");
+                    components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
+                    ui.button("After");
+                });
+
+                assert!(row.response.rect.height() < 100.0);
+                assert!(ui.available_height() > 400.0);
+            });
+        });
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddFixtureKind {
     MovingHead,
@@ -580,8 +610,13 @@ impl BlaulichtApp {
                             && self.add_fixture_start_addr >= 1
                             && self.add_fixture_start_addr <= 512;
 
-                        let mut button_pressed =
-                            components::button(ui, can_create, "Create", ButtonSize::Medium);
+                        let mut button_pressed = components::action_button(
+                            ui,
+                            can_create,
+                            "Create",
+                            ButtonSize::Medium,
+                            Some("Choose a valid fixture type, group, address, and count"),
+                        );
                         ctx.input(|input| {
                             if input.key_pressed(Key::Enter) {
                                 button_pressed = true;
@@ -689,7 +724,12 @@ impl BlaulichtApp {
         skip_rest
     }
 
-    pub fn fixtures_ui_setup(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn fixtures_ui_setup(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         // Make controls touch-friendly within this page
         ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
@@ -717,9 +757,9 @@ impl BlaulichtApp {
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-            egui::Layout::left_to_right(egui::Align::Min),
+            render_context.primary_layout(),
             |ui| {
-                self.scene_overview(ui, &dmx_engine);
+                self.scene_overview(ui, &dmx_engine, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -727,7 +767,7 @@ impl BlaulichtApp {
                     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.horizontal(|ui| {
+                        render_context.horizontal(ui, egui::Align::Min, |ui| {
                             if components::button(ui, false, "Scene +", ButtonSize::Medium) {
                                 self.new_scene_dialog_open = true;
                             }
@@ -770,7 +810,7 @@ impl BlaulichtApp {
                             }
                         });
 
-                        ui.horizontal(|ui| {
+                        render_context.horizontal(ui, egui::Align::Min, |ui| {
                             if components::button(
                                 ui,
                                 self.delete_group_open,
@@ -816,7 +856,7 @@ impl BlaulichtApp {
                                 }
                             }
 
-                            ui.separator();
+                            components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
 
                             if components::button(
                                 ui,
@@ -831,7 +871,7 @@ impl BlaulichtApp {
                                 self.close_dmx_override_numberpads();
                             }
 
-                            ui.separator();
+                            components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
 
                             for (universe, simulator) in
                                 self.universe_simulations.iter_mut().enumerate()

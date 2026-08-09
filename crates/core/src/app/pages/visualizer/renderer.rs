@@ -30,7 +30,7 @@ use super::VisualizerSettings;
 pub(super) struct GlowRenderer {
     pub(super) gl: Arc<glow::Context>,
     three_context: three_d::Context,
-    imported_models: HashMap<u64, ImportedGpuModel>,
+    imported_models: HashMap<String, ImportedGpuAsset>,
     runtime_error: Option<String>,
     program: glow::Program,
     text_program: glow::Program,
@@ -72,9 +72,217 @@ pub(super) struct GlowRenderer {
 }
 
 struct ImportedGpuModel {
-    asset_key: String,
-    model: three_d::Model<three_d::PhysicalMaterial>,
+    parts: Vec<three_d::Gm<three_d::Mesh, three_d::PhysicalMaterial>>,
     base_transforms: Vec<three_d::Mat4>,
+}
+
+enum ImportedGpuAsset {
+    Uploading(GpuModelUpload),
+    Ready(ImportedGpuModel),
+    Failed(String),
+}
+
+struct GpuModelUpload {
+    prepared: Arc<crate::stage_assets::PreparedStageModel>,
+    materials: Vec<three_d::PhysicalMaterial>,
+    texture_jobs: Vec<TextureUploadJob>,
+    next_texture: usize,
+    next_geometry: usize,
+    parts: Vec<three_d::Gm<three_d::Mesh, three_d::PhysicalMaterial>>,
+    base_transforms: Vec<three_d::Mat4>,
+}
+
+#[derive(Clone, Copy)]
+struct TextureUploadJob {
+    material_index: usize,
+    slot: TextureSlot,
+}
+
+#[derive(Clone, Copy)]
+enum TextureSlot {
+    Albedo,
+    OcclusionMetallicRoughness,
+    MetallicRoughness,
+    Occlusion,
+    Normal,
+    Emissive,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct ImportedModelProgress {
+    pub(super) uploading_assets: usize,
+    pub(super) failed_assets: Vec<(String, String)>,
+    pub(super) completed_steps: usize,
+    pub(super) total_steps: usize,
+}
+
+impl GpuModelUpload {
+    fn new(
+        context: &three_d::Context,
+        prepared: Arc<crate::stage_assets::PreparedStageModel>,
+    ) -> Self {
+        let mut texture_jobs = Vec::new();
+        let materials = prepared
+            .model
+            .materials
+            .iter()
+            .enumerate()
+            .map(|(material_index, material)| {
+                for (slot, present) in [
+                    (TextureSlot::Albedo, material.albedo_texture.is_some()),
+                    (
+                        TextureSlot::OcclusionMetallicRoughness,
+                        material.occlusion_metallic_roughness_texture.is_some(),
+                    ),
+                    (
+                        TextureSlot::MetallicRoughness,
+                        material.metallic_roughness_texture.is_some()
+                            && material.occlusion_metallic_roughness_texture.is_none(),
+                    ),
+                    (
+                        TextureSlot::Occlusion,
+                        material.occlusion_texture.is_some()
+                            && material.occlusion_metallic_roughness_texture.is_none(),
+                    ),
+                    (TextureSlot::Normal, material.normal_texture.is_some()),
+                    (TextureSlot::Emissive, material.emissive_texture.is_some()),
+                ] {
+                    if present {
+                        texture_jobs.push(TextureUploadJob {
+                            material_index,
+                            slot,
+                        });
+                    }
+                }
+
+                let mut stripped = material.clone();
+                stripped.albedo_texture = None;
+                stripped.occlusion_metallic_roughness_texture = None;
+                stripped.metallic_roughness_texture = None;
+                stripped.occlusion_texture = None;
+                stripped.normal_texture = None;
+                stripped.emissive_texture = None;
+                stripped.transmission_texture = None;
+                if material_is_transparent(material) {
+                    three_d::PhysicalMaterial::new_transparent(context, &stripped)
+                } else {
+                    three_d::PhysicalMaterial::new_opaque(context, &stripped)
+                }
+            })
+            .collect();
+
+        Self {
+            prepared,
+            materials,
+            texture_jobs,
+            next_texture: 0,
+            next_geometry: 0,
+            parts: Vec::new(),
+            base_transforms: Vec::new(),
+        }
+    }
+
+    fn completed_steps(&self) -> usize {
+        self.next_texture + self.next_geometry
+    }
+
+    fn total_steps(&self) -> usize {
+        self.texture_jobs.len() + self.prepared.model.geometries.len()
+    }
+
+    fn advance(&mut self, context: &three_d::Context) -> Result<bool, String> {
+        use three_d::Geometry as _;
+
+        if let Some(job) = self.texture_jobs.get(self.next_texture).copied() {
+            let cpu_texture = texture_for_job(
+                self.prepared
+                    .model
+                    .materials
+                    .get(job.material_index)
+                    .ok_or_else(|| "Texture references a missing material".to_string())?,
+                job.slot,
+            )
+            .ok_or_else(|| "Prepared texture disappeared before upload".to_string())?;
+            let texture = three_d::Texture2DRef::from_cpu_texture(context, cpu_texture);
+            let material = self
+                .materials
+                .get_mut(job.material_index)
+                .ok_or_else(|| "GPU material disappeared during upload".to_string())?;
+            match job.slot {
+                TextureSlot::Albedo => material.albedo_texture = Some(texture),
+                TextureSlot::OcclusionMetallicRoughness => {
+                    material.metallic_roughness_texture = Some(texture.clone());
+                    material.occlusion_texture = Some(texture);
+                }
+                TextureSlot::MetallicRoughness => {
+                    material.metallic_roughness_texture = Some(texture)
+                }
+                TextureSlot::Occlusion => material.occlusion_texture = Some(texture),
+                TextureSlot::Normal => material.normal_texture = Some(texture),
+                TextureSlot::Emissive => material.emissive_texture = Some(texture),
+            }
+            self.next_texture += 1;
+            return Ok(false);
+        }
+
+        if let Some(primitive) = self.prepared.model.geometries.get(self.next_geometry) {
+            let three_d_asset::Geometry::Triangles(cpu_mesh) = &primitive.geometry else {
+                return Err("Point-cloud primitives are not supported".to_string());
+            };
+            let material = match primitive.material_index {
+                Some(index) => self
+                    .materials
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| format!("Primitive references missing material {index}"))?,
+                None => three_d::PhysicalMaterial::default(),
+            };
+            let mut part = three_d::Gm::new(three_d::Mesh::new(context, cpu_mesh), material);
+            part.set_transformation(primitive.transformation);
+            self.base_transforms.push(primitive.transformation);
+            self.parts.push(part);
+            self.next_geometry += 1;
+            return Ok(self.next_geometry == self.prepared.model.geometries.len());
+        }
+
+        Ok(true)
+    }
+
+    fn finish(self) -> ImportedGpuModel {
+        ImportedGpuModel {
+            parts: self.parts,
+            base_transforms: self.base_transforms,
+        }
+    }
+}
+
+fn texture_for_job(
+    material: &three_d_asset::PbrMaterial,
+    slot: TextureSlot,
+) -> Option<&three_d_asset::Texture2D> {
+    match slot {
+        TextureSlot::Albedo => material.albedo_texture.as_ref(),
+        TextureSlot::OcclusionMetallicRoughness => {
+            material.occlusion_metallic_roughness_texture.as_ref()
+        }
+        TextureSlot::MetallicRoughness => material.metallic_roughness_texture.as_ref(),
+        TextureSlot::Occlusion => material.occlusion_texture.as_ref(),
+        TextureSlot::Normal => material.normal_texture.as_ref(),
+        TextureSlot::Emissive => material.emissive_texture.as_ref(),
+    }
+}
+
+fn material_is_transparent(material: &three_d_asset::PbrMaterial) -> bool {
+    if material.albedo.a < 255 {
+        return true;
+    }
+    material.albedo_texture.as_ref().is_some_and(|texture| {
+        matches!(
+            &texture.data,
+            three_d_asset::TextureData::RgbaU8(values)
+                if values.iter().any(|pixel| pixel[3] < 255)
+        )
+    })
 }
 
 impl GlowRenderer {
@@ -254,6 +462,8 @@ impl GlowRenderer {
             };
             let view = mat4_look_at(eye, target, Vec3::new(0.0, 1.0, 0.0));
 
+            self.advance_imported_uploads(snapshot);
+
             if settings.show_room {
                 self.draw_room(
                     gl,
@@ -266,7 +476,10 @@ impl GlowRenderer {
             }
 
             for object in snapshot.stage_objects.iter() {
-                if object.cpu_model.is_none() {
+                let gpu_ready = object.model_key.as_ref().is_some_and(|key| {
+                    matches!(self.imported_models.get(key), Some(ImportedGpuAsset::Ready(_)))
+                });
+                if !gpu_ready {
                     self.draw_stage_object(gl, projection, view, object);
                 }
             }
@@ -696,64 +909,6 @@ impl GlowRenderer {
     ) {
         use three_d::{degrees, vec3, Light, Object};
 
-        let imported: Vec<_> = snapshot
-            .stage_objects
-            .iter()
-            .filter_map(|object| {
-                Some((
-                    object,
-                    object.model_key.as_ref()?,
-                    object.cpu_model.as_ref()?,
-                ))
-            })
-            .collect();
-        if imported.is_empty() {
-            return;
-        }
-
-        self.imported_models
-            .retain(|id, _| imported.iter().any(|(object, _, _)| object.id == *id));
-        for (object, asset_key, cpu_model) in &imported {
-            let rebuild = self
-                .imported_models
-                .get(&object.id)
-                .map(|cached| cached.asset_key != **asset_key)
-                .unwrap_or(true);
-            if rebuild {
-                let Ok(model) = three_d::Model::<three_d::PhysicalMaterial>::new(
-                    &self.three_context,
-                    cpu_model,
-                ) else {
-                    continue;
-                };
-                let base_transforms = model.iter().map(|part| part.transformation()).collect();
-                self.imported_models.insert(
-                    object.id,
-                    ImportedGpuModel {
-                        asset_key: (*asset_key).clone(),
-                        model,
-                        base_transforms,
-                    },
-                );
-            }
-
-            let transform =
-                three_d::Mat4::from_translation(vec3(object.pos.x, object.pos.y, object.pos.z))
-                    * three_d::Mat4::from_angle_x(degrees(object.rotation.x.to_degrees()))
-                    * three_d::Mat4::from_angle_y(degrees(object.rotation.y.to_degrees()))
-                    * three_d::Mat4::from_angle_z(degrees(object.rotation.z.to_degrees()))
-                    * three_d::Mat4::from_nonuniform_scale(
-                        object.scale.x,
-                        object.scale.y,
-                        object.scale.z,
-                    );
-            if let Some(cached) = self.imported_models.get_mut(&object.id) {
-                for (part, base) in cached.model.iter_mut().zip(&cached.base_transforms) {
-                    part.set_transformation(transform * *base);
-                }
-            }
-        }
-
         let viewport = info.viewport_in_pixels();
         let camera = three_d::Camera::new_perspective(
             three_d::Viewport {
@@ -776,16 +931,139 @@ impl GlowRenderer {
             three_d::Srgba::WHITE,
             vec3(-0.35, -1.0, -0.25),
         );
-        let objects: Vec<&dyn Object> = imported
-            .iter()
-            .filter_map(|(object, _, _)| self.imported_models.get(&object.id))
-            .flat_map(|cached| cached.model.iter().map(|part| part as &dyn Object))
-            .collect();
         let lights: [&dyn Light; 2] = [&ambient, &directional];
         let screen_width = (viewport.left_px + viewport.width_px).max(1) as u32;
         let screen_height = (viewport.from_bottom_px + viewport.height_px).max(1) as u32;
-        three_d::RenderTarget::screen(&self.three_context, screen_width, screen_height)
-            .render(camera, objects, &lights);
+        for object in snapshot.stage_objects.iter() {
+            let Some(asset_key) = object.model_key.as_ref() else {
+                continue;
+            };
+            let Some(ImportedGpuAsset::Ready(cached)) = self.imported_models.get_mut(asset_key)
+            else {
+                continue;
+            };
+            let transform =
+                three_d::Mat4::from_translation(vec3(object.pos.x, object.pos.y, object.pos.z))
+                    * three_d::Mat4::from_angle_x(degrees(object.rotation.x.to_degrees()))
+                    * three_d::Mat4::from_angle_y(degrees(object.rotation.y.to_degrees()))
+                    * three_d::Mat4::from_angle_z(degrees(object.rotation.z.to_degrees()))
+                    * three_d::Mat4::from_nonuniform_scale(
+                        object.scale.x,
+                        object.scale.y,
+                        object.scale.z,
+                    );
+            for (part, base) in cached.parts.iter_mut().zip(&cached.base_transforms) {
+                part.set_transformation(transform * *base);
+            }
+            let objects: Vec<&dyn Object> = cached
+                .parts
+                .iter()
+                .map(|part| part as &dyn Object)
+                .collect();
+            three_d::RenderTarget::screen(&self.three_context, screen_width, screen_height)
+                .render(&camera, objects, &lights);
+        }
+    }
+
+    fn advance_imported_uploads(&mut self, snapshot: &RenderSceneSnapshot) {
+        let desired: HashMap<_, _> = snapshot
+            .stage_objects
+            .iter()
+            .filter_map(|object| {
+                Some((
+                    object.model_key.as_ref()?.clone(),
+                    object.prepared_model.as_ref()?.clone(),
+                ))
+            })
+            .collect();
+        self.imported_models
+            .retain(|key, _| desired.contains_key(key));
+        for (key, prepared) in desired {
+            self.imported_models.entry(key).or_insert_with(|| {
+                ImportedGpuAsset::Uploading(GpuModelUpload::new(
+                    &self.three_context,
+                    prepared,
+                ))
+            });
+        }
+
+        let Some(key) = self
+            .imported_models
+            .iter()
+            .find_map(|(key, asset)| {
+                matches!(asset, ImportedGpuAsset::Uploading(_)).then(|| key.clone())
+            })
+        else {
+            return;
+        };
+
+        unsafe {
+            while self.gl.get_error() != glow::NO_ERROR {}
+        }
+        let started = std::time::Instant::now();
+        let result = {
+            let Some(ImportedGpuAsset::Uploading(upload)) = self.imported_models.get_mut(&key)
+            else {
+                return;
+            };
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                upload.advance(&self.three_context)
+            }))
+            .map_err(|_| "GPU resource upload panicked".to_string())
+            .and_then(|result| result)
+        };
+        let gl_error = unsafe { self.gl.get_error() };
+        let result = if gl_error == glow::NO_ERROR {
+            result
+        } else {
+            Err(format!("OpenGL rejected model resource: error 0x{gl_error:04x}"))
+        };
+        tracing::debug!(
+            asset = %key,
+            elapsed_ms = started.elapsed().as_millis(),
+            success = result.is_ok(),
+            "Visualizer GPU upload step finished"
+        );
+
+        match result {
+            Ok(false) => {}
+            Ok(true) => {
+                if let Some(ImportedGpuAsset::Uploading(upload)) =
+                    self.imported_models.remove(&key)
+                {
+                    self.imported_models
+                        .insert(key, ImportedGpuAsset::Ready(upload.finish()));
+                }
+            }
+            Err(error) => {
+                self.imported_models
+                    .insert(key, ImportedGpuAsset::Failed(error));
+            }
+        }
+    }
+
+    pub(super) fn imported_model_progress(&self) -> ImportedModelProgress {
+        let mut progress = ImportedModelProgress::default();
+        for (key, asset) in &self.imported_models {
+            match asset {
+                ImportedGpuAsset::Uploading(upload) => {
+                    progress.uploading_assets += 1;
+                    progress.completed_steps += upload.completed_steps();
+                    progress.total_steps += upload.total_steps();
+                }
+                ImportedGpuAsset::Failed(error) => {
+                    progress.failed_assets.push((key.clone(), error.clone()));
+                }
+                ImportedGpuAsset::Ready(_) => {}
+            }
+        }
+        progress
+    }
+
+    pub(super) fn retry_imported_model(&mut self, key: &str) {
+        if matches!(self.imported_models.get(key), Some(ImportedGpuAsset::Failed(_))) {
+            self.imported_models.remove(key);
+        }
     }
 
     fn draw_stage_object(

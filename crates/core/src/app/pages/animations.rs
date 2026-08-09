@@ -14,9 +14,9 @@ use blaulicht_shared::{
     FixtureProperty, FrequencyNormalization, MathematicalBaseFunction, PhaserDuration, PhaserKind,
     SyncMode,
 };
-use std::collections::BTreeMap;
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
+use std::collections::BTreeMap;
 use strum::IntoEnumIterator;
 
 const ANIMATIONS_PER_PAGE: usize = 5;
@@ -202,9 +202,9 @@ impl BlaulichtApp {
                         let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
                         let body = AnimationSpecBody::from(self.animation_ui_state.new_mode);
 
-                        if let Some(new_id) = (0..=u8::MAX)
-                            .find(|candidate| !dmx_engine.0.animation_templates.contains_key(candidate))
-                        {
+                        if let Some(new_id) = (0..=u8::MAX).find(|candidate| {
+                            !dmx_engine.0.animation_templates.contains_key(candidate)
+                        }) {
                             dmx_engine.0.animation_templates.insert(
                                 new_id,
                                 AnimationTemplate {
@@ -232,7 +232,7 @@ impl BlaulichtApp {
         }
     }
 
-    fn animation_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+    fn animation_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
         // TODO: can we do this without the allocation?
         let raw_items: Vec<_> = dmx_engine.0.animation_templates.iter().collect();
         let paginated_animations = self
@@ -246,47 +246,54 @@ impl BlaulichtApp {
         let selected_animation_id = self.animation_ui_state.selected_animation_id;
         let page_width = self.animation_ui_state.pagination.width();
 
-        self.animation_ui_state.pagination.ui(ui, |ui| {
-            for (id, animation) in paginated_animations {
-                let id = **id;
+        self.animation_ui_state
+            .pagination
+            .ui_responsive(ui, compact, |ui| {
+                for (id, animation) in paginated_animations {
+                    let id = **id;
 
-                let label = format!("{id} | {}", animation.spec.name);
+                    let label = format!("{id} | {}", animation.spec.name);
 
-                let is_selected = selected_animation_id == Some(id);
-                if components::button(
-                    ui,
-                    is_selected,
-                    &label,
-                    ButtonSize::Large
-                        .with_width(page_width - 2.0 * panel_padding)
-                        .with_font_size(12.0),
-                ) {
-                    // Toggle group selection
-                    if !is_selected {
-                        selected_id = Some(id);
-                        changed = true;
-                    };
+                    let is_selected = selected_animation_id == Some(id);
+                    if components::button(
+                        ui,
+                        is_selected,
+                        &label,
+                        ButtonSize::Large
+                            .with_width(page_width - 2.0 * panel_padding)
+                            .with_font_size(12.0),
+                    ) {
+                        // Toggle group selection
+                        if !is_selected {
+                            selected_id = Some(id);
+                            changed = true;
+                        };
+                    }
+
+                    ui.add_space(5.0);
                 }
-
-                ui.add_space(5.0);
-            }
-        });
+            });
 
         if changed {
             self.animation_ui_state.selected_animation_id = selected_id;
         }
     }
 
-    pub fn animations_ui(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+    pub fn animations_ui(
+        &mut self,
+        ctx: &Context,
+        ui: &mut egui::Ui,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         self.render_add_animation_dialog(ctx, ui);
         self.render_delete_animation_dialog(ctx, ui);
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
-            egui::Layout::left_to_right(egui::Align::Min),
+            render_context.primary_layout(),
             |ui| {
                 let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-                self.animation_pagination(ui, &dmx_engine);
+                self.animation_pagination(ui, &dmx_engine, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -294,7 +301,7 @@ impl BlaulichtApp {
                     egui::vec2(ui.available_width(), ui.available_height()),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.horizontal(|ui| {
+                        render_context.horizontal(ui, egui::Align::Min, |ui| {
                             if button(
                                 ui,
                                 self.animation_ui_state.create_open,
@@ -314,7 +321,8 @@ impl BlaulichtApp {
                                 self.animation_ui_state.selected_animation_id.is_some(),
                                 "Delete",
                                 ButtonSize::Medium,
-                            ) && self.animation_ui_state.selected_animation_id.is_some() {
+                            ) && self.animation_ui_state.selected_animation_id.is_some()
+                            {
                                 self.animation_ui_state.delete_confirm_open =
                                     !self.animation_ui_state.delete_confirm_open;
                             }
@@ -359,12 +367,10 @@ impl BlaulichtApp {
                                             .palettes
                                             .clone();
 
-                                        if let Some(value_changed) =
-                                            self.animation_ui_state.edit_state.show(
-                                                ui,
-                                                ctx,
-                                                &palettes_snapshot,
-                                            )
+                                        if let Some(value_changed) = self
+                                            .animation_ui_state
+                                            .edit_state
+                                            .show(ui, ctx, &palettes_snapshot)
                                         {
                                             let mut dmx_engine =
                                                 self.data.state.dmx_engine.write().unwrap();
@@ -510,7 +516,7 @@ impl AnimationEditState {
 
         let plot_points = (0..(360) * RENDER_WIDTH)
             .map(|x| {
-                let y = phaser::generate(phaser_mut, x as u64, preview_property, palettes);
+                let y = phaser::generate(phaser_mut, x as f64, preview_property, palettes);
                 [x as f64, y as f64]
             })
             .collect::<PlotPoints<'_>>();
@@ -669,11 +675,10 @@ impl AnimationEditState {
                                 palette_id,
                                 property,
                             } => {
-                                mathematical_phaser.amplitude_min =
-                                    FixtureValue::PalettePointer {
-                                        palette_id,
-                                        property,
-                                    };
+                                mathematical_phaser.amplitude_min = FixtureValue::PalettePointer {
+                                    palette_id,
+                                    property,
+                                };
                             }
                             PaletteBindingAction::Unbind => {
                                 let v = mathematical_phaser
@@ -705,11 +710,10 @@ impl AnimationEditState {
                                 palette_id,
                                 property,
                             } => {
-                                mathematical_phaser.amplitude_max =
-                                    FixtureValue::PalettePointer {
-                                        palette_id,
-                                        property,
-                                    };
+                                mathematical_phaser.amplitude_max = FixtureValue::PalettePointer {
+                                    palette_id,
+                                    property,
+                                };
                             }
                             PaletteBindingAction::Unbind => {
                                 let v = mathematical_phaser
@@ -725,8 +729,12 @@ impl AnimationEditState {
 
                     ui.horizontal(|ui| {
                         let mut enabled = phaser_mut.reverse_after_n_iterations.is_some();
-                        if ui.checkbox(&mut enabled, "Reverse after N iterations").changed() {
-                            phaser_mut.reverse_after_n_iterations = if enabled { Some(1) } else { None };
+                        if ui
+                            .checkbox(&mut enabled, "Reverse after N iterations")
+                            .changed()
+                        {
+                            phaser_mut.reverse_after_n_iterations =
+                                if enabled { Some(1) } else { None };
                         }
 
                         if let Some(ref mut n) = phaser_mut.reverse_after_n_iterations {

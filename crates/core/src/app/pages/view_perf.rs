@@ -85,11 +85,12 @@ impl BlaulichtApp {
                             let rst_enabled = scene.1.sink.master_alpha_fader != 100
                                 || scene.1.sink.master_speed != AnimationSpeedModifier::_1;
 
-                            if components::button(
+                            if components::action_button(
                                 ui,
                                 rst_enabled,
                                 "RST",
                                 ButtonSize::Small.with_width(22.0),
+                                Some("Scene level and speed are already at their defaults"),
                             ) {
                                 self.data
                                     .event_bus_connection
@@ -125,11 +126,12 @@ impl BlaulichtApp {
 
                             ui.add_space(5.0);
 
-                            if components::button(
+                            if components::action_button(
                                 ui,
                                 !is_base,
                                 "DEL",
                                 ButtonSize::Small.with_width(22.0),
+                                Some("The base scene cannot be removed from the active view"),
                             ) {
                                 self.data
                                     .event_bus_connection
@@ -205,7 +207,12 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn view_perf_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn view_perf_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let base_scene = dmx_engine.0.current_scene_focus;
         let current_overlays = dmx_engine.0.current_overlay_scenes.clone();
@@ -233,21 +240,51 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
-                ui.horizontal(|ui| {
+                render_context.horizontal(ui, egui::Align::Min, |ui| {
                     let can_add_overlay = !available_overlay_scenes.is_empty();
-                    if components::button(
+                    if components::action_button(
                         ui,
-                        self.view_perf_ui_state.overlay_picker_open,
+                        can_add_overlay,
                         "ADD OVERLAY",
                         ButtonSize::Medium,
-                    ) && can_add_overlay
-                    {
+                        Some("No additional scenes are available as overlays"),
+                    ) {
                         self.view_perf_ui_state.overlay_picker_open = true;
                     }
 
-                    if components::button(ui, false, "BAR BAZ", ButtonSize::Medium) {}
-
-                    ui.label("TODO: allow for boosting the brightness");
+                    components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
+                    ui.label("Grand master");
+                    let mut grand_master = self.data.state.grand_master_percent() as i32;
+                    if ui
+                        .add_sized(
+                            [180.0, 20.0],
+                            egui::Slider::new(&mut grand_master, 0..=100).suffix("%"),
+                        )
+                        .changed()
+                    {
+                        self.data
+                            .state
+                            .set_grand_master_percent(grand_master as u8);
+                    }
+                    if components::action_button(
+                        ui,
+                        grand_master != 100,
+                        "RESET",
+                        ButtonSize::Medium,
+                        Some("Grand master is already at 100%"),
+                    ) {
+                        self.data.state.set_grand_master_percent(100);
+                    }
+                    if components::button(
+                        ui,
+                        grand_master == 0,
+                        "BLACKOUT",
+                        ButtonSize::Medium,
+                    ) {
+                        self.data
+                            .state
+                            .set_grand_master_percent(if grand_master == 0 { 100 } else { 0 });
+                    }
                 });
 
                 ui.separator();
@@ -269,7 +306,11 @@ impl BlaulichtApp {
 
                 // 2. Calculate how many columns fit in the current window width
                 //    We use a minimal check (max(1)) to prevent division by zero or 0 columns.
-                let available_width = ui.available_width() - 200.0;
+                let available_width = if render_context.is_dynamic() {
+                    ui.available_width()
+                } else {
+                    ui.available_width() - 200.0
+                };
                 let cols = (available_width / total_card_width).floor().max(1.0) as usize;
 
                 ui.allocate_ui_with_layout(
@@ -284,7 +325,9 @@ impl BlaulichtApp {
                                 egui::Grid::new("scene_grid")
                                     .spacing(egui::vec2(padding, padding)) // Space between cards
                                     .show(ui, |ui| {
-                                        ui.set_min_width(500.0);
+                                        if !render_context.is_dynamic() {
+                                            ui.set_min_width(500.0);
+                                        }
                                         for (i, (id, is_base)) in scenes.iter().enumerate() {
                                             if i > 0 && i % cols == 0 {
                                                 ui.end_row();
@@ -303,9 +346,6 @@ impl BlaulichtApp {
                                     });
                             });
 
-                        ui.separator();
-
-                        ui.label("THINGS ABOUT SCENES HERE");
                     },
                 );
             },

@@ -36,8 +36,9 @@ where
     let mut selection = current_selection.clone();
     let mut changed = false;
 
-    Dialog::new(label, dialog_dim)
+    let dialog_response = Dialog::new(label, dialog_dim)
         .with_backdrop()
+        .dismiss_on_backdrop()
         .show(ctx, |ui| {
             for (idx, (option_key, option)) in options.into_iter().enumerate() {
                 if super::button(
@@ -66,6 +67,9 @@ where
                 *is_open = false;
             }
         });
+    if dialog_response.cancel_requested {
+        *is_open = false;
+    }
 
     (selection, changed)
 }

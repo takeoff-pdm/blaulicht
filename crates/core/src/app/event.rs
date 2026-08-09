@@ -12,9 +12,18 @@ impl BlaulichtApp {
         let mut empty = 0;
         loop {
             match self.data.event_bus_connection.try_recv() {
+                Some(control_event) if control_event.originator() == EventOriginator::Web => {
+                    if control_event_marks_showfile_dirty(&control_event.body()) {
+                        self.mark_showfile_dirty();
+                    }
+                }
                 // Don't handle web to avoid infinite loopbacks.
                 Some(control_event) if control_event.originator() != EventOriginator::Web => {
-                    if let ControlEvent::MainUi(main_ui_event) = control_event.body() {
+                    let body = control_event.body();
+                    if control_event_marks_showfile_dirty(&body) {
+                        self.mark_showfile_dirty();
+                    }
+                    if let ControlEvent::MainUi(main_ui_event) = body {
                         match main_ui_event {
                             MainUiEvent::NavigatePage(app_page) => {
                                 self.navbar.navigate_to(app_page)
@@ -150,5 +159,23 @@ impl BlaulichtApp {
                 break;
             }
         }
+    }
+}
+
+fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
+    match event {
+        ControlEvent::SelectGroup(_)
+        | ControlEvent::DeSelectGroup(_)
+        | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
+        | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
+        | ControlEvent::RemoveSelection
+        | ControlEvent::RemoveAllSelection
+        | ControlEvent::PushSelection
+        | ControlEvent::PopSelection
+        | ControlEvent::MainUi(_)
+        | ControlEvent::PluginUi(_, _)
+        | ControlEvent::MiscEvent { .. } => false,
+        ControlEvent::Transaction(events) => events.iter().any(control_event_marks_showfile_dirty),
+        _ => true,
     }
 }

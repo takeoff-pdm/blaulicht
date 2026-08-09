@@ -1,5 +1,5 @@
 use crate::{
-    app::BlaulichtApp,
+    app::{pages::system::SystemTab, BlaulichtApp},
     state::{MidiDeviceState, SerialDeviceState},
 };
 use blaulicht_assets::icons;
@@ -198,7 +198,7 @@ impl BlaulichtApp {
                 dimensions,
                 left_inset,
             ) {
-                self.system_ui_state.dmx_dialogs_open[universe_number] = true;
+                self.system_ui_state.active_tab = SystemTab::Dmx;
             }
         }
 
@@ -213,7 +213,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.artnet_dialog_open = true;
+            self.system_ui_state.active_tab = SystemTab::ArtNet;
         }
 
         // MIDI subsystem
@@ -227,7 +227,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.midi_dialog_open = true;
+            self.system_ui_state.active_tab = SystemTab::Midi;
         }
 
         if Self::render_compact_health_box(
@@ -240,7 +240,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.serial_dialog_open = true;
+            self.system_ui_state.active_tab = SystemTab::Serial;
         }
 
         if Self::render_compact_health_box(
@@ -253,7 +253,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.plugin_dialog_open = true;
+            self.system_ui_state.active_tab = SystemTab::Plugins;
         }
 
         let screen_count = self.external_screens.len();
@@ -264,11 +264,11 @@ impl BlaulichtApp {
             egui_phosphor::regular::MONITOR,
             icon_size,
             true,
-            screen_count > 0,
+            true,
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.screens_dialog_open = true;
+            self.system_ui_state.active_tab = SystemTab::Screens;
         }
     }
 }

@@ -40,6 +40,7 @@ pub struct DialogBuilder {
     moveable: bool,
     with_backdrop: bool,
     backdrop_color: Option<Color32>,
+    dismiss_on_backdrop: bool,
     /// Anchor to the top-right of the screen (keeps auto-height) instead of
     /// centering.
     anchor_right: bool,
@@ -48,6 +49,11 @@ pub struct DialogBuilder {
 pub struct Dialog {
     builder: DialogBuilder,
     backdrop_clicked: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DialogResponse {
+    pub cancel_requested: bool,
 }
 
 impl Dialog {
@@ -62,6 +68,7 @@ impl Dialog {
                 moveable: false,
                 with_backdrop: false,
                 backdrop_color: None,
+                dismiss_on_backdrop: false,
                 anchor_right: false,
             },
             backdrop_clicked: false,
@@ -123,6 +130,16 @@ impl Dialog {
         }
     }
 
+    pub fn dismiss_on_backdrop(self) -> Self {
+        Self {
+            builder: DialogBuilder {
+                dismiss_on_backdrop: true,
+                ..self.builder
+            },
+            ..self
+        }
+    }
+
     pub fn fixed_pos(self, pos: Vec2) -> Self {
         Self {
             builder: DialogBuilder {
@@ -141,7 +158,11 @@ impl Dialog {
         self.backdrop_clicked
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, add_contents: impl FnOnce(&mut Ui)) {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        add_contents: impl FnOnce(&mut Ui),
+    ) -> DialogResponse {
         let modal_guard = self.builder.with_backdrop.then(ModalDepthGuard::push);
 
         let order = if modal_guard
@@ -185,6 +206,11 @@ impl Dialog {
         match self.builder.fixed_pos {
             Some(pos) => self.show_fixed_pos(ctx, window_id, order, pos, add_contents),
             None => self.show_dynamic_pos(ctx, window_id, order, add_contents),
+        };
+
+        DialogResponse {
+            cancel_requested: ctx.input(|input| input.key_pressed(egui::Key::Escape))
+                || (self.builder.dismiss_on_backdrop && self.backdrop_clicked),
         }
     }
 

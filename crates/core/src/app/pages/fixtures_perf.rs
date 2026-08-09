@@ -102,7 +102,12 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn fixtures_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn fixtures_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
         let groups = dmx_engine.groups();
 
@@ -125,9 +130,9 @@ impl BlaulichtApp {
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-            egui::Layout::left_to_right(egui::Align::Min),
+            render_context.primary_layout(),
             |ui| {
-                self.scene_overview(ui, &dmx_engine);
+                self.scene_overview(ui, &dmx_engine, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -135,7 +140,7 @@ impl BlaulichtApp {
                     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.horizontal(|ui| {
+                        render_context.horizontal(ui, egui::Align::Min, |ui| {
                             if components::button(
                                 ui,
                                 self.current_scene_animations_dialog_open,
@@ -545,10 +550,11 @@ impl BlaulichtApp {
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
-                    let new_value_spec = self
-                        .fixture_perf_ui
-                        .scene_overview_animation_edit
-                        .show(ui, ctx, &dmx_engine.0.palettes);
+                    let new_value_spec = self.fixture_perf_ui.scene_overview_animation_edit.show(
+                        ui,
+                        ctx,
+                        &dmx_engine.0.palettes,
+                    );
 
                     if let Some(spec) = new_value_spec {
                         self.data
@@ -752,7 +758,10 @@ impl BlaulichtApp {
                     return;
                 }
 
-                ui.label(format!("Selection: {} fixture(s)", selection.fixtures.len()));
+                ui.label(format!(
+                    "Selection: {} fixture(s)",
+                    selection.fixtures.len()
+                ));
                 ui.add_space(8.0);
 
                 ui.heading("Active");
@@ -771,22 +780,22 @@ impl BlaulichtApp {
                                     .get(palette_id)
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("?");
-                                let label =
-                                    format!("{} {palette_id}: {name}", egui_phosphor::regular::LETTER_CIRCLE_P);
+                                let label = format!(
+                                    "{} {palette_id}: {name}",
+                                    egui_phosphor::regular::LETTER_CIRCLE_P
+                                );
                                 if components::button(
                                     ui,
                                     true,
                                     &label,
                                     ButtonSize::Medium.with_width(WIDTH - 40.0),
                                 ) {
-                                    self.data.event_bus_connection.send(
-                                        ControlEventMessage::new(
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(
                                             EventOriginator::Web,
-                                            ControlEvent::UnassignPaletteFromSelection(
-                                                *palette_id,
-                                            ),
-                                        ),
-                                    );
+                                            ControlEvent::UnassignPaletteFromSelection(*palette_id),
+                                        ));
                                 }
                                 ui.add_space(2.0);
                             }
@@ -820,12 +829,12 @@ impl BlaulichtApp {
                                     &label,
                                     ButtonSize::Medium.with_width(WIDTH - 40.0),
                                 ) {
-                                    self.data.event_bus_connection.send(
-                                        ControlEventMessage::new(
+                                    self.data
+                                        .event_bus_connection
+                                        .send(ControlEventMessage::new(
                                             EventOriginator::Web,
                                             ControlEvent::AssignPaletteToSelection(*palette_id),
-                                        ),
-                                    );
+                                        ));
                                 }
                                 ui.add_space(2.0);
                             }

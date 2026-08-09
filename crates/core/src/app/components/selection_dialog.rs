@@ -60,8 +60,9 @@ where
     let mut selection = current_selection.clone();
     let mut changed = false;
 
-    Dialog::new(label, dialog_dim)
+    let dialog_response = Dialog::new(label, dialog_dim)
         .with_backdrop()
+        .dismiss_on_backdrop()
         .show(ctx, |ui| {
             let mut reset_page_state = false;
 
@@ -128,6 +129,10 @@ where
                     .data_mut(|data| data.remove_temp::<usize>(page_memory_id));
             }
         });
+    if dialog_response.cancel_requested {
+        *is_open = false;
+        ctx.data_mut(|data| data.remove_temp::<usize>(page_memory_id));
+    }
 
     (selection, changed)
 }

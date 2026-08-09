@@ -1,4 +1,7 @@
-use crate::app::{components, theme, BlaulichtApp, ExternalScreen, PopupSpec};
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec, ShowfileSaveStatus,
+};
 use crate::config;
 use crate::state::AppStateWrapper;
 use crate::state::ScreenId;
@@ -6,7 +9,7 @@ use crate::state::ScreenId;
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;
 
-use egui::{Context, Frame};
+use egui::Context;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
@@ -75,6 +78,7 @@ impl BlaulichtApp {
         }
 
         app.sync_external_screen_infos();
+        app.reset_save_tracking();
 
         app
     }
@@ -89,7 +93,23 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
+        self.poll_save_completion(ctx);
+        self.detect_showfile_dirty();
         self.tick_autosave();
+
+        if ctx.input(|input| input.viewport().close_requested()) {
+            if self.allow_close_once {
+                self.allow_close_once = false;
+            } else if matches!(
+                self.save_status,
+                ShowfileSaveStatus::Dirty
+                    | ShowfileSaveStatus::Saving
+                    | ShowfileSaveStatus::Failed(_)
+            ) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.pending_lifecycle_action = Some(GuardedLifecycleAction::Quit);
+            }
+        }
 
         if ctx.style().visuals.dark_mode {
             theme::set_theme(ctx, theme::BLUE);
@@ -101,6 +121,8 @@ impl eframe::App for BlaulichtApp {
         }
 
         self.render_popup(ctx);
+        self.render_save_status(ctx);
+        self.render_lifecycle_guard(ctx);
 
         self.debug_dialog(ctx);
 
@@ -184,21 +206,16 @@ impl BlaulichtApp {
 
         let page = self.navbar.page();
 
-        // TODO: experimental -> add back later.
-        egui::TopBottomPanel::bottom("horizontal_nav")
-            .resizable(false)
-            .frame(Frame::NONE)
-            .show_separator_line(true)
-            .show(ctx, |ui| {
-                components::horizontal_nav_for_tab(ui, page);
-            });
-
         egui::CentralPanel::default().show(ctx, |ui| {
             // // Update animation time for continuous rendering
             self.frame_count += 1; // TODO: when does this overflow?
             self.animation_time += 0.016; // 16ms ~= 60fps
 
-            self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN);
+            let render_context = crate::app::page::PageRenderContext::new(
+                crate::config::PageRenderMode::Default,
+                ui.available_size(),
+            );
+            self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN, render_context);
         });
 
         // Render per-plugin UI windows.
@@ -209,7 +226,12 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn logs_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn logs_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        _render_context: crate::app::page::PageRenderContext,
+    ) {
         self.log_window.draw(ctx, ui);
     }
 
@@ -221,33 +243,235 @@ impl BlaulichtApp {
         }
         self.last_autosave_check = Instant::now();
 
-        let path = {
-            let config = self.data.config.lock().unwrap();
-            match config.last_open_showfile.clone() {
-                Some(p) => p,
-                None => return,
-            }
-        };
+        if matches!(self.save_status, ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Failed(_)) {
+            self.request_showfile_save(false);
+        }
+    }
 
-        let showfile = self.build_showfile();
-        let serialized = match serde_json::to_string_pretty(&showfile) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
-        let mut hasher = std::hash::DefaultHasher::new();
-        serialized.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        if hash == self.last_autosave_hash {
+    pub(crate) fn mark_showfile_dirty(&mut self) {
+        if self.data.config.lock().unwrap().last_open_showfile.is_none() {
             return;
         }
-        self.last_autosave_hash = hash;
-        self.last_save_time = Some(Instant::now());
+        if self.save_in_flight {
+            self.save_pending = true;
+        } else {
+            self.save_status = ShowfileSaveStatus::Dirty;
+        }
+    }
 
+    fn detect_showfile_dirty(&mut self) {
+        const DIRTY_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+        if self.last_dirty_check.elapsed() < DIRTY_CHECK_INTERVAL || self.save_in_flight {
+            return;
+        }
+        self.last_dirty_check = Instant::now();
+        if self.data.config.lock().unwrap().last_open_showfile.is_none() {
+            self.save_status = ShowfileSaveStatus::NoShowfile;
+            return;
+        }
+        if let Ok((_, hash)) = self.serialized_showfile() {
+            self.save_status = if hash == self.last_autosave_hash {
+                ShowfileSaveStatus::Clean
+            } else {
+                ShowfileSaveStatus::Dirty
+            };
+        }
+    }
+
+    fn serialized_showfile(&self) -> Result<(String, u64), String> {
+        let serialized = serde_json::to_string_pretty(&self.build_showfile())
+            .map_err(|error| error.to_string())?;
+        let mut hasher = std::hash::DefaultHasher::new();
+        serialized.hash(&mut hasher);
+        Ok((serialized, hasher.finish()))
+    }
+
+    pub(crate) fn request_showfile_save(&mut self, manual: bool) {
+        let Some(path) = self.data.config.lock().unwrap().last_open_showfile.clone() else {
+            self.save_status = ShowfileSaveStatus::NoShowfile;
+            if manual {
+                self.show_popup(PopupSpec::with_duration(
+                    Duration::from_secs(2),
+                    "No Showfile".to_string(),
+                ));
+            }
+            return;
+        };
+        if self.save_in_flight {
+            self.save_pending = true;
+            return;
+        }
+        let (serialized, hash) = match self.serialized_showfile() {
+            Ok(result) => result,
+            Err(error) => {
+                self.save_status = ShowfileSaveStatus::Failed(error);
+                return;
+            }
+        };
+        if hash == self.last_autosave_hash {
+            self.save_status = ShowfileSaveStatus::Clean;
+            return;
+        }
+
+        self.save_status = ShowfileSaveStatus::Saving;
+        self.save_in_flight = true;
+        let sender = self.save_completion_sender.clone();
         std::thread::spawn(move || {
-            let _ = config::write_atomic(&path, serialized.as_bytes());
+            let result = config::write_atomic(&path, serialized.as_bytes())
+                .map_err(|error| error.to_string());
+            let _ = sender.send(crate::app::SaveCompletion {
+                hash,
+                manual,
+                result,
+            });
         });
+    }
+
+    fn poll_save_completion(&mut self, ctx: &Context) {
+        while let Ok(completion) = self.save_completion_receiver.try_recv() {
+            self.save_in_flight = false;
+            match completion.result {
+                Ok(()) => {
+                    self.last_autosave_hash = completion.hash;
+                    self.last_save_time = Some(Instant::now());
+                    self.save_status = ShowfileSaveStatus::Clean;
+                    let config = self.data.config.lock().unwrap().clone();
+                    if let Err(error) = config::write_config(
+                        std::path::PathBuf::from(&self.data.config_path),
+                        config,
+                    ) {
+                        tracing::warn!("Failed to persist showfile path: {error}");
+                    }
+                    if completion.manual {
+                        self.show_popup(PopupSpec::with_duration(
+                            Duration::from_secs(2),
+                            "Saved Showfile".to_string(),
+                        ));
+                    }
+                }
+                Err(error) => {
+                    tracing::error!("Failed to save showfile: {error}");
+                    self.save_status = ShowfileSaveStatus::Failed(error);
+                    self.pending_lifecycle_action = self.lifecycle_action_after_save.take();
+                }
+            }
+            if self.save_pending {
+                self.save_pending = false;
+                self.request_showfile_save(false);
+                if !self.save_in_flight && matches!(self.save_status, ShowfileSaveStatus::Clean) {
+                    if let Some(action) = self.lifecycle_action_after_save.take() {
+                        self.execute_lifecycle_action(action, ctx);
+                    }
+                }
+            } else if matches!(self.save_status, ShowfileSaveStatus::Clean) {
+                if let Some(action) = self.lifecycle_action_after_save.take() {
+                    self.execute_lifecycle_action(action, ctx);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn reset_save_tracking(&mut self) {
+        self.last_autosave_hash = self.serialized_showfile().map(|(_, hash)| hash).unwrap_or(0);
+        self.save_status = if self.data.config.lock().unwrap().last_open_showfile.is_some() {
+            ShowfileSaveStatus::Clean
+        } else {
+            ShowfileSaveStatus::NoShowfile
+        };
+    }
+
+    fn render_save_status(&self, ctx: &Context) {
+        let (label, color) = match &self.save_status {
+            ShowfileSaveStatus::NoShowfile | ShowfileSaveStatus::Clean => return,
+            ShowfileSaveStatus::Dirty => ("Unsaved changes", egui::Color32::YELLOW),
+            ShowfileSaveStatus::Saving => ("Saving...", egui::Color32::LIGHT_BLUE),
+            ShowfileSaveStatus::Failed(_) => ("Save failed", egui::Color32::LIGHT_RED),
+        };
+        egui::Area::new(egui::Id::new("showfile_save_status"))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
+            .order(egui::Order::Tooltip)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(140.0);
+                    ui.set_max_width(320.0);
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(label).color(color))
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                    );
+                    if let ShowfileSaveStatus::Failed(error) = &self.save_status {
+                        ui.label(error);
+                    }
+                });
+            });
+    }
+
+    pub(crate) fn request_guarded_lifecycle(
+        &mut self,
+        action: GuardedLifecycleAction,
+        ctx: &Context,
+    ) {
+        if matches!(
+            self.save_status,
+            ShowfileSaveStatus::Dirty
+                | ShowfileSaveStatus::Saving
+                | ShowfileSaveStatus::Failed(_)
+        ) {
+            self.pending_lifecycle_action = Some(action);
+        } else {
+            self.execute_lifecycle_action(action, ctx);
+        }
+    }
+
+    fn execute_lifecycle_action(&mut self, action: GuardedLifecycleAction, ctx: &Context) {
+        match action {
+            GuardedLifecycleAction::Quit => {
+                self.data.state.set_grand_master_percent(100);
+                self.allow_close_once = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            GuardedLifecycleAction::Restart => std::process::exit(42),
+        }
+    }
+
+    fn render_lifecycle_guard(&mut self, ctx: &Context) {
+        let Some(action) = self.pending_lifecycle_action else {
+            return;
+        };
+        let verb = match action {
+            GuardedLifecycleAction::Quit => "quit",
+            GuardedLifecycleAction::Restart => "restart",
+        };
+        let response = Dialog::new("Unsaved Changes".to_string(), egui::vec2(360.0, 160.0))
+            .with_backdrop()
+            .dismiss_on_backdrop()
+            .show(ctx, |ui| {
+                ui.heading("Unsaved changes");
+                ui.label(format!("Save the current show before {verb}?"));
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if components::button(ui, true, "Save", ButtonSize::Medium) {
+                        self.pending_lifecycle_action = None;
+                        self.lifecycle_action_after_save = Some(action);
+                        self.request_showfile_save(true);
+                    }
+                    if components::button(ui, false, "Discard", ButtonSize::Medium) {
+                        self.pending_lifecycle_action = None;
+                        match action {
+                            GuardedLifecycleAction::Quit => {
+                                self.allow_close_once = true;
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close)
+                            }
+                            GuardedLifecycleAction::Restart => std::process::exit(42),
+                        }
+                    }
+                    if components::button(ui, false, "Cancel", ButtonSize::Medium) {
+                        self.pending_lifecycle_action = None;
+                    }
+                });
+            });
+        if response.cancel_requested {
+            self.pending_lifecycle_action = None;
+        }
     }
 
     fn build_showfile(&self) -> config::CoreShowfile {

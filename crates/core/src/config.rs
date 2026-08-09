@@ -123,8 +123,25 @@ pub enum ShowfileDockNode {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ShowfileDockTab {
+    PageConfig {
+        page: AppPage,
+        #[serde(default)]
+        render_mode: PageRenderMode,
+    },
+    PluginUi {
+        plugin_id: u8,
+        #[serde(default)]
+        render_mode: PageRenderMode,
+    },
+    // Legacy showfiles stored core pages as bare enum values.
     Page(AppPage),
-    PluginUi { plugin_id: u8 },
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageRenderMode {
+    #[default]
+    Default,
+    Dynamic,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

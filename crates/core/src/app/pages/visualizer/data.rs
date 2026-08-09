@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::stage::{StageObjectKind, StageScene};
+use crate::stage_assets::PreparedStageModel;
 
 use super::constants::{BASE_SIZE, HEAD_SIZE, PAN_JOINT_HEIGHT, YOKE_HEIGHT};
 use super::math::{
@@ -34,7 +35,7 @@ pub(super) struct RenderStageObject {
     pub(super) scale: Vec3,
     pub(super) color: [f32; 3],
     pub(super) model_key: Option<String>,
-    pub(super) cpu_model: Option<Arc<three_d_asset::Model>>,
+    pub(super) prepared_model: Option<Arc<PreparedStageModel>>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -98,7 +99,7 @@ pub(super) struct FixturePose {
 pub(super) fn collect_fixtures(
     app_state: &crate::state::AppState,
     stage: &StageScene,
-    model_cache: &HashMap<String, Arc<three_d_asset::Model>>,
+    model_cache: &HashMap<String, Arc<PreparedStageModel>>,
 ) -> RenderSceneSnapshot {
     let mut fixtures = Vec::new();
 
@@ -198,7 +199,7 @@ pub(super) fn collect_fixtures(
                     .map(|asset| asset.content_hash.clone()),
                 _ => None,
             };
-            let cpu_model = model_key
+            let prepared_model = model_key
                 .as_ref()
                 .and_then(|key| model_cache.get(key))
                 .cloned();
@@ -221,7 +222,7 @@ pub(super) fn collect_fixtures(
                 ),
                 color: object.color.map(|channel| channel as f32 / 255.0),
                 model_key,
-                cpu_model,
+                prepared_model,
             }
         })
         .collect();

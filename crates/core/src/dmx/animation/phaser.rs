@@ -1,17 +1,17 @@
 use std::{collections::BTreeMap, f32::consts::PI};
 
 use blaulicht_shared::{
-    palette::Palette, AnimationSpecBodyPhaser, FixtureProperty, MathematicalBaseFunction,
-    PhaserKind,
+    AnimationSpecBodyPhaser, FixtureProperty, MathematicalBaseFunction, PhaserKind,
+    palette::Palette,
 };
 
 pub fn generate(
     self_: &AnimationSpecBodyPhaser,
-    degrees_raw: u64,
+    degrees_raw: f64,
     property: FixtureProperty,
     palettes: &BTreeMap<u8, Palette>,
 ) -> u16 {
-    let degrees = (degrees_raw % 360) as f32;
+    let degrees = degrees_raw.rem_euclid(360.0) as f32;
     debug_assert!((0.0..=360.0).contains(&degrees));
 
     let value = match &self_.kind {
@@ -56,21 +56,13 @@ pub fn generate(
                     let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
 
                     // High in first half, low in second half
-                    if angle < 180.0 {
-                        max
-                    } else {
-                        min
-                    }
+                    if angle < 180.0 { max } else { min }
                 }
                 MathematicalBaseFunction::Square1_8 => {
                     let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
 
                     // High in first eigth, low in second half
-                    if angle < 360.0 / 8.0 {
-                        max
-                    } else {
-                        min
-                    }
+                    if angle < 360.0 / 8.0 { max } else { min }
                 }
                 MathematicalBaseFunction::Spike1_8 => {
                     let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);

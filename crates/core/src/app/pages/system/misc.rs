@@ -1,7 +1,8 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
-        BlaulichtApp, PopupSpec,
+        pages::system::SystemTab,
+        BlaulichtApp, GuardedLifecycleAction, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
@@ -12,7 +13,7 @@ use egui::{Color32, Context, FontId, RichText, ThemePreference};
 use std::{
     mem,
     path::Path,
-    process::{self, Command},
+    process::Command,
     time::Duration,
 };
 
@@ -22,7 +23,7 @@ impl BlaulichtApp {
             return;
         }
 
-        Dialog::new("Confirm Shutdown".to_string(), egui::vec2(200.0, 100.0))
+        let response = Dialog::new("Confirm Shutdown".to_string(), egui::vec2(200.0, 100.0))
             .with_backdrop()
             .show(ctx, |ui| {
                 let blink = ((self.animation_time * 4.0) as i32) % 2 == 0;
@@ -39,7 +40,7 @@ impl BlaulichtApp {
 
                 ui.add_space(12.0);
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Large) {
                         match Command::new("/usr/bin/shutdown.sh").status() {
                             Ok(status) if status.success() => {
@@ -61,9 +62,18 @@ impl BlaulichtApp {
                     }
                 });
             });
+        if response.cancel_requested {
+            self.system_ui_state.confirm_shutdown_open = false;
+        }
     }
 
-    pub fn system_ui(&mut self, ui: &mut egui::Ui, ctx: &Context, screen_id: ScreenId) {
+    pub fn system_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        screen_id: ScreenId,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         self.render_confirm_shutdown_dialog(ctx);
         self.render_showfile_dialog(ctx);
 
@@ -76,18 +86,62 @@ impl BlaulichtApp {
         self.render_screens_dialog(ctx);
         self.render_plugin_popup(ctx, screen_id);
 
+        let available_size = ui.available_size().max(egui::vec2(1.0, 1.0));
+        let (page_rect, _) = ui.allocate_exact_size(available_size, egui::Sense::hover());
+        let tab_height = system_tab_bar_height(page_rect.width()).min(page_rect.height());
+        let tab_rect = egui::Rect::from_min_max(
+            egui::pos2(page_rect.min.x, page_rect.max.y - tab_height),
+            page_rect.max,
+        );
+        let content_rect = egui::Rect::from_min_max(
+            page_rect.min,
+            egui::pos2(page_rect.max.x, tab_rect.min.y),
+        );
+        let mut tab_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(tab_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        tab_ui.set_clip_rect(tab_rect);
+        tab_ui.separator();
+        self.render_system_tab_bar(&mut tab_ui, render_context);
+
+        let mut content_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(content_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        content_ui.set_clip_rect(content_rect);
+        let ui = &mut content_ui;
+
+        if self.system_ui_state.active_tab != SystemTab::General {
+            self.render_system_tab_content(ui, screen_id);
+            return;
+        }
+
         let button_size = ButtonSize::Medium.with_width(110.0);
         const HEALTH_COLUMN_WIDTH: f32 = 136.0;
+        let narrow = render_context.is_dynamic()
+            && render_context.width_class == crate::app::page::PageWidthClass::Narrow;
+        let outer_layout = if narrow {
+            egui::Layout::top_down(egui::Align::Min)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Min)
+        };
 
-        ui.horizontal(|ui| {
+        ui.with_layout(outer_layout, |ui| {
             let default_item_spacing = ui.spacing().item_spacing;
             ui.spacing_mut().item_spacing.x = 0.0;
-            let main_column_width = (ui.available_width() - HEALTH_COLUMN_WIDTH - 1.0).max(0.0);
+            let main_column_width = if narrow {
+                ui.available_width()
+            } else {
+                (ui.available_width() - HEALTH_COLUMN_WIDTH - 1.0).max(0.0)
+            };
 
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing = default_item_spacing;
                 ui.set_width(main_column_width);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let showfile = self
                         .data
                         .config
@@ -131,7 +185,7 @@ impl BlaulichtApp {
                 ui.separator();
                 ui.add_space(15.0);
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if components::button(
                         ui,
                         !ui.ctx().style().visuals.dark_mode,
@@ -157,16 +211,11 @@ impl BlaulichtApp {
 
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Quit", button_size) {
-                        // TODO: add protections against unsaved changes.
-                        // TODO: use command quit function, both for quitting and restarting
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        self.request_guarded_lifecycle(GuardedLifecycleAction::Quit, ctx);
                     }
 
                     if components::button(ui, false, "Restart", button_size) {
-                        // TODO: should originate from deeper inside the code?
-                        // TODO: add protections against unsaved changes.
-                        // TODO: can we use the viewport command maybe?
-                        process::exit(42);
+                        self.request_guarded_lifecycle(GuardedLifecycleAction::Restart, ctx);
                     }
 
                     if components::button(ui, false, "Shutdown", button_size) {
@@ -203,7 +252,13 @@ impl BlaulichtApp {
                             | AudioThreadControlSignal::RELOAD => true,
                         };
 
-                        if components::button(ui, !disabled, "Reload", button_size) && !disabled {
+                        if components::action_button(
+                            ui,
+                            !disabled,
+                            "Reload",
+                            button_size,
+                            Some("The engine is already reloading or unavailable"),
+                        ) {
                             if self
                                 .data
                                 .from_frontend_sender
@@ -222,21 +277,188 @@ impl BlaulichtApp {
                 });
             });
 
-            let (separator_rect, _) = ui
-                .allocate_exact_size(egui::vec2(1.0, ui.available_height()), egui::Sense::hover());
-            ui.painter().vline(
-                separator_rect.center().x,
-                separator_rect.y_range(),
-                ui.visuals().widgets.noninteractive.bg_stroke,
-            );
+            if narrow {
+                ui.separator();
+            } else {
+                let (separator_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(1.0, ui.available_height()),
+                    egui::Sense::hover(),
+                );
+                ui.painter().vline(
+                    separator_rect.center().x,
+                    separator_rect.y_range(),
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                );
+            }
 
             ui.allocate_ui_with_layout(
-                egui::vec2(HEALTH_COLUMN_WIDTH, ui.available_height()),
+                if narrow {
+                    egui::vec2(ui.available_width(), ui.available_height())
+                } else {
+                    egui::vec2(HEALTH_COLUMN_WIDTH, ui.available_height())
+                },
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     self.render_health_indicators(ui);
                 },
             );
+        });
+    }
+
+    fn render_system_tab_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        _render_context: crate::app::page::PageRenderContext,
+    ) {
+        const GAP: f32 = 2.0;
+        const MIN_TAB_WIDTH: f32 = 86.0;
+        let available = ui.available_width().max(MIN_TAB_WIDTH);
+        let columns = ((available + GAP) / (MIN_TAB_WIDTH + GAP))
+            .floor()
+            .max(1.0)
+            .min(SystemTab::ALL.len() as f32) as usize;
+        let tab_width = ((available - GAP * columns.saturating_sub(1) as f32) / columns as f32)
+            .max(MIN_TAB_WIDTH);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
+            for tab in SystemTab::ALL {
+                if components::Button::new(
+                    tab.label(),
+                    ButtonSize::Medium.with_width(tab_width),
+                )
+                .ui(ui, self.system_ui_state.active_tab == tab)
+                {
+                    self.system_ui_state.active_tab = tab;
+                }
+            }
+        });
+    }
+
+    fn render_system_tab_content(&mut self, ui: &mut egui::Ui, _screen_id: ScreenId) {
+        let tab = self.system_ui_state.active_tab;
+        ui.heading(tab.label());
+        ui.add_space(8.0);
+
+        egui::ScrollArea::vertical().show(ui, |ui| match tab {
+            SystemTab::General => {}
+            SystemTab::Dmx => {
+                let health = self.data.state.health_data.read().unwrap();
+                for (universe, state) in health.dmx_universes_healthy.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.strong(format!("Universe {universe}"));
+                        ui.label(format!("Port: {}", state.port));
+                        match &state.state {
+                            crate::state::DmxHealthState::Healthy => {
+                                ui.colored_label(Color32::LIGHT_GREEN, "ONLINE");
+                            }
+                            crate::state::DmxHealthState::Error(error) => {
+                                ui.colored_label(Color32::LIGHT_RED, error);
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                }
+            }
+            SystemTab::ArtNet => {
+                let health = self.data.state.health_data.read().unwrap();
+                let online = health.artnet_health_state;
+                drop(health);
+                ui.colored_label(
+                    if online { Color32::LIGHT_GREEN } else { Color32::LIGHT_RED },
+                    if online { "ONLINE" } else { "OFFLINE" },
+                );
+                let receivers = self.data.state.artnet_output.read().unwrap().receivers.clone();
+                if receivers.is_empty() {
+                    ui.label("No Art-Net receivers configured.");
+                }
+                for receiver in receivers {
+                    ui.label(format!(
+                        "{}  {}{}",
+                        if receiver.enabled { "ON " } else { "OFF" },
+                        receiver.address,
+                        receiver
+                            .owner_plugin_id
+                            .map(|id| format!("  (plugin {id})"))
+                            .unwrap_or_default()
+                    ));
+                }
+                ui.add_space(8.0);
+                if components::button(ui, false, "Manage Art-Net", ButtonSize::Medium) {
+                    self.system_ui_state.artnet_dialog_open = true;
+                }
+            }
+            SystemTab::Plugins => {
+                let plugins = self.data.state.plugins.read().unwrap();
+                if plugins.is_empty() {
+                    ui.label("No plugins configured.");
+                }
+                for (id, plugin) in plugins.iter() {
+                    let status = if plugin.has_errored() {
+                        "ERROR"
+                    } else if plugin.is_enabled() {
+                        "ENABLED"
+                    } else {
+                        "DISABLED"
+                    };
+                    ui.label(format!("#{id}  {}  {status}", plugin.path));
+                }
+                drop(plugins);
+                ui.add_space(8.0);
+                if components::button(ui, false, "Manage Plugins", ButtonSize::Medium) {
+                    self.system_ui_state.plugin_dialog_open = true;
+                }
+            }
+            SystemTab::Midi => {
+                let health = self.data.state.health_data.read().unwrap();
+                if health.midi_health.available_devices.is_empty() {
+                    ui.label("No MIDI inputs detected.");
+                }
+                for device in &health.midi_health.available_devices {
+                    let status = health
+                        .midi_health
+                        .devices
+                        .get(device)
+                        .map(|state| format!("{state:?}"))
+                        .unwrap_or_else(|| "AVAILABLE".to_string());
+                    ui.label(format!("{device}  {status}"));
+                }
+            }
+            SystemTab::Serial => {
+                let health = self.data.state.health_data.read().unwrap();
+                if health.serial_health.devices.is_empty() {
+                    ui.label("No serial devices opened by Blaulicht.");
+                }
+                let mut devices: Vec<_> = health.serial_health.devices.iter().collect();
+                devices.sort_by_key(|(name, _)| *name);
+                for (name, state) in devices {
+                    ui.label(format!("{name}  {state:?}"));
+                }
+            }
+            SystemTab::Screens => {
+                if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
+                    self.add_external_screen();
+                }
+                ui.add_space(8.0);
+                if self.external_screens.is_empty() {
+                    ui.label("No external screens.");
+                }
+                let mut remove = None;
+                for (index, screen) in self.external_screens.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(format!(
+                            "#{index}  {:.0} x {:.0}",
+                            screen.dimensions.x, screen.dimensions.y
+                        ));
+                        if screen.owner_plugin_id.is_none() && ui.small_button("Remove").clicked() {
+                            remove = Some(index);
+                        }
+                    });
+                }
+                if let Some(index) = remove {
+                    self.remove_external_screen(index);
+                }
+            }
         });
     }
 
@@ -386,5 +608,30 @@ impl BlaulichtApp {
                     self.system_ui_state.plugin_dialog_open = false;
                 }
             });
+    }
+}
+
+fn system_tab_bar_height(width: f32) -> f32 {
+    const GAP: f32 = 2.0;
+    const MIN_TAB_WIDTH: f32 = 86.0;
+    let columns = (((width.max(MIN_TAB_WIDTH) + GAP) / (MIN_TAB_WIDTH + GAP)).floor() as usize)
+        .clamp(1, SystemTab::ALL.len());
+    let rows = SystemTab::ALL.len().div_ceil(columns);
+    1.0 + rows as f32 * ButtonSize::Medium.dim().0.y
+        + rows.saturating_sub(1) as f32 * GAP
+}
+
+#[cfg(test)]
+mod system_layout_tests {
+    use super::system_tab_bar_height;
+
+    #[test]
+    fn system_tab_bar_reserves_one_or_more_content_sized_rows() {
+        let wide = system_tab_bar_height(800.0);
+        let narrow = system_tab_bar_height(280.0);
+
+        assert!(wide > 20.0 && wide < 60.0);
+        assert!(narrow > wide);
+        assert!(narrow < 160.0);
     }
 }

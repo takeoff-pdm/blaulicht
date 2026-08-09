@@ -77,7 +77,9 @@ impl DmxSimulator {
                     continue;
                 }
 
-                let state = fixture.state_from_dmx(&dmx.dmx_buffer).resolve(&empty_palettes);
+                let state = fixture
+                    .state_from_dmx(&dmx.dmx_buffer)
+                    .resolve(&empty_palettes);
                 fixtures.push(FixtureVisual {
                     group_id: *group_id,
                     fixture_id: *fixture_id,
@@ -634,12 +636,12 @@ impl BlaulichtApp {
                                 return;
                             };
                             for (fix_id, _fixture) in &group.fixtures {
-                            let Some(fixture) = groups
-                                .get(&group_id)
-                                .and_then(|group| group.fixtures.get(fix_id))
-                            else {
-                                continue;
-                            };
+                                let Some(fixture) = groups
+                                    .get(&group_id)
+                                    .and_then(|group| group.fixtures.get(fix_id))
+                                else {
+                                    continue;
+                                };
 
                                 let mut name = fixture.name.clone();
                                 name.truncate(10);
@@ -1109,20 +1111,75 @@ impl BlaulichtApp {
             });
     }
 
-    pub fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+    pub fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
         let panel_width = 100.0;
         let panel_padding = 2.0;
+
+        let number_of_items_total = dmx_engine.0.scenes.len();
+        const ITEMS_PER_PAGE: usize = 5;
+        let total_pages = number_of_items_total.div_ceil(ITEMS_PER_PAGE);
+        let last_page = total_pages.saturating_sub(1);
+        self.scene_page_index = self.scene_page_index.min(last_page);
+
+        if compact {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 150.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    let page_button =
+                        ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
+                    let page_display = if total_pages == 0 {
+                        0
+                    } else {
+                        self.scene_page_index + 1
+                    };
+                    ui.horizontal_wrapped(|ui| {
+                        if components::button(ui, false, "◀", page_button)
+                            && self.scene_page_index > 0
+                        {
+                            self.scene_page_index -= 1;
+                        }
+                        if components::button(ui, false, "▶", page_button)
+                            && self.scene_page_index < last_page
+                        {
+                            self.scene_page_index += 1;
+                        }
+                        ui.label(format!("Page {page_display} / {total_pages}"));
+                        ui.label(format!("Scenes: {number_of_items_total}"));
+                    });
+                    ui.separator();
+                    ui.horizontal_wrapped(|ui| {
+                        let start = self.scene_page_index * ITEMS_PER_PAGE;
+                        for (scene_id, scene) in
+                            dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE)
+                        {
+                            let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
+                            let label = format!("{scene_id} | {}", scene.name);
+                            if components::button(
+                                ui,
+                                is_selected,
+                                &label,
+                                ButtonSize::Medium.with_width(120.0).with_font_size(12.0),
+                            ) && !is_selected
+                            {
+                                self.data
+                                    .event_bus_connection
+                                    .send(ControlEventMessage::new(
+                                        EventOriginator::Web,
+                                        ControlEvent::SetSceneFocus(*scene_id),
+                                    ));
+                            }
+                        }
+                    });
+                },
+            );
+            return;
+        }
 
         ui.allocate_ui_with_layout(
             egui::vec2(panel_width, ui.available_height()), // fixed width, max height
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
-                let number_of_items_total = dmx_engine.0.scenes.len();
-                const ITEMS_PER_PAGE: usize = 5;
-                let total_pages = number_of_items_total.div_ceil(ITEMS_PER_PAGE);
-                let last_page = total_pages.saturating_sub(1);
-                self.scene_page_index = self.scene_page_index.min(last_page);
-
                 ui.set_min_width(panel_width);
 
                 ui.vertical_centered(|ui| {

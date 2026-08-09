@@ -265,7 +265,12 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn audio_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub fn audio_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         if self.audio_info_dialog_open {
             let debug_data = {
                 let spec = self.data.state.audio_spectrogram.read().unwrap();
@@ -593,11 +598,7 @@ impl BlaulichtApp {
                     // currently stuck on, so it's clear when to expect a BPM.
                     ui.add_space(12.0);
                     ui.separator();
-                    ui.label(
-                        RichText::new("BEAT DETECTION")
-                            .strong()
-                            .color(header_color),
-                    );
+                    ui.label(RichText::new("BEAT DETECTION").strong().color(header_color));
                     ui.add_space(4.0);
 
                     let ok_color = Color32::from_rgb(120, 220, 140);
@@ -658,7 +659,9 @@ impl BlaulichtApp {
                                 debug_data.bpm_estimate
                             )
                         } else {
-                            format!("Latched BPM: — (none yet)  •  confidence {bpm_confidence_pct}%")
+                            format!(
+                                "Latched BPM: — (none yet)  •  confidence {bpm_confidence_pct}%"
+                            )
                         })
                         .small()
                         .weak(),
@@ -682,28 +685,37 @@ impl BlaulichtApp {
 
                     let before = selected_device.clone();
 
-                    ui.horizontal_centered(|ui| {
-                        ui.set_min_height(ButtonSize::Medium.dim().0.y);
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(
+                            render_context.is_dynamic()
+                                && render_context.width_class
+                                    == crate::app::page::PageWidthClass::Narrow,
+                        ),
+                        |ui| {
+                            ui.set_min_height(ButtonSize::Medium.dim().0.y);
 
-                        if components::button(ui, false, "Change Device", ButtonSize::Medium) {
-                            self.set_audio_device_popup_open = true;
-                        }
+                            if components::button(ui, false, "Change Device", ButtonSize::Medium) {
+                                self.set_audio_device_popup_open = true;
+                            }
 
-                        ui.separator();
+                            ui.separator();
 
-                        ui.label(RichText::new("Current Input:").size(ButtonSize::Medium.dim().1));
-                        ui.label(
-                            RichText::new(selected_device_label)
-                                .size(ButtonSize::Medium.dim().1)
-                                .color(Color32::LIGHT_RED),
-                        );
+                            ui.label(
+                                RichText::new("Current Input:").size(ButtonSize::Medium.dim().1),
+                            );
+                            ui.label(
+                                RichText::new(selected_device_label)
+                                    .size(ButtonSize::Medium.dim().1)
+                                    .color(Color32::LIGHT_RED),
+                            );
 
-                        ui.separator();
+                            ui.separator();
 
-                        if components::button(ui, false, "Info", ButtonSize::Medium) {
-                            self.audio_info_dialog_open = !self.audio_info_dialog_open;
-                        }
-                    });
+                            if components::button(ui, false, "Info", ButtonSize::Medium) {
+                                self.audio_info_dialog_open = !self.audio_info_dialog_open;
+                            }
+                        },
+                    );
 
                     self.render_choose_audio_device_popup(ctx, &mut selected_device);
 
@@ -736,7 +748,11 @@ impl BlaulichtApp {
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---
                     ui.add_space(6.0);
-                    let spec_height = 160.0; // compact height
+                    let spec_height = if render_context.is_dynamic() {
+                        (render_context.size.y * 0.25).clamp(120.0, 320.0)
+                    } else {
+                        160.0
+                    };
                     let spec_width = ui.available_width();
 
                     let spec = {
@@ -844,174 +860,186 @@ impl BlaulichtApp {
 
                     ui.separator();
 
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            let (response, painter) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.volume_graph.draw(painter, response.rect);
-
-                            ui.add_space(padding);
-                            let (response_bass, painter_bass) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bass_graph.draw(painter_bass, response_bass.rect);
-                        });
-
-                        ui.vertical(|ui| {
-                            let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            self.bass_avg_graph
-                                .draw(painter_bass_avg, response_bass_avg.rect);
-
-                            let (response_bass_avg_short, painter_bass_avg_short) = ui
-                                .allocate_painter(
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Min).with_main_wrap(
+                            render_context.is_dynamic()
+                                && render_context.width_class
+                                    == crate::app::page::PageWidthClass::Narrow,
+                        ),
+                        |ui| {
+                            ui.vertical(|ui| {
+                                let (response, painter) = ui.allocate_painter(
                                     egui::vec2(graph_width, graph_height),
                                     egui::Sense::hover(),
                                 );
-                            self.bass_avg_short_graph
-                                .draw(painter_bass_avg_short, response_bass_avg_short.rect);
-                        });
+                                self.volume_graph.draw(painter, response.rect);
 
-                        ui.vertical(|ui| {
-                            let bg_color = egui::Color32::from_rgb(20, 20, 25);
+                                ui.add_space(padding);
+                                let (response_bass, painter_bass) = ui.allocate_painter(
+                                    egui::vec2(graph_width, graph_height),
+                                    egui::Sense::hover(),
+                                );
+                                self.bass_graph.draw(painter_bass, response_bass.rect);
+                            });
 
-                            const BPM_FONT_SIZE: f32 = 30.0;
+                            ui.vertical(|ui| {
+                                let (response_bass_avg, painter_bass_avg) = ui.allocate_painter(
+                                    egui::vec2(graph_width, graph_height),
+                                    egui::Sense::hover(),
+                                );
+                                self.bass_avg_graph
+                                    .draw(painter_bass_avg, response_bass_avg.rect);
 
-                            Frame::NONE
-                                .fill(bg_color)
-                                .outer_margin(Margin {
-                                    left: 0,
-                                    right: 0,
-                                    top: 15,
-                                    bottom: 0,
-                                })
-                                .inner_margin(Margin::same(8))
-                                .show(ui, |ui| {
-                                    ui.set_height(graph_height);
-                                    ui.set_width(graph_width);
+                                let (response_bass_avg_short, painter_bass_avg_short) = ui
+                                    .allocate_painter(
+                                        egui::vec2(graph_width, graph_height),
+                                        egui::Sense::hover(),
+                                    );
+                                self.bass_avg_short_graph
+                                    .draw(painter_bass_avg_short, response_bass_avg_short.rect);
+                            });
 
-                                    ui.horizontal(|ui| {
-                                        ui.heading(
-                                            RichText::new(format!(
-                                                "{: >3.1} BPM",
-                                                self.collector_snapshot.bpm
-                                            ))
-                                            .strong()
-                                            .color(Color32::LIGHT_GREEN)
-                                            .font(FontId::monospace(BPM_FONT_SIZE)),
-                                        );
+                            ui.vertical(|ui| {
+                                let bg_color = egui::Color32::from_rgb(20, 20, 25);
 
-                                        ui.add_space(20.0);
+                                const BPM_FONT_SIZE: f32 = 30.0;
 
-                                        {
-                                            let (bpm_rect, painter_bpm_indicator) = ui
-                                                .allocate_painter(
-                                                    egui::vec2(20.0, 20.0),
-                                                    egui::Sense::empty(),
-                                                );
+                                Frame::NONE
+                                    .fill(bg_color)
+                                    .outer_margin(Margin {
+                                        left: 0,
+                                        right: 0,
+                                        top: 15,
+                                        bottom: 0,
+                                    })
+                                    .inner_margin(Margin::same(8))
+                                    .show(ui, |ui| {
+                                        ui.set_height(graph_height);
+                                        ui.set_width(graph_width);
 
-                                            let color = if self.collector_snapshot.beat_trigger {
-                                                Color32::LIGHT_GREEN
-                                            } else {
-                                                Color32::BLACK
-                                            };
+                                        ui.horizontal(|ui| {
+                                            ui.heading(
+                                                RichText::new(format!(
+                                                    "{: >3.1} BPM",
+                                                    self.collector_snapshot.bpm
+                                                ))
+                                                .strong()
+                                                .color(Color32::LIGHT_GREEN)
+                                                .font(FontId::monospace(BPM_FONT_SIZE)),
+                                            );
 
-                                            let center = bpm_rect.rect.center();
-                                            let radius =
-                                                bpm_rect.rect.width().min(bpm_rect.rect.height())
+                                            ui.add_space(20.0);
+
+                                            {
+                                                let (bpm_rect, painter_bpm_indicator) = ui
+                                                    .allocate_painter(
+                                                        egui::vec2(20.0, 20.0),
+                                                        egui::Sense::empty(),
+                                                    );
+
+                                                let color = if self.collector_snapshot.beat_trigger
+                                                {
+                                                    Color32::LIGHT_GREEN
+                                                } else {
+                                                    Color32::BLACK
+                                                };
+
+                                                let center = bpm_rect.rect.center();
+                                                let radius = bpm_rect
+                                                    .rect
+                                                    .width()
+                                                    .min(bpm_rect.rect.height())
                                                     * 0.5;
 
-                                            painter_bpm_indicator
-                                                .circle_filled(center, radius, color);
-                                        }
-                                    });
+                                                painter_bpm_indicator
+                                                    .circle_filled(center, radius, color);
+                                            }
+                                        });
 
-                                    // Currently-detected audio section, shown below the BPM.
-                                    let (section_text, section_color) = components::section_label(
-                                        self.collector_snapshot.section_state,
-                                    );
-                                    ui.label(
-                                        RichText::new(section_text)
+                                        // Currently-detected audio section, shown below the BPM.
+                                        let (section_text, section_color) =
+                                            components::section_label(
+                                                self.collector_snapshot.section_state,
+                                            );
+                                        ui.label(
+                                            RichText::new(section_text)
+                                                .strong()
+                                                .color(section_color)
+                                                .font(FontId::monospace(20.0)),
+                                        );
+
+                                        ui.add_space(4.0);
+
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(2.0);
+                                            let beat_interval_secs =
+                                                self.beat_marker_interval.as_secs_f32();
+                                            let active_beat_marker = if self.beat_marker_has_beat
+                                                && beat_interval_secs > 0.0
+                                            {
+                                                let elapsed_beats = (self
+                                                    .beat_marker_anchor_instant
+                                                    .elapsed()
+                                                    .as_secs_f32()
+                                                    / beat_interval_secs)
+                                                    .floor()
+                                                    as usize;
+                                                (self.beat_marker_index + elapsed_beats) % 4
+                                            } else {
+                                                self.beat_marker_index
+                                            };
+
+                                            for beat_idx in 0..4 {
+                                                let (beat_rect, beat_painter) = ui
+                                                    .allocate_painter(
+                                                        egui::vec2(26.0, 10.0),
+                                                        egui::Sense::empty(),
+                                                    );
+                                                let active = self.beat_marker_has_beat
+                                                    && active_beat_marker == beat_idx;
+                                                let fill = if active {
+                                                    Color32::LIGHT_GREEN
+                                                } else {
+                                                    Color32::from_rgb(45, 50, 55)
+                                                };
+                                                let stroke = if active {
+                                                    egui::Stroke::new(1.0, Color32::WHITE)
+                                                } else {
+                                                    egui::Stroke::new(1.0, Color32::from_gray(85))
+                                                };
+
+                                                beat_painter.rect_filled(beat_rect.rect, 2.0, fill);
+                                                beat_painter.rect_stroke(
+                                                    beat_rect.rect,
+                                                    2.0,
+                                                    stroke,
+                                                    egui::StrokeKind::Inside,
+                                                );
+                                            }
+                                        });
+
+                                        ui.add_space(3.0);
+
+                                        ui.heading(
+                                            RichText::new(format!(
+                                                "{: >3} MS",
+                                                self.collector_snapshot.time_between_beats_millis
+                                            ))
+                                            .color(Color32::GRAY)
                                             .strong()
-                                            .color(section_color)
-                                            .font(FontId::monospace(20.0)),
-                                    );
-
-                                    ui.add_space(4.0);
-
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(2.0);
-                                        let beat_interval_secs =
-                                            self.beat_marker_interval.as_secs_f32();
-                                        let active_beat_marker = if self.beat_marker_has_beat
-                                            && beat_interval_secs > 0.0
-                                        {
-                                            let elapsed_beats = (self
-                                                .beat_marker_anchor_instant
-                                                .elapsed()
-                                                .as_secs_f32()
-                                                / beat_interval_secs)
-                                                .floor()
-                                                as usize;
-                                            (self.beat_marker_index + elapsed_beats) % 4
-                                        } else {
-                                            self.beat_marker_index
-                                        };
-
-                                        for beat_idx in 0..4 {
-                                            let (beat_rect, beat_painter) = ui.allocate_painter(
-                                                egui::vec2(26.0, 10.0),
-                                                egui::Sense::empty(),
-                                            );
-                                            let active = self.beat_marker_has_beat
-                                                && active_beat_marker == beat_idx;
-                                            let fill = if active {
-                                                Color32::LIGHT_GREEN
-                                            } else {
-                                                Color32::from_rgb(45, 50, 55)
-                                            };
-                                            let stroke = if active {
-                                                egui::Stroke::new(1.0, Color32::WHITE)
-                                            } else {
-                                                egui::Stroke::new(1.0, Color32::from_gray(85))
-                                            };
-
-                                            beat_painter.rect_filled(beat_rect.rect, 2.0, fill);
-                                            beat_painter.rect_stroke(
-                                                beat_rect.rect,
-                                                2.0,
-                                                stroke,
-                                                egui::StrokeKind::Inside,
-                                            );
-                                        }
+                                            .font(FontId::monospace(BPM_FONT_SIZE)),
+                                        );
                                     });
-
-                                    ui.add_space(3.0);
-
-                                    ui.heading(
-                                        RichText::new(format!(
-                                            "{: >3} MS",
-                                            self.collector_snapshot.time_between_beats_millis
-                                        ))
-                                        .color(Color32::GRAY)
-                                        .strong()
-                                        .font(FontId::monospace(BPM_FONT_SIZE)),
-                                    );
-                                });
-                            // ui.set_height(graph_height);
-                            // ui.set_width(graph_width);
-                            //
-                            // let rect = ui.max_rect();
-                            // let painter = ui.painter();
-                            //
-                            // painter.rect_filled(rect, 0.0, bg_color);
-                        });
-                    });
+                                // ui.set_height(graph_height);
+                                // ui.set_width(graph_width);
+                                //
+                                // let rect = ui.max_rect();
+                                // let painter = ui.painter();
+                                //
+                                // painter.rect_filled(rect, 0.0, bg_color);
+                            });
+                        },
+                    );
                 },
             );
         });
