@@ -28,6 +28,10 @@ impl AudioSource for AudioSourceSoundfile {
     fn get_freq_buffer_size(&self) -> usize {
         self.freq_buffer.len()
     }
+
+    fn sample_rate(&self) -> Option<u32> {
+        Some(self.sample_rate)
+    }
 }
 
 impl AudioSourceSoundfile {
@@ -49,7 +53,10 @@ impl AudioSourceSoundfile {
         let probed = symphonia::default::get_probe().format(
             &hint,
             mss,
-            &FormatOptions::default(),
+            &FormatOptions {
+                enable_gapless: true,
+                ..FormatOptions::default()
+            },
             &MetadataOptions::default(),
         )?;
 
@@ -108,6 +115,11 @@ impl AudioSourceSoundfile {
     /// Return the sample rate of the decoded audio stream.
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    /// Decoded mono PCM used by offline analyzers.
+    pub fn samples(&self) -> &[f32] {
+        &self.samples
     }
 
     /// Get frequencies at a specific time in seconds

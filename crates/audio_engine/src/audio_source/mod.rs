@@ -17,4 +17,12 @@ pub trait AudioSource {
     /// The bool lets callers gate expensive per-frame analysis to actual audio
     /// updates instead of running it at the mainloop tick rate.
     fn get_frequencies(&mut self, now: usize) -> (&[Frequency], bool);
+
+    /// Sample rate of raw mono PCM made available through [`Self::drain_samples`].
+    fn sample_rate(&self) -> Option<u32> {
+        None
+    }
+
+    /// Move newly captured mono PCM into `output` for secondary analyzers.
+    fn drain_samples(&mut self, _output: &mut Vec<f32>) {}
 }

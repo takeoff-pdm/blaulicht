@@ -7,7 +7,7 @@ use std::{
 
 use blaulicht_audio_engine::{
     create_spectrogram_image, file::AudioSourceSoundfile, AudioSpectrogram, BpmDetectStatus,
-    CollectorOutputSpec, SignalCollector, SpectrogramDisplayOptions,
+    CollectorOutputSpec, LoopTempoEstimator, SignalCollector, SpectrogramDisplayOptions,
 };
 use clap::Parser;
 use egui::{Color32, ColorImage};
@@ -78,6 +78,7 @@ fn process_file(path: &Path, output_dir: &Path) -> anyhow::Result<()> {
     let source = AudioSourceSoundfile::new(&path_string, FREQ_BUFFER_SIZE)
         .map_err(|err| anyhow::anyhow!("decode {}: {err}", path.display()))?;
     let duration_ms = source.duration();
+    let loop_tempo = LoopTempoEstimator::default().analyze(source.samples(), source.sample_rate());
 
     let mut collector = SignalCollector::new(
         Default::default(),
@@ -214,7 +215,7 @@ fn process_file(path: &Path, output_dir: &Path) -> anyhow::Result<()> {
     }
 
     println!(
-        "{}: duration={}ms frames={} active={} beats={} onsets={} max_bpm={:.1} max_bass={} max_volume={} max_band_energy={:.3} max_peakiness={:.3} max_periodicity={:.3} max_weak_periodicity={:.5} statuses={:?} spectrograms={}",
+        "{}: duration={}ms frames={} active={} beats={} onsets={} live_max_bpm={:.1} loop_bpm={:?} loop_candidate_bpm={:?} loop_score={:?} loop_tatums={:?} loop_lag={:?} loop_rejection={:?} max_bass={} max_volume={} max_band_energy={:.3} max_peakiness={:.3} max_periodicity={:.3} max_weak_periodicity={:.5} statuses={:?} spectrograms={}",
         path.display(),
         duration_ms,
         frames,
@@ -222,6 +223,12 @@ fn process_file(path: &Path, output_dir: &Path) -> anyhow::Result<()> {
         beat_events,
         onset_events,
         max_bpm,
+        loop_tempo.bpm,
+        loop_tempo.candidate_bpm,
+        loop_tempo.score,
+        loop_tempo.tatum_count,
+        loop_tempo.onset_lag,
+        loop_tempo.rejection,
         max_bass,
         max_volume,
         max_band_energy,

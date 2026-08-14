@@ -532,6 +532,7 @@ dependencies = [
  "mach",
  "map-range",
  "rand 0.9.2",
+ "rustfft",
  "serde",
  "symphonia",
 ]

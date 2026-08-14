@@ -3,7 +3,7 @@ pub mod bg_worker;
 pub mod supervisor;
 
 use crate::{
-    audio::defs::AudioThreadControlSignal,
+    audio::{defs::AudioThreadControlSignal, loop_tempo::LoopTempoRuntime},
     config::Config,
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
@@ -15,8 +15,8 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
-    AudioEventCursor, CollectorOutputSpec, CollectorScratchParameters, SignalCollector,
-    SignalCollectorParams,
+    AudioEventCursor, AudioSource, CollectorOutputSpec, CollectorScratchParameters,
+    SignalCollector, SignalCollectorParams,
 };
 use crossbeam_channel::Sender;
 use std::{
@@ -149,6 +149,8 @@ pub fn run(
         0,
     )
     .with_context(|| "Failed to create signal collector")?;
+    let mut loop_tempo = LoopTempoRuntime::default();
+    let mut captured_samples = Vec::new();
 
     // Loop speed.
     let mut time_of_last_system_publish = 0;
@@ -218,6 +220,17 @@ pub fn run(
         sig_collector
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;
+        captured_samples.clear();
+        let sample_rate = AudioSource::sample_rate(&sig_collector.audio_source);
+        sig_collector
+            .audio_source
+            .drain_samples(&mut captured_samples);
+        loop_tempo.update(
+            now,
+            sample_rate,
+            &captured_samples,
+            &mut sig_collector.current,
+        );
 
         if plugins_time_of_last_tick.elapsed() >= PLUGINS_TICK_TIME {
             let midi = {

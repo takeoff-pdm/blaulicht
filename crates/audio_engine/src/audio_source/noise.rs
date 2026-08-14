@@ -17,6 +17,10 @@ impl AudioSource for AudioSourceNoise {
     fn get_freq_buffer_size(&self) -> usize {
         self.freq_buffer.len()
     }
+
+    fn sample_rate(&self) -> Option<u32> {
+        Some(self.sample_rate)
+    }
 }
 
 impl AudioSourceNoise {

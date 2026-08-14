@@ -11,6 +11,9 @@ pub struct AudioSourceMicrophone {
     input: Input,
     controller: InputController,
     stream: Stream,
+    channel_count: usize,
+    sample_rate: u32,
+    captured_mono: Vec<f32>,
     pub freq_buffer: Vec<Frequency>,
 }
 
@@ -72,7 +75,7 @@ impl AudioSourceMicrophone {
 
         // set up capture on the same thread; only the CPAL callback runs elsewhere
         let mut input = Input::new();
-        let (_channels, _sample_rate, controller) = input
+        let (channels, sample_rate, controller) = input
             .init(&av_device, buffer_size)
             .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
 
@@ -81,6 +84,9 @@ impl AudioSourceMicrophone {
             input,
             controller,
             stream,
+            channel_count: channels as usize,
+            sample_rate,
+            captured_mono: Vec::new(),
         })
     }
 }
@@ -93,6 +99,11 @@ impl AudioSource for AudioSourceMicrophone {
         let mut have_new_block = false;
         if let Some(block) = self.controller.try_pull_data() {
             if !block.is_empty() {
+                self.captured_mono.extend(
+                    block
+                        .chunks(self.channel_count)
+                        .map(|frame| frame.iter().copied().sum::<f32>() / frame.len() as f32),
+                );
                 self.stream.push_data(block);
                 self.stream.update();
                 have_new_block = true;
@@ -130,5 +141,13 @@ impl AudioSource for AudioSourceMicrophone {
 
     fn get_freq_buffer_size(&self) -> usize {
         self.freq_buffer.len()
+    }
+
+    fn sample_rate(&self) -> Option<u32> {
+        Some(self.sample_rate)
+    }
+
+    fn drain_samples(&mut self, output: &mut Vec<f32>) {
+        output.append(&mut self.captured_mono);
     }
 }

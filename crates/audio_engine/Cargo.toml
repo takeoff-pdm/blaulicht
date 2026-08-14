@@ -19,6 +19,7 @@ noise = ["dep:rand"]
 
 [dependencies]
 log = "0.4"
+rustfft = "6.4.1"
 
 # stream_in, file
 # audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
