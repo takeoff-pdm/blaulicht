@@ -225,12 +225,18 @@ pub fn run(
         sig_collector
             .audio_source
             .drain_samples(&mut captured_samples);
-        loop_tempo.update(
+        let live_bpm = sig_collector.current.bpm;
+        let live_confidence = sig_collector.current.bpm_confidence;
+        if let Some(fused) = loop_tempo.update(
             now,
             sample_rate,
-            &captured_samples,
-            &mut sig_collector.current,
-        );
+            std::mem::take(&mut captured_samples),
+            live_bpm,
+            live_confidence,
+            &mut sig_collector.debug_data,
+        ) {
+            sig_collector.apply_tempo_estimate(fused.bpm, fused.confidence);
+        }
 
         if plugins_time_of_last_tick.elapsed() >= PLUGINS_TICK_TIME {
             let midi = {

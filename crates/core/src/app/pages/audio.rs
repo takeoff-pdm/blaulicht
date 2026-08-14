@@ -666,6 +666,59 @@ impl BlaulichtApp {
                         .small()
                         .weak(),
                     );
+
+                    ui.add_space(8.0);
+                    ui.label(
+                        RichText::new("LOOP TEMPO WORKER")
+                            .strong()
+                            .color(header_color),
+                    );
+                    let loop_data = debug_data.loop_tempo;
+                    let loop_color = match loop_data.status {
+                        blaulicht_audio_engine::LoopTempoStatus::Accepted => ok_color,
+                        blaulicht_audio_engine::LoopTempoStatus::Rejected
+                        | blaulicht_audio_engine::LoopTempoStatus::WorkerStopped => bad_color,
+                        blaulicht_audio_engine::LoopTempoStatus::WarmingUp
+                        | blaulicht_audio_engine::LoopTempoStatus::Analyzing => warn_color,
+                    };
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Status:").small().weak());
+                        ui.label(
+                            RichText::new(format!("{:?}", loop_data.status))
+                                .strong()
+                                .color(loop_color),
+                        );
+                        if loop_data.fused {
+                            ui.label(RichText::new("fused").small().color(ok_color));
+                        }
+                    });
+                    ui.label(
+                        RichText::new(format!(
+                            "Candidate: {}  •  accepted: {}  •  score {:.3}/{:.3}",
+                            if loop_data.candidate_bpm > 0.0 {
+                                format!("{:.2} BPM", loop_data.candidate_bpm)
+                            } else {
+                                "—".to_string()
+                            },
+                            if loop_data.accepted_bpm > 0.0 {
+                                format!("{:.2} BPM", loop_data.accepted_bpm)
+                            } else {
+                                "—".to_string()
+                            },
+                            loop_data.score,
+                            loop_data.threshold,
+                        ))
+                        .small()
+                        .weak(),
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "Buffer: {:.1}s  •  result age: {}ms",
+                            loop_data.buffered_seconds, loop_data.age_ms
+                        ))
+                        .small()
+                        .weak(),
+                    );
                 });
         }
 

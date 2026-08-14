@@ -699,6 +699,7 @@ where
                 band_weights: self.scratch.band_weights,
                 bpm_status: self.scratch.bpm_detect_status,
                 bpm_estimate: self.scratch.bpm_estimate,
+                loop_tempo: self.debug_data.loop_tempo,
             };
 
             self.send_signals(&[

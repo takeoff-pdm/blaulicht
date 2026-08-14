@@ -294,6 +294,27 @@ impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
 where
     SourceT: AudioSource,
 {
+    /// Adopt a tempo produced by a secondary analyzer and keep the beat
+    /// scheduler, published snapshot, and next live-estimator update coherent.
+    pub fn apply_tempo_estimate(&mut self, bpm: f32, confidence: f32) {
+        if !bpm.is_finite() || bpm <= 0.0 || !confidence.is_finite() {
+            return;
+        }
+        let interval = 60_000.0 / bpm;
+        let changed_materially = self.scratch.bpm_estimate > 0.0
+            && ((self.scratch.bpm_estimate - bpm).abs() / self.scratch.bpm_estimate) > 0.01;
+        self.scratch.bpm_estimate = bpm;
+        self.scratch.beat_interval_ms = interval;
+        self.scratch.bpm_confidence_ema = confidence.clamp(0.0, 1.0);
+        self.current.bpm = bpm;
+        self.current.time_between_beats_millis =
+            interval.round().clamp(1.0, u16::MAX as f32) as u16;
+        self.current.bpm_confidence = self.scratch.bpm_confidence_ema;
+        if changed_materially {
+            self.scratch.beat_needs_sync = true;
+        }
+    }
+
     /// Returns continuous values without consuming transient events.
     /// Consumers should use `snapshot_for` when they need beat/onset delivery.
     pub fn take_snapshot(&self) -> CollectedAudioSnapshot {
@@ -633,6 +654,30 @@ pub struct SignalDebugData {
     pub bpm_status: BpmDetectStatus,
     /// Latched tempo estimate at the time of the snapshot (0 = none yet).
     pub bpm_estimate: f32,
+    /// Independent complete-loop estimator state populated by the core worker.
+    pub loop_tempo: LoopTempoDebugData,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub enum LoopTempoStatus {
+    #[default]
+    WarmingUp,
+    Analyzing,
+    Accepted,
+    Rejected,
+    WorkerStopped,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct LoopTempoDebugData {
+    pub status: LoopTempoStatus,
+    pub candidate_bpm: f32,
+    pub accepted_bpm: f32,
+    pub score: f32,
+    pub threshold: f32,
+    pub age_ms: u32,
+    pub buffered_seconds: f32,
+    pub fused: bool,
 }
 
 pub type AudioColumn = Vec<AudioBucket>;
@@ -747,6 +792,28 @@ mod tests {
         let mut independent_consumer = AudioEventCursor::default();
         let independent = collector.snapshot_for(&mut independent_consumer);
         assert!(independent.beat_trigger && independent.actual_onset_peak);
+    }
+
+    #[test]
+    fn secondary_tempo_keeps_snapshot_and_scheduler_coherent() {
+        let mut collector = SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            StaticSourceForTest::default(),
+            0,
+        )
+        .unwrap();
+        collector.scratch.bpm_estimate = 120.0;
+
+        collector.apply_tempo_estimate(126.0, 0.9);
+
+        assert_eq!(collector.current.bpm, 126.0);
+        assert_eq!(collector.current.time_between_beats_millis, 476);
+        assert_eq!(collector.current.bpm_confidence, 0.9);
+        assert_eq!(collector.scratch.bpm_estimate, 126.0);
+        assert!((collector.scratch.beat_interval_ms - 60_000.0 / 126.0).abs() < f32::EPSILON);
+        assert!(collector.scratch.beat_needs_sync);
     }
 
     #[test]
