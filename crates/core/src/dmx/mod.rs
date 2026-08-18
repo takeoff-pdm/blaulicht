@@ -1054,6 +1054,24 @@ impl DmxEngine {
                 state.0.scene_graphs.focused_graph = graph_id;
                 (None, None)
             }
+            ControlEvent::SetSceneGraphEnabled(graph_id, enabled) => {
+                match state.0.scene_graphs.graphs.get_mut(&graph_id) {
+                    Some(graph) => {
+                        graph.enabled = enabled;
+                        (None, None)
+                    }
+                    None => (Some("Scene graph not found"), None),
+                }
+            }
+            ControlEvent::ToggleSceneGraphEnabled(graph_id) => {
+                match state.0.scene_graphs.graphs.get_mut(&graph_id) {
+                    Some(graph) => {
+                        graph.enabled = !graph.enabled;
+                        (None, None)
+                    }
+                    None => (Some("Scene graph not found"), None),
+                }
+            }
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)

@@ -183,9 +183,9 @@ impl BlaulichtApp {
         let icon_size = 22.0;
         let left_inset = 6.0;
 
-        // DMX outputs
+        // DMX outputs (hardware-backed universes only)
         for (universe_number, dmx_port_health) in
-            health_data.dmx_universes_healthy.iter().enumerate()
+            health_data.dmx_universes_healthy.iter().enumerate().take(2)
         {
             let label = format!("DMX {universe_number}");
             if Self::render_compact_health_box(

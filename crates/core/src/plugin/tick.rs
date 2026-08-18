@@ -9,6 +9,7 @@ use blaulicht_shared::SerialReceived;
 use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{
     CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput, UdpReceived,
+    ENGINE_STATE_BUFFER_LEN,
 };
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
@@ -310,6 +311,16 @@ impl Plugin {
                     let engine = app.dmx_engine.read().unwrap();
                     engine.0.serialize()
                 };
+
+                if state_array_bytes.len() > ENGINE_STATE_BUFFER_LEN {
+                    // Writing here would overflow the plugin's fixed state buffer and
+                    // corrupt unrelated wasm linear memory before the plugin can panic.
+                    anyhow::bail!(
+                        "Serialized EngineState ({} B) exceeds plugin state buffer ({} B); skip writing to avoid wasm memory corruption",
+                        state_array_bytes.len(),
+                        ENGINE_STATE_BUFFER_LEN,
+                    );
+                }
 
                 let state_array_len = state_array_bytes.len() as u32;
 

@@ -221,8 +221,10 @@ impl BlaulichtApp {
         // Render per-plugin UI windows.
         self.render_plugin_ui(ctx, ScreenId::MAIN);
 
-        for i in 0..self.external_screens.len() {
+        let mut i = 0;
+        while i < self.external_screens.len() {
             self.drive_external_screen(ctx, i);
+            i += 1;
         }
     }
 

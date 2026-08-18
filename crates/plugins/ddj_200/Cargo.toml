@@ -3,6 +3,12 @@ name = "blaulicht-plugin-midi-ddj_200"
 version = "0.2.0"
 edition = "2021"
 
+[workspace]
+
+[features]
+default = []
+debug-without-ddj = []
+
 [lib]
 crate-type = ["cdylib"]
 

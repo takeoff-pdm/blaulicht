@@ -89,7 +89,7 @@ pub enum Light {
     // 2: Blue
     // 3: White
     //
-    CameoQSpot40RGBW_4Chan,
+    CameoQSpot40RGBW_4Chan, // also use for takeoff sign
     //
     // 0: Hue
     // 1: Rotation

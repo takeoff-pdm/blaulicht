@@ -1,8 +1,8 @@
-use blaulicht_shared::engine::EngineState;
+use blaulicht_shared::{engine::EngineState, ENGINE_STATE_BUFFER_LEN};
 
 use crate::BufferSource;
 
-const STATE_BUFFER_LEN: usize = 1024 * 100; // Big Ass!
+const STATE_BUFFER_LEN: usize = ENGINE_STATE_BUFFER_LEN;
 type StateBufferT = u8;
 
 static mut GLOBAL_STATE_SOURCE: BufferSource<StateBufferT, STATE_BUFFER_LEN> = BufferSource {

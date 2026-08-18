@@ -656,7 +656,9 @@ impl BlaulichtApp {
     pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
         let viewport_id = egui::ViewportId::from_hash_of(format!("bl_ext_{screen_idx}"));
 
-        let screen = self.external_screens[screen_idx].clone();
+        let Some(screen) = self.external_screens.get(screen_idx).cloned() else {
+            return;
+        };
 
         let mut viewport = egui::ViewportBuilder::default()
             .with_title(format!("bl_ext_{screen_idx}"))
@@ -668,13 +670,19 @@ impl BlaulichtApp {
         }
 
         ctx.show_viewport_immediate(viewport_id, viewport, |ctx, _class| {
-            let mut screen = self.external_screens[screen_idx].clone();
+            let Some(mut screen) = self.external_screens.get(screen_idx).cloned() else {
+                return;
+            };
             let screen_id = ScreenId::external(screen_idx);
 
             self.draw_external_screen_contents(ctx, screen_id, &mut screen);
 
-            // TODO: This is peak bullshit code.
-            self.external_screens[screen_idx] = screen;
+            // The closure may have removed this screen (e.g. a plugin
+            // dropping its owned viewport), so only write back if it
+            // still exists.
+            if let Some(slot) = self.external_screens.get_mut(screen_idx) {
+                *slot = screen;
+            }
         });
         self.sync_external_screen_infos();
     }

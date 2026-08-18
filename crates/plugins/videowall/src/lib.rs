@@ -9,7 +9,7 @@ use blaulicht_shared::{
 use map_range::MapRange;
 use serde::Deserialize;
 
-const UDP_ENDPOINT: &str = "10.10.25.98:1234";
+const UDP_ENDPOINT: &str = "10.10.25.95:1234";
 const VIDEO_SLIDER_ID: u8 = 1;
 const REFRESH_BUTTON_ID: u8 = 2;
 const BRIGHTNESS_SLIDER_ID: u8 = 3;
@@ -133,7 +133,7 @@ impl VideowallPlugin {
     }
 
     fn fetch_endpoint(&self, endpoint: &str) -> Result<String, String> {
-        let command = format!("curl 'http://localhost:8081{}'{}", endpoint, CURL_HEADERS);
+        let command = format!("curl 'http://10.10.25.95:8001{}'{}", endpoint, CURL_HEADERS);
         let output = bpf::system(&command);
 
         if output.trim().is_empty() {

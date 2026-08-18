@@ -1175,6 +1175,7 @@ pub enum MathematicalBaseFunction {
     Triangle,
     Square1_2,
     Square1_8,
+    Square1_16,
     Spike1_8,
     ExpSpike1_8,
     Sawtooth,

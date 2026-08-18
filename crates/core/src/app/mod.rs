@@ -221,6 +221,7 @@ pub struct BlaulichtApp {
     audio_info_dialog_open: bool,
     bass_low_numberpad: Numberpad,
     bass_high_numberpad: Numberpad,
+    manual_bpm_numberpad: Numberpad,
 
     // TODO: move into custom scroll area or whatever
     scene_page_index: usize,
@@ -434,6 +435,10 @@ impl BlaulichtApp {
                 .dialog_title("Bass High")
                 .field_width(140.0)
                 .range(0.0, 20_000.0),
+            manual_bpm_numberpad: Numberpad::new()
+                .dialog_title("Manual BPM")
+                .field_width(140.0)
+                .range(60.0, 220.0),
             scene_page_index: 0,
             add_dmx_override_open: false,
             add_dmx_override_chan: 1,

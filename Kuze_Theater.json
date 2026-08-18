@@ -1,0 +1,2068 @@
+{
+  "engine": {
+    "groups": [
+      {
+        "key": 0,
+        "value": {
+          "name": "Frontlicht",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "Linse LL",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 1,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 1,
+              "value": {
+                "name": "Linse ML",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 2,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 2,
+              "value": {
+                "name": "Linse MR",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 3,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 3,
+              "value": {
+                "name": "Linse RR",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 4,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "name": "Spitzlicht",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "PAR L",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 5,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 1,
+              "value": {
+                "name": "PAR M - BRK",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 6,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 2,
+              "value": {
+                "name": "PAR R",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 7,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 2,
+        "value": {
+          "name": "Saal",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "Saal - broken",
+                "type_": {
+                  "Dimmer": "DimmerSingle"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 8,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 4,
+        "value": {
+          "name": "Par Publikum",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "ALL",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 9,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 5,
+        "value": {
+          "name": "Fluter",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "RR",
+                "type_": {
+                  "Light": "StairvilleWildWash648RGB_6Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 51,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 1,
+              "value": {
+                "name": "L",
+                "type_": {
+                  "Light": "StairvilleWildWash648RGB_6Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 58,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 2,
+              "value": {
+                "name": "LL",
+                "type_": {
+                  "Light": "StairvilleWildWash648RGB_6Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 65,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 3,
+              "value": {
+                "name": "R",
+                "type_": {
+                  "Light": "StairvilleWildWash648RGB_6Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 72,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 6,
+        "value": {
+          "name": "Par Truss",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "Mid 1",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 23,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 1,
+              "value": {
+                "name": "Mid 2",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 30,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 2,
+              "value": {
+                "name": "Back 1",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 37,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 3,
+              "value": {
+                "name": "Back 2",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 44,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 7,
+        "value": {
+          "name": "Par Front",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "All",
+                "type_": {
+                  "Light": "StairvilleLEDPar56_7Chan"
+                },
+                "pos": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 16,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "animations": [
+      {
+        "key": 0,
+        "value": {
+          "spec": {
+            "name": "Anim #",
+            "body": {
+              "Phaser": {
+                "kind": {
+                  "Mathematical": {
+                    "base": "Sin",
+                    "stretch_factor": 0.0,
+                    "amplitude_min": 0,
+                    "amplitude_max": 255
+                  }
+                },
+                "time_total": {
+                  "Fixed": 1000
+                },
+                "pin_to_beat": false,
+                "sync": "StretchedEven"
+              }
+            },
+            "property": "Alpha"
+          }
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "spec": {
+            "name": "",
+            "body": {
+              "AudioFrequencies": {
+                "gate": 0,
+                "boost": 0,
+                "freq_min": 0,
+                "freq_max": 20000,
+                "normalization": "Off"
+              }
+            },
+            "property": "Alpha"
+          }
+        }
+      },
+      {
+        "key": 2,
+        "value": {
+          "spec": {
+            "name": "",
+            "body": {
+              "AudioVolume": {}
+            },
+            "property": "Alpha"
+          }
+        }
+      },
+      {
+        "key": 3,
+        "value": {
+          "spec": {
+            "name": "Anim #",
+            "body": {
+              "Phaser": {
+                "kind": {
+                  "Mathematical": {
+                    "base": "Sin",
+                    "stretch_factor": 0.0,
+                    "amplitude_min": 0,
+                    "amplitude_max": 0
+                  }
+                },
+                "time_total": {
+                  "Fixed": 1000
+                },
+                "pin_to_beat": false,
+                "sync": "Synced"
+              }
+            },
+            "property": "ColorHue"
+          }
+        }
+      },
+      {
+        "key": 4,
+        "value": {
+          "spec": {
+            "name": "",
+            "body": {
+              "Phaser": {
+                "kind": {
+                  "Mathematical": {
+                    "base": "Sin",
+                    "stretch_factor": 0.0,
+                    "amplitude_min": 210,
+                    "amplitude_max": 220
+                  }
+                },
+                "time_total": {
+                  "Fixed": 1000
+                },
+                "pin_to_beat": false,
+                "sync": "Synced"
+              }
+            },
+            "property": "Tilt"
+          }
+        }
+      },
+      {
+        "key": 5,
+        "value": {
+          "spec": {
+            "name": "Color",
+            "body": {
+              "Phaser": {
+                "kind": {
+                  "Mathematical": {
+                    "base": "Sin",
+                    "stretch_factor": 0.0,
+                    "amplitude_min": 0,
+                    "amplitude_max": 0
+                  }
+                },
+                "time_total": {
+                  "Fixed": 1000
+                },
+                "pin_to_beat": false,
+                "sync": "Synced"
+              }
+            },
+            "property": "ColorHue"
+          }
+        }
+      }
+    ],
+    "views": [],
+    "scenes": [
+      {
+        "key": 0,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  0,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  0,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  0,
+                  3
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  0,
+                  4
+                ],
+                "value": {
+                  "color": {
+                    "h": 64.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 209,
+                  "orientation": {
+                    "pan": 210,
+                    "tilt": 223
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  1,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  1,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  1,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 139,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  2,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 0.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  3,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  3,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  3,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  3,
+                  3
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  4,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 185,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  4,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  4,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  4,
+                  3
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 0.0,
+                    "v": 1.0
+                  },
+                  "alpha": 255,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 255,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  5,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 196.9411764705883,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 0,
+                  "orientation": {
+                    "pan": 255,
+                    "tilt": 255
+                  },
+                  "strobe_speed": 0,
+                  "focus": 255
+                }
+              },
+              {
+                "key": [
+                  5,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 196.9411764705883,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 0,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  5,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 196.9411764705883,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 0,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  5,
+                  3
+                ],
+                "value": {
+                  "color": {
+                    "h": 196.9411764705883,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 0,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  6,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 58,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  6,
+                  1
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 0,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  6,
+                  2
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 69,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  6,
+                  3
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 196,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              },
+              {
+                "key": [
+                  7,
+                  0
+                ],
+                "value": {
+                  "color": {
+                    "h": 0.0,
+                    "s": 1.0,
+                    "v": 1.0
+                  },
+                  "alpha": 254,
+                  "orientation": {
+                    "pan": 0,
+                    "tilt": 0
+                  },
+                  "strobe_speed": 0,
+                  "focus": 0
+                }
+              }
+            ],
+            "active_animations": [
+              {
+                "key": {
+                  "fixtures": [
+                    [
+                      5,
+                      0
+                    ],
+                    [
+                      5,
+                      1
+                    ],
+                    [
+                      5,
+                      2
+                    ],
+                    [
+                      5,
+                      3
+                    ]
+                  ]
+                },
+                "value": [
+                  {
+                    "key": 0,
+                    "value": {
+                      "speed_factor": "_1",
+                      "enabled": false,
+                      "fixture_timers": [
+                        {
+                          "key": [
+                            5,
+                            0
+                          ],
+                          "value": {
+                            "last_tick_time": 1473567,
+                            "timer": 29310,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            1
+                          ],
+                          "value": {
+                            "last_tick_time": 1473567,
+                            "timer": 29400,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            2
+                          ],
+                          "value": {
+                            "last_tick_time": 1473567,
+                            "timer": 29490,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            3
+                          ],
+                          "value": {
+                            "last_tick_time": 1473567,
+                            "timer": 29580,
+                            "needs_reset_on_beat": false
+                          }
+                        }
+                      ],
+                      "spec": {
+                        "name": "Anim #",
+                        "body": {
+                          "Phaser": {
+                            "kind": {
+                              "Mathematical": {
+                                "base": "Square1_8",
+                                "stretch_factor": 0.0,
+                                "amplitude_min": 0,
+                                "amplitude_max": 255
+                              }
+                            },
+                            "time_total": {
+                              "Beat": "_1"
+                            },
+                            "pin_to_beat": false,
+                            "sync": "StretchedEven"
+                          }
+                        },
+                        "property": "Alpha"
+                      }
+                    }
+                  },
+                  {
+                    "key": 5,
+                    "value": {
+                      "speed_factor": "_1",
+                      "enabled": false,
+                      "fixture_timers": [
+                        {
+                          "key": [
+                            5,
+                            0
+                          ],
+                          "value": {
+                            "last_tick_time": 1357128,
+                            "timer": 194,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            1
+                          ],
+                          "value": {
+                            "last_tick_time": 1357128,
+                            "timer": 284,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            2
+                          ],
+                          "value": {
+                            "last_tick_time": 1357128,
+                            "timer": 374,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            5,
+                            3
+                          ],
+                          "value": {
+                            "last_tick_time": 1357128,
+                            "timer": 464,
+                            "needs_reset_on_beat": false
+                          }
+                        }
+                      ],
+                      "spec": {
+                        "name": "Color",
+                        "body": {
+                          "Phaser": {
+                            "kind": {
+                              "Mathematical": {
+                                "base": "Sin",
+                                "stretch_factor": 0.0,
+                                "amplitude_min": 0,
+                                "amplitude_max": 360
+                              }
+                            },
+                            "time_total": {
+                              "Fixed": 1000
+                            },
+                            "pin_to_beat": false,
+                            "sync": "StretchedEven"
+                          }
+                        },
+                        "property": "ColorHue"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "changeset": [
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 6,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 5,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "Focus"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Tilt"
+              },
+              {
+                "gid": 6,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 5,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "Tilt"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Pan"
+              },
+              {
+                "gid": 7,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 5,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 6,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 6,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "Focus"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "Focus"
+              },
+              {
+                "gid": 5,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "Pan"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "Tilt"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "Pan"
+              },
+              {
+                "gid": 1,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 7,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 6,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 6,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 5,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "Pan"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Tilt"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 5,
+                "fid": 3,
+                "property": "Strobe"
+              },
+              {
+                "gid": 5,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 5,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 5,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "Strobe"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "Strobe"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "Focus"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "Focus"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "Tilt"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "Tilt"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "Focus"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "Strobe"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 1,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 5,
+                "fid": 1,
+                "property": "Strobe"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "Pan"
+              },
+              {
+                "gid": 5,
+                "fid": 2,
+                "property": "Strobe"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "Focus"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 6,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 6,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 6,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "Strobe"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "Tilt"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Pan"
+              },
+              {
+                "gid": 2,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "Pan"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Tilt"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "Focus"
+              },
+              {
+                "gid": 7,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 7,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "Tilt"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "Pan"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "Pan"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "Tilt"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Pan"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "Strobe"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "Alpha"
+              },
+              {
+                "gid": 6,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 5,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "Strobe"
+              },
+              {
+                "gid": 6,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "Pan"
+              },
+              {
+                "gid": 6,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 5,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 6,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "Strobe"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Pan"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "Focus"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 4,
+                "fid": 3,
+                "property": "Pan"
+              },
+              {
+                "gid": 1,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 0,
+                "property": "Strobe"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Tilt"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 3,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "Pan"
+              },
+              {
+                "gid": 3,
+                "fid": 0,
+                "property": "Tilt"
+              },
+              {
+                "gid": 5,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 3,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 5,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 4,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 5,
+                "fid": 0,
+                "property": "Strobe"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 3,
+                "fid": 3,
+                "property": "Tilt"
+              },
+              {
+                "gid": 6,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 6,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 4,
+                "fid": 1,
+                "property": "Tilt"
+              },
+              {
+                "gid": 6,
+                "fid": 2,
+                "property": "ColorHue"
+              }
+            ],
+            "master_alpha_fader": 3,
+            "master_alpha_speed": "_1"
+          },
+          "name": "Empty Scene"
+        }
+      }
+    ],
+    "current_scene_focus": 0,
+    "current_overlay_scenes": [],
+    "overrides": []
+  },
+  "artnet": {
+    "receivers": []
+  },
+  "plugin_state": {
+    "plugin_5": "{\"restart_timer\":2,\"hfader_primary\":64,\"hfader_secondary\":192}",
+    "plugin_0": "{\"restart_timer\":6,\"event_tab\":1,\"selection_action\":0,\"fixture_action\":0,\"animation_action\":0,\"scene_action\":0,\"override_action\":0,\"misc_action\":0,\"main_ui_action\":0,\"plugin_ui_action\":0,\"selection_group_id\":0,\"selection_fixture_id\":0,\"set_enabled\":true,\"set_alpha\":255,\"strobe_speed\":0,\"focus\":0,\"tilt\":0,\"pan\":0,\"color_r\":255,\"color_g\":0,\"color_b\":0,\"color_a\":255,\"color_hue_text\":\"0\",\"color_saturation\":255,\"color_value\":255,\"add_to_property\":0,\"add_to_property_delta\":\"10\",\"animation_id\":0,\"animation_speed\":4,\"animation_spec_json\":\"{\\n  \\\"name\\\": \\\"EMPTY\\\",\\n  \\\"body\\\": {\\n    \\\"BeatClock\\\": {}\\n  },\\n  \\\"property\\\": \\\"Alpha\\\"\\n}\",\"misc_descriptor\":0,\"misc_value\":0,\"remove_change_selection\":\"0:0\",\"remove_change_property\":0,\"scene_id\":0,\"overlays_text\":\"0\",\"scene_master_alpha\":255,\"scene_master_speed\":4,\"override_universe_text\":\"0\",\"override_channel_text\":\"1\",\"override_value\":255,\"main_ui_page\":0,\"main_ui_plugin_id\":0,\"main_ui_open\":true,\"plugin_ui_target_plugin_id\":0,\"plugin_ui_id\":0,\"plugin_ui_value\":127,\"plugin_ui_checked\":false,\"plugin_ui_text\":\"\",\"plugin_ui_color_r\":255,\"plugin_ui_color_g\":0,\"plugin_ui_color_b\":0,\"plugin_ui_color_a\":255,\"plugin_ui_tabs_id\":0,\"plugin_ui_tab_id\":0,\"plugin_ui_canvas_x\":\"0\",\"plugin_ui_canvas_y\":\"0\",\"plugin_ui_canvas_dx\":\"0\",\"plugin_ui_canvas_dy\":\"0\",\"plugin_ui_canvas_delta\":\"1.0\",\"raw_event_json\":\"\"}",
+    "plugin_7": "{\"restart_timer\":2,\"hfader_primary\":64,\"hfader_secondary\":192}"
+  },
+  "ui": {
+    "main_screen_desktop_mode": {
+      "width": 1906.0,
+      "height": 1033.0,
+      "layout": {
+        "Split": {
+          "axis": "Horizontal",
+          "fraction": 0.5,
+          "first": {
+            "Split": {
+              "axis": "Vertical",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    "System",
+                    "Audio",
+                    "View",
+                    "ViewPerformance",
+                    "Animations",
+                    "Visualizer",
+                    {
+                      "plugin_id": 0
+                    }
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    "Logs"
+                  ],
+                  "active": 0
+                }
+              }
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Vertical",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    "FixturesPerformance"
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    "FixturesSetup"
+                  ],
+                  "active": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "external_screens": []
+  }
+}

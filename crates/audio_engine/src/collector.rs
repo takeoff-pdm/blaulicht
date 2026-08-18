@@ -239,6 +239,10 @@ pub struct SignalCollectorParams {
     /// Bass-band peakiness (max/mean of onset flux) at or above which a drop is
     /// armed when `drop_use_peakiness` is set.
     pub drop_peakiness_min: u8,
+
+    /// Manual BPM override. When `Some`, the tempo estimator is bypassed and
+    /// the beat scheduler runs at this fixed BPM.
+    pub manual_bpm: Option<f32>,
 }
 
 impl Default for SignalCollectorParams {
@@ -265,6 +269,7 @@ impl Default for SignalCollectorParams {
             breakdown_bpm_confidence_min: 40,
             drop_use_peakiness: false,
             drop_peakiness_min: 6,
+            manual_bpm: None,
         }
     }
 }

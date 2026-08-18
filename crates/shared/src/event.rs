@@ -322,6 +322,10 @@ pub enum ControlEvent {
 
     // Scene graph focus.
     SetFocusedSceneGraph(Option<u8>),
+
+    // Scene graph enable/disable.
+    SetSceneGraphEnabled(u8, bool),
+    ToggleSceneGraphEnabled(u8),
 }
 
 impl ControlEvent {
@@ -360,7 +364,9 @@ impl ControlEvent {
             | ControlEvent::UnassignPalette(_)
             | ControlEvent::AssignPaletteToSelection(_)
             | ControlEvent::UnassignPaletteFromSelection(_)
-            | ControlEvent::SetFocusedSceneGraph(_) => {
+            | ControlEvent::SetFocusedSceneGraph(_)
+            | ControlEvent::SetSceneGraphEnabled(_, _)
+            | ControlEvent::ToggleSceneGraphEnabled(_) => {
                 return None;
             }
             ControlEvent::AssignPaletteToProperty(prop, _) => *prop,
@@ -521,6 +527,8 @@ impl ControlEvent {
             ControlEvent::UnassignPalette(_) => false,
             ControlEvent::RenamePalette(_, _) => false,
             ControlEvent::SetFocusedSceneGraph(_) => false,
+            ControlEvent::SetSceneGraphEnabled(_, _) => false,
+            ControlEvent::ToggleSceneGraphEnabled(_) => false,
         }
     }
 }

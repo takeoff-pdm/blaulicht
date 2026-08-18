@@ -109,6 +109,99 @@ impl EngineState {
 
         true
     }
+
+    /// Swaps two fixtures within a group, including all scene state, selection,
+    /// palette assignments, animation timers and changeset entries that
+    /// reference them.
+    pub fn swap_fixtures_in_group(&mut self, group_id: u8, fid_a: u8, fid_b: u8) -> bool {
+        if fid_a == fid_b {
+            return false;
+        }
+
+        let Some(group) = self.0.groups.get_mut(&group_id) else {
+            return false;
+        };
+
+        if !group.fixtures.contains_key(&fid_a) || !group.fixtures.contains_key(&fid_b) {
+            return false;
+        }
+
+        let a = group.fixtures.remove(&fid_a).unwrap();
+        let b = group.fixtures.remove(&fid_b).unwrap();
+        group.fixtures.insert(fid_a, b);
+        group.fixtures.insert(fid_b, a);
+
+        let key_a = (group_id, fid_a);
+        let key_b = (group_id, fid_b);
+
+        for scene in self.0.scenes.values_mut() {
+            swap_btree_entries(&mut scene.sink.fixture_states, key_a, key_b);
+            swap_btree_entries(&mut scene.sink.palette_assignments, key_a, key_b);
+
+            let old_animations = std::mem::take(&mut scene.sink.active_animations);
+            scene.sink.active_animations = old_animations
+                .into_iter()
+                .map(|(mut selection, mut anims)| {
+                    for entry in selection.fixtures.iter_mut() {
+                        if *entry == key_a {
+                            *entry = key_b;
+                        } else if *entry == key_b {
+                            *entry = key_a;
+                        }
+                    }
+                    for active in anims.values_mut() {
+                        swap_btree_entries(&mut active.fixture_timers, key_a, key_b);
+                    }
+                    (selection, anims)
+                })
+                .collect();
+
+            let old_cs = std::mem::take(&mut scene.sink.changeset);
+            scene.sink.changeset = old_cs
+                .into_iter()
+                .map(|mut sel| {
+                    if sel.gid == group_id {
+                        if sel.fid == fid_a {
+                            sel.fid = fid_b;
+                        } else if sel.fid == fid_b {
+                            sel.fid = fid_a;
+                        }
+                    }
+                    sel
+                })
+                .collect();
+        }
+
+        swap_in_u8_set(&mut self.0.selection.fixtures_in_group, fid_a, fid_b);
+        for sel in self.0.selection_stack.iter_mut() {
+            swap_in_u8_set(&mut sel.fixtures_in_group, fid_a, fid_b);
+        }
+
+        true
+    }
+}
+
+fn swap_btree_entries<K: Ord, V>(map: &mut std::collections::BTreeMap<K, V>, a: K, b: K) {
+    let va = map.remove(&a);
+    let vb = map.remove(&b);
+    if let Some(vb) = vb {
+        map.insert(a, vb);
+    }
+    if let Some(va) = va {
+        map.insert(b, va);
+    }
+}
+
+fn swap_in_u8_set(set: &mut HashSet<u8>, a: u8, b: u8) {
+    let has_a = set.contains(&a);
+    let has_b = set.contains(&b);
+    if has_a && !has_b {
+        set.remove(&a);
+        set.insert(b);
+    } else if has_b && !has_a {
+        set.remove(&b);
+        set.insert(a);
+    }
 }
 
 #[cfg(test)]

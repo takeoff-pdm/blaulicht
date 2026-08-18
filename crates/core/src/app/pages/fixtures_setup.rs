@@ -1097,6 +1097,70 @@ impl BlaulichtApp {
 
                                                     ui.add_space(12.0);
 
+                                                    let prev_fid = group
+                                                        .fixtures
+                                                        .range(..fid)
+                                                        .next_back()
+                                                        .map(|(k, _)| *k);
+                                                    let next_fid = group
+                                                        .fixtures
+                                                        .range((
+                                                            std::ops::Bound::Excluded(fid),
+                                                            std::ops::Bound::Unbounded,
+                                                        ))
+                                                        .next()
+                                                        .map(|(k, _)| *k);
+
+                                                    if components::button(
+                                                        ui,
+                                                        prev_fid.is_some(),
+                                                        "Move Up",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        if let Some(prev) = prev_fid {
+                                                            let mut dmx_engine = self
+                                                                .data
+                                                                .state
+                                                                .dmx_engine
+                                                                .write()
+                                                                .unwrap();
+                                                            if dmx_engine
+                                                                .swap_fixtures_in_group(
+                                                                    gid, fid, prev,
+                                                                )
+                                                            {
+                                                                self.setup_fixture_id = prev;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    ui.add_space(6.0);
+
+                                                    if components::button(
+                                                        ui,
+                                                        next_fid.is_some(),
+                                                        "Move Down",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        if let Some(next) = next_fid {
+                                                            let mut dmx_engine = self
+                                                                .data
+                                                                .state
+                                                                .dmx_engine
+                                                                .write()
+                                                                .unwrap();
+                                                            if dmx_engine
+                                                                .swap_fixtures_in_group(
+                                                                    gid, fid, next,
+                                                                )
+                                                            {
+                                                                self.setup_fixture_id = next;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    ui.add_space(12.0);
+
                                                     if components::button(
                                                         ui,
                                                         true,

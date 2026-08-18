@@ -616,6 +616,17 @@ impl BlaulichtApp {
             return;
         };
 
+        let node_exists = state
+            .0
+            .scene_graphs
+            .graphs
+            .get(&graph_id)
+            .map_or(false, |g| g.nodes.contains_key(&selected_node_id));
+        if !node_exists {
+            self.scene_graph_ui_state.selected_node = None;
+            return;
+        }
+
         let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
             return;
         };

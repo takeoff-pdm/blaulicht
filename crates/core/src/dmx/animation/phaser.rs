@@ -72,6 +72,15 @@ pub fn generate(
                         min
                     }
                 }
+                MathematicalBaseFunction::Square1_16 => {
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+
+                    if angle < 360.0 / 16.0 {
+                        max
+                    } else {
+                        min
+                    }
+                }
                 MathematicalBaseFunction::Spike1_8 => {
                     let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
                     let spike_width = 360.0 / 8.0;

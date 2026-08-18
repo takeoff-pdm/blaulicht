@@ -1,5 +1,8 @@
 mod apc_midi;
 mod page_nav;
+mod view_trigger;
+
+use std::collections::{BTreeMap, VecDeque};
 
 use blaulicht_plugin_framework::{self as bpf, println, ui, MidiConnection, MidiEvent};
 use blaulicht_shared::{
@@ -11,6 +14,7 @@ use blaulicht_shared::{
 use map_range::MapRange;
 
 use crate::legacy::apc_midi::MidiDevice;
+use crate::legacy::view_trigger::{DropdownOpen, ViewTrigger, ViewTriggerWizard};
 
 #[derive(Default)]
 pub struct LegacyState {
@@ -38,6 +42,15 @@ pub struct LegacyState {
     // drums_enabled: bool,
     // drums_enabled_bef: bool,
     intensity_mapping: Vec<u8>,
+
+    // View-trigger state (see view_trigger.rs).
+    pub(crate) view_triggers: Vec<ViewTrigger>,
+    pub(crate) view_trigger_wizard: Option<ViewTriggerWizard>,
+    pub(crate) view_trigger_dropdown_open: DropdownOpen,
+    pub(crate) view_trigger_log: VecDeque<String>,
+    pub(crate) last_pressed_view_pad: Option<u8>,
+    pub(crate) view_trigger_lit_colors: BTreeMap<u8, u8>,
+    pub(crate) available_view_ids: Vec<(u8, String)>,
 }
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
@@ -95,6 +108,9 @@ impl LegacyState {
         // Initialize fans in the end.
         // bpf::system("sudo fans on");
         self.set_fans(true);
+
+        // Restore saved view-trigger assignments.
+        self.load_view_triggers();
     }
 
     pub fn set_fans(&mut self, v: bool) {
@@ -122,6 +138,8 @@ impl LegacyState {
                     _ => {}
                 }
             }
+
+            self.render_view_trigger_ui(&input.events.events, input.id);
         }
 
         let state = bpf::get_dmx();
@@ -373,6 +391,9 @@ impl LegacyState {
             }
 
             self.is_apc_init = false;
+            // Force the next view-trigger LED sync to re-light every
+            // assigned pad after the blackout above.
+            self.view_trigger_lit_colors.clear();
         }
 
         // if self.drums_enabled != self.drums_enabled_bef {
@@ -434,6 +455,13 @@ impl LegacyState {
         }
 
         for e in ev {
+            // View-trigger handling runs first. If the press was a
+            // wizard capture or fired an assigned trigger, skip the
+            // legacy match arms entirely.
+            if e.status == 144 && e.value == 127 && self.handle_view_trigger_press(e.kind) {
+                continue;
+            }
+
             match (e.status, e.kind, e.value) {
                 (176, 52, val) => {
                     bpf::send_event(ControlEvent::MiscEvent {
@@ -517,6 +545,8 @@ impl LegacyState {
                 }
             }
         }
+
+        self.sync_view_trigger_leds(&conn);
     }
 
     // fn sync_drums_enabled(&mut self, conn: MidiConnection) {

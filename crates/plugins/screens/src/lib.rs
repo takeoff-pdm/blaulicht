@@ -4,7 +4,7 @@ use blaulicht_shared::{LogLevel, TickInput};
 use serde::Deserialize;
 use std::time::Duration;
 
-const POLL_INTERVAL_MS: u32 = 1_000;
+const POLL_INTERVAL_MS: u32 = 1_0000;
 const ALERT_DURATION: Duration = Duration::from_secs(4);
 const MONITOR_WATCHER_PATH: &str = "/usr/bin/monitor_watcher.sh";
 const STATUS_PREFIX: &str = "__BLMW_STATUS__:";

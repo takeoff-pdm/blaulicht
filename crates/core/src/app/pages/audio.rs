@@ -601,6 +601,42 @@ impl BlaulichtApp {
                     ui.label(RichText::new("BEAT DETECTION").strong().color(header_color));
                     ui.add_space(4.0);
 
+                    let (mut manual_bpm_enabled, mut manual_bpm_value) = {
+                        let params = self.data.state.audio_params.read().unwrap();
+                        let v = params.manual_bpm.unwrap_or(120.0);
+                        (params.manual_bpm.is_some(), v)
+                    };
+                    ui.horizontal(|ui| {
+                        if components::Switch::new(&mut manual_bpm_enabled)
+                            .ui(ui)
+                            .changed()
+                        {
+                            let mut params = self.data.state.audio_params.write().unwrap();
+                            params.manual_bpm = if manual_bpm_enabled {
+                                Some(manual_bpm_value)
+                            } else {
+                                None
+                            };
+                            params.changed = true;
+                        }
+                        ui.label(RichText::new("Manual BPM").size(ButtonSize::Medium.dim().1));
+                        if manual_bpm_enabled {
+                            let before = manual_bpm_value;
+                            self.manual_bpm_numberpad.ui(ui, &mut manual_bpm_value);
+                            if (manual_bpm_value - before).abs() > f32::EPSILON {
+                                let mut params = self.data.state.audio_params.write().unwrap();
+                                params.manual_bpm = Some(manual_bpm_value);
+                                params.changed = true;
+                            }
+                        }
+                    });
+                    ui.label(
+                        RichText::new("Bypasses tempo detection and pins the beat scheduler.")
+                            .small()
+                            .weak(),
+                    );
+                    ui.add_space(6.0);
+
                     let ok_color = Color32::from_rgb(120, 220, 140);
                     let warn_color = Color32::from_rgb(240, 200, 100);
                     let bad_color = Color32::from_rgb(240, 130, 130);

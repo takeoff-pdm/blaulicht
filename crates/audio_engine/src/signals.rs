@@ -630,6 +630,11 @@ where
                 }
             }
 
+            // Manual BPM override: pin tempo regardless of detector state.
+            if let Some(manual) = self.params.manual_bpm {
+                self.scratch.bpm_estimate = manual;
+            }
+
             if self.scratch.bpm_estimate > 0.0 {
                 self.scratch.beat_interval_ms = 60000.0 / self.scratch.bpm_estimate;
                 if !self.scratch.beat_scheduler_initialized {

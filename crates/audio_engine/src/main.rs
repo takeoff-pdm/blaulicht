@@ -141,6 +141,7 @@ fn main() {
             breakdown_bpm_confidence_min: 40,
             drop_use_peakiness: false,
             drop_peakiness_min: 6,
+            manual_bpm: None,
         },
         output,
         blaulicht_audio_engine::CollectorScratchParameters {

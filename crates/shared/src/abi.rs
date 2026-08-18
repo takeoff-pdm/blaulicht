@@ -157,6 +157,11 @@ impl From<PluginStateLocation> for u8 {
 // const VALUE_CLOCK_INDEX: usize = 0;
 // const VALUE_INITIAL_INDEX: usize = 1;
 
+// Size of the wasm-side buffer the engine writes the serialized EngineState into.
+// Must stay in sync between plugin_framework (which allocates the buffer) and core
+// (which writes to it) — the engine refuses to write a state larger than this.
+pub const ENGINE_STATE_BUFFER_LEN: usize = 1024 * 1024;
+
 impl TickInput {
     pub fn serialize(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, config::standard()).unwrap()
