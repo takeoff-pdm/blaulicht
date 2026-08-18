@@ -5,7 +5,7 @@ use std::fmt::Display;
 use strum::EnumIter;
 
 /// Binary protocol version used for host-to-plugin snapshots.
-pub const PLUGIN_ABI_VERSION: u32 = 2;
+pub const PLUGIN_ABI_VERSION: u32 = 3;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

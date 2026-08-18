@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const STAGE_SHOWFILE_VERSION: u32 = 2;
+pub const STAGE_SHOWFILE_VERSION: u32 = 3;
 
 pub const TRUSS_PROFILE_SIZE_M: f32 = 0.29;
 pub const TRUSS_CHORD_DIAMETER_M: f32 = 0.05;

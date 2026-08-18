@@ -550,10 +550,12 @@ impl BlaulichtApp {
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
+                    let live_audio = self.live_audio_for_preview();
                     let new_value_spec = self.fixture_perf_ui.scene_overview_animation_edit.show(
                         ui,
                         ctx,
                         &dmx_engine.0.palettes,
+                        &live_audio,
                     );
 
                     if let Some(spec) = new_value_spec {

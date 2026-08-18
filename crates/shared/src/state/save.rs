@@ -309,7 +309,7 @@ impl TryFrom<SaveEngineState> for EngineState {
 
         let overrides = SavedMapEntry::to_btree_map(value.overrides);
 
-        Ok(Self {
+        let mut state = Self {
             groups,
             animation_templates: animations,
             selection: EngineSelection::default(),
@@ -322,7 +322,14 @@ impl TryFrom<SaveEngineState> for EngineState {
             overrides,
             scene_graphs: value.scene_graphs,
             palettes: SavedMapEntry::to_btree_map(value.palettes),
-        })
+        };
+
+        // Legacy audio modes only ever exist on the wire; the in-memory model
+        // carries them as compatibility `AudioModulation` layers so that saving
+        // can never write the old variants back out.
+        state.migrate_legacy_audio_animations();
+
+        Ok(state)
     }
 }
 
@@ -331,8 +338,8 @@ mod tests {
     use super::*;
     use crate::{
         ActiveAnimation, AnimationSpec, AnimationSpecBody, AnimationSpecBodyBeat,
-        AnimationSpeedModifier, AnimationTemplate, AnimationTimerState, FixtureProperty,
-        SaveEngineState, SyncMode,
+        AnimationSpeedModifier, AnimationTemplate, AnimationTimerState, AudioModulationBlend,
+        AudioModulationSignal, FixtureProperty, PhaserDuration, SaveEngineState, SyncMode,
         fixture::{
             FixtureType,
             dimmer::Dimmer,
@@ -342,6 +349,7 @@ mod tests {
         view::View,
     };
     use std::collections::{BTreeMap, HashMap, HashSet};
+    use strum::IntoEnumIterator;
 
     fn sample_engine_state() -> EngineState {
         let mut engine = EngineState::default();
@@ -448,6 +456,506 @@ mod tests {
         engine.current_overlay_scenes = vec![1];
         engine.overrides.insert((0, 1), 42);
         engine
+    }
+
+    /// Every audio mode that existed before the modulation rework, in the
+    /// shape a legacy showfile stores it.
+    fn legacy_audio_bodies() -> Vec<AnimationSpecBody> {
+        use crate::AnimationSpecBodyFrequencies;
+
+        vec![
+            AnimationSpecBody::AudioVolume(Default::default()),
+            AnimationSpecBody::BPMValue(Default::default()),
+            AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
+            AnimationSpecBody::BeatClock(AnimationSpecBodyBeat {}),
+            AnimationSpecBody::AudioFrequencies(AnimationSpecBodyFrequencies {
+                gate: 12,
+                boost: 3,
+                freq_min: 100,
+                freq_max: 4_000,
+                normalization: Default::default(),
+            }),
+        ]
+    }
+
+    fn engine_with_legacy_audio_animations() -> EngineState {
+        let mut engine = sample_engine_state();
+        engine.animation_templates.clear();
+
+        let selection = FixtureSelection {
+            fixtures: vec![(1, 1)],
+        };
+        let scene = engine.scenes.get_mut(&1).unwrap();
+        scene.sink.active_animations.clear();
+        let mut active = BTreeMap::new();
+
+        for (index, body) in legacy_audio_bodies().into_iter().enumerate() {
+            let id = index as u8;
+            let spec = AnimationSpec {
+                name: format!("Legacy {id}"),
+                body,
+                property: FixtureProperty::Alpha,
+            };
+            engine
+                .animation_templates
+                .insert(id, AnimationTemplate { spec: spec.clone() });
+
+            let mut animation = ActiveAnimation::new(&selection.fixtures, spec);
+            animation.enabled = true;
+            active.insert(id, animation);
+        }
+
+        scene.sink.active_animations.insert(selection, active);
+        engine
+    }
+
+    /// Serializes `engine` as a legacy showfile would have — i.e. with the old
+    /// `AnimationSpecBody` variants still on the wire.
+    fn legacy_showfile_json(engine: &EngineState) -> String {
+        let save_state = SaveEngineState::from(engine.clone());
+        let json = serde_json::to_string(&save_state).unwrap();
+        for name in [
+            "AudioVolume",
+            "BPMValue",
+            "AudioBeat",
+            "BeatClock",
+            "AudioFrequencies",
+        ] {
+            assert!(json.contains(name), "legacy fixture is missing {name}");
+        }
+        json
+    }
+
+    #[test]
+    fn loading_a_legacy_showfile_migrates_every_audio_mode() {
+        let engine = engine_with_legacy_audio_animations();
+        let json = legacy_showfile_json(&engine);
+
+        let decoded: SaveEngineState = serde_json::from_str(&json).unwrap();
+        let restored = EngineState::try_from(decoded).unwrap();
+
+        let expected_signals = [
+            AudioModulationSignal::LegacyVolume,
+            AudioModulationSignal::LegacyBpm,
+            AudioModulationSignal::LegacyBass,
+            AudioModulationSignal::LegacyBeatClock,
+        ];
+
+        for (id, expected) in expected_signals.into_iter().enumerate() {
+            let AnimationSpecBody::AudioModulation(spec) =
+                &restored.animation_templates[&(id as u8)].spec.body
+            else {
+                panic!("template {id} was not migrated");
+            };
+            assert_eq!(spec.signal, expected);
+            assert_eq!(spec.blend, AudioModulationBlend::LegacyAbsolute);
+            assert!(spec.is_compatibility());
+        }
+
+        // The spectrum mode carries its legacy fields through unchanged.
+        let AnimationSpecBody::AudioModulation(spectrum) =
+            &restored.animation_templates[&4].spec.body
+        else {
+            panic!("spectrum template was not migrated");
+        };
+        let AudioModulationSignal::LegacySpectrum(freqs) = &spectrum.signal else {
+            panic!("expected a legacy spectrum signal");
+        };
+        assert_eq!(freqs.gate, 12);
+        assert_eq!(freqs.boost, 3);
+        assert_eq!(freqs.freq_min, 100);
+        assert_eq!(freqs.freq_max, 4_000);
+
+        // Specs cloned into active animations are migrated too.
+        let animations = restored.scenes[&1]
+            .sink
+            .active_animations
+            .values()
+            .next()
+            .unwrap();
+        assert_eq!(animations.len(), 5);
+        for animation in animations.values() {
+            assert!(matches!(
+                animation.spec_cloned.body,
+                AnimationSpecBody::AudioModulation(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn saving_a_migrated_showfile_never_writes_the_old_variants() {
+        let engine = engine_with_legacy_audio_animations();
+        let legacy_json = legacy_showfile_json(&engine);
+
+        let decoded: SaveEngineState = serde_json::from_str(&legacy_json).unwrap();
+        let restored = EngineState::try_from(decoded).unwrap();
+        let resaved = serde_json::to_string(&SaveEngineState::from(restored)).unwrap();
+
+        // Externally tagged variants appear as `"Name":`, so this catches the
+        // old bodies without tripping over the `Legacy*` signal names that
+        // merely contain them as substrings.
+        for name in [
+            "AudioVolume",
+            "BPMValue",
+            "AudioBeat",
+            "BeatClock",
+            "AudioFrequencies",
+        ] {
+            assert!(
+                !resaved.contains(&format!("\"{name}\":")),
+                "re-saved showfile still contains the legacy variant {name}"
+            );
+        }
+        assert!(resaved.contains("AudioModulation"));
+        assert!(resaved.contains("LegacySpectrum"));
+
+        // Reloading the migrated file is a no-op.
+        let round_tripped: SaveEngineState = serde_json::from_str(&resaved).unwrap();
+        let mut reloaded = EngineState::try_from(round_tripped).unwrap();
+        assert_eq!(reloaded.migrate_legacy_audio_animations(), 0);
+    }
+
+    #[test]
+    fn migration_leaves_phasers_and_new_layers_alone() {
+        use crate::AnimationPreset;
+
+        let mut engine = EngineState::default();
+        for (id, preset) in [AnimationPreset::TempoSweep, AnimationPreset::KickFlash]
+            .into_iter()
+            .enumerate()
+        {
+            engine.animation_templates.insert(
+                id as u8,
+                AnimationTemplate {
+                    spec: AnimationSpec::preset(preset),
+                },
+            );
+        }
+        let before: Vec<AnimationSpecBody> = engine
+            .animation_templates
+            .values()
+            .map(|template| template.spec.body.clone())
+            .collect();
+
+        assert_eq!(engine.migrate_legacy_audio_animations(), 0);
+
+        for (index, template) in engine.animation_templates.values().enumerate() {
+            assert_eq!(
+                template.spec.body.kind(),
+                before[index].kind(),
+                "template {index} changed"
+            );
+        }
+    }
+
+    #[test]
+    fn every_preset_is_well_formed_and_editable() {
+        use crate::{AnimationPreset, AudioModulationSignal};
+        use std::collections::HashSet;
+
+        let mut labels = HashSet::new();
+        let mut descriptions = HashSet::new();
+
+        for preset in AnimationPreset::iter() {
+            let spec = AnimationSpec::preset(preset);
+
+            assert!(!preset.label().is_empty(), "{preset:?} has no label");
+            assert!(
+                !preset.description().is_empty(),
+                "{preset:?} has no description"
+            );
+            assert!(labels.insert(preset.label()), "duplicate label {preset:?}");
+            assert!(
+                descriptions.insert(preset.description()),
+                "duplicate description {preset:?}"
+            );
+
+            assert_eq!(spec.name, preset.label(), "{preset:?} name/label mismatch");
+            assert_eq!(
+                spec.property,
+                preset.property(),
+                "{preset:?} drives a different property than it advertises"
+            );
+
+            match &spec.body {
+                AnimationSpecBody::AudioModulation(body) => {
+                    // Presets are authored layers, never compatibility ones.
+                    assert!(
+                        !body.is_compatibility(),
+                        "{preset:?} uses a compatibility variant"
+                    );
+
+                    // Values must already be in range, so sanitizing is a no-op.
+                    let mut sanitized = body.clone();
+                    sanitized.shaping.sanitize();
+                    sanitized.blend.sanitize();
+                    assert_eq!(
+                        &sanitized, body,
+                        "{preset:?} carries values outside their valid range"
+                    );
+
+                    // A zero-gain layer would silently do nothing.
+                    assert!(body.shaping.sensitivity > 0.0, "{preset:?} has no gain");
+                    match body.blend {
+                        AudioModulationBlend::Add { depth } => {
+                            assert!(depth != 0.0, "{preset:?} adds nothing")
+                        }
+                        AudioModulationBlend::Scale { peak_percent } => {
+                            assert!(peak_percent > 0.0, "{preset:?} scales to nothing")
+                        }
+                        AudioModulationBlend::LegacyAbsolute => {
+                            panic!("{preset:?} must not use the legacy blend")
+                        }
+                    }
+
+                    if let AudioModulationSignal::Band {
+                        freq_min_hz,
+                        freq_max_hz,
+                    } = body.signal
+                    {
+                        assert!(freq_min_hz < freq_max_hz, "{preset:?} has an inverted band");
+                        assert!(freq_max_hz <= 20_000, "{preset:?} exceeds the spectrum");
+                    }
+
+                    // At least one section must let the layer through.
+                    assert!(
+                        body.shaping.breakdown_multiplier > 0.0
+                            || body.shaping.drop_multiplier > 0.0
+                            || body.shaping.active_beat_multiplier > 0.0,
+                        "{preset:?} is muted in every section"
+                    );
+                }
+                AnimationSpecBody::Phaser(body) => {
+                    // Pinning only makes sense on a beat-timed cycle.
+                    assert_eq!(
+                        body.pin_to_beat,
+                        matches!(body.time_total, PhaserDuration::Beat(_)),
+                        "{preset:?} pins a cycle it cannot follow"
+                    );
+                    let crate::PhaserKind::Mathematical(math) = &body.kind else {
+                        panic!("{preset:?} must use the mathematical phaser");
+                    };
+                    let min = math.amplitude_min.resolve(&BTreeMap::new(), spec.property);
+                    let max = math.amplitude_max.resolve(&BTreeMap::new(), spec.property);
+                    assert!(min < max, "{preset:?} has a collapsed amplitude range");
+                    let ceiling = if spec.property == FixtureProperty::ColorHue {
+                        360
+                    } else {
+                        255
+                    };
+                    assert!(max <= ceiling, "{preset:?} exceeds its property range");
+                }
+                other => panic!("{preset:?} produced an unexpected body: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn preset_categories_partition_the_library() {
+        use crate::{AnimationPreset, AnimationPresetCategory};
+
+        let mut seen: Vec<AnimationPreset> = Vec::new();
+        for category in AnimationPresetCategory::iter() {
+            let presets: Vec<AnimationPreset> = category.presets().collect();
+            assert!(!presets.is_empty(), "{category:?} is empty");
+            for preset in &presets {
+                assert_eq!(preset.category(), category);
+            }
+            seen.extend(presets);
+        }
+
+        assert_eq!(seen.len(), AnimationPreset::iter().count());
+        for preset in AnimationPreset::iter() {
+            assert_eq!(
+                seen.iter().filter(|p| **p == preset).count(),
+                1,
+                "{preset:?} is not in exactly one category"
+            );
+        }
+    }
+
+    #[test]
+    fn section_presets_are_actually_gated_by_section() {
+        use crate::{AnimationPreset, SectionState};
+
+        let shaping_of = |preset: AnimationPreset| {
+            let AnimationSpecBody::AudioModulation(body) = AnimationSpec::preset(preset).body
+            else {
+                panic!("{preset:?} must be an audio modulation layer");
+            };
+            body.shaping
+        };
+
+        // Blinders stay dark through the breakdown and open up on the drop.
+        let blinder = shaping_of(AnimationPreset::DropBlinder);
+        assert_eq!(blinder.section_multiplier(SectionState::Breakdown), 0.0);
+        assert!(
+            blinder.section_multiplier(SectionState::Drop)
+                > blinder.section_multiplier(SectionState::ActiveBeat)
+        );
+
+        // The glow is the mirror image, and inverts so quiet means bright.
+        let glow = shaping_of(AnimationPreset::BreakdownGlow);
+        assert!(glow.invert);
+        assert_eq!(glow.section_multiplier(SectionState::Drop), 0.0);
+        assert!(
+            glow.section_multiplier(SectionState::Breakdown)
+                > glow.section_multiplier(SectionState::ActiveBeat)
+        );
+
+        // The drop strobe exists only inside a drop.
+        let strobe = shaping_of(AnimationPreset::DropStrobe);
+        assert_eq!(strobe.section_multiplier(SectionState::Breakdown), 0.0);
+        assert_eq!(strobe.section_multiplier(SectionState::ActiveBeat), 0.0);
+        assert!(strobe.section_multiplier(SectionState::Drop) > 0.0);
+    }
+
+    #[test]
+    fn percussive_presets_respond_faster_than_sustained_ones() {
+        use crate::AnimationPreset;
+
+        let release_of = |preset: AnimationPreset| {
+            let AnimationSpecBody::AudioModulation(body) = AnimationSpec::preset(preset).body
+            else {
+                panic!("{preset:?} must be an audio modulation layer");
+            };
+            (body.shaping.attack_ms, body.shaping.release_ms)
+        };
+
+        for percussive in [
+            AnimationPreset::KickFlash,
+            AnimationPreset::StrobeStab,
+            AnimationPreset::DropStrobe,
+            AnimationPreset::HiHatShimmer,
+        ] {
+            let (attack, release) = release_of(percussive);
+            assert_eq!(attack, 0, "{percussive:?} must hit instantly");
+            assert!(release <= 260, "{percussive:?} lingers too long");
+        }
+
+        for sustained in [AnimationPreset::EnergyLift, AnimationPreset::BreakdownGlow] {
+            let (attack, release) = release_of(sustained);
+            assert!(attack >= 250, "{sustained:?} must ease in");
+            assert!(release >= 600, "{sustained:?} must ease out");
+        }
+    }
+
+    #[test]
+    fn movement_presets_cover_distinct_phaser_behaviors() {
+        use crate::{AnimationPreset, AnimationPresetCategory, PhaserKind};
+
+        let mut bases = Vec::new();
+        for preset in AnimationPresetCategory::Movement.presets() {
+            let spec = AnimationSpec::preset(preset);
+            let AnimationSpecBody::Phaser(body) = &spec.body else {
+                panic!("{preset:?} must be a phaser");
+            };
+            let PhaserKind::Mathematical(math) = &body.kind else {
+                panic!("{preset:?} must be a mathematical phaser");
+            };
+            bases.push((preset, math.base, spec.property));
+        }
+        assert!(bases.len() >= 4);
+
+        // Movement presets should not all drive the same property.
+        let properties: std::collections::HashSet<_> =
+            bases.iter().map(|(_, _, property)| *property).collect();
+        assert!(
+            properties.len() >= 3,
+            "movement presets barely differ: {properties:?}"
+        );
+
+        // The ping-pong is the one that flips direction.
+        let ping_pong = AnimationSpec::preset(AnimationPreset::PingPongTilt);
+        let AnimationSpecBody::Phaser(ping_pong_body) = &ping_pong.body else {
+            unreachable!();
+        };
+        assert!(ping_pong_body.reverse_after_n_iterations.is_some());
+        assert_eq!(ping_pong_body.sync, SyncMode::StretchedHalfHalf);
+
+        // Hue Drift deliberately runs free instead of following the tempo.
+        let drift = AnimationSpec::preset(AnimationPreset::HueDrift);
+        let AnimationSpecBody::Phaser(drift_body) = &drift.body else {
+            unreachable!();
+        };
+        assert!(matches!(drift_body.time_total, PhaserDuration::Fixed(_)));
+        assert!(!drift_body.pin_to_beat);
+    }
+
+    #[test]
+    fn starter_presets_match_their_specifications() {
+        use crate::{
+            AnimationPreset, AnimationSpeedModifier, AudioModulationSignal,
+            MathematicalBaseFunction, PhaserDuration, PhaserKind,
+        };
+
+        let kick = AnimationSpec::preset(AnimationPreset::KickFlash);
+        assert_eq!(kick.property, FixtureProperty::Alpha);
+        let AnimationSpecBody::AudioModulation(kick_body) = &kick.body else {
+            panic!("Kick Flash must be an audio modulation layer");
+        };
+        assert_eq!(kick_body.signal, AudioModulationSignal::BeatPulse);
+        assert!(matches!(kick_body.blend, AudioModulationBlend::Add { .. }));
+        assert_eq!(kick_body.shaping.attack_ms, 0, "attack must be immediate");
+        assert!(kick_body.shaping.release_ms > 0 && kick_body.shaping.release_ms <= 200);
+
+        let pump = AnimationSpec::preset(AnimationPreset::BassPump);
+        assert_eq!(pump.property, FixtureProperty::Alpha);
+        let AnimationSpecBody::AudioModulation(pump_body) = &pump.body else {
+            panic!("Bass Pump must be an audio modulation layer");
+        };
+        assert_eq!(
+            pump_body.signal,
+            AudioModulationSignal::Band {
+                freq_min_hz: 40,
+                freq_max_hz: 180
+            }
+        );
+        assert!(matches!(
+            pump_body.blend,
+            AudioModulationBlend::Scale { .. }
+        ));
+
+        let lift = AnimationSpec::preset(AnimationPreset::EnergyLift);
+        assert_eq!(lift.property, FixtureProperty::ColorValue);
+        let AnimationSpecBody::AudioModulation(lift_body) = &lift.body else {
+            panic!("Energy Lift must be an audio modulation layer");
+        };
+        let AudioModulationSignal::Band {
+            freq_min_hz,
+            freq_max_hz,
+        } = lift_body.signal
+        else {
+            panic!("Energy Lift must use a band signal");
+        };
+        assert!(freq_max_hz - freq_min_hz >= 10_000, "band must be broad");
+        assert!(matches!(
+            lift_body.blend,
+            AudioModulationBlend::Scale { .. }
+        ));
+        // Slower smoothing than the percussive presets.
+        assert!(lift_body.shaping.attack_ms > pump_body.shaping.attack_ms);
+        assert!(lift_body.shaping.release_ms > pump_body.shaping.release_ms);
+
+        let sweep = AnimationSpec::preset(AnimationPreset::TempoSweep);
+        assert_eq!(sweep.property, FixtureProperty::Pan);
+        let AnimationSpecBody::Phaser(sweep_body) = &sweep.body else {
+            panic!("Tempo Sweep must stay a phaser");
+        };
+        assert!(sweep_body.pin_to_beat);
+        assert_eq!(sweep_body.sync, SyncMode::StretchedEven);
+        let PhaserDuration::Beat(beats) = sweep_body.time_total else {
+            panic!("Tempo Sweep must be beat-timed");
+        };
+        assert_eq!(beats.as_float(), 4.0, "cycle must span four beats");
+        assert_eq!(beats, AnimationSpeedModifier::_1_4);
+        let PhaserKind::Mathematical(math) = &sweep_body.kind else {
+            panic!("Tempo Sweep must use the mathematical phaser");
+        };
+        assert_eq!(math.base, MathematicalBaseFunction::Sin);
+
+        // Presets are ordinary animations: no preset identity is retained.
+        assert_eq!(kick.name, AnimationPreset::KickFlash.label());
     }
 
     #[test]

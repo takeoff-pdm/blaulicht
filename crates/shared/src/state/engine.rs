@@ -1,5 +1,5 @@
 use crate::{
-    AnimationSpeedModifier, FixtureProperty, SyncMode,
+    AnimationSpeedModifier, FixtureProperty, SectionState, SyncMode,
     fixture::{
         state::{FixtureGroup, FixtureState},
         value::FixtureValue,
@@ -264,6 +264,34 @@ impl EngineState {
         issues
     }
 
+    /// Rewrites every legacy audio animation — reusable templates as well as
+    /// the specs cloned into active animations — into the unified
+    /// [`AudioModulationSpec`] model. Returns how many specs were rewritten.
+    ///
+    /// Runs on load so that a subsequent save can only ever emit the new
+    /// representation.
+    pub fn migrate_legacy_audio_animations(&mut self) -> usize {
+        let mut migrated = 0;
+
+        for template in self.animation_templates.values_mut() {
+            if template.spec.body.migrate_legacy_audio() {
+                migrated += 1;
+            }
+        }
+
+        for scene in self.scenes.values_mut() {
+            for animations in scene.sink.active_animations.values_mut() {
+                for animation in animations.values_mut() {
+                    if animation.spec_cloned.body.migrate_legacy_audio() {
+                        migrated += 1;
+                    }
+                }
+            }
+        }
+
+        migrated
+    }
+
     pub fn serialize(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, config::standard()).unwrap()
     }
@@ -301,7 +329,7 @@ impl AnimationSpec {
     pub fn empty() -> Self {
         Self {
             name: "EMPTY".to_string(),
-            body: AnimationSpecBody::BeatClock(AnimationSpecBodyBeat {}),
+            body: AnimationSpecBody::AudioModulation(AudioModulationSpec::default()),
             property: FixtureProperty::Alpha,
             // sync: SyncMode::Synced,
         }
@@ -317,6 +345,7 @@ impl AnimationSpec {
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
+            | AnimationSpecBody::AudioModulation(_)
             | AnimationSpecBody::Wasm(_) => SyncMode::Synced,
         }
     }
@@ -333,8 +362,423 @@ impl AnimationSpec {
             | AnimationSpecBody::AudioBeat(_)
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
+            | AnimationSpecBody::AudioModulation(_)
             | AnimationSpecBody::Wasm(_) => false,
         }
+    }
+
+    /// Builds one of the starter presets. Presets are ordinary single-layer
+    /// animations: every value stays editable and no preset identity is kept.
+    pub fn preset(kind: AnimationPreset) -> Self {
+        let body = match kind {
+            //
+            // Beat — driven by the hybrid onset/clock pulse.
+            //
+
+            // Immediate, percussive alpha stab on every kick.
+            AnimationPreset::KickFlash => {
+                pulse_layer(0, 120, AudioModulationBlend::Add { depth: 255.0 })
+            }
+            // Very short shutter burst; the tight release keeps it a stab, not a flash.
+            AnimationPreset::StrobeStab => {
+                pulse_layer(0, 45, AudioModulationBlend::Add { depth: 200.0 })
+            }
+            // Slower decay so beams visibly breathe rather than blink.
+            AnimationPreset::BeamPunch => {
+                pulse_layer(0, 220, AudioModulationBlend::Add { depth: 180.0 })
+            }
+            // Nudges hue on each beat and lets it fall back to the authored color.
+            AnimationPreset::ColorFlicker => {
+                pulse_layer(0, 260, AudioModulationBlend::Add { depth: 120.0 })
+            }
+
+            //
+            // Frequency — continuous band energy.
+            //
+            AnimationPreset::BassPump => band_layer(
+                40,
+                180,
+                AudioModulationShaping {
+                    attack_ms: 5,
+                    release_ms: 90,
+                    ..AudioModulationShaping::default()
+                },
+                AudioModulationBlend::Scale {
+                    peak_percent: 100.0,
+                },
+            ),
+            // Sub-only: the threshold keeps mid-bass out of it.
+            AnimationPreset::SubRumble => band_layer(
+                20,
+                60,
+                AudioModulationShaping {
+                    threshold: 0.2,
+                    attack_ms: 20,
+                    release_ms: 300,
+                    ..AudioModulationShaping::default()
+                },
+                AudioModulationBlend::Scale {
+                    peak_percent: 100.0,
+                },
+            ),
+            // Hats and cymbals only, gated hard and gained back up so the
+            // sparkle reads even though the band carries little energy.
+            AnimationPreset::HiHatShimmer => band_layer(
+                6_000,
+                16_000,
+                AudioModulationShaping {
+                    threshold: 0.35,
+                    sensitivity: 2.5,
+                    attack_ms: 0,
+                    release_ms: 70,
+                    ..AudioModulationShaping::default()
+                },
+                AudioModulationBlend::Add { depth: 120.0 },
+            ),
+            // Vocal / lead range, lifting color rather than brightness.
+            AnimationPreset::MidBloom => band_layer(
+                300,
+                2_500,
+                AudioModulationShaping {
+                    threshold: 0.15,
+                    attack_ms: 40,
+                    release_ms: 220,
+                    ..AudioModulationShaping::default()
+                },
+                AudioModulationBlend::Add { depth: 140.0 },
+            ),
+            AnimationPreset::EnergyLift => band_layer(
+                20,
+                20_000,
+                AudioModulationShaping {
+                    attack_ms: 250,
+                    release_ms: 600,
+                    ..AudioModulationShaping::default()
+                },
+                AudioModulationBlend::Scale {
+                    peak_percent: 100.0,
+                },
+            ),
+
+            //
+            // Section — the same signals, gated by the macro section.
+            //
+
+            // Silent through breakdowns, full on the drop, held back once the
+            // track settles into its groove.
+            AnimationPreset::DropBlinder => AudioModulationSpec {
+                signal: AudioModulationSignal::Energy,
+                shaping: AudioModulationShaping {
+                    threshold: 0.25,
+                    attack_ms: 0,
+                    release_ms: 150,
+                    breakdown_multiplier: 0.0,
+                    drop_multiplier: 1.0,
+                    active_beat_multiplier: 0.3,
+                    ..AudioModulationShaping::default()
+                },
+                blend: AudioModulationBlend::Add { depth: 255.0 },
+            },
+            // Inverted, so the quieter the track the more it glows — and only
+            // in the breakdown, where inversion is actually wanted.
+            AnimationPreset::BreakdownGlow => AudioModulationSpec {
+                signal: AudioModulationSignal::Energy,
+                shaping: AudioModulationShaping {
+                    invert: true,
+                    attack_ms: 400,
+                    release_ms: 900,
+                    breakdown_multiplier: 1.0,
+                    drop_multiplier: 0.0,
+                    active_beat_multiplier: 0.2,
+                    ..AudioModulationShaping::default()
+                },
+                blend: AudioModulationBlend::Add { depth: 160.0 },
+            },
+            // Beat-locked shutter that exists only for the duration of a drop.
+            AnimationPreset::DropStrobe => AudioModulationSpec {
+                signal: AudioModulationSignal::BeatPulse,
+                shaping: AudioModulationShaping {
+                    attack_ms: 0,
+                    release_ms: 60,
+                    breakdown_multiplier: 0.0,
+                    drop_multiplier: 1.0,
+                    active_beat_multiplier: 0.0,
+                    ..AudioModulationShaping::default()
+                },
+                blend: AudioModulationBlend::Add { depth: 255.0 },
+            },
+
+            //
+            // Movement — tempo-locked phasers, not sound-reactive layers.
+            //
+            AnimationPreset::TempoSweep => {
+                return phaser_preset(
+                    kind,
+                    FixtureProperty::Pan,
+                    MathematicalBaseFunction::Sin,
+                    (0, 255),
+                    // `_1_4` is the four-beat cycle (the modifier names are divisors).
+                    PhaserDuration::Beat(AnimationSpeedModifier::_1_4),
+                    SyncMode::StretchedEven,
+                    None,
+                );
+            }
+            // Half/half phase split plus a periodic reversal reads as a
+            // ping-pong across the rig instead of a uniform nod.
+            AnimationPreset::PingPongTilt => {
+                return phaser_preset(
+                    kind,
+                    FixtureProperty::Tilt,
+                    MathematicalBaseFunction::Triangle,
+                    // Kept off the mechanical end stops.
+                    (64, 192),
+                    PhaserDuration::Beat(AnimationSpeedModifier::_1_2),
+                    SyncMode::StretchedHalfHalf,
+                    Some(4),
+                );
+            }
+            // One-beat cycle lit for an eighth of it: a classic hard chase.
+            AnimationPreset::EighthChase => {
+                return phaser_preset(
+                    kind,
+                    FixtureProperty::Alpha,
+                    MathematicalBaseFunction::Square1_8,
+                    (0, 255),
+                    PhaserDuration::Beat(AnimationSpeedModifier::_1),
+                    SyncMode::StretchedEven,
+                    None,
+                );
+            }
+            // Free-running rainbow, deliberately not beat-locked.
+            AnimationPreset::HueDrift => {
+                return phaser_preset(
+                    kind,
+                    FixtureProperty::ColorHue,
+                    MathematicalBaseFunction::Sin,
+                    (0, 360),
+                    PhaserDuration::Fixed(30_000),
+                    SyncMode::StretchedEven,
+                    None,
+                );
+            }
+        };
+
+        Self {
+            name: kind.label().to_string(),
+            property: kind.property(),
+            body: AnimationSpecBody::AudioModulation(body),
+        }
+    }
+}
+
+fn pulse_layer(
+    attack_ms: u32,
+    release_ms: u32,
+    blend: AudioModulationBlend,
+) -> AudioModulationSpec {
+    AudioModulationSpec {
+        signal: AudioModulationSignal::BeatPulse,
+        shaping: AudioModulationShaping {
+            attack_ms,
+            release_ms,
+            ..AudioModulationShaping::default()
+        },
+        blend,
+    }
+}
+
+fn band_layer(
+    freq_min_hz: u32,
+    freq_max_hz: u32,
+    shaping: AudioModulationShaping,
+    blend: AudioModulationBlend,
+) -> AudioModulationSpec {
+    AudioModulationSpec {
+        signal: AudioModulationSignal::Band {
+            freq_min_hz,
+            freq_max_hz,
+        },
+        shaping,
+        blend,
+    }
+}
+
+fn phaser_preset(
+    kind: AnimationPreset,
+    property: FixtureProperty,
+    base: MathematicalBaseFunction,
+    (amplitude_min, amplitude_max): (u16, u16),
+    time_total: PhaserDuration,
+    sync: SyncMode,
+    reverse_after_n_iterations: Option<u32>,
+) -> AnimationSpec {
+    AnimationSpec {
+        name: kind.label().to_string(),
+        property,
+        body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
+            kind: PhaserKind::Mathematical(MathematicalPhaser {
+                base,
+                stretch_factor: 1.0,
+                amplitude_min: FixtureValue::Literal(amplitude_min),
+                amplitude_max: FixtureValue::Literal(amplitude_max),
+            }),
+            time_total,
+            // Fixed-duration phasers cannot pin to a beat grid they don't follow.
+            pin_to_beat: matches!(time_total, PhaserDuration::Beat(_)),
+            sync,
+            reverse_after_n_iterations,
+        }),
+    }
+}
+
+/// Starter presets offered in the new-animation flow.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+pub enum AnimationPreset {
+    // Beat.
+    KickFlash,
+    StrobeStab,
+    BeamPunch,
+    ColorFlicker,
+    // Frequency.
+    BassPump,
+    SubRumble,
+    HiHatShimmer,
+    MidBloom,
+    EnergyLift,
+    // Section.
+    DropBlinder,
+    BreakdownGlow,
+    DropStrobe,
+    // Movement.
+    TempoSweep,
+    PingPongTilt,
+    EighthChase,
+    HueDrift,
+}
+
+impl AnimationPreset {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::KickFlash => "Kick Flash",
+            Self::StrobeStab => "Strobe Stab",
+            Self::BeamPunch => "Beam Punch",
+            Self::ColorFlicker => "Color Flicker",
+            Self::BassPump => "Bass Pump",
+            Self::SubRumble => "Sub Rumble",
+            Self::HiHatShimmer => "Hi-Hat Shimmer",
+            Self::MidBloom => "Mid Bloom",
+            Self::EnergyLift => "Energy Lift",
+            Self::DropBlinder => "Drop Blinder",
+            Self::BreakdownGlow => "Breakdown Glow",
+            Self::DropStrobe => "Drop Strobe",
+            Self::TempoSweep => "Tempo Sweep",
+            Self::PingPongTilt => "Ping-Pong Tilt",
+            Self::EighthChase => "Eighth Chase",
+            Self::HueDrift => "Hue Drift",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::KickFlash => "Beat pulse -> additive alpha, instant attack",
+            Self::StrobeStab => "Beat pulse -> shutter burst, very short release",
+            Self::BeamPunch => "Beat pulse -> focus, slower decay",
+            Self::ColorFlicker => "Beat pulse -> hue nudge that settles back",
+            Self::BassPump => "40-180 Hz energy -> scaled alpha",
+            Self::SubRumble => "20-60 Hz energy -> scaled color value",
+            Self::HiHatShimmer => "6-16 kHz energy -> additive alpha sparkle",
+            Self::MidBloom => "300 Hz-2.5 kHz energy -> additive color value",
+            Self::EnergyLift => "Broad-band energy -> scaled color value, slow",
+            Self::DropBlinder => "Energy -> additive alpha, drop only",
+            Self::BreakdownGlow => "Inverted energy -> additive alpha, breakdown only",
+            Self::DropStrobe => "Beat pulse -> shutter, drop only",
+            Self::TempoSweep => "Sine phaser -> pan, 4-beat pinned cycle",
+            Self::PingPongTilt => "Triangle phaser -> tilt, 2 beats, reverses",
+            Self::EighthChase => "1/8 square phaser -> alpha, 1-beat chase",
+            Self::HueDrift => "Sine phaser -> hue, free-running 30 s",
+        }
+    }
+
+    /// The property the preset is designed to drive.
+    pub fn property(&self) -> FixtureProperty {
+        match self {
+            Self::KickFlash
+            | Self::BassPump
+            | Self::DropBlinder
+            | Self::BreakdownGlow
+            | Self::HiHatShimmer
+            | Self::EighthChase => FixtureProperty::Alpha,
+            Self::StrobeStab | Self::DropStrobe => FixtureProperty::Strobe,
+            Self::BeamPunch => FixtureProperty::Focus,
+            Self::ColorFlicker | Self::HueDrift => FixtureProperty::ColorHue,
+            Self::SubRumble | Self::MidBloom | Self::EnergyLift => FixtureProperty::ColorValue,
+            Self::TempoSweep => FixtureProperty::Pan,
+            Self::PingPongTilt => FixtureProperty::Tilt,
+        }
+    }
+
+    pub fn category(&self) -> AnimationPresetCategory {
+        match self {
+            Self::KickFlash | Self::StrobeStab | Self::BeamPunch | Self::ColorFlicker => {
+                AnimationPresetCategory::Beat
+            }
+            Self::BassPump
+            | Self::SubRumble
+            | Self::HiHatShimmer
+            | Self::MidBloom
+            | Self::EnergyLift => AnimationPresetCategory::Frequency,
+            Self::DropBlinder | Self::BreakdownGlow | Self::DropStrobe => {
+                AnimationPresetCategory::Section
+            }
+            Self::TempoSweep | Self::PingPongTilt | Self::EighthChase | Self::HueDrift => {
+                AnimationPresetCategory::Movement
+            }
+        }
+    }
+}
+
+impl Display for AnimationPreset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
+/// Groups the preset list so the picker stays readable as it grows.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+pub enum AnimationPresetCategory {
+    Beat,
+    Frequency,
+    Section,
+    Movement,
+}
+
+impl AnimationPresetCategory {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Beat => "Beat",
+            Self::Frequency => "Frequency",
+            Self::Section => "Section",
+            Self::Movement => "Movement",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Beat => "React to the hybrid onset / beat-clock pulse",
+            Self::Frequency => "React to the energy in a frequency band",
+            Self::Section => "Gated by the macro section (breakdown / drop / groove)",
+            Self::Movement => "Tempo-locked phasers, not sound-reactive",
+        }
+    }
+
+    pub fn presets(&self) -> impl Iterator<Item = AnimationPreset> + '_ {
+        AnimationPreset::iter().filter(move |preset| preset.category() == *self)
+    }
+}
+
+impl Display for AnimationPresetCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label())
     }
 }
 
@@ -348,6 +792,9 @@ pub enum AnimationSpecBody {
     AudioFrequencies(AnimationSpecBodyFrequencies),
     BeatClock(AnimationSpecBodyBeat),
     Wasm(AnimationSpecBodyWasm), // TODO: not currently supported.
+    /// Unified sound-reactive layer. New serialized variants are appended so
+    /// existing showfiles keep their variant indices.
+    AudioModulation(AudioModulationSpec),
 }
 
 impl From<AnimationSpecBodyKind> for AnimationSpecBody {
@@ -364,6 +811,9 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
             }
             AnimationSpecBodyKind::BeatClock => Self::BeatClock(AnimationSpecBodyBeat::default()),
             AnimationSpecBodyKind::Wasm => Self::Wasm(AnimationSpecBodyWasm::default()),
+            AnimationSpecBodyKind::AudioModulation => {
+                Self::AudioModulation(AudioModulationSpec::default())
+            }
         }
     }
 }
@@ -378,7 +828,34 @@ impl AnimationSpecBody {
             AnimationSpecBody::AudioFrequencies(_) => AnimationSpecBodyKind::AudioFrequencies,
             AnimationSpecBody::BeatClock(_) => AnimationSpecBodyKind::BeatClock,
             AnimationSpecBody::Wasm(_) => AnimationSpecBodyKind::Wasm,
+            AnimationSpecBody::AudioModulation(_) => AnimationSpecBodyKind::AudioModulation,
         }
+    }
+
+    /// Rewrites a legacy audio body into the unified [`AudioModulationSpec`]
+    /// model, using hidden compatibility signal/output variants that reproduce
+    /// the former absolute values exactly. Returns `true` when a rewrite
+    /// happened.
+    pub fn migrate_legacy_audio(&mut self) -> bool {
+        let signal = match self {
+            AnimationSpecBody::AudioVolume(_) => AudioModulationSignal::LegacyVolume,
+            AnimationSpecBody::BPMValue(_) => AudioModulationSignal::LegacyBpm,
+            AnimationSpecBody::AudioBeat(_) => AudioModulationSignal::LegacyBass,
+            AnimationSpecBody::BeatClock(_) => AudioModulationSignal::LegacyBeatClock,
+            AnimationSpecBody::AudioFrequencies(frequencies) => {
+                AudioModulationSignal::LegacySpectrum(frequencies.clone())
+            }
+            AnimationSpecBody::Phaser(_)
+            | AnimationSpecBody::Wasm(_)
+            | AnimationSpecBody::AudioModulation(_) => return false,
+        };
+
+        *self = AnimationSpecBody::AudioModulation(AudioModulationSpec {
+            signal,
+            shaping: AudioModulationShaping::default(),
+            blend: AudioModulationBlend::LegacyAbsolute,
+        });
+        true
     }
 }
 
@@ -391,6 +868,245 @@ pub enum AnimationSpecBodyKind {
     AudioFrequencies,
     BeatClock,
     Wasm,
+    AudioModulation,
+}
+
+impl AnimationSpecBodyKind {
+    /// Kinds offered when authoring a new animation. The legacy audio kinds
+    /// are migration targets only and never appear here.
+    pub fn selectable() -> impl Iterator<Item = Self> {
+        [Self::Phaser, Self::AudioModulation, Self::Wasm].into_iter()
+    }
+}
+
+/// A sound-reactive layer: a signal, the shaping applied to it, and how the
+/// shaped envelope blends into the authored scene value.
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default, PartialEq)]
+pub struct AudioModulationSpec {
+    pub signal: AudioModulationSignal,
+    pub shaping: AudioModulationShaping,
+    pub blend: AudioModulationBlend,
+}
+
+impl AudioModulationSpec {
+    /// True when this layer only exists to replay a legacy animation mode.
+    /// Such layers are editable through their applicable legacy fields only.
+    pub fn is_compatibility(&self) -> bool {
+        self.signal.is_compatibility() || self.blend.is_compatibility()
+    }
+}
+
+/// What the layer listens to.
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, PartialEq)]
+pub enum AudioModulationSignal {
+    /// Overall energy of the mix, normalized to `0..1`.
+    Energy,
+    /// RMS energy of the FFT buckets overlapping `[freq_min_hz, freq_max_hz]`.
+    /// One uniform value for the whole selection.
+    Band { freq_min_hz: u32, freq_max_hz: u32 },
+    /// Hybrid pulse: fires immediately on a new onset and falls back to the
+    /// beat clock only when an expected beat had no onset.
+    BeatPulse,
+    /// Compatibility: former `AudioVolume` mode.
+    LegacyVolume,
+    /// Compatibility: former `BPMValue` mode.
+    LegacyBpm,
+    /// Compatibility: former `AudioBeat` mode.
+    LegacyBass,
+    /// Compatibility: former `BeatClock` mode.
+    LegacyBeatClock,
+    /// Compatibility: former `AudioFrequencies` mode, including its spatial
+    /// spread of spectrum buckets across the selection.
+    LegacySpectrum(AnimationSpecBodyFrequencies),
+}
+
+impl Default for AudioModulationSignal {
+    fn default() -> Self {
+        Self::Energy
+    }
+}
+
+impl AudioModulationSignal {
+    pub fn is_compatibility(&self) -> bool {
+        matches!(
+            self,
+            Self::LegacyVolume
+                | Self::LegacyBpm
+                | Self::LegacyBass
+                | Self::LegacyBeatClock
+                | Self::LegacySpectrum(_)
+        )
+    }
+
+    /// Signal sources offered when authoring a new layer.
+    pub fn selectable() -> impl Iterator<Item = Self> {
+        [
+            Self::Energy,
+            Self::Band {
+                freq_min_hz: 40,
+                freq_max_hz: 180,
+            },
+            Self::BeatPulse,
+        ]
+        .into_iter()
+    }
+
+    /// Stable identity used to compare a spec against the picker entries.
+    pub fn discriminant_label(&self) -> &'static str {
+        match self {
+            Self::Energy => "Energy",
+            Self::Band { .. } => "Band",
+            Self::BeatPulse => "Beat Pulse",
+            Self::LegacyVolume => "Legacy Volume",
+            Self::LegacyBpm => "Legacy BPM",
+            Self::LegacyBass => "Legacy Bass",
+            Self::LegacyBeatClock => "Legacy Beat Clock",
+            Self::LegacySpectrum(_) => "Legacy Spectrum",
+        }
+    }
+}
+
+impl Display for AudioModulationSignal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Band {
+                freq_min_hz,
+                freq_max_hz,
+            } => write!(f, "Band {freq_min_hz}-{freq_max_hz} Hz"),
+            other => write!(f, "{}", other.discriminant_label()),
+        }
+    }
+}
+
+/// How the raw `0..1` signal is turned into the envelope that drives output.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq)]
+pub struct AudioModulationShaping {
+    /// Input below this (`0..1`) produces no output.
+    pub threshold: f32,
+    /// Gain applied after the threshold, before clamping back to `0..1`.
+    pub sensitivity: f32,
+    /// Smoothing time constant while the envelope rises. `0` snaps instantly.
+    pub attack_ms: u32,
+    /// Smoothing time constant while the envelope falls. `0` snaps instantly.
+    pub release_ms: u32,
+    /// Mirrors the shaped value. Only applied while the audio input is valid.
+    pub invert: bool,
+    pub breakdown_multiplier: f32,
+    pub drop_multiplier: f32,
+    pub active_beat_multiplier: f32,
+}
+
+impl Default for AudioModulationShaping {
+    fn default() -> Self {
+        Self {
+            threshold: 0.0,
+            sensitivity: 1.0,
+            attack_ms: 10,
+            release_ms: 200,
+            invert: false,
+            breakdown_multiplier: 1.0,
+            drop_multiplier: 1.0,
+            active_beat_multiplier: 1.0,
+        }
+    }
+}
+
+impl AudioModulationShaping {
+    pub fn section_multiplier(&self, section: SectionState) -> f32 {
+        let raw = match section {
+            SectionState::Breakdown => self.breakdown_multiplier,
+            SectionState::Drop => self.drop_multiplier,
+            SectionState::ActiveBeat => self.active_beat_multiplier,
+        };
+        if raw.is_finite() {
+            raw.clamp(0.0, MAX_SECTION_MULTIPLIER)
+        } else {
+            1.0
+        }
+    }
+
+    pub fn sanitize(&mut self) {
+        self.threshold = finite_or(self.threshold, 0.0).clamp(0.0, MAX_THRESHOLD);
+        self.sensitivity = finite_or(self.sensitivity, 1.0).clamp(0.0, MAX_SENSITIVITY);
+        self.attack_ms = self.attack_ms.min(MAX_SMOOTHING_MS);
+        self.release_ms = self.release_ms.min(MAX_SMOOTHING_MS);
+        self.breakdown_multiplier =
+            finite_or(self.breakdown_multiplier, 1.0).clamp(0.0, MAX_SECTION_MULTIPLIER);
+        self.drop_multiplier =
+            finite_or(self.drop_multiplier, 1.0).clamp(0.0, MAX_SECTION_MULTIPLIER);
+        self.active_beat_multiplier =
+            finite_or(self.active_beat_multiplier, 1.0).clamp(0.0, MAX_SECTION_MULTIPLIER);
+    }
+}
+
+/// The threshold never reaches 1.0 — that would leave no usable input range.
+pub const MAX_THRESHOLD: f32 = 0.99;
+pub const MAX_SENSITIVITY: f32 = 8.0;
+pub const MAX_SMOOTHING_MS: u32 = 10_000;
+pub const MAX_SECTION_MULTIPLIER: f32 = 4.0;
+pub const MAX_ADD_DEPTH: f32 = 360.0;
+pub const MAX_SCALE_PERCENT: f32 = 400.0;
+
+fn finite_or(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() { value } else { fallback }
+}
+
+/// How the envelope reaches the output value.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq)]
+pub enum AudioModulationBlend {
+    /// Signed offset added to the base value: `envelope * depth`.
+    Add { depth: f32 },
+    /// Fraction of the base value reached at full envelope:
+    /// `base * envelope * peak_percent / 100`.
+    Scale { peak_percent: f32 },
+    /// Compatibility: replaces the base value outright with the legacy
+    /// absolute output. Never offered for newly authored layers.
+    LegacyAbsolute,
+}
+
+impl Default for AudioModulationBlend {
+    fn default() -> Self {
+        Self::Add { depth: 255.0 }
+    }
+}
+
+impl AudioModulationBlend {
+    pub fn is_compatibility(&self) -> bool {
+        matches!(self, Self::LegacyAbsolute)
+    }
+
+    /// Blend modes offered when authoring a new layer.
+    pub fn selectable() -> impl Iterator<Item = Self> {
+        [
+            Self::Add { depth: 255.0 },
+            Self::Scale {
+                peak_percent: 100.0,
+            },
+        ]
+        .into_iter()
+    }
+
+    pub fn sanitize(&mut self) {
+        match self {
+            Self::Add { depth } => {
+                *depth = finite_or(*depth, 0.0).clamp(-MAX_ADD_DEPTH, MAX_ADD_DEPTH)
+            }
+            Self::Scale { peak_percent } => {
+                *peak_percent = finite_or(*peak_percent, 100.0).clamp(0.0, MAX_SCALE_PERCENT)
+            }
+            Self::LegacyAbsolute => {}
+        }
+    }
+}
+
+impl Display for AudioModulationBlend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Add { .. } => write!(f, "Add"),
+            Self::Scale { .. } => write!(f, "Scale"),
+            Self::LegacyAbsolute => write!(f, "Absolute (legacy)"),
+        }
+    }
 }
 
 impl Display for AnimationSpecBodyKind {
@@ -491,7 +1207,7 @@ pub struct AnimationSpecBodyBpmValue {}
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyBeat {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, PartialEq, Eq)]
 pub struct AnimationSpecBodyFrequencies {
     pub gate: u8,
     pub boost: u8,

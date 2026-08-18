@@ -461,6 +461,7 @@ impl DmxEngine {
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
         let palettes = &state.0.palettes;
+        let base_scene_id = state.0.current_scene_focus;
 
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
@@ -484,6 +485,15 @@ impl DmxEngine {
                         }
                     }
                 }
+
+                // Animation output modulates the authored/palette-resolved
+                // base before any scene merging happens.
+                self.animation_clock.outputs.apply_to_fixture(
+                    &mut merged_state,
+                    base_scene_id,
+                    fixture_key,
+                    palettes,
+                );
 
                 // Resolve to a concrete state, then apply master alpha.
                 let mut resolved = merged_state.resolve(palettes);
@@ -521,6 +531,13 @@ impl DmxEngine {
                             }
                         }
                     }
+
+                    self.animation_clock.outputs.apply_to_fixture(
+                        &mut scene_fixture_state,
+                        *overlay_id,
+                        fixture_key,
+                        palettes,
+                    );
 
                     // Apply master alpha as a literal scaling on the overlay's
                     // resolved alpha before merging.

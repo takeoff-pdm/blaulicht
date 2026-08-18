@@ -6,13 +6,23 @@ use crate::{
         },
         BlaulichtApp,
     },
-    dmx::{animation::phaser, EngineState},
+    dmx::{
+        animation::{
+            audio::{
+                self, AudioModulationRuntime, AudioModulationSample, MAX_FRAME_AGE_MS,
+                MIN_BEAT_FALLBACK_CONFIDENCE,
+            },
+            phaser,
+        },
+        EngineState,
+    },
 };
 use blaulicht_shared::{
-    fixture::value::FixtureValue, palette::Palette, AnimationSpec, AnimationSpecBody,
-    AnimationSpecBodyBeat, AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate,
-    FixtureProperty, FrequencyNormalization, MathematicalBaseFunction, PhaserDuration, PhaserKind,
-    SyncMode,
+    fixture::value::FixtureValue, palette::Palette, AnimationPresetCategory, AnimationSpec,
+    AnimationSpecBody, AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate,
+    AudioModulationBlend, AudioModulationSignal, AudioModulationSpec, FixtureProperty,
+    FrequencyNormalization, MathematicalBaseFunction, PhaserDuration, PhaserKind, SyncMode,
+    MAX_ADD_DEPTH, MAX_SCALE_PERCENT, MAX_SECTION_MULTIPLIER, MAX_SENSITIVITY, MAX_THRESHOLD,
 };
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
@@ -28,6 +38,9 @@ pub struct AnimationUI {
     pub selected_animation_id_before: Option<u8>,
 
     pub create_open: bool,
+    pub presets_open: bool,
+    /// `None` shows every preset category at once.
+    pub preset_category: Option<AnimationPresetCategory>,
     pub delete_confirm_open: bool,
 
     pub new_name: String,
@@ -46,6 +59,8 @@ impl Default for AnimationUI {
             selected_animation_id: None,
             selected_animation_id_before: None,
             create_open: false,
+            presets_open: false,
+            preset_category: None,
             delete_confirm_open: false,
             new_name: "Anim #".to_string(),
             new_mode: AnimationSpecBodyKind::Phaser,
@@ -95,6 +110,119 @@ impl BlaulichtApp {
             });
     }
 
+    /// Inserts `spec` as a new animation template. Returns false when the
+    /// template ID space is exhausted.
+    fn insert_animation_template(&mut self, spec: AnimationSpec) -> bool {
+        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+        let Some(new_id) = (0..=u8::MAX)
+            .find(|candidate| !dmx_engine.0.animation_templates.contains_key(candidate))
+        else {
+            drop(dmx_engine);
+            self.show_popup(crate::app::PopupSpec::with_duration(
+                std::time::Duration::from_secs(3),
+                "Animation limit reached".to_string(),
+            ));
+            return false;
+        };
+
+        dmx_engine
+            .0
+            .animation_templates
+            .insert(new_id, AnimationTemplate { spec });
+        true
+    }
+
+    fn render_presets_dialog(&mut self, ctx: &Context, _ui: &mut egui::Ui) {
+        if !self.animation_ui_state.presets_open {
+            return;
+        }
+
+        // Presets are just starting points: they create ordinary single-layer
+        // animations with no lasting preset identity.
+        let mut chosen = None;
+
+        let selected_category = self.animation_ui_state.preset_category;
+
+        Dialog::new("Starter Presets".to_string(), egui::vec2(560.0, 520.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(RichText::new("Starter Presets").strong());
+                ui.label(
+                    RichText::new(
+                        "Each preset creates a normal, fully editable animation template.",
+                    )
+                    .size(11.0)
+                    .weak(),
+                );
+                ui.add_space(8.0);
+
+                // Category filter: `None` shows everything, grouped.
+                ui.horizontal_wrapped(|ui| {
+                    if components::button(
+                        ui,
+                        selected_category.is_none(),
+                        "All",
+                        ButtonSize::Medium.with_width(90.0),
+                    ) {
+                        self.animation_ui_state.preset_category = None;
+                    }
+                    for category in AnimationPresetCategory::iter() {
+                        if components::button(
+                            ui,
+                            selected_category == Some(category),
+                            category.label(),
+                            ButtonSize::Medium.with_width(110.0),
+                        ) {
+                            self.animation_ui_state.preset_category = Some(category);
+                        }
+                    }
+                });
+
+                ui.add_space(6.0);
+                ui.separator();
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .max_height(ui.available_height() - 56.0)
+                    .show(ui, |ui| {
+                        for category in AnimationPresetCategory::iter() {
+                            if selected_category.is_some_and(|filter| filter != category) {
+                                continue;
+                            }
+
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(category.label()).size(13.0).strong());
+                            ui.label(RichText::new(category.description()).size(10.0).weak());
+                            ui.add_space(4.0);
+
+                            for preset in category.presets() {
+                                if components::button(
+                                    ui,
+                                    false,
+                                    &format!("{}   ·   {}", preset.label(), preset.property()),
+                                    ButtonSize::Medium.with_width(490.0),
+                                ) {
+                                    chosen = Some(preset);
+                                }
+                                ui.label(RichText::new(preset.description()).size(11.0).weak());
+                                ui.add_space(6.0);
+                            }
+                        }
+                    });
+
+                ui.separator();
+                if components::button(ui, false, "Close", ButtonSize::Medium) {
+                    self.animation_ui_state.presets_open = false;
+                }
+            });
+
+        if let Some(preset) = chosen {
+            if self.insert_animation_template(AnimationSpec::preset(preset)) {
+                self.animation_ui_state.presets_open = false;
+            }
+        }
+    }
+
     fn render_add_animation_dialog(&mut self, ctx: &Context, _ui: &mut egui::Ui) {
         if self.animation_ui_state.create_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
@@ -142,7 +270,7 @@ impl BlaulichtApp {
 
                     let (new_mode, mode_changed) = components::selection_dialog(
                         ctx,
-                        AnimationSpecBodyKind::iter(),
+                        AnimationSpecBodyKind::selectable(),
                         self.animation_ui_state.new_mode,
                         &mut self.animation_ui_state.new_mode_dialog_open,
                         "Select Animation Type".to_string(),
@@ -197,33 +325,17 @@ impl BlaulichtApp {
                     });
 
                     if button_pressed {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-
                         let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
-                        let body = AnimationSpecBody::from(self.animation_ui_state.new_mode);
+                        let spec = AnimationSpec {
+                            name: base_name.clone(),
+                            body: AnimationSpecBody::from(self.animation_ui_state.new_mode),
+                            property: self.animation_ui_state.new_prop,
+                        };
 
-                        if let Some(new_id) = (0..=u8::MAX).find(|candidate| {
-                            !dmx_engine.0.animation_templates.contains_key(candidate)
-                        }) {
-                            dmx_engine.0.animation_templates.insert(
-                                new_id,
-                                AnimationTemplate {
-                                    spec: AnimationSpec {
-                                        name: base_name,
-                                        body,
-                                        property: self.animation_ui_state.new_prop,
-                                    },
-                                },
-                            );
-
+                        if self.insert_animation_template(spec) {
                             self.animation_ui_state.create_open = false;
                             self.animation_ui_state.close_selection_dialogs();
                         } else {
-                            drop(dmx_engine);
-                            self.show_popup(crate::app::PopupSpec::with_duration(
-                                std::time::Duration::from_secs(3),
-                                "Animation limit reached".to_string(),
-                            ));
                             self.animation_ui_state.new_name = base_name;
                         }
                     }
@@ -279,6 +391,31 @@ impl BlaulichtApp {
         }
     }
 
+    /// Snapshot of the live audio used to drive the editor's readouts. The
+    /// spectrogram's newest column is the same FFT data the engine modulates
+    /// from, so the band readout matches what the layer actually sees.
+    pub(crate) fn live_audio_for_preview(&self) -> blaulicht_audio_engine::CollectorOutput {
+        let current_audio_colunn = self
+            .data
+            .state
+            .audio_spectrogram
+            .read()
+            .ok()
+            .and_then(|spectrogram| {
+                spectrogram
+                    .columns
+                    .back()
+                    .map(|column| column.current_audio_colunn.clone())
+            })
+            .unwrap_or_default();
+
+        blaulicht_audio_engine::CollectorOutput {
+            snapshot: self.collector_snapshot.clone(),
+            debug_data: Default::default(),
+            current_audio_colunn,
+        }
+    }
+
     pub fn animations_ui(
         &mut self,
         ctx: &Context,
@@ -286,6 +423,7 @@ impl BlaulichtApp {
         render_context: crate::app::page::PageRenderContext,
     ) {
         self.render_add_animation_dialog(ctx, ui);
+        self.render_presets_dialog(ctx, ui);
         self.render_delete_animation_dialog(ctx, ui);
 
         ui.allocate_ui_with_layout(
@@ -314,6 +452,16 @@ impl BlaulichtApp {
                                 if !self.animation_ui_state.create_open {
                                     self.animation_ui_state.close_selection_dialogs();
                                 }
+                            }
+
+                            if button(
+                                ui,
+                                self.animation_ui_state.presets_open,
+                                "Presets",
+                                ButtonSize::Medium,
+                            ) {
+                                self.animation_ui_state.presets_open =
+                                    !self.animation_ui_state.presets_open;
                             }
 
                             if button(
@@ -367,10 +515,12 @@ impl BlaulichtApp {
                                             .palettes
                                             .clone();
 
+                                        let live_audio = self.live_audio_for_preview();
+
                                         if let Some(value_changed) = self
                                             .animation_ui_state
                                             .edit_state
-                                            .show(ui, ctx, &palettes_snapshot)
+                                            .show(ui, ctx, &palettes_snapshot, &live_audio)
                                         {
                                             let mut dmx_engine =
                                                 self.data.state.dmx_engine.write().unwrap();
@@ -411,6 +561,15 @@ pub struct AnimationEditState {
     pub freq_min_numberpad: Numberpad,
     pub freq_max_numberpad: Numberpad,
     pub freq_normalization_dialog_open: bool,
+
+    pub mod_freq_min_numberpad: Numberpad,
+    pub mod_freq_max_numberpad: Numberpad,
+    pub mod_depth_numberpad: Numberpad,
+    pub mod_attack_numberpad: Numberpad,
+    pub mod_release_numberpad: Numberpad,
+    /// Drives the editor's live readouts with the same math the engine uses.
+    mod_preview_runtime: AudioModulationRuntime,
+    mod_preview_sample: Option<AudioModulationSample>,
 }
 
 impl Default for AnimationEditState {
@@ -418,7 +577,7 @@ impl Default for AnimationEditState {
         Self {
             working_state: AnimationSpec {
                 name: "FOO".to_string(),
-                body: AnimationSpecBody::AudioBeat(AnimationSpecBodyBeat {}),
+                body: AnimationSpecBody::AudioModulation(AudioModulationSpec::default()),
                 property: FixtureProperty::Alpha,
             },
             math_base_fn_dialog_open: false,
@@ -447,6 +606,23 @@ impl Default for AnimationEditState {
                 .dialog_title("freq-max-num")
                 .range(0.0, 20_000.0),
             freq_normalization_dialog_open: false,
+            mod_freq_min_numberpad: Numberpad::new()
+                .dialog_title("mod-freq-min-num")
+                .range(0.0, 20_000.0),
+            mod_freq_max_numberpad: Numberpad::new()
+                .dialog_title("mod-freq-max-num")
+                .range(0.0, 20_000.0),
+            mod_depth_numberpad: Numberpad::new()
+                .dialog_title("mod-depth-num")
+                .range(-(MAX_ADD_DEPTH as f64), MAX_ADD_DEPTH as f64),
+            mod_attack_numberpad: Numberpad::new()
+                .dialog_title("mod-attack-num")
+                .range(0.0, blaulicht_shared::MAX_SMOOTHING_MS as f64),
+            mod_release_numberpad: Numberpad::new()
+                .dialog_title("mod-release-num")
+                .range(0.0, blaulicht_shared::MAX_SMOOTHING_MS as f64),
+            mod_preview_runtime: AudioModulationRuntime::default(),
+            mod_preview_sample: None,
         }
     }
 }
@@ -463,6 +639,13 @@ impl AnimationEditState {
         self.freq_min_numberpad.close();
         self.freq_max_numberpad.close();
         self.freq_normalization_dialog_open = false;
+        self.mod_freq_min_numberpad.close();
+        self.mod_freq_max_numberpad.close();
+        self.mod_depth_numberpad.close();
+        self.mod_attack_numberpad.close();
+        self.mod_release_numberpad.close();
+        self.mod_preview_runtime = AudioModulationRuntime::default();
+        self.mod_preview_sample = None;
     }
 
     pub fn show(
@@ -470,6 +653,7 @@ impl AnimationEditState {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
         palettes: &BTreeMap<u8, Palette>,
+        live_audio: &blaulicht_audio_engine::CollectorOutput,
     ) -> Option<AnimationSpec> {
         let mut apply_clicked = false;
 
@@ -478,6 +662,9 @@ impl AnimationEditState {
 
             match &self.working_state.body {
                 AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx, palettes),
+                AnimationSpecBody::AudioModulation(_) => {
+                    self.anim_audio_modulation_ui(ui, ctx, live_audio)
+                }
                 AnimationSpecBody::AudioVolume(_audio) => self.anim_audio_ui(ui),
                 AnimationSpecBody::BPMValue(_) => self.anim_bpm_ui(ui),
                 AnimationSpecBody::AudioFrequencies(_freq) => self.anim_freq_ui(ui),
@@ -777,6 +964,298 @@ impl AnimationEditState {
                     .show(ui, |plot_ui| plot_ui.line(line));
             });
         });
+    }
+
+    fn anim_audio_modulation_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        live_audio: &blaulicht_audio_engine::CollectorOutput,
+    ) {
+        // Advance the preview on the editor's own clock so attack/release read
+        // the same way they will at runtime.
+        let now_ms = (ctx.input(|input| input.time) * 1000.0).max(0.0) as u64;
+        if let AnimationSpecBody::AudioModulation(ref spec) = self.working_state.body {
+            if !spec.blend.is_compatibility() {
+                self.mod_preview_sample =
+                    Some(self.mod_preview_runtime.tick(now_ms, spec, live_audio));
+            } else {
+                self.mod_preview_sample = None;
+            }
+        }
+        ctx.request_repaint();
+
+        let preview = self.mod_preview_sample;
+        let AnimationSpecBody::AudioModulation(ref mut spec) = self.working_state.body else {
+            return;
+        };
+
+        const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
+        let cell_h = BUTTON_SIZE.dim().0.y;
+        const LABEL_W: f32 = 120.0;
+
+        if spec.is_compatibility() {
+            Self::compatibility_modulation_ui(ui, spec, LABEL_W, cell_h);
+            return;
+        }
+
+        // Signal source.
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Signal:"));
+            for option in AudioModulationSignal::selectable() {
+                let selected = option.discriminant_label() == spec.signal.discriminant_label();
+                if components::button(
+                    ui,
+                    selected,
+                    option.discriminant_label(),
+                    BUTTON_SIZE.with_width(110.0),
+                ) && !selected
+                {
+                    spec.signal = option;
+                }
+            }
+        });
+
+        if let AudioModulationSignal::Band {
+            ref mut freq_min_hz,
+            ref mut freq_max_hz,
+        } = spec.signal
+        {
+            ui.horizontal(|ui| {
+                ui.add_sized([LABEL_W, cell_h], Label::new("Freq Min:"));
+                self.mod_freq_min_numberpad.ui(ui, freq_min_hz);
+                ui.add_space(24.0);
+                ui.add_sized([LABEL_W, cell_h], Label::new("Freq Max:"));
+                self.mod_freq_max_numberpad.ui(ui, freq_max_hz);
+            });
+            if freq_min_hz > freq_max_hz {
+                std::mem::swap(freq_min_hz, freq_max_hz);
+            }
+        }
+
+        ui.separator();
+
+        // Blend. Newly authored layers only ever expose Add and Scale.
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Blend:"));
+            for option in AudioModulationBlend::selectable() {
+                let selected = option.to_string() == spec.blend.to_string();
+                if components::button(
+                    ui,
+                    selected,
+                    &option.to_string(),
+                    BUTTON_SIZE.with_width(110.0),
+                ) && !selected
+                {
+                    spec.blend = option;
+                }
+            }
+        });
+
+        ui.horizontal(|ui| match spec.blend {
+            AudioModulationBlend::Add { ref mut depth } => {
+                ui.add_sized([LABEL_W, cell_h], Label::new("Depth:"));
+                self.mod_depth_numberpad.ui(ui, depth);
+                ui.label(
+                    RichText::new("signed offset at full envelope")
+                        .size(11.0)
+                        .weak(),
+                );
+            }
+            AudioModulationBlend::Scale {
+                ref mut peak_percent,
+            } => {
+                ui.add_sized([LABEL_W, cell_h], Label::new("At peak:"));
+                if ui
+                    .add(HFader::new(peak_percent, 0.0..=MAX_SCALE_PERCENT))
+                    .changed()
+                {
+                    // Fader edits are already in range; nothing else to do.
+                }
+                ui.label(
+                    RichText::new(format!("{:.0} % of base at full envelope", peak_percent))
+                        .size(11.0)
+                        .weak(),
+                );
+            }
+            AudioModulationBlend::LegacyAbsolute => {}
+        });
+
+        ui.separator();
+
+        // Shaping.
+        let shaping = &mut spec.shaping;
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Threshold:"));
+            ui.add(HFader::new(&mut shaping.threshold, 0.0..=MAX_THRESHOLD));
+            ui.label(RichText::new(format!("{:.2}", shaping.threshold)).size(11.0));
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Sensitivity:"));
+            ui.add(HFader::new(&mut shaping.sensitivity, 0.0..=MAX_SENSITIVITY));
+            ui.label(RichText::new(format!("{:.2}x", shaping.sensitivity)).size(11.0));
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized([LABEL_W, cell_h], Label::new("Attack (ms):"));
+            self.mod_attack_numberpad.ui(ui, &mut shaping.attack_ms);
+            ui.add_space(24.0);
+            ui.add_sized([LABEL_W, cell_h], Label::new("Release (ms):"));
+            self.mod_release_numberpad.ui(ui, &mut shaping.release_ms);
+        });
+
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut shaping.invert, "Invert (while audio is valid)");
+        });
+
+        ui.separator();
+        ui.label(RichText::new("Section multipliers").size(12.0).strong());
+
+        for (label, multiplier) in [
+            ("Breakdown:", &mut shaping.breakdown_multiplier),
+            ("Drop:", &mut shaping.drop_multiplier),
+            ("Active Beat:", &mut shaping.active_beat_multiplier),
+        ] {
+            ui.horizontal(|ui| {
+                ui.add_sized([LABEL_W, cell_h], Label::new(label));
+                ui.add(HFader::new(multiplier, 0.0..=MAX_SECTION_MULTIPLIER));
+                ui.label(RichText::new(format!("{:.2}x", multiplier)).size(11.0));
+            });
+        }
+
+        spec.shaping.sanitize();
+        spec.blend.sanitize();
+
+        ui.separator();
+        Self::modulation_live_ui(ui, spec, preview, &live_audio.snapshot);
+    }
+
+    /// Compatibility layers stay editable only through the legacy fields that
+    /// still apply to them.
+    fn compatibility_modulation_ui(
+        ui: &mut egui::Ui,
+        spec: &mut AudioModulationSpec,
+        label_w: f32,
+        cell_h: f32,
+    ) {
+        ui.horizontal(|ui| {
+            ui.add_sized([label_w, cell_h], Label::new("Mode:"));
+            ui.label(
+                RichText::new(format!("{} (compatibility)", spec.signal))
+                    .color(Color32::LIGHT_YELLOW),
+            );
+        });
+        ui.label(
+            RichText::new(
+                "Migrated from a legacy audio animation. It reproduces the old absolute \
+                 output; create a new Audio Modulation layer to use shaping and blending.",
+            )
+            .size(11.0)
+            .weak(),
+        );
+
+        let AudioModulationSignal::LegacySpectrum(ref mut freqs) = spec.signal else {
+            return;
+        };
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.add_sized([label_w, cell_h], Label::new("Gate:"));
+            ui.add(egui::DragValue::new(&mut freqs.gate).range(0..=255));
+            ui.add_space(24.0);
+            ui.add_sized([label_w, cell_h], Label::new("Boost:"));
+            ui.add(egui::DragValue::new(&mut freqs.boost).range(0..=255));
+        });
+        ui.horizontal(|ui| {
+            ui.add_sized([label_w, cell_h], Label::new("Freq Min:"));
+            ui.add(egui::DragValue::new(&mut freqs.freq_min).range(0..=20_000));
+            ui.add_space(24.0);
+            ui.add_sized([label_w, cell_h], Label::new("Freq Max:"));
+            ui.add(egui::DragValue::new(&mut freqs.freq_max).range(0..=20_000));
+        });
+        if freqs.freq_min > freqs.freq_max {
+            std::mem::swap(&mut freqs.freq_min, &mut freqs.freq_max);
+        }
+    }
+
+    fn modulation_live_ui(
+        ui: &mut egui::Ui,
+        spec: &AudioModulationSpec,
+        preview: Option<AudioModulationSample>,
+        snapshot: &blaulicht_shared::CollectedAudioSnapshot,
+    ) {
+        let Some(sample) = preview else {
+            return;
+        };
+
+        let health = audio::audio_health(snapshot);
+        let health_color = if health.is_valid() {
+            Color32::LIGHT_GREEN
+        } else {
+            Color32::LIGHT_RED
+        };
+
+        ui.label(RichText::new("Live").size(12.0).strong());
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("raw {:.3}", sample.raw)).size(12.0));
+            ui.add_space(16.0);
+            ui.label(RichText::new(format!("envelope {:.3}", sample.envelope)).size(12.0));
+            ui.add_space(16.0);
+            match audio::contribution(&spec.blend, sample.envelope) {
+                Some(audio::AudioModulationContribution::Scale(factor)) => {
+                    ui.label(RichText::new(format!("contribution x{factor:.3}")).size(12.0));
+                }
+                Some(audio::AudioModulationContribution::Add(offset)) => {
+                    ui.label(RichText::new(format!("contribution {offset:+.1}")).size(12.0));
+                }
+                None => {}
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("audio {}", health.label()))
+                    .size(12.0)
+                    .color(health_color),
+            );
+            ui.add_space(16.0);
+            ui.label(
+                RichText::new(format!("section {:?}", snapshot.section_state))
+                    .size(12.0)
+                    .weak(),
+            );
+
+            if matches!(spec.signal, AudioModulationSignal::BeatPulse) {
+                let confident = snapshot.bpm_confidence >= MIN_BEAT_FALLBACK_CONFIDENCE;
+                ui.add_space(16.0);
+                ui.label(
+                    RichText::new(format!(
+                        "bpm confidence {:.2}{}",
+                        snapshot.bpm_confidence,
+                        if confident {
+                            ""
+                        } else {
+                            " (clock fallback off)"
+                        }
+                    ))
+                    .size(12.0)
+                    .color(if confident {
+                        Color32::LIGHT_GREEN
+                    } else {
+                        Color32::LIGHT_YELLOW
+                    }),
+                );
+            }
+        });
+
+        ui.label(
+            RichText::new(format!(
+                "A source with no new frame stays live for {MAX_FRAME_AGE_MS} ms, then decays."
+            ))
+            .size(10.0)
+            .weak(),
+        );
     }
 
     fn anim_audio_ui(&mut self, ui: &mut egui::Ui) {
