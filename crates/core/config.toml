@@ -7,7 +7,7 @@ default_audio_device = "pipewire"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/test.json"
+last_open_showfile = "/home/mik/work/private/blaulicht/17.01_migrated.json"
 
 [stream]
 channel_count = 2

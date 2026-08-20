@@ -1159,6 +1159,123 @@ impl BlaulichtApp {
                                                         }
                                                     }
 
+                                                    ui.add_space(6.0);
+
+                                                    let target_group_options: Vec<(u8, String)> =
+                                                        dmx_engine
+                                                            .groups()
+                                                            .iter()
+                                                            .filter(|(target_gid, _)| {
+                                                                **target_gid != gid
+                                                            })
+                                                            .map(|(target_gid, target_group)| {
+                                                                (
+                                                                    *target_gid,
+                                                                    format!(
+                                                                        "{} | #{}",
+                                                                        target_group.name,
+                                                                        target_gid
+                                                                    ),
+                                                                )
+                                                            })
+                                                            .collect();
+                                                    let can_move_group =
+                                                        !target_group_options.is_empty();
+
+                                                    if components::action_button(
+                                                        ui,
+                                                        can_move_group,
+                                                        "Move Group",
+                                                        ButtonSize::Medium,
+                                                        Some(
+                                                            "Create another group before moving fixtures",
+                                                        ),
+                                                    ) && can_move_group
+                                                    {
+                                                        self.move_fixture_group_dialog_open = true;
+                                                    }
+
+                                                    if self.move_fixture_group_dialog_open {
+                                                        let current_target = target_group_options
+                                                            .first()
+                                                            .map(|(target_gid, _)| *target_gid)
+                                                            .unwrap_or(gid);
+
+                                                        let (target_gid, changed) =
+                                                            components::id_selection_dialog(
+                                                                ctx,
+                                                                target_group_options,
+                                                                current_target,
+                                                                &mut self
+                                                                    .move_fixture_group_dialog_open,
+                                                                "Move Fixture To Group"
+                                                                    .to_string(),
+                                                            );
+
+                                                        if changed {
+                                                            let moved_fixture = {
+                                                                let mut dmx_engine = self
+                                                                    .data
+                                                                    .state
+                                                                    .dmx_engine
+                                                                    .write()
+                                                                    .unwrap();
+                                                                dmx_engine
+                                                                    .move_fixture_to_group(
+                                                                        gid, fid, target_gid,
+                                                                    )
+                                                                    .and_then(|new_fid| {
+                                                                        dmx_engine
+                                                                            .0
+                                                                            .groups
+                                                                            .get(&target_gid)
+                                                                            .and_then(|group| {
+                                                                                group
+                                                                                    .fixtures
+                                                                                    .get(&new_fid)
+                                                                            })
+                                                                            .cloned()
+                                                                            .map(|fixture| {
+                                                                                (new_fid, fixture)
+                                                                            })
+                                                                    })
+                                                            };
+
+                                                            if let Some((new_fid, fix)) =
+                                                                moved_fixture
+                                                            {
+                                                                self.add_fixture_group =
+                                                                    Some(target_gid);
+                                                                self.setup_fixture_id = new_fid;
+                                                                self.close_edit_fixture_numberpads();
+
+                                                                self.new_fixture_name =
+                                                                    fix.name.to_string();
+                                                                self.new_fixture_addr =
+                                                                    fix.start_addr;
+                                                                self.new_fixture_uni =
+                                                                    fix.universe_no;
+                                                                self.new_fixture_pos_x = fix.pos.x;
+                                                                self.new_fixture_pos_y = fix.pos.y;
+                                                                self.new_fixture_pos_z = fix.pos.z;
+                                                                self.new_fixture_rot_x =
+                                                                    fix.rotation.x;
+                                                                self.new_fixture_rot_y =
+                                                                    fix.rotation.y;
+                                                                self.new_fixture_rot_z =
+                                                                    fix.rotation.z;
+                                                            } else {
+                                                                self.show_popup(
+                                                                    PopupSpec::with_duration(
+                                                                        Duration::from_secs(3),
+                                                                        "Could not move fixture"
+                                                                            .to_string(),
+                                                                    ),
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+
                                                     ui.add_space(12.0);
 
                                                     if components::button(

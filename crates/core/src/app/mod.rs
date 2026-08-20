@@ -291,6 +291,7 @@ pub struct BlaulichtApp {
     add_group_open: bool,
     delete_group_open: bool,
     delete_fixture: Option<(u8, u8)>,
+    move_fixture_group_dialog_open: bool,
     new_group_name: String,
 
     universe_simulations: [DmxSimulator; NUM_DMX_UNIVERSES],
@@ -554,6 +555,7 @@ impl BlaulichtApp {
             add_group_open: false,
             delete_group_open: false,
             delete_fixture: None,
+            move_fixture_group_dialog_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             view_ui_state: ViewUI::default(),
             view_perf_ui_state: ViewPerfUI::default(),

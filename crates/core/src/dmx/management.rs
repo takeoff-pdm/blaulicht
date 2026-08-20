@@ -110,6 +110,101 @@ impl EngineState {
         true
     }
 
+    /// Moves a fixture to another group and remaps all scene-local state that
+    /// references the old fixture key. The moved fixture receives the first
+    /// free fixture id in the destination group.
+    pub fn move_fixture_to_group(
+        &mut self,
+        source_group_id: u8,
+        fixture_id: u8,
+        target_group_id: u8,
+    ) -> Option<u8> {
+        if source_group_id == target_group_id {
+            return Some(fixture_id);
+        }
+
+        if !self.0.groups.contains_key(&target_group_id) {
+            return None;
+        }
+
+        let new_fixture_id = self
+            .0
+            .groups
+            .get(&target_group_id)
+            .and_then(|group| (0..=u8::MAX).find(|id| !group.fixtures.contains_key(id)))?;
+
+        let fixture = self
+            .0
+            .groups
+            .get_mut(&source_group_id)
+            .and_then(|group| group.fixtures.remove(&fixture_id))?;
+
+        self.0
+            .groups
+            .get_mut(&target_group_id)
+            .unwrap()
+            .fixtures
+            .insert(new_fixture_id, fixture);
+
+        let old_key = (source_group_id, fixture_id);
+        let new_key = (target_group_id, new_fixture_id);
+
+        for scene in self.0.scenes.values_mut() {
+            move_btree_entry(&mut scene.sink.fixture_states, old_key, new_key);
+            move_btree_entry(&mut scene.sink.palette_assignments, old_key, new_key);
+
+            let old_animations = std::mem::take(&mut scene.sink.active_animations);
+            scene.sink.active_animations = old_animations
+                .into_iter()
+                .map(|(mut selection, mut animations)| {
+                    for entry in selection.fixtures.iter_mut() {
+                        if *entry == old_key {
+                            *entry = new_key;
+                        }
+                    }
+                    selection = selection.sorted();
+
+                    for active in animations.values_mut() {
+                        move_btree_entry(&mut active.fixture_timers, old_key, new_key);
+                    }
+
+                    (selection, animations)
+                })
+                .collect();
+
+            let old_cs = std::mem::take(&mut scene.sink.changeset);
+            scene.sink.changeset = old_cs
+                .into_iter()
+                .map(|mut sel| {
+                    if sel.gid == source_group_id && sel.fid == fixture_id {
+                        sel.gid = target_group_id;
+                        sel.fid = new_fixture_id;
+                    }
+                    sel
+                })
+                .collect();
+        }
+
+        move_engine_selection(
+            &mut self.0.selection,
+            source_group_id,
+            fixture_id,
+            target_group_id,
+            new_fixture_id,
+        );
+        for sel in self.0.selection_stack.iter_mut() {
+            move_engine_selection(
+                sel,
+                source_group_id,
+                fixture_id,
+                target_group_id,
+                new_fixture_id,
+            );
+        }
+
+        Some(new_fixture_id)
+    }
+
     /// Swaps two fixtures within a group, including all scene state, selection,
     /// palette assignments, animation timers and changeset entries that
     /// reference them.
@@ -181,6 +276,12 @@ impl EngineState {
     }
 }
 
+fn move_btree_entry<K: Ord, V>(map: &mut std::collections::BTreeMap<K, V>, old_key: K, new_key: K) {
+    if let Some(value) = map.remove(&old_key) {
+        map.insert(new_key, value);
+    }
+}
+
 fn swap_btree_entries<K: Ord, V>(map: &mut std::collections::BTreeMap<K, V>, a: K, b: K) {
     let va = map.remove(&a);
     let vb = map.remove(&b);
@@ -204,13 +305,29 @@ fn swap_in_u8_set(set: &mut HashSet<u8>, a: u8, b: u8) {
     }
 }
 
+fn move_engine_selection(
+    selection: &mut blaulicht_shared::EngineSelection,
+    source_group_id: u8,
+    fixture_id: u8,
+    target_group_id: u8,
+    new_fixture_id: u8,
+) {
+    if selection.group_ids.len() == 1 && selection.group_ids.contains(&source_group_id) {
+        if selection.fixtures_in_group.remove(&fixture_id) {
+            selection.group_ids.clear();
+            selection.group_ids.insert(target_group_id);
+            selection.fixtures_in_group.insert(new_fixture_id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use blaulicht_shared::{
         fixture::{light::Light, FixtureType},
-        scene::FixtureSelection,
-        ActiveAnimation, AnimationSpec,
+        scene::{FixtureSelection, FixtureSelector},
+        ActiveAnimation, AnimationSpec, FixtureProperty,
     };
     use std::collections::BTreeMap;
 
@@ -284,5 +401,94 @@ mod tests {
             .sink
             .fixture_states
             .contains_key(&(0, 1)));
+    }
+
+    #[test]
+    fn moving_fixture_to_group_remaps_scene_state_and_selection() {
+        let mut engine = EngineState(blaulicht_shared::EngineState::default());
+        engine.0.groups.insert(
+            0,
+            FixtureGroup {
+                name: "Source".to_string(),
+                fixtures: BTreeMap::new(),
+            },
+        );
+        engine.0.groups.insert(
+            1,
+            FixtureGroup {
+                name: "Target".to_string(),
+                fixtures: BTreeMap::new(),
+            },
+        );
+
+        engine.add_fixture_to_group(
+            0,
+            Fixture::new(
+                0,
+                1,
+                "Moved".to_string(),
+                FixtureType::from(Light::Generic3ChanNoAlpha),
+            ),
+        );
+        engine.add_fixture_to_group(
+            1,
+            Fixture::new(
+                0,
+                4,
+                "Existing target".to_string(),
+                FixtureType::from(Light::Generic3ChanNoAlpha),
+            ),
+        );
+        engine.0.new_scene("Scene".to_string());
+
+        let old_key = (0, 0);
+        let new_key = (1, 1);
+        let selection = FixtureSelection {
+            fixtures: vec![old_key],
+        };
+        let mut animation = ActiveAnimation::new(&selection.fixtures, AnimationSpec::empty());
+        animation.fixture_timers.get_mut(&old_key).unwrap().timer = 456;
+
+        let scene = engine.0.scenes.get_mut(&0).unwrap();
+        scene.sink.palette_assignments.insert(old_key, vec![3]);
+        scene.sink.changeset.insert(FixtureSelector {
+            gid: old_key.0,
+            fid: old_key.1,
+            property: FixtureProperty::Alpha,
+        });
+        scene
+            .sink
+            .active_animations
+            .insert(selection, BTreeMap::from([(9, animation)]));
+
+        engine.0.selection.group_ids.insert(0);
+        engine.0.selection.fixtures_in_group.insert(0);
+
+        assert_eq!(engine.move_fixture_to_group(0, 0, 1), Some(1));
+
+        assert!(!engine.0.groups[&0].fixtures.contains_key(&0));
+        assert_eq!(engine.0.groups[&1].fixtures[&1].name, "Moved");
+
+        let scene = engine.0.scenes.get(&0).unwrap();
+        assert!(!scene.sink.fixture_states.contains_key(&old_key));
+        assert!(scene.sink.fixture_states.contains_key(&new_key));
+        assert!(!scene.sink.palette_assignments.contains_key(&old_key));
+        assert_eq!(scene.sink.palette_assignments[&new_key], vec![3]);
+        assert!(scene.sink.changeset.contains(&FixtureSelector {
+            gid: new_key.0,
+            fid: new_key.1,
+            property: FixtureProperty::Alpha,
+        }));
+
+        let (selection, animations) = scene.sink.active_animations.iter().next().unwrap();
+        assert_eq!(selection.fixtures, vec![new_key]);
+        assert_eq!(animations[&9].fixture_timers[&new_key].timer, 456);
+        assert!(!animations[&9].fixture_timers.contains_key(&old_key));
+
+        assert_eq!(engine.0.selection.group_ids, [1].into_iter().collect());
+        assert_eq!(
+            engine.0.selection.fixtures_in_group,
+            [1].into_iter().collect()
+        );
     }
 }
