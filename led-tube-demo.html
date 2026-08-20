@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en" data-effect="plasma">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#030509">
+  <title>Snake Light</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #030509;
+      color: #eef6ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100svh;
+      margin: 0;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 50% 42%, #0e1925 0, #05080e 38%, #030509 72%);
+    }
+
+    main {
+      width: min(1120px, 100%);
+      min-height: 100svh;
+      margin: auto;
+      padding: clamp(24px, 5vw, 64px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      place-content: center;
+      gap: clamp(18px, 3vw, 32px);
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.7rem, 4vw, 3rem);
+      font-weight: 520;
+      letter-spacing: -.045em;
+    }
+
+    .eyebrow {
+      margin: 0 0 7px;
+      color: #718096;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+
+    #effect-name {
+      margin: 0 0 5px;
+      color: #8795a7;
+      font-size: .76rem;
+      letter-spacing: .12em;
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid #ffffff0b;
+      border-radius: 28px;
+      background: linear-gradient(145deg, #ffffff05, transparent 36%);
+      box-shadow: inset 0 1px #ffffff09, 0 28px 80px #0009;
+      isolation: isolate;
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: radial-gradient(circle at 50% 50%, var(--scene-glow, #4cc9ff12), transparent 58%);
+      transition: background 600ms ease;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 10 / 7;
+      overflow: visible;
+    }
+
+    .tube-shadow {
+      fill: none;
+      stroke: #000b;
+      stroke-width: 48;
+      stroke-linecap: round;
+      filter: blur(15px);
+      transform: translateY(11px);
+    }
+
+    .tube-shell {
+      fill: none;
+      stroke: url(#tube-shell);
+      stroke-width: 35;
+      stroke-linecap: round;
+    }
+
+    .tube-channel {
+      fill: none;
+      stroke: #07101b;
+      stroke-width: 22;
+      stroke-linecap: round;
+    }
+
+    .led {
+      color: #162536;
+      opacity: .28;
+      will-change: opacity;
+    }
+
+    .led-halo {
+      r: 10px;
+      fill: currentColor;
+      opacity: .5;
+      filter: url(#led-glow);
+    }
+
+    .led-core {
+      r: 5px;
+      fill: currentColor;
+      stroke: #ffffff35;
+      stroke-width: .8px;
+    }
+
+    .led-specular {
+      r: 1.5px;
+      cx: -1.4px;
+      cy: -1.4px;
+      fill: #fff;
+      opacity: .3;
+    }
+
+    .controls {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid #ffffff12;
+      border-radius: 999px;
+      padding: 9px 14px;
+      background: #ffffff06;
+      color: #718096;
+      font: inherit;
+      font-size: .76rem;
+      cursor: pointer;
+      transition: color 180ms ease, background 180ms ease, border-color 180ms ease, transform 180ms ease;
+    }
+
+    button:hover { color: #dcecff; background: #ffffff0c; }
+    button:active { transform: scale(.97); }
+    button[aria-pressed="true"] {
+      border-color: #9eeaff42;
+      background: #8ddcff14;
+      color: #e9f9ff;
+    }
+    button:focus-visible { outline: 2px solid #7bddff; outline-offset: 3px; }
+
+    html[data-effect="plasma"] { --scene-glow: #3388ff1b; }
+    html[data-effect="plasma"] .led {
+      animation: plasma 2.65s linear infinite;
+      animation-delay: calc(var(--i) * -27ms);
+    }
+    @keyframes plasma {
+      0%, 48%, 100% { color: #102239; opacity: .16; }
+      53% { color: #3978ff; opacity: .48; }
+      56% { color: #d9fbff; opacity: 1; }
+      58% { color: #fff; opacity: 1; }
+      63% { color: #8b3fff; opacity: .62; }
+      72% { color: #251449; opacity: .2; }
+    }
+
+    html[data-effect="liquid"] { --scene-glow: #ff3cbe17; }
+    html[data-effect="liquid"] .led {
+      animation: liquid 7.5s ease-in-out infinite alternate;
+      animation-delay: calc(var(--i) * -83ms);
+    }
+    @keyframes liquid {
+      0%, 100% { color: #04e7ee; opacity: .22; }
+      22% { color: #02f5c4; opacity: .94; }
+      42% { color: #4347ff; opacity: .28; }
+      64% { color: #ff2ba9; opacity: .95; }
+      81% { color: #ff9d2e; opacity: .3; }
+    }
+
+    html[data-effect="tear"] { --scene-glow: #b033ff1c; }
+    html[data-effect="tear"] .led {
+      animation: tear 4.4s cubic-bezier(.2, .7, .2, 1) infinite;
+      animation-delay: calc(-4.1s + var(--d) * 23ms);
+    }
+    html[data-effect="tear"] .led:nth-child(4n) { animation-delay: calc(-4.04s + var(--d) * 21ms); }
+    @keyframes tear {
+      0%, 52%, 84%, 100% { color: #160b22; opacity: .14; }
+      57% { color: #7822d5; opacity: .43; }
+      60% { color: #f0dcff; opacity: 1; }
+      61.5% { color: #fff; opacity: .98; }
+      65% { color: #ff2bad; opacity: .55; }
+      72% { color: #411064; opacity: .17; }
+    }
+
+    html[data-effect="bio"] { --scene-glow: #00ffd517; }
+    html[data-effect="bio"] .led {
+      animation: bio 5.8s ease-in-out infinite alternate;
+      animation-delay: calc(var(--i) * -61ms);
+    }
+    html[data-effect="bio"] .led.spark .led-core {
+      animation: spark var(--spark-speed) ease-in-out infinite;
+      animation-delay: var(--spark-delay);
+    }
+    @keyframes bio {
+      0%, 100% { color: #062f49; opacity: .2; }
+      50% { color: #0796a5; opacity: .52; }
+      72% { color: #00f5cf; opacity: .73; }
+    }
+    @keyframes spark {
+      0%, 83%, 100% { fill: currentColor; transform: scale(1); }
+      87% { fill: #e9ffff; transform: scale(1.65); }
+      92% { fill: #24ffd8; transform: scale(1); }
+    }
+
+    html[data-effect="charge"] { --scene-glow: #64d9ff1c; }
+    html[data-effect="charge"] .led {
+      animation: charge 4.8s cubic-bezier(.4, 0, .2, 1) infinite;
+      animation-delay: calc(-4.7s + var(--d) * -14ms);
+    }
+    @keyframes charge {
+      0%, 14% { color: #101b2a; opacity: .13; }
+      32% { color: #173b61; opacity: .25; }
+      54% { color: #286c9f; opacity: .42; }
+      69% { color: #53cbf5; opacity: .75; }
+      74% { color: #eaffff; opacity: 1; }
+      77% { color: #fff; opacity: 1; }
+      82% { color: #6d56ff; opacity: .38; }
+      100% { color: #101b2a; opacity: .13; }
+    }
+
+    html[data-effect="comets"] { --scene-glow: #ff7d3018; }
+    html[data-effect="comets"] .led {
+      animation: comets 5.6s linear infinite;
+      animation-delay: calc(var(--i) * -42ms);
+    }
+    @keyframes comets {
+      0%, 18%, 40%, 61%, 83%, 100% { color: #121d2a; opacity: .12; }
+      20% { color: #fff; opacity: 1; }
+      22% { color: #5df5ff; opacity: .9; }
+      29% { color: #176a9c; opacity: .3; }
+      42% { color: #fff; opacity: 1; }
+      45% { color: #ffb039; opacity: .9; }
+      53% { color: #b42a2a; opacity: .25; }
+      63% { color: #fff; opacity: 1; }
+      66% { color: #ec4eff; opacity: .85; }
+      75% { color: #4f227e; opacity: .24; }
+    }
+
+    @media (max-width: 620px) {
+      main { padding: 22px 14px; }
+      header { align-items: start; }
+      #effect-name { max-width: 120px; }
+      .stage { border-radius: 20px; }
+      button { padding: 8px 11px; font-size: .7rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+      }
+      .led { color: hsl(var(--hue) 82% 58%); opacity: calc(.28 + var(--proximity) * .48); }
+      html[data-effect="tear"] .led,
+      html[data-effect="charge"] .led { color: hsl(var(--hue-purple) 88% 64%); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">100 LEDs · 5 metres</p>
+        <h1>Snake Light</h1>
+      </div>
+      <p id="effect-name" aria-live="polite">Plasma Bolt</p>
+    </header>
+
+    <section class="stage" aria-label="Animated snake-shaped LED tube preview">
+      <svg viewBox="0 0 1000 700" role="img" aria-labelledby="tube-title tube-description">
+        <title id="tube-title">Snake-shaped LED tube</title>
+        <desc id="tube-description">One hundred animated LED points arranged along a winding glass tube.</desc>
+        <defs>
+          <linearGradient id="tube-shell" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#dff7ff" stop-opacity=".22"/>
+            <stop offset=".22" stop-color="#82a6bc" stop-opacity=".08"/>
+            <stop offset=".7" stop-color="#101a25" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#c4ecff" stop-opacity=".12"/>
+          </linearGradient>
+          <filter id="led-glow" x="-300%" y="-300%" width="700%" height="700%">
+            <feGaussianBlur stdDeviation="5"/>
+          </filter>
+          <path id="snake-path" d="M 92 126 C 134 39 286 35 395 92 S 652 152 752 89 S 940 89 914 196 S 731 301 563 247 S 259 222 151 316 S 179 472 356 413 S 710 367 850 469 S 815 624 622 570 S 279 531 102 624"/>
+        </defs>
+
+        <use href="#snake-path" class="tube-shadow"/>
+        <use href="#snake-path" class="tube-shell"/>
+        <use href="#snake-path" class="tube-channel"/>
+        <g id="leds" aria-hidden="true"></g>
+      </svg>
+    </section>
+
+    <nav class="controls" aria-label="Choose an animation">
+      <button type="button" data-effect="plasma" aria-pressed="true">Plasma</button>
+      <button type="button" data-effect="liquid" aria-pressed="false">Liquid</button>
+      <button type="button" data-effect="tear" aria-pressed="false">Tear</button>
+      <button type="button" data-effect="bio" aria-pressed="false">Bio</button>
+      <button type="button" data-effect="charge" aria-pressed="false">Charge</button>
+      <button type="button" data-effect="comets" aria-pressed="false">Comets</button>
+    </nav>
+  </main>
+
+  <script>
+    const names = {
+      plasma: "Plasma Bolt",
+      liquid: "Liquid Light",
+      tear: "Dimensional Tear",
+      bio: "Bioluminescence",
+      charge: "Energy Charge",
+      comets: "Comet Storm"
+    };
+
+    const path = document.querySelector("#snake-path");
+    const leds = document.querySelector("#leds");
+    const length = path.getTotalLength();
+
+    for (let i = 0; i < 100; i += 1) {
+      const point = path.getPointAtLength(length * i / 99);
+      const distanceFromCenter = Math.abs(i - 49.5);
+      const led = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      led.setAttribute("class", `led${i % 13 === 2 || i % 17 === 7 ? " spark" : ""}`);
+      led.setAttribute("transform", `translate(${point.x} ${point.y})`);
+      led.style.setProperty("--i", i);
+      led.style.setProperty("--d", distanceFromCenter);
+      led.style.setProperty("--proximity", (1 - distanceFromCenter / 50).toFixed(3));
+      led.style.setProperty("--hue", 176 + i * .72);
+      led.style.setProperty("--hue-purple", 264 + i * .34);
+      led.style.setProperty("--spark-speed", `${3.1 + (i % 7) * .41}s`);
+      led.style.setProperty("--spark-delay", `${-((i * 37) % 53) / 10}s`);
+      led.innerHTML = '<circle class="led-halo"/><circle class="led-core"/><circle class="led-specular"/>';
+      leds.append(led);
+    }
+
+    const buttons = [...document.querySelectorAll("button[data-effect]")];
+    const label = document.querySelector("#effect-name");
+
+    function selectEffect(button) {
+      document.documentElement.dataset.effect = button.dataset.effect;
+      label.textContent = names[button.dataset.effect];
+      buttons.forEach(candidate => candidate.setAttribute("aria-pressed", candidate === button));
+    }
+
+    buttons.forEach((button, index) => {
+      button.addEventListener("click", () => selectEffect(button));
+      button.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        const next = buttons[(index + direction + buttons.length) % buttons.length];
+        next.focus();
+        selectEffect(next);
+      });
+    });
+  </script>
+</body>
+</html>

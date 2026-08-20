@@ -1,5 +1,4 @@
 use crate::{
-    AnimationSpeedModifier, FixtureProperty, SectionState, SyncMode,
     fixture::{
         state::{FixtureGroup, FixtureState},
         value::FixtureValue,
@@ -8,8 +7,9 @@ use crate::{
     scene::{EngineSink, Scene},
     scene_graph::SceneGraphState,
     view::View,
+    AnimationSpeedModifier, FixtureProperty, SectionState, SyncMode,
 };
-use bincode::{Decode, Encode, config};
+use bincode::{config, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
@@ -346,7 +346,9 @@ impl AnimationSpec {
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
             | AnimationSpecBody::AudioModulation(_)
-            | AnimationSpecBody::Wasm(_) => SyncMode::Synced,
+            | AnimationSpecBody::Wasm(_)
+            | AnimationSpecBody::WasmPlugin(_)
+            | AnimationSpecBody::FlashAnimation(_) => SyncMode::Synced,
         }
     }
 }
@@ -363,7 +365,9 @@ impl AnimationSpec {
             | AnimationSpecBody::AudioFrequencies(_)
             | AnimationSpecBody::BeatClock(_)
             | AnimationSpecBody::AudioModulation(_)
-            | AnimationSpecBody::Wasm(_) => false,
+            | AnimationSpecBody::Wasm(_)
+            | AnimationSpecBody::WasmPlugin(_) => false,
+            AnimationSpecBody::FlashAnimation(flash) => flash.beat_aligned,
         }
     }
 
@@ -795,6 +799,12 @@ pub enum AnimationSpecBody {
     /// Unified sound-reactive layer. New serialized variants are appended so
     /// existing showfiles keep their variant indices.
     AudioModulation(AudioModulationSpec),
+    /// Selection-level flashes with independently timed dark and on phases.
+    /// Appended to preserve the bincode indices of all existing variants.
+    FlashAnimation(FlashAnimationSpec),
+    /// Registered WASM animation plugin. Appended so the former empty `Wasm`
+    /// marker and every existing animation keep their bincode variant index.
+    WasmPlugin(WasmAnimationSpec),
 }
 
 impl From<AnimationSpecBodyKind> for AnimationSpecBody {
@@ -810,9 +820,12 @@ impl From<AnimationSpecBodyKind> for AnimationSpecBody {
                 Self::AudioFrequencies(AnimationSpecBodyFrequencies::default())
             }
             AnimationSpecBodyKind::BeatClock => Self::BeatClock(AnimationSpecBodyBeat::default()),
-            AnimationSpecBodyKind::Wasm => Self::Wasm(AnimationSpecBodyWasm::default()),
+            AnimationSpecBodyKind::Wasm => Self::WasmPlugin(WasmAnimationSpec::default()),
             AnimationSpecBodyKind::AudioModulation => {
                 Self::AudioModulation(AudioModulationSpec::default())
+            }
+            AnimationSpecBodyKind::FlashAnimation => {
+                Self::FlashAnimation(FlashAnimationSpec::default())
             }
         }
     }
@@ -829,6 +842,8 @@ impl AnimationSpecBody {
             AnimationSpecBody::BeatClock(_) => AnimationSpecBodyKind::BeatClock,
             AnimationSpecBody::Wasm(_) => AnimationSpecBodyKind::Wasm,
             AnimationSpecBody::AudioModulation(_) => AnimationSpecBodyKind::AudioModulation,
+            AnimationSpecBody::FlashAnimation(_) => AnimationSpecBodyKind::FlashAnimation,
+            AnimationSpecBody::WasmPlugin(_) => AnimationSpecBodyKind::Wasm,
         }
     }
 
@@ -847,7 +862,9 @@ impl AnimationSpecBody {
             }
             AnimationSpecBody::Phaser(_)
             | AnimationSpecBody::Wasm(_)
-            | AnimationSpecBody::AudioModulation(_) => return false,
+            | AnimationSpecBody::AudioModulation(_)
+            | AnimationSpecBody::FlashAnimation(_)
+            | AnimationSpecBody::WasmPlugin(_) => return false,
         };
 
         *self = AnimationSpecBody::AudioModulation(AudioModulationSpec {
@@ -869,13 +886,77 @@ pub enum AnimationSpecBodyKind {
     BeatClock,
     Wasm,
     AudioModulation,
+    FlashAnimation,
 }
 
 impl AnimationSpecBodyKind {
     /// Kinds offered when authoring a new animation. The legacy audio kinds
     /// are migration targets only and never appear here.
     pub fn selectable() -> impl Iterator<Item = Self> {
-        [Self::Phaser, Self::AudioModulation, Self::Wasm].into_iter()
+        [
+            Self::Phaser,
+            Self::FlashAnimation,
+            Self::AudioModulation,
+            Self::Wasm,
+        ]
+        .into_iter()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, PartialEq, Eq)]
+pub struct FlashAnimationSpec {
+    pub amplitude_min: FixtureValue,
+    pub amplitude_max: FixtureValue,
+    pub off_time_ms: u64,
+    pub on_time_ms: u64,
+    #[serde(default)]
+    pub beat_aligned: bool,
+    #[serde(default = "default_flash_beat_duration")]
+    pub off_time_beats: AnimationSpeedModifier,
+    #[serde(default = "default_flash_beat_duration")]
+    pub on_time_beats: AnimationSpeedModifier,
+    pub window_size: u16,
+    pub window_layout: FlashWindowLayout,
+    pub random_order: bool,
+    #[serde(default)]
+    pub reverse_after_n_iterations: Option<u32>,
+}
+
+fn default_flash_beat_duration() -> AnimationSpeedModifier {
+    AnimationSpeedModifier::_1
+}
+
+impl Default for FlashAnimationSpec {
+    fn default() -> Self {
+        Self {
+            amplitude_min: FixtureValue::Literal(0),
+            amplitude_max: FixtureValue::Literal(255),
+            off_time_ms: 100,
+            on_time_ms: 100,
+            beat_aligned: false,
+            off_time_beats: default_flash_beat_duration(),
+            on_time_beats: default_flash_beat_duration(),
+            window_size: 1,
+            window_layout: FlashWindowLayout::Contiguous,
+            random_order: false,
+            reverse_after_n_iterations: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq, Eq, Default)]
+pub enum FlashWindowLayout {
+    #[default]
+    Contiguous,
+    Spaced,
+}
+
+impl Display for FlashWindowLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Contiguous => write!(f, "Contiguous"),
+            Self::Spaced => write!(f, "Spaced"),
+        }
     }
 }
 
@@ -1048,7 +1129,11 @@ pub const MAX_ADD_DEPTH: f32 = 360.0;
 pub const MAX_SCALE_PERCENT: f32 = 400.0;
 
 fn finite_or(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() { value } else { fallback }
+    if value.is_finite() {
+        value
+    } else {
+        fallback
+    }
 }
 
 /// How the envelope reaches the output value.
@@ -1251,9 +1336,15 @@ impl Display for FrequencyNormalization {
 #[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
 pub struct AnimationSpecBodyWasm {}
 
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default, PartialEq, Eq)]
+pub struct WasmAnimationSpec {
+    /// Stable key declared by the animation plugin during bootstrap.
+    pub plugin_key: String,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::EngineSelection;
+    use super::{AnimationSpecBody, AnimationSpecBodyKind, EngineSelection, FlashAnimationSpec};
 
     #[test]
     fn orphaned_fixture_filter_is_empty_selection() {
@@ -1263,5 +1354,21 @@ mod tests {
         };
 
         assert!(selection.is_empty());
+    }
+
+    #[test]
+    fn flash_animation_defaults_and_json_round_trip() {
+        let body = AnimationSpecBody::from(AnimationSpecBodyKind::FlashAnimation);
+        let AnimationSpecBody::FlashAnimation(spec) = &body else {
+            panic!("wrong animation body");
+        };
+        assert_eq!(spec, &FlashAnimationSpec::default());
+
+        let json = serde_json::to_string(&body).unwrap();
+        let decoded: AnimationSpecBody = serde_json::from_str(&json).unwrap();
+        let AnimationSpecBody::FlashAnimation(decoded) = decoded else {
+            panic!("wrong decoded animation body");
+        };
+        assert_eq!(decoded, FlashAnimationSpec::default());
     }
 }

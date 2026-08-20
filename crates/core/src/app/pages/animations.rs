@@ -21,15 +21,21 @@ use blaulicht_shared::{
     fixture::value::FixtureValue, palette::Palette, AnimationPresetCategory, AnimationSpec,
     AnimationSpecBody, AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate,
     AudioModulationBlend, AudioModulationSignal, AudioModulationSpec, FixtureProperty,
-    FrequencyNormalization, MathematicalBaseFunction, PhaserDuration, PhaserKind, SyncMode,
-    MAX_ADD_DEPTH, MAX_SCALE_PERCENT, MAX_SECTION_MULTIPLIER, MAX_SENSITIVITY, MAX_THRESHOLD,
+    FlashWindowLayout, FrequencyNormalization, MathematicalBaseFunction, PhaserDuration,
+    PhaserKind, SyncMode, MAX_ADD_DEPTH, MAX_SCALE_PERCENT, MAX_SECTION_MULTIPLIER,
+    MAX_SENSITIVITY, MAX_THRESHOLD,
 };
 use egui::{Color32, Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Instant,
+};
 use strum::IntoEnumIterator;
 
 const ANIMATIONS_PER_PAGE: usize = 5;
+static NEXT_WASM_EDITOR_INSTANCE: AtomicU64 = AtomicU64::new(1_u64 << 63);
 
 pub struct AnimationUI {
     pub pagination: Pagination,
@@ -281,31 +287,33 @@ impl BlaulichtApp {
                     }
                 });
 
-                ui.horizontal(|ui| {
-                    ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
+                if self.animation_ui_state.new_mode != AnimationSpecBodyKind::Wasm {
+                    ui.horizontal(|ui| {
+                        ui.add_sized([LABEL_W, cell_h], Label::new("Prop:"));
 
-                    let prop_button_size = BUTTON_SIZE.with_width(140.0);
-                    if components::button(
-                        ui,
-                        self.animation_ui_state.new_prop_dialog_open,
-                        &self.animation_ui_state.new_prop.to_string(),
-                        prop_button_size,
-                    ) {
-                        self.animation_ui_state.new_prop_dialog_open = true;
-                    }
+                        let prop_button_size = BUTTON_SIZE.with_width(140.0);
+                        if components::button(
+                            ui,
+                            self.animation_ui_state.new_prop_dialog_open,
+                            &self.animation_ui_state.new_prop.to_string(),
+                            prop_button_size,
+                        ) {
+                            self.animation_ui_state.new_prop_dialog_open = true;
+                        }
 
-                    let (new_prop, prop_changed) = components::selection_dialog(
-                        ctx,
-                        FixtureProperty::iter(),
-                        self.animation_ui_state.new_prop,
-                        &mut self.animation_ui_state.new_prop_dialog_open,
-                        "Select Fixture Property".to_string(),
-                    );
+                        let (new_prop, prop_changed) = components::selection_dialog(
+                            ctx,
+                            FixtureProperty::iter(),
+                            self.animation_ui_state.new_prop,
+                            &mut self.animation_ui_state.new_prop_dialog_open,
+                            "Select Fixture Property".to_string(),
+                        );
 
-                    if prop_changed {
-                        self.animation_ui_state.new_prop = new_prop;
-                    }
-                });
+                        if prop_changed {
+                            self.animation_ui_state.new_prop = new_prop;
+                        }
+                    });
+                }
 
                 ui.separator();
 
@@ -499,7 +507,23 @@ impl BlaulichtApp {
                                                 .clone();
                                             self.animation_ui_state
                                                 .edit_state
-                                                .load_state(anim.spec);
+                                                .load_state(anim.spec.clone());
+                                            if let AnimationSpecBody::WasmPlugin(wasm) =
+                                                &anim.spec.body
+                                            {
+                                                let source = crate::plugin::tick::stable_animation_template_id(
+                                                    &wasm.plugin_key,
+                                                    id,
+                                                );
+                                                crate::plugin::wasm::clone_animation_instance_state(
+                                                    &self.data.state,
+                                                    &wasm.plugin_key,
+                                                    source,
+                                                    self.animation_ui_state
+                                                        .edit_state
+                                                        .wasm_editor_instance_id,
+                                                );
+                                            }
 
                                             self.animation_ui_state.selected_animation_id_before =
                                                 self.animation_ui_state.selected_animation_id;
@@ -520,8 +544,24 @@ impl BlaulichtApp {
                                         if let Some(value_changed) = self
                                             .animation_ui_state
                                             .edit_state
-                                            .show(ui, ctx, &palettes_snapshot, &live_audio)
+                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.data, &[])
                                         {
+                                            if let AnimationSpecBody::WasmPlugin(wasm) =
+                                                &value_changed.body
+                                            {
+                                                let target = crate::plugin::tick::stable_animation_template_id(
+                                                    &wasm.plugin_key,
+                                                    id,
+                                                );
+                                                crate::plugin::wasm::clone_animation_instance_state(
+                                                    &self.data.state,
+                                                    &wasm.plugin_key,
+                                                    self.animation_ui_state
+                                                        .edit_state
+                                                        .wasm_editor_instance_id,
+                                                    target,
+                                                );
+                                            }
                                             let mut dmx_engine =
                                                 self.data.state.dmx_engine.write().unwrap();
 
@@ -552,6 +592,9 @@ pub struct AnimationEditState {
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
     pub speed_numberpad: Numberpad,
+    pub flash_off_numberpad: Numberpad,
+    pub flash_on_numberpad: Numberpad,
+    pub flash_window_numberpad: Numberpad,
     pub clamp_min_numberpad: Numberpad,
     pub clamp_max_numberpad: Numberpad,
     pub clamp_min_binding: PaletteBindingState,
@@ -570,6 +613,7 @@ pub struct AnimationEditState {
     /// Drives the editor's live readouts with the same math the engine uses.
     mod_preview_runtime: AudioModulationRuntime,
     mod_preview_sample: Option<AudioModulationSample>,
+    pub(crate) wasm_editor_instance_id: u64,
 }
 
 impl Default for AnimationEditState {
@@ -585,6 +629,15 @@ impl Default for AnimationEditState {
             speed_numberpad: Numberpad::new()
                 .dialog_title("speed-num")
                 .range(0.0, 30000.0),
+            flash_off_numberpad: Numberpad::new()
+                .dialog_title("flash-off-num")
+                .range(1.0, 60_000.0),
+            flash_on_numberpad: Numberpad::new()
+                .dialog_title("flash-on-num")
+                .range(1.0, 60_000.0),
+            flash_window_numberpad: Numberpad::new()
+                .dialog_title("flash-window-num")
+                .range(1.0, u16::MAX as f64),
             clamp_min_numberpad: Numberpad::new()
                 .dialog_title("clamp-min-num")
                 .range(0.0, 360.0),
@@ -623,6 +676,7 @@ impl Default for AnimationEditState {
                 .range(0.0, blaulicht_shared::MAX_SMOOTHING_MS as f64),
             mod_preview_runtime: AudioModulationRuntime::default(),
             mod_preview_sample: None,
+            wasm_editor_instance_id: NEXT_WASM_EDITOR_INSTANCE.fetch_add(1, Ordering::Relaxed),
         }
     }
 }
@@ -634,6 +688,9 @@ impl AnimationEditState {
         self.sync_mode_dialog_open = false;
         self.math_base_fn_dialog_open = false;
         self.speed_numberpad.close();
+        self.flash_off_numberpad.close();
+        self.flash_on_numberpad.close();
+        self.flash_window_numberpad.close();
         self.freq_gate_numberpad.close();
         self.freq_boost_numberpad.close();
         self.freq_min_numberpad.close();
@@ -654,14 +711,18 @@ impl AnimationEditState {
         ctx: &egui::Context,
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
+        data: &crate::state::AppStateWrapper,
+        wasm_fixtures: &[(u8, u8)],
     ) -> Option<AnimationSpec> {
         let mut apply_clicked = false;
+        let mut upgrade_legacy_wasm = false;
 
         ui.vertical(|ui| {
             // PATCH: sync properties of the animation that was selected.
 
             match &self.working_state.body {
                 AnimationSpecBody::Phaser(_phaser) => self.anim_phaser_ui(ui, ctx, palettes),
+                AnimationSpecBody::FlashAnimation(_) => self.anim_flash_ui(ui, ctx, palettes),
                 AnimationSpecBody::AudioModulation(_) => {
                     self.anim_audio_modulation_ui(ui, ctx, live_audio)
                 }
@@ -671,8 +732,12 @@ impl AnimationEditState {
                 AnimationSpecBody::AudioBeat(_beat) => self.anim_beat_ui(ui),
                 AnimationSpecBody::BeatClock(_beat) => self.anim_beat_clock_ui(ui),
                 AnimationSpecBody::Wasm(_) => {
-                    ui.label("WASM animation editing is not supported in the native runtime");
+                    ui.label("Legacy unconfigured WASM animation.");
+                    if ui.button("Configure plugin").clicked() {
+                        upgrade_legacy_wasm = true;
+                    }
                 }
+                AnimationSpecBody::WasmPlugin(_) => self.anim_wasm_ui(ui, data, wasm_fixtures),
             }
 
             ui.vertical(|ui| {
@@ -682,9 +747,96 @@ impl AnimationEditState {
             });
         });
 
+        if upgrade_legacy_wasm {
+            self.working_state.body = AnimationSpecBody::WasmPlugin(Default::default());
+        }
+
         match apply_clicked {
             true => Some(self.working_state.clone()),
             false => None,
+        }
+    }
+
+    fn anim_wasm_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        data: &crate::state::AppStateWrapper,
+        fixtures: &[(u8, u8)],
+    ) {
+        let AnimationSpecBody::WasmPlugin(ref mut wasm) = self.working_state.body else {
+            return;
+        };
+        let registered: Vec<(u8, String, String)> = data
+            .state
+            .plugin_runtime_kinds
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|(id, kind)| match kind {
+                crate::state::PluginRuntimeKind::Animation {
+                    stable_key,
+                    display_name,
+                } => Some((*id, stable_key.clone(), display_name.clone())),
+                _ => None,
+            })
+            .collect();
+
+        egui::ComboBox::from_label("Animation plugin")
+            .selected_text(
+                registered
+                    .iter()
+                    .find(|(_, key, _)| key == &wasm.plugin_key)
+                    .map(|(_, _, name)| name.as_str())
+                    .unwrap_or(if wasm.plugin_key.is_empty() {
+                        "Select plugin"
+                    } else {
+                        "Plugin unavailable"
+                    }),
+            )
+            .show_ui(ui, |ui| {
+                for (_, key, name) in &registered {
+                    ui.selectable_value(&mut wasm.plugin_key, key.clone(), name);
+                }
+            });
+
+        if let Some((plugin_id, _, _)) = registered
+            .iter()
+            .find(|(_, key, _)| key == &wasm.plugin_key)
+        {
+            data.state
+                .wasm_animation_editor_requests
+                .write()
+                .unwrap()
+                .insert(
+                    self.wasm_editor_instance_id,
+                    crate::state::WasmAnimationEditorRequest {
+                        plugin_key: wasm.plugin_key.clone(),
+                        instance_id: self.wasm_editor_instance_id,
+                        fixtures: fixtures.to_vec(),
+                        last_seen: Instant::now(),
+                    },
+                );
+            let ops = data
+                .state
+                .wasm_animation_ui_ops
+                .read()
+                .unwrap()
+                .get(&self.wasm_editor_instance_id)
+                .cloned();
+            if let Some(ops) = ops {
+                ui.separator();
+                let mut index = 0;
+                crate::app::plugin_ui::render_plugin_ops(
+                    ui,
+                    &ops,
+                    &mut index,
+                    data,
+                    *plugin_id,
+                    Some(self.wasm_editor_instance_id),
+                );
+            } else {
+                ui.label("The plugin has not produced editor UI yet.");
+            }
         }
     }
 
@@ -962,6 +1114,168 @@ impl AnimationEditState {
                         marks
                     })
                     .show(ui, |plot_ui| plot_ui.line(line));
+            });
+        });
+    }
+
+    fn anim_flash_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        palettes: &BTreeMap<u8, Palette>,
+    ) {
+        let preview_property = self.working_state.property;
+        let AnimationSpecBody::FlashAnimation(ref mut flash) = self.working_state.body else {
+            return;
+        };
+
+        ui.vertical(|ui| {
+            ui.checkbox(&mut flash.beat_aligned, "Beat aligned");
+            if flash.beat_aligned {
+                ui.horizontal(|ui| {
+                    let max_index = AnimationSpeedModifier::ALL.len() - 1;
+                    ui.label(format!("Dark gap: {} beats", flash.off_time_beats.as_str()));
+                    let mut off_index = flash.off_time_beats.as_index() as f32;
+                    if ui
+                        .add(HFader::new(&mut off_index, 0.0..=max_index as f32))
+                        .changed()
+                    {
+                        flash.off_time_beats =
+                            AnimationSpeedModifier::from_index(off_index as usize);
+                    }
+
+                    ui.add_space(16.0);
+                    ui.label(format!("On time: {} beats", flash.on_time_beats.as_str()));
+                    let mut on_index = flash.on_time_beats.as_index() as f32;
+                    if ui
+                        .add(HFader::new(&mut on_index, 0.0..=max_index as f32))
+                        .changed()
+                    {
+                        flash.on_time_beats =
+                            AnimationSpeedModifier::from_index(on_index as usize);
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label("Dark gap:");
+                    flash.off_time_ms = flash.off_time_ms.max(1);
+                    self.flash_off_numberpad.ui(ui, &mut flash.off_time_ms);
+                    ui.label("ms");
+
+                    ui.add_space(16.0);
+                    ui.label("On time:");
+                    flash.on_time_ms = flash.on_time_ms.max(1);
+                    self.flash_on_numberpad.ui(ui, &mut flash.on_time_ms);
+                    ui.label("ms");
+                });
+            }
+
+            ui.horizontal(|ui| {
+                ui.label("Window size:");
+                flash.window_size = flash.window_size.max(1);
+                self.flash_window_numberpad.ui(ui, &mut flash.window_size);
+
+                let mut spaced = flash.window_layout == FlashWindowLayout::Spaced;
+                if ui.checkbox(&mut spaced, "Spaced windows").changed() {
+                    flash.window_layout = if spaced {
+                        FlashWindowLayout::Spaced
+                    } else {
+                        FlashWindowLayout::Contiguous
+                    };
+                }
+                ui.checkbox(&mut flash.random_order, "Random window order");
+            });
+
+            ui.add_enabled_ui(!flash.random_order, |ui| {
+                ui.horizontal(|ui| {
+                    let mut enabled = flash.reverse_after_n_iterations.is_some();
+                    if ui
+                        .checkbox(&mut enabled, "Reverse after N iterations")
+                        .changed()
+                    {
+                        flash.reverse_after_n_iterations = if enabled { Some(1) } else { None };
+                    }
+                    if let Some(ref mut n) = flash.reverse_after_n_iterations {
+                        let mut n_f32 = (*n).max(1) as f32;
+                        ui.add(
+                            egui::Slider::new(&mut n_f32, 1.0..=32.0)
+                                .step_by(1.0)
+                                .text("N"),
+                        );
+                        *n = n_f32 as u32;
+                    }
+                });
+            });
+
+            ui.label(
+                "Animation and scene speed affect only the dark gap; on-time stays fixed. Beat mode follows the beat/sub-beat grid.",
+            );
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                let min_frozen = flash.amplitude_min.is_frozen();
+                let mut min_val = flash.amplitude_min.resolve(palettes, preview_property);
+                ui.add_enabled_ui(!min_frozen, |ui| {
+                    if self.clamp_min_numberpad.ui(ui, &mut min_val).changed() {
+                        flash.amplitude_min = FixtureValue::Literal(min_val);
+                    }
+                });
+                match palette_binding_button(
+                    ui,
+                    ctx,
+                    &mut self.clamp_min_binding,
+                    flash.amplitude_min,
+                    palettes,
+                    "Min palette".to_string(),
+                ) {
+                    PaletteBindingAction::Bind {
+                        palette_id,
+                        property,
+                    } => {
+                        flash.amplitude_min = FixtureValue::PalettePointer {
+                            palette_id,
+                            property,
+                        };
+                    }
+                    PaletteBindingAction::Unbind => {
+                        flash.amplitude_min = FixtureValue::Literal(
+                            flash.amplitude_min.resolve(palettes, preview_property),
+                        );
+                    }
+                    PaletteBindingAction::None => {}
+                }
+
+                let max_frozen = flash.amplitude_max.is_frozen();
+                let mut max_val = flash.amplitude_max.resolve(palettes, preview_property);
+                ui.add_enabled_ui(!max_frozen, |ui| {
+                    if self.clamp_max_numberpad.ui(ui, &mut max_val).changed() {
+                        flash.amplitude_max = FixtureValue::Literal(max_val);
+                    }
+                });
+                match palette_binding_button(
+                    ui,
+                    ctx,
+                    &mut self.clamp_max_binding,
+                    flash.amplitude_max,
+                    palettes,
+                    "Max palette".to_string(),
+                ) {
+                    PaletteBindingAction::Bind {
+                        palette_id,
+                        property,
+                    } => {
+                        flash.amplitude_max = FixtureValue::PalettePointer {
+                            palette_id,
+                            property,
+                        };
+                    }
+                    PaletteBindingAction::Unbind => {
+                        flash.amplitude_max = FixtureValue::Literal(
+                            flash.amplitude_max.resolve(palettes, preview_property),
+                        );
+                    }
+                    PaletteBindingAction::None => {}
+                }
             });
         });
     }

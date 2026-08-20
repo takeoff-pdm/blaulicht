@@ -21,8 +21,8 @@ use blaulicht_shared::{
     },
     scene::{FixtureSelection, FixtureSelector},
     scene_graph::{AudioConditions, SceneGraphRuntime},
-    ActiveAnimation, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, LogLevel,
-    CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, AnimationSpecBody, ControlEvent, ControlEventMessage, EventOriginator,
+    FixtureProperty, LogLevel, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
@@ -669,7 +669,7 @@ impl DmxEngine {
                 }
             }
             // UI-only plugin events: ignore in DMX engine
-            ControlEvent::PluginUi(_, _) => (None, None),
+            ControlEvent::PluginUi(_, _) | ControlEvent::AnimationPluginUi(_, _, _) => (None, None),
             ControlEvent::MainUi(_) => (None, None),
             // Other
             ControlEvent::SelectGroup(group_id) => {
@@ -1132,6 +1132,25 @@ impl DmxEngine {
                     false => {
                         let spec_cloned = animation_template.spec.clone();
                         let effective_property = spec_cloned.property;
+
+                        if let AnimationSpecBody::WasmPlugin(wasm) = &spec_cloned.body {
+                            let source = crate::plugin::tick::stable_animation_template_id(
+                                &wasm.plugin_key,
+                                id,
+                            );
+                            let target = crate::plugin::tick::stable_animation_instance_id(
+                                &wasm.plugin_key,
+                                current_scene_focus,
+                                id,
+                                &curr_selection.fixtures,
+                            );
+                            crate::plugin::wasm::clone_animation_instance_state(
+                                &self.state_ref,
+                                &wasm.plugin_key,
+                                source,
+                                target,
+                            );
+                        }
 
                         selec_anim.insert(
                             id,

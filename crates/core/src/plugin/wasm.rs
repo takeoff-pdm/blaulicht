@@ -9,6 +9,7 @@ use blaulicht_shared::MainUiEvent;
 use blaulicht_shared::PluginStateLocation;
 
 use egui::ahash::HashMapExt;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::u8;
 use std::{collections::HashMap, fs, net::UdpSocket};
@@ -28,6 +29,94 @@ use crate::{
     msg::SystemMessage,
     plugin::{Plugin, PluginManager},
 };
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PluginStateEnvelope {
+    version: u8,
+    #[serde(default)]
+    user: Option<String>,
+    #[serde(default)]
+    animation_instances: HashMap<String, String>,
+}
+
+impl PluginStateEnvelope {
+    fn decode(value: Option<&String>) -> Self {
+        let Some(value) = value else {
+            return Self {
+                version: 1,
+                ..Self::default()
+            };
+        };
+        serde_json::from_str(value).unwrap_or_else(|_| Self {
+            version: 1,
+            user: Some(value.clone()),
+            animation_instances: HashMap::new(),
+        })
+    }
+
+    fn user_state(&self, instance: Option<u64>) -> Option<&str> {
+        match instance {
+            Some(instance) => self
+                .animation_instances
+                .get(&instance.to_string())
+                .map(String::as_str),
+            None => self.user.as_deref(),
+        }
+    }
+
+    fn set_user_state(&mut self, instance: Option<u64>, value: String) {
+        self.version = 1;
+        match instance {
+            Some(instance) => {
+                self.animation_instances.insert(instance.to_string(), value);
+            }
+            None => self.user = Some(value),
+        }
+    }
+}
+
+fn plugin_state_storage_key(state: &crate::state::AppState, plugin_id: u8) -> String {
+    match state.plugin_runtime_kinds.read().unwrap().get(&plugin_id) {
+        Some(crate::state::PluginRuntimeKind::Animation { stable_key, .. }) => {
+            format!("animation_plugin::{stable_key}")
+        }
+        _ => format!("plugin_{plugin_id}"),
+    }
+}
+
+pub(crate) fn clone_animation_instance_state(
+    state: &crate::state::AppState,
+    plugin_key: &str,
+    source_instance: u64,
+    target_instance: u64,
+) {
+    let storage_key = format!("animation_plugin::{plugin_key}");
+    for storage in [
+        &state.plugin_state_storage,
+        &state.plugin_state_storage_global,
+    ] {
+        let mut storage = storage.lock().unwrap();
+        let mut envelope = PluginStateEnvelope::decode(storage.get(&storage_key));
+        let Some(value) = envelope
+            .animation_instances
+            .get(&source_instance.to_string())
+            .cloned()
+        else {
+            continue;
+        };
+        envelope
+            .animation_instances
+            .insert(target_instance.to_string(), value);
+        if let Ok(encoded) = serde_json::to_string(&envelope) {
+            storage.insert(storage_key.clone(), encoded);
+        }
+    }
+    state
+        .wasm_animation_instances_to_reset
+        .lock()
+        .unwrap()
+        .insert(target_instance);
+}
 
 // TODO: optimize this module:
 // Load multiple plugins at once, not just one.
@@ -166,6 +255,10 @@ impl PluginManager {
                 .acquire_udp_buffer_addresses()
                 .map_err(|e| anyhow!("failed to acquire UDP buffer addresses: {e}"))?;
 
+            plugin
+                .acquire_animation_output_buffer_addresses()
+                .map_err(|e| anyhow!("failed to acquire animation output buffer: {e}"))?;
+
             anyhow::ensure!(
                 plugin_id <= u8::MAX as usize,
                 "too many plugins: plugin index {plugin_id} does not fit in u8"
@@ -183,6 +276,69 @@ impl PluginManager {
     }
 
     fn provide_host_functions(&mut self, linker: &mut Linker<()>) -> anyhow::Result<()> {
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "bl_register_plugin_kind",
+            move |mut caller: Caller<'_, ()>,
+                  plugin_id: i32,
+                  kind: i32,
+                  key_ptr: i32,
+                  key_len: i32,
+                  name_ptr: i32,
+                  name_len: i32| {
+                let Some(memory) = caller.get_export("memory").and_then(|value| value.into_memory())
+                else {
+                    return;
+                };
+                let read_string = |caller: &Caller<'_, ()>, ptr: i32, len: i32| {
+                    let mut bytes = vec![0; len.max(0) as usize];
+                    memory.read(caller, ptr.max(0) as usize, &mut bytes).ok()?;
+                    String::from_utf8(bytes).ok()
+                };
+                let Some(key) = read_string(&caller, key_ptr, key_len) else {
+                    return;
+                };
+                let Some(display_name) = read_string(&caller, name_ptr, name_len) else {
+                    return;
+                };
+                let runtime_kind = match kind {
+                    0 => crate::state::PluginRuntimeKind::Normal,
+                    1 if !key.trim().is_empty() => {
+                        let duplicate = state_ref
+                            .plugin_runtime_kinds
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .any(|(id, kind)| {
+                                *id != plugin_id as u8
+                                    && matches!(
+                                        kind,
+                                        crate::state::PluginRuntimeKind::Animation { stable_key, .. }
+                                            if stable_key == &key
+                                    )
+                            });
+                        if duplicate {
+                            tracing::error!(
+                                "Animation plugin key '{key}' is registered more than once"
+                            );
+                            return;
+                        }
+                        crate::state::PluginRuntimeKind::Animation {
+                            stable_key: key,
+                            display_name,
+                        }
+                    }
+                    _ => return,
+                };
+                state_ref
+                    .plugin_runtime_kinds
+                    .write()
+                    .unwrap()
+                    .insert(plugin_id as u8, runtime_kind);
+            },
+        )?;
+
         let so = self.system_out.clone();
 
         let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -1941,6 +2097,7 @@ impl PluginManager {
 
         let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
         let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
+        let state_ref_for_save = Arc::clone(&self.state_ref);
         let system_out = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
@@ -1961,7 +2118,13 @@ impl PluginManager {
                     .expect("failed to read memory");
 
                 let state_data = String::from_utf8_lossy(&buf).to_string();
-                let plugin_name = format!("plugin_{}", plugin_id);
+                let plugin_name = plugin_state_storage_key(&state_ref_for_save, plugin_id as u8);
+                let animation_instance = state_ref_for_save
+                    .plugin_execution_instances
+                    .read()
+                    .unwrap()
+                    .get(&(plugin_id as u8))
+                    .copied();
                 let location = PluginStateLocation::try_from(location as u8)
                     .unwrap_or(PluginStateLocation::Showfile);
 
@@ -1977,8 +2140,25 @@ impl PluginManager {
                         PluginStateLocation::Global => Arc::clone(&global_state_storage),
                     };
                     let mut storage = storage.lock().unwrap();
-                    storage.insert(plugin_name.clone(), state_data.clone());
+                    let mut envelope = PluginStateEnvelope::decode(storage.get(&plugin_name));
+                    envelope.set_user_state(animation_instance, state_data.clone());
+                    let encoded = serde_json::to_string(&envelope).unwrap();
+                    storage.insert(plugin_name.clone(), encoded);
                 }
+
+                let state_data = {
+                    let storage = match location {
+                        PluginStateLocation::Showfile => Arc::clone(&showfile_state_storage),
+                        PluginStateLocation::Global => Arc::clone(&global_state_storage),
+                    };
+                    let encoded = storage
+                        .lock()
+                        .unwrap()
+                        .get(&plugin_name)
+                        .cloned()
+                        .unwrap_or_default();
+                    encoded
+                };
 
                 system_out
                     .send(SystemMessage::SavePluginState {
@@ -1994,6 +2174,7 @@ impl PluginManager {
 
         let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
         let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
+        let state_ref_for_load = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_load_plugin_state",
@@ -2002,7 +2183,13 @@ impl PluginManager {
                   location: i32,
                   buffer_ptr: i32,
                   buffer_len: i32| {
-                let plugin_name = format!("plugin_{}", plugin_id);
+                let plugin_name = plugin_state_storage_key(&state_ref_for_load, plugin_id as u8);
+                let animation_instance = state_ref_for_load
+                    .plugin_execution_instances
+                    .read()
+                    .unwrap()
+                    .get(&(plugin_id as u8))
+                    .copied();
                 let location = PluginStateLocation::try_from(location as u8)
                     .unwrap_or(PluginStateLocation::Showfile);
 
@@ -2013,7 +2200,8 @@ impl PluginManager {
                     PluginStateLocation::Global => Arc::clone(&global_state_storage),
                 };
                 let storage = storage.lock().unwrap();
-                let state_data = storage.get(&plugin_name);
+                let envelope = PluginStateEnvelope::decode(storage.get(&plugin_name));
+                let state_data = envelope.user_state(animation_instance);
 
                 if let Some(data) = state_data {
                     let memory = caller
@@ -2095,6 +2283,32 @@ impl AddrDescriptor {
 
 #[cfg(feature = "wasmtime")]
 impl Plugin {
+    fn acquire_animation_output_buffer_addresses(&mut self) -> anyhow::Result<()> {
+        let start = self
+            .wasm_state
+            .instance
+            .get_typed_func::<(), i32>(
+                &mut self.wasm_state.store,
+                "__internal_get_animation_output_start_addr",
+            )?
+            .call(&mut self.wasm_state.store, ())?;
+        let length = self
+            .wasm_state
+            .instance
+            .get_typed_func::<(), i32>(
+                &mut self.wasm_state.store,
+                "__internal_get_animation_output_length_start_addr",
+            )?
+            .call(&mut self.wasm_state.store, ())?;
+        let descriptor = AddrDescriptor {
+            start_addr: start,
+            length_start_addr: length,
+        };
+        descriptor.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
+        self.animation_output_buffers = descriptor;
+        Ok(())
+    }
+
     fn acquire_midi_buffer_addresses(&mut self) -> anyhow::Result<()> {
         tracing::trace!("Acquiring MIDI buffer addresses for plugin: {}", self.path);
         //
@@ -2227,5 +2441,24 @@ impl Plugin {
         addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.udp_buffers = addrs;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod state_envelope_tests {
+    use super::PluginStateEnvelope;
+
+    #[test]
+    fn legacy_user_state_and_animation_instances_remain_isolated() {
+        let legacy = "plugin-authored-state".to_string();
+        let mut envelope = PluginStateEnvelope::decode(Some(&legacy));
+        assert_eq!(envelope.user_state(None), Some(legacy.as_str()));
+        assert_eq!(envelope.user_state(Some(7)), None);
+
+        envelope.set_user_state(Some(7), "instance-seven".to_string());
+        envelope.set_user_state(Some(8), "instance-eight".to_string());
+        assert_eq!(envelope.user_state(None), Some(legacy.as_str()));
+        assert_eq!(envelope.user_state(Some(7)), Some("instance-seven"));
+        assert_eq!(envelope.user_state(Some(8)), Some("instance-eight"));
     }
 }

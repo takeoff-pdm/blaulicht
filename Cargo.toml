@@ -37,5 +37,7 @@ exclude = [
     "./crates/plugins/player/",
     "./crates/plugins/udp_listener",
     "./crates/plugins/led_tubes",
+    "./crates/plugins/sample_animation_plugin",
+    "./crates/plugins/chaos_animation_plugin",
 ]
 resolver = "2"

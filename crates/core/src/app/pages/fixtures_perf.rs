@@ -546,6 +546,27 @@ impl BlaulichtApp {
                             .scene_overview_animation_edit
                             .load_state(animation.spec_cloned.clone());
 
+                        if let blaulicht_shared::AnimationSpecBody::WasmPlugin(wasm) =
+                            &animation.spec_cloned.body
+                        {
+                            let mut fixtures = selec.fixtures.clone();
+                            fixtures.sort_unstable();
+                            let source = crate::plugin::tick::stable_animation_instance_id(
+                                &wasm.plugin_key,
+                                dmx_engine.0.current_scene_focus,
+                                *anim_id,
+                                &fixtures,
+                            );
+                            crate::plugin::wasm::clone_animation_instance_state(
+                                &self.data.state,
+                                &wasm.plugin_key,
+                                source,
+                                self.fixture_perf_ui
+                                    .scene_overview_animation_edit
+                                    .wasm_editor_instance_id,
+                            );
+                        }
+
                         self.fixture_perf_ui
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
@@ -556,9 +577,29 @@ impl BlaulichtApp {
                         ctx,
                         &dmx_engine.0.palettes,
                         &live_audio,
+                        &self.data,
+                        &selec.fixtures,
                     );
 
                     if let Some(spec) = new_value_spec {
+                        if let blaulicht_shared::AnimationSpecBody::WasmPlugin(wasm) = &spec.body {
+                            let mut fixtures = selec.fixtures.clone();
+                            fixtures.sort_unstable();
+                            let target = crate::plugin::tick::stable_animation_instance_id(
+                                &wasm.plugin_key,
+                                dmx_engine.0.current_scene_focus,
+                                *anim_id,
+                                &fixtures,
+                            );
+                            crate::plugin::wasm::clone_animation_instance_state(
+                                &self.data.state,
+                                &wasm.plugin_key,
+                                self.fixture_perf_ui
+                                    .scene_overview_animation_edit
+                                    .wasm_editor_instance_id,
+                                target,
+                            );
+                        }
                         self.data
                             .event_bus_connection
                             .send(ControlEventMessage::new(

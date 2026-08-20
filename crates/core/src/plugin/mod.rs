@@ -7,7 +7,7 @@ use notify::{
 };
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     time::{Duration, Instant},
@@ -26,9 +26,9 @@ use crate::{
 
 pub mod midi;
 pub mod serial;
-mod tick;
+pub(crate) mod tick;
 pub mod udp;
-mod wasm;
+pub(crate) mod wasm;
 
 pub struct PluginManager {
     // true if TODO
@@ -38,6 +38,7 @@ pub struct PluginManager {
     is_initial_tick: bool,
     plugin_config: Vec<PluginConfig>,
     plugins: HashMap<u8, Plugin>,
+    animation_instance_ids: HashMap<u8, HashSet<u64>>,
     // Channels.
     system_out: Sender<SystemMessage>,
     to_midi_devices: Sender<MidiEvent>,
@@ -77,6 +78,7 @@ pub struct Plugin {
     serial_buffers: AddrDescriptor,
     state_buffers: AddrDescriptor,
     udp_buffers: AddrDescriptor,
+    animation_output_buffers: AddrDescriptor,
 
     // When was the last time the engine state was written into that plugin?
     last_dmx_engine_sync: Instant,
@@ -105,6 +107,7 @@ impl Plugin {
             state_buffers: AddrDescriptor::dummy(),
             serial_buffers: AddrDescriptor::dummy(),
             udp_buffers: AddrDescriptor::dummy(),
+            animation_output_buffers: AddrDescriptor::dummy(),
             last_dmx_engine_sync: Instant::now(),
         })
     }
@@ -120,6 +123,7 @@ impl Plugin {
             state_buffers: AddrDescriptor::dummy(),
             serial_buffers: AddrDescriptor::dummy(),
             udp_buffers: AddrDescriptor::dummy(),
+            animation_output_buffers: AddrDescriptor::dummy(),
             last_dmx_engine_sync: Instant::now(),
         })
     }
@@ -147,6 +151,7 @@ impl PluginManager {
             is_initial_tick: true,
             plugin_config,
             plugins: HashMap::new(),
+            animation_instance_ids: HashMap::new(),
             to_midi_devices: to_midi_manager,
             from_midi_manager,
             system_out,

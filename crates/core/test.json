@@ -1,0 +1,2240 @@
+{
+  "format_version": 3,
+  "engine": {
+    "groups": [
+      {
+        "key": 0,
+        "value": {
+          "name": "My Group",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "New Fixture #1",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": -5.0,
+                  "y": 5.0,
+                  "z": -5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 1,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 1,
+              "value": {
+                "name": "New Fixture #2",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": 0.0,
+                  "y": 5.0,
+                  "z": -5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 4,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 2,
+              "value": {
+                "name": "New Fixture #3",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": 5.0,
+                  "y": 5.0,
+                  "z": -5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 7,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 3,
+              "value": {
+                "name": "New Fixture #4",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": 5.0,
+                  "y": 5.0,
+                  "z": 0.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 10,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 4,
+              "value": {
+                "name": "New Fixture #5",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": 5.0,
+                  "y": 5.0,
+                  "z": 5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 13,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 5,
+              "value": {
+                "name": "New Fixture #6",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": 0.0,
+                  "y": 5.0,
+                  "z": 5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 16,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 6,
+              "value": {
+                "name": "New Fixture #7",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": -5.0,
+                  "y": 5.0,
+                  "z": 5.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 19,
+                "universe_no": 0
+              }
+            },
+            {
+              "key": 7,
+              "value": {
+                "name": "New Fixture #8",
+                "type_": {
+                  "Light": "Generic3ChanNoAlpha"
+                },
+                "pos": {
+                  "x": -5.0,
+                  "y": 5.0,
+                  "z": 0.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 22,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "name": "My Group",
+          "fixtures": []
+        }
+      }
+    ],
+    "animations": [
+      {
+        "key": 0,
+        "value": {
+          "spec": {
+            "name": "Anim #",
+            "body": {
+              "FlashAnimation": {
+                "amplitude_min": {
+                  "Literal": 0
+                },
+                "amplitude_max": {
+                  "Literal": 255
+                },
+                "off_time_ms": 100,
+                "on_time_ms": 100,
+                "beat_aligned": false,
+                "off_time_beats": "_1",
+                "on_time_beats": "_1",
+                "window_size": 1,
+                "window_layout": "Contiguous",
+                "random_order": false,
+                "reverse_after_n_iterations": null
+              }
+            },
+            "property": "Alpha"
+          }
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "spec": {
+            "name": "Anim #",
+            "body": {
+              "WasmPlugin": {
+                "plugin_key": "org.blaulicht.sample-animation"
+              }
+            },
+            "property": "Alpha"
+          }
+        }
+      }
+    ],
+    "views": [
+      {
+        "key": 0,
+        "value": {
+          "name": "Default View",
+          "base_scene": 0,
+          "overlays": []
+        }
+      }
+    ],
+    "scenes": [
+      {
+        "key": 0,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  1
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  2
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  3
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  4
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  5
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  6
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  7
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              }
+            ],
+            "active_animations": [],
+            "changeset": [
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorValue"
+              }
+            ],
+            "master_alpha_fader": 80,
+            "master_alpha_speed": "_1",
+            "palette_assignments": []
+          },
+          "name": "Default Scene"
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  1
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  2
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  3
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  4
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  5
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  6
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  7
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 255
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              }
+            ],
+            "active_animations": [
+              {
+                "key": {
+                  "fixtures": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      0,
+                      2
+                    ],
+                    [
+                      0,
+                      3
+                    ],
+                    [
+                      0,
+                      4
+                    ],
+                    [
+                      0,
+                      5
+                    ],
+                    [
+                      0,
+                      6
+                    ],
+                    [
+                      0,
+                      7
+                    ]
+                  ]
+                },
+                "value": [
+                  {
+                    "key": 0,
+                    "value": {
+                      "speed_factor": "_1",
+                      "enabled": false,
+                      "fixture_timers": [
+                        {
+                          "key": [
+                            0,
+                            0
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            1
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            2
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            3
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            4
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            5
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            6
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            7
+                          ],
+                          "value": {
+                            "last_tick_time": 12883,
+                            "timer": 1558,
+                            "needs_reset_on_beat": false
+                          }
+                        }
+                      ],
+                      "spec": {
+                        "name": "Anim #",
+                        "body": {
+                          "FlashAnimation": {
+                            "amplitude_min": {
+                              "Literal": 0
+                            },
+                            "amplitude_max": {
+                              "Literal": 255
+                            },
+                            "off_time_ms": 100,
+                            "on_time_ms": 100,
+                            "beat_aligned": true,
+                            "off_time_beats": "_1",
+                            "on_time_beats": "_8",
+                            "window_size": 1,
+                            "window_layout": "Contiguous",
+                            "random_order": false,
+                            "reverse_after_n_iterations": null
+                          }
+                        },
+                        "property": "Alpha"
+                      }
+                    }
+                  },
+                  {
+                    "key": 1,
+                    "value": {
+                      "speed_factor": "_1",
+                      "enabled": true,
+                      "fixture_timers": [
+                        {
+                          "key": [
+                            0,
+                            0
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            1
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            2
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            3
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            4
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            5
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            6
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        },
+                        {
+                          "key": [
+                            0,
+                            7
+                          ],
+                          "value": {
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": false
+                          }
+                        }
+                      ],
+                      "spec": {
+                        "name": "Anim #",
+                        "body": {
+                          "WasmPlugin": {
+                            "plugin_key": "org.blaulicht.sample-animation"
+                          }
+                        },
+                        "property": "Alpha"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "changeset": [
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorHue"
+              }
+            ],
+            "master_alpha_fader": 100,
+            "master_alpha_speed": "_32",
+            "palette_assignments": []
+          },
+          "name": "My Scene"
+        }
+      },
+      {
+        "key": 2,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 316
+                  },
+                  "color_s": {
+                    "Literal": 241
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  1
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 316
+                  },
+                  "color_s": {
+                    "Literal": 241
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  2
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 316
+                  },
+                  "color_s": {
+                    "Literal": 241
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  3
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 316
+                  },
+                  "color_s": {
+                    "Literal": 241
+                  },
+                  "color_v": {
+                    "Literal": 255
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  4
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  5
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  6
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              },
+              {
+                "key": [
+                  0,
+                  7
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              }
+            ],
+            "active_animations": [],
+            "changeset": [
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorValue"
+              }
+            ],
+            "master_alpha_fader": 100,
+            "master_alpha_speed": "_1",
+            "palette_assignments": []
+          },
+          "name": "My Scene"
+        }
+      }
+    ],
+    "current_scene_focus": 1,
+    "current_overlay_scenes": [],
+    "overrides": [],
+    "scene_graphs": {
+      "graphs": {
+        "0": {
+          "name": "New Graph",
+          "nodes": {},
+          "edges": [],
+          "active_node": null,
+          "enabled": false
+        }
+      },
+      "focused_graph": 0
+    },
+    "palettes": [
+      {
+        "key": 0,
+        "value": {
+          "name": "Primary Color",
+          "kind": {
+            "Color": {
+              "h": 0.0,
+              "s": 1.0,
+              "v": 1.0
+            }
+          }
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "name": "Primary Color Offsetted",
+          "kind": {
+            "Pointer": {
+              "target": 0,
+              "property": "ColorHue",
+              "ops": [
+                {
+                  "Add": 20.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "artnet": {
+    "receivers": []
+  },
+  "plugin_state": {
+    "animation_plugin::org.blaulicht.sample-animation": "{\"version\":1,\"user\":null,\"animation_instances\":{\"7923395290910012888\":\"255\",\"9223372036854775809\":\"255\"}}",
+    "plugin_1": "{\"version\":1,\"user\":\"{\\\"host\\\":\\\"10.10.69.25\\\",\\\"strips\\\":[{\\\"mode\\\":1,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":1,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":1,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":1,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":1,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1}],\\\"selected_strip\\\":0,\\\"artnet_enabled\\\":true}\",\"animation_instances\":{}}"
+  },
+  "stage": {
+    "version": 3,
+    "room": {
+      "visible": true,
+      "width": 32.0,
+      "depth": 41.0,
+      "height": 8.0,
+      "floor_color": [
+        28,
+        30,
+        38
+      ],
+      "wall_color": [
+        38,
+        41,
+        50
+      ]
+    },
+    "objects": {
+      "3": {
+        "name": "Platform 3",
+        "visible": true,
+        "locked": false,
+        "kind": "Platform",
+        "transform": {
+          "translation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            11.9,
+            0.2,
+            7.9
+          ]
+        },
+        "color": [
+          65,
+          68,
+          76
+        ]
+      },
+      "4": {
+        "name": "Speaker 4",
+        "visible": true,
+        "locked": false,
+        "kind": "Speaker",
+        "transform": {
+          "translation": [
+            6.1,
+            0.0,
+            4.4
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            0.7,
+            1.2,
+            0.6
+          ]
+        },
+        "color": [
+          35,
+          36,
+          40
+        ]
+      },
+      "5": {
+        "name": "Truss 5",
+        "visible": true,
+        "locked": false,
+        "kind": {
+          "ProceduralTruss": {
+            "profile": "Square",
+            "part": "Straight",
+            "length_m": 3.0
+          }
+        },
+        "transform": {
+          "translation": [
+            0.5,
+            2.9,
+            0.0
+          ],
+          "rotation": [
+            45.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "color": [
+          155,
+          160,
+          168
+        ]
+      },
+      "6": {
+        "name": "Truss 6",
+        "visible": true,
+        "locked": false,
+        "kind": {
+          "ProceduralTruss": {
+            "profile": "Square",
+            "part": "Corner90",
+            "length_m": 3.0
+          }
+        },
+        "transform": {
+          "translation": [
+            2.5,
+            3.0,
+            0.2
+          ],
+          "rotation": [
+            90.0,
+            180.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "color": [
+          170,
+          174,
+          182
+        ]
+      },
+      "7": {
+        "name": "Speaker 7",
+        "visible": true,
+        "locked": false,
+        "kind": "Speaker",
+        "transform": {
+          "translation": [
+            5.2,
+            0.3,
+            6.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            0.7,
+            1.2,
+            0.6
+          ]
+        },
+        "color": [
+          35,
+          36,
+          40
+        ]
+      },
+      "8": {
+        "name": "Truss 8",
+        "visible": true,
+        "locked": false,
+        "kind": {
+          "ProceduralTruss": {
+            "profile": "Square",
+            "part": "Straight",
+            "length_m": 3.0
+          }
+        },
+        "transform": {
+          "translation": [
+            -2.7,
+            2.8,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "color": [
+          170,
+          174,
+          182
+        ]
+      }
+    },
+    "assets": {},
+    "truss_connections": [],
+    "fixture_attachments": [],
+    "next_object_id": 9,
+    "next_asset_id": 3
+  },
+  "ui": {
+    "main_screen_desktop_mode": {
+      "width": 472.0,
+      "height": 512.0,
+      "layout": {
+        "Split": {
+          "axis": "Vertical",
+          "fraction": 0.5,
+          "first": {
+            "Split": {
+              "axis": "Horizontal",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "System",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Audio",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "View",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "ViewPerformance",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 0,
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 1,
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 2,
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 6
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "SceneGraph",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Palettes",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Visualizer",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Animations",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Logs",
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 2
+                }
+              }
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Horizontal",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "FixturesSetup",
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "FixturesPerformance",
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "external_screens": [
+      {
+        "width": 1200.0,
+        "height": 1920.0,
+        "layout": {
+          "Split": {
+            "axis": "Horizontal",
+            "fraction": 0.5,
+            "first": {
+              "Split": {
+                "axis": "Vertical",
+                "fraction": 0.5,
+                "first": {
+                  "Leaf": {
+                    "tabs": [
+                      {
+                        "page": "Logs",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "System",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "Audio",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "FixturesSetup",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "View",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "ViewPerformance",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "FixturesPerformance",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "Palettes",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "page": "SceneGraph",
+                        "render_mode": "Default"
+                      },
+                      {
+                        "plugin_id": 0,
+                        "render_mode": "Default"
+                      },
+                      {
+                        "plugin_id": 1,
+                        "render_mode": "Default"
+                      }
+                    ],
+                    "active": 6
+                  }
+                },
+                "second": {
+                  "Leaf": {
+                    "tabs": [
+                      {
+                        "page": "Animations",
+                        "render_mode": "Default"
+                      }
+                    ],
+                    "active": 0
+                  }
+                }
+              }
+            },
+            "second": {
+              "Leaf": {
+                "tabs": [
+                  {
+                    "page": "Visualizer",
+                    "render_mode": "Default"
+                  }
+                ],
+                "active": 0
+              }
+            }
+          }
+        }
+      },
+      {
+        "width": 232.0,
+        "height": 251.0,
+        "layout": {
+          "Leaf": {
+            "tabs": [
+              {
+                "page": "Logs",
+                "render_mode": "Default"
+              },
+              {
+                "page": "System",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Audio",
+                "render_mode": "Default"
+              },
+              {
+                "page": "FixturesSetup",
+                "render_mode": "Default"
+              },
+              {
+                "page": "View",
+                "render_mode": "Default"
+              },
+              {
+                "page": "ViewPerformance",
+                "render_mode": "Default"
+              },
+              {
+                "page": "FixturesPerformance",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Animations",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Palettes",
+                "render_mode": "Default"
+              },
+              {
+                "page": "SceneGraph",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Visualizer",
+                "render_mode": "Default"
+              },
+              {
+                "plugin_id": 0,
+                "render_mode": "Default"
+              },
+              {
+                "plugin_id": 1,
+                "render_mode": "Default"
+              }
+            ],
+            "active": 1
+          }
+        }
+      },
+      {
+        "width": 469.0,
+        "height": 254.0,
+        "layout": {
+          "Leaf": {
+            "tabs": [
+              {
+                "page": "Logs",
+                "render_mode": "Default"
+              },
+              {
+                "page": "System",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Audio",
+                "render_mode": "Default"
+              },
+              {
+                "page": "FixturesSetup",
+                "render_mode": "Default"
+              },
+              {
+                "page": "View",
+                "render_mode": "Default"
+              },
+              {
+                "page": "ViewPerformance",
+                "render_mode": "Default"
+              },
+              {
+                "page": "FixturesPerformance",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Animations",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Palettes",
+                "render_mode": "Default"
+              },
+              {
+                "page": "SceneGraph",
+                "render_mode": "Default"
+              },
+              {
+                "page": "Visualizer",
+                "render_mode": "Default"
+              },
+              {
+                "plugin_id": 0,
+                "render_mode": "Default"
+              },
+              {
+                "plugin_id": 1,
+                "render_mode": "Default"
+              }
+            ],
+            "active": 1
+          }
+        }
+      }
+    ]
+  }
+}

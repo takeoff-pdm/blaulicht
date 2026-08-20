@@ -8,9 +8,10 @@ use blaulicht_shared::{
     fixture::{state::FixtureState, value::FixtureValue},
     palette::Palette,
     AnimationSpec, AnimationSpecBody, AudioModulationSignal, AudioSourceStatus, FixtureProperty,
-    PhaserDuration,
+    FlashAnimationSpec, FlashWindowLayout, PhaserDuration,
 };
 pub use phaser::*;
+use rand::seq::SliceRandom;
 use std::{
     collections::{hash_map::DefaultHasher, BTreeMap, HashMap},
     hash::{Hash, Hasher},
@@ -285,6 +286,7 @@ fn align_period(reference: f64, candidate: f64) -> f64 {
 pub(crate) struct AnimationClockRuntime {
     fixture_phases: HashMap<AnimationRuntimeKey, FixturePhaseRuntime>,
     modulation_layers: HashMap<AnimationLayerKey, AudioModulationRuntime>,
+    flash_layers: HashMap<AnimationLayerKey, FlashAnimationRuntime>,
     beat_clock: MusicalBeatClock,
     generation: u64,
     fixture_scratch: Vec<(u8, u8)>,
@@ -305,6 +307,206 @@ impl AnimationClockRuntime {
             .retain(|_, runtime| runtime.seen_generation == generation);
         self.modulation_layers
             .retain(|_, runtime| runtime.seen_generation == generation);
+        self.flash_layers
+            .retain(|_, runtime| runtime.seen_generation == generation);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum FlashPhase {
+    #[default]
+    Off,
+    On,
+}
+
+#[derive(Debug, Default)]
+struct FlashAnimationRuntime {
+    phase: FlashPhase,
+    phase_started_ms: u64,
+    phase_started_beats: f64,
+    initialized: bool,
+    window_cursor: usize,
+    windows: Vec<Vec<usize>>,
+    window_order: Vec<usize>,
+    window_size: usize,
+    window_layout: FlashWindowLayout,
+    random_order: bool,
+    beat_aligned: bool,
+    reverse_after_n_iterations: Option<u32>,
+    reversed: bool,
+    completed_sweeps: u32,
+    fixture_count: usize,
+    seen_generation: u64,
+}
+
+fn flash_windows(
+    fixture_count: usize,
+    window_size: usize,
+    layout: FlashWindowLayout,
+) -> Vec<Vec<usize>> {
+    if fixture_count == 0 {
+        return Vec::new();
+    }
+    let window_size = window_size.max(1).min(fixture_count);
+    let window_count = fixture_count.div_ceil(window_size);
+    let mut windows = vec![Vec::new(); window_count];
+
+    match layout {
+        FlashWindowLayout::Contiguous => {
+            for fixture_index in 0..fixture_count {
+                windows[fixture_index / window_size].push(fixture_index);
+            }
+        }
+        FlashWindowLayout::Spaced => {
+            for fixture_index in 0..fixture_count {
+                windows[fixture_index % window_count].push(fixture_index);
+            }
+        }
+    }
+    windows
+}
+
+impl FlashAnimationRuntime {
+    fn reset(
+        &mut self,
+        now_ms: u64,
+        beat_position: Option<f64>,
+        fixture_count: usize,
+        spec: &FlashAnimationSpec,
+        gap_speed: f64,
+    ) {
+        self.phase = FlashPhase::Off;
+        self.phase_started_ms = now_ms;
+        self.phase_started_beats = beat_position.unwrap_or_default();
+        self.initialized = true;
+        self.window_cursor = 0;
+        self.fixture_count = fixture_count;
+        self.window_size = usize::from(spec.window_size.max(1));
+        self.window_layout = spec.window_layout;
+        self.random_order = spec.random_order;
+        self.beat_aligned = spec.beat_aligned;
+        self.reverse_after_n_iterations = spec.reverse_after_n_iterations;
+        self.reversed = false;
+        self.completed_sweeps = 0;
+        self.windows = flash_windows(fixture_count, self.window_size, self.window_layout);
+        self.window_order = (0..self.windows.len()).collect();
+        self.prepare_sweep();
+
+        if spec.beat_aligned {
+            let off_beats = (spec.off_time_beats.as_float() * gap_speed).max(f64::EPSILON);
+            if let Some(position) = beat_position {
+                let next_boundary = ((position / off_beats).floor() + 1.0) * off_beats;
+                self.phase_started_beats = next_boundary - off_beats;
+            }
+        }
+    }
+
+    fn prepare_sweep(&mut self) {
+        self.window_order.clear();
+        self.window_order.extend(0..self.windows.len());
+        if self.random_order && self.window_order.len() > 1 {
+            self.window_order.shuffle(&mut rand::rng());
+        } else if self.reversed {
+            self.window_order.reverse();
+        }
+    }
+
+    fn advance_phase(&mut self) {
+        match self.phase {
+            FlashPhase::Off => self.phase = FlashPhase::On,
+            FlashPhase::On => {
+                self.phase = FlashPhase::Off;
+                self.window_cursor += 1;
+                if self.window_cursor >= self.window_order.len() {
+                    self.window_cursor = 0;
+                    self.completed_sweeps = self.completed_sweeps.saturating_add(1);
+                    if !self.random_order {
+                        if let Some(n) = self.reverse_after_n_iterations.filter(|n| *n > 0) {
+                            if self.completed_sweeps % n == 0 {
+                                self.reversed = !self.reversed;
+                            }
+                        }
+                    }
+                    self.prepare_sweep();
+                }
+            }
+        }
+    }
+
+    fn tick(
+        &mut self,
+        now_ms: u64,
+        beat_position: Option<f64>,
+        fixture_count: usize,
+        spec: &FlashAnimationSpec,
+        gap_speed: f64,
+    ) -> Option<&[usize]> {
+        let structural_change = self.fixture_count != fixture_count
+            || self.window_size != usize::from(spec.window_size.max(1))
+            || self.window_layout != spec.window_layout
+            || self.random_order != spec.random_order
+            || self.beat_aligned != spec.beat_aligned
+            || self.reverse_after_n_iterations != spec.reverse_after_n_iterations;
+        if !self.initialized || structural_change {
+            self.reset(now_ms, beat_position, fixture_count, spec, gap_speed);
+        }
+
+        let mut transitions = 0;
+        if spec.beat_aligned {
+            let Some(beat_position) = beat_position else {
+                self.initialized = false;
+                self.phase = FlashPhase::Off;
+                return None;
+            };
+            let off_duration = (spec.off_time_beats.as_float() * gap_speed).max(f64::EPSILON);
+            let on_duration = spec.on_time_beats.as_float().max(f64::EPSILON);
+            loop {
+                let duration = match self.phase {
+                    FlashPhase::Off => off_duration,
+                    FlashPhase::On => on_duration,
+                };
+                if beat_position - self.phase_started_beats + f64::EPSILON < duration {
+                    break;
+                }
+                self.phase_started_beats += duration;
+                self.advance_phase();
+                transitions += 1;
+                if transitions >= 10_000 {
+                    self.reset(now_ms, Some(beat_position), fixture_count, spec, gap_speed);
+                    break;
+                }
+            }
+        } else {
+            let off_duration = ((spec.off_time_ms.max(1) as f64) * gap_speed)
+                .round()
+                .max(1.0) as u64;
+            let on_duration = spec.on_time_ms.max(1);
+            loop {
+                let duration = match self.phase {
+                    FlashPhase::Off => off_duration,
+                    FlashPhase::On => on_duration,
+                };
+                if now_ms.saturating_sub(self.phase_started_ms) < duration {
+                    break;
+                }
+                self.phase_started_ms = self.phase_started_ms.saturating_add(duration);
+                self.advance_phase();
+                transitions += 1;
+                if transitions >= 10_000 {
+                    self.reset(now_ms, None, fixture_count, spec, gap_speed);
+                    break;
+                }
+            }
+        }
+
+        if self.phase == FlashPhase::On {
+            self.window_order
+                .get(self.window_cursor)
+                .and_then(|window_index| self.windows.get(*window_index))
+                .map(Vec::as_slice)
+        } else {
+            None
+        }
     }
 }
 
@@ -374,6 +576,10 @@ fn generate_absolute_value(
             Some((audio_snapshot.snapshot.beat_trigger as u16) * 255)
         }
         AnimationSpecBody::Wasm(_) => Some(0),
+        AnimationSpecBody::WasmPlugin(_) => None,
+        // Flash animations are generated once per selection in `tick`, not
+        // independently from each fixture's phase.
+        AnimationSpecBody::FlashAnimation(_) => None,
     }
 }
 
@@ -452,9 +658,15 @@ fn legacy_spectrum_value(
 impl DmxEngine {
     pub fn animation_tick(&mut self, audio_snapshot: &CollectorOutput) {
         let now_ms = self.start_time.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let wasm_outputs = self
+            .state_ref
+            .wasm_animation_outputs
+            .read()
+            .unwrap()
+            .clone();
         let mut state = self.state_ref.dmx_engine.write().unwrap();
         self.animation_clock
-            .tick(now_ms, &mut state.0, audio_snapshot);
+            .tick_with_wasm(now_ms, &mut state.0, audio_snapshot, &wasm_outputs);
     }
 }
 
@@ -462,11 +674,15 @@ impl AnimationClockRuntime {
     /// Advances every enabled animation in `state` and rebuilds this frame's
     /// transient output. Authored `fixture_states` are only read, never written
     /// — the write borrow is for the per-fixture phase timers.
-    pub(crate) fn tick(
+    pub(crate) fn tick_with_wasm(
         &mut self,
         now_ms: u64,
         state: &mut blaulicht_shared::EngineState,
         audio_snapshot: &CollectorOutput,
+        wasm_outputs: &HashMap<
+            crate::state::WasmAnimationInstanceKey,
+            blaulicht_shared::AnimationTickOutput,
+        >,
     ) {
         self.beat_clock.update(now_ms, &audio_snapshot.snapshot);
         let beat_position = self.beat_clock.beat_position;
@@ -495,6 +711,110 @@ impl AnimationClockRuntime {
                     );
                     let fixture_count = self.fixture_scratch.len();
                     if fixture_count == 0 {
+                        continue;
+                    }
+
+                    if matches!(animation.spec_cloned.body, AnimationSpecBody::WasmPlugin(_)) {
+                        self.fixture_scratch.sort_unstable();
+                        let instance_key = crate::state::WasmAnimationInstanceKey {
+                            scene_id: *scene_id,
+                            animation_id: *animation_id,
+                            fixtures: self.fixture_scratch.clone(),
+                        };
+                        if let Some(output) = wasm_outputs.get(&instance_key) {
+                            for write in &output.writes {
+                                let Some(target_fixture) = self
+                                    .fixture_scratch
+                                    .get(write.fixture_index as usize)
+                                    .copied()
+                                else {
+                                    continue;
+                                };
+                                let Some(fixture_state) =
+                                    scene.sink.fixture_states.get(&target_fixture)
+                                else {
+                                    continue;
+                                };
+                                if fixture_state.slot(write.property).is_frozen() {
+                                    continue;
+                                }
+                                let maximum = if write.property == FixtureProperty::ColorHue {
+                                    360
+                                } else {
+                                    255
+                                };
+                                self.outputs
+                                    .entry(ModulationTarget {
+                                        scene_id: *scene_id,
+                                        fixture: target_fixture,
+                                        property: write.property,
+                                    })
+                                    .absolute = Some(write.value.min(maximum));
+                            }
+                        }
+                        continue;
+                    }
+
+                    if let AnimationSpecBody::FlashAnimation(spec) = &animation.spec_cloned.body {
+                        self.fixture_scratch.sort_unstable();
+                        let layer_key = AnimationLayerKey {
+                            scene_id: *scene_id,
+                            selection_fingerprint,
+                            animation_id: *animation_id,
+                        };
+                        let runtime = self.flash_layers.entry(layer_key).or_default();
+                        runtime.seen_generation = generation;
+                        let gap_speed = animation.speed_factor.as_float() * scene_speed;
+                        let needs_reset = animation
+                            .fixture_timers
+                            .values()
+                            .any(|timer| timer.last_tick_time == 0);
+                        if needs_reset {
+                            runtime.reset(
+                                now_ms,
+                                tempo_period_ms.map(|_| beat_position),
+                                fixture_count,
+                                spec,
+                                gap_speed,
+                            );
+                        }
+                        let active_fixture_indices = runtime
+                            .tick(
+                                now_ms,
+                                tempo_period_ms.map(|_| beat_position),
+                                fixture_count,
+                                spec,
+                                gap_speed,
+                            )
+                            .map(<[usize]>::to_vec)
+                            .unwrap_or_default();
+                        for timer in animation.fixture_timers.values_mut() {
+                            timer.last_tick_time = now_ms.max(1);
+                            timer.timer = now_ms.saturating_sub(runtime.phase_started_ms);
+                            timer.needs_reset_on_beat = false;
+                        }
+                        let property = animation.spec_cloned.property;
+                        let min = spec.amplitude_min.resolve(&palettes_snapshot, property);
+                        let max = spec.amplitude_max.resolve(&palettes_snapshot, property);
+
+                        for fixture_index in 0..fixture_count {
+                            let target_fixture = self.fixture_scratch[fixture_index];
+                            if !scene.sink.fixture_states.contains_key(&target_fixture) {
+                                continue;
+                            }
+                            let value = if active_fixture_indices.contains(&fixture_index) {
+                                max
+                            } else {
+                                min
+                            };
+                            self.outputs
+                                .entry(ModulationTarget {
+                                    scene_id: *scene_id,
+                                    fixture: target_fixture,
+                                    property,
+                                })
+                                .absolute = Some(value);
+                        }
                         continue;
                     }
 
@@ -631,6 +951,16 @@ impl AnimationClockRuntime {
             }
         }
         self.retain_current_generation();
+    }
+
+    #[cfg(test)]
+    fn tick(
+        &mut self,
+        now_ms: u64,
+        state: &mut blaulicht_shared::EngineState,
+        audio_snapshot: &CollectorOutput,
+    ) {
+        self.tick_with_wasm(now_ms, state, audio_snapshot, &HashMap::new());
     }
 }
 
@@ -770,6 +1100,102 @@ mod tests {
     }
 
     #[test]
+    fn flash_windows_partition_contiguously_without_repeats() {
+        assert_eq!(
+            flash_windows(5, 2, FlashWindowLayout::Contiguous),
+            vec![vec![0, 1], vec![2, 3], vec![4]]
+        );
+        assert_eq!(
+            flash_windows(3, 99, FlashWindowLayout::Contiguous),
+            vec![vec![0, 1, 2]]
+        );
+    }
+
+    #[test]
+    fn flash_windows_space_opposite_fixtures_and_keep_a_smaller_remainder() {
+        assert_eq!(
+            flash_windows(8, 2, FlashWindowLayout::Spaced),
+            vec![vec![0, 4], vec![1, 5], vec![2, 6], vec![3, 7]]
+        );
+        assert_eq!(
+            flash_windows(5, 2, FlashWindowLayout::Spaced),
+            vec![vec![0, 3], vec![1, 4], vec![2]]
+        );
+    }
+
+    #[test]
+    fn flash_runtime_starts_dark_and_keeps_on_time_independent_of_gap_speed() {
+        let spec = FlashAnimationSpec {
+            off_time_ms: 100,
+            on_time_ms: 50,
+            window_size: 1,
+            ..Default::default()
+        };
+        let mut runtime = FlashAnimationRuntime::default();
+
+        assert_eq!(runtime.tick(0, None, 2, &spec, 2.0), None);
+        assert_eq!(runtime.tick(199, None, 2, &spec, 2.0), None);
+        assert_eq!(runtime.tick(200, None, 2, &spec, 2.0), Some(&[0][..]));
+        assert_eq!(runtime.tick(249, None, 2, &spec, 2.0), Some(&[0][..]));
+        assert_eq!(runtime.tick(250, None, 2, &spec, 2.0), None);
+        assert_eq!(runtime.tick(449, None, 2, &spec, 2.0), None);
+        assert_eq!(runtime.tick(450, None, 2, &spec, 2.0), Some(&[1][..]));
+    }
+
+    #[test]
+    fn random_flash_sweeps_are_permutations_without_replacement() {
+        let spec = FlashAnimationSpec {
+            random_order: true,
+            window_size: 1,
+            ..Default::default()
+        };
+        let mut runtime = FlashAnimationRuntime::default();
+        runtime.reset(0, None, 8, &spec, 1.0);
+        let mut order = runtime.window_order.clone();
+        order.sort_unstable();
+        assert_eq!(order, (0..8).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn beat_aligned_flash_uses_sub_beat_boundaries_and_waits_for_tempo() {
+        let spec = FlashAnimationSpec {
+            beat_aligned: true,
+            off_time_beats: blaulicht_shared::AnimationSpeedModifier::_2,
+            on_time_beats: blaulicht_shared::AnimationSpeedModifier::_4,
+            window_size: 1,
+            ..Default::default()
+        };
+        let mut runtime = FlashAnimationRuntime::default();
+
+        assert_eq!(runtime.tick(0, None, 2, &spec, 1.0), None);
+        assert_eq!(runtime.tick(0, Some(0.10), 2, &spec, 1.0), None);
+        assert_eq!(runtime.tick(0, Some(0.49), 2, &spec, 1.0), None);
+        assert_eq!(runtime.tick(0, Some(0.50), 2, &spec, 1.0), Some(&[0][..]));
+        assert_eq!(runtime.tick(0, Some(0.74), 2, &spec, 1.0), Some(&[0][..]));
+        assert_eq!(runtime.tick(0, Some(0.75), 2, &spec, 1.0), None);
+        assert_eq!(runtime.tick(0, Some(1.25), 2, &spec, 1.0), Some(&[1][..]));
+    }
+
+    #[test]
+    fn sequential_flash_reverses_after_configured_sweeps() {
+        let spec = FlashAnimationSpec {
+            beat_aligned: true,
+            off_time_beats: blaulicht_shared::AnimationSpeedModifier::_4,
+            on_time_beats: blaulicht_shared::AnimationSpeedModifier::_4,
+            window_size: 1,
+            reverse_after_n_iterations: Some(1),
+            ..Default::default()
+        };
+        let mut runtime = FlashAnimationRuntime::default();
+
+        assert_eq!(runtime.tick(0, Some(0.0), 3, &spec, 1.0), None);
+        assert_eq!(runtime.tick(0, Some(0.25), 3, &spec, 1.0), Some(&[0][..]));
+        assert_eq!(runtime.tick(0, Some(0.75), 3, &spec, 1.0), Some(&[1][..]));
+        assert_eq!(runtime.tick(0, Some(1.25), 3, &spec, 1.0), Some(&[2][..]));
+        assert_eq!(runtime.tick(0, Some(1.75), 3, &spec, 1.0), Some(&[2][..]));
+    }
+
+    #[test]
     fn intentional_beat_division_mapping_is_unchanged() {
         use blaulicht_shared::AnimationSpeedModifier;
 
@@ -865,6 +1291,74 @@ mod modulation_tests {
                 blend,
             }),
         }
+    }
+
+    #[test]
+    fn wasm_animation_writes_multiple_properties_and_clamps_values() {
+        let mut state = engine_with_two_fixtures();
+        let fixtures = vec![FIXTURE_A, FIXTURE_B];
+        add_animation(
+            &mut state,
+            SCENE,
+            7,
+            fixtures.clone(),
+            AnimationSpec {
+                name: "WASM".to_string(),
+                property: FixtureProperty::Alpha,
+                body: AnimationSpecBody::WasmPlugin(blaulicht_shared::WasmAnimationSpec {
+                    plugin_key: "test.animation".to_string(),
+                }),
+            },
+        );
+        let key = crate::state::WasmAnimationInstanceKey {
+            scene_id: SCENE,
+            animation_id: 7,
+            fixtures,
+        };
+        let wasm = HashMap::from([(
+            key,
+            blaulicht_shared::AnimationTickOutput {
+                writes: vec![
+                    blaulicht_shared::AnimationPropertyWrite {
+                        fixture_index: 0,
+                        property: FixtureProperty::Alpha,
+                        value: 999,
+                    },
+                    blaulicht_shared::AnimationPropertyWrite {
+                        fixture_index: 1,
+                        property: FixtureProperty::ColorHue,
+                        value: 999,
+                    },
+                ],
+            },
+        )]);
+        let mut runtime = AnimationClockRuntime::default();
+        runtime.tick_with_wasm(25, &mut state, &CollectorOutput::default(), &wasm);
+
+        assert_eq!(
+            runtime
+                .outputs
+                .get(&ModulationTarget {
+                    scene_id: SCENE,
+                    fixture: FIXTURE_A,
+                    property: FixtureProperty::Alpha,
+                })
+                .unwrap()
+                .absolute,
+            Some(255)
+        );
+        assert_eq!(
+            runtime
+                .outputs
+                .get(&ModulationTarget {
+                    scene_id: SCENE,
+                    fixture: FIXTURE_B,
+                    property: FixtureProperty::ColorHue,
+                })
+                .unwrap()
+                .absolute,
+            Some(360)
+        );
     }
 
     fn phaser_spec(property: FixtureProperty, min: u16, max: u16) -> AnimationSpec {
@@ -1441,5 +1935,97 @@ mod modulation_tests {
             Some(255)
         );
         assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_A), 255);
+    }
+
+    #[test]
+    fn flash_animation_drives_any_property_and_inserts_dark_gaps_between_windows() {
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            vec![FIXTURE_A, FIXTURE_B],
+            AnimationSpec {
+                name: "Hue flash".to_string(),
+                property: FixtureProperty::ColorHue,
+                body: AnimationSpecBody::FlashAnimation(FlashAnimationSpec {
+                    amplitude_min: FixtureValue::Literal(10),
+                    amplitude_max: FixtureValue::Literal(300),
+                    off_time_ms: 100,
+                    on_time_ms: 100,
+                    beat_aligned: false,
+                    off_time_beats: blaulicht_shared::AnimationSpeedModifier::_1,
+                    on_time_beats: blaulicht_shared::AnimationSpeedModifier::_1,
+                    window_size: 1,
+                    window_layout: FlashWindowLayout::Contiguous,
+                    random_order: false,
+                    reverse_after_n_iterations: None,
+                }),
+            },
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = silent_disconnected_audio();
+        clock.tick(0, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+
+        clock.tick(100, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::ColorHue).absolute,
+            Some(300)
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+
+        clock.tick(200, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+
+        clock.tick(300, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
+            Some(300)
+        );
+
+        let animation = state
+            .scenes
+            .get_mut(&SCENE)
+            .unwrap()
+            .sink
+            .active_animations
+            .values_mut()
+            .next()
+            .unwrap()
+            .get_mut(&0)
+            .unwrap();
+        animation.reset_timers(SyncMode::Synced);
+        clock.tick(350, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
+            Some(10)
+        );
     }
 }

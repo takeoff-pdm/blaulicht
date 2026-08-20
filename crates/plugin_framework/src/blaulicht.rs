@@ -1,6 +1,15 @@
 // Wasm imports
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
+    fn bl_register_plugin_kind(
+        plugin_id: i32,
+        kind: i32,
+        key_ptr: *const u8,
+        key_len: i32,
+        name_ptr: *const u8,
+        name_len: i32,
+    );
+
     fn log(plugin_id: u8, ptr: *const u8, len: usize, log_level: i32);
     fn sys(plugin_id: u8, ptr: *const u8, len: usize, output_ptr: *mut u8, output_len: usize);
     fn udp(
@@ -213,6 +222,19 @@ extern "C" {
     fn ui_list_external_screens(plugin_id: u8, buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn ui_create_external_screen(plugin_id: u8, width: i32, height: i32) -> i32;
     fn ui_remove_external_screen(plugin_id: u8, index: i32) -> i32;
+}
+
+pub(crate) fn register_plugin_kind(kind: i32, key: &str, name: &str) {
+    unsafe {
+        bl_register_plugin_kind(
+            PLUGIN_ID.into(),
+            kind,
+            key.as_ptr(),
+            key.len() as i32,
+            name.as_ptr(),
+            name.len() as i32,
+        );
+    }
 }
 
 pub fn bl_open_midi_device_safe(device_name: &str) -> u8 {

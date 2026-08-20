@@ -1,17 +1,18 @@
 use std::{
     array,
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     net::SocketAddr,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex, RwLock,
     },
     time::Duration,
+    time::Instant,
 };
 
 use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
-use blaulicht_shared::ExternalScreenInfo;
+use blaulicht_shared::{AnimationTickOutput, ExternalScreenInfo};
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
@@ -250,6 +251,31 @@ pub struct PluginOpenState {
     pub open: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginRuntimeKind {
+    Unregistered,
+    Normal,
+    Animation {
+        stable_key: String,
+        display_name: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WasmAnimationInstanceKey {
+    pub scene_id: u8,
+    pub animation_id: u8,
+    pub fixtures: Vec<(u8, u8)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WasmAnimationEditorRequest {
+    pub plugin_key: String,
+    pub instance_id: u64,
+    pub fixtures: Vec<(u8, u8)>,
+    pub last_seen: Instant,
+}
+
 impl PluginOpenState {
     pub const CLOSED: Self = Self {
         screen_id: ScreenId::MAIN,
@@ -280,6 +306,14 @@ pub struct AppState {
     pub plugin_ui_popped_out: RwLock<HashMap<u8, bool>>, // per-plugin UI window pop-out state
     pub plugin_ui_maximize_requested: RwLock<HashMap<u8, bool>>, // one-shot per-plugin viewport maximize request
     pub plugin_ui_tabs_selected: RwLock<HashMap<(u8, u8), u8>>,  // (plugin_id, tabs_id) -> tab_id
+    pub plugin_runtime_kinds: RwLock<HashMap<u8, PluginRuntimeKind>>,
+    /// Set only while a WASM call is executing; host state/UI imports use it
+    /// to scope otherwise unchanged plugin APIs to an animation instance.
+    pub plugin_execution_instances: RwLock<HashMap<u8, u64>>,
+    pub wasm_animation_outputs: RwLock<HashMap<WasmAnimationInstanceKey, AnimationTickOutput>>,
+    pub wasm_animation_ui_ops: RwLock<HashMap<u64, Vec<WasmUiOp>>>,
+    pub wasm_animation_editor_requests: RwLock<HashMap<u64, WasmAnimationEditorRequest>>,
+    pub wasm_animation_instances_to_reset: Mutex<HashSet<u64>>,
     pub external_screens: RwLock<Vec<ExternalScreenInfo>>,
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
@@ -346,6 +380,18 @@ impl AppState {
             plugin_ui_popped_out: RwLock::new(plugin_ui_popped_out),
             plugin_ui_maximize_requested: RwLock::new(HashMap::new()),
             plugin_ui_tabs_selected: RwLock::new(HashMap::new()),
+            plugin_runtime_kinds: RwLock::new(
+                plugins
+                    .iter()
+                    .enumerate()
+                    .map(|(id, _)| (id as u8, PluginRuntimeKind::Unregistered))
+                    .collect(),
+            ),
+            plugin_execution_instances: RwLock::new(HashMap::new()),
+            wasm_animation_outputs: RwLock::new(HashMap::new()),
+            wasm_animation_ui_ops: RwLock::new(HashMap::new()),
+            wasm_animation_editor_requests: RwLock::new(HashMap::new()),
+            wasm_animation_instances_to_reset: Mutex::new(HashSet::new()),
             external_screens: RwLock::new(Vec::new()),
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),

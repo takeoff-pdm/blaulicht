@@ -7,7 +7,7 @@ default_audio_device = "pipewire"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/work/private/blaulicht/17.01_migrated.json"
+last_open_showfile = "/home/mik/work/private/blaulicht/crates/core/test.json"
 
 [stream]
 channel_count = 2
@@ -33,6 +33,16 @@ enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/led_tubes.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/sample_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/chaos_animation_plugin.wasm"
 enabled = true
 enable_watcher = true
 

@@ -1,11 +1,11 @@
-use crate::ControlEventCollection;
-use bincode::{Decode, Encode, config};
+use crate::{AnimationSpeedModifier, ControlEventCollection, FixtureProperty};
+use bincode::{config, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
 
 /// Binary protocol version used for host-to-plugin snapshots.
-pub const PLUGIN_ABI_VERSION: u32 = 3;
+pub const PLUGIN_ABI_VERSION: u32 = 4;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
@@ -14,6 +14,41 @@ pub struct TickInput {
     pub initial: bool,
     pub audio_data: CollectedAudioSnapshot,
     pub events: ControlEventCollection,
+}
+
+/// Host-only dispatch envelope. Normal plugins receive only [`TickInput`]; the
+/// framework unwraps the animation context before calling user code.
+#[derive(Clone, Encode, Decode, Default)]
+pub struct PluginTickInput {
+    pub common: TickInput,
+    pub animation: Option<AnimationTickInput>,
+}
+
+#[derive(Clone, Debug, Encode, Decode, PartialEq)]
+pub struct AnimationTickInput {
+    /// Stable for the lifetime of one in-memory template/editor/runtime object.
+    pub instance_id: u64,
+    pub scene_id: Option<u8>,
+    pub animation_id: u8,
+    /// Fixture order used by [`AnimationPropertyWrite::fixture_index`].
+    pub fixtures: Vec<(u8, u8)>,
+    pub paused: bool,
+    pub editor: bool,
+    pub delta_ms: u32,
+    pub speed_factor: AnimationSpeedModifier,
+    pub scene_speed_factor: AnimationSpeedModifier,
+}
+
+#[derive(Clone, Copy, Debug, Encode, Decode, PartialEq, Eq)]
+pub struct AnimationPropertyWrite {
+    pub fixture_index: u32,
+    pub property: FixtureProperty,
+    pub value: u16,
+}
+
+#[derive(Clone, Debug, Encode, Decode, Default, PartialEq, Eq)]
+pub struct AnimationTickOutput {
+    pub writes: Vec<AnimationPropertyWrite>,
 }
 
 /// State of the audio source as observed by the analysis worker.
@@ -179,6 +214,67 @@ impl TickInput {
         };
 
         data
+    }
+}
+
+impl PluginTickInput {
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, config::standard()).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Self {
+        bincode::decode_from_slice(buf, config::standard())
+            .map(|(value, _)| value)
+            .unwrap_or_else(|err| panic!("PluginTickInput deserialize error: {err}"))
+    }
+}
+
+impl AnimationTickOutput {
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, config::standard()).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Self {
+        bincode::decode_from_slice(buf, config::standard())
+            .map(|(value, _)| value)
+            .unwrap_or_else(|err| panic!("AnimationTickOutput deserialize error: {err}"))
+    }
+}
+
+#[cfg(test)]
+mod animation_abi_tests {
+    use super::*;
+
+    #[test]
+    fn animation_tick_envelope_and_output_round_trip() {
+        let envelope = PluginTickInput {
+            common: TickInput::default(),
+            animation: Some(AnimationTickInput {
+                instance_id: 42,
+                scene_id: Some(3),
+                animation_id: 7,
+                fixtures: vec![(1, 2), (1, 3)],
+                paused: true,
+                editor: false,
+                delta_ms: 12,
+                speed_factor: AnimationSpeedModifier::_2,
+                scene_speed_factor: AnimationSpeedModifier::_1,
+            }),
+        };
+        let decoded = PluginTickInput::deserialize(&envelope.serialize());
+        assert_eq!(decoded.animation.unwrap().instance_id, 42);
+
+        let output = AnimationTickOutput {
+            writes: vec![AnimationPropertyWrite {
+                fixture_index: 1,
+                property: FixtureProperty::Pan,
+                value: 900,
+            }],
+        };
+        assert_eq!(
+            AnimationTickOutput::deserialize(&output.serialize()),
+            output
+        );
     }
 }
 

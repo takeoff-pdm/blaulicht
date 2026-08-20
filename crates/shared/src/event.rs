@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-use bincode::{Decode, Encode, config};
+use bincode::{config, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{AnimationSpec, MainUiEvent, palette::PaletteKind, scene::FixtureSelection};
+use crate::{palette::PaletteKind, scene::FixtureSelection, AnimationSpec, MainUiEvent};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -326,6 +326,9 @@ pub enum ControlEvent {
     // Scene graph enable/disable.
     SetSceneGraphEnabled(u8, bool),
     ToggleSceneGraphEnabled(u8),
+    /// UI interaction routed to one isolated WASM animation object. Appended
+    /// to preserve the bincode indices of existing control events.
+    AnimationPluginUi(PluginUiEvent, u8, u64),
 }
 
 impl ControlEvent {
@@ -357,6 +360,7 @@ impl ControlEvent {
             | ControlEvent::RemoveChannelOverride(_, _)
             | ControlEvent::MainUi(_)
             | ControlEvent::PluginUi(_, _)
+            | ControlEvent::AnimationPluginUi(_, _, _)
             | ControlEvent::CreatePalette(_, _)
             | ControlEvent::UpdatePalette(_, _)
             | ControlEvent::DeletePalette(_)
@@ -520,6 +524,7 @@ impl ControlEvent {
             ControlEvent::SetChannelOverride(_, _, _) => false,
             ControlEvent::RemoveChannelOverride(_, _) => false,
             ControlEvent::PluginUi(_, _) => false,
+            ControlEvent::AnimationPluginUi(_, _, _) => false,
             ControlEvent::MainUi(_) => false,
             ControlEvent::CreatePalette(_, _) => false,
             ControlEvent::UpdatePalette(_, _) => false,

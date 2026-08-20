@@ -8,13 +8,13 @@ use blaulicht_shared::SerialReceived;
 #[cfg(feature = "wasmtime")]
 use blaulicht_shared::SerialReceived;
 use blaulicht_shared::{
-    CollectedAudioSnapshot, ControlEventCollection, LogLevel, TickInput, UdpReceived,
-    ENGINE_STATE_BUFFER_LEN,
+    AnimationTickInput, AnimationTickOutput, CollectedAudioSnapshot, ControlEventCollection,
+    PluginTickInput, TickInput, UdpReceived, ENGINE_STATE_BUFFER_LEN,
 };
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -22,6 +22,34 @@ const MAX_MIDI_EVENTS: usize = 100;
 const STATE_BUFFER_CAPACITY: usize = 1024 * 100;
 const SERIAL_BUFFER_CAPACITY: usize = 1000 * 1024;
 const UDP_BUFFER_CAPACITY: usize = 256 * 1024;
+
+pub(crate) fn stable_animation_instance_id(
+    plugin_key: &str,
+    scene_id: u8,
+    animation_id: u8,
+    fixtures: &[(u8, u8)],
+) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in plugin_key
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain([scene_id, animation_id])
+        .chain(
+            fixtures
+                .iter()
+                .flat_map(|(group, fixture)| [*group, *fixture]),
+        )
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash.max(1)
+}
+
+pub(crate) fn stable_animation_template_id(plugin_key: &str, animation_id: u8) -> u64 {
+    stable_animation_instance_id(plugin_key, u8::MAX, animation_id, &[])
+}
 
 ///
 /// Mock implementation
@@ -120,6 +148,18 @@ impl PluginManager {
             // TODO: the active plugins function is probably extremely slow.
             let active_plugins = self.active_plugins();
             for plugin_key in active_plugins {
+                if !self.is_initial_tick
+                    && !matches!(
+                        self.state_ref
+                            .plugin_runtime_kinds
+                            .read()
+                            .unwrap()
+                            .get(&plugin_key),
+                        Some(crate::state::PluginRuntimeKind::Normal)
+                    )
+                {
+                    continue;
+                }
                 // Generate tick input.
                 let input = TickInput {
                     id: plugin_key,
@@ -127,7 +167,16 @@ impl PluginManager {
                     initial: self.is_initial_tick,
                     audio_data: audio_data.clone(),
                     events: ControlEventCollection {
-                        events: events.clone(),
+                        events: events
+                            .iter()
+                            .filter(|message| {
+                                !matches!(
+                                    message.body(),
+                                    blaulicht_shared::ControlEvent::AnimationPluginUi(_, _, _)
+                                )
+                            })
+                            .cloned()
+                            .collect(),
                     },
                 };
 
@@ -139,6 +188,7 @@ impl PluginManager {
                 // TODO: this clone might hurt?
                 if let Err(err) = plugin.tick(
                     input,
+                    None,
                     midi_events,
                     serial_received.clone(),
                     udp_received.clone(),
@@ -150,6 +200,216 @@ impl PluginManager {
                         anyhow::anyhow!("Failed to tick plugin '{}': {}", plugin_key, err),
                     );
                 }
+            }
+
+            if !self.is_initial_tick {
+                let kinds = self.state_ref.plugin_runtime_kinds.read().unwrap().clone();
+                let animation_plugins: HashMap<String, u8> = kinds
+                    .iter()
+                    .filter_map(|(id, kind)| match kind {
+                        crate::state::PluginRuntimeKind::Animation { stable_key, .. } => {
+                            Some((stable_key.clone(), *id))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                let tasks = {
+                    let engine = self.state_ref.dmx_engine.read().unwrap();
+                    let mut tasks = Vec::new();
+                    for (scene_id, scene) in &engine.0.scenes {
+                        for (selection, animations) in &scene.sink.active_animations {
+                            for (animation_id, animation) in animations {
+                                let blaulicht_shared::AnimationSpecBody::WasmPlugin(spec) =
+                                    &animation.spec_cloned.body
+                                else {
+                                    continue;
+                                };
+                                let Some(plugin_id) = animation_plugins.get(&spec.plugin_key)
+                                else {
+                                    continue;
+                                };
+                                let mut fixtures = selection.fixtures.clone();
+                                fixtures.sort_unstable();
+                                let key = crate::state::WasmAnimationInstanceKey {
+                                    scene_id: *scene_id,
+                                    animation_id: *animation_id,
+                                    fixtures: fixtures.clone(),
+                                };
+                                tasks.push((
+                                    *plugin_id,
+                                    Some(key),
+                                    AnimationTickInput {
+                                        instance_id: stable_animation_instance_id(
+                                            &spec.plugin_key,
+                                            *scene_id,
+                                            *animation_id,
+                                            &fixtures,
+                                        ),
+                                        scene_id: Some(*scene_id),
+                                        animation_id: *animation_id,
+                                        fixtures,
+                                        paused: !animation.enabled,
+                                        editor: false,
+                                        delta_ms: 12,
+                                        speed_factor: animation.speed_factor,
+                                        scene_speed_factor: scene.sink.master_speed,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    let editor_requests = {
+                        let mut requests = self
+                            .state_ref
+                            .wasm_animation_editor_requests
+                            .write()
+                            .unwrap();
+                        requests.retain(|_, request| {
+                            request.last_seen.elapsed() < Duration::from_millis(250)
+                        });
+                        requests.values().cloned().collect::<Vec<_>>()
+                    };
+                    for request in editor_requests {
+                        let Some(plugin_id) = animation_plugins.get(&request.plugin_key) else {
+                            continue;
+                        };
+                        tasks.push((
+                            *plugin_id,
+                            None,
+                            AnimationTickInput {
+                                instance_id: request.instance_id,
+                                scene_id: None,
+                                animation_id: 0,
+                                fixtures: request.fixtures,
+                                paused: true,
+                                editor: true,
+                                delta_ms: 12,
+                                speed_factor: blaulicht_shared::AnimationSpeedModifier::_1,
+                                scene_speed_factor: blaulicht_shared::AnimationSpeedModifier::_1,
+                            },
+                        ));
+                    }
+                    tasks
+                };
+
+                let mut current_instances: HashMap<u8, HashSet<u64>> = HashMap::new();
+                for (plugin_id, _, input) in &tasks {
+                    current_instances
+                        .entry(*plugin_id)
+                        .or_default()
+                        .insert(input.instance_id);
+                }
+                let previous_instances = std::mem::take(&mut self.animation_instance_ids);
+                for (plugin_id, instances) in previous_instances {
+                    let current = current_instances.get(&plugin_id);
+                    if let Some(plugin) = self.plugins.get_mut(&plugin_id) {
+                        for instance in instances {
+                            if !current.is_some_and(|values| values.contains(&instance)) {
+                                let _ = plugin.drop_animation_instance(instance);
+                                self.state_ref
+                                    .wasm_animation_ui_ops
+                                    .write()
+                                    .unwrap()
+                                    .remove(&instance);
+                            }
+                        }
+                    }
+                }
+                self.animation_instance_ids = current_instances;
+
+                let mut next_outputs = HashMap::new();
+                for (plugin_id, key, animation_input) in tasks {
+                    let paused = animation_input.paused;
+                    let instance_id = animation_input.instance_id;
+                    let instance_events = events
+                        .iter()
+                        .filter(|message| match message.body() {
+                            blaulicht_shared::ControlEvent::AnimationPluginUi(
+                                _,
+                                target_plugin,
+                                target_instance,
+                            ) => target_plugin == plugin_id && target_instance == instance_id,
+                            blaulicht_shared::ControlEvent::PluginUi(_, _) => false,
+                            _ => true,
+                        })
+                        .cloned()
+                        .collect();
+                    let common = TickInput {
+                        id: plugin_id,
+                        clock: self.timer_start.elapsed().as_millis() as u32,
+                        initial: false,
+                        audio_data: audio_data.clone(),
+                        events: ControlEventCollection {
+                            events: instance_events,
+                        },
+                    };
+                    let Some(plugin) = self.plugins.get_mut(&plugin_id) else {
+                        continue;
+                    };
+                    let reset_instance = self
+                        .state_ref
+                        .wasm_animation_instances_to_reset
+                        .lock()
+                        .unwrap()
+                        .remove(&instance_id);
+                    if reset_instance {
+                        if let Err(err) = plugin.drop_animation_instance(instance_id) {
+                            tracing::warn!(
+                                "Failed to reset animation plugin instance {instance_id}: {err}"
+                            );
+                        }
+                    }
+                    self.state_ref
+                        .plugin_execution_instances
+                        .write()
+                        .unwrap()
+                        .insert(plugin_id, instance_id);
+                    let tick_result = plugin.tick(
+                        common,
+                        Some(animation_input),
+                        midi_events,
+                        serial_received.clone(),
+                        udp_received.clone(),
+                        app_state.clone(),
+                    );
+                    self.state_ref
+                        .plugin_execution_instances
+                        .write()
+                        .unwrap()
+                        .remove(&plugin_id);
+                    if let Some(ops) = self
+                        .state_ref
+                        .plugin_ui_ops_back
+                        .write()
+                        .unwrap()
+                        .remove(&plugin_id)
+                    {
+                        self.state_ref
+                            .wasm_animation_ui_ops
+                            .write()
+                            .unwrap()
+                            .insert(instance_id, ops);
+                    }
+                    match tick_result {
+                        Ok(Some(output)) if !paused => {
+                            if let Some(key) = key {
+                                next_outputs.insert(key, output);
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            err_res.insert(
+                                plugin_id,
+                                anyhow::anyhow!(
+                                    "Failed to tick animation plugin '{}': {}",
+                                    plugin_id,
+                                    err
+                                ),
+                            );
+                        }
+                    }
+                }
+                *self.state_ref.wasm_animation_outputs.write().unwrap() = next_outputs;
             }
         }
 
@@ -223,14 +483,26 @@ const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(0)
 
 #[cfg(feature = "wasmtime")]
 impl Plugin {
+    fn drop_animation_instance(&mut self, instance_id: u64) -> anyhow::Result<()> {
+        self.wasm_state
+            .instance
+            .get_typed_func::<u64, ()>(
+                &mut self.wasm_state.store,
+                "internal_drop_animation_instance",
+            )?
+            .call(&mut self.wasm_state.store, instance_id)?;
+        Ok(())
+    }
+
     fn tick(
         &mut self,
         input: TickInput,
+        animation: Option<AnimationTickInput>,
         mut midi_events: &[MidiEvent],
         serial_received: Vec<SerialReceived>,
         udp_received: Vec<UdpReceived>,
         app_state: Option<Arc<AppState>>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<AnimationTickOutput>> {
         //
         // Tick function. (TODO: how slow is this?) -> replace with fixed handle?
         //
@@ -241,7 +513,12 @@ impl Plugin {
 
         ////////////// Tick Input ////////////
         let tick_array_offset = 0x10000; // Arbitrary offset
-        let tick_array_data = input.serialize();
+        let is_animation = animation.is_some();
+        let tick_array_data = PluginTickInput {
+            common: input,
+            animation,
+        }
+        .serialize();
         let tick_array_len = tick_array_data.len() as i32;
 
         {
@@ -423,6 +700,26 @@ impl Plugin {
         }))
         .map_err(|_| anyhow::anyhow!("WASM plugin panicked during tick"))??;
 
-        Ok(())
+        if !is_animation {
+            return Ok(None);
+        }
+        let mut length_bytes = [0_u8; 4];
+        self.wasm_state.memory.read(
+            &self.wasm_state.store,
+            self.animation_output_buffers.buffer_len_addr(),
+            &mut length_bytes,
+        )?;
+        let output_len = u32::from_le_bytes(length_bytes) as usize;
+        anyhow::ensure!(
+            output_len <= 1024 * 1024,
+            "animation output length {output_len} exceeds host limit"
+        );
+        let mut output = vec![0; output_len];
+        self.wasm_state.memory.read(
+            &self.wasm_state.store,
+            self.animation_output_buffers.buffer_addr(),
+            &mut output,
+        )?;
+        Ok(Some(AnimationTickOutput::deserialize(&output)))
     }
 }
