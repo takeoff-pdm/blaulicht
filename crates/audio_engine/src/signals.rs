@@ -319,16 +319,25 @@ where
         let was_breakdown_long_enough = self.scratch.section_state == SectionState::Breakdown
             && in_breakdown_ms >= min_quiet_ms;
 
-        let bass_hit = bass_sig >= self.params.drop_bass_min;
+        let inst_hit = bass_sig >= self.params.drop_bass_min;
+        let avg_hit = bass_avg_short >= self.params.drop_bass_avg_min as f32;
+        let bass_hit = if self.params.drop_require_both {
+            inst_hit && avg_hit
+        } else {
+            inst_hit || avg_hit
+        };
         let rising = bass_hit && !self.scratch.section_prev_bass_hit;
         let strong_onset = bass_onset >= onset_thresh
             || (self.params.drop_use_peakiness
                 && bass_peakiness >= self.params.drop_peakiness_min as f32);
 
         // Breakdown: if bass_avg_short stays below the threshold for the hold
-        // duration, we're in a breakdown. The threshold (breakdown_sensitivity,
-        // 0..=255, default 100) is compared directly against bass_avg_short.
-        let breakdown_threshold = self.params.breakdown_sensitivity as f32;
+        // duration, we're in a breakdown. breakdown_sensitivity (0..=100) is
+        // relative to the avg presence gate: 100 = any dip below the gate
+        // counts (eager), 0 = bass must vanish entirely (lazy).
+        let breakdown_threshold = self.params.drop_bass_avg_min as f32
+            * (self.params.breakdown_sensitivity.min(100) as f32)
+            / 100.0;
         let breakdown_bass_present = bass_avg_short >= breakdown_threshold;
         // Optionally, weak rhythm (low BPM confidence) also counts as "not active"
         // for breakdown, so beatless-but-bassy sections fall back too.

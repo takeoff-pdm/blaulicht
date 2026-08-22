@@ -861,6 +861,9 @@ impl DmxEngine {
                 // BUG: this also starts all animations that were manually paused.
                 // HOW TO FIX: ADD A SWITCH TO ANIMATIONS THAT DISABLE THEM.
                 state.0.current_scene_focus = id;
+                // The base scene must never also be an overlay: it would be
+                // merged onto itself with master alpha applied twice.
+                state.0.current_overlay_scenes.retain(|s| *s != id);
 
                 // let animations = state.0.animation_templates.clone();
 

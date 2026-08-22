@@ -474,7 +474,7 @@ impl DDJSubSystem {
     }
 
     fn sync(&mut self, current_time: u32) {
-        if current_time - self.last_sync <= 100 {
+        if current_time.wrapping_sub(self.last_sync) <= 100 {
             return;
         }
 
@@ -551,7 +551,7 @@ impl DDJSubSystem {
         self.knob_vals_updated[knob] = false;
         let knob_val = self.knob_vals[knob];
         let max_index = AnimationSpeedModifier::ALL.len() as u16 - 1;
-        let index = (knob_val as u16).map_range(0..127, 0..max_index);
+        let index = (knob_val.min(127) as u16).map_range(0..127, 0..max_index);
 
         let Some(scene_id) = self.target_scene_for_control(knob) else {
             return;

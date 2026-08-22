@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     FixtureProperty, HSVColor,
-    fixture::{
-        state::{FixtureOrientation, FixtureState},
-        value::FixtureValue,
-    },
+    fixture::state::{FixtureOrientation, FixtureState},
 };
 
 /// Maximum recursion depth when resolving chains of pointer palettes.
@@ -113,23 +110,32 @@ impl PaletteKind {
 
     pub fn apply_to(&self, state: &mut FixtureState, palettes: &BTreeMap<u8, Palette>) {
         match self {
+            // All branches go through `apply_value` so palette-bound (frozen)
+            // slots are respected consistently across palette kinds.
             PaletteKind::Color(color) => {
-                state.color_h = FixtureValue::Literal(color.h.clamp(0.0, 360.0) as u16);
-                state.color_s =
-                    FixtureValue::Literal(color.s.map_range(0.0..1.0, 0.0..255.0) as u16);
-                state.color_v =
-                    FixtureValue::Literal(color.v.map_range(0.0..1.0, 0.0..255.0) as u16);
+                state.apply_value(
+                    color.h.clamp(0.0, 360.0) as u16,
+                    FixtureProperty::ColorHue,
+                );
+                state.apply_value(
+                    color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
+                    FixtureProperty::ColorSaturation,
+                );
+                state.apply_value(
+                    color.v.map_range(0.0..1.0, 0.0..255.0) as u16,
+                    FixtureProperty::ColorValue,
+                );
             }
             PaletteKind::Position(orientation) => {
-                state.pan = FixtureValue::literal_u8(orientation.pan);
-                state.tilt = FixtureValue::literal_u8(orientation.tilt);
+                state.apply_value(orientation.pan as u16, FixtureProperty::Pan);
+                state.apply_value(orientation.tilt as u16, FixtureProperty::Tilt);
             }
             PaletteKind::Beam {
                 focus,
                 strobe_speed,
             } => {
-                state.focus = FixtureValue::literal_u8(*focus);
-                state.strobe_speed = FixtureValue::literal_u8(*strobe_speed);
+                state.apply_value(*focus as u16, FixtureProperty::Focus);
+                state.apply_value(*strobe_speed as u16, FixtureProperty::Strobe);
             }
             PaletteKind::Single(prop, value) => {
                 state.apply_value(*value, *prop);
@@ -141,12 +147,11 @@ impl PaletteKind {
             } => {
                 let props = properties_via_chain(palettes, *target, MAX_PALETTE_CHAIN_DEPTH);
                 for prop in props {
-                    let inner = resolve_via_chain(
-                        palettes,
-                        *target,
-                        prop,
-                        MAX_PALETTE_CHAIN_DEPTH.saturating_sub(1),
-                    );
+                    // Same depth as `properties_via_chain` above: resolving one
+                    // hop shallower made deep chains report a property as
+                    // covered and then resolve it to 0.
+                    let inner =
+                        resolve_via_chain(palettes, *target, prop, MAX_PALETTE_CHAIN_DEPTH);
                     // Ops apply only to the selected property (or to all when
                     // none is selected). Other properties pass through, so e.g.
                     // a color target keeps its hue/saturation while only the

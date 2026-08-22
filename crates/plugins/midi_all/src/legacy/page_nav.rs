@@ -27,8 +27,6 @@ impl LegacyState {
     }
 
     pub fn app_page_from_pad(pad: u8) -> Option<AppPage> {
-        debug_assert!(APC_PAGE_PADS.contains(&pad));
-
         match pad {
             63 => Some(AppPage::Logs),
             55 => Some(AppPage::System),

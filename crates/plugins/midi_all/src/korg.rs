@@ -124,7 +124,7 @@ impl KorgSubSystem {
                 }
                 // Group Select.
                 (144, key, 127)
-                    if (SELECT_BUTTON_STARTER..=SELECT_BUTTON_STARTER + COUNT_SELECT_BUTTONS)
+                    if (SELECT_BUTTON_STARTER..SELECT_BUTTON_STARTER + COUNT_SELECT_BUTTONS)
                         .contains(&key) =>
                 {
                     if !self.selection_mode {
@@ -147,7 +147,7 @@ impl KorgSubSystem {
                 (176, fader_byte, value) if FADER_BYTES.contains(&fader_byte) => {
                     if self.selection_mode {
                         println!("WARN: in selection_mode");
-                        return;
+                        continue;
                     }
 
                     let index = FADER_BYTES.iter().position(|b| *b == fader_byte).unwrap();
@@ -157,7 +157,7 @@ impl KorgSubSystem {
                 (176, knob_byte, value) if knob_byte >= 13 && knob_byte <= 20 => {
                     if self.selection_mode {
                         println!("WARN: in selection_mode");
-                        return;
+                        continue;
                     }
 
                     let index = knob_byte as usize - 13;
@@ -185,7 +185,7 @@ impl KorgSubSystem {
     }
 
     fn sync(&mut self, current_time: u32) {
-        if current_time - self.last_sync > 100 {
+        if current_time.wrapping_sub(self.last_sync) > 100 {
             self.last_sync = current_time;
 
             // Sync state.
@@ -319,7 +319,7 @@ impl KorgSubSystem {
             self.knob_vals_updated[knob] = false;
             let knob_val = self.knob_vals[knob];
             let max_index = AnimationSpeedModifier::ALL.len() as u16 - 1;
-            let index = (knob_val as u16).map_range(0..127, 0..max_index) as usize;
+            let index = (knob_val.min(127) as u16).map_range(0..127, 0..max_index) as usize;
 
             let Some(scene_id) = self.scenes.get(knob) else {
                 return;

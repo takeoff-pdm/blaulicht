@@ -9,8 +9,13 @@ use cpal::traits::DeviceTrait;
 
 impl BlaulichtApp {
     pub(crate) fn handle_events(&mut self) {
-        let mut empty = 0;
+        let mut drained: usize = 0;
         loop {
+            // Reset per iteration: break only when BOTH channels are empty in
+            // the same pass. The old cross-iteration counter stopped after ~3
+            // messages per frame, letting the unbounded system channel grow
+            // without limit under log bursts.
+            let mut empty = 0;
             match self.data.event_bus_connection.try_recv() {
                 Some(control_event) if control_event.originator() == EventOriginator::Web => {
                     if control_event_marks_showfile_dirty(&control_event.body()) {
@@ -155,7 +160,13 @@ impl BlaulichtApp {
                 }
             }
 
-            if empty >= 3 {
+            if empty >= 2 {
+                break;
+            }
+
+            // Safety cap so one frame can't stall on a pathological flood.
+            drained += 1;
+            if drained >= 10_000 {
                 break;
             }
         }

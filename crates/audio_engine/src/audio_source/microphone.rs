@@ -84,7 +84,8 @@ impl AudioSourceMicrophone {
             input,
             controller,
             stream,
-            channel_count: channels as usize,
+            // `.max(1)`: a zero channel count would panic in `chunks()`.
+            channel_count: (channels as usize).max(1),
             sample_rate,
             captured_mono: Vec::new(),
         })
@@ -119,22 +120,25 @@ impl AudioSource for AudioSourceMicrophone {
             return (&self.freq_buffer, false);
         }
 
-        let mut frequencies = frequencies[0].clone();
+        let frequencies = frequencies[0].clone();
         if frequencies.is_empty() {
             return (&self.freq_buffer, false);
         }
 
-        while frequencies.len() > self.freq_buffer.len() {
-            frequencies.pop();
-        }
-
-        self.freq_buffer.clear();
-        self.freq_buffer
-            .extend(frequencies.iter().map(|f| Frequency {
+        // Write in place so the buffer keeps its configured size: shrinking it
+        // to a short/partial frame would permanently truncate the spectrum for
+        // every later frame.
+        let n = frequencies.len().min(self.freq_buffer.len());
+        for (slot, f) in self.freq_buffer.iter_mut().zip(frequencies.iter().take(n)) {
+            *slot = Frequency {
                 volume: f.volume * 10.0,
                 freq: f.freq,
                 position: f.position,
-            }));
+            };
+        }
+        for slot in self.freq_buffer.iter_mut().skip(n) {
+            *slot = Frequency::default();
+        }
 
         (&self.freq_buffer, true)
     }

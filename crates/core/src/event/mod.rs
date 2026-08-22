@@ -3,8 +3,6 @@ use std::{
     fmt::Display,
     mem,
     sync::{Arc, Mutex},
-    thread,
-    time::Duration,
 };
 
 use blaulicht_shared::ControlEventMessage;
@@ -148,8 +146,9 @@ where
 
             mem::drop(members);
 
-            // TODO: tune this?
-            thread::sleep(Duration::from_millis(10));
+            // No sleep here: `recv()` blocks when idle, and sleeping after each
+            // message capped the bus at ~100 events/s, silently dropping bursts
+            // once the bounded inbox filled up.
         }
     }
 }

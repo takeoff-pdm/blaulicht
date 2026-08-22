@@ -202,8 +202,11 @@ impl AudioSourceSoundfile {
                 processor.freq_buffer.len()
             );
 
-            for (i, f) in processor.freq_buffer.iter().enumerate() {
-                self.freq_buffer[i] = Frequency::from(f);
+            // Zip so a processor/output size mismatch truncates instead of
+            // indexing out of bounds (the debug_assert above is compiled out
+            // in release builds).
+            for (slot, f) in self.freq_buffer.iter_mut().zip(processor.freq_buffer.iter()) {
+                *slot = Frequency::from(f);
             }
 
             &self.freq_buffer

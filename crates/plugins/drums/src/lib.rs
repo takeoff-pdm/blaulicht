@@ -6,6 +6,16 @@ use blaulicht_plugin_framework::{MidiConnection, MidiEvent, Plugin};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent, TickInput};
 use serde::{Deserialize, Serialize};
 
+/// Dynamic button ID layout: each action family gets a disjoint base with
+/// `ID_STRIDE` consecutive IDs (indexed by sequencer or step index).
+const ID_STRIDE: u8 = 20;
+const SEQ_EDIT_BASE_ID: u8 = 130;
+const SEQ_DELETE_BASE_ID: u8 = SEQ_EDIT_BASE_ID + ID_STRIDE; // 150
+const SEQ_ADD_STEP_BASE_ID: u8 = SEQ_DELETE_BASE_ID + ID_STRIDE; // 170
+const SEQ_RENAME_BASE_ID: u8 = SEQ_ADD_STEP_BASE_ID + ID_STRIDE; // 190
+const STEP_EDIT_BASE_ID: u8 = SEQ_RENAME_BASE_ID + ID_STRIDE; // 210
+const STEP_DELETE_BASE_ID: u8 = STEP_EDIT_BASE_ID + ID_STRIDE; // 230
+
 /// UI mode for the drum plugin interface
 #[derive(Debug, Clone, PartialEq)]
 enum UiMode {
@@ -287,61 +297,57 @@ impl DrumPlugin {
                     PluginUiEvent::Button { id } if id == 13 => {
                         self.ui_mode = UiMode::Overview;
                     }
-                    PluginUiEvent::Button { id } if id >= 20 && id < 40 => {
-                        let seq_idx = ((id - 20) / 4) as usize;
-                        let action = (id - 20) % 4;
-
-                        match action {
-                            0 => {
-                                if seq_idx < self.sequencers.len() {
-                                    let sequencer = &self.sequencers[seq_idx];
-                                    let notes_str: Vec<String> = sequencer
-                                        .midi_notes
-                                        .iter()
-                                        .map(|n| n.to_string())
-                                        .collect();
-                                    self.temp_midi_note_input = notes_str.join(", ");
-                                    self.ui_mode = UiMode::EditingSequencer(seq_idx);
-                                }
-                            }
-                            1 => {
-                                self.delete_sequencer(seq_idx);
-                            }
-                            2 => {
-                                if seq_idx < self.sequencers.len() {
-                                    self.ui_mode = UiMode::AddingStep(seq_idx);
-                                    self.temp_scene_index = 0;
-                                }
-                            }
-                            3 => {
-                                if seq_idx < self.sequencers.len() {
-                                    self.temp_rename_name = self.sequencers[seq_idx].name.clone();
-                                    self.ui_mode = UiMode::RenamingSequencer(seq_idx);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    PluginUiEvent::Button { id } if id >= 40 && id < 60 => {
-                        let offset = (id - 40) as usize;
-                        let seq_idx = offset / 20;
-                        let step_idx = offset % 20;
-
+                    PluginUiEvent::Button { id } if id >= SEQ_EDIT_BASE_ID && id < SEQ_DELETE_BASE_ID => {
+                        let seq_idx = (id - SEQ_EDIT_BASE_ID) as usize;
                         if seq_idx < self.sequencers.len() {
                             let sequencer = &self.sequencers[seq_idx];
-                            if step_idx < sequencer.steps.len() {
-                                let step = &sequencer.steps[step_idx];
-                                self.temp_scene_index = step.scene_index;
-                                self.ui_mode = UiMode::EditingStep(seq_idx, step_idx);
+                            let notes_str: Vec<String> = sequencer
+                                .midi_notes
+                                .iter()
+                                .map(|n| n.to_string())
+                                .collect();
+                            self.temp_midi_note_input = notes_str.join(", ");
+                            self.ui_mode = UiMode::EditingSequencer(seq_idx);
+                        }
+                    }
+                    PluginUiEvent::Button { id } if id >= SEQ_DELETE_BASE_ID && id < SEQ_ADD_STEP_BASE_ID => {
+                        let seq_idx = (id - SEQ_DELETE_BASE_ID) as usize;
+                        self.delete_sequencer(seq_idx);
+                    }
+                    PluginUiEvent::Button { id } if id >= SEQ_ADD_STEP_BASE_ID && id < SEQ_RENAME_BASE_ID => {
+                        let seq_idx = (id - SEQ_ADD_STEP_BASE_ID) as usize;
+                        if seq_idx < self.sequencers.len() {
+                            self.ui_mode = UiMode::AddingStep(seq_idx);
+                            self.temp_scene_index = 0;
+                        }
+                    }
+                    PluginUiEvent::Button { id } if id >= SEQ_RENAME_BASE_ID && id < STEP_EDIT_BASE_ID => {
+                        let seq_idx = (id - SEQ_RENAME_BASE_ID) as usize;
+                        if seq_idx < self.sequencers.len() {
+                            self.temp_rename_name = self.sequencers[seq_idx].name.clone();
+                            self.ui_mode = UiMode::RenamingSequencer(seq_idx);
+                        }
+                    }
+                    PluginUiEvent::Button { id } if id >= STEP_EDIT_BASE_ID && id < STEP_DELETE_BASE_ID => {
+                        let step_idx = (id - STEP_EDIT_BASE_ID) as usize;
+
+                        if let UiMode::EditingSequencer(seq_idx) = self.ui_mode {
+                            if seq_idx < self.sequencers.len() {
+                                let sequencer = &self.sequencers[seq_idx];
+                                if step_idx < sequencer.steps.len() {
+                                    let step = &sequencer.steps[step_idx];
+                                    self.temp_scene_index = step.scene_index;
+                                    self.ui_mode = UiMode::EditingStep(seq_idx, step_idx);
+                                }
                             }
                         }
                     }
-                    PluginUiEvent::Button { id } if id >= 60 && id < 80 => {
-                        let offset = (id - 60) as usize;
-                        let seq_idx = offset / 20;
-                        let step_idx = offset % 20;
+                    PluginUiEvent::Button { id } if id >= STEP_DELETE_BASE_ID && id < STEP_DELETE_BASE_ID + ID_STRIDE => {
+                        let step_idx = (id - STEP_DELETE_BASE_ID) as usize;
 
-                        self.delete_step(seq_idx, step_idx);
+                        if let UiMode::EditingSequencer(seq_idx) = self.ui_mode {
+                            self.delete_step(seq_idx, step_idx);
+                        }
                     }
                     PluginUiEvent::Button { id } if id == 100 => {
                         if let UiMode::EditingStep(seq_idx, step_idx) = self.ui_mode {
@@ -588,9 +594,9 @@ impl DrumPlugin {
             }
 
             bpf::ui::begin_horizontal();
-            let edit_id = (20 + seq_idx * 4) as u8;
-            let delete_id = (21 + seq_idx * 4) as u8;
-            let rename_id = (23 + seq_idx * 4) as u8;
+            let edit_id = SEQ_EDIT_BASE_ID + seq_idx as u8;
+            let delete_id = SEQ_DELETE_BASE_ID + seq_idx as u8;
+            let rename_id = SEQ_RENAME_BASE_ID + seq_idx as u8;
             bpf::ui::button("Edit", edit_id);
             bpf::ui::button("Delete", delete_id);
             bpf::ui::button("Rename", rename_id);
@@ -606,6 +612,7 @@ impl DrumPlugin {
         bpf::ui::text_edit("", 120, &self.temp_sequencer_name);
 
         bpf::ui::begin_horizontal();
+        bpf::ui::button("Create", 11);
         bpf::ui::button("Cancel", 12);
         bpf::ui::end_horizontal();
     }
@@ -627,7 +634,7 @@ impl DrumPlugin {
 
         bpf::ui::separator();
         bpf::ui::label("Steps:");
-        bpf::ui::button("+ Add Step", (22 + seq_idx * 4) as u8);
+        bpf::ui::button("+ Add Step", SEQ_ADD_STEP_BASE_ID + seq_idx as u8);
 
         for (step_idx, step) in sequencer.steps.iter().enumerate() {
             bpf::ui::separator();
@@ -639,8 +646,8 @@ impl DrumPlugin {
             bpf::ui::label(&format!("{}Step {}: {}", marker, step_idx + 1, scene_name));
 
             bpf::ui::begin_horizontal();
-            let edit_step_id = (40 + seq_idx * 20 + step_idx) as u8;
-            let delete_step_id = (60 + seq_idx * 20 + step_idx) as u8;
+            let edit_step_id = STEP_EDIT_BASE_ID + step_idx as u8;
+            let delete_step_id = STEP_DELETE_BASE_ID + step_idx as u8;
             bpf::ui::button("Edit", edit_step_id);
             bpf::ui::button("Delete", delete_step_id);
             bpf::ui::end_horizontal();
@@ -750,7 +757,7 @@ impl Plugin for DrumPlugin {
         self.handle_events(&input, input.id);
 
         // Return to.
-        let elapsed = input.clock - self.scene_changed;
+        let elapsed = input.clock.wrapping_sub(self.scene_changed);
         if self.scene_lifetime > 0 && elapsed > self.scene_lifetime {
             send_event(ControlEvent::SetSceneFocus(self.return_to));
             self.scene_lifetime = 0;

@@ -48,19 +48,47 @@ impl CommandHandle {
     }
 
     pub fn wait_timeout(mut self, timeout: Duration) -> io::Result<Output> {
+        use std::io::Read;
+
+        // Drain both pipes on background threads: a child writing more than
+        // the pipe buffer (~64 KiB) would otherwise block on a full pipe,
+        // never exit, and get killed at the timeout with its output lost.
+        let mut stdout_pipe = self.child.stdout.take();
+        let stdout_thread = thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut pipe) = stdout_pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        });
+        let mut stderr_pipe = self.child.stderr.take();
+        let stderr_thread = thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut pipe) = stderr_pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        });
+
         let deadline = Instant::now() + timeout;
-        loop {
-            if self.child.try_wait()?.is_some() {
-                return self.child.wait_with_output();
+        let status = loop {
+            if let Some(status) = self.child.try_wait()? {
+                break status;
             }
 
             if Instant::now() >= deadline {
                 self.child.kill()?;
-                return self.child.wait_with_output();
+                break self.child.wait()?;
             }
 
             thread::sleep(Duration::from_millis(10));
-        }
+        };
+
+        Ok(Output {
+            status,
+            stdout: stdout_thread.join().unwrap_or_default(),
+            stderr: stderr_thread.join().unwrap_or_default(),
+        })
     }
 }
 

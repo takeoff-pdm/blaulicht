@@ -39,7 +39,7 @@ const WIZARD_SAVE_BUTTON_ID: u8 = 130;
 const WIZARD_CANCEL_BUTTON_ID: u8 = 131;
 const VIEW_SELECT_BUTTON_BASE_ID: u8 = 150;
 const VIEW_SELECT_OPTION_BASE_ID: u8 = 200;
-const SPEED_SCENE_SELECT_BUTTON_BASE_ID: u8 = 210;
+const SPEED_SCENE_SELECT_BUTTON_BASE_ID: u8 = 230;
 const SPEED_SCENE_SELECT_OPTION_BASE_ID: u8 = 250;
 const SPEED_MODIFIER_SELECT_BUTTON_BASE_ID: u8 = 40;
 const SPEED_MODIFIER_SELECT_OPTION_BASE_ID: u8 = 80;
@@ -409,7 +409,7 @@ impl SamplePlugin {
         let offset = remote_idx
             .checked_mul(MAX_REMOTE_BUTTONS)?
             .checked_add(button_idx)?;
-        let max_offset = (u8::MAX - VIEW_SELECT_BUTTON_BASE_ID) as usize;
+        let max_offset = (VIEW_SELECT_OPTION_BASE_ID - VIEW_SELECT_BUTTON_BASE_ID - 1) as usize;
         if offset > max_offset {
             return None;
         }
@@ -427,7 +427,7 @@ impl SamplePlugin {
     }
 
     fn decode_view_option(id: u8) -> Option<usize> {
-        if id < VIEW_SELECT_OPTION_BASE_ID {
+        if id < VIEW_SELECT_OPTION_BASE_ID || id >= SPEED_SCENE_SELECT_BUTTON_BASE_ID {
             return None;
         }
         Some((id - VIEW_SELECT_OPTION_BASE_ID) as usize)
@@ -437,7 +437,8 @@ impl SamplePlugin {
         let offset = remote_idx
             .checked_mul(MAX_REMOTE_BUTTONS)?
             .checked_add(button_idx)?;
-        let max_offset = (u8::MAX - SPEED_SCENE_SELECT_BUTTON_BASE_ID) as usize;
+        let max_offset =
+            (SPEED_SCENE_SELECT_OPTION_BASE_ID - SPEED_SCENE_SELECT_BUTTON_BASE_ID - 1) as usize;
         if offset > max_offset {
             return None;
         }
@@ -465,7 +466,8 @@ impl SamplePlugin {
         let offset = remote_idx
             .checked_mul(MAX_REMOTE_BUTTONS)?
             .checked_add(button_idx)?;
-        let max_offset = (u8::MAX - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID) as usize;
+        let max_offset =
+            (SPEED_MODIFIER_SELECT_OPTION_BASE_ID - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID - 1) as usize;
         if offset > max_offset {
             return None;
         }
@@ -483,7 +485,7 @@ impl SamplePlugin {
     }
 
     fn decode_speed_modifier_option(id: u8) -> Option<usize> {
-        if id < SPEED_MODIFIER_SELECT_OPTION_BASE_ID {
+        if id < SPEED_MODIFIER_SELECT_OPTION_BASE_ID || id >= WIZARD_RECORD_BASE_ID {
             return None;
         }
         Some((id - SPEED_MODIFIER_SELECT_OPTION_BASE_ID) as usize)
@@ -682,7 +684,11 @@ impl SamplePlugin {
                         if self.view_selector_open == Some((remote_idx, button_index)) {
                             ui::begin_vertical();
                             for (view_idx, view_info) in self.available_views.iter().enumerate() {
-                                if view_idx > (u8::MAX - VIEW_SELECT_OPTION_BASE_ID) as usize {
+                                if view_idx
+                                    > (SPEED_SCENE_SELECT_BUTTON_BASE_ID
+                                        - VIEW_SELECT_OPTION_BASE_ID
+                                        - 1) as usize
+                                {
                                     ui::label("View list truncated");
                                     break;
                                 }
@@ -710,7 +716,9 @@ impl SamplePlugin {
                                     AnimationSpeedModifier::ALL.iter().enumerate()
                                 {
                                     if modifier_idx
-                                        > (u8::MAX - SPEED_MODIFIER_SELECT_OPTION_BASE_ID) as usize
+                                        > (WIZARD_RECORD_BASE_ID
+                                            - SPEED_MODIFIER_SELECT_OPTION_BASE_ID
+                                            - 1) as usize
                                     {
                                         ui::label("Speed list truncated");
                                         break;
@@ -994,11 +1002,14 @@ impl Plugin for SamplePlugin {
             let str = String::from_utf8_lossy(&ev.body);
 
             if str.starts_with("r: ") {
-                let num = str.split("r: ").nth(1).unwrap().trim();
+                let num = str.split("r: ").nth(1).unwrap_or("").trim();
                 println!("P: `{num}`: {:?}", num.as_bytes());
-                let n: u32 = num.parse().expect("could not parse");
-
-                self.handle_signal(n, input.clock);
+                match num.parse::<u32>() {
+                    Ok(n) => self.handle_signal(n, input.clock),
+                    Err(err) => {
+                        println!("could not parse signal `{num}`: {err}");
+                    }
+                }
             }
 
             println!("EV: {str} | {:?}", &ev.body);

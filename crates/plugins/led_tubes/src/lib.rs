@@ -102,11 +102,11 @@ pub struct LedTubesPlugin {
 
 impl LedTubesPlugin {
     fn selected(&self) -> &StripState {
-        &self.state.strips[self.state.selected_strip as usize]
+        &self.state.strips[(self.state.selected_strip as usize).min(STRIP_COUNT - 1)]
     }
 
     fn selected_mut(&mut self) -> &mut StripState {
-        &mut self.state.strips[self.state.selected_strip as usize]
+        &mut self.state.strips[(self.state.selected_strip as usize).min(STRIP_COUNT - 1)]
     }
 
     fn spawn_http_get(&self, path: &str) -> u32 {
@@ -191,9 +191,9 @@ impl LedTubesPlugin {
                                 if idx < STRIP_COUNT {
                                     let s = &mut self.state.strips[idx];
                                     s.brightness = strip.brightness.clamp(0, 31) as u8;
-                                    s.r = strip.rgb[0].clamp(0, 255) as u8;
-                                    s.g = strip.rgb[1].clamp(0, 255) as u8;
-                                    s.b = strip.rgb[2].clamp(0, 255) as u8;
+                                    s.r = strip.rgb.first().copied().unwrap_or(0).clamp(0, 255) as u8;
+                                    s.g = strip.rgb.get(1).copied().unwrap_or(0).clamp(0, 255) as u8;
+                                    s.b = strip.rgb.get(2).copied().unwrap_or(0).clamp(0, 255) as u8;
                                     s.count = strip.active_segments.clamp(1, 200) as u8;
                                     s.index = strip.index.clamp(0, 199) as u8;
                                     s.span = strip.span.clamp(1, 20) as u8;
@@ -336,6 +336,8 @@ impl LedTubesPlugin {
         {
             if let Ok(saved) = serde_json::from_str::<SaveState>(&data) {
                 self.state = saved;
+                self.state.selected_strip =
+                    self.state.selected_strip.min(STRIP_COUNT as u8 - 1);
             }
         }
     }

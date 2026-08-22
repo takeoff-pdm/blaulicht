@@ -182,7 +182,7 @@ impl TimelinePlugin {
     }
 
     fn sync_dmx(&mut self, now: u32) {
-        if now - self.last_dmx_sync > 250 {
+        if now.wrapping_sub(self.last_dmx_sync) > 250 {
             self.last_dmx_sync = now;
             self.dmx_cache = bpf::get_dmx();
         }
@@ -397,6 +397,7 @@ impl TimelinePlugin {
                     self.state.start_at_text = trimmed;
                     self.paused_by_user = false;
                     self.start_clock = None;
+                    self.fired = vec![false; self.state.cues.len()];
                     self.dirty = true;
                 }
             }

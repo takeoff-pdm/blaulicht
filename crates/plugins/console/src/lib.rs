@@ -382,7 +382,8 @@ impl SamplePlugin {
             if let Ok(saved) = serde_json::from_str::<SaveState>(&json) {
                 self.state = saved;
             } else {
-                panic!("State loading failed!");
+                bpf::prelude::println!("State loading failed, falling back to default state");
+                self.state = SaveState::default();
             }
         }
         self.state.sanitize();
@@ -1250,9 +1251,13 @@ impl Plugin for SamplePlugin {
     fn run(&mut self, input: TickInput) {
         let dmx_state = bpf::get_dmx();
 
+        let mut dirty = false;
         for ev in &input.events.events {
             match ev.body() {
                 ControlEvent::PluginUi(ui_event, plugin_id) => {
+                    if plugin_id == input.id {
+                        dirty = true;
+                    }
                     self.handle_ui_event(&ui_event, plugin_id, input.id);
                 }
                 _ => {}
@@ -1261,7 +1266,7 @@ impl Plugin for SamplePlugin {
 
         self.render_ui(&dmx_state);
 
-        if !self.saved {
+        if !self.saved || dirty {
             self.save();
             self.saved = true;
         }

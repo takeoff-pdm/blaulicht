@@ -26,12 +26,14 @@ impl AudioSource for AudioSourceNoise {
 impl AudioSourceNoise {
     pub fn new(sample_rate: u32, length_millis: usize, num_samples: usize) -> Self {
         let upper_freq_range = 20000;
-        let freq_step = upper_freq_range / num_samples;
+        // Float math: integer division panicked on `num_samples == 0` and
+        // rounded the step to 0 for large sample counts.
+        let freq_step = upper_freq_range as f32 / num_samples.max(1) as f32;
 
         let samples = (0..num_samples)
             .map(|i| Frequency {
                 volume: 0.0,
-                freq: (freq_step * i) as f32,
+                freq: freq_step * i as f32,
                 position: i as f32,
             })
             .collect();

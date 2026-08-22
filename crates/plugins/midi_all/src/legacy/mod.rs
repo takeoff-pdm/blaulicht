@@ -152,9 +152,11 @@ impl LegacyState {
             for _ in 0..state.scenes.len() {
                 for (scene_id, scene) in state.scenes.iter() {
                     let char_to_test = index.to_string().chars().nth(0).unwrap();
-                    let name_char = scene.name.chars().nth(0).unwrap();
+                    let Some(name_char) = scene.name.chars().nth(0) else {
+                        continue;
+                    };
                     // println!("TESTING INDEX {index} and scene {scene_id} | CHAR: {char_to_test} vs {name_char}");
-                    if !scene.name.is_empty() && name_char == char_to_test {
+                    if name_char == char_to_test {
                         self.intensity_mapping.push(*scene_id);
                         println!("added intensity {index} --> Scene {scene_id}");
                         index += 1;
@@ -438,7 +440,9 @@ impl LegacyState {
                 }
 
                 if let Some(rev_mapped) = self.intensity_mapping.iter().position(|e| *e == scene) {
-                    conn.send(0x96, SCENES_INT[rev_mapped], 20);
+                    if let Some(pad) = SCENES_INT.get(rev_mapped) {
+                        conn.send(0x96, *pad, 20);
+                    }
                 }
 
                 // }
@@ -491,13 +495,17 @@ impl LegacyState {
                 (144, scene, 127) if SCENES_INT.contains(&scene) => {
                     let normal_index = SCENES_INT.iter().position(|v| *v == scene).unwrap();
                     println!("INTENSITY: normal_index={normal_index}, scene={scene}");
-                    let mapped_index = self.intensity_mapping[normal_index];
+                    let Some(mapped_index) = self.intensity_mapping.get(normal_index).copied()
+                    else {
+                        println!("E: no intensity mapping for index {normal_index}");
+                        continue;
+                    };
 
                     let dmx = bpf::get_dmx();
 
                     if !dmx.scenes.contains_key(&mapped_index) {
                         println!("E: no such scene");
-                        return;
+                        continue;
                     }
 
                     bpf::send_event(ControlEvent::SetSceneFocus(mapped_index));
@@ -509,7 +517,7 @@ impl LegacyState {
 
                     if !dmx.scenes.contains_key(&index) {
                         println!("E: no such scene");
-                        return;
+                        continue;
                     }
 
                     bpf::send_event(ControlEvent::SetSceneFocus(index));
