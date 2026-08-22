@@ -145,8 +145,14 @@ fn prepare_texture(texture: &mut Texture2D) -> Result<bool> {
         || texture.height > MAX_TEXTURE_DIMENSION
         || texture_bytes(texture) > MAX_TEXTURE_BYTES;
     if needs_resize {
+        // Scale for the byte budget too: a texture can exceed MAX_TEXTURE_BYTES
+        // (e.g. high bytes-per-pixel formats) while its dimensions are already
+        // within bounds, in which case the dimension scale alone is a no-op and
+        // the bail below rejects an importable model.
+        let byte_scale = (MAX_TEXTURE_BYTES as f32 / texture_bytes(texture) as f32).sqrt();
         let scale = (MAX_TEXTURE_DIMENSION as f32 / texture.width as f32)
             .min(MAX_TEXTURE_DIMENSION as f32 / texture.height as f32)
+            .min(byte_scale)
             .min(1.0);
         let width = ((texture.width as f32 * scale).round() as u32).max(1);
         let height = ((texture.height as f32 * scale).round() as u32).max(1);

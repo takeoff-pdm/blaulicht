@@ -76,30 +76,15 @@ impl TryFrom<f64> for AnimationSpeedModifier {
     type Error = ();
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
-        const _1_16: f64 = 16.0;
-        const _1_8: f64 = 8.0;
-        const _1_4: f64 = 4.0;
-        const _1_2: f64 = 2.0;
-        const _1: f64 = 1.0;
-        const _2: f64 = 1.0 / 2.0;
-        const _4: f64 = 1.0 / 4.0;
-        const _8: f64 = 1.0 / 8.0;
-        const _16: f64 = 1.0 / 16.0;
-        const _32: f64 = 1.0 / 32.0;
-
-        Ok(match value {
-            _1_16 => Self::_1_16,
-            _1_8 => Self::_1_8,
-            _1_4 => Self::_1_4,
-            _1_2 => Self::_1_2,
-            _1 => Self::_1,
-            _2 => Self::_2,
-            _4 => Self::_4,
-            _8 => Self::_8,
-            _16 => Self::_16,
-            _32 => Self::_32,
-            _ => return Err(()),
-        })
+        // Explicit comparisons instead of float match patterns: those only
+        // worked while same-named consts shadowed the arm identifiers, and a
+        // renamed const would silently turn the first arm into a catch-all
+        // binding. (Float patterns are also a future-incompat lint.)
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|m| m.as_float() == value)
+            .ok_or(())
     }
 }
 
@@ -122,7 +107,8 @@ impl AnimationSpeedModifier {
     }
 
     pub fn from_index(index: usize) -> Self {
-        Self::ALL[index]
+        // Saturate: callers feed this from external input (MIDI CC values).
+        Self::ALL[index.min(Self::ALL.len() - 1)]
     }
 
     pub fn as_str(&self) -> &'static str {
@@ -375,7 +361,9 @@ impl ControlEvent {
             }
             ControlEvent::AssignPaletteToProperty(prop, _) => *prop,
             ControlEvent::UnassignPaletteFromProperty(prop) => *prop,
-            ControlEvent::SetEnabled(_) => todo!("Illegal message"),
+            // A legitimate, plugin-emittable event; it just doesn't target a
+            // single fixture property.
+            ControlEvent::SetEnabled(_) => return None,
             ControlEvent::SetAlpha(_) => FixtureProperty::Alpha,
             ControlEvent::SetStrobeSpeed(_) => FixtureProperty::Strobe,
             ControlEvent::SetFocus(_) => FixtureProperty::Focus,

@@ -693,7 +693,10 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
         return Vec::new();
     }
 
-    let chunk_size = (values.len() / bins).max(1);
+    // Ceiling division: flooring produced more than `bins` chunks whenever
+    // `len % bins != 0`, and downstream consumers resized the excess away,
+    // silently dropping the top of the spectrum.
+    let chunk_size = values.len().div_ceil(bins);
 
     // println!("chunk size: {chunk_size}");
 

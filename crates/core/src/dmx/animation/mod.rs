@@ -864,7 +864,10 @@ impl AnimationClockRuntime {
                         if was_reset {
                             crossings = 0;
                         }
-                        representative_crossings = crossings;
+                        // Aggregate over the selection: taking only the last
+                        // fixture's value could miss a cycle crossing when
+                        // per-fixture phase offsets straddle the boundary.
+                        representative_crossings = representative_crossings.max(crossings);
                         timer.timer = runtime.phase_degrees.floor().max(0.0) as u64;
                         timer.last_tick_time = now_ms.max(1);
                         timer.needs_reset_on_beat = false;

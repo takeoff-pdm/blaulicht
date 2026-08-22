@@ -137,9 +137,10 @@ pub fn generate(
                     (1.0 - percent) * range + min
                 }
                 MathematicalBaseFunction::EaseInOut => {
+                    // sin over the half period already stays in min..min+range;
+                    // clamping to 0..255 here broke 0..360 hue phasers.
                     let radians = std::f32::consts::PI * degrees / 360.0;
-                    let v = radians.sin() * range + min;
-                    v.clamp(0.0, 255.0)
+                    radians.sin() * range + min
                 }
             }
         }

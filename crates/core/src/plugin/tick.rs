@@ -636,7 +636,11 @@ impl Plugin {
                     if bytes.len() <= SERIAL_BUFFER_CAPACITY || serial_received.is_empty() {
                         break bytes;
                     }
-                    serial_received.pop();
+                    // Drop proportionally to the overshoot: popping one element
+                    // per full re-serialization was O(n²) on the tick thread.
+                    let avg = (bytes.len() / serial_received.len()).max(1);
+                    let drop_n = ((bytes.len() - SERIAL_BUFFER_CAPACITY) / avg).max(1);
+                    serial_received.truncate(serial_received.len().saturating_sub(drop_n));
                 }
             };
 
@@ -670,7 +674,9 @@ impl Plugin {
                     if bytes.len() <= UDP_BUFFER_CAPACITY || udp_received.is_empty() {
                         break bytes;
                     }
-                    udp_received.pop();
+                    let avg = (bytes.len() / udp_received.len()).max(1);
+                    let drop_n = ((bytes.len() - UDP_BUFFER_CAPACITY) / avg).max(1);
+                    udp_received.truncate(udp_received.len().saturating_sub(drop_n));
                 }
             };
 

@@ -108,10 +108,8 @@ pub fn run(
     //
     // Configure spectrogram window to keep configured seconds based on spectrogram refresh rate.
     // Fall back to at least 1 Hz; default configured to 60 Hz.
-    let _spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
-    let _window_secs = config.spectrogram_window_seconds.max(1) as usize;
-    let spec_refresh_hz = 60;
-    let window_secs = 10;
+    let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
+    let window_secs = config.spectrogram_window_seconds.max(1) as usize;
     let desired_columns = spec_refresh_hz * window_secs;
     let spec_period = Duration::from_millis((1000f32 / spec_refresh_hz as f32) as u64);
     {

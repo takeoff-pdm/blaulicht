@@ -71,8 +71,12 @@ impl FixtureSelection {
             (_, _) => {
                 let mut group_instr = VecDeque::new();
 
-                for gid in gids {
-                    group_instr.push_back(ControlEvent::SelectGroup(*gid))
+                // Sorted for deterministic instruction order (HashSet iteration
+                // order varies per process).
+                let mut ordered: Vec<_> = gids.iter().collect();
+                ordered.sort();
+                for gid in ordered {
+                    group_instr.push_back(ControlEvent::SelectGroup(**gid))
                 }
 
                 group_instr

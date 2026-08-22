@@ -163,7 +163,7 @@ const PROPERTY_LABELS: [&str; 8] = [
     "Pan",
 ];
 
-const APP_PAGE_LABELS: [&str; 8] = [
+const APP_PAGE_LABELS: [&str; 9] = [
     "Logs",
     "System",
     "Audio",
@@ -172,6 +172,7 @@ const APP_PAGE_LABELS: [&str; 8] = [
     "View Perf",
     "Fixtures Perf",
     "Animations",
+    "Visualizer",
 ];
 
 #[derive(Serialize, Deserialize)]

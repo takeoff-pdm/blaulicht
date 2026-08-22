@@ -20,17 +20,14 @@ macro_rules! syslog {
         use blaulicht_shared::LogLevel;
         use $crate::msg::SystemMessage;
 
-        $system_out
-            .send(SystemMessage::Log(($message).into(), LogLevel::Info))
-            .unwrap();
+        // The UI receiver may already be gone during shutdown; don't panic.
+        let _ = $system_out.send(SystemMessage::Log(($message).into(), LogLevel::Info));
     }};
 
     ($system_out:expr,$message:expr,$level:expr) => {{
         use $crate::msg::SystemMessage;
 
-        $system_out
-            .send(SystemMessage::Log(($message).into(), $level))
-            .unwrap();
+        let _ = $system_out.send(SystemMessage::Log(($message).into(), $level));
     }};
 }
 

@@ -103,6 +103,9 @@ impl UdpManager {
 
         for handle in self.connection_map.values_mut() {
             let mut buf = [0u8; 65535];
+            // Per-tick cap: a UDP flood must not starve the DMX tick or grow
+            // the event list without bound.
+            let mut remaining = 1024;
             loop {
                 match handle.socket.recv_from(&mut buf) {
                     Ok((n, _addr)) => {
@@ -110,6 +113,10 @@ impl UdpManager {
                             port_id: handle.port_id,
                             body: buf[..n].to_vec(),
                         });
+                        remaining -= 1;
+                        if remaining == 0 {
+                            break;
+                        }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         break;

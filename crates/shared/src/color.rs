@@ -111,11 +111,9 @@ pub fn hsv_to_rgb(h: u16, s: f32, v: f32) -> RGBColor {
     //     return (255, 255, 255).into();
     // }
 
-    // Normalize hue to [0, 360)
-    // let mut h = h % 360;
-    // if h < 0 {
-    //     h += 360;
-    // }
+    // Normalize hue to [0, 360) so out-of-range inputs don't land in the
+    // wrong sector with a mismatched `x` term.
+    let h = h % 360;
 
     let c = v * s;
     let h_prime = h as f32 / 60.0;
