@@ -240,7 +240,8 @@ pub fn supervisor_thread(
                         bus_connection_dmx,
                         Arc::clone(&app_state),
                     ) {
-                        tracing::error!("[audio] THREAD CRASH: {err}");
+                        // `{err:#}` prints the full anyhow context chain.
+                        tracing::error!("[audio] THREAD CRASH: {err:#}");
                         syslog!(sys, format!("[audio] {err}"), LogLevel::Err);
 
                         signal_mainloop(

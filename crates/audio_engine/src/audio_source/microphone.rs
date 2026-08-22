@@ -75,9 +75,21 @@ impl AudioSourceMicrophone {
 
         // set up capture on the same thread; only the CPAL callback runs elsewhere
         let mut input = Input::new();
-        let (channels, sample_rate, controller) = input
-            .init(&av_device, buffer_size)
-            .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?;
+        let (channels, sample_rate, controller) = match input.init(&av_device, buffer_size) {
+            Ok(handles) => handles,
+            Err(err) => {
+                // Some backends (e.g. the PipeWire ALSA plugin) reject the
+                // explicit low-latency buffer size with EINVAL. Retry with the
+                // device default rather than failing outright.
+                log::warn!(
+                    "audio input rejected buffer size {buffer_size:?} ({err:?}); retrying with device default"
+                );
+                input = Input::new();
+                input
+                    .init(&av_device, None)
+                    .map_err(|err| anyhow::anyhow!("failed to init audio input: {:?}", err))?
+            }
+        };
 
         Ok(Self {
             freq_buffer: vec![Frequency::default(); freq_buffer_size],

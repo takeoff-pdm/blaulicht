@@ -140,8 +140,11 @@ impl InspectorPlugin {
             "beat" => self.beat_digest(input),
             "state" => {
                 let state = bpf::get_dmx();
+                // Tuple-/struct-keyed maps (overrides, fixture_states,
+                // active_animations, ...) are not JSON-representable; fall
+                // back to a Debug dump when serde_json refuses.
                 let value = serde_json::to_value(&state)
-                    .unwrap_or_else(|e| json!({"error": format!("serialize: {e}")}));
+                    .unwrap_or_else(|_| json!({"debug": format!("{state:#?}")}));
                 match request.get("path").and_then(Value::as_str) {
                     Some(path) if !path.is_empty() => narrow(&value, path)
                         .cloned()
