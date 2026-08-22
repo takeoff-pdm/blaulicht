@@ -1899,9 +1899,21 @@ impl PluginManager {
         linker.func_wrap::<_, u32>("blaulicht", "bl_open_udp_port", move |bind_port: u32| {
             let mut udp_manager = udp_manager.lock().unwrap();
             udp_manager
-                .request_port(bind_port as u16)
+                .request_port(bind_port as u16, false)
                 .unwrap_or(u8::MAX) as u32
         })?;
+
+        let udp_manager = Arc::clone(&self.udp_manager_ref);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_open_udp_port_loopback",
+            move |bind_port: u32| {
+                let mut udp_manager = udp_manager.lock().unwrap();
+                udp_manager
+                    .request_port(bind_port as u16, true)
+                    .unwrap_or(u8::MAX) as u32
+            },
+        )?;
 
         let serial_manager = Arc::clone(&self.serial_manager_ref);
         linker.func_wrap::<_, u32>(

@@ -3,6 +3,9 @@ use bincode::{Decode, Encode, config};
 #[derive(Encode, Decode, Clone, Debug)]
 pub struct UdpReceived {
     pub port_id: u8,
+    /// Source address of the datagram ("ip:port"), so plugins can reply to
+    /// the sender.
+    pub src_addr: String,
     pub body: Vec<u8>,
 }
 

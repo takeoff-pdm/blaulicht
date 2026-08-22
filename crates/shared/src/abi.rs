@@ -5,7 +5,9 @@ use std::fmt::Display;
 use strum::EnumIter;
 
 /// Binary protocol version used for host-to-plugin snapshots.
-pub const PLUGIN_ABI_VERSION: u32 = 4;
+// v4: animation tick context (AnimationTickInput) added to the host envelope.
+// v5: UdpReceived gained `src_addr`; added bl_open_udp_port_loopback.
+pub const PLUGIN_ABI_VERSION: u32 = 5;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

@@ -31,6 +31,7 @@ extern "C" {
     ) -> u8;
 
     fn bl_open_udp_port(bind_port: u32) -> u8;
+    fn bl_open_udp_port_loopback(bind_port: u32) -> u8;
 
     fn bl_artnet_register_receiver(plugin_id: u8, addr_ptr: *const u8, addr_len: usize) -> u32;
     fn bl_artnet_unregister_receiver(plugin_id: u8, handle: u32) -> u32;
@@ -262,6 +263,12 @@ pub fn bl_open_serial_device_safe(device_name: &str, baud_rate: u32) -> u8 {
 
 pub fn bl_open_udp_port_safe(bind_port: u16) -> u8 {
     unsafe { bl_open_udp_port(bind_port as u32) }
+}
+
+/// Like [`bl_open_udp_port_safe`], but bound to 127.0.0.1 so the port is not
+/// reachable from the network. Use for local tooling/introspection.
+pub fn bl_open_udp_port_loopback_safe(bind_port: u16) -> u8 {
+    unsafe { bl_open_udp_port_loopback(bind_port as u32) }
 }
 
 /// Register an Art-Net receiver owned by the calling plugin. The core will start

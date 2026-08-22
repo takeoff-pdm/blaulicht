@@ -53,6 +53,17 @@ impl UdpPort {
         Ok(Self { port_id })
     }
 
+    /// Binds on 127.0.0.1 only (not reachable from the network).
+    pub fn open_loopback(bind_port: u16) -> Result<Self> {
+        let port_id = blaulicht::bl_open_udp_port_loopback_safe(bind_port);
+
+        if port_id == UDP_PORT_NOT_FOUND {
+            return Err(IoError::UdpBindFailed(bind_port).into());
+        }
+
+        Ok(Self { port_id })
+    }
+
     pub fn poll(&self) -> Vec<UdpReceived> {
         let all_events = get_udp();
         all_events

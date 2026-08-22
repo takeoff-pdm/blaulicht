@@ -43,7 +43,7 @@ impl UdpManager {
         }
     }
 
-    pub fn request_port(&mut self, bind_port: u16) -> Option<u8> {
+    pub fn request_port(&mut self, bind_port: u16, loopback: bool) -> Option<u8> {
         if let Some(handle) = self.connection_map.get(&bind_port) {
             debug!(
                 "Reusing existing UDP port with id: {} for port: {}",
@@ -52,7 +52,10 @@ impl UdpManager {
             return Some(handle.port_id);
         }
 
-        let addr = format!("0.0.0.0:{}", bind_port);
+        // Loopback binds are for local tooling (e.g. the inspector plugin)
+        // that must not be reachable from the network.
+        let host = if loopback { "127.0.0.1" } else { "0.0.0.0" };
+        let addr = format!("{host}:{bind_port}");
         let socket = match UdpSocket::bind(&addr) {
             Ok(s) => {
                 if let Err(err) = s.set_nonblocking(true) {
@@ -108,9 +111,10 @@ impl UdpManager {
             let mut remaining = 1024;
             loop {
                 match handle.socket.recv_from(&mut buf) {
-                    Ok((n, _addr)) => {
+                    Ok((n, addr)) => {
                         incoming_events.push(UdpReceived {
                             port_id: handle.port_id,
+                            src_addr: addr.to_string(),
                             body: buf[..n].to_vec(),
                         });
                         remaining -= 1;
