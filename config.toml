@@ -30,4 +30,9 @@ file_path = "./plugins/hello_world.wasm"
 enabled = false
 enable_watcher = false
 
+[[plugins]]
+file_path = "./crates/plugins/bundle_debug/inspector.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]
