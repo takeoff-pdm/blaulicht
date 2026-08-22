@@ -31,7 +31,7 @@ pub extern "C" fn __internal_get_global_midi_buffer_start_addr() -> *mut MidiBuf
 // Same as the above, just for the length of the buffer.
 #[no_mangle]
 pub extern "C" fn __internal_get_global_midi_buffer_length_start_addr() -> *mut MidiBufferT {
-    unsafe { &raw mut GLOBAL_MIDI_SOURCE.current_length as *mut usize as *mut MidiBufferT }
+    unsafe { &raw mut GLOBAL_MIDI_SOURCE.current_length as *mut MidiBufferT }
 }
 
 // --------------------------------------------------------

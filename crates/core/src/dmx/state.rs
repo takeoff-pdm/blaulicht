@@ -99,6 +99,23 @@ impl<'engine> EngineState {
     }
 
     pub fn load_showfile(&mut self, mut other: blaulicht_shared::EngineState) {
+        // Showfiles are external input: an out-of-range fixture address would
+        // panic the DMX thread on the first render (unchecked universe indexing).
+        for group in other.groups.values_mut() {
+            for fixture in group.fixtures.values_mut() {
+                let footprint = fixture.type_.footprint();
+                if fixture.start_addr + footprint > 513 {
+                    let clamped = 513usize.saturating_sub(footprint);
+                    tracing::warn!(
+                        "Fixture '{}' at address {} (footprint {footprint}) exceeds the universe; clamping to {clamped}",
+                        fixture.name,
+                        fixture.start_addr,
+                    );
+                    fixture.start_addr = clamped;
+                }
+            }
+        }
+
         let groups = other.groups.clone();
 
         let overrides = self.0.overrides.clone();

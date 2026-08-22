@@ -356,12 +356,12 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut body_buffer = vec![0u8; byte_arr_len as usize];
+                let mut body_buffer = vec![0u8; byte_arr_len.max(0) as usize];
                 memory
                     .read(&caller, byte_arr_pointer as usize, &mut body_buffer)
                     .expect("failed to read memory");
 
-                let mut addr_buffer = vec![0u8; target_addr_len as usize];
+                let mut addr_buffer = vec![0u8; target_addr_len.max(0) as usize];
                 memory
                     .read(&caller, target_addr_pointer as usize, &mut addr_buffer)
                     .expect("failed to read memory");
@@ -397,7 +397,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -502,7 +502,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; cmd_len as usize];
+                let mut buffer = vec![0u8; cmd_len.max(0) as usize];
                 memory
                     .read(&caller, cmd_ptr as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -572,11 +572,15 @@ impl PluginManager {
 
                         let capacity = output_capacity.max(0) as usize;
                         let copy_len = stdout.len().min(capacity.saturating_sub(1));
-                        if copy_len > 0 && capacity > 0 {
-                            let _ =
-                                memory.write(&mut caller, output_ptr as usize, &stdout[..copy_len]);
-                            let _ =
-                                memory.write(&mut caller, output_ptr as usize + copy_len, &[0u8]);
+                        // Cast the guest pointer via u32: a negative i32 would
+                        // sign-extend to a huge usize and overflow on `+ copy_len`.
+                        let ptr = output_ptr as u32 as usize;
+                        if capacity > 0 {
+                            if copy_len > 0 {
+                                let _ = memory.write(&mut caller, ptr, &stdout[..copy_len]);
+                            }
+                            // Always terminate so the guest never reads stale bytes.
+                            let _ = memory.write(&mut caller, ptr + copy_len, &[0u8]);
                         }
 
                         let mut registry = spawned_commands.lock().unwrap();
@@ -591,11 +595,12 @@ impl PluginManager {
 
                         let capacity = output_capacity.max(0) as usize;
                         let copy_len = stderr.len().min(capacity.saturating_sub(1));
-                        if copy_len > 0 && capacity > 0 {
-                            let _ =
-                                memory.write(&mut caller, output_ptr as usize, &stderr[..copy_len]);
-                            let _ =
-                                memory.write(&mut caller, output_ptr as usize + copy_len, &[0u8]);
+                        let ptr = output_ptr as u32 as usize;
+                        if capacity > 0 {
+                            if copy_len > 0 {
+                                let _ = memory.write(&mut caller, ptr, &stderr[..copy_len]);
+                            }
+                            let _ = memory.write(&mut caller, ptr + copy_len, &[0u8]);
                         }
 
                         let mut registry = spawned_commands.lock().unwrap();
@@ -620,7 +625,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -654,7 +659,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -861,7 +866,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -889,7 +894,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -952,7 +957,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -983,7 +988,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1017,13 +1022,13 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut label_buf = vec![0u8; label_len as usize];
+                let mut label_buf = vec![0u8; label_len.max(0) as usize];
                 memory
                     .read(&caller, label_ptr as usize, &mut label_buf)
                     .expect("failed to read memory");
                 let label = String::from_utf8_lossy(&label_buf).to_string();
 
-                let mut options_buf = vec![0u8; options_len as usize];
+                let mut options_buf = vec![0u8; options_len.max(0) as usize];
                 memory
                     .read(&caller, options_ptr as usize, &mut options_buf)
                     .expect("failed to read memory");
@@ -1062,7 +1067,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1095,7 +1100,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1130,7 +1135,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1171,7 +1176,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1211,13 +1216,13 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut label_buf = vec![0u8; label_len as usize];
+                let mut label_buf = vec![0u8; label_len.max(0) as usize];
                 memory
                     .read(&caller, label_ptr as usize, &mut label_buf)
                     .expect("failed to read memory");
                 let label = String::from_utf8_lossy(&label_buf).to_string();
 
-                let mut text_buf = vec![0u8; text_len as usize];
+                let mut text_buf = vec![0u8; text_len.max(0) as usize];
                 memory
                     .read(&caller, text_ptr as usize, &mut text_buf)
                     .expect("failed to read memory");
@@ -1251,13 +1256,13 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut label_buf = vec![0u8; label_len as usize];
+                let mut label_buf = vec![0u8; label_len.max(0) as usize];
                 memory
                     .read(&caller, label_ptr as usize, &mut label_buf)
                     .expect("failed to read memory");
                 let label = String::from_utf8_lossy(&label_buf).to_string();
 
-                let mut text_buf = vec![0u8; text_len as usize];
+                let mut text_buf = vec![0u8; text_len.max(0) as usize];
                 memory
                     .read(&caller, text_ptr as usize, &mut text_buf)
                     .expect("failed to read memory");
@@ -1431,7 +1436,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buf = vec![0u8; len as usize];
+                let mut buf = vec![0u8; len.max(0) as usize];
                 memory
                     .read(&caller, ptr as usize, &mut buf)
                     .expect("failed to read memory");
@@ -1611,7 +1616,7 @@ impl PluginManager {
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
-                let mut buf = vec![0u8; len as usize];
+                let mut buf = vec![0u8; len.max(0) as usize];
                 memory
                     .read(&caller, ptr as usize, &mut buf)
                     .expect("failed to read memory");
@@ -1653,7 +1658,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; title_len as usize];
+                let mut buffer = vec![0u8; title_len.max(0) as usize];
                 memory
                     .read(&caller, title_ptr as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1693,7 +1698,7 @@ impl PluginManager {
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
-                let mut buf = vec![0u8; len as usize];
+                let mut buf = vec![0u8; len.max(0) as usize];
                 memory
                     .read(&caller, ptr as usize, &mut buf)
                     .expect("failed to read memory");
@@ -1742,7 +1747,7 @@ impl PluginManager {
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
-                let mut buf = vec![0u8; len as usize];
+                let mut buf = vec![0u8; len.max(0) as usize];
                 memory
                     .read(&caller, ptr as usize, &mut buf)
                     .expect("failed to read memory");
@@ -1777,13 +1782,17 @@ impl PluginManager {
             "blaulicht",
             "bl_transmit_midi",
             move |device: i32, status: i32, kind: i32, value: i32| {
-                mo.send(MidiEvent {
+                // `try_send`: the receiver is drained on the same thread that runs
+                // plugin ticks, so a blocking `send` on a full channel would deadlock
+                // the entire mainloop.
+                if let Err(err) = mo.try_send(MidiEvent {
                     device: device as u8,
                     status: status as u8,
                     data0: kind as u8,
                     data1: value as u8,
-                })
-                .unwrap();
+                }) {
+                    tracing::warn!("[WASM] Dropping outgoing MIDI event: {err}");
+                }
             },
         )?;
 
@@ -1797,7 +1806,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1839,7 +1848,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1870,7 +1879,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len.max(0) as usize);
 
                 if write_len > 0 {
                     memory
@@ -1904,7 +1913,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; str_len as usize];
+                let mut buffer = vec![0u8; str_len.max(0) as usize];
                 memory
                     .read(&caller, str_pointer as usize, &mut buffer)
                     .expect("failed to read memory");
@@ -1937,7 +1946,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len.max(0) as usize);
 
                 if write_len > 0 {
                     memory
@@ -1972,7 +1981,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buffer = vec![0u8; addr_len as usize];
+                let mut buffer = vec![0u8; addr_len.max(0) as usize];
                 if memory
                     .read(&caller, addr_ptr as usize, &mut buffer)
                     .is_err()
@@ -2079,7 +2088,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let write_len = std::cmp::min(json_bytes.len(), buffer_len as usize);
+                let write_len = std::cmp::min(json_bytes.len(), buffer_len.max(0) as usize);
 
                 if write_len > 0 {
                     memory
@@ -2112,7 +2121,7 @@ impl PluginManager {
                     .and_then(|export| export.into_memory())
                     .expect("failed to find memory");
 
-                let mut buf = vec![0u8; data_len as usize];
+                let mut buf = vec![0u8; data_len.max(0) as usize];
                 memory
                     .read(&caller, data_ptr as usize, &mut buf)
                     .expect("failed to read memory");
@@ -2210,7 +2219,7 @@ impl PluginManager {
                         .expect("failed to find memory");
 
                     let bytes = data.as_bytes();
-                    let write_len = bytes.len().min(buffer_len as usize);
+                    let write_len = bytes.len().min(buffer_len.max(0) as usize);
 
                     memory
                         .write(&mut caller, buffer_ptr as usize, &bytes[..write_len])

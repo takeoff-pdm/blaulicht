@@ -99,7 +99,7 @@ impl MovingHead {
                 fixture_channel!(dmx, this, 3) = state.alpha;
                 fixture_channel!(dmx, this, 4) = match state.strobe_speed {
                     0 => 0,
-                    v => v.map_range(1..255, 10..250),
+                    v => crate::fixture::map_range_u8(v, (1, 255), (10, 250)),
                 };
                 fixture_channel!(dmx, this, 5) = state.focus;
                 fixture_channel!(dmx, this, 6) =
@@ -143,7 +143,7 @@ impl MovingHead {
                 let strobe = match fixture_channel!(dmx, this, 4) {
                     0 => 0,
                     v if v < 10 => 0,
-                    v => v.map_range(10..250, 1..255),
+                    v => crate::fixture::map_range_u8(v, (10, 250), (1, 255)),
                 };
                 let focus = fixture_channel!(dmx, this, 5);
                 let mut color = HSVColor::default();

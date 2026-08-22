@@ -18,7 +18,7 @@ pub extern "C" fn __internal_get_global_udp_buffer_start_addr() -> *mut UdpBuffe
 
 #[no_mangle]
 pub extern "C" fn __internal_get_global_udp_buffer_length_start_addr() -> *mut UdpBufferT {
-    unsafe { &raw mut GLOBAL_UDP_SOURCE.current_length as *mut usize as *mut UdpBufferT }
+    unsafe { &raw mut GLOBAL_UDP_SOURCE.current_length as *mut UdpBufferT }
 }
 
 fn get_udp() -> Vec<UdpReceived> {

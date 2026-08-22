@@ -248,7 +248,7 @@ impl Light {
                 fixture_channel!(dmx, this, 3) = state.alpha;
                 fixture_channel!(dmx, this, 4) = match state.strobe_speed {
                     0 => 0,
-                    v => v.map_range(0..255, 11..255),
+                    v => crate::fixture::map_range_u8(v, (0, 255), (11, 255)),
                 };
             }
             Light::CameoQSpot40RGBW_4Chan => {
@@ -325,7 +325,7 @@ impl Light {
                 fixture_channel!(dmx, this, 3) = 0;
                 fixture_channel!(dmx, this, 4) = match state.strobe_speed {
                     0 => 0,
-                    v => v.map_range(0..255, 16..255),
+                    v => crate::fixture::map_range_u8(v, (0, 255), (16, 255)),
                 };
                 fixture_channel!(dmx, this, 5) = 0;
                 fixture_channel!(dmx, this, 6) = state.alpha;
@@ -427,7 +427,7 @@ impl Light {
                 let strobe_speed = match fixture_channel!(dmx, this, 4) {
                     0 => 0,
                     v if v < 11 => 0,
-                    v => v.map_range(11..255, 0..255),
+                    v => crate::fixture::map_range_u8(v, (11, 255), (0, 255)),
                 };
 
                 ResolvedFixtureState {
@@ -547,7 +547,7 @@ impl Light {
                 let rgb = RGBColor::parse_dmx(dmx, this.start_addr);
                 let strobe_speed = match fixture_channel!(dmx, this, 4) {
                     v if v < 16 => 0,
-                    v => v.map_range(16..255, 0..255),
+                    v => crate::fixture::map_range_u8(v, (16, 255), (0, 255)),
                 };
                 let alpha = fixture_channel!(dmx, this, 6);
 

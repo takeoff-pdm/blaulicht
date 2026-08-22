@@ -277,7 +277,6 @@ impl MidiManager {
         // Send any outgoing MIDI events.
         //
         loop {
-            debug_assert!(!self.to_manager_receiver.is_full());
             match self.to_manager_receiver.try_recv() {
                 Ok(sig) => {
                     // Get matching MIDI output connection.
@@ -286,9 +285,9 @@ impl MidiManager {
                         .values_mut()
                         .find(|d| d.device_id == sig.device)
                     else {
-                        // Device disconnected.
+                        // Device disconnected: drop the event, keep the engine running.
                         warn!("MIDI device {} not found in connection map", sig.device);
-                        return Err(MidiError::DeviceNotFound);
+                        continue;
                     };
 
                     if let Some(ref mut output) = output_device.output {

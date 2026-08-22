@@ -22,7 +22,7 @@ pub extern "C" fn __internal_get_global_serial_buffer_start_addr() -> *mut Seria
 // Same as the above, just for the length of the buffer.
 #[no_mangle]
 pub extern "C" fn __internal_get_global_serial_buffer_length_start_addr() -> *mut SerialBufferT {
-    unsafe { &raw mut GLOBAL_SERIAL_SOURCE.current_length as *mut usize as *mut SerialBufferT }
+    unsafe { &raw mut GLOBAL_SERIAL_SOURCE.current_length as *mut SerialBufferT }
 }
 
 //

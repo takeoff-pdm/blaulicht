@@ -161,7 +161,10 @@ impl SerialManager {
     }
 
     pub fn tick(&mut self) -> Result<Vec<SerialReceived>, SerialError> {
-        let mut error: Option<SerialError> = None;
+        // Ports that failed this tick: they are removed from the connection map
+        // instead of erroring out, so a single unplugged device cannot take down
+        // the engine mainloop.
+        let mut dead_ports: Vec<String> = vec![];
 
         let mut incoming_events = vec![];
 
@@ -187,9 +190,7 @@ impl SerialManager {
                 Ok(_) /* n = 0 */ => {
                     let serial_error = SerialError::Other("Serial device disconnected".to_string());
                     error!("Serial device '{}' returned EOF", port.port_path);
-                    if error.is_none() {
-                        error = Some(serial_error.clone());
-                    }
+                    dead_ports.push(port.port_path.clone());
                     let mut health_state = self.app_state.health_data.write().unwrap();
                     health_state.serial_health.devices.insert(
                         port.port_path.clone(),
@@ -202,9 +203,7 @@ impl SerialManager {
                 Err(e) => {
                     error!("Serial port error: {:?}", e);
                     let serial_error = SerialError::Other(e.to_string());
-                    if error.is_none() {
-                        error = Some(serial_error.clone());
-                    }
+                    dead_ports.push(port.port_path.clone());
 
                     let mut health_state = self.app_state.health_data.write().unwrap();
                     health_state.serial_health.devices.insert(
@@ -215,11 +214,11 @@ impl SerialManager {
             }
         }
 
-        if let Some(err) = error {
-            Err(err)
-        } else {
-            Ok(incoming_events)
+        for port_path in dead_ports {
+            self.connection_map.remove(&port_path);
         }
+
+        Ok(incoming_events)
     }
 }
 

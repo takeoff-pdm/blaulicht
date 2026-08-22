@@ -4,6 +4,20 @@ macro_rules! fixture_channel {
     };
 }
 
+/// Maps `v` from the `from` range into the `to` range using widened integer
+/// math. `MapRange` on `u8` computes `v * span` in `u8`, which overflows for
+/// almost any input (panic with overflow-checks, garbage DMX otherwise).
+/// Inputs outside `from` are clamped.
+pub(crate) fn map_range_u8(v: u8, from: (u8, u8), to: (u8, u8)) -> u8 {
+    let from_span = (from.1 - from.0) as u32;
+    if from_span == 0 {
+        return to.0;
+    }
+    let v = (v.clamp(from.0, from.1) - from.0) as u32;
+    let to_span = (to.1 - to.0) as u32;
+    (v * to_span / from_span) as u8 + to.0
+}
+
 pub mod dimmer;
 pub mod light;
 pub mod moving_head;

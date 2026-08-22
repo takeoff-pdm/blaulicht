@@ -20,7 +20,7 @@ pub extern "C" fn __internal_get_global_state_buffer_start_addr() -> *mut StateB
 // Same as the above, just for the length of the buffer.
 #[no_mangle]
 pub extern "C" fn __internal_get_global_state_buffer_length_start_addr() -> *mut StateBufferT {
-    unsafe { &raw mut GLOBAL_STATE_SOURCE.current_length as *mut usize as *mut StateBufferT }
+    unsafe { &raw mut GLOBAL_STATE_SOURCE.current_length as *mut StateBufferT }
 }
 
 pub fn get_dmx() -> EngineState {

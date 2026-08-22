@@ -1075,8 +1075,14 @@ impl BlaulichtApp {
                                                                     .new_fixture_name
                                                                     .clone()
                                                                     .into();
-                                                                fix_mut.start_addr =
-                                                                    self.new_fixture_addr;
+                                                                // Clamp so the fixture stays inside
+                                                                // the universe (unchecked indexing on
+                                                                // render would panic otherwise).
+                                                                fix_mut.start_addr = self
+                                                                    .new_fixture_addr
+                                                                    .min(513usize.saturating_sub(
+                                                                        fix_mut.type_.footprint(),
+                                                                    ));
                                                                 fix_mut.universe_no =
                                                                     self.new_fixture_uni;
                                                                 fix_mut.pos.x =

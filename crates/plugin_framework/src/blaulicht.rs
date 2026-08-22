@@ -1032,7 +1032,7 @@ pub mod prelude {
 #[macro_export]
 macro_rules! elapsed {
     ($input: expr, $time: expr) => {
-        $input.time - $time
+        $input.clock.wrapping_sub($time)
     };
 }
 
@@ -1046,7 +1046,7 @@ pub use elapsed;
 #[macro_export]
 macro_rules! nelapsed {
     ($input: expr, $time: expr) => {
-        $input.time as i32 - $time as i32
+        ($input.clock as i32).wrapping_sub($time as i32)
     };
 }
 
