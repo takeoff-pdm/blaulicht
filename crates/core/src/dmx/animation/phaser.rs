@@ -16,17 +16,24 @@ pub fn generate(
 
     let value = match &self_.kind {
         PhaserKind::Mathematical(mathematical_phaser) => {
-            let min = mathematical_phaser
+            let amp_a = mathematical_phaser
                 .amplitude_min
                 .resolve(palettes, property) as f32;
-            let max = mathematical_phaser
+            let amp_b = mathematical_phaser
                 .amplitude_max
                 .resolve(palettes, property) as f32;
+            // Normalize ordering: an inverted min/max would drive values
+            // negative in the spike shapes.
+            let (min, max) = if amp_a <= amp_b {
+                (amp_a, amp_b)
+            } else {
+                (amp_b, amp_a)
+            };
             let range = max - min;
 
             let mut mathematical_phaser = mathematical_phaser.clone();
-            mathematical_phaser.stretch_factor = 1.0;
-            // println!("min={min}, max={max}, range={range}");
+            mathematical_phaser.stretch_factor =
+                mathematical_phaser.stretch_factor.clamp(0.01, 100.0);
 
             match mathematical_phaser.base {
                 MathematicalBaseFunction::Sin => {
@@ -149,6 +156,5 @@ pub fn generate(
         PhaserKind::Keyframed(_keyframed_phaser) => 0.0,
     };
 
-    debug_assert!((0.0..=u16::MAX as f32).contains(&value));
-    value as u16
+    value.clamp(0.0, u16::MAX as f32) as u16
 }

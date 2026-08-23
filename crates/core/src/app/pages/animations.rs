@@ -910,10 +910,19 @@ impl AnimationEditState {
                                 let mut index = value.as_index() as f32;
                                 let max_index = AnimationSpeedModifier::ALL.len() - 1;
 
+                                // `as_float` is beats-per-cycle (duration
+                                // multiplier); `as_str` labels the speed
+                                // semantic and reads inverted here.
+                                let beats = value.as_float();
+                                let beats_label = if beats >= 1.0 {
+                                    format!("{}", beats as u32)
+                                } else {
+                                    format!("1/{}", (1.0 / beats).round() as u32)
+                                };
                                 ui.add_sized(
                                     [60.0, 16.0],
                                     Label::new(
-                                        RichText::new(format!("Beats: {}", value.as_str()))
+                                        RichText::new(format!("Beats: {beats_label}"))
                                             .color(Color32::LIGHT_RED)
                                             .size(16.0),
                                     ),

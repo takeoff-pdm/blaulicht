@@ -1,5 +1,4 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
-mod clock;
 mod management;
 mod state;
 

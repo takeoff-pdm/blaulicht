@@ -57,7 +57,10 @@ impl ActiveAnimation {
         // TIMING mode: spread or sync the timing.
         for (counter, timer_state) in self.fixture_timers.values_mut().enumerate() {
             timer_state.last_tick_time = 0;
-            timer_state.needs_reset_on_beat = false;
+            // Beat-pinned animations defer the actual reset to the next beat
+            // event (the animation tick clears this immediately for all
+            // others).
+            timer_state.needs_reset_on_beat = true;
             timer_state.timer = match animation_sync {
                 SyncMode::Synced => 0,
                 SyncMode::StretchedEven if amount > 0 => {
@@ -96,7 +99,7 @@ mod tests {
         assert!(animation.enabled);
         assert_eq!(animation.fixture_timers[&(1, 1)].timer, 0);
         assert_eq!(animation.fixture_timers[&(1, 1)].last_tick_time, 0);
-        assert!(!animation.fixture_timers[&(1, 1)].needs_reset_on_beat);
+        assert!(animation.fixture_timers[&(1, 1)].needs_reset_on_beat);
     }
 }
 

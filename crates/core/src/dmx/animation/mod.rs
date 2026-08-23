@@ -152,6 +152,22 @@ struct FixturePhaseRuntime {
     phase_offset_degrees: f64,
     last_update_ms: u64,
     seen_generation: u64,
+    /// Divisor the pinned phase was last derived with. A change (speed fader,
+    /// pin toggle) triggers a continuity rebase instead of a positional snap.
+    last_beats_per_cycle: Option<f64>,
+    /// Iteration index of the pinned phase at the previous alignment, for
+    /// crossing counting across the wrapped `phase_degrees`.
+    pinned_iteration: f64,
+    /// Set while the owning animation is disabled; the next advance/alignment
+    /// resumes from the frozen phase instead of jumping.
+    resume_pending: bool,
+    /// Whether the last advance was pinned (`Some(true)`), free-running
+    /// (`Some(false)`), or hasn't happened since a reset (`None`). A
+    /// free-run → pinned switch rebases for continuity instead of snapping
+    /// onto the global grid.
+    last_mode_pinned: Option<bool>,
+    /// When a beat-deferred reset was first requested (grace-period fallback).
+    reset_pending_since_ms: Option<u64>,
 }
 
 impl FixturePhaseRuntime {
@@ -159,11 +175,18 @@ impl FixturePhaseRuntime {
         self.phase_degrees = phase_degrees;
         self.phase_offset_degrees = phase_degrees;
         self.last_update_ms = now_ms;
+        self.last_beats_per_cycle = None;
+        self.pinned_iteration = 0.0;
+        self.resume_pending = false;
+        self.reset_pending_since_ms = None;
+        self.last_mode_pinned = None;
     }
 
     fn advance_local(&mut self, now_ms: u64, cycle_duration_ms: Option<f64>) -> u64 {
         let elapsed_ms = now_ms.saturating_sub(self.last_update_ms) as f64;
         self.last_update_ms = now_ms;
+        self.resume_pending = false;
+        self.last_mode_pinned = Some(false);
         let Some(cycle_duration_ms) = cycle_duration_ms else {
             return 0;
         };
@@ -171,10 +194,12 @@ impl FixturePhaseRuntime {
             return 0;
         }
 
-        let previous_iteration = (self.phase_degrees / DEGREES_PER_CYCLE).floor().max(0.0);
         self.phase_degrees += elapsed_ms * DEGREES_PER_CYCLE / cycle_duration_ms;
-        let next_iteration = (self.phase_degrees / DEGREES_PER_CYCLE).floor().max(0.0);
-        (next_iteration - previous_iteration).max(0.0) as u64
+        let crossings = (self.phase_degrees / DEGREES_PER_CYCLE).floor().max(0.0) as u64;
+        // Wrap so multi-hour shows keep f32 precision at evaluation time; the
+        // phase always re-enters [0, 360) after crossings are counted.
+        self.phase_degrees = self.phase_degrees.rem_euclid(DEGREES_PER_CYCLE);
+        crossings
     }
 
     fn align_to_beat_clock(
@@ -187,11 +212,38 @@ impl FixturePhaseRuntime {
         if !beats_per_cycle.is_finite() || beats_per_cycle <= 0.0 {
             return 0;
         }
-        let previous_iteration = (self.phase_degrees / DEGREES_PER_CYCLE).floor().max(0.0);
-        self.phase_degrees =
+
+        let switching_from_free_run = self.last_mode_pinned == Some(false);
+        self.last_mode_pinned = Some(true);
+        let divisor_changed = self
+            .last_beats_per_cycle
+            .is_some_and(|previous| (previous - beats_per_cycle).abs() > f64::EPSILON);
+        if divisor_changed || self.resume_pending || switching_from_free_run {
+            // Rebase for continuity: re-deriving the phase positionally from
+            // the unbounded beat_position after a speed change (or a pause)
+            // would snap it arbitrarily far and flood the iteration count.
+            self.phase_offset_degrees =
+                self.phase_degrees - beat_position * DEGREES_PER_CYCLE / beats_per_cycle;
+            self.pinned_iteration = (self.phase_degrees / DEGREES_PER_CYCLE).floor();
+            self.last_beats_per_cycle = Some(beats_per_cycle);
+            self.resume_pending = false;
+            return 0;
+        }
+
+        let raw_phase =
             self.phase_offset_degrees + beat_position * DEGREES_PER_CYCLE / beats_per_cycle;
-        let next_iteration = (self.phase_degrees / DEGREES_PER_CYCLE).floor().max(0.0);
-        (next_iteration - previous_iteration).max(0.0) as u64
+        let next_iteration = (raw_phase / DEGREES_PER_CYCLE).floor();
+        let crossings = if self.last_beats_per_cycle.is_none() {
+            // First alignment adopts the global beat grid without counting the
+            // catch-up as iterations.
+            self.last_beats_per_cycle = Some(beats_per_cycle);
+            0
+        } else {
+            (next_iteration - self.pinned_iteration).max(0.0) as u64
+        };
+        self.pinned_iteration = next_iteration;
+        self.phase_degrees = raw_phase.rem_euclid(DEGREES_PER_CYCLE);
+        crossings
     }
 }
 
@@ -203,12 +255,23 @@ struct MusicalBeatClock {
     last_update_ms: u64,
     last_event_id: u64,
     initialized: bool,
+    /// Set when tempo returns after a dropout: the next beat event hard
+    /// re-anchors `beat_position` instead of slew-correcting from a frozen,
+    /// arbitrary fraction.
+    pending_hard_resync: bool,
 }
 
 const TEMPO_PERIOD_DEADBAND: f64 = 0.005;
 const MAX_PERIOD_SLEW_PER_SECOND: f64 = 0.04;
 const MAX_PHASE_CORRECTION_BEATS: f64 = 0.25;
 const PHASE_CORRECTION_SPEED_FRACTION: f64 = 0.15;
+/// Phase error (in beats) at which a beat event snaps the clock instead of
+/// slewing: near half a beat, `round()` may pick the wrong anchor and the slow
+/// correction path would converge confidently onto the offbeat.
+const HARD_RESYNC_THRESHOLD_BEATS: f64 = 0.45;
+/// How long a beat-deferred animation reset waits for a beat event before
+/// falling back to an immediate reset (silent room, tempo lost).
+const RESET_ON_BEAT_GRACE_MS: u64 = 2_000;
 
 impl MusicalBeatClock {
     fn update(&mut self, now_ms: u64, audio: &blaulicht_shared::CollectedAudioSnapshot) {
@@ -240,6 +303,11 @@ impl MusicalBeatClock {
         };
         match (self.period_ms, incoming_period) {
             (_, None) => {
+                if self.period_ms.is_some() {
+                    // Real dropout (not startup): the frozen fractional
+                    // position is meaningless once audio returns.
+                    self.pending_hard_resync = true;
+                }
                 self.period_ms = None;
                 self.pending_phase_correction = 0.0;
             }
@@ -264,13 +332,31 @@ impl MusicalBeatClock {
             && audio.beat_event_id != 0
             && audio.beat_event_id != self.last_event_id
         {
-            self.pending_phase_correction = (self.beat_position.round() - self.beat_position)
-                .clamp(-MAX_PHASE_CORRECTION_BEATS, MAX_PHASE_CORRECTION_BEATS);
+            let error = self.beat_position.round() - self.beat_position;
+            if self.pending_hard_resync || error.abs() >= HARD_RESYNC_THRESHOLD_BEATS {
+                // A beat event is ground truth: after a dropout or large
+                // accumulated drift, snap to the beat instead of slewing.
+                self.beat_position = self.beat_position.round();
+                self.pending_phase_correction = 0.0;
+                self.pending_hard_resync = false;
+            } else {
+                self.pending_phase_correction =
+                    error.clamp(-MAX_PHASE_CORRECTION_BEATS, MAX_PHASE_CORRECTION_BEATS);
+            }
             self.last_event_id = audio.beat_event_id;
         }
     }
 }
 
+/// Maps a tempo candidate onto the octave of the current period: whichever of
+/// `{candidate/2, candidate, candidate*2}` is closest to `reference` wins.
+///
+/// INTENTIONAL trade-off (do not "fix"): BPM estimators frequently make octave
+/// errors, and locking to the current octave keeps animations stable through
+/// them. The cost is that a genuine halftime/doubletime tempo change (e.g. a
+/// 140→70 BPM transition) is mapped back onto the old period and animations
+/// keep running at the old rate. Pinned by
+/// `musical_clock_keeps_period_for_half_and_double_time_inputs`.
 fn align_period(reference: f64, candidate: f64) -> f64 {
     [candidate / 2.0, candidate, candidate * 2.0]
         .into_iter()
@@ -684,7 +770,9 @@ impl AnimationClockRuntime {
             blaulicht_shared::AnimationTickOutput,
         >,
     ) {
+        let previous_beat_event = self.beat_clock.last_event_id;
         self.beat_clock.update(now_ms, &audio_snapshot.snapshot);
+        let beat_this_tick = self.beat_clock.last_event_id != previous_beat_event;
         let beat_position = self.beat_clock.beat_position;
         let tempo_period_ms = self.beat_clock.period_ms;
         let generation = self.begin_tick();
@@ -698,6 +786,34 @@ impl AnimationClockRuntime {
                 let selection_fingerprint = selection_hasher.finish();
                 for (animation_id, animation) in scene_animations.iter_mut() {
                     if !animation.enabled {
+                        // Keep runtimes alive (and frozen) across pauses: the
+                        // generation-based eviction would otherwise reset them
+                        // and cause a giant catch-up jump on re-enable.
+                        for fixture_key in selection
+                            .fixtures
+                            .iter()
+                            .filter(|key| animation.fixture_timers.contains_key(*key))
+                        {
+                            let key = AnimationRuntimeKey {
+                                scene_id: *scene_id,
+                                selection_fingerprint,
+                                animation_id: *animation_id,
+                                fixture: *fixture_key,
+                            };
+                            if let Some(runtime) = self.fixture_phases.get_mut(&key) {
+                                runtime.seen_generation = generation;
+                                runtime.last_update_ms = now_ms;
+                                runtime.resume_pending = true;
+                            }
+                        }
+                        let layer_key = AnimationLayerKey {
+                            scene_id: *scene_id,
+                            selection_fingerprint,
+                            animation_id: *animation_id,
+                        };
+                        if let Some(runtime) = self.modulation_layers.get_mut(&layer_key) {
+                            runtime.seen_generation = generation;
+                        }
                         continue;
                     }
 
@@ -851,9 +967,36 @@ impl AnimationClockRuntime {
                         let timer = animation.fixture_timers.get_mut(&fixture_key).unwrap();
                         let runtime = self.fixture_phases.entry(key).or_default();
                         runtime.seen_generation = generation;
-                        let was_reset = timer.last_tick_time == 0;
-                        if was_reset {
-                            runtime.reset(now_ms, timer.timer as f64);
+
+                        let brand_new = runtime.last_update_ms == 0;
+                        let reset_requested =
+                            timer.last_tick_time == 0 || timer.needs_reset_on_beat;
+                        let mut was_reset = false;
+                        if reset_requested {
+                            // Pinned animations defer their reset to the next
+                            // beat event so restarts land on the beat; fall
+                            // back after a grace period so silent rooms still
+                            // reset.
+                            let defer = pinned_beats.is_some() && !brand_new && !beat_this_tick && {
+                                let since =
+                                    *runtime.reset_pending_since_ms.get_or_insert(now_ms);
+                                now_ms.saturating_sub(since) < RESET_ON_BEAT_GRACE_MS
+                            };
+                            if defer {
+                                timer.needs_reset_on_beat = true;
+                            } else {
+                                runtime.reset(now_ms, timer.timer as f64);
+                                timer.needs_reset_on_beat = false;
+                                was_reset = true;
+                            }
+                        } else if brand_new {
+                            // Recreated runtime (restart/recovery): re-anchor
+                            // from the persisted phase instead of integrating
+                            // the entire clock value as elapsed time.
+                            runtime.reset(now_ms, (timer.timer % 360) as f64);
+                            was_reset = true;
+                        } else {
+                            runtime.reset_pending_since_ms = None;
                         }
 
                         let mut crossings = if let Some(beats_per_cycle) = pinned_beats {
@@ -864,13 +1007,20 @@ impl AnimationClockRuntime {
                         if was_reset {
                             crossings = 0;
                         }
-                        // Aggregate over the selection: taking only the last
-                        // fixture's value could miss a cycle crossing when
-                        // per-fixture phase offsets straddle the boundary.
-                        representative_crossings = representative_crossings.max(crossings);
-                        timer.timer = runtime.phase_degrees.floor().max(0.0) as u64;
+                        // The animation-level iteration count follows a single
+                        // reference fixture (the first in the selection):
+                        // aggregating across a phase-spread selection counted N
+                        // iterations per cycle for N fixtures.
+                        if fixture_index == 0 {
+                            representative_crossings = crossings;
+                        }
+                        if !timer.needs_reset_on_beat {
+                            // While a beat-deferred reset is pending, `timer`
+                            // still holds the authored reset phase — don't
+                            // overwrite it with the live mirror.
+                            timer.timer = runtime.phase_degrees.floor().max(0.0) as u64;
+                        }
                         timer.last_tick_time = now_ms.max(1);
-                        timer.needs_reset_on_beat = false;
                         self.phase_scratch.push(runtime.phase_degrees);
                     }
 
@@ -940,7 +1090,9 @@ impl AnimationClockRuntime {
                                     audio_snapshot,
                                     &animation.spec_cloned,
                                     fixture_phase,
-                                    fixture_index,
+                                    // The fixture actually driven: spectrum
+                                    // spread must follow the reversed mapping.
+                                    target_index,
                                     fixture_count,
                                     &palettes_snapshot,
                                 ) else {
@@ -976,8 +1128,11 @@ mod tests {
         for cycle_ms in [500.0, 1_000.0, 2_000.0, 4_000.0, 8_000.0, 10_000.0] {
             let mut phase = FixturePhaseRuntime::default();
             phase.reset(0, 0.0);
-            phase.advance_local(cycle_ms as u64, Some(cycle_ms));
-            assert!((phase.phase_degrees - 360.0).abs() < 0.001, "{cycle_ms}");
+            let crossings = phase.advance_local(cycle_ms as u64, Some(cycle_ms));
+            // Exactly one full cycle: phase wraps back to 0 and one crossing
+            // is reported.
+            assert_eq!(crossings, 1, "{cycle_ms}");
+            assert!(phase.phase_degrees.abs() < 0.001, "{cycle_ms}");
         }
     }
 
@@ -987,7 +1142,7 @@ mod tests {
         phase.reset(1_000, 0.0);
         let crossings = phase.advance_local(6_000, Some(500.0));
         assert_eq!(crossings, 10);
-        assert!((phase.phase_degrees - 3_600.0).abs() < 0.001);
+        assert!(phase.phase_degrees.abs() < 0.001);
     }
 
     #[test]
@@ -1007,7 +1162,8 @@ mod tests {
         phase.advance_local(1_000, None);
         assert_eq!(phase.phase_degrees, 45.0);
         phase.advance_local(1_500, Some(500.0));
-        assert_eq!(phase.phase_degrees, 405.0);
+        // One full cycle from 45°: wraps back to 45°.
+        assert_eq!(phase.phase_degrees, 45.0);
     }
 
     #[test]
@@ -1099,7 +1255,8 @@ mod tests {
         let mut phase = FixturePhaseRuntime::default();
         phase.reset(0, 90.0);
         phase.align_to_beat_clock(500, 2.0, 2.0);
-        assert_eq!(phase.phase_degrees, 450.0);
+        // 90° offset + 2 beats / 2 beats-per-cycle = 450°, wrapped to 90°.
+        assert_eq!(phase.phase_degrees, 90.0);
     }
 
     #[test]
@@ -1204,6 +1361,123 @@ mod tests {
 
         assert_eq!(AnimationSpeedModifier::_2.as_float(), 0.5);
         assert_eq!(AnimationSpeedModifier::_1_16.as_float(), 16.0);
+    }
+
+    #[test]
+    fn dropout_recovery_hard_resnaps_to_the_beat() {
+        let mut clock = MusicalBeatClock::default();
+        let mut audio = blaulicht_shared::CollectedAudioSnapshot {
+            time_between_beats_millis: 500,
+            source_status: AudioSourceStatus::Active,
+            ..Default::default()
+        };
+        clock.update(0, &audio);
+        clock.update(1_000, &audio);
+        assert!((clock.beat_position - 2.0).abs() < 0.001);
+
+        // Dropout freezes the clock at an arbitrary fraction (the dropout
+        // tick itself still advances 300 ms before the period clears).
+        audio.source_status = AudioSourceStatus::Disconnected;
+        audio.time_between_beats_millis = 0;
+        clock.update(1_300, &audio);
+        assert!((clock.beat_position - 2.6).abs() < 0.001);
+
+        // Recovery: position resumes from the frozen fraction...
+        audio.source_status = AudioSourceStatus::Active;
+        audio.time_between_beats_millis = 500;
+        clock.update(1_600, &audio);
+        clock.update(1_900, &audio);
+        assert!((clock.beat_position - 3.2).abs() < 0.001);
+
+        // ...until the first beat event, which is ground truth and snaps the
+        // clock onto an integer beat instead of slow-slewing off-phase.
+        audio.beat_trigger = true;
+        audio.beat_event_id = 1;
+        clock.update(1_900, &audio);
+        assert_eq!(clock.beat_position, 3.0);
+        assert_eq!(clock.pending_phase_correction, 0.0);
+        // 3.2 rounds to 3.0 — the snap pulled the clock back onto the beat.
+    }
+
+    #[test]
+    fn speed_change_rebases_pinned_phase_without_a_jump() {
+        let mut phase = FixturePhaseRuntime::default();
+        phase.reset(0, 0.0);
+        // Establish pinned alignment at beat 100.25, 1 beat per cycle.
+        phase.align_to_beat_clock(25, 100.25, 1.0);
+        let before = phase.phase_degrees;
+        // Halving the cycle length (divisor 1.0 -> 0.5) used to double the
+        // absolute phase and flood the iteration count.
+        let crossings = phase.align_to_beat_clock(50, 100.30, 0.5);
+        assert_eq!(crossings, 0);
+        let delta = (phase.phase_degrees - before).rem_euclid(360.0);
+        assert!(delta < 45.0, "phase jumped by {delta} degrees");
+    }
+
+    #[test]
+    fn pin_toggle_is_continuous() {
+        let mut phase = FixturePhaseRuntime::default();
+        phase.reset(0, 0.0);
+        phase.align_to_beat_clock(25, 4.0, 2.0);
+        // Unpin: free-run for a while.
+        phase.advance_local(525, Some(1_000.0));
+        let before = phase.phase_degrees;
+        // Re-pin at a far-away beat position: must rebase, not snap to grid.
+        let crossings = phase.align_to_beat_clock(550, 200.0, 2.0);
+        assert_eq!(crossings, 0);
+        let delta = (phase.phase_degrees - before).rem_euclid(360.0);
+        assert!(delta < 45.0, "phase jumped by {delta} degrees");
+    }
+
+    #[test]
+    fn inverted_amplitude_range_does_not_panic() {
+        use blaulicht_shared::{
+            fixture::value::FixtureValue, AnimationSpecBodyPhaser, MathematicalBaseFunction, MathematicalPhaser,
+            PhaserKind, SyncMode,
+        };
+        let body = AnimationSpecBodyPhaser {
+            kind: PhaserKind::Mathematical(MathematicalPhaser {
+                base: MathematicalBaseFunction::ExpSpike1_8,
+                stretch_factor: 1.0,
+                // Inverted on purpose: min above max.
+                amplitude_min: FixtureValue::Literal(200),
+                amplitude_max: FixtureValue::Literal(10),
+            }),
+            time_total: PhaserDuration::Fixed(1_000),
+            pin_to_beat: false,
+            sync: SyncMode::Synced,
+            reverse_after_n_iterations: None,
+        };
+        for degrees in [0.0, 10.0, 90.0, 180.0, 350.0] {
+            let value =
+                phaser::generate(&body, degrees, FixtureProperty::Alpha, &BTreeMap::new());
+            assert!((10..=200).contains(&value), "degrees={degrees} -> {value}");
+        }
+    }
+
+    #[test]
+    fn stretch_factor_scales_frequency() {
+        use blaulicht_shared::{
+            fixture::value::FixtureValue, AnimationSpecBodyPhaser, MathematicalBaseFunction, MathematicalPhaser,
+            PhaserKind, SyncMode,
+        };
+        let spec = |stretch: f32| AnimationSpecBodyPhaser {
+            kind: PhaserKind::Mathematical(MathematicalPhaser {
+                base: MathematicalBaseFunction::Sawtooth,
+                stretch_factor: stretch,
+                amplitude_min: FixtureValue::Literal(0),
+                amplitude_max: FixtureValue::Literal(255),
+            }),
+            time_total: PhaserDuration::Fixed(1_000),
+            pin_to_beat: false,
+            sync: SyncMode::Synced,
+            reverse_after_n_iterations: None,
+        };
+        let stretched =
+            phaser::generate(&spec(2.0), 90.0, FixtureProperty::Alpha, &BTreeMap::new());
+        let reference =
+            phaser::generate(&spec(1.0), 180.0, FixtureProperty::Alpha, &BTreeMap::new());
+        assert_eq!(stretched, reference, "stretch factor must not be ignored");
     }
 }
 
@@ -2029,6 +2303,282 @@ mod modulation_tests {
         assert_eq!(
             output_for(&clock, FIXTURE_B, FixtureProperty::ColorHue).absolute,
             Some(10)
+        );
+    }
+
+    //
+    // Beat-sync integration tests.
+    //
+
+    use blaulicht_shared::AnimationSpeedModifier;
+
+    fn beating_audio(period_ms: u16, beat_event_id: u64, beat_trigger: bool) -> CollectorOutput {
+        CollectorOutput {
+            snapshot: CollectedAudioSnapshot {
+                source_status: AudioSourceStatus::Active,
+                volume: 255,
+                bass: 200,
+                bpm: 60_000.0 / period_ms as f32,
+                time_between_beats_millis: period_ms,
+                beat_trigger,
+                beat_event_id,
+                ..Default::default()
+            },
+            debug_data: Default::default(),
+            current_audio_colunn: Vec::new(),
+        }
+    }
+
+    fn pinned_phaser_spec(beats: AnimationSpeedModifier) -> AnimationSpec {
+        AnimationSpec {
+            name: "Pinned".to_string(),
+            property: FixtureProperty::Alpha,
+            body: AnimationSpecBody::Phaser(AnimationSpecBodyPhaser {
+                kind: PhaserKind::Mathematical(MathematicalPhaser {
+                    base: MathematicalBaseFunction::Sawtooth,
+                    stretch_factor: 1.0,
+                    amplitude_min: FixtureValue::Literal(0),
+                    amplitude_max: FixtureValue::Literal(255),
+                }),
+                time_total: PhaserDuration::Beat(beats),
+                pin_to_beat: true,
+                sync: SyncMode::Synced,
+                reverse_after_n_iterations: None,
+            }),
+        }
+    }
+
+    fn animation_mut<'a>(
+        state: &'a mut blaulicht_shared::EngineState,
+        fixtures: &[(u8, u8)],
+        animation_id: u8,
+    ) -> &'a mut ActiveAnimation {
+        let selection = FixtureSelection {
+            fixtures: fixtures.to_vec(),
+        };
+        state
+            .scenes
+            .get_mut(&SCENE)
+            .unwrap()
+            .sink
+            .active_animations
+            .get_mut(&selection)
+            .unwrap()
+            .get_mut(&animation_id)
+            .unwrap()
+    }
+
+    #[test]
+    fn disabled_tick_does_not_evict_phase_runtime() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            phaser_spec(FixtureProperty::Alpha, 0, 255),
+        );
+        animation_mut(&mut state, &fixtures, 0).reset_timers(SyncMode::StretchedEven);
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = loud_audio();
+        // Simulate one hour of prior uptime: the eviction bug integrated the
+        // whole clock value as elapsed time after a single disabled tick.
+        let base = 3_600_000_u64;
+        clock.tick(base, &mut state, &audio);
+        clock.tick(base + 25, &mut state, &audio);
+
+        animation_mut(&mut state, &fixtures, 0).enabled = false;
+        clock.tick(base + 50, &mut state, &audio);
+        animation_mut(&mut state, &fixtures, 0).enabled = true;
+        clock.tick(base + 75, &mut state, &audio);
+
+        let animation = animation_mut(&mut state, &fixtures, 0);
+        assert_eq!(animation.iteration_count, 0);
+        // The StretchedEven spread (B leads A by 180°) must survive the pause.
+        let timer_a = animation.fixture_timers[&FIXTURE_A].timer as i64;
+        let timer_b = animation.fixture_timers[&FIXTURE_B].timer as i64;
+        assert!(
+            ((timer_b - timer_a).rem_euclid(360) - 180).abs() <= 2,
+            "spread collapsed: A={timer_a} B={timer_b}"
+        );
+    }
+
+    #[test]
+    fn spread_selection_counts_one_iteration_per_cycle() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            phaser_spec(FixtureProperty::Alpha, 0, 255), // Fixed 1000 ms cycle
+        );
+        animation_mut(&mut state, &fixtures, 0).reset_timers(SyncMode::StretchedEven);
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = loud_audio();
+        clock.tick(0, &mut state, &audio);
+        // One tick past 3s so float accumulation can't leave the third
+        // boundary crossing just under 360°.
+        for t in (100..=3_100).step_by(100) {
+            clock.tick(t, &mut state, &audio);
+        }
+
+        // ~3 seconds at a 1-second cycle = exactly 3 iterations, regardless of
+        // how many phase-spread fixtures are in the selection (the old
+        // aggregation counted one per fixture per cycle: 6 here).
+        assert_eq!(animation_mut(&mut state, &fixtures, 0).iteration_count, 3);
+    }
+
+    #[test]
+    fn speed_change_keeps_pinned_phase_continuous() {
+        let fixtures = [FIXTURE_A];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            pinned_phaser_spec(AnimationSpeedModifier::_1),
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &beating_audio(500, 1, true));
+        let mut t = 0_u64;
+        for _ in 0..400 {
+            t += 25;
+            let on_beat = t % 500 == 0;
+            clock.tick(
+                t,
+                &mut state,
+                &beating_audio(500, t / 500 + 1, on_beat),
+            );
+        }
+
+        let animation = animation_mut(&mut state, &fixtures, 0);
+        let phase_before = animation.fixture_timers[&FIXTURE_A].timer as i64;
+        let iterations_before = animation.iteration_count;
+        // One speed-fader notch: beats-per-cycle 1.0 -> 0.5.
+        animation.speed_factor = AnimationSpeedModifier::_2;
+        t += 25;
+        clock.tick(t, &mut state, &beating_audio(500, t / 500 + 1, false));
+
+        let animation = animation_mut(&mut state, &fixtures, 0);
+        let phase_after = animation.fixture_timers[&FIXTURE_A].timer as i64;
+        let delta = (phase_after - phase_before).rem_euclid(360);
+        assert!(delta <= 72, "pinned phase jumped by {delta}° on speed change");
+        assert!(
+            animation.iteration_count <= iterations_before + 1,
+            "iteration count flooded: {} -> {}",
+            iterations_before,
+            animation.iteration_count
+        );
+    }
+
+    #[test]
+    fn reset_waits_for_next_beat() {
+        let fixtures = [FIXTURE_A];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            pinned_phaser_spec(AnimationSpeedModifier::_1),
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &beating_audio(500, 1, true));
+        clock.tick(250, &mut state, &beating_audio(500, 1, false));
+
+        // Request a reset mid-bar: it must wait for the next beat event.
+        animation_mut(&mut state, &fixtures, 0).reset_timers(SyncMode::Synced);
+        clock.tick(275, &mut state, &beating_audio(500, 1, false));
+        assert!(
+            animation_mut(&mut state, &fixtures, 0).fixture_timers[&FIXTURE_A]
+                .needs_reset_on_beat,
+            "reset applied off-beat"
+        );
+
+        clock.tick(500, &mut state, &beating_audio(500, 2, true));
+        assert!(
+            !animation_mut(&mut state, &fixtures, 0).fixture_timers[&FIXTURE_A]
+                .needs_reset_on_beat,
+            "reset not applied on the beat"
+        );
+    }
+
+    #[test]
+    fn deferred_reset_falls_back_without_beats() {
+        let fixtures = [FIXTURE_A];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            pinned_phaser_spec(AnimationSpeedModifier::_1),
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &beating_audio(500, 1, true));
+        animation_mut(&mut state, &fixtures, 0).reset_timers(SyncMode::Synced);
+
+        // No further beat events: the reset applies after the grace period.
+        let mut t = 0;
+        for _ in 0..100 {
+            t += 25;
+            clock.tick(t, &mut state, &beating_audio(500, 1, false));
+        }
+        assert!(
+            !animation_mut(&mut state, &fixtures, 0).fixture_timers[&FIXTURE_A]
+                .needs_reset_on_beat,
+            "deferred reset never fell back"
+        );
+    }
+
+    #[test]
+    fn reversed_selection_keeps_spectrum_mapping() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            AnimationSpec {
+                name: "Spectrum".to_string(),
+                property: FixtureProperty::Alpha,
+                body: AnimationSpecBody::AudioFrequencies(AnimationSpecBodyFrequencies {
+                    gate: 0,
+                    boost: 0,
+                    freq_min: 0,
+                    freq_max: 20_000,
+                    normalization: Default::default(),
+                }),
+            },
+        );
+
+        let audio = loud_audio(); // buckets: [255, 0]
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &audio);
+        let a_forward = output_for(&clock, FIXTURE_A, FixtureProperty::Alpha).absolute;
+        let b_forward = output_for(&clock, FIXTURE_B, FixtureProperty::Alpha).absolute;
+
+        // Reversal swaps the phase mapping, but the spectrum spread must keep
+        // following the fixture actually driven.
+        animation_mut(&mut state, &fixtures, 0).reversed = true;
+        clock.tick(25, &mut state, &audio);
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::Alpha).absolute,
+            a_forward
+        );
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::Alpha).absolute,
+            b_forward
         );
     }
 }

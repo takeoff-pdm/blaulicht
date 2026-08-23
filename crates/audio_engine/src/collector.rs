@@ -290,8 +290,6 @@ where
     pub scratch_params: CollectorScratchParameters,
     pub scratch: CollectorScratch,
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
-    pub need_to_update_output_beat_trigger: [bool; NUM_OUTPUTS],
-    pub need_to_update_output_beat_onset: [bool; NUM_OUTPUTS],
     pub output_event_cursors: [AudioEventCursor; NUM_OUTPUTS],
 }
 
@@ -404,8 +402,6 @@ where
             debug_data: SignalDebugData::default(),
             scratch: CollectorScratch::new(scratch_params, now),
             outputs,
-            need_to_update_output_beat_trigger: [true; NUM_OUTPUTS],
-            need_to_update_output_beat_onset: [true; NUM_OUTPUTS],
             output_event_cursors: [AudioEventCursor::default(); NUM_OUTPUTS],
             audio_source,
         })
@@ -497,8 +493,6 @@ where
     pub fn clear(&mut self) {
         // self.freqs = vec![];
         self.scratch = CollectorScratch::new(self.scratch_params, 0);
-        self.need_to_update_output_beat_trigger = [false; NUM_OUTPUTS];
-        self.need_to_update_output_beat_onset = [false; NUM_OUTPUTS];
         self.output_event_cursors = [AudioEventCursor::default(); NUM_OUTPUTS];
     }
 
@@ -564,13 +558,11 @@ where
 
         if self.scratch.is_on_beat {
             self.current.beat_event_id = self.current.beat_event_id.wrapping_add(1).max(1);
-            self.need_to_update_output_beat_trigger.fill(true);
             self.scratch.is_on_beat = false;
         }
 
         if self.scratch.actual_onset_peak {
             self.current.onset_event_id = self.current.onset_event_id.wrapping_add(1).max(1);
-            self.need_to_update_output_beat_onset.fill(true);
             self.scratch.actual_onset_peak = false;
         }
 
