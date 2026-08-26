@@ -507,48 +507,43 @@
             "changeset": [
               {
                 "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
                 "fid": 0,
                 "property": "ColorSaturation"
               },
               {
                 "gid": 0,
-                "fid": 1,
+                "fid": 0,
                 "property": "ColorValue"
               },
               {
                 "gid": 0,
-                "fid": 2,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
                 "fid": 3,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 0,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 3,
-                "property": "ColorSaturation"
+                "property": "Alpha"
               },
               {
                 "gid": 0,
                 "fid": 2,
                 "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
               },
               {
                 "gid": 0,
@@ -558,32 +553,37 @@
               {
                 "gid": 0,
                 "fid": 3,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 0,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
                 "property": "ColorValue"
               },
               {
                 "gid": 0,
                 "fid": 3,
-                "property": "ColorValue"
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
               }
             ],
             "master_alpha_fader": 80,
@@ -906,9 +906,9 @@
                             0
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -917,9 +917,9 @@
                             1
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -928,9 +928,9 @@
                             2
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -939,9 +939,9 @@
                             3
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -950,9 +950,9 @@
                             4
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -961,9 +961,9 @@
                             5
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -972,9 +972,9 @@
                             6
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -983,9 +983,9 @@
                             7
                           ],
                           "value": {
-                            "last_tick_time": 12883,
-                            "timer": 1558,
-                            "needs_reset_on_beat": false
+                            "last_tick_time": 0,
+                            "timer": 0,
+                            "needs_reset_on_beat": true
                           }
                         }
                       ],
@@ -1028,7 +1028,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1039,7 +1039,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1050,7 +1050,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1061,7 +1061,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1072,7 +1072,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1083,7 +1083,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1094,7 +1094,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         },
                         {
@@ -1105,7 +1105,7 @@
                           "value": {
                             "last_tick_time": 0,
                             "timer": 0,
-                            "needs_reset_on_beat": false
+                            "needs_reset_on_beat": true
                           }
                         }
                       ],
@@ -1126,113 +1126,13 @@
             "changeset": [
               {
                 "gid": 0,
-                "fid": 1,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 7,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 6,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 4,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 4,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 7,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 5,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 5,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 3,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 5,
+                "fid": 0,
                 "property": "Alpha"
               },
               {
                 "gid": 0,
                 "fid": 0,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 6,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 7,
                 "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 6,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 7,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 3,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 0,
-                "property": "Alpha"
               },
               {
                 "gid": 0,
@@ -1246,23 +1146,23 @@
               },
               {
                 "gid": 0,
+                "fid": 4,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
                 "fid": 3,
                 "property": "ColorSaturation"
               },
               {
                 "gid": 0,
-                "fid": 0,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 0,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "ColorSaturation"
+                "fid": 5,
+                "property": "Alpha"
               },
               {
                 "gid": 0,
@@ -1271,8 +1171,78 @@
               },
               {
                 "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
                 "fid": 2,
                 "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorValue"
               },
               {
                 "gid": 0,
@@ -1281,8 +1251,38 @@
               },
               {
                 "gid": 0,
-                "fid": 6,
+                "fid": 1,
                 "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 4,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 6,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 5,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 7,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorValue"
               }
             ],
             "master_alpha_fader": 100,
@@ -1558,53 +1558,8 @@
             "changeset": [
               {
                 "gid": 0,
-                "fid": 0,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorHue"
-              },
-              {
-                "gid": 0,
                 "fid": 2,
                 "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 3,
-                "property": "ColorSaturation"
-              },
-              {
-                "gid": 0,
-                "fid": 2,
-                "property": "ColorValue"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 3,
-                "property": "Alpha"
-              },
-              {
-                "gid": 0,
-                "fid": 1,
-                "property": "ColorSaturation"
               },
               {
                 "gid": 0,
@@ -1613,8 +1568,28 @@
               },
               {
                 "gid": 0,
+                "fid": 2,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorHue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "ColorSaturation"
+              },
+              {
+                "gid": 0,
                 "fid": 3,
                 "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "ColorHue"
               },
               {
                 "gid": 0,
@@ -1628,6 +1603,16 @@
               },
               {
                 "gid": 0,
+                "fid": 1,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 2,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
                 "fid": 2,
                 "property": "ColorHue"
               },
@@ -1635,6 +1620,21 @@
                 "gid": 0,
                 "fid": 0,
                 "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 3,
+                "property": "Alpha"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorValue"
+              },
+              {
+                "gid": 0,
+                "fid": 1,
+                "property": "ColorSaturation"
               }
             ],
             "master_alpha_fader": 100,
@@ -2019,222 +2019,6 @@
         }
       }
     },
-    "external_screens": [
-      {
-        "width": 1200.0,
-        "height": 1920.0,
-        "layout": {
-          "Split": {
-            "axis": "Horizontal",
-            "fraction": 0.5,
-            "first": {
-              "Split": {
-                "axis": "Vertical",
-                "fraction": 0.5,
-                "first": {
-                  "Leaf": {
-                    "tabs": [
-                      {
-                        "page": "Logs",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "System",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "Audio",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "FixturesSetup",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "View",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "ViewPerformance",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "FixturesPerformance",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "Palettes",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "page": "SceneGraph",
-                        "render_mode": "Default"
-                      },
-                      {
-                        "plugin_id": 0,
-                        "render_mode": "Default"
-                      },
-                      {
-                        "plugin_id": 1,
-                        "render_mode": "Default"
-                      }
-                    ],
-                    "active": 6
-                  }
-                },
-                "second": {
-                  "Leaf": {
-                    "tabs": [
-                      {
-                        "page": "Animations",
-                        "render_mode": "Default"
-                      }
-                    ],
-                    "active": 0
-                  }
-                }
-              }
-            },
-            "second": {
-              "Leaf": {
-                "tabs": [
-                  {
-                    "page": "Visualizer",
-                    "render_mode": "Default"
-                  }
-                ],
-                "active": 0
-              }
-            }
-          }
-        }
-      },
-      {
-        "width": 232.0,
-        "height": 251.0,
-        "layout": {
-          "Leaf": {
-            "tabs": [
-              {
-                "page": "Logs",
-                "render_mode": "Default"
-              },
-              {
-                "page": "System",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Audio",
-                "render_mode": "Default"
-              },
-              {
-                "page": "FixturesSetup",
-                "render_mode": "Default"
-              },
-              {
-                "page": "View",
-                "render_mode": "Default"
-              },
-              {
-                "page": "ViewPerformance",
-                "render_mode": "Default"
-              },
-              {
-                "page": "FixturesPerformance",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Animations",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Palettes",
-                "render_mode": "Default"
-              },
-              {
-                "page": "SceneGraph",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Visualizer",
-                "render_mode": "Default"
-              },
-              {
-                "plugin_id": 0,
-                "render_mode": "Default"
-              },
-              {
-                "plugin_id": 1,
-                "render_mode": "Default"
-              }
-            ],
-            "active": 1
-          }
-        }
-      },
-      {
-        "width": 469.0,
-        "height": 254.0,
-        "layout": {
-          "Leaf": {
-            "tabs": [
-              {
-                "page": "Logs",
-                "render_mode": "Default"
-              },
-              {
-                "page": "System",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Audio",
-                "render_mode": "Default"
-              },
-              {
-                "page": "FixturesSetup",
-                "render_mode": "Default"
-              },
-              {
-                "page": "View",
-                "render_mode": "Default"
-              },
-              {
-                "page": "ViewPerformance",
-                "render_mode": "Default"
-              },
-              {
-                "page": "FixturesPerformance",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Animations",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Palettes",
-                "render_mode": "Default"
-              },
-              {
-                "page": "SceneGraph",
-                "render_mode": "Default"
-              },
-              {
-                "page": "Visualizer",
-                "render_mode": "Default"
-              },
-              {
-                "plugin_id": 0,
-                "render_mode": "Default"
-              },
-              {
-                "plugin_id": 1,
-                "render_mode": "Default"
-              }
-            ],
-            "active": 1
-          }
-        }
-      }
-    ]
+    "external_screens": []
   }
 }
