@@ -327,9 +327,76 @@ mod tests {
     use blaulicht_shared::{
         fixture::{light::Light, FixtureType},
         scene::{FixtureSelection, FixtureSelector},
-        ActiveAnimation, AnimationSpec, FixtureProperty,
+        ActiveAnimation, AnimationSpec, AnimationTemplate, FixtureProperty, SaveEngineState,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn five_led_strip_fixture_workflow_survives_showfile_round_trip() {
+        const STRIPS: usize = 5;
+        const PIXELS_PER_STRIP: usize = 100;
+
+        let mut engine = EngineState::default();
+        for strip in 0..STRIPS {
+            let group_id = engine
+                .create_group(format!("LED strip {}", strip + 1))
+                .expect("five groups fit in the engine");
+            for pixel in 0..PIXELS_PER_STRIP {
+                let fixture_id = engine.add_fixture_to_group(
+                    group_id,
+                    Fixture::new(
+                        strip,
+                        1 + pixel * 3,
+                        format!("Pixel {}", pixel + 1),
+                        FixtureType::from(Light::Generic3ChanNoAlpha),
+                    ),
+                );
+                assert_eq!(fixture_id, Some(pixel as u8));
+            }
+            engine.0.selection.group_ids.insert(group_id);
+        }
+
+        let selection = engine.get_selection().sorted();
+        assert_eq!(selection.fixtures.len(), STRIPS * PIXELS_PER_STRIP);
+
+        let animation_id = 42;
+        let spec = AnimationSpec::empty();
+        engine
+            .0
+            .animation_templates
+            .insert(animation_id, AnimationTemplate { spec: spec.clone() });
+        let mut animation = ActiveAnimation::new(&selection.fixtures, spec);
+        animation.enabled = true;
+        engine.curr_scene_mut().sink.active_animations.insert(
+            selection.clone(),
+            BTreeMap::from([(animation_id, animation)]),
+        );
+
+        let json = serde_json::to_string(&SaveEngineState::from(engine.0.clone())).unwrap();
+        let saved: SaveEngineState = serde_json::from_str(&json).unwrap();
+        let restored = blaulicht_shared::EngineState::try_from(saved).unwrap();
+
+        assert_eq!(
+            restored
+                .groups
+                .values()
+                .map(|group| group.fixtures.len())
+                .sum::<usize>(),
+            STRIPS * PIXELS_PER_STRIP
+        );
+        let restored_animation =
+            &restored.scenes[&0].sink.active_animations[&selection][&animation_id];
+        assert!(restored_animation.enabled);
+        assert_eq!(
+            restored_animation.fixture_timers.len(),
+            STRIPS * PIXELS_PER_STRIP
+        );
+        for universe in 0..STRIPS {
+            let group = &restored.groups[&(universe as u8)];
+            assert_eq!(group.fixtures[&99].universe_no, universe);
+            assert_eq!(group.fixtures[&99].start_addr, 298);
+        }
+    }
 
     #[test]
     fn adding_fixture_does_not_reindex_running_animation_timers() {

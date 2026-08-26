@@ -46,4 +46,9 @@ file_path = "../plugins/bundle_debug/chaos_animation_plugin.wasm"
 enabled = true
 enable_watcher = true
 
+[[plugins]]
+file_path = "../plugins/bundle_debug/audio_reactor_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]

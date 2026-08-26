@@ -40,5 +40,6 @@ exclude = [
     "./crates/plugins/sample_animation_plugin",
     "./crates/plugins/chaos_animation_plugin",
     "./crates/plugins/inspector",
+    "./crates/plugins/audio_reactor_animation_plugin",
 ]
 resolver = "2"

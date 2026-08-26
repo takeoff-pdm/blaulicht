@@ -108,6 +108,11 @@ impl ModulationOutputs {
         self.entries.is_empty()
     }
 
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     /// Applies this frame's output for `scene_id`/`fixture` onto a
     /// palette-resolved fixture state, before normal scene merging.
     pub fn apply_to_fixture(
@@ -1734,6 +1739,99 @@ mod modulation_tests {
             .get_mut(&fixture)
             .unwrap()
             .alpha = FixtureValue::Literal(value);
+    }
+
+    #[test]
+    fn five_hundred_rgb_pixels_animate_across_five_artnet_universes() {
+        const STRIPS: usize = 5;
+        const PIXELS_PER_STRIP: usize = 100;
+        const RGB_FOOTPRINT: usize = 3;
+
+        let mut state = blaulicht_shared::EngineState::default();
+        state.groups.clear();
+        state.scenes.clear();
+
+        let mut fixtures = Vec::with_capacity(STRIPS * PIXELS_PER_STRIP);
+        for universe in 0..STRIPS {
+            let group_id = universe as u8;
+            let mut group = blaulicht_shared::fixture::state::FixtureGroup {
+                name: format!("LED strip {}", universe + 1),
+                fixtures: BTreeMap::new(),
+            };
+            for pixel in 0..PIXELS_PER_STRIP {
+                let fixture_id = pixel as u8;
+                let key = (group_id, fixture_id);
+                fixtures.push(key);
+                group.fixtures.insert(
+                    fixture_id,
+                    Fixture::new(
+                        universe,
+                        1 + pixel * RGB_FOOTPRINT,
+                        format!("Pixel {}", pixel + 1),
+                        FixtureType::from(Light::Generic3ChanNoAlpha),
+                    ),
+                );
+            }
+            state.groups.insert(group_id, group);
+        }
+
+        state.scenes.insert(
+            SCENE,
+            blaulicht_shared::scene::Scene {
+                name: "LED test".to_string(),
+                sink: blaulicht_shared::scene::EngineSink::from_groups(&state.groups),
+            },
+        );
+        state.current_scene_focus = SCENE;
+        for fixture_state in state
+            .scenes
+            .get_mut(&SCENE)
+            .unwrap()
+            .sink
+            .fixture_states
+            .values_mut()
+        {
+            fixture_state.color_h = FixtureValue::Literal(0);
+            fixture_state.color_s = FixtureValue::Literal(255);
+            fixture_state.color_v = FixtureValue::Literal(255);
+        }
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.clone(),
+            phaser_spec(FixtureProperty::Alpha, 255, 255),
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = silent_disconnected_audio();
+        // Exercise a second of output at the engine's 25 ms / 40 Hz DMX cadence.
+        for frame in 0..40 {
+            clock.tick(frame * 25, &mut state, &audio);
+            assert_eq!(clock.outputs.len(), STRIPS * PIXELS_PER_STRIP);
+        }
+
+        let scene = state.scenes.get(&SCENE).unwrap();
+        let mut universes = [[0_u8; 513]; STRIPS];
+        for (group_id, group) in &state.groups {
+            for (fixture_id, fixture) in &group.fixtures {
+                let key = (*group_id, *fixture_id);
+                let mut fixture_state = scene.sink.fixture_states[&key].clone();
+                clock
+                    .outputs
+                    .apply_to_fixture(&mut fixture_state, SCENE, key, &state.palettes);
+                fixture.write(
+                    &fixture_state.resolve(&state.palettes),
+                    &mut universes[fixture.universe_no],
+                );
+            }
+        }
+
+        for universe in &universes {
+            assert_eq!(&universe[1..=3], &[255, 0, 0]);
+            assert_eq!(&universe[298..=300], &[255, 0, 0]);
+            assert!(universe[301..].iter().all(|channel| *channel == 0));
+        }
     }
 
     #[test]

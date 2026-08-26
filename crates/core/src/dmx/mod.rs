@@ -1583,3 +1583,81 @@ mod grand_master_tests {
         assert_eq!(state.scenes[&1].sink.master_alpha_fader, 73);
     }
 }
+
+#[cfg(test)]
+mod artnet_scale_tests {
+    use super::{output_worker, DmxEngineArtnetOutput, DmxOutputFrame};
+    use crate::state::{AppState, ArtNetReceiver, NUM_DMX_UNIVERSES};
+    use crossbeam_channel::bounded;
+    use std::{net::UdpSocket, sync::Arc, time::Duration};
+
+    #[test]
+    fn output_worker_sends_five_populated_led_strip_universes_without_truncation() {
+        const STRIPS: usize = 5;
+        const PIXELS_PER_STRIP: usize = 100;
+
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        receiver
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let state = Arc::new(AppState::new(&[]));
+        state
+            .artnet_output
+            .write()
+            .unwrap()
+            .receivers
+            .push(ArtNetReceiver::new(receiver.local_addr().unwrap()));
+
+        let artnet = DmxEngineArtnetOutput {
+            universe_buffers: std::array::from_fn(|_| vec![0; 512]),
+            socket: Some(UdpSocket::bind("127.0.0.1:0").unwrap()),
+        };
+        let (sender, output_rx) = bounded(1);
+        let worker_state = Arc::clone(&state);
+        let worker = std::thread::spawn(move || {
+            output_worker(
+                output_rx,
+                std::array::from_fn(|_| None),
+                artnet,
+                worker_state,
+            )
+        });
+
+        let mut frame = DmxOutputFrame {
+            universes: [[0; 513]; NUM_DMX_UNIVERSES],
+        };
+        for universe in 0..STRIPS {
+            for pixel in 0..PIXELS_PER_STRIP {
+                let channel = 1 + pixel * 3;
+                frame.universes[universe][channel..channel + 3].copy_from_slice(&[
+                    universe as u8 + 1,
+                    pixel as u8,
+                    255,
+                ]);
+            }
+        }
+        sender.send(frame).unwrap();
+
+        let mut packets = Vec::with_capacity(NUM_DMX_UNIVERSES);
+        for _ in 0..NUM_DMX_UNIVERSES {
+            let mut packet = [0_u8; 600];
+            let length = receiver.recv(&mut packet).unwrap();
+            packets.push(packet[..length].to_vec());
+        }
+        packets.sort_by_key(|packet| packet[14]);
+
+        assert_eq!(packets.len(), NUM_DMX_UNIVERSES);
+        for (universe, packet) in packets.iter().take(STRIPS).enumerate() {
+            assert_eq!(&packet[..8], b"Art-Net\0");
+            assert_eq!(packet.len(), 18 + 512);
+            assert_eq!(packet[13], universe as u8);
+            assert_eq!(packet[14], universe as u8);
+            assert_eq!(&packet[18..21], &[universe as u8 + 1, 0, 255]);
+            assert_eq!(&packet[315..318], &[universe as u8 + 1, 99, 255]);
+            assert!(packet[318..].iter().all(|channel| *channel == 0));
+        }
+
+        drop(sender);
+        worker.join().unwrap();
+    }
+}

@@ -334,21 +334,7 @@ impl BlaulichtApp {
             SystemTab::General => {}
             SystemTab::Dmx => {
                 let health = self.data.state.health_data.read().unwrap();
-                for (universe, state) in health.dmx_universes_healthy.iter().enumerate() {
-                    ui.group(|ui| {
-                        ui.strong(format!("Universe {universe}"));
-                        ui.label(format!("Port: {}", state.port));
-                        match &state.state {
-                            crate::state::DmxHealthState::Healthy => {
-                                ui.colored_label(Color32::LIGHT_GREEN, "ONLINE");
-                            }
-                            crate::state::DmxHealthState::Error(error) => {
-                                ui.colored_label(Color32::LIGHT_RED, error);
-                            }
-                        }
-                    });
-                    ui.add_space(6.0);
-                }
+                render_dmx_universe_rows(ui, &health.dmx_universes_healthy);
             }
             SystemTab::ArtNet => {
                 let health = self.data.state.health_data.read().unwrap();
@@ -612,6 +598,24 @@ impl BlaulichtApp {
     }
 }
 
+fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth]) {
+    for (universe, state) in states.iter().enumerate() {
+        ui.group(|ui| {
+            ui.strong(format!("Universe {universe}"));
+            ui.label(format!("Port: {}", state.port));
+            match &state.state {
+                crate::state::DmxHealthState::Healthy => {
+                    ui.colored_label(Color32::LIGHT_GREEN, "ONLINE");
+                }
+                crate::state::DmxHealthState::Error(error) => {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+            }
+        });
+        ui.add_space(6.0);
+    }
+}
+
 fn system_tab_bar_height(width: f32) -> f32 {
     const GAP: f32 = 2.0;
     const MIN_TAB_WIDTH: f32 = 86.0;
@@ -623,7 +627,8 @@ fn system_tab_bar_height(width: f32) -> f32 {
 
 #[cfg(test)]
 mod system_layout_tests {
-    use super::system_tab_bar_height;
+    use super::{render_dmx_universe_rows, system_tab_bar_height};
+    use crate::state::{DmxHealth, NUM_DMX_UNIVERSES};
 
     #[test]
     fn system_tab_bar_reserves_one_or_more_content_sized_rows() {
@@ -633,5 +638,43 @@ mod system_layout_tests {
         assert!(wide > 20.0 && wide < 60.0);
         assert!(narrow > wide);
         assert!(narrow < 160.0);
+    }
+
+    #[test]
+    fn ten_dmx_universes_scroll_vertically_without_horizontal_overflow() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(320.0, 240.0),
+            )),
+            ..Default::default()
+        };
+        let states: [DmxHealth; NUM_DMX_UNIVERSES] = std::array::from_fn(|universe| {
+            DmxHealth::error(
+                format!("/dev/dmx-{universe}"),
+                "Not initialized".to_string(),
+            )
+        });
+        let mut sizes = None;
+
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let output = egui::ScrollArea::vertical().show(ui, |ui| {
+                    render_dmx_universe_rows(ui, &states);
+                });
+                sizes = Some((output.content_size, output.inner_rect.size()));
+            });
+        });
+
+        let (content, viewport) = sizes.unwrap();
+        assert!(
+            content.y > viewport.y,
+            "the compact page should require scrolling"
+        );
+        assert!(
+            content.x <= viewport.x,
+            "DMX rows must not overflow horizontally: {content:?} vs {viewport:?}"
+        );
     }
 }
