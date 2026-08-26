@@ -69,11 +69,25 @@ impl Default for PropertyModulation {
 }
 
 impl PropertyModulation {
+    /// Whether this frame's output only replaces the base value, with no
+    /// scale/offset layer riding on top of it.
+    fn is_absolute_only(&self) -> bool {
+        self.scale == 1.0 && self.add == 0.0
+    }
+
     /// Resolves the final value: the authored/palette-resolved base (or the
     /// absolute override) scaled by every scale layer and offset by every
     /// additive layer, then clamped to the property's range.
-    pub fn resolve(&self, base: u16, property: FixtureProperty) -> u16 {
-        let source = self.absolute.unwrap_or(base) as f64;
+    ///
+    /// `base_is_frozen` marks a palette-bound slot. The palette owns the value
+    /// there, so the absolute override is ignored and only the relative layers
+    /// apply — same contract as [`FixtureState::apply_value`].
+    pub fn resolve(&self, base: u16, property: FixtureProperty, base_is_frozen: bool) -> u16 {
+        let source = if base_is_frozen {
+            base
+        } else {
+            self.absolute.unwrap_or(base)
+        } as f64;
         let value = source * self.scale + self.add;
         let max = match property {
             FixtureProperty::ColorHue => 360.0,
@@ -134,8 +148,16 @@ impl ModulationOutputs {
             let Some(modulation) = self.entries.get(&target) else {
                 continue;
             };
+            // Palette-bound slots are frozen: an absolute layer must not
+            // replace what the palette pins, and a layer that contributes
+            // nothing else must leave the binding intact.
+            let frozen = state.slot(property).is_frozen();
+            if frozen && modulation.is_absolute_only() {
+                continue;
+            }
             let base = state.resolved_value(property, palettes);
-            *state.slot_mut(property) = FixtureValue::Literal(modulation.resolve(base, property));
+            *state.slot_mut(property) =
+                FixtureValue::Literal(modulation.resolve(base, property, frozen));
         }
     }
 }
@@ -560,6 +582,10 @@ impl FlashAnimationRuntime {
                     break;
                 }
                 self.phase_started_beats += duration;
+                // Keep the millisecond anchor in step with the beat anchor so
+                // the engine's `timer` mirror stays "elapsed in this phase" in
+                // both modes instead of growing without bound.
+                self.phase_started_ms = now_ms;
                 self.advance_phase();
                 transitions += 1;
                 if transitions >= 10_000 {
@@ -666,7 +692,10 @@ fn generate_absolute_value(
         AnimationSpecBody::BeatClock(_) => {
             Some((audio_snapshot.snapshot.beat_trigger as u16) * 255)
         }
-        AnimationSpecBody::Wasm(_) => Some(0),
+        // A legacy WASM body has no plugin bound yet (the editor offers to
+        // upgrade it). Contribute nothing rather than pinning the property to
+        // zero and blacking the selection out.
+        AnimationSpecBody::Wasm(_) => None,
         AnimationSpecBody::WasmPlugin(_) => None,
         // Flash animations are generated once per selection in `tick`, not
         // independently from each fixture's phase.
@@ -899,6 +928,7 @@ impl AnimationClockRuntime {
                                 gap_speed,
                             );
                         }
+                        let sweeps_before = runtime.completed_sweeps;
                         let active_fixture_indices = runtime
                             .tick(
                                 now_ms,
@@ -909,6 +939,15 @@ impl AnimationClockRuntime {
                             )
                             .map(<[usize]>::to_vec)
                             .unwrap_or_default();
+                        // One iteration is one completed sweep over every
+                        // window. An internal reset zeroes the counter, which
+                        // saturating_sub reports as no progress rather than a
+                        // huge jump.
+                        let completed_sweeps = runtime.completed_sweeps.saturating_sub(sweeps_before);
+                        if completed_sweeps > 0 {
+                            animation.iteration_count =
+                                animation.iteration_count.saturating_add(completed_sweeps);
+                        }
                         for timer in animation.fixture_timers.values_mut() {
                             timer.last_tick_time = now_ms.max(1);
                             timer.timer = now_ms.saturating_sub(runtime.phase_started_ms);
@@ -2039,8 +2078,8 @@ mod modulation_tests {
             scale: 1.0,
             add: 1_000.0,
         };
-        assert_eq!(hue.resolve(0, FixtureProperty::ColorHue), 360);
-        assert_eq!(hue.resolve(0, FixtureProperty::Alpha), 255);
+        assert_eq!(hue.resolve(0, FixtureProperty::ColorHue, false), 360);
+        assert_eq!(hue.resolve(0, FixtureProperty::Alpha, false), 255);
 
         // Negative depth cannot drive a property below zero.
         let negative = PropertyModulation {
@@ -2048,7 +2087,7 @@ mod modulation_tests {
             scale: 1.0,
             add: -500.0,
         };
-        assert_eq!(negative.resolve(100, FixtureProperty::Alpha), 0);
+        assert_eq!(negative.resolve(100, FixtureProperty::Alpha, false), 0);
     }
 
     #[test]
@@ -2677,6 +2716,264 @@ mod modulation_tests {
         assert_eq!(
             output_for(&clock, FIXTURE_B, FixtureProperty::Alpha).absolute,
             b_forward
+        );
+    }
+
+    //
+    // Regression tests for defects found while auditing animation output.
+    //
+
+    use blaulicht_shared::palette::{Palette, PaletteKind};
+
+    fn base_function_value(
+        base: MathematicalBaseFunction,
+        stretch: f32,
+        degrees: f64,
+    ) -> u16 {
+        phaser::generate(
+            &AnimationSpecBodyPhaser {
+                kind: PhaserKind::Mathematical(MathematicalPhaser {
+                    base,
+                    stretch_factor: stretch,
+                    amplitude_min: FixtureValue::Literal(0),
+                    amplitude_max: FixtureValue::Literal(255),
+                }),
+                time_total: PhaserDuration::Fixed(1_000),
+                pin_to_beat: false,
+                sync: SyncMode::Synced,
+                reverse_after_n_iterations: None,
+            },
+            degrees,
+            FixtureProperty::Alpha,
+            &BTreeMap::new(),
+        )
+    }
+
+    /// The ease curves used to ignore `stretch_factor` entirely, so the editor
+    /// control silently did nothing for three of the base functions.
+    #[test]
+    fn stretch_factor_applies_to_every_mathematical_base_function() {
+        use strum::IntoEnumIterator;
+
+        for base in MathematicalBaseFunction::iter() {
+            let plain: Vec<u16> = (0..36)
+                .map(|step| base_function_value(base, 1.0, step as f64 * 10.0))
+                .collect();
+            let stretched: Vec<u16> = (0..36)
+                .map(|step| base_function_value(base, 2.0, step as f64 * 10.0))
+                .collect();
+            assert_ne!(plain, stretched, "stretch_factor ignored by {base:?}");
+        }
+    }
+
+    /// A doubled stretch factor must complete two cycles over one revolution.
+    #[test]
+    fn stretched_ease_repeats_within_one_revolution() {
+        for base in [
+            MathematicalBaseFunction::EaseIn,
+            MathematicalBaseFunction::EaseOut,
+            MathematicalBaseFunction::EaseInOut,
+        ] {
+            for degrees in [0.0, 30.0, 75.0, 120.0, 179.0] {
+                assert_eq!(
+                    base_function_value(base, 2.0, degrees),
+                    base_function_value(base, 2.0, degrees + 180.0),
+                    "{base:?} at {degrees}deg is not periodic under stretch 2.0"
+                );
+            }
+        }
+    }
+
+    fn bind_hue_palette(state: &mut blaulicht_shared::EngineState) {
+        state.palettes.insert(
+            1,
+            Palette {
+                name: "Cyan".to_string(),
+                kind: PaletteKind::Single(FixtureProperty::ColorHue, 180),
+            },
+        );
+        let sink = &mut state.scenes.get_mut(&SCENE).unwrap().sink;
+        sink.palette_assignments.insert(FIXTURE_A, vec![1]);
+        let palettes = state.palettes.clone();
+        sink.sync_palette_bindings(&palettes);
+    }
+
+    fn render_hue(
+        clock: &AnimationClockRuntime,
+        state: &blaulicht_shared::EngineState,
+    ) -> (FixtureValue, u16) {
+        let mut fixture_state = state.scenes[&SCENE].sink.fixture_states[&FIXTURE_A].clone();
+        clock
+            .outputs
+            .apply_to_fixture(&mut fixture_state, SCENE, FIXTURE_A, &state.palettes);
+        (
+            fixture_state.color_h,
+            fixture_state.resolved_value(FixtureProperty::ColorHue, &state.palettes),
+        )
+    }
+
+    /// `FixtureState::apply_value` and the WASM animation path both refuse to
+    /// write a palette-bound slot; the phaser/flash render path did not.
+    #[test]
+    fn absolute_layers_do_not_override_a_palette_bound_slot() {
+        let mut state = engine_with_two_fixtures();
+        bind_hue_palette(&mut state);
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            vec![FIXTURE_A],
+            phaser_spec(FixtureProperty::ColorHue, 10, 300),
+        );
+
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &loud_audio());
+
+        let (slot, resolved) = render_hue(&clock, &state);
+        assert!(slot.is_frozen(), "palette binding was replaced by a literal");
+        assert_eq!(resolved, 180, "frozen hue was overridden by the phaser");
+    }
+
+    /// Relative layers still modulate the palette-resolved base — only the
+    /// absolute override is suppressed.
+    #[test]
+    fn relative_layers_still_modulate_a_palette_bound_slot() {
+        let mut state = engine_with_two_fixtures();
+        bind_hue_palette(&mut state);
+
+        let mut clock = AnimationClockRuntime::default();
+        let entry = clock.outputs.entry(ModulationTarget {
+            scene_id: SCENE,
+            fixture: FIXTURE_A,
+            property: FixtureProperty::ColorHue,
+        });
+        entry.absolute = Some(300);
+        entry.scale = 0.5;
+
+        // The absolute override is ignored; the 0.5 scale applies to the
+        // palette value (180), not to 300.
+        let (_, resolved) = render_hue(&clock, &state);
+        assert_eq!(resolved, 90);
+    }
+
+    fn flash_spec() -> AnimationSpec {
+        AnimationSpec {
+            name: "Flash".to_string(),
+            property: FixtureProperty::Alpha,
+            body: AnimationSpecBody::FlashAnimation(FlashAnimationSpec {
+                amplitude_min: FixtureValue::Literal(0),
+                amplitude_max: FixtureValue::Literal(255),
+                off_time_ms: 100,
+                on_time_ms: 100,
+                beat_aligned: false,
+                off_time_beats: blaulicht_shared::AnimationSpeedModifier::_1,
+                on_time_beats: blaulicht_shared::AnimationSpeedModifier::_1,
+                window_size: 1,
+                window_layout: FlashWindowLayout::Contiguous,
+                random_order: false,
+                reverse_after_n_iterations: None,
+            }),
+        }
+    }
+
+    /// Flash animations reported `iteration_count == 0` forever, so the
+    /// inspector had no progress signal for them.
+    #[test]
+    fn flash_animation_counts_one_iteration_per_completed_sweep() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        add_animation(&mut state, SCENE, 0, fixtures.to_vec(), flash_spec());
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = silent_disconnected_audio();
+        // 2 fixtures at window_size 1 => 2 windows => a sweep is 4x100 ms.
+        for t in (0..=2_000).step_by(50) {
+            clock.tick(t, &mut state, &audio);
+        }
+
+        assert_eq!(animation_mut(&mut state, &fixtures, 0).iteration_count, 5);
+    }
+
+    /// A legacy (unbound) WASM body used to emit an absolute 0, blacking out
+    /// every fixture in its selection until the user configured a plugin.
+    #[test]
+    fn unconfigured_legacy_wasm_animation_contributes_nothing() {
+        let mut state = engine_with_two_fixtures();
+        set_alpha(&mut state, FIXTURE_A, 200);
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            vec![FIXTURE_A],
+            AnimationSpec {
+                name: "Legacy WASM".to_string(),
+                property: FixtureProperty::Alpha,
+                body: AnimationSpecBody::Wasm(Default::default()),
+            },
+        );
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(0, &mut state, &loud_audio());
+        assert_eq!(
+            rendered_alpha(&clock, &state, SCENE, FIXTURE_A),
+            200,
+            "unconfigured legacy WASM animation blacked out the fixture"
+        );
+    }
+
+    /// The engine mirrors flash progress into `AnimationTimerState::timer`,
+    /// which the inspector reports as "phase". In beat-aligned mode the
+    /// millisecond anchor never advanced, so the mirror grew without bound.
+    #[test]
+    fn beat_aligned_flash_timer_mirrors_elapsed_time_in_the_current_phase() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        let mut spec = flash_spec();
+        if let AnimationSpecBody::FlashAnimation(flash) = &mut spec.body {
+            flash.beat_aligned = true;
+        }
+        add_animation(&mut state, SCENE, 0, fixtures.to_vec(), spec);
+
+        let mut clock = AnimationClockRuntime::default();
+        let mut t = 0_u64;
+        for _ in 0..200 {
+            clock.tick(t, &mut state, &beating_audio(500, t / 500 + 1, t % 500 == 0));
+            t += 25;
+        }
+        let timer = animation_mut(&mut state, &fixtures, 0).fixture_timers[&FIXTURE_A].timer;
+        assert!(
+            timer < 600,
+            "beat-aligned flash timer mirror is unbounded: {timer}"
+        );
+    }
+
+    /// Pausing an unrelated animation must not restart a flash sweep.
+    #[test]
+    fn flash_sweep_survives_a_disable_enable_cycle() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        add_animation(&mut state, SCENE, 0, fixtures.to_vec(), flash_spec());
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = silent_disconnected_audio();
+        for t in (0..=300).step_by(50) {
+            clock.tick(t, &mut state, &audio);
+        }
+        assert_eq!(
+            output_for(&clock, FIXTURE_B, FixtureProperty::Alpha).absolute,
+            Some(255),
+            "precondition: B is lit at 300 ms"
+        );
+
+        animation_mut(&mut state, &fixtures, 0).enabled = false;
+        clock.tick(350, &mut state, &audio);
+        animation_mut(&mut state, &fixtures, 0).enabled = true;
+        clock.tick(400, &mut state, &audio);
+
+        // 400 ms closes the sweep and starts the next dark gap.
+        assert_eq!(
+            output_for(&clock, FIXTURE_A, FixtureProperty::Alpha).absolute,
+            Some(0),
+            "flash sweep restarted after an unrelated pause"
         );
     }
 }

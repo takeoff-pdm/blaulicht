@@ -122,7 +122,8 @@ pub fn generate(
                     min + phase * range
                 }
                 MathematicalBaseFunction::EaseIn => {
-                    let t = degrees / 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+                    let t = angle / 360.0;
 
                     let percent = if t < 0.5 {
                         2.0 * t * t
@@ -133,7 +134,8 @@ pub fn generate(
                     percent * range + min
                 }
                 MathematicalBaseFunction::EaseOut => {
-                    let t = degrees / 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+                    let t = angle / 360.0;
 
                     let percent = if t < 0.5 {
                         2.0 * t * t
@@ -146,7 +148,8 @@ pub fn generate(
                 MathematicalBaseFunction::EaseInOut => {
                     // sin over the half period already stays in min..min+range;
                     // clamping to 0..255 here broke 0..360 hue phasers.
-                    let radians = std::f32::consts::PI * degrees / 360.0;
+                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
+                    let radians = std::f32::consts::PI * angle / 360.0;
                     radians.sin() * range + min
                 }
             }
