@@ -569,6 +569,45 @@ impl BlaulichtApp {
                                 .ui(ui, &mut self.add_fixture_count);
                         });
 
+                        let footprint = match self.add_fixture_kind {
+                            AddFixtureKind::MovingHead => {
+                                FixtureType::from(self.add_fixture_selected_moving_head).footprint()
+                            }
+                            AddFixtureKind::Light => {
+                                FixtureType::from(self.add_fixture_selected_light).footprint()
+                            }
+                            AddFixtureKind::Dimmer => {
+                                FixtureType::from(self.add_fixture_selected_dimmer).footprint()
+                            }
+                        };
+                        let count = self.add_fixture_count.max(1) as usize;
+                        let final_channel = (self.add_fixture_start_addr as usize)
+                            .saturating_add(footprint.saturating_mul(count))
+                            .saturating_sub(1);
+                        let available_ids = self
+                            .add_fixture_group
+                            .and_then(|group_id| dmx_engine.groups().get(&group_id))
+                            .map(|group| {
+                                (u8::MAX as usize + 1).saturating_sub(group.fixtures.len())
+                            })
+                            .unwrap_or(0);
+                        let batch_fits = final_channel <= 512 && count <= available_ids;
+                        ui.label(
+                            RichText::new(format!(
+                                "Universe {} • channels {}–{} • {} group slots free",
+                                self.add_fixture_universe_no,
+                                self.add_fixture_start_addr,
+                                final_channel,
+                                available_ids
+                            ))
+                            .size(12.0)
+                            .color(if batch_fits {
+                                Color32::LIGHT_GREEN
+                            } else {
+                                Color32::LIGHT_RED
+                            }),
+                        );
+
                         // Optionally step one axis by +10 per fixture when creating many.
                         ui.horizontal(|ui| {
                             ui.add_sized([LABEL_W, cell_h], Label::new("Step +10:"));
@@ -660,55 +699,52 @@ impl BlaulichtApp {
                             let footprint = fixture_type.footprint();
                             let count = self.add_fixture_count.max(1) as usize;
 
-                            // Validate the complete batch before mutating the engine. This
-                            // avoids creating a partial batch when the final fixture would
-                            // cross the universe boundary.
-                            if start_addr.saturating_add(footprint.saturating_mul(count)) > 513 {
+                            let mut fixtures = Vec::with_capacity(count);
+                            for i in 0..count {
+                                let name = if count > 1 {
+                                    format!("{} #{}", base_name, i + 1)
+                                } else {
+                                    base_name.clone()
+                                };
+                                let mut fixture = Fixture::new(
+                                    universe_no,
+                                    start_addr,
+                                    name,
+                                    fixture_type.clone(),
+                                );
+                                let mut fixture_pos = pos.clone();
+                                let offset = (i * AddFixtureIncrementAxis::STEP) as f32;
+                                match self.add_fixture_increment_axis {
+                                    AddFixtureIncrementAxis::None => {}
+                                    AddFixtureIncrementAxis::X => fixture_pos.x += offset,
+                                    AddFixtureIncrementAxis::Y => fixture_pos.y += offset,
+                                    AddFixtureIncrementAxis::Z => fixture_pos.z += offset,
+                                }
+                                fixture.pos = fixture_pos;
+                                fixture.rotation = rotation.clone();
+                                fixtures.push(fixture);
+                                start_addr = start_addr.saturating_add(footprint);
+                            }
+
+                            let result = self
+                                .data
+                                .state
+                                .dmx_engine
+                                .write()
+                                .unwrap()
+                                .add_fixture_batch_to_group(group_id, fixtures);
+
+                            if let Err(error) = result {
                                 self.show_popup(PopupSpec {
-                                    label: format!(
-                                        "{} fixtures do not fit from channel {}",
-                                        count, self.add_fixture_start_addr
-                                    ),
+                                    label: error.to_string(),
                                     label_size: Some(18.0),
-                                    lifetime_duration: Duration::from_secs(3),
+                                    lifetime_duration: Duration::from_secs(5),
                                     button: Some(PopupButtonSpec {
                                         label: "OK".to_string(),
                                     }),
                                 });
                             } else {
-                                // Create the complete batch only after validation succeeds.
-                                {
-                                    let mut dmx_engine =
-                                        self.data.state.dmx_engine.write().unwrap();
-                                    for i in 0..count {
-                                        let name = if count > 1 {
-                                            format!("{} #{}", base_name, i + 1)
-                                        } else {
-                                            base_name.clone()
-                                        };
-                                        let mut fixture = Fixture::new(
-                                            universe_no,
-                                            start_addr,
-                                            name,
-                                            fixture_type.clone(),
-                                        );
-                                        // Offset successive fixtures along the chosen axis.
-                                        let mut fixture_pos = pos.clone();
-                                        let offset = (i * AddFixtureIncrementAxis::STEP) as f32;
-                                        match self.add_fixture_increment_axis {
-                                            AddFixtureIncrementAxis::None => {}
-                                            AddFixtureIncrementAxis::X => fixture_pos.x += offset,
-                                            AddFixtureIncrementAxis::Y => fixture_pos.y += offset,
-                                            AddFixtureIncrementAxis::Z => fixture_pos.z += offset,
-                                        }
-                                        fixture.pos = fixture_pos;
-                                        fixture.rotation = rotation.clone();
-                                        dmx_engine.add_fixture_to_group(group_id, fixture);
-                                        start_addr = start_addr.saturating_add(footprint);
-                                    }
-                                }
-
-                                // Reset some fields and close after a successful batch.
+                                // Reset fields and close only after the full batch succeeds.
                                 self.add_fixture_open = false;
                                 self.add_fixture_kind_dialog_open = false;
                                 self.add_fixture_model_dialog_open = false;
@@ -937,7 +973,7 @@ impl BlaulichtApp {
                                     // Read current fixture snapshot
                                     // let engine_read = self.data.state.dmx_engine.read().unwrap();
                                     if let Some(group) = dmx_engine.groups().get(&gid) {
-                                        if let Some(_fix) = group.fixtures.get(&fid) {
+                                        if let Some(fix) = group.fixtures.get(&fid) {
                                             ui.label(
                                                 RichText::new(format!(
                                                     "Selected Fixture: Group #{} • Fixture #{}",
@@ -1057,47 +1093,35 @@ impl BlaulichtApp {
                                                         ButtonSize::Medium,
                                                     ) && can_save
                                                     {
-                                                        // let mut eng =
-                                                        //     self.data.state.dmx_engine.write().unwrap();
-                                                        let mut dmx_engine = self
+                                                        let mut updated = fix.clone();
+                                                        updated.name =
+                                                            self.new_fixture_name.clone();
+                                                        updated.start_addr = self.new_fixture_addr;
+                                                        updated.universe_no = self.new_fixture_uni;
+                                                        updated.pos.x = self.new_fixture_pos_x;
+                                                        updated.pos.y = self.new_fixture_pos_y;
+                                                        updated.pos.z = self.new_fixture_pos_z;
+                                                        updated.rotation.x = self.new_fixture_rot_x;
+                                                        updated.rotation.y = self.new_fixture_rot_y;
+                                                        updated.rotation.z = self.new_fixture_rot_z;
+
+                                                        let result = self
                                                             .data
                                                             .state
                                                             .dmx_engine
                                                             .write()
-                                                            .unwrap();
-                                                        if let Some(group_mut) =
-                                                            dmx_engine.0.groups.get_mut(&gid)
-                                                        {
-                                                            if let Some(fix_mut) =
-                                                                group_mut.fixtures.get_mut(&fid)
-                                                            {
-                                                                fix_mut.name = self
-                                                                    .new_fixture_name
-                                                                    .clone()
-                                                                    .into();
-                                                                // Clamp so the fixture stays inside
-                                                                // the universe (unchecked indexing on
-                                                                // render would panic otherwise).
-                                                                fix_mut.start_addr = self
-                                                                    .new_fixture_addr
-                                                                    .min(513usize.saturating_sub(
-                                                                        fix_mut.type_.footprint(),
-                                                                    ));
-                                                                fix_mut.universe_no =
-                                                                    self.new_fixture_uni;
-                                                                fix_mut.pos.x =
-                                                                    self.new_fixture_pos_x;
-                                                                fix_mut.pos.y =
-                                                                    self.new_fixture_pos_y;
-                                                                fix_mut.pos.z =
-                                                                    self.new_fixture_pos_z;
-                                                                fix_mut.rotation.x =
-                                                                    self.new_fixture_rot_x;
-                                                                fix_mut.rotation.y =
-                                                                    self.new_fixture_rot_y;
-                                                                fix_mut.rotation.z =
-                                                                    self.new_fixture_rot_z;
-                                                            }
+                                                            .unwrap()
+                                                            .update_fixture(gid, fid, updated);
+                                                        if let Err(error) = result {
+                                                            self.show_popup(PopupSpec {
+                                                                label: error.to_string(),
+                                                                label_size: Some(18.0),
+                                                                lifetime_duration:
+                                                                    Duration::from_secs(5),
+                                                                button: Some(PopupButtonSpec {
+                                                                    label: "OK".to_string(),
+                                                                }),
+                                                            });
                                                         }
                                                     }
 

@@ -10,8 +10,21 @@ use crate::{
     state::ArtNetReceiver,
 };
 use blaulicht_shared::LogLevel;
-use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText, Widget};
+use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText, ScrollArea, Widget};
 use std::net::SocketAddr;
+
+const ARTNET_RECEIVER_LIST_MAX_HEIGHT: f32 = 220.0;
+
+fn artnet_receiver_scroll<R>(
+    ui: &mut egui::Ui,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::containers::scroll_area::ScrollAreaOutput<R> {
+    ScrollArea::vertical()
+        .id_salt("artnet-receiver-list")
+        .auto_shrink([false, true])
+        .max_height(ARTNET_RECEIVER_LIST_MAX_HEIGHT)
+        .show(ui, add_contents)
+}
 
 impl BlaulichtApp {
     pub fn render_artnet_dialog(&mut self, ctx: &Context) {
@@ -19,7 +32,13 @@ impl BlaulichtApp {
             return;
         }
 
-        let health_state = self.data.state.health_data.read().unwrap();
+        let artnet_healthy = self
+            .data
+            .state
+            .health_data
+            .read()
+            .unwrap()
+            .artnet_health_state;
 
         Dialog::new("ArtNet".to_string(), egui::vec2(500.0, 400.0))
             .with_backdrop()
@@ -38,7 +57,7 @@ impl BlaulichtApp {
                         ),
                         ARTNET_ICON,
                         28.0,
-                        health_state.artnet_health_state,
+                        artnet_healthy,
                         false,
                         egui::vec2(60.0, 65.0),
                     );
@@ -107,7 +126,8 @@ impl BlaulichtApp {
                                                     .unwrap();
 
                                                 self.system_ui_state.new_artnet_address.clear();
-                                                self.system_ui_state.new_artnet_port.clear();
+                                                self.system_ui_state.new_artnet_port =
+                                                    "6454".to_string();
                                             }
                                         }
                                         Ok(_) => {
@@ -147,138 +167,21 @@ impl BlaulichtApp {
                         if receivers.is_empty() {
                             ui.label("No ArtNet receivers configured.");
                         } else {
-                            let row_height = base_button.0.y.max(44.0);
+                            let row_height = base_button.0.y.max(58.0);
 
-                            for (receiver_index, receiver) in receivers.into_iter().enumerate() {
-                                let mut row_enabled = receiver.enabled;
-                                let mut toggle_changed = false;
-                                let mut delete_clicked = false;
-                                let owner_plugin_id = receiver.owner_plugin_id;
-                                let is_plugin_owned = owner_plugin_id.is_some();
-
-                                ui.add_space(6.0);
-
-                                Frame::NONE
-                                    .fill(ui.visuals().faint_bg_color)
-                                    .inner_margin(Margin::symmetric(12, 4))
-                                    .show(ui, |ui| {
-                                        ui.set_min_height(row_height);
-                                        ui.allocate_ui_with_layout(
-                                            egui::vec2(ui.available_width(), row_height),
-                                            egui::Layout::left_to_right(egui::Align::Center),
-                                            |ui| {
-                                                ui.label(
-                                                    RichText::new(receiver.address.to_string())
-                                                        .font(FontId::monospace(input_font_size)),
-                                                );
-
-                                                ui.add_space(12.0);
-
-                                                let status_text = if row_enabled {
-                                                    "ENABLED"
-                                                } else {
-                                                    "DISABLED"
-                                                };
-                                                let status_color = if row_enabled {
-                                                    Color32::from_rgb(67, 209, 110)
-                                                } else {
-                                                    Color32::from_rgb(226, 69, 69)
-                                                };
-
-                                                ui.label(
-                                                    RichText::new(status_text)
-                                                        .color(status_color)
-                                                        .strong(),
-                                                );
-
-                                                if let Some(pid) = owner_plugin_id {
-                                                    ui.add_space(8.0);
-                                                    ui.label(
-                                                        RichText::new(format!("PLUGIN({pid})"))
-                                                            .color(Color32::from_rgb(120, 170, 255))
-                                                            .strong(),
-                                                    );
-                                                }
-
-                                                ui.with_layout(
-                                                    egui::Layout::right_to_left(egui::Align::Center),
-                                                    |ui| {
-                                                        if !is_plugin_owned {
-                                                            let delete_color =
-                                                                Color32::from_rgb(160, 45, 45);
-                                                            if clickable(
-                                                                ui,
-                                                                false,
-                                                                delete_color,
-                                                                ButtonSize::Medium.with_width(
-                                                                    row_height,
-                                                                ),
-                                                                |ui, rect, fg_color| {
-                                                                    ui.painter().text(
-                                                                        rect.center(),
-                                                                        egui::Align2::CENTER_CENTER,
-                                                                        egui_phosphor::regular::TRASH,
-                                                                        FontId::monospace(
-                                                                            input_font_size,
-                                                                        ),
-                                                                        fg_color,
-                                                                    );
-                                                                },
-                                                            ) {
-                                                                delete_clicked = true;
-                                                            }
-
-                                                            ui.add_space(8.0);
-                                                        }
-
-                                                        if components::Switch::new(
-                                                            &mut row_enabled,
-                                                        )
-                                                        .ui(ui)
-                                                        .changed()
-                                                        {
-                                                            toggle_changed = true;
-                                                        }
-                                                    },
-                                                );
-                                            },
-                                        );
-                                    });
-
-                                if toggle_changed {
-                                    let mut artnet_output =
-                                        self.data.state.artnet_output.write().unwrap();
-                                    if let Some(entry) =
-                                        artnet_output.receivers.get_mut(receiver_index)
-                                    {
-                                        entry.enabled = row_enabled;
-                                    }
+                            artnet_receiver_scroll(ui, |ui| {
+                                for (receiver_index, receiver) in
+                                    receivers.into_iter().enumerate()
+                                {
+                                    self.render_artnet_receiver_row(
+                                        ui,
+                                        receiver_index,
+                                        &receiver,
+                                        input_font_size,
+                                        row_height,
+                                    );
                                 }
-
-                                if delete_clicked && !is_plugin_owned {
-                                    let mut artnet_output =
-                                        self.data.state.artnet_output.write().unwrap();
-                                    if receiver_index < artnet_output.receivers.len()
-                                        && artnet_output.receivers[receiver_index]
-                                            .owner_plugin_id
-                                            .is_none()
-                                    {
-                                        artnet_output.receivers.remove(receiver_index);
-                                    }
-                                    drop(artnet_output);
-
-                                    self.data
-                                        .system_message_sender
-                                        .send(SystemMessage::Log(
-                                            format!(
-                                                "Removed ArtNet receiver {}.",
-                                                receiver.address
-                                            ),
-                                            LogLevel::Info,
-                                        ))
-                                        .unwrap();
-                                }
-                            }
+                            });
                         }
                     });
                 });
@@ -288,5 +191,158 @@ impl BlaulichtApp {
                     self.system_ui_state.artnet_dialog_open = false;
                 }
             });
+    }
+
+    fn render_artnet_receiver_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        receiver_index: usize,
+        receiver: &ArtNetReceiver,
+        input_font_size: f32,
+        row_height: f32,
+    ) {
+        let mut row_enabled = receiver.enabled;
+        let mut toggle_changed = false;
+        let mut delete_clicked = false;
+        let owner_plugin_id = receiver.owner_plugin_id;
+        let is_plugin_owned = owner_plugin_id.is_some();
+
+        ui.add_space(6.0);
+        Frame::NONE
+            .fill(ui.visuals().faint_bg_color)
+            .inner_margin(Margin::symmetric(12, 4))
+            .show(ui, |ui| {
+                ui.set_min_height(row_height);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), row_height),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        let (status_text, status_color) = if row_enabled {
+                            ("ENABLED", Color32::from_rgb(67, 209, 110))
+                        } else {
+                            ("DISABLED", Color32::from_rgb(226, 69, 69))
+                        };
+
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new(receiver.address.to_string())
+                                    .font(FontId::monospace(input_font_size)),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(status_text).color(status_color).strong());
+
+                                if let Some(pid) = owner_plugin_id {
+                                    ui.add_space(8.0);
+                                    ui.label(
+                                        RichText::new(format!("PLUGIN({pid})"))
+                                            .color(Color32::from_rgb(120, 170, 255))
+                                            .strong(),
+                                    );
+                                }
+                            });
+                        });
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if !is_plugin_owned {
+                                let delete_color = Color32::from_rgb(160, 45, 45);
+                                if clickable(
+                                    ui,
+                                    false,
+                                    delete_color,
+                                    ButtonSize::Medium.with_width(row_height),
+                                    |ui, rect, fg_color| {
+                                        ui.painter().text(
+                                            rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            egui_phosphor::regular::TRASH,
+                                            FontId::monospace(input_font_size),
+                                            fg_color,
+                                        );
+                                    },
+                                ) {
+                                    delete_clicked = true;
+                                }
+                                ui.add_space(8.0);
+                            }
+
+                            if components::Switch::new(&mut row_enabled).ui(ui).changed() {
+                                toggle_changed = true;
+                            }
+                        });
+                    },
+                );
+            });
+
+        if toggle_changed {
+            let mut output = self.data.state.artnet_output.write().unwrap();
+            if let Some(entry) = output.receivers.iter_mut().find(|entry| {
+                entry.address == receiver.address
+                    && entry.owner_plugin_id == receiver.owner_plugin_id
+                    && entry.handle == receiver.handle
+            }) {
+                entry.enabled = row_enabled;
+            } else {
+                tracing::warn!("Art-Net receiver row {receiver_index} changed while editing");
+            }
+        }
+
+        if delete_clicked && !is_plugin_owned {
+            let removed = {
+                let mut output = self.data.state.artnet_output.write().unwrap();
+                output
+                    .receivers
+                    .iter()
+                    .position(|entry| {
+                        entry.address == receiver.address && entry.owner_plugin_id.is_none()
+                    })
+                    .map(|index| output.receivers.remove(index))
+            };
+            if removed.is_some() {
+                self.data
+                    .system_message_sender
+                    .send(SystemMessage::Log(
+                        format!("Removed ArtNet receiver {}.", receiver.address),
+                        LogLevel::Info,
+                    ))
+                    .unwrap();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::artnet_receiver_scroll;
+
+    #[test]
+    fn receiver_list_scrolls_and_keeps_actions_below_it_visible() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(500.0, 400.0),
+            )),
+            ..Default::default()
+        };
+        let mut sizes = None;
+        let mut close_button_rect = None;
+
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let output = artnet_receiver_scroll(ui, |ui| {
+                    for receiver in 0..10 {
+                        ui.label(format!("192.0.2.{receiver}:6454"));
+                        ui.allocate_space(egui::vec2(ui.available_width(), 50.0));
+                    }
+                });
+                sizes = Some((output.content_size, output.inner_rect.size()));
+                close_button_rect = Some(ui.button("Close").rect);
+            });
+        });
+
+        let (content, viewport) = sizes.unwrap();
+        assert!(content.y > viewport.y, "{content:?} vs {viewport:?}");
+        assert!(viewport.y <= 220.0);
+        assert!(close_button_rect.unwrap().max.y <= 400.0);
     }
 }

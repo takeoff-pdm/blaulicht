@@ -4,11 +4,19 @@
 
 use blaulicht_shared::LogLevel;
 use chrono::{DateTime, Local};
-use egui::{Color32, Context, FontId, RichText, TextEdit};
+use egui::{Context, RichText};
 use std::collections::VecDeque;
 use strum::IntoEnumIterator;
 
-use crate::app::components::{self, ButtonSize};
+use crate::app::components::{self, ButtonSize, Dialog};
+
+fn filter_button_label(filter_text: &str) -> String {
+    if filter_text.is_empty() {
+        "Filter".to_string()
+    } else {
+        format!("Filter {}", egui_phosphor::regular::TRASH)
+    }
+}
 
 fn log_level_color(from: &LogLevel) -> egui::Color32 {
     match from {
@@ -25,6 +33,7 @@ pub struct LogWindow {
     max_logs: usize,
     auto_scroll: bool,
     filter_text: String,
+    filter_dialog_open: bool,
     selected_log_level: Option<LogLevel>,
     select_dialog_open: bool,
     // log_height: f32,
@@ -45,6 +54,7 @@ impl LogWindow {
             max_logs,
             auto_scroll: true,
             filter_text: String::new(),
+            filter_dialog_open: false,
             selected_log_level: None,
             select_dialog_open: false,
         }
@@ -72,21 +82,23 @@ impl LogWindow {
 
     pub fn draw(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         // Controls
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
-            const FONT_SIZE: f32 = ButtonSize::Medium.dim().1;
-
             ui.set_min_height(BUTTON_SIZE.dim().0.y);
 
             ui.label("Logs");
 
             ui.separator();
 
-            ui.label("Filter:");
-
-            ui.add(
-                TextEdit::singleline(&mut self.filter_text).font(FontId::proportional(FONT_SIZE)),
-            );
+            let filter_label = filter_button_label(&self.filter_text);
+            if components::button(ui, !self.filter_text.is_empty(), &filter_label, BUTTON_SIZE) {
+                if self.filter_text.is_empty() {
+                    self.filter_dialog_open = true;
+                } else {
+                    self.filter_text.clear();
+                    self.filter_dialog_open = false;
+                }
+            }
 
             ui.separator();
 
@@ -108,18 +120,6 @@ impl LogWindow {
             ) {
                 self.select_dialog_open = true;
             }
-
-            ui.separator();
-
-            ui.label(RichText::new("Level Filter:").size(FONT_SIZE));
-            ui.label(
-                RichText::new(match self.selected_log_level.is_some() {
-                    true => "Active",
-                    false => "N/A",
-                })
-                .size(FONT_SIZE)
-                .color(Color32::LIGHT_RED),
-            );
 
             if self.select_dialog_open {
                 const ALL_LEVELS: &str = "All";
@@ -147,6 +147,42 @@ impl LogWindow {
                 }
             }
         });
+
+        if self.filter_dialog_open {
+            let dialog_width = (ctx.content_rect().width() - 32.0).clamp(240.0, 400.0);
+            let response = Dialog::new("Filter Logs".to_string(), egui::vec2(dialog_width, 150.0))
+                .with_backdrop()
+                .dismiss_on_backdrop()
+                .show(ctx, |ui| {
+                    ui.heading(RichText::new("Filter logs").strong());
+                    ui.add_space(12.0);
+                    components::TextInput::new(dialog_width - 50.0)
+                        .with_hint_text("Message or source")
+                        .with_monospace_font(false)
+                        .ui(ui, &mut self.filter_text);
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if components::button(ui, true, "Done", ButtonSize::Medium) {
+                            self.filter_dialog_open = false;
+                        }
+                        if !self.filter_text.is_empty()
+                            && components::button(
+                                ui,
+                                false,
+                                egui_phosphor::regular::TRASH,
+                                ButtonSize::Medium,
+                            )
+                        {
+                            self.filter_text.clear();
+                            self.filter_dialog_open = false;
+                        }
+                    });
+                });
+
+            if response.cancel_requested {
+                self.filter_dialog_open = false;
+            }
+        }
 
         ui.separator();
 
@@ -242,7 +278,7 @@ impl LogWindow {
         // Status bar
         ui.separator();
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(format!("Total logs: {}", self.logs.len()));
             ui.separator();
             ui.label(format!("Filtered level: {:?}", self.selected_log_level));
@@ -251,5 +287,19 @@ impl LogWindow {
                 ui.label(format!("Filter: '{}'", self.filter_text));
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::filter_button_label;
+
+    #[test]
+    fn filter_button_exposes_clear_icon_only_for_an_active_filter() {
+        assert_eq!(filter_button_label(""), "Filter");
+        assert_eq!(
+            filter_button_label("artnet"),
+            format!("Filter {}", egui_phosphor::regular::TRASH)
+        );
     }
 }

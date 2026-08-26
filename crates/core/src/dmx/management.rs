@@ -1,7 +1,96 @@
 use crate::dmx::{EngineState, FixtureState};
+use crate::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::fixture::state::{Fixture, FixtureGroup};
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 use tracing::debug;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixtureBatchError {
+    MissingGroup(u8),
+    MissingFixture {
+        group_id: u8,
+        fixture_id: u8,
+    },
+    NotEnoughFixtureIds {
+        requested: usize,
+        available: usize,
+    },
+    InvalidUniverse {
+        fixture_name: String,
+        universe: usize,
+    },
+    InvalidDmxRange {
+        fixture_name: String,
+        universe: usize,
+        start: usize,
+        footprint: usize,
+    },
+    DmxOverlap {
+        universe: usize,
+        start: usize,
+        end: usize,
+        fixture_name: String,
+        conflicts_with: String,
+    },
+}
+
+impl fmt::Display for FixtureBatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingGroup(group_id) => write!(f, "Group {group_id} no longer exists"),
+            Self::MissingFixture {
+                group_id,
+                fixture_id,
+            } => write!(
+                f,
+                "Fixture {fixture_id} in group {group_id} no longer exists"
+            ),
+            Self::NotEnoughFixtureIds {
+                requested,
+                available,
+            } => write!(
+                f,
+                "Cannot add {requested} fixtures: this group has room for {available}"
+            ),
+            Self::InvalidUniverse {
+                fixture_name,
+                universe,
+            } => write!(
+                f,
+                "{fixture_name} uses universe {universe}; choose 0-{}",
+                NUM_DMX_UNIVERSES - 1
+            ),
+            Self::InvalidDmxRange {
+                fixture_name,
+                universe,
+                start,
+                footprint,
+            } => write!(
+                f,
+                "{fixture_name} does not fit in universe {universe} from channel {start} ({footprint} channels)"
+            ),
+            Self::DmxOverlap {
+                universe,
+                start,
+                end,
+                fixture_name,
+                conflicts_with,
+            } => write!(
+                f,
+                "{fixture_name} uses universe {universe}, channels {start}-{end}, which overlap {conflicts_with}"
+            ),
+        }
+    }
+}
+
+fn dmx_ranges_overlap(
+    left_start: usize,
+    left_end: usize,
+    right_start: usize,
+    right_end: usize,
+) -> bool {
+    left_start < right_end && right_start < left_end
+}
 
 impl EngineState {
     pub fn delete_animation(&mut self, id: u8) {
@@ -90,6 +179,185 @@ impl EngineState {
         }
 
         Some(new_id)
+    }
+
+    /// Adds a complete fixture batch or leaves the engine unchanged.
+    ///
+    /// Besides group capacity and DMX bounds, this rejects overlapping channel
+    /// ranges across every group. Overlaps otherwise render in map order and
+    /// produce surprising last-writer-wins output.
+    pub fn add_fixture_batch_to_group(
+        &mut self,
+        group_id: u8,
+        fixtures: Vec<Fixture>,
+    ) -> Result<Vec<u8>, FixtureBatchError> {
+        let Some(group) = self.0.groups.get(&group_id) else {
+            return Err(FixtureBatchError::MissingGroup(group_id));
+        };
+        let available = (u8::MAX as usize + 1).saturating_sub(group.fixtures.len());
+        if fixtures.len() > available {
+            return Err(FixtureBatchError::NotEnoughFixtureIds {
+                requested: fixtures.len(),
+                available,
+            });
+        }
+
+        for (index, fixture) in fixtures.iter().enumerate() {
+            if fixture.universe_no >= NUM_DMX_UNIVERSES {
+                return Err(FixtureBatchError::InvalidUniverse {
+                    fixture_name: fixture.name.clone(),
+                    universe: fixture.universe_no,
+                });
+            }
+            let footprint = fixture.type_.footprint();
+            let Some(end) = fixture.start_addr.checked_add(footprint) else {
+                return Err(FixtureBatchError::InvalidDmxRange {
+                    fixture_name: fixture.name.clone(),
+                    universe: fixture.universe_no,
+                    start: fixture.start_addr,
+                    footprint,
+                });
+            };
+            if fixture.start_addr == 0 || footprint == 0 || end > 513 {
+                return Err(FixtureBatchError::InvalidDmxRange {
+                    fixture_name: fixture.name.clone(),
+                    universe: fixture.universe_no,
+                    start: fixture.start_addr,
+                    footprint,
+                });
+            }
+
+            for existing in self
+                .0
+                .groups
+                .values()
+                .flat_map(|group| group.fixtures.values())
+                .filter(|existing| existing.universe_no == fixture.universe_no)
+            {
+                let existing_end = existing
+                    .start_addr
+                    .saturating_add(existing.type_.footprint());
+                if dmx_ranges_overlap(fixture.start_addr, end, existing.start_addr, existing_end) {
+                    return Err(FixtureBatchError::DmxOverlap {
+                        universe: fixture.universe_no,
+                        start: fixture.start_addr,
+                        end: end - 1,
+                        fixture_name: fixture.name.clone(),
+                        conflicts_with: existing.name.clone(),
+                    });
+                }
+            }
+
+            for other in &fixtures[..index] {
+                if other.universe_no != fixture.universe_no {
+                    continue;
+                }
+                let other_end = other.start_addr.saturating_add(other.type_.footprint());
+                if dmx_ranges_overlap(fixture.start_addr, end, other.start_addr, other_end) {
+                    return Err(FixtureBatchError::DmxOverlap {
+                        universe: fixture.universe_no,
+                        start: fixture.start_addr,
+                        end: end - 1,
+                        fixture_name: fixture.name.clone(),
+                        conflicts_with: other.name.clone(),
+                    });
+                }
+            }
+        }
+
+        let ids: Vec<u8> = (0..=u8::MAX)
+            .filter(|id| !group.fixtures.contains_key(id))
+            .take(fixtures.len())
+            .collect();
+        debug_assert_eq!(ids.len(), fixtures.len());
+
+        let group = self.0.groups.get_mut(&group_id).unwrap();
+        for (fixture_id, fixture) in ids.iter().copied().zip(fixtures) {
+            group.fixtures.insert(fixture_id, fixture);
+        }
+        for scene in self.0.scenes.values_mut() {
+            for fixture_id in &ids {
+                scene
+                    .sink
+                    .fixture_states
+                    .insert((group_id, *fixture_id), FixtureState::default());
+            }
+        }
+
+        Ok(ids)
+    }
+
+    /// Replaces a fixture only when its new DMX placement is valid and free.
+    pub fn update_fixture(
+        &mut self,
+        group_id: u8,
+        fixture_id: u8,
+        fixture: Fixture,
+    ) -> Result<(), FixtureBatchError> {
+        let Some(group) = self.0.groups.get(&group_id) else {
+            return Err(FixtureBatchError::MissingGroup(group_id));
+        };
+        if !group.fixtures.contains_key(&fixture_id) {
+            return Err(FixtureBatchError::MissingFixture {
+                group_id,
+                fixture_id,
+            });
+        }
+
+        if fixture.universe_no >= NUM_DMX_UNIVERSES {
+            return Err(FixtureBatchError::InvalidUniverse {
+                fixture_name: fixture.name,
+                universe: fixture.universe_no,
+            });
+        }
+
+        let footprint = fixture.type_.footprint();
+        let Some(end) = fixture.start_addr.checked_add(footprint) else {
+            return Err(FixtureBatchError::InvalidDmxRange {
+                fixture_name: fixture.name,
+                universe: fixture.universe_no,
+                start: fixture.start_addr,
+                footprint,
+            });
+        };
+        if fixture.start_addr == 0 || footprint == 0 || end > 513 {
+            return Err(FixtureBatchError::InvalidDmxRange {
+                fixture_name: fixture.name,
+                universe: fixture.universe_no,
+                start: fixture.start_addr,
+                footprint,
+            });
+        }
+
+        for (existing_group_id, existing_group) in &self.0.groups {
+            for (existing_fixture_id, existing) in &existing_group.fixtures {
+                if (*existing_group_id, *existing_fixture_id) == (group_id, fixture_id)
+                    || existing.universe_no != fixture.universe_no
+                {
+                    continue;
+                }
+                let existing_end = existing
+                    .start_addr
+                    .saturating_add(existing.type_.footprint());
+                if dmx_ranges_overlap(fixture.start_addr, end, existing.start_addr, existing_end) {
+                    return Err(FixtureBatchError::DmxOverlap {
+                        universe: fixture.universe_no,
+                        start: fixture.start_addr,
+                        end: end - 1,
+                        fixture_name: fixture.name,
+                        conflicts_with: existing.name.clone(),
+                    });
+                }
+            }
+        }
+
+        self.0
+            .groups
+            .get_mut(&group_id)
+            .unwrap()
+            .fixtures
+            .insert(fixture_id, fixture);
+        Ok(())
     }
 
     pub fn delete_fixture_from_group(&mut self, group_id: u8, fixture_id: u8) -> bool {
@@ -341,18 +609,20 @@ mod tests {
             let group_id = engine
                 .create_group(format!("LED strip {}", strip + 1))
                 .expect("five groups fit in the engine");
-            for pixel in 0..PIXELS_PER_STRIP {
-                let fixture_id = engine.add_fixture_to_group(
-                    group_id,
+            let fixtures = (0..PIXELS_PER_STRIP)
+                .map(|pixel| {
                     Fixture::new(
                         strip,
                         1 + pixel * 3,
                         format!("Pixel {}", pixel + 1),
                         FixtureType::from(Light::Generic3ChanNoAlpha),
-                    ),
-                );
-                assert_eq!(fixture_id, Some(pixel as u8));
-            }
+                    )
+                })
+                .collect();
+            let fixture_ids = engine
+                .add_fixture_batch_to_group(group_id, fixtures)
+                .expect("a 100-pixel strip fits in one universe and group");
+            assert_eq!(fixture_ids, (0..PIXELS_PER_STRIP as u8).collect::<Vec<_>>());
             engine.0.selection.group_ids.insert(group_id);
         }
 
@@ -396,6 +666,107 @@ mod tests {
             assert_eq!(group.fixtures[&99].universe_no, universe);
             assert_eq!(group.fixtures[&99].start_addr, 298);
         }
+    }
+
+    #[test]
+    fn invalid_fixture_batch_is_rejected_without_partial_changes() {
+        let mut engine = EngineState::default();
+        let group_id = engine.create_group("LED strip".to_string()).unwrap();
+        engine
+            .add_fixture_batch_to_group(
+                group_id,
+                vec![Fixture::new(
+                    0,
+                    1,
+                    "Existing pixel".to_string(),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                )],
+            )
+            .unwrap();
+        let fixture_count_before = engine.0.groups[&group_id].fixtures.len();
+        let scene_states_before = engine.curr_scene().sink.fixture_states.len();
+
+        let result = engine.add_fixture_batch_to_group(
+            group_id,
+            vec![
+                Fixture::new(
+                    0,
+                    4,
+                    "Valid pixel".to_string(),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                ),
+                Fixture::new(
+                    0,
+                    3,
+                    "Overlapping pixel".to_string(),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                ),
+            ],
+        );
+
+        assert!(matches!(result, Err(FixtureBatchError::DmxOverlap { .. })));
+        assert_eq!(
+            engine.0.groups[&group_id].fixtures.len(),
+            fixture_count_before
+        );
+        assert_eq!(
+            engine.curr_scene().sink.fixture_states.len(),
+            scene_states_before
+        );
+    }
+
+    #[test]
+    fn fixture_batch_reports_universe_boundary_error_atomically() {
+        let mut engine = EngineState::default();
+        let group_id = engine.create_group("LED strip".to_string()).unwrap();
+        let result = engine.add_fixture_batch_to_group(
+            group_id,
+            vec![Fixture::new(
+                0,
+                511,
+                "Last pixel".to_string(),
+                FixtureType::from(Light::Generic3ChanNoAlpha),
+            )],
+        );
+
+        assert!(matches!(
+            result,
+            Err(FixtureBatchError::InvalidDmxRange { .. })
+        ));
+        assert!(engine.0.groups[&group_id].fixtures.is_empty());
+        assert!(engine.curr_scene().sink.fixture_states.is_empty());
+    }
+
+    #[test]
+    fn fixture_edit_rejects_overlap_without_moving_the_fixture() {
+        let mut engine = EngineState::default();
+        let group_id = engine.create_group("LED strip".to_string()).unwrap();
+        let ids = engine
+            .add_fixture_batch_to_group(
+                group_id,
+                vec![
+                    Fixture::new(
+                        0,
+                        1,
+                        "Pixel 1".to_string(),
+                        FixtureType::from(Light::Generic3ChanNoAlpha),
+                    ),
+                    Fixture::new(
+                        0,
+                        4,
+                        "Pixel 2".to_string(),
+                        FixtureType::from(Light::Generic3ChanNoAlpha),
+                    ),
+                ],
+            )
+            .unwrap();
+        let mut moved = engine.0.groups[&group_id].fixtures[&ids[1]].clone();
+        moved.start_addr = 3;
+
+        let result = engine.update_fixture(group_id, ids[1], moved);
+
+        assert!(matches!(result, Err(FixtureBatchError::DmxOverlap { .. })));
+        assert_eq!(engine.0.groups[&group_id].fixtures[&ids[1]].start_addr, 4);
     }
 
     #[test]

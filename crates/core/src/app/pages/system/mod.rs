@@ -84,7 +84,7 @@ impl Default for SystemUI {
             screens_dialog_open: false,
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
             new_artnet_address: String::new(),
-            new_artnet_port: String::new(),
+            new_artnet_port: "6454".to_string(),
             artnet_input_error: None,
             plugin_dialog_open: false,
         }
