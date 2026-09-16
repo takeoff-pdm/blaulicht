@@ -8,7 +8,7 @@ use crate::{
 };
 use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, Scene},
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+    ControlEvent, ControlEventMessage, EventOriginator,
 };
 use egui::{Color32, Context, RichText};
 use std::collections::HashMap;
@@ -691,22 +691,19 @@ impl BlaulichtApp {
                             ));
                     }
 
-                    // Speed fader (horizontal), mapped to AnimationSpeedModifier indices 0..7
-                    let mut speed_index = animation.speed_factor.as_index() as f32;
-                    let resp = ui.add(
-                        components::HFader::new(&mut speed_index, 0.0..=7.0)
-                            .with_label("Speed")
-                            .show_value(false),
-                    );
-
-                    if resp.changed() {
-                        let new_index = speed_index.round().clamp(0.0, 7.0) as usize;
-                        let new_speed = AnimationSpeedModifier::from_index(new_index);
-
+                    // This is a discrete multiplier. Using the continuous
+                    // HFader here mixed truncation and rounding, so the value
+                    // emitted around a tick did not reliably match the value
+                    // selected by the user.
+                    let mut speed = animation.speed_factor;
+                    if ui
+                        .add(SpeedKnob::new(&mut speed).with_label("Speed"))
+                        .changed()
+                    {
                         let mut selection_instructions = selection.generate_instructions();
                         selection_instructions.push_front(ControlEvent::PushSelection);
                         selection_instructions
-                            .push_back(ControlEvent::SetAnimationSpeed(*animation_id, new_speed));
+                            .push_back(ControlEvent::SetAnimationSpeed(*animation_id, speed));
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
                         self.data

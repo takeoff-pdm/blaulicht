@@ -1523,6 +1523,37 @@ mod tests {
             phaser::generate(&spec(1.0), 180.0, FixtureProperty::Alpha, &BTreeMap::new());
         assert_eq!(stretched, reference, "stretch factor must not be ignored");
     }
+
+    #[test]
+    fn legacy_zero_stretch_factor_generates_a_full_sine_wave() {
+        use blaulicht_shared::{
+            fixture::value::FixtureValue, AnimationSpecBodyPhaser, MathematicalBaseFunction,
+            MathematicalPhaser, PhaserKind, SyncMode,
+        };
+
+        let body = AnimationSpecBodyPhaser {
+            kind: PhaserKind::Mathematical(MathematicalPhaser {
+                base: MathematicalBaseFunction::Sin,
+                stretch_factor: 0.0,
+                amplitude_min: FixtureValue::Literal(0),
+                amplitude_max: FixtureValue::Literal(255),
+            }),
+            time_total: PhaserDuration::Fixed(1_000),
+            pin_to_beat: false,
+            sync: SyncMode::Synced,
+            reverse_after_n_iterations: None,
+        };
+        let palettes = BTreeMap::new();
+
+        assert_eq!(
+            phaser::generate(&body, 90.0, FixtureProperty::Alpha, &palettes),
+            255
+        );
+        assert_eq!(
+            phaser::generate(&body, 270.0, FixtureProperty::Alpha, &palettes),
+            0
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2613,6 +2644,41 @@ mod modulation_tests {
             iterations_before,
             animation.iteration_count
         );
+    }
+
+    fn beat_phaser_phase_after_tick(speed: AnimationSpeedModifier, pinned: bool) -> u64 {
+        let fixtures = [FIXTURE_A];
+        let mut state = engine_with_two_fixtures();
+        let mut spec = pinned_phaser_spec(AnimationSpeedModifier::_1);
+        let AnimationSpecBody::Phaser(body) = &mut spec.body else {
+            unreachable!();
+        };
+        body.pin_to_beat = pinned;
+        add_animation(
+            &mut state,
+            SCENE,
+            0,
+            fixtures.to_vec(),
+            spec,
+        );
+        animation_mut(&mut state, &fixtures, 0).speed_factor = speed;
+
+        let mut clock = AnimationClockRuntime::default();
+        clock.tick(1, &mut state, &beating_audio(800, 1, true));
+        clock.tick(51, &mut state, &beating_audio(800, 1, false));
+        animation_mut(&mut state, &fixtures, 0).fixture_timers[&FIXTURE_A].timer
+    }
+
+    #[test]
+    fn applied_speed_control_slows_left_and_accelerates_right() {
+        for pinned in [false, true] {
+            let slow = beat_phaser_phase_after_tick(AnimationSpeedModifier::_1_8, pinned);
+            let normal = beat_phaser_phase_after_tick(AnimationSpeedModifier::_1, pinned);
+            let fast = beat_phaser_phase_after_tick(AnimationSpeedModifier::_8, pinned);
+
+            assert!(slow < normal, "1/8 speed advanced {slow}° vs {normal}°");
+            assert!(fast > normal, "8x speed advanced {fast}° vs {normal}°");
+        }
     }
 
     #[test]

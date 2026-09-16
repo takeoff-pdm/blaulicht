@@ -19,9 +19,16 @@ use std::{
 };
 
 const MAX_MIDI_EVENTS: usize = 100;
-const STATE_BUFFER_CAPACITY: usize = 1024 * 100;
 const SERIAL_BUFFER_CAPACITY: usize = 1000 * 1024;
 const UDP_BUFFER_CAPACITY: usize = 256 * 1024;
+
+fn ensure_engine_state_fits_buffer(serialized_len: usize) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        serialized_len <= ENGINE_STATE_BUFFER_LEN,
+        "serialized engine state ({serialized_len}) exceeds WASM buffer capacity ({ENGINE_STATE_BUFFER_LEN})"
+    );
+    Ok(())
+}
 
 pub(crate) fn stable_animation_instance_id(
     plugin_key: &str,
@@ -589,23 +596,11 @@ impl Plugin {
                     engine.0.serialize()
                 };
 
-                if state_array_bytes.len() > ENGINE_STATE_BUFFER_LEN {
-                    // Writing here would overflow the plugin's fixed state buffer and
-                    // corrupt unrelated wasm linear memory before the plugin can panic.
-                    anyhow::bail!(
-                        "Serialized EngineState ({} B) exceeds plugin state buffer ({} B); skip writing to avoid wasm memory corruption",
-                        state_array_bytes.len(),
-                        ENGINE_STATE_BUFFER_LEN,
-                    );
-                }
+                // The framework allocates this same shared ABI size. Keep the check
+                // before writing so an oversized snapshot cannot corrupt wasm memory.
+                ensure_engine_state_fits_buffer(state_array_bytes.len())?;
 
                 let state_array_len = state_array_bytes.len() as u32;
-
-                anyhow::ensure!(
-                    state_array_bytes.len() <= STATE_BUFFER_CAPACITY,
-                    "serialized engine state ({}) exceeds WASM buffer capacity ({STATE_BUFFER_CAPACITY})",
-                    state_array_bytes.len()
-                );
 
                 // Write the state array to memory.
                 self.wasm_state.memory.write(
@@ -727,5 +722,16 @@ impl Plugin {
             &mut output,
         )?;
         Ok(Some(AnimationTickOutput::deserialize(&output)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_state_size_check_uses_shared_wasm_capacity() {
+        assert!(ensure_engine_state_fits_buffer(ENGINE_STATE_BUFFER_LEN).is_ok());
+        assert!(ensure_engine_state_fits_buffer(ENGINE_STATE_BUFFER_LEN + 1).is_err());
     }
 }

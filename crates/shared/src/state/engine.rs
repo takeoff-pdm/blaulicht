@@ -1244,13 +1244,24 @@ impl Default for PhaserKind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Encode, Decode)]
 pub struct MathematicalPhaser {
     pub base: MathematicalBaseFunction,
     // TODO: this should actually be deprecated!
     pub stretch_factor: f32, // Between 0-1.
     pub amplitude_min: FixtureValue,
     pub amplitude_max: FixtureValue,
+}
+
+impl Default for MathematicalPhaser {
+    fn default() -> Self {
+        Self {
+            base: MathematicalBaseFunction::Sin,
+            stretch_factor: 1.0,
+            amplitude_min: FixtureValue::Literal(0),
+            amplitude_max: FixtureValue::Literal(255),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, EnumIter, PartialEq, Eq, Encode, Decode)]
@@ -1344,7 +1355,11 @@ pub struct WasmAnimationSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{AnimationSpecBody, AnimationSpecBodyKind, EngineSelection, FlashAnimationSpec};
+    use super::{
+        AnimationSpecBody, AnimationSpecBodyKind, EngineSelection, FlashAnimationSpec,
+        MathematicalBaseFunction, MathematicalPhaser,
+    };
+    use crate::fixture::value::FixtureValue;
 
     #[test]
     fn orphaned_fixture_filter_is_empty_selection() {
@@ -1354,6 +1369,16 @@ mod tests {
         };
 
         assert!(selection.is_empty());
+    }
+
+    #[test]
+    fn mathematical_phaser_defaults_to_a_full_sine_wave() {
+        let phaser = MathematicalPhaser::default();
+
+        assert_eq!(phaser.base, MathematicalBaseFunction::Sin);
+        assert_eq!(phaser.stretch_factor, 1.0);
+        assert_eq!(phaser.amplitude_min, FixtureValue::Literal(0));
+        assert_eq!(phaser.amplitude_max, FixtureValue::Literal(255));
     }
 
     #[test]

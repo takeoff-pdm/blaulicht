@@ -32,8 +32,16 @@ pub fn generate(
             let range = max - min;
 
             let mut mathematical_phaser = mathematical_phaser.clone();
-            mathematical_phaser.stretch_factor =
-                mathematical_phaser.stretch_factor.clamp(0.01, 100.0);
+            // `MathematicalPhaser` used to derive `Default`, which stored a
+            // zero stretch factor while the renderer silently forced it to
+            // one. Preserve the full-cycle behavior for those showfiles.
+            mathematical_phaser.stretch_factor = if mathematical_phaser.stretch_factor.is_finite()
+                && mathematical_phaser.stretch_factor > 0.0
+            {
+                mathematical_phaser.stretch_factor.clamp(0.01, 100.0)
+            } else {
+                1.0
+            };
 
             match mathematical_phaser.base {
                 MathematicalBaseFunction::Sin => {

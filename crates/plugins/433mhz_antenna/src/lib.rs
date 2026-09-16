@@ -44,6 +44,29 @@ const SPEED_SCENE_SELECT_OPTION_BASE_ID: u8 = 250;
 const SPEED_MODIFIER_SELECT_BUTTON_BASE_ID: u8 = 40;
 const SPEED_MODIFIER_SELECT_OPTION_BASE_ID: u8 = 80;
 
+fn parse_receiver_signal(body: &[u8]) -> Option<u32> {
+    const PREFIX: &[u8] = b"r: ";
+
+    // Some receivers prefix their textual line with NUL framing bytes. Search
+    // for the protocol marker instead of requiring it at byte zero.
+    let prefix_start = body
+        .windows(PREFIX.len())
+        .position(|window| window == PREFIX)?;
+    let payload = &body[prefix_start + PREFIX.len()..];
+    let digit_count = payload
+        .iter()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digit_count == 0 {
+        return None;
+    }
+
+    std::str::from_utf8(&payload[..digit_count])
+        .ok()?
+        .parse()
+        .ok()
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct RemoteDefinition {
     name: String,
@@ -930,7 +953,7 @@ impl SamplePlugin {
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.load_state();
-        let port_path = "/dev/antenna";
+        let port_path = "/dev/ttyUSB0";
         println!("Open {port_path}...");
         let serial = match SerialConnection::open(&port_path, 115200) {
             Ok(p) => p,
@@ -999,20 +1022,14 @@ impl Plugin for SamplePlugin {
         self.clear_invalid_speed_modifier_selector();
 
         for ev in self.conn.poll() {
-            let str = String::from_utf8_lossy(&ev.body);
-
-            if str.starts_with("r: ") {
-                let num = str.split("r: ").nth(1).unwrap_or("").trim();
-                println!("P: `{num}`: {:?}", num.as_bytes());
-                match num.parse::<u32>() {
-                    Ok(n) => self.handle_signal(n, input.clock),
-                    Err(err) => {
-                        println!("could not parse signal `{num}`: {err}");
-                    }
-                }
+            if let Some(signal) = parse_receiver_signal(&ev.body) {
+                self.handle_signal(signal, input.clock);
+            } else {
+                println!(
+                    "Ignored malformed receiver event: {:?}",
+                    String::from_utf8_lossy(&ev.body)
+                );
             }
-
-            println!("EV: {str} | {:?}", &ev.body);
         }
 
         self.draw_ui(&input.events.events, input.id);
@@ -1020,6 +1037,31 @@ impl Plugin for SamplePlugin {
 }
 
 #[no_mangle]
+#[cfg(not(test))]
 extern "C" fn main() {
     bpf::hook_plugin(Box::new(SamplePlugin::default()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_plain_receiver_signal() {
+        assert_eq!(parse_receiver_signal(b"r: 11973516"), Some(11_973_516));
+    }
+
+    #[test]
+    fn parses_receiver_signal_after_nul_framing() {
+        let mut packet = vec![0; 19];
+        packet.extend_from_slice(b"r: 11973516");
+
+        assert_eq!(parse_receiver_signal(&packet), Some(11_973_516));
+    }
+
+    #[test]
+    fn rejects_non_receiver_lines() {
+        assert_eq!(parse_receiver_signal(b"noise: 11973516"), None);
+        assert_eq!(parse_receiver_signal(b"r: invalid"), None);
+    }
 }
