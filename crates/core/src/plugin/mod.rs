@@ -168,13 +168,19 @@ impl PluginManager {
         *storage = plugin_state;
     }
 
+    /// Enabled, non-errored plugin ids in ascending id order. The order is
+    /// deterministic so that a plugin whose initialize blocks (e.g. on a
+    /// network call) starves the same plugins on every start instead of a
+    /// random subset decided by hash-map iteration.
     pub fn active_plugins(&self) -> Vec<u8> {
         let plugins = self.state_ref.plugins.read().unwrap();
-        plugins
+        let mut ids: Vec<u8> = plugins
             .iter()
             .filter(|(_, p)| p.is_enabled() && !p.has_errored())
             .map(|(key, _)| *key)
-            .collect()
+            .collect();
+        ids.sort_unstable();
+        ids
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
@@ -338,6 +344,61 @@ mod recovery_tests {
         }
         wat.push(')');
         wat
+    }
+
+    #[test]
+    fn active_plugins_are_ordered_by_id_and_skip_errored_ones() {
+        let dir = tempdir::TempDir::new("plugin-order-test").unwrap();
+        let paths: Vec<_> = (0..4)
+            .map(|i| {
+                let path = dir.path().join(format!("p{i}.wasm"));
+                std::fs::write(&path, module(blaulicht_shared::PLUGIN_ABI_VERSION)).unwrap();
+                path
+            })
+            .collect();
+        let configs: Vec<_> = paths
+            .iter()
+            .map(|path| PluginConfig {
+                file_path: path.to_string_lossy().into_owned(),
+                enabled: true,
+                enable_watcher: false,
+            })
+            .collect();
+        let state = Arc::new(AppState::new(&configs));
+        let (system_out, _messages) = crossbeam_channel::unbounded();
+        let (midi_tx, midi_rx) = crossbeam_channel::unbounded();
+        let (plugin_tx, plugin_rx) = crossbeam_channel::unbounded();
+        let midi = Arc::new(Mutex::new(MidiManager::new(
+            midi_rx,
+            plugin_tx,
+            state.clone(),
+            system_out.clone(),
+        )));
+        let mut bus = crate::event::SystemEventBus::new();
+        let manager = PluginManager::new(
+            configs,
+            midi_tx,
+            plugin_rx,
+            system_out,
+            midi,
+            Arc::new(Mutex::new(SerialManager::new(state.clone()))),
+            Arc::new(Mutex::new(UdpManager::new(state.clone()))),
+            bus.new_connection(),
+            state.clone(),
+        );
+
+        for _ in 0..8 {
+            assert_eq!(manager.active_plugins(), vec![0, 1, 2, 3]);
+        }
+
+        state
+            .plugins
+            .write()
+            .unwrap()
+            .get_mut(&2)
+            .unwrap()
+            .set_errored(true);
+        assert_eq!(manager.active_plugins(), vec![0, 1, 3]);
     }
 
     #[test]

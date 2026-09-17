@@ -133,7 +133,13 @@ impl VideowallPlugin {
     }
 
     fn fetch_endpoint(&self, endpoint: &str) -> Result<String, String> {
-        let command = format!("curl 'http://10.10.25.95:8001{}'{}", endpoint, CURL_HEADERS);
+        // Bound the request: the host's `sys` call runs synchronously on the
+        // plugin tick thread, and an unreachable wall (TCP connect timeout of
+        // ~2 min per call) otherwise stalls every plugin's initialize.
+        let command = format!(
+            "curl --silent --connect-timeout 1 --max-time 3 'http://10.10.25.95:8001{}'{}",
+            endpoint, CURL_HEADERS
+        );
         let output = bpf::system(&command);
 
         if output.trim().is_empty() {

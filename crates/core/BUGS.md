@@ -313,3 +313,19 @@ temporarily in `config.toml` (not committed). All in `src/app/plugin_ui.rs`.
   watcher probe both reported VGA-only. Plugin-owned screens are now left out
   when saving and ignored when loading (matching how ArtNet receivers are
   handled); open plugin-owned screens survive a showfile load.
+
+## MIDI not initialised on `bl` (2026-09-17)
+
+- [x] **Videowall's synchronous curl stalls every plugin's initialize.**
+  `crates/plugins/videowall/src/lib.rs` fetched `/admin/api/videos` and
+  `/status` from 10.10.25.95:8001 with no timeout inside `initialize`. From
+  `bl` that host never answers, so each call sat in curl's ~2 min connect
+  timeout on the plugin tick thread. The deployed build's `sys` host call
+  also had no timeout (current builds cap it at 5 s). Whether midi_all got to
+  open its devices depended on the random HashMap order of the initial tick:
+  it worked at boot, hung on the restart. The curl now uses
+  `--connect-timeout 1 --max-time 3`, and `active_plugins` returns ids in
+  ascending order so the initial tick order is deterministic.
+- [ ] **Antenna plugin panics on every start on `bl`.** It opens
+  `/dev/antenna`, but no udev rule creates that symlink (only `dmx_out_1/2`
+  exist), so the plugin is disabled at startup.
