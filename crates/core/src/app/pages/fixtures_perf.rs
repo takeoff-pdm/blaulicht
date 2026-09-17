@@ -310,6 +310,7 @@ impl BlaulichtApp {
 
                                             ui.separator();
                                             ui.add_space(12.0);
+                                            ui.set_max_width(ui.available_width().max(1.0));
                                             self.scene_changes(ui, &dmx_engine);
                                             ui.separator();
 
@@ -467,6 +468,8 @@ impl BlaulichtApp {
 
         egui::ScrollArea::vertical()
             .max_height(180.0)
+            .min_scrolled_height(100.0)
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 for change in changes {
                     let FixtureSelector { gid, fid, property } = change;
@@ -483,14 +486,12 @@ impl BlaulichtApp {
                         })
                         .unwrap_or(("Unknown group", "Unknown fixture"));
 
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name}) · {property}"
-                            )),
-                        );
+                    ui.vertical(|ui| {
+                        ui.add(egui::Label::new(format!(
+                            "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name}) · {property}"
+                        )).wrap());
 
-                        if components::button(ui, false, "Delete", ButtonSize::Small) {
+                        if components::button(ui, false, "Delete", ButtonSize::Medium) {
                             let selection = FixtureSelection {
                                 fixtures: vec![(gid, fid)],
                             };

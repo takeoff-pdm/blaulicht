@@ -182,29 +182,29 @@ Screenshots are in `/tmp/blaulicht-ui-audit/` (session artifacts, not committed)
 Dialog interactions, System subtabs, and selected animation/node editors were not
 inspected: inspector navigation cannot click those widgets.
 
-- [ ] **Fixtures Setup toolbar runs off the window; most DMX simulator buttons
+- [x] **Fixtures Setup toolbar runs off the window; most DMX simulator buttons
   are hidden.** `src/app/pages/fixtures_setup.rs:912-923` emits every universe
   button into the same toolbar row. At 800×480 only Sim. DMX 0 and 1 are fully
   visible; the next button is cut off at the right edge. No horizontal scrollbar
   is shown. Evidence: `FixturesSetup-selected.png`. Use a universe selector or
   a bounded scrolling/wrapping toolbar.
-- [ ] **Fixture Performance clips scene-change details and hides Delete.**
+- [x] **Fixture Performance clips scene-change details and hides Delete.**
   `src/app/pages/fixtures_perf.rs:486-493` places a long group/fixture/property
   label and Delete in one horizontal row in an already narrow right column.
   Even the default names are cut off after “Fixture”; Delete is outside the
   visible window. Evidence: `FixturesPerformance-selected.png`. Reserve width
   for the action and wrap/truncate the description inside the available column.
-- [ ] **Audio fader labels overlap neighbouring controls.**
+- [x] **Audio fader labels overlap neighbouring controls.**
   `src/app/components/fader.rs:163-165` allocates only the 120 px track width,
   then paints value/label beyond its right edge (`:246-267`). The Audio page's
   fixed 50 px spacers (`src/app/pages/audio.rs:903-930`) do not cover the label
   width: the Gate thumb overlaps the end of “Volume”. Evidence:
   `Audio-selected.png`. Allocate the complete widget bounds, including text.
-- [ ] **Audio auto-calibration switch has no label.**
+- [x] **Audio auto-calibration switch has no label.**
   `src/app/pages/audio.rs:932-938` renders a bare switch after Boost, with no
   visible indication that it controls auto-calibration. Evidence:
   `Audio-selected.png`. Add an explicit “Auto-calibrate” label.
-- [ ] **Scene Graph countdown makes nodes and connections jump and clips text.**
+- [x] **Scene Graph countdown makes nodes and connections jump and clips text.**
   `src/app/pages/scene_graph.rs:148-153` appends a countdown only to the active
   node. Its header grows when activated, moving the output connector and edges;
   the right-hand node's countdown is clipped when it grows at the canvas edge.
@@ -212,3 +212,13 @@ inspected: inspector navigation cannot click those widgets.
   (`:569-574`). Evidence: `SceneGraph-selected.png` versus `SceneGraph-next.png`.
   Reserve stable header/countdown width and consider collapsing the empty editor
   or fitting the graph using its expanded node bounds.
+
+
+Visual fixes verified (2026-09-17): fresh 800×480 screenshots in
+`/tmp/blaulicht-ui-fixed/` show all ten simulator buttons, wrapped scene-change
+text with a fully visible 32 px Delete button, separated fader labels, an explicit
+Auto-calibrate checkbox, and a fitted graph with stable node/pin bounds across
+transitions. The empty node editor collapses until a node is selected; fitting
+also runs when the canvas changes size. Before screenshots remain in
+`/tmp/blaulicht-ui-audit/`. Core regression tests cover fader dragging to both
+range endpoints, label spacing, stable countdown header bounds, and graph fitting.

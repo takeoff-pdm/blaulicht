@@ -909,6 +909,9 @@ impl BlaulichtApp {
 
                             components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
 
+                        });
+
+                        ui.horizontal_wrapped(|ui| {
                             for (universe, simulator) in
                                 self.universe_simulations.iter_mut().enumerate()
                             {

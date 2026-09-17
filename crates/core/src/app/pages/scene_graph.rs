@@ -37,6 +37,7 @@ pub struct SceneGraphUI {
     synced: bool,
     recenter_view: bool,
     zoom_level: f32,
+    last_canvas_size: Vec2,
     pending_zoom_override: Option<f32>,
     delete_graph_id: Option<GraphId>,
     delete_node: Option<(GraphId, NodeId)>,
@@ -57,6 +58,7 @@ impl Default for SceneGraphUI {
             synced: false,
             recenter_view: false,
             zoom_level: 1.0,
+            last_canvas_size: Vec2::ZERO,
             pending_zoom_override: None,
             delete_graph_id: None,
             delete_node: None,
@@ -145,23 +147,26 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
             .map_or(false, |g| g.active_node == Some(node_id));
         let label = self.title(&snarl[node].clone());
 
-        // Append a live countdown to the active node when a time-based edge is
-        // ticking, so it's clear when the next transition will fire.
-        let label = match (is_active, self.active_countdown_ms) {
-            (true, Some(ms)) => format!("{label}  \u{23F1} {:.1}s", ms as f32 / 1000.0),
-            _ => label,
-        };
-
-        // Highlight the currently active node via title color only (no extra
-        // widgets / size changes, so layout and widget ids stay stable).
-        let mut text = egui::RichText::new(&label).strong();
-        if is_active {
-            text = text.color(Color32::from_rgb(100, 255, 100));
-        }
-
-        if ui.selectable_label(is_selected, text).clicked() {
-            *self.selected_node = Some(node_id);
-        }
+        // Keep both rows present so transitions never resize nodes or move their pins.
+        ui.vertical(|ui| {
+            ui.set_width(140.0);
+            let mut text = egui::RichText::new(&label).strong();
+            if is_active {
+                text = text.color(Color32::from_rgb(100, 255, 100));
+            }
+            if ui
+                .add(egui::Button::selectable(is_selected, text).truncate())
+                .on_hover_text(&label)
+                .clicked()
+            {
+                *self.selected_node = Some(node_id);
+            }
+            let countdown = match (is_active, self.active_countdown_ms) {
+                (true, Some(ms)) => format!("⏱ {:.1}s", ms as f32 / 1000.0),
+                _ => " ".to_string(),
+            };
+            ui.add(egui::Label::new(egui::RichText::new(countdown).small()).truncate());
+        });
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<SnarlNode>) {
@@ -203,11 +208,11 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
             let mut bb = Rect::NOTHING;
             for (_, pos, n) in snarl.nodes_pos_ids() {
                 if n.graph_id == self.graph_id {
-                    bb.extend_with(pos);
+                    bb = bb.union(Rect::from_min_size(pos, Vec2::new(230.0, 100.0)));
                 }
             }
             if bb.is_finite() {
-                let bb = bb.expand(150.0);
+                let bb = bb.expand(30.0);
                 let scaling2 = self.viewport_rect.size() / bb.size();
                 let scaling = scaling2.min_elem().clamp(0.1, 1.0);
                 let translation =
@@ -442,6 +447,7 @@ impl BlaulichtApp {
             }
 
             self.scene_graph_ui_state.synced = true;
+            self.scene_graph_ui_state.recenter_view = true;
         }
 
         // Controls bar.
@@ -543,14 +549,18 @@ impl BlaulichtApp {
         }
 
         // Use a vertical split in narrow dynamic tiles so both workspaces remain usable.
-        let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
         let pending_zoom_override =
             std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
         let active_countdown_ms = state.active_countdowns.get(&graph_id).copied();
         let available = ui.available_size_before_wrap().max(egui::vec2(1.0, 1.0));
         let (workspace_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
         let gap = ui.spacing().item_spacing.x;
-        let (graph_rect, editor_rect) = if render_context.is_narrow_dynamic() {
+        let (graph_rect, editor_rect) = if self.scene_graph_ui_state.selected_node.is_none() {
+            (
+                workspace_rect,
+                Rect::from_min_max(workspace_rect.max, workspace_rect.max),
+            )
+        } else if render_context.is_narrow_dynamic() {
             let graph_height = (workspace_rect.height() * 0.58).max(1.0);
             (
                 Rect::from_min_max(
@@ -599,6 +609,12 @@ impl BlaulichtApp {
         let viewport_rect =
             Rect::from_min_size(graph_ui.cursor().min, graph_ui.available_size_before_wrap());
 
+        if self.scene_graph_ui_state.last_canvas_size != viewport_rect.size() {
+            self.scene_graph_ui_state.last_canvas_size = viewport_rect.size();
+            self.scene_graph_ui_state.recenter_view = true;
+        }
+        let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
+
         // Left: snarl graph.
         let mut viewer = SceneGraphViewer {
             state,
@@ -620,9 +636,6 @@ impl BlaulichtApp {
 
         // Right: node editor panel.
         let Some(selected_node_id) = self.scene_graph_ui_state.selected_node else {
-            editor_ui.centered_and_justified(|ui| {
-                ui.label("Click a node to edit it.");
-            });
             return;
         };
 
@@ -940,6 +953,56 @@ fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
 #[cfg(test)]
 mod edit_tests {
     use super::*;
+
+    #[test]
+    fn countdown_does_not_change_header_bounds_and_fit_contains_nodes() {
+        let ctx = Context::default();
+        let mut state = SceneGraphState::default();
+        let mut graph = SceneGraph::default();
+        graph.nodes.insert(0, SceneGraphNode::default());
+        state.graphs.insert(0, graph);
+        let mut snarl = Snarl::new();
+        let node = snarl.insert_node(
+            Pos2::new(220.0, 100.0),
+            SnarlNode {
+                node_id: 0,
+                graph_id: 0,
+            },
+        );
+        let mut selected = None;
+        let mut zoom = 1.0;
+        let mut sizes = Vec::new();
+        for active in [None, Some(0), None] {
+            state.graphs.get_mut(&0).unwrap().active_node = active;
+            let mut viewer = SceneGraphViewer {
+                state: &mut state,
+                graph_id: 0,
+                selected_node: &mut selected,
+                recenter_view: true,
+                viewport_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(360.0, 400.0)),
+                zoom_level: &mut zoom,
+                pending_zoom_override: None,
+                active_countdown_ms: Some(1999),
+            };
+            let mut transform = egui::emath::TSTransform::IDENTITY;
+            viewer.current_transform(&mut transform, &mut snarl);
+            let node_bounds = Rect::from_min_size(Pos2::new(220.0, 100.0), Vec2::new(230.0, 100.0));
+            assert!(viewer
+                .viewport_rect
+                .contains_rect(transform.mul_rect(node_bounds)));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let response =
+                        ui.vertical(|ui| viewer.show_header(node, &[], &[], ui, &mut snarl));
+                    sizes.push(response.response.rect.size());
+                });
+            });
+        }
+        assert!(
+            sizes.windows(2).all(|pair| pair[0] == pair[1]),
+            "header sizes: {sizes:?}"
+        );
+    }
 
     #[test]
     fn rendering_edits_preserve_engine_transitions_and_countdowns() {

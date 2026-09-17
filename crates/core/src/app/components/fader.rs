@@ -160,9 +160,37 @@ impl<'a> HFader<'a> {
 
 impl<'a> Widget for HFader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let desired_size = egui::vec2(120.0, 28.0); // width, height
-
-        let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
+        let font = TextStyle::Body.resolve(ui.style());
+        let text_width = |text: String| {
+            ui.painter()
+                .layout_no_wrap(text, font.clone(), ui.visuals().text_color())
+                .size()
+                .x
+        };
+        let label_width = self
+            .label
+            .as_ref()
+            .map_or(0.0, |label| text_width(label.clone()));
+        let value_width = if self.show_value {
+            text_width(format!("{:.0}", self.range.start()))
+                .max(text_width(format!("{:.0}", self.range.end())))
+        } else {
+            0.0
+        };
+        let extra_width = if self.label.is_some() || self.show_value {
+            15.0 + label_width.max(value_width)
+        } else {
+            0.0
+        };
+        // Reserve the text and thumb extents, while keeping the track's drag range 120 px.
+        let (bounds, allocated) =
+            ui.allocate_exact_size(egui::vec2(134.0 + extra_width, 28.0), Sense::hover());
+        let rect = Rect::from_min_size(bounds.min + egui::vec2(7.0, 0.0), egui::vec2(120.0, 28.0));
+        let mut response = ui.interact(
+            rect.expand2(egui::vec2(7.0, 0.0)),
+            allocated.id,
+            Sense::click_and_drag(),
+        );
 
         if response.dragged() {
             if let Some(pointer) = response.interact_pointer_pos() {
@@ -253,5 +281,64 @@ impl<'a> Widget for HFader<'a> {
         }
 
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn horizontal_fader_reserves_label_space_and_drags_across_the_full_range() {
+        let ctx = egui::Context::default();
+        let mut value = 50.0;
+        let mut rect = Rect::NOTHING;
+        let mut changed = false;
+        let mut frame = |events: Vec<egui::Event>| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            let response =
+                                ui.add(HFader::new(&mut value, 0.0..=100.0).with_label("Volume"));
+                            rect = response.rect;
+                            changed |= response.changed();
+                            let label_width = ui
+                                .painter()
+                                .layout_no_wrap(
+                                    "Volume".into(),
+                                    TextStyle::Body.resolve(ui.style()),
+                                    ui.visuals().text_color(),
+                                )
+                                .size()
+                                .x;
+                            let next = ui.button("Next");
+                            assert!(next.rect.left() >= rect.right() + label_width + 8.0);
+                        });
+                    });
+                },
+            );
+            (rect, value)
+        };
+        let (bounds, _) = frame(vec![]);
+        let center = bounds.center();
+        frame(vec![
+            egui::Event::PointerMoved(center),
+            egui::Event::PointerButton {
+                pos: center,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+        ]);
+        let (_, max) = frame(vec![egui::Event::PointerMoved(bounds.right_center())]);
+        assert_eq!(max, 100.0);
+        let (_, min) = frame(vec![egui::Event::PointerMoved(bounds.left_center())]);
+        assert_eq!(min, 0.0);
+        assert!(changed);
     }
 }

@@ -886,7 +886,7 @@ impl BlaulichtApp {
                     }
 
                     {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.add_space(5.0);
 
                             if ui
@@ -901,7 +901,7 @@ impl BlaulichtApp {
                                 params.changed = true;
                             }
 
-                            ui.add_space(50.0);
+                            ui.add_space(8.0);
 
                             if ui
                                 .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
@@ -912,7 +912,7 @@ impl BlaulichtApp {
                                 params.changed = true;
                             }
 
-                            ui.add_space(50.0);
+                            ui.add_space(8.0);
 
                             if ui
                                 .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
@@ -927,12 +927,9 @@ impl BlaulichtApp {
                                 params.changed = true;
                             }
 
-                            ui.add_space(50.0);
+                            ui.add_space(8.0);
 
-                            if components::Switch::new(&mut auto_calibrate)
-                                .ui(ui)
-                                .changed()
-                            {
+                            if ui.checkbox(&mut auto_calibrate, "Auto-calibrate").changed() {
                                 let mut params = self.data.state.audio_params.write().unwrap();
                                 params.auto_calibrate = auto_calibrate;
                                 params.changed = true;
