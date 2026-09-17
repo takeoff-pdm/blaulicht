@@ -44,7 +44,22 @@ pub struct LogEntry {
     timestamp: std::time::SystemTime,
     level: LogLevel,
     pub message: String,
+    pub additional: Option<String>,
     source: String,
+}
+
+fn log_entry_matches_filter(entry: &LogEntry, filter_text: &str) -> bool {
+    if filter_text.is_empty() {
+        return true;
+    }
+
+    let filter_text = filter_text.to_lowercase();
+    entry.message.to_lowercase().contains(&filter_text)
+        || entry.source.to_lowercase().contains(&filter_text)
+        || entry
+            .additional
+            .as_deref()
+            .is_some_and(|additional| additional.to_lowercase().contains(&filter_text))
 }
 
 impl LogWindow {
@@ -60,11 +75,18 @@ impl LogWindow {
         }
     }
 
-    pub fn add_log(&mut self, level: LogLevel, message: String, source: String) {
+    pub fn add_log(
+        &mut self,
+        level: LogLevel,
+        message: String,
+        additional: Option<String>,
+        source: String,
+    ) {
         let entry = LogEntry {
             timestamp: std::time::SystemTime::now(),
             level,
             message,
+            additional,
             source,
         };
 
@@ -207,18 +229,8 @@ impl LogWindow {
                         Some(_) | None => {}
                     }
 
-                    if !self.filter_text.is_empty() {
-                        if !entry
-                            .message
-                            .to_lowercase()
-                            .contains(&self.filter_text.to_lowercase())
-                            && !entry
-                                .source
-                                .to_lowercase()
-                                .contains(&self.filter_text.to_lowercase())
-                        {
-                            continue;
-                        }
+                    if !log_entry_matches_filter(entry, &self.filter_text) {
+                        continue;
                     }
 
                     let datetime: DateTime<Local> = entry.timestamp.into();
@@ -263,6 +275,20 @@ impl LogWindow {
                         );
                     }
 
+                    if let Some(additional) = entry.additional.as_deref() {
+                        egui::CollapsingHeader::new(
+                            RichText::new("Full trace").size(11.0).monospace(),
+                        )
+                        .id_salt((entry.timestamp, &entry.source, &entry.message))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.colored_label(
+                                color,
+                                RichText::new(additional).size(11.0).monospace(),
+                            );
+                        });
+                    }
+
                     ui.separator();
                 }
             });
@@ -292,7 +318,8 @@ impl LogWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::filter_button_label;
+    use super::{filter_button_label, log_entry_matches_filter, LogWindow};
+    use blaulicht_shared::LogLevel;
 
     #[test]
     fn filter_button_exposes_clear_icon_only_for_an_active_filter() {
@@ -301,5 +328,21 @@ mod tests {
             filter_button_label("artnet"),
             format!("Filter {}", egui_phosphor::regular::TRASH)
         );
+    }
+
+    #[test]
+    fn log_details_are_stored_and_included_in_filtering() {
+        let mut window = LogWindow::new(10);
+        window.add_log(
+            LogLevel::Err,
+            "Plugin crashed".to_string(),
+            Some("hidden_function_name".to_string()),
+            "WASM".to_string(),
+        );
+
+        let entry = window.logs.back().unwrap();
+        assert_eq!(entry.additional.as_deref(), Some("hidden_function_name"));
+        assert!(log_entry_matches_filter(entry, "hidden_function"));
+        assert!(!log_entry_matches_filter(entry, "unrelated"));
     }
 }

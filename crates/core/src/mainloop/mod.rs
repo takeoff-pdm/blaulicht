@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
-    mainloop::supervisor::signal_mainloop,
+    mainloop::supervisor::complete_reload,
     msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
     state::AppState,
@@ -32,8 +32,39 @@ pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 
+struct EngineInitializationGuard {
+    system_out: Sender<SystemMessage>,
+    completed: bool,
+}
+
+impl EngineInitializationGuard {
+    fn new(system_out: Sender<SystemMessage>) -> Self {
+        Self {
+            system_out,
+            completed: false,
+        }
+    }
+
+    fn complete(&mut self) {
+        let _ = self
+            .system_out
+            .send(SystemMessage::EngineInitializationComplete);
+        self.completed = true;
+    }
+}
+
+impl Drop for EngineInitializationGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            let _ = self
+                .system_out
+                .send(SystemMessage::EngineInitializationComplete);
+        }
+    }
+}
+
 pub fn run(
-    device: AudioDeviceT,
+    device: Option<AudioDeviceT>,
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
@@ -41,6 +72,8 @@ pub fn run(
     event_bus_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) -> anyhow::Result<()> {
+    let mut initialization_guard = EngineInitializationGuard::new(system_out.clone());
+
     //
     // MIDI.
     //
@@ -136,8 +169,7 @@ pub fn run(
         raw: false,
     };
 
-    let audio_source = audio::open_stream(device, config.clone())
-        .with_context(|| "Failed to initialize audio stream")?;
+    let audio_source = audio::RecoveringAudioSource::new(device, config.clone());
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),
@@ -168,6 +200,7 @@ pub fn run(
     // NOTE: this is done only now since the previous init code could starve the UI thread.
     // (mainly the Wasm setup).
     util::increase_thread_priority(system_out.clone());
+    initialization_guard.complete();
 
     loop {
         let now = mainloop_begin_time.elapsed().as_millis() as u64;
@@ -199,11 +232,7 @@ pub fn run(
 
                 syslog!(system_out, "[ENGINE] Reload complete");
 
-                signal_mainloop(
-                    Arc::clone(&thread_control_signal),
-                    Arc::clone(&app_state),
-                    AudioThreadControlSignal::CONTINUE,
-                );
+                complete_reload(&thread_control_signal, &app_state);
             }
             AudioThreadControlSignal::CRASHED | AudioThreadControlSignal::ABORTED => {
                 return Err(anyhow!("Audio mainloop stopped unexpectedly: {control:?}"));

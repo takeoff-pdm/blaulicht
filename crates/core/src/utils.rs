@@ -77,6 +77,13 @@ mod with_audio_feature {
             .collect::<Vec<_>>()
     }
 
+    pub fn default_input_device() -> Option<AudioDeviceT> {
+        let device = cpal::default_host().default_input_device()?;
+        device.default_input_config().ok()?;
+        device.name().ok()?;
+        Some(device)
+    }
+
     pub fn device_from_name(dev_id: String) -> Option<AudioDeviceT> {
         let devices = get_input_devices_flat();
 
@@ -131,4 +138,12 @@ pub fn get_input_devices_flat() -> Vec<(AudioHostT, AudioDeviceT)> {
 
     #[cfg(not(feature = "audio"))]
     return vec![(AudioHostT::default(), AudioDeviceT::default())];
+}
+
+pub fn default_input_device() -> Option<AudioDeviceT> {
+    #[cfg(feature = "audio")]
+    return with_audio_feature::default_input_device();
+
+    #[cfg(not(feature = "audio"))]
+    return Some(AudioDeviceT::default());
 }

@@ -56,7 +56,6 @@ pub struct SystemUI {
     reload_dialog_open: bool,
     confirm_shutdown_open: bool,
     pub debug_open: bool,
-    artnet_dialog_open: bool,
     midi_dialog_open: bool,
     serial_dialog_open: bool,
     screens_dialog_open: bool,
@@ -64,7 +63,6 @@ pub struct SystemUI {
     new_artnet_address: String,
     new_artnet_port: String,
     artnet_input_error: Option<String>,
-    plugin_dialog_open: bool,
 }
 
 impl Default for SystemUI {
@@ -78,7 +76,6 @@ impl Default for SystemUI {
             reload_dialog_open: false,
             confirm_shutdown_open: false,
             debug_open: false,
-            artnet_dialog_open: false,
             midi_dialog_open: false,
             serial_dialog_open: false,
             screens_dialog_open: false,
@@ -86,7 +83,6 @@ impl Default for SystemUI {
             new_artnet_address: String::new(),
             new_artnet_port: "6454".to_string(),
             artnet_input_error: None,
-            plugin_dialog_open: false,
         }
     }
 }

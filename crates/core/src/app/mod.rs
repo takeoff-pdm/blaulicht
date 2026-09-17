@@ -85,6 +85,11 @@ struct SaveCompletion {
     result: Result<(), String>,
 }
 
+struct DirtyCheckCompletion {
+    revision: u64,
+    result: Result<u64, String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum GuardedLifecycleAction {
     Quit,
@@ -216,6 +221,7 @@ pub struct BlaulichtApp {
     popup: Option<PopupSpec>,
     popup_open_time: Instant,
     init_popup_open_time: Instant,
+    engine_initialization_complete: bool,
 
     set_audio_device_popup_open: bool,
     audio_info_dialog_open: bool,
@@ -307,6 +313,10 @@ pub struct BlaulichtApp {
 
     last_autosave_check: Instant,
     last_dirty_check: Instant,
+    dirty_check_in_flight: bool,
+    dirty_revision: u64,
+    dirty_check_sender: crossbeam_channel::Sender<DirtyCheckCompletion>,
+    dirty_check_receiver: crossbeam_channel::Receiver<DirtyCheckCompletion>,
     last_autosave_hash: u64,
     last_save_time: Option<Instant>,
     save_status: ShowfileSaveStatus,
@@ -326,6 +336,7 @@ impl BlaulichtApp {
         showfile_home: Option<PathBuf>,
     ) -> Self {
         let (save_completion_sender, save_completion_receiver) = crossbeam_channel::unbounded();
+        let (dirty_check_sender, dirty_check_receiver) = crossbeam_channel::unbounded();
         Self {
             desktop_mode,
             showfile_home,
@@ -426,6 +437,7 @@ impl BlaulichtApp {
             popup: None,
             popup_open_time: Instant::now(),
             init_popup_open_time: Instant::now(),
+            engine_initialization_complete: false,
             set_audio_device_popup_open: false,
             audio_info_dialog_open: false,
             bass_low_numberpad: Numberpad::new()
@@ -575,6 +587,10 @@ impl BlaulichtApp {
             universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
             last_autosave_check: Instant::now(),
             last_dirty_check: Instant::now(),
+            dirty_check_in_flight: false,
+            dirty_revision: 0,
+            dirty_check_sender,
+            dirty_check_receiver,
             last_autosave_hash: 0,
             last_save_time: None,
             save_status: ShowfileSaveStatus::NoShowfile,

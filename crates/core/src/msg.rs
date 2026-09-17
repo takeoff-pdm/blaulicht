@@ -44,6 +44,7 @@ pub struct TickSpeeds {
 pub enum SystemMessage {
     // System.
     Heartbeat(usize),
+    EngineInitializationComplete,
     Log(String, LogLevel),
     WasmLog(WasmLogBody),
 
@@ -70,10 +71,17 @@ pub enum SystemMessage {
     },
 }
 
+/// Tracing target for events that must only reach the terminal / file
+/// subscriber. The UI log layer skips events with this target because the
+/// same information is already delivered to the log window through a
+/// dedicated [`SystemMessage`] (e.g. [`SystemMessage::WasmLog`]).
+pub const TERMINAL_ONLY_LOG_TARGET: &str = "blaulicht::terminal_only";
+
 #[derive(Clone, Serialize, Debug)]
 pub struct WasmLogBody {
     pub plugin_id: u8,
     pub msg: Cow<'static, str>,
+    pub additional: Option<String>,
     pub level: LogLevel,
 }
 
@@ -108,8 +116,8 @@ pub struct MockAudioDevice {}
 
 #[cfg(not(feature = "audio"))]
 impl MockAudioDevice {
-    pub fn name(&self) -> Option<String> {
-        Some("dummy-name".to_string())
+    pub fn name(&self) -> Result<String, std::convert::Infallible> {
+        Ok("dummy-name".to_string())
     }
 }
 

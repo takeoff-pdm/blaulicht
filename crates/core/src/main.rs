@@ -1,9 +1,9 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
 use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::msg::{FromFrontend, SystemMessage};
+use blaulicht_core::msg::{FromFrontend, SystemMessage, TERMINAL_ONLY_LOG_TARGET};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
@@ -65,6 +65,10 @@ where
     S: Subscriber,
 {
     fn on_event(&self, event: &Event<'_>, _ctx: TraceContext<'_, S>) {
+        if event.metadata().target() == TERMINAL_ONLY_LOG_TARGET {
+            return;
+        }
+
         let level = match *event.metadata().level() {
             Level::ERROR => LogLevel::Err,
             Level::WARN => LogLevel::Warn,
@@ -139,14 +143,16 @@ fn main() -> anyhow::Result<()> {
     match cfg.default_audio_device {
         None => {}
         Some(ref name) => {
-            let Some(dev) = utils::device_from_name(name.clone()) else {
-                bail!("No such device: {name}");
-            };
-
-            info!("Using default audio device: <{name}> from configuration file.");
-            from_frontend_sender
-                .send(FromFrontend::SelectInputDevice(Some(dev)))
-                .unwrap();
+            if let Some(dev) = utils::device_from_name(name.clone()) {
+                info!("Using default audio device: <{name}> from configuration file.");
+                from_frontend_sender
+                    .send(FromFrontend::SelectInputDevice(Some(dev)))
+                    .unwrap();
+            } else {
+                tracing::warn!(
+                    "Configured audio device <{name}> is unavailable; selecting one automatically"
+                );
+            }
         }
     }
 

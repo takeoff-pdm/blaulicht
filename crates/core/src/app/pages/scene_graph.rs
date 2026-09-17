@@ -329,21 +329,37 @@ impl BlaulichtApp {
         render_context: crate::app::page::PageRenderContext,
     ) {
         self.render_scene_graph_delete_dialogs(ctx);
-        let mut state = self.data.state.dmx_engine.write().unwrap();
-        let scenes = state.0.scenes.clone();
+        let (original, scenes) = {
+            let state = self.data.state.dmx_engine.read().unwrap();
+            (state.0.scene_graphs.clone(), state.0.scenes.clone())
+        };
+        let mut edited = original.clone();
+        self.render_scene_graph(ui, render_context, &mut edited, &scenes);
+        if edited != original {
+            let mut state = self.data.state.dmx_engine.write().unwrap();
+            merge_scene_graph_edits(&mut state.0.scene_graphs, &original, edited);
+        }
+    }
 
+    fn render_scene_graph(
+        &mut self,
+        ui: &mut Ui,
+        render_context: crate::app::page::PageRenderContext,
+        state: &mut SceneGraphState,
+        scenes: &BTreeMap<u8, blaulicht_shared::scene::Scene>,
+    ) {
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             ui.label("Graphs:");
 
-            let graph_ids: Vec<_> = state.0.scene_graphs.graphs.keys().copied().collect();
-            let focused = state.0.scene_graphs.focused_graph;
+            let graph_ids: Vec<_> = state.graphs.keys().copied().collect();
+            let focused = state.focused_graph;
             for &gid in &graph_ids {
-                let Some(graph) = state.0.scene_graphs.graphs.get(&gid) else {
+                let Some(graph) = state.graphs.get(&gid) else {
                     continue;
                 };
                 let selected = focused == Some(gid);
                 if ui.selectable_label(selected, &graph.name).clicked() {
-                    state.0.scene_graphs.focused_graph = Some(gid);
+                    state.focused_graph = Some(gid);
                     self.scene_graph_ui_state.selected_node = None;
                 }
             }
@@ -356,26 +372,25 @@ impl BlaulichtApp {
             if self.scene_graph_ui_state.add_graph_open {
                 ui.text_edit_singleline(&mut self.scene_graph_ui_state.new_graph_name);
                 if ui.button("Create").clicked() {
-                    let new_id =
-                        (0..=u8::MAX).find(|id| !state.0.scene_graphs.graphs.contains_key(id));
+                    let new_id = (0..=u8::MAX).find(|id| !state.graphs.contains_key(id));
                     if let Some(new_id) = new_id {
                         let mut graph = SceneGraph::default();
                         graph.name = self.scene_graph_ui_state.new_graph_name.clone();
-                        state.0.scene_graphs.graphs.insert(new_id, graph);
-                        state.0.scene_graphs.focused_graph = Some(new_id);
+                        state.graphs.insert(new_id, graph);
+                        state.focused_graph = Some(new_id);
                     }
                     self.scene_graph_ui_state.add_graph_open = false;
                 }
             }
         });
 
-        let Some(graph_id) = state.0.scene_graphs.focused_graph else {
+        let Some(graph_id) = state.focused_graph else {
             ui.label("Select or create a graph.");
             return;
         };
 
-        if !state.0.scene_graphs.graphs.contains_key(&graph_id) {
-            state.0.scene_graphs.focused_graph = None;
+        if !state.graphs.contains_key(&graph_id) {
+            state.focused_graph = None;
             return;
         }
 
@@ -389,7 +404,7 @@ impl BlaulichtApp {
         // Sync snarl from engine state if needed.
         if !self.scene_graph_ui_state.synced {
             self.scene_graph_ui_state.snarl = Snarl::new();
-            let Some(graph) = state.0.scene_graphs.graphs.get(&graph_id) else {
+            let Some(graph) = state.graphs.get(&graph_id) else {
                 self.scene_graph_ui_state.synced = false;
                 self.scene_graph_ui_state.selected_node = None;
                 return;
@@ -433,7 +448,7 @@ impl BlaulichtApp {
         let current_section = self.collector_snapshot.section_state;
         let mut do_auto_layout = false;
         render_context.horizontal(ui, egui::Align::Min, |ui| {
-            let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
+            let Some(graph) = state.graphs.get_mut(&graph_id) else {
                 self.scene_graph_ui_state.selected_node = None;
                 self.scene_graph_ui_state.synced = false;
                 return;
@@ -490,13 +505,13 @@ impl BlaulichtApp {
         });
 
         if do_auto_layout {
-            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) {
+            if let Some(graph) = state.graphs.get_mut(&graph_id) {
                 auto_layout_graph(graph, &mut self.scene_graph_ui_state.snarl);
                 self.scene_graph_ui_state.recenter_view = true;
             }
         }
 
-        if !state.0.scene_graphs.graphs.contains_key(&graph_id) {
+        if !state.graphs.contains_key(&graph_id) {
             return;
         }
 
@@ -519,7 +534,7 @@ impl BlaulichtApp {
             if let Some(info) = self.scene_graph_ui_state.snarl.get_node_info_mut(*snarl_id) {
                 info.pos = *clamped;
             }
-            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&snarl_node.graph_id) {
+            if let Some(graph) = state.graphs.get_mut(&snarl_node.graph_id) {
                 if let Some(node) = graph.nodes.get_mut(&snarl_node.node_id) {
                     node.pos_x = clamped.x;
                     node.pos_y = clamped.y;
@@ -531,12 +546,7 @@ impl BlaulichtApp {
         let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
         let pending_zoom_override =
             std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
-        let active_countdown_ms = state
-            .0
-            .scene_graphs
-            .active_countdowns
-            .get(&graph_id)
-            .copied();
+        let active_countdown_ms = state.active_countdowns.get(&graph_id).copied();
         let available = ui.available_size_before_wrap().max(egui::vec2(1.0, 1.0));
         let (workspace_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
         let gap = ui.spacing().item_spacing.x;
@@ -591,7 +601,7 @@ impl BlaulichtApp {
 
         // Left: snarl graph.
         let mut viewer = SceneGraphViewer {
-            state: &mut state.0.scene_graphs,
+            state,
             graph_id,
             selected_node: &mut self.scene_graph_ui_state.selected_node,
             recenter_view,
@@ -617,8 +627,6 @@ impl BlaulichtApp {
         };
 
         let node_exists = state
-            .0
-            .scene_graphs
             .graphs
             .get(&graph_id)
             .map_or(false, |g| g.nodes.contains_key(&selected_node_id));
@@ -627,7 +635,7 @@ impl BlaulichtApp {
             return;
         }
 
-        let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) else {
+        let Some(graph) = state.graphs.get_mut(&graph_id) else {
             return;
         };
 
@@ -836,6 +844,43 @@ impl BlaulichtApp {
     }
 }
 
+/// Apply UI edits only when the corresponding graph was not concurrently edited.
+/// Engine transitions and countdowns must survive rendering a stale snapshot.
+fn merge_scene_graph_edits(
+    current: &mut SceneGraphState,
+    original: &SceneGraphState,
+    edited: SceneGraphState,
+) {
+    if edited.focused_graph != original.focused_graph
+        && current.focused_graph == original.focused_graph
+    {
+        current.focused_graph = edited.focused_graph;
+    }
+    for (id, mut graph) in edited.graphs {
+        let before = original.graphs.get(&id);
+        if before == Some(&graph) {
+            continue;
+        }
+        match (before, current.graphs.get(&id)) {
+            (None, None) => {
+                current.graphs.insert(id, graph);
+            }
+            (Some(before), Some(live)) => {
+                let mut comparable = live.clone();
+                comparable.active_node = before.active_node;
+                if &comparable != before {
+                    continue;
+                }
+                if graph.active_node == before.active_node {
+                    graph.active_node = live.active_node;
+                }
+                current.graphs.insert(id, graph);
+            }
+            _ => {} // A removed or concurrently changed graph must not be resurrected.
+        }
+    }
+}
+
 fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
     if graph.nodes.is_empty() {
         return;
@@ -889,5 +934,42 @@ fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
                 info.pos = Pos2::new(clamp(loc.x * scale), clamp(loc.y * scale));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::*;
+
+    #[test]
+    fn rendering_edits_preserve_engine_transitions_and_countdowns() {
+        let mut original = SceneGraphState::default();
+        original.graphs.insert(0, SceneGraph::default());
+        let mut edited = original.clone();
+        edited.graphs.get_mut(&0).unwrap().name = "Edited".into();
+        let mut current = original.clone();
+        current.graphs.get_mut(&0).unwrap().active_node = Some(2);
+        current.active_countdowns.insert(0, 123);
+        merge_scene_graph_edits(&mut current, &original, edited);
+        assert_eq!(current.graphs[&0].name, "Edited");
+        assert_eq!(current.graphs[&0].active_node, Some(2));
+        assert_eq!(current.active_countdowns[&0], 123);
+    }
+
+    #[test]
+    fn rendering_cannot_restore_a_deleted_or_replaced_graph() {
+        let mut original = SceneGraphState::default();
+        original.graphs.insert(0, SceneGraph::default());
+        let mut edited = original.clone();
+        edited.graphs.get_mut(&0).unwrap().enabled = true;
+        let mut current = SceneGraphState::default();
+        merge_scene_graph_edits(&mut current, &original, edited.clone());
+        assert!(current.graphs.is_empty());
+        let mut replacement = SceneGraph::default();
+        replacement.name = "Loaded showfile".into();
+        current.graphs.insert(0, replacement);
+        merge_scene_graph_edits(&mut current, &original, edited);
+        assert_eq!(current.graphs[&0].name, "Loaded showfile");
+        assert!(!current.graphs[&0].enabled);
     }
 }

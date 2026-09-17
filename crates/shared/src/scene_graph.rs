@@ -7,7 +7,7 @@ use crate::{AnimationSpeedModifier, SectionState};
 pub type NodeId = u8;
 pub type GraphId = u8;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode, Default)]
 pub struct SceneGraphState {
     pub graphs: BTreeMap<GraphId, SceneGraph>,
     #[serde(default)]
@@ -19,7 +19,7 @@ pub struct SceneGraphState {
     pub active_countdowns: BTreeMap<GraphId, u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct SceneGraph {
     pub name: String,
     pub nodes: BTreeMap<NodeId, SceneGraphNode>,
@@ -40,7 +40,7 @@ impl Default for SceneGraph {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct SceneGraphNode {
     pub name: String,
     pub scenes: Vec<u8>,
@@ -65,7 +65,7 @@ impl Default for SceneGraphNode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct SceneEdge {
     pub from: NodeId,
     pub to: NodeId,
@@ -73,7 +73,7 @@ pub struct SceneEdge {
     pub priority: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum TransitionCondition {
     AfterDuration(u64),
     AfterBeats(u32),

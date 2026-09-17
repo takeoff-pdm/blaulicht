@@ -214,6 +214,19 @@ impl PluginManager {
     }
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
+        self.plugins.clear();
+        self.animation_instance_ids.clear();
+        self.state_ref.plugin_runtime_kinds.write().unwrap().clear();
+        self.state_ref
+            .wasm_animation_outputs
+            .write()
+            .unwrap()
+            .clear();
+        self.state_ref
+            .wasm_animation_ui_ops
+            .write()
+            .unwrap()
+            .clear();
         {
             let mut artnet_output = self.state_ref.artnet_output.write().unwrap();
             artnet_output.remove_all_plugin_receivers();
@@ -292,5 +305,124 @@ impl PluginManager {
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "wasmtime"))]
+mod recovery_tests {
+    use super::*;
+
+    fn module(abi: u32) -> String {
+        let mut wat = format!(
+            r#"(module
+            (memory (export "memory") 32)
+            (func (export "__blaulicht_plugin_abi_version") (result i32) i32.const {abi})
+            (func (export "internal_tick") (param i32 i32))
+            (func (export "internal_drop_animation_instance") (param i64) unreachable)
+        "#
+        );
+        for name in [
+            "global_midi_buffer",
+            "global_serial_buffer",
+            "global_state_buffer",
+            "global_udp_buffer",
+            "animation_output",
+        ] {
+            let length_addr = if name == "animation_output" { 32 } else { 16 };
+            wat.push_str(&format!(
+                r#"
+                (func (export "__internal_get_{name}_start_addr") (result i32) i32.const 1024)
+                (func (export "__internal_get_{name}_length_start_addr") (result i32) i32.const {length_addr})
+            "#
+            ));
+        }
+        wat.push(')');
+        wat
+    }
+
+    #[test]
+    fn corrupt_plugin_is_isolated_and_rejected_reload_removes_old_instance() {
+        let dir = tempdir::TempDir::new("plugin-recovery-test").unwrap();
+        let good = dir.path().join("good.wasm");
+        let bad = dir.path().join("bad.wasm");
+        std::fs::write(&good, module(blaulicht_shared::PLUGIN_ABI_VERSION)).unwrap();
+        std::fs::write(&bad, b"\0asm").unwrap();
+        let configs: Vec<_> = [&good, &bad]
+            .iter()
+            .map(|path| PluginConfig {
+                file_path: path.to_string_lossy().into_owned(),
+                enabled: true,
+                enable_watcher: false,
+            })
+            .collect();
+        let state = Arc::new(AppState::new(&configs));
+        let (system_out, _messages) = crossbeam_channel::unbounded();
+        let (midi_tx, midi_rx) = crossbeam_channel::unbounded();
+        let (plugin_tx, plugin_rx) = crossbeam_channel::unbounded();
+        let midi = Arc::new(Mutex::new(MidiManager::new(
+            midi_rx,
+            plugin_tx,
+            state.clone(),
+            system_out.clone(),
+        )));
+        let mut bus = crate::event::SystemEventBus::new();
+        let mut manager = PluginManager::new(
+            configs,
+            midi_tx,
+            plugin_rx,
+            system_out,
+            midi,
+            Arc::new(Mutex::new(SerialManager::new(state.clone()))),
+            Arc::new(Mutex::new(UdpManager::new(state.clone()))),
+            bus.new_connection(),
+            state.clone(),
+        );
+        manager.init().unwrap();
+        assert!(manager.plugins.contains_key(&0));
+        assert!(!manager.plugins.contains_key(&1));
+        assert!(!state.plugins.read().unwrap()[&0].has_errored());
+        assert!(state.plugins.read().unwrap()[&1].has_errored());
+
+        state.plugin_runtime_kinds.write().unwrap().insert(
+            0,
+            crate::state::PluginRuntimeKind::Animation {
+                stable_key: "test".into(),
+                display_name: "Test".into(),
+            },
+        );
+        state
+            .wasm_animation_editor_requests
+            .write()
+            .unwrap()
+            .insert(
+                42,
+                crate::state::WasmAnimationEditorRequest {
+                    plugin_key: "test".into(),
+                    instance_id: 42,
+                    fixtures: vec![],
+                    last_seen: Instant::now(),
+                },
+            );
+        // This module leaves the animation output empty: disable it after one failure.
+        assert!(manager
+            .tick(CollectedAudioSnapshot::default(), &[], vec![], vec![], None)
+            .is_err());
+        assert!(state.plugins.read().unwrap()[&0].has_errored());
+        assert!(manager
+            .tick(CollectedAudioSnapshot::default(), &[], vec![], vec![], None)
+            .is_ok());
+        assert!(manager.animation_instance_ids.is_empty());
+
+        // A partially written module must not kill the manager or keep the stale instance.
+        std::fs::write(&good, b"\0asm").unwrap();
+        manager.reload().unwrap();
+        assert!(manager.plugins.is_empty());
+        std::fs::write(&good, module(blaulicht_shared::PLUGIN_ABI_VERSION)).unwrap();
+        manager.reload().unwrap();
+        assert!(manager.plugins.contains_key(&0));
+        std::fs::write(&good, module(blaulicht_shared::PLUGIN_ABI_VERSION + 1)).unwrap();
+        manager.reload().unwrap();
+        assert!(!manager.plugins.contains_key(&0));
+        assert!(state.plugins.read().unwrap()[&0].has_errored());
     }
 }

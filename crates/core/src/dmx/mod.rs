@@ -76,8 +76,43 @@ fn output_worker(
     mut artnet: DmxEngineArtnetOutput,
     state_ref: Arc<AppState>,
 ) {
+    let retry_interval = Duration::from_secs(2);
+    let mut retry_at = Instant::now();
     while let Ok(frame) = receiver.recv() {
-        let mut artnet_failed = false;
+        let retry_due = Instant::now() >= retry_at;
+        if retry_due {
+            retry_at = Instant::now() + retry_interval;
+            if artnet.socket.is_none() {
+                artnet.socket = UdpSocket::bind("0.0.0.0:0").ok();
+            }
+            for (universe_no, slot) in ports.iter_mut().enumerate() {
+                if slot.is_some() {
+                    continue;
+                }
+                let path = state_ref
+                    .health_data
+                    .read()
+                    .ok()
+                    .map(|health| health.dmx_universes_healthy[universe_no].port.clone())
+                    .unwrap_or_default();
+                if path.is_empty() {
+                    continue;
+                }
+                if let Ok(port) = serialport::new(&path, 250_000)
+                    .data_bits(serialport::DataBits::Eight)
+                    .parity(serialport::Parity::None)
+                    .stop_bits(serialport::StopBits::Two)
+                    .timeout(Duration::from_millis(10))
+                    .open()
+                {
+                    *slot = Some(port);
+                    if let Ok(mut health) = state_ref.health_data.write() {
+                        health.dmx_universes_healthy[universe_no] = DmxHealth::healthy(path);
+                    }
+                }
+            }
+        }
+        let mut artnet_failed = artnet.socket.is_none();
         if let Some(ref mut socket) = artnet.socket {
             let receivers = state_ref
                 .artnet_output
@@ -98,21 +133,18 @@ fn output_worker(
                 };
                 for destination in receivers.iter().filter(|destination| destination.enabled) {
                     if let Err(err) = socket.send_to(&bytes, destination.address) {
-                        error!("Send ArtNet UDP to {}: {err:?}", destination.address);
-                        artnet_failed = true;
-                        if let Ok(mut health) = state_ref.health_data.write() {
-                            health.artnet_health_state = false;
+                        if retry_due && universe_no == 0 {
+                            error!("Send ArtNet UDP to {}: {err:?}", destination.address);
                         }
-                        break;
+                        artnet_failed = true;
                     }
-                }
-                if artnet_failed {
-                    break;
                 }
             }
         }
-        if artnet_failed {
-            artnet.socket = None;
+        // A failed destination must not prevent sending to the others, and a
+        // transient send error does not invalidate a UDP socket.
+        if let Ok(mut health) = state_ref.health_data.write() {
+            health.artnet_health_state = !artnet_failed;
         }
 
         for (universe_no, port_slot) in ports.iter_mut().enumerate() {
@@ -1590,6 +1622,50 @@ mod artnet_scale_tests {
     use crate::state::{AppState, ArtNetReceiver, NUM_DMX_UNIVERSES};
     use crossbeam_channel::bounded;
     use std::{net::UdpSocket, sync::Arc, time::Duration};
+
+    #[test]
+    fn bad_artnet_receiver_does_not_block_other_receivers_or_future_frames() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        receiver
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let state = Arc::new(AppState::new(&[]));
+        state.artnet_output.write().unwrap().receivers = vec![
+            ArtNetReceiver::new("127.0.0.1:0".parse().unwrap()),
+            ArtNetReceiver::new(receiver.local_addr().unwrap()),
+        ];
+        let (sender, output_rx) = bounded(1);
+        let worker_state = state.clone();
+        let worker = std::thread::spawn(move || {
+            output_worker(
+                output_rx,
+                [None, None],
+                DmxEngineArtnetOutput {
+                    universe_buffers: std::array::from_fn(|_| vec![0; 512]),
+                    socket: None, // Also exercise recovery from initial bind failure.
+                },
+                worker_state,
+            )
+        });
+        for value in [12, 34] {
+            sender
+                .send(DmxOutputFrame {
+                    universes: [[value; 513]; NUM_DMX_UNIVERSES],
+                })
+                .unwrap();
+            for _ in 0..NUM_DMX_UNIVERSES {
+                let mut packet = [0; 600];
+                receiver.recv(&mut packet).unwrap();
+                assert_eq!(packet[18], value);
+            }
+            if value == 12 {
+                state.artnet_output.write().unwrap().receivers.remove(0);
+            }
+        }
+        drop(sender);
+        worker.join().unwrap();
+        assert!(state.health_data.read().unwrap().artnet_health_state);
+    }
 
     #[test]
     fn output_worker_sends_five_populated_led_strip_universes_without_truncation() {

@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use crate::{
-    msg::{MidiEvent, SystemMessage},
+    msg::MidiEvent,
     plugin::{Plugin, PluginManager},
 };
 #[cfg(not(feature = "wasmtime"))]
@@ -28,6 +28,13 @@ fn ensure_engine_state_fits_buffer(serialized_len: usize) -> anyhow::Result<()> 
         "serialized engine state ({serialized_len}) exceeds WASM buffer capacity ({ENGINE_STATE_BUFFER_LEN})"
     );
     Ok(())
+}
+
+fn decode_animation_output(output: &[u8]) -> anyhow::Result<AnimationTickOutput> {
+    catch_unwind(AssertUnwindSafe(|| {
+        AnimationTickOutput::deserialize(output)
+    }))
+    .map_err(|_| anyhow::anyhow!("Invalid animation output from WASM plugin"))
 }
 
 pub(crate) fn stable_animation_instance_id(
@@ -120,7 +127,10 @@ impl PluginManager {
             }
             Err(err) => {
                 if !self.has_crashed {
-                    tracing::error!("[Plugin] Wasm engine crash: {err}");
+                    tracing::error!(
+                        "[Plugin] Wasm engine crash: {}",
+                        super::wasm::compact_wasm_error(&err)
+                    );
                     self.has_crashed = true;
                 }
                 Duration::from_micros(0)
@@ -204,15 +214,17 @@ impl PluginManager {
                     let path = plugin_key;
                     err_res.insert(
                         path,
-                        anyhow::anyhow!("Failed to tick plugin '{}': {}", plugin_key, err),
+                        err.context(format!("Failed to tick plugin '{plugin_key}'")),
                     );
                 }
             }
 
             if !self.is_initial_tick {
                 let kinds = self.state_ref.plugin_runtime_kinds.read().unwrap().clone();
+                let active_plugins = self.active_plugins();
                 let animation_plugins: HashMap<String, u8> = kinds
                     .iter()
+                    .filter(|(id, _)| active_plugins.contains(id) && !err_res.contains_key(id))
                     .filter_map(|(id, kind)| match kind {
                         crate::state::PluginRuntimeKind::Animation { stable_key, .. } => {
                             Some((stable_key.clone(), *id))
@@ -312,7 +324,13 @@ impl PluginManager {
                     if let Some(plugin) = self.plugins.get_mut(&plugin_id) {
                         for instance in instances {
                             if !current.is_some_and(|values| values.contains(&instance)) {
-                                let _ = plugin.drop_animation_instance(instance);
+                                if active_plugins.contains(&plugin_id)
+                                    && !err_res.contains_key(&plugin_id)
+                                {
+                                    if let Err(err) = plugin.drop_animation_instance(instance) {
+                                        err_res.insert(plugin_id, err);
+                                    }
+                                }
                                 self.state_ref
                                     .wasm_animation_ui_ops
                                     .write()
@@ -326,6 +344,9 @@ impl PluginManager {
 
                 let mut next_outputs = HashMap::new();
                 for (plugin_id, key, animation_input) in tasks {
+                    if err_res.contains_key(&plugin_id) {
+                        continue;
+                    }
                     let paused = animation_input.paused;
                     let instance_id = animation_input.instance_id;
                     let instance_events = events
@@ -361,9 +382,8 @@ impl PluginManager {
                         .remove(&instance_id);
                     if reset_instance {
                         if let Err(err) = plugin.drop_animation_instance(instance_id) {
-                            tracing::warn!(
-                                "Failed to reset animation plugin instance {instance_id}: {err}"
-                            );
+                            err_res.insert(plugin_id, err);
+                            continue;
                         }
                     }
                     self.state_ref
@@ -407,11 +427,9 @@ impl PluginManager {
                         Err(err) => {
                             err_res.insert(
                                 plugin_id,
-                                anyhow::anyhow!(
-                                    "Failed to tick animation plugin '{}': {}",
-                                    plugin_id,
-                                    err
-                                ),
+                                err.context(format!(
+                                    "Failed to tick animation plugin '{plugin_id}'"
+                                )),
                             );
                         }
                     }
@@ -461,7 +479,8 @@ impl PluginManager {
             let mut plugins = self.state_ref.plugins.write().unwrap();
 
             for (plugin_key, err) in plugins_err.into_iter() {
-                tracing::warn!("Disabling plugin with error(s): (id={plugin_key}): {err:#}");
+                tracing::warn!("Disabling plugin with error(s): (id={plugin_key})");
+                tracing::debug!("Full error for disabled plugin (id={plugin_key}): {err:#}");
 
                 if ret.is_none() {
                     ret = Some(err);
@@ -491,13 +510,16 @@ const WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES: Duration = Duration::from_millis(0)
 #[cfg(feature = "wasmtime")]
 impl Plugin {
     fn drop_animation_instance(&mut self, instance_id: u64) -> anyhow::Result<()> {
-        self.wasm_state
-            .instance
-            .get_typed_func::<u64, ()>(
-                &mut self.wasm_state.store,
-                "internal_drop_animation_instance",
-            )?
-            .call(&mut self.wasm_state.store, instance_id)?;
+        catch_unwind(AssertUnwindSafe(|| {
+            self.wasm_state
+                .instance
+                .get_typed_func::<u64, ()>(
+                    &mut self.wasm_state.store,
+                    "internal_drop_animation_instance",
+                )?
+                .call(&mut self.wasm_state.store, instance_id)
+        }))
+        .map_err(|_| anyhow::anyhow!("WASM plugin panicked dropping animation instance"))??;
         Ok(())
     }
 
@@ -721,13 +743,21 @@ impl Plugin {
             self.animation_output_buffers.buffer_addr(),
             &mut output,
         )?;
-        Ok(Some(AnimationTickOutput::deserialize(&output)))
+        decode_animation_output(&output).map(Some)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_animation_output_is_an_error() {
+        assert!(decode_animation_output(&[]).is_err());
+        assert!(decode_animation_output(&[255; 32]).is_err());
+        let output = AnimationTickOutput::default();
+        assert!(decode_animation_output(&output.serialize()).is_ok());
+    }
 
     #[test]
     fn engine_state_size_check_uses_shared_wasm_capacity() {

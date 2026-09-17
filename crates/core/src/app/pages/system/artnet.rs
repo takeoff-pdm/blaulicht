@@ -1,16 +1,13 @@
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize, Dialog},
-        pages::health::{
-            render_dmx_or_artnet_health_box, ARTNET_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
-        },
+        components::{self, clickable, ButtonSize},
         BlaulichtApp,
     },
     msg::SystemMessage,
     state::ArtNetReceiver,
 };
 use blaulicht_shared::LogLevel;
-use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText, ScrollArea, Widget};
+use egui::{Color32, FontId, Frame, Margin, RichText, ScrollArea, Widget};
 use std::net::SocketAddr;
 
 const ARTNET_RECEIVER_LIST_MAX_HEIGHT: f32 = 220.0;
@@ -27,170 +24,125 @@ fn artnet_receiver_scroll<R>(
 }
 
 impl BlaulichtApp {
-    pub fn render_artnet_dialog(&mut self, ctx: &Context) {
-        if !self.system_ui_state.artnet_dialog_open {
-            return;
-        }
+    pub(super) fn render_artnet_management(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                let base_button = ButtonSize::Medium.dim();
+                let input_font_size = base_button.1 + 7.0;
 
-        let artnet_healthy = self
-            .data
-            .state
-            .health_data
-            .read()
-            .unwrap()
-            .artnet_health_state;
+                let create_clicked = ui
+                    .horizontal(|ui| {
+                        components::TextInput::new(170.0)
+                            .with_hint_text("IPv4 Address")
+                            .ui(ui, &mut self.system_ui_state.new_artnet_address);
+                        components::TextInput::new(90.0)
+                            .with_hint_text("Port")
+                            .ui(ui, &mut self.system_ui_state.new_artnet_port);
 
-        Dialog::new("ArtNet".to_string(), egui::vec2(500.0, 400.0))
-            .with_backdrop()
-            .show(ctx, |ui| {
-                ui.heading(RichText::new("ArtNet").strong());
+                        components::button(ui, true, "Create", ButtonSize::Medium)
+                    })
+                    .inner;
 
-                ui.add_space(12.0);
+                if create_clicked {
+                    let address = self.system_ui_state.new_artnet_address.trim().to_string();
+                    let port_text = self.system_ui_state.new_artnet_port.trim().to_string();
+                    let mut error_message = None;
 
-                ui.horizontal(|ui| {
-                    render_dmx_or_artnet_health_box(
-                        ui,
-                        Label::new(
-                            RichText::new("ArtNet")
-                                .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
-                                .size(12.0),
-                        ),
-                        ARTNET_ICON,
-                        28.0,
-                        artnet_healthy,
-                        false,
-                        egui::vec2(60.0, 65.0),
-                    );
+                    if address.is_empty() || port_text.is_empty() {
+                        error_message = Some(
+                            "Address and port are required to add an ArtNet receiver.".to_string(),
+                        );
+                    } else {
+                        match port_text.parse::<u16>() {
+                            Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>() {
+                                Ok(socket_addr) if socket_addr.is_ipv4() => {
+                                    let mut artnet_output =
+                                        self.data.state.artnet_output.write().unwrap();
 
-                    ui.add_space(16.0);
-
-                    ui.vertical(|ui| {
-                        let base_button = ButtonSize::Medium.dim();
-                        let input_font_size = base_button.1 + 7.0;
-
-                        let create_clicked = ui
-                            .horizontal(|ui| {
-                                components::TextInput::new(170.0)
-                                    .with_hint_text("IPv4 Address")
-                                    .ui(
-                                        ui,
-                                        &mut self.system_ui_state.new_artnet_address,
-                                    );
-                                components::TextInput::new(90.0)
-                                    .with_hint_text("Port")
-                                    .ui(ui, &mut self.system_ui_state.new_artnet_port);
-
-                                components::button(ui, true, "Create", ButtonSize::Medium)
-                            })
-                            .inner;
-
-                        if create_clicked {
-                            let address = self.system_ui_state.new_artnet_address.trim().to_string();
-                            let port_text = self.system_ui_state.new_artnet_port.trim().to_string();
-                            let mut error_message = None;
-
-                            if address.is_empty() || port_text.is_empty() {
-                                error_message = Some(
-                                    "Address and port are required to add an ArtNet receiver."
-                                        .to_string(),
-                                );
-                            } else {
-                                match port_text.parse::<u16>() {
-                                    Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>()
+                                    if artnet_output
+                                        .receivers
+                                        .iter()
+                                        .any(|existing| existing.address == socket_addr)
                                     {
-                                        Ok(socket_addr) if socket_addr.is_ipv4() => {
-                                            let mut artnet_output =
-                                                self.data.state.artnet_output.write().unwrap();
-
-                                            if artnet_output
-                                                .receivers
-                                                .iter()
-                                                .any(|existing| existing.address == socket_addr)
-                                            {
-                                                error_message = Some(format!(
-                                                    "ArtNet receiver {socket_addr} already exists."
-                                                ));
-                                            } else {
-                                                artnet_output
-                                                    .receivers
-                                                    .push(ArtNetReceiver::new(socket_addr));
-
-                                                self.data
-                                                    .system_message_sender
-                                                    .send(SystemMessage::Log(
-                                                        format!(
-                                                            "Added ArtNet receiver {socket_addr}."
-                                                        ),
-                                                        LogLevel::Info,
-                                                    ))
-                                                    .unwrap();
-
-                                                self.system_ui_state.new_artnet_address.clear();
-                                                self.system_ui_state.new_artnet_port =
-                                                    "6454".to_string();
-                                            }
-                                        }
-                                        Ok(_) => {
-                                            error_message = Some(format!(
-                                                "ArtNet receiver {address}:{port} must be IPv4."
-                                            ));
-                                        }
-                                        Err(err) => {
-                                            error_message = Some(format!(
-                                                "Failed to parse ArtNet receiver {address}:{port}: {err}"
-                                            ));
-                                        }
-                                    },
-                                    Err(err) => {
                                         error_message = Some(format!(
-                                            "Invalid ArtNet port '{port_text}': {err}"
+                                            "ArtNet receiver {socket_addr} already exists."
                                         ));
+                                    } else {
+                                        artnet_output
+                                            .receivers
+                                            .push(ArtNetReceiver::new(socket_addr));
+
+                                        self.data
+                                            .system_message_sender
+                                            .send(SystemMessage::Log(
+                                                format!("Added ArtNet receiver {socket_addr}."),
+                                                LogLevel::Info,
+                                            ))
+                                            .unwrap();
+
+                                        self.system_ui_state.new_artnet_address.clear();
+                                        self.system_ui_state.new_artnet_port = "6454".to_string();
                                     }
                                 }
-                            }
-
-                            self.system_ui_state.artnet_input_error = error_message;
-                        }
-
-                        if let Some(error) = &self.system_ui_state.artnet_input_error {
-                            ui.add_space(4.0);
-                            ui.label(RichText::new(error).color(Color32::RED));
-                        }
-
-                        ui.add_space(10.0);
-
-                        let receivers =
-                            { self.data.state.artnet_output.read().unwrap().receivers.clone() };
-
-                        ui.label(RichText::new("Configured Outputs").strong());
-
-                        if receivers.is_empty() {
-                            ui.label("No ArtNet receivers configured.");
-                        } else {
-                            let row_height = base_button.0.y.max(58.0);
-
-                            artnet_receiver_scroll(ui, |ui| {
-                                for (receiver_index, receiver) in
-                                    receivers.into_iter().enumerate()
-                                {
-                                    self.render_artnet_receiver_row(
-                                        ui,
-                                        receiver_index,
-                                        &receiver,
-                                        input_font_size,
-                                        row_height,
-                                    );
+                                Ok(_) => {
+                                    error_message = Some(format!(
+                                        "ArtNet receiver {address}:{port} must be IPv4."
+                                    ));
                                 }
-                            });
+                                Err(err) => {
+                                    error_message = Some(format!(
+                                        "Failed to parse ArtNet receiver {address}:{port}: {err}"
+                                    ));
+                                }
+                            },
+                            Err(err) => {
+                                error_message =
+                                    Some(format!("Invalid ArtNet port '{port_text}': {err}"));
+                            }
+                        }
+                    }
+
+                    self.system_ui_state.artnet_input_error = error_message;
+                }
+
+                if let Some(error) = &self.system_ui_state.artnet_input_error {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(error).color(Color32::RED));
+                }
+
+                ui.add_space(10.0);
+
+                let receivers = {
+                    self.data
+                        .state
+                        .artnet_output
+                        .read()
+                        .unwrap()
+                        .receivers
+                        .clone()
+                };
+
+                ui.label(RichText::new("Configured Outputs").strong());
+
+                if receivers.is_empty() {
+                    ui.label("No ArtNet receivers configured.");
+                } else {
+                    let row_height = base_button.0.y.max(58.0);
+
+                    artnet_receiver_scroll(ui, |ui| {
+                        for (receiver_index, receiver) in receivers.into_iter().enumerate() {
+                            self.render_artnet_receiver_row(
+                                ui,
+                                receiver_index,
+                                &receiver,
+                                input_font_size,
+                                row_height,
+                            );
                         }
                     });
-                });
-
-                if components::button(ui, true, "Close", ButtonSize::Medium) {
-                    self.system_ui_state.artnet_input_error = None;
-                    self.system_ui_state.artnet_dialog_open = false;
                 }
             });
+        });
     }
 
     fn render_artnet_receiver_row(
@@ -315,7 +267,7 @@ mod layout_tests {
     use super::artnet_receiver_scroll;
 
     #[test]
-    fn receiver_list_scrolls_and_keeps_actions_below_it_visible() {
+    fn receiver_list_is_bounded_and_scrolls() {
         let ctx = egui::Context::default();
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -325,7 +277,6 @@ mod layout_tests {
             ..Default::default()
         };
         let mut sizes = None;
-        let mut close_button_rect = None;
 
         let _ = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
@@ -336,13 +287,11 @@ mod layout_tests {
                     }
                 });
                 sizes = Some((output.content_size, output.inner_rect.size()));
-                close_button_rect = Some(ui.button("Close").rect);
             });
         });
 
         let (content, viewport) = sizes.unwrap();
         assert!(content.y > viewport.y, "{content:?} vs {viewport:?}");
         assert!(viewport.y <= 220.0);
-        assert!(close_button_rect.unwrap().max.y <= 400.0);
     }
 }

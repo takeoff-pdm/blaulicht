@@ -44,6 +44,10 @@ impl<K, V> SavedMapEntry<K, V> {
     fn into_pair(self) -> (K, V) {
         (self.key, self.value)
     }
+
+    pub fn value_mut(&mut self) -> &mut V {
+        &mut self.value
+    }
 }
 
 impl<K, V> SavedMapEntry<K, V>

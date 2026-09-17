@@ -1,0 +1,339 @@
+{
+  "format_version": 3,
+  "engine": {
+    "groups": [
+      {
+        "key": 0,
+        "value": {
+          "name": "My Group",
+          "fixtures": [
+            {
+              "key": 0,
+              "value": {
+                "name": "New Fixture",
+                "type_": {
+                  "Dimmer": "FogMachineSingle"
+                },
+                "pos": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "rotation": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0
+                },
+                "start_addr": 1,
+                "universe_no": 0
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "animations": [
+      {
+        "key": 0,
+        "value": {
+          "spec": {
+            "name": "Anim #",
+            "body": {
+              "Phaser": {
+                "kind": {
+                  "Mathematical": {
+                    "base": "Sin",
+                    "stretch_factor": 1.0,
+                    "amplitude_min": {
+                      "Literal": 0
+                    },
+                    "amplitude_max": {
+                      "Literal": 255
+                    }
+                  }
+                },
+                "time_total": {
+                  "Fixed": 1000
+                },
+                "pin_to_beat": false,
+                "sync": "Synced",
+                "reverse_after_n_iterations": null
+              }
+            },
+            "property": "Alpha"
+          }
+        }
+      }
+    ],
+    "views": [],
+    "scenes": [
+      {
+        "key": 0,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 0
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              }
+            ],
+            "active_animations": [],
+            "changeset": [
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              }
+            ],
+            "master_alpha_fader": 100,
+            "master_alpha_speed": "_1",
+            "palette_assignments": []
+          },
+          "name": "Empty Scene"
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "sink": {
+            "fixture_states": [
+              {
+                "key": [
+                  0,
+                  0
+                ],
+                "value": {
+                  "color_h": {
+                    "Literal": 0
+                  },
+                  "color_s": {
+                    "Literal": 0
+                  },
+                  "color_v": {
+                    "Literal": 0
+                  },
+                  "alpha": {
+                    "Literal": 255
+                  },
+                  "pan": {
+                    "Literal": 0
+                  },
+                  "tilt": {
+                    "Literal": 0
+                  },
+                  "strobe_speed": {
+                    "Literal": 0
+                  },
+                  "focus": {
+                    "Literal": 0
+                  }
+                }
+              }
+            ],
+            "active_animations": [],
+            "changeset": [
+              {
+                "gid": 0,
+                "fid": 0,
+                "property": "Alpha"
+              }
+            ],
+            "master_alpha_fader": 100,
+            "master_alpha_speed": "_1",
+            "palette_assignments": []
+          },
+          "name": "My Scene"
+        }
+      }
+    ],
+    "current_scene_focus": 1,
+    "current_overlay_scenes": [],
+    "overrides": [],
+    "scene_graphs": {
+      "graphs": {},
+      "focused_graph": null
+    },
+    "palettes": []
+  },
+  "artnet": {
+    "receivers": [
+      {
+        "address": "172.20.10.8:6454",
+        "enabled": false
+      }
+    ]
+  },
+  "plugin_state": {
+    "plugin_1": "{\"version\":1,\"user\":\"{\\\"host\\\":\\\"192.168.50.19\\\",\\\"strips\\\":[{\\\"mode\\\":1,\\\"brightness\\\":31,\\\"r\\\":255,\\\"g\\\":255,\\\"b\\\":255,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":2,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":96,\\\"b\\\":0,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":2,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":96,\\\"b\\\":0,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":2,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":96,\\\"b\\\":0,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1},{\\\"mode\\\":2,\\\"brightness\\\":16,\\\"r\\\":255,\\\"g\\\":96,\\\"b\\\":0,\\\"count\\\":99,\\\"index\\\":0,\\\"span\\\":1}],\\\"selected_strip\\\":0,\\\"artnet_enabled\\\":true}\",\"animation_instances\":{}}"
+  },
+  "stage": {
+    "version": 3,
+    "room": {
+      "visible": true,
+      "width": 20.0,
+      "depth": 20.0,
+      "height": 8.0,
+      "floor_color": [
+        28,
+        30,
+        38
+      ],
+      "wall_color": [
+        38,
+        41,
+        50
+      ]
+    },
+    "objects": {},
+    "assets": {},
+    "truss_connections": [],
+    "fixture_attachments": [],
+    "next_object_id": 1,
+    "next_asset_id": 1
+  },
+  "ui": {
+    "main_screen_desktop_mode": {
+      "width": 2133.3438,
+      "height": 1200.0,
+      "layout": {
+        "Split": {
+          "axis": "Vertical",
+          "fraction": 0.5,
+          "first": {
+            "Split": {
+              "axis": "Horizontal",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "Audio",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 1,
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 2,
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 3,
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 4,
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "SceneGraph",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Palettes",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Visualizer",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Animations",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "Logs",
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 3
+                }
+              }
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Horizontal",
+              "fraction": 0.5,
+              "first": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "FixturesSetup",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "View",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "ViewPerformance",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "page": "System",
+                      "render_mode": "Default"
+                    },
+                    {
+                      "plugin_id": 0,
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 1
+                }
+              },
+              "second": {
+                "Leaf": {
+                  "tabs": [
+                    {
+                      "page": "FixturesPerformance",
+                      "render_mode": "Default"
+                    }
+                  ],
+                  "active": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "external_screens": []
+  }
+}

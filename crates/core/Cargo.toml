@@ -13,7 +13,7 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 [features]
 default = ["audio", "wayland", "wasmtime"] # ["wasmtime"]   # keep it on by default
-wasmtime = ["dep:wasmtime"]
+wasmtime = ["dep:rustc-demangle", "dep:wasmtime"]
 audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in"]
 audio-mock = ["blaulicht-audio-engine/noise"]
 wayland = ["eframe/wayland"]
@@ -53,6 +53,7 @@ clap = { version = "4.5.56", default-features = false, features = ["derive"] }
 
 # Wasm
 wasmtime = { version = "31.0.0", optional = true, features = [ "all-arch" ] }
+rustc-demangle = { version = "0.1.26", optional = true }
 notify = "7.0.0"
 
 # Midi

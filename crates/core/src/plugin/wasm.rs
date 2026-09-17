@@ -23,6 +23,7 @@ use wasmtime::*;
 use crate::command::Command;
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
+use crate::msg::TERMINAL_ONLY_LOG_TARGET;
 use crate::state::PluginOpenState;
 use crate::ui_ops::WasmUiOp;
 use crate::{
@@ -37,6 +38,185 @@ struct PluginStateEnvelope {
     user: Option<String>,
     #[serde(default)]
     animation_instances: HashMap<String, String>,
+}
+
+#[cfg(feature = "wasmtime")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorkspaceFrameKind {
+    Plugin,
+    Blaulicht,
+}
+
+#[cfg(feature = "wasmtime")]
+#[derive(Clone, Debug)]
+struct TraceSymbol {
+    name: Option<String>,
+    file: Option<String>,
+    line: Option<u32>,
+    column: Option<u32>,
+}
+
+#[cfg(feature = "wasmtime")]
+#[derive(Clone, Debug)]
+struct TraceFrame {
+    symbols: Vec<TraceSymbol>,
+}
+
+#[cfg(feature = "wasmtime")]
+fn workspace_frame_kind(symbol: &TraceSymbol) -> Option<WorkspaceFrameKind> {
+    if let Some(file) = symbol.file.as_deref() {
+        let file = file.replace('\\', "/");
+        if file.contains("/crates/plugins/") || file.starts_with("crates/plugins/") {
+            return Some(WorkspaceFrameKind::Plugin);
+        }
+        if file.contains("/crates/") || file.starts_with("crates/") {
+            return Some(WorkspaceFrameKind::Blaulicht);
+        }
+    }
+
+    let name = symbol.name.as_deref()?;
+    if name.contains("blaulicht_plugin_") && !name.contains("blaulicht_plugin_framework") {
+        Some(WorkspaceFrameKind::Plugin)
+    } else if name.contains("blaulicht_") {
+        Some(WorkspaceFrameKind::Blaulicht)
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "wasmtime")]
+fn select_relevant_frames(frames: &[TraceFrame]) -> Vec<(usize, WorkspaceFrameKind)> {
+    let mut selected = Vec::new();
+    let mut saw_plugin = false;
+    let mut included_boundary = false;
+
+    for (index, frame) in frames.iter().enumerate() {
+        let contains_plugin = frame
+            .symbols
+            .iter()
+            .any(|symbol| workspace_frame_kind(symbol) == Some(WorkspaceFrameKind::Plugin));
+        if contains_plugin {
+            selected.push((index, WorkspaceFrameKind::Plugin));
+            saw_plugin = true;
+            continue;
+        }
+
+        if saw_plugin
+            && !included_boundary
+            && frame
+                .symbols
+                .iter()
+                .any(|symbol| workspace_frame_kind(symbol) == Some(WorkspaceFrameKind::Blaulicht))
+        {
+            selected.push((index, WorkspaceFrameKind::Blaulicht));
+            included_boundary = true;
+        }
+    }
+
+    selected
+}
+
+#[cfg(feature = "wasmtime")]
+fn display_symbol_name(name: Option<&str>) -> String {
+    let Some(name) = name else {
+        return "<unknown>".to_string();
+    };
+
+    rustc_demangle::try_demangle(name)
+        .map(|name| name.to_string())
+        .unwrap_or_else(|_| name.to_string())
+}
+
+#[cfg(feature = "wasmtime")]
+fn display_source_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    normalized
+        .find("/crates/")
+        .map(|index| normalized[index + 1..].to_string())
+        .unwrap_or(normalized)
+}
+
+#[cfg(feature = "wasmtime")]
+fn trace_frames(backtrace: &WasmBacktrace) -> Vec<TraceFrame> {
+    backtrace
+        .frames()
+        .iter()
+        .map(|frame| {
+            let symbols = if frame.symbols().is_empty() {
+                vec![TraceSymbol {
+                    name: frame.func_name().map(str::to_string),
+                    file: None,
+                    line: None,
+                    column: None,
+                }]
+            } else {
+                frame
+                    .symbols()
+                    .iter()
+                    .map(|symbol| TraceSymbol {
+                        name: symbol.name().map(str::to_string),
+                        file: symbol.file().map(str::to_string),
+                        line: symbol.line(),
+                        column: symbol.column(),
+                    })
+                    .collect()
+            };
+            TraceFrame { symbols }
+        })
+        .collect()
+}
+
+#[cfg(feature = "wasmtime")]
+pub(super) fn compact_wasm_backtrace(backtrace: &WasmBacktrace) -> Option<String> {
+    let frames = trace_frames(backtrace);
+    let selected = select_relevant_frames(&frames);
+    if selected.is_empty() {
+        return None;
+    }
+
+    let mut output = String::from("Relevant plugin stack:");
+    for (index, kind) in &selected {
+        let frame = &frames[*index];
+        for symbol in frame
+            .symbols
+            .iter()
+            .filter(|symbol| workspace_frame_kind(symbol) == Some(*kind))
+        {
+            output.push_str("\n  ");
+            output.push_str(&display_symbol_name(symbol.name.as_deref()));
+            if let Some(file) = symbol.file.as_deref() {
+                output.push_str("\n    at ");
+                output.push_str(&display_source_path(file));
+                if let Some(line) = symbol.line {
+                    output.push(':');
+                    output.push_str(&line.to_string());
+                    if let Some(column) = symbol.column {
+                        output.push(':');
+                        output.push_str(&column.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let hidden = frames.len().saturating_sub(selected.len());
+    if hidden > 0 {
+        output.push_str(&format!("\n  … {hidden} runtime frame(s) hidden"));
+    }
+
+    Some(output)
+}
+
+#[cfg(feature = "wasmtime")]
+pub(super) fn compact_wasm_error(error: &anyhow::Error) -> String {
+    let mut output = error.to_string();
+    if let Some(backtrace) = error.downcast_ref::<WasmBacktrace>() {
+        if let Some(compact) = compact_wasm_backtrace(backtrace) {
+            output.push('\n');
+            output.push_str(&compact);
+        }
+    }
+    output
 }
 
 impl PluginStateEnvelope {
@@ -183,7 +363,8 @@ impl PluginManager {
 
         let mut modules = HashMap::new();
 
-        for (plugin_id, plugin) in self.plugin_config.iter().enumerate() {
+        for (plugin_id, plugin) in self.plugin_config.clone().iter().enumerate() {
+            anyhow::ensure!(plugin_id <= u8::MAX as usize, "too many configured plugins");
             if !plugin.enabled {
                 tracing::warn!("Plugin <{}> is disabled, skipping.", plugin.file_path);
                 continue;
@@ -193,78 +374,89 @@ impl PluginManager {
 
             tracing::debug!("[WASM] Initializing plugin <{plugin_name}>...");
 
-            let wasm_bytes = fs::read(&plugin.file_path)
-                .with_context(|| format!("failed to read wasm file: <{plugin_name}>"))?;
-            let module =
-                Module::new(&engine, wasm_bytes).with_context(|| "failed to create wasm module")?;
-            modules.insert(plugin_name.clone(), module.clone());
+            let result = (|| -> anyhow::Result<Plugin> {
+                let wasm_bytes = fs::read(&plugin.file_path)
+                    .with_context(|| format!("failed to read wasm file: <{plugin_name}>"))?;
+                let module = Module::new(&engine, wasm_bytes)
+                    .with_context(|| "failed to create wasm module")?;
+                modules.insert(plugin_name.clone(), module.clone());
 
-            let mut store = Store::new(&engine, ());
+                let mut store = Store::new(&engine, ());
 
-            // instantiate the module
-            let instance = linker
-                .instantiate(&mut store, &module)
-                .map_err(|e| anyhow!("failed to instantiate wasm module linker: {e}"))?;
+                // instantiate the module
+                let instance = linker
+                    .instantiate(&mut store, &module)
+                    .map_err(|e| anyhow!("failed to instantiate wasm module linker: {e}"))?;
 
-            let abi_version = instance
-                .get_typed_func::<(), i32>(&mut store, "__blaulicht_plugin_abi_version")
-                .and_then(|function| function.call(&mut store, ()))
-                .ok()
-                .map(|version| version as u32);
-            if abi_version != Some(blaulicht_shared::PLUGIN_ABI_VERSION) {
-                tracing::error!(
+                let abi_version = instance
+                    .get_typed_func::<(), i32>(&mut store, "__blaulicht_plugin_abi_version")
+                    .and_then(|function| function.call(&mut store, ()))
+                    .ok()
+                    .map(|version| version as u32);
+                if abi_version != Some(blaulicht_shared::PLUGIN_ABI_VERSION) {
+                    tracing::error!(
                     "[WASM] Plugin <{plugin_name}> uses unsupported ABI {:?}; expected {}. Rebuild the plugin.",
                     abi_version,
                     blaulicht_shared::PLUGIN_ABI_VERSION
                 );
-                continue;
+                    anyhow::bail!("Plugin <{plugin_name}> has an unsupported ABI");
+                }
+
+                //
+                // initialize data.
+                //
+
+                tracing::info!("[WASM] Loaded plugin <{plugin_name}>");
+
+                // store the instance and store for future use
+                let plugin_wasm_state = PluginWasmState {
+                    memory: instance.get_memory(&mut store, "memory").ok_or_else(|| {
+                        anyhow!("WASM plugin <{plugin_name}> does not export memory")
+                    })?,
+                    store,
+                    instance,
+                };
+
+                // TODO: more context here, also just fail this one plugin and not crash whole plugin
+                // manager.
+                let mut plugin = Plugin::new(plugin.file_path.clone().into(), plugin_wasm_state)?;
+
+                plugin
+                    .acquire_midi_buffer_addresses()
+                    .map_err(|e| anyhow!("failed to acquire midi buffer addresses: {e}"))?;
+
+                plugin
+                    .acquire_serial_buffer_addresses()
+                    .map_err(|e| anyhow!("failed to acquire serial buffer addresses: {e}"))?;
+
+                plugin
+                    .acquire_state_buffer_address()
+                    .map_err(|e| anyhow!("failed to acquire state buffer addresses: {e}"))?;
+
+                plugin
+                    .acquire_udp_buffer_addresses()
+                    .map_err(|e| anyhow!("failed to acquire UDP buffer addresses: {e}"))?;
+
+                plugin
+                    .acquire_animation_output_buffer_addresses()
+                    .map_err(|e| anyhow!("failed to acquire animation output buffer: {e}"))?;
+
+                anyhow::ensure!(
+                    plugin_id <= u8::MAX as usize,
+                    "too many plugins: plugin index {plugin_id} does not fit in u8"
+                );
+
+                Ok(plugin)
+            })();
+            match result {
+                Ok(plugin) => {
+                    self.plugins.insert(plugin_id as u8, plugin);
+                }
+                Err(err) => {
+                    tracing::error!("[WASM] Failed to load <{plugin_name}>: {err:#}");
+                    self.disable_errored_plugins(HashMap::from([(plugin_id as u8, err)]));
+                }
             }
-
-            //
-            // initialize data.
-            //
-
-            tracing::info!("[WASM] Loaded plugin <{plugin_name}>");
-
-            // store the instance and store for future use
-            let plugin_wasm_state = PluginWasmState {
-                memory: instance
-                    .get_memory(&mut store, "memory")
-                    .ok_or_else(|| anyhow!("WASM plugin <{plugin_name}> does not export memory"))?,
-                store,
-                instance,
-            };
-
-            // TODO: more context here, also just fail this one plugin and not crash whole plugin
-            // manager.
-            let mut plugin = Plugin::new(plugin.file_path.clone().into(), plugin_wasm_state)?;
-
-            plugin
-                .acquire_midi_buffer_addresses()
-                .map_err(|e| anyhow!("failed to acquire midi buffer addresses: {e}"))?;
-
-            plugin
-                .acquire_serial_buffer_addresses()
-                .map_err(|e| anyhow!("failed to acquire serial buffer addresses: {e}"))?;
-
-            plugin
-                .acquire_state_buffer_address()
-                .map_err(|e| anyhow!("failed to acquire state buffer addresses: {e}"))?;
-
-            plugin
-                .acquire_udp_buffer_addresses()
-                .map_err(|e| anyhow!("failed to acquire UDP buffer addresses: {e}"))?;
-
-            plugin
-                .acquire_animation_output_buffer_addresses()
-                .map_err(|e| anyhow!("failed to acquire animation output buffer: {e}"))?;
-
-            anyhow::ensure!(
-                plugin_id <= u8::MAX as usize,
-                "too many plugins: plugin index {plugin_id} does not fit in u8"
-            );
-
-            self.plugins.insert(plugin_id as u8, plugin);
         }
 
         tracing::debug!(
@@ -643,6 +835,7 @@ impl PluginManager {
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: received_string.into(),
+                    additional: None,
                     level,
                 }))
                 .expect("failed to send log message");
@@ -1801,6 +1994,7 @@ impl PluginManager {
             "blaulicht",
             "bl_report_panic",
             move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+                let backtrace = WasmBacktrace::capture(&caller);
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -1813,13 +2007,21 @@ impl PluginManager {
 
                 let received_string = String::from_utf8_lossy(&buffer).to_string();
 
-                tracing::debug!("***WASM PANIC***: {received_string}");
+                let mut msg = format!("***PANIC***:\n{received_string}");
+                if let Some(compact) = compact_wasm_backtrace(&backtrace) {
+                    msg.push_str("\n\n");
+                    msg.push_str(&compact);
+                }
+                // The UI receives this panic through the `WasmLog` message below;
+                // this event is for the terminal only, otherwise it shows up twice.
+                tracing::error!(target: TERMINAL_ONLY_LOG_TARGET, "{msg}");
 
-                let msg = format!("***PANIC***:\n{received_string}");
+                let additional = (!backtrace.frames().is_empty()).then(|| backtrace.to_string());
 
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: msg.into(),
+                    additional,
                     level: LogLevel::Err,
                 }))
                 .expect("failed to send log message");
@@ -2481,5 +2683,116 @@ mod state_envelope_tests {
         assert_eq!(envelope.user_state(None), Some(legacy.as_str()));
         assert_eq!(envelope.user_state(Some(7)), Some("instance-seven"));
         assert_eq!(envelope.user_state(Some(8)), Some("instance-eight"));
+    }
+}
+
+#[cfg(all(test, feature = "wasmtime"))]
+mod wasm_backtrace_tests {
+    use super::{
+        compact_wasm_error, display_source_path, select_relevant_frames, workspace_frame_kind,
+        TraceFrame, TraceSymbol, WorkspaceFrameKind,
+    };
+    use wasmtime::{Engine, Module, Store};
+
+    fn symbol(name: &str, file: Option<&str>) -> TraceSymbol {
+        TraceSymbol {
+            name: Some(name.to_string()),
+            file: file.map(str::to_string),
+            line: Some(12),
+            column: Some(3),
+        }
+    }
+
+    fn frame(name: &str, file: Option<&str>) -> TraceFrame {
+        TraceFrame {
+            symbols: vec![symbol(name, file)],
+        }
+    }
+
+    #[test]
+    fn selects_plugin_frames_and_only_the_first_blaulicht_boundary() {
+        let frames = vec![
+            frame(
+                "std::panicking::panic",
+                Some("/rustc/library/std/panicking.rs"),
+            ),
+            frame(
+                "plugin::initialize",
+                Some("/workspace/crates/plugins/sample/src/lib.rs"),
+            ),
+            frame(
+                "framework::internal_tick",
+                Some("/workspace/crates/plugin_framework/src/lib.rs"),
+            ),
+            frame(
+                "plugin::outer",
+                Some("/workspace/crates/plugins/sample/src/lib.rs"),
+            ),
+            frame(
+                "core::plugin::tick",
+                Some("/workspace/crates/core/src/plugin/tick.rs"),
+            ),
+        ];
+
+        assert_eq!(
+            select_relevant_frames(&frames),
+            vec![
+                (1, WorkspaceFrameKind::Plugin),
+                (2, WorkspaceFrameKind::Blaulicht),
+                (3, WorkspaceFrameKind::Plugin),
+            ]
+        );
+    }
+
+    #[test]
+    fn function_names_classify_frames_without_dwarf_paths() {
+        assert_eq!(
+            workspace_frame_kind(&symbol("blaulicht_plugin_sample::SamplePlugin::run", None)),
+            Some(WorkspaceFrameKind::Plugin)
+        );
+        assert_eq!(
+            workspace_frame_kind(&symbol("blaulicht_plugin_framework::internal_tick", None)),
+            Some(WorkspaceFrameKind::Blaulicht)
+        );
+    }
+
+    #[test]
+    fn source_paths_are_shortened_to_the_workspace_crates_directory() {
+        assert_eq!(
+            display_source_path("/home/user/project/crates/plugins/sample/src/lib.rs"),
+            "crates/plugins/sample/src/lib.rs"
+        );
+        assert_eq!(
+            display_source_path(r"C:\project\crates\plugin_framework\src\lib.rs"),
+            "crates/plugin_framework/src/lib.rs"
+        );
+    }
+
+    #[test]
+    fn compact_error_recovers_the_structured_backtrace_through_context() {
+        let engine = Engine::default();
+        let module = Module::new(
+            &engine,
+            r#"(module
+                (func $blaulicht_plugin_sample_run (export "run")
+                    unreachable)
+            )"#,
+        )
+        .unwrap();
+        let mut store = Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let run = instance
+            .get_typed_func::<(), ()>(&mut store, "run")
+            .unwrap();
+
+        let error = run
+            .call(&mut store, ())
+            .unwrap_err()
+            .context("Failed to tick plugin '7'");
+        let compact = compact_wasm_error(&error);
+
+        assert!(compact.contains("Failed to tick plugin '7'"));
+        assert!(compact.contains("blaulicht_plugin_sample_run"));
+        assert!(!compact.contains("error while executing at wasm backtrace"));
     }
 }

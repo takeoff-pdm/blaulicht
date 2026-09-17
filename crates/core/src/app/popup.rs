@@ -72,11 +72,19 @@ impl BlaulichtApp {
     }
 
     pub fn render_init_popup(&mut self, ctx: &egui::Context) -> bool {
-        const INIT_POPUP_DURATION: Duration = Duration::from_secs(2);
+        const INIT_POPUP_MIN_DURATION: Duration = if cfg!(debug_assertions) {
+            Duration::from_millis(500)
+        } else {
+            Duration::from_secs(3)
+        };
+        // Failsafe: never trap the UI behind the modal if the engine hangs during init.
+        const INIT_POPUP_MAX_DURATION: Duration = Duration::from_secs(15);
 
         let open_elapsed = self.init_popup_open_time.elapsed();
 
-        if open_elapsed > INIT_POPUP_DURATION {
+        if (self.engine_initialization_complete || open_elapsed > INIT_POPUP_MAX_DURATION)
+            && open_elapsed > INIT_POPUP_MIN_DURATION
+        {
             return false;
         }
 
@@ -141,25 +149,40 @@ impl BlaulichtApp {
                     // }
 
                     ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE));
+                    // Compensate for the transparent lower margin in the logo SVG.
+                    ui.add_space(-24.0);
 
-                    ui.label(
-                        self.log_window
-                            .logs
-                            .iter()
-                            .last()
-                            .map(|l| l.message.clone())
-                            .unwrap_or_default(),
+                    const LOADING_TEXT: &str = "Loading…";
+                    let spinner_size = ui.spacing().interact_size.y;
+                    let text_width = ui
+                        .painter()
+                        .layout_no_wrap(
+                            LOADING_TEXT.to_owned(),
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            ui.visuals().text_color(),
+                        )
+                        .size()
+                        .x;
+                    let loading_width = spinner_size + ui.spacing().item_spacing.x + text_width;
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(loading_width, spinner_size),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spinner();
+                            ui.label(LOADING_TEXT);
+                        },
                     );
+                    ui.add_space(8.0);
 
-                    let progress = 1.0
-                        - open_elapsed.as_millis() as f32 / INIT_POPUP_DURATION.as_millis() as f32;
-
-                    let text = format!(
-                        "{} seconds remaining",
-                        INIT_POPUP_DURATION.as_secs() - open_elapsed.as_secs()
-                    );
-
-                    Self::draw_progress_bar(ui, progress, 18.0, &text);
+                    let current_log = self
+                        .log_window
+                        .logs
+                        .iter()
+                        .last()
+                        .map(|l| l.message.lines().next().unwrap_or_default().to_owned())
+                        .unwrap_or_default();
+                    ui.add(egui::Label::new(current_log).truncate());
                 })
             });
         true

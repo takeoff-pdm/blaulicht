@@ -77,14 +77,18 @@ impl BlaulichtApp {
                     SystemMessage::Heartbeat(_) => {
                         self.last_heartbeat_frame = self.frame_count;
                     }
+                    SystemMessage::EngineInitializationComplete => {
+                        self.engine_initialization_complete = true;
+                    }
                     SystemMessage::Log(log_msg, level) => {
                         self.log_window
-                            .add_log(level, log_msg, "System".to_string());
+                            .add_log(level, log_msg, None, "System".to_string());
                     }
                     SystemMessage::WasmLog(wasm_log_body) => {
                         self.log_window.add_log(
                             wasm_log_body.level.clone(),
                             format!("PID: {} | {}", wasm_log_body.plugin_id, wasm_log_body.msg),
+                            wasm_log_body.additional,
                             "WASM".to_string(),
                         );
                     }
@@ -105,6 +109,7 @@ impl BlaulichtApp {
                             self.log_window.add_log(
                                 LogLevel::Debug,
                                 format!("Available audio devices updated: {} devices", items.len()),
+                                None,
                                 "Audio".to_string(),
                             );
                             let items_str = items

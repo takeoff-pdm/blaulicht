@@ -254,6 +254,7 @@ impl BlaulichtApp {
     }
 
     pub(crate) fn mark_showfile_dirty(&mut self) {
+        self.dirty_revision = self.dirty_revision.wrapping_add(1);
         if self
             .data
             .config
@@ -273,7 +274,28 @@ impl BlaulichtApp {
 
     fn detect_showfile_dirty(&mut self) {
         const DIRTY_CHECK_INTERVAL: Duration = Duration::from_secs(2);
-        if self.last_dirty_check.elapsed() < DIRTY_CHECK_INTERVAL || self.save_in_flight {
+
+        while let Ok(completion) = self.dirty_check_receiver.try_recv() {
+            self.dirty_check_in_flight = false;
+            if completion.revision != self.dirty_revision || self.save_in_flight {
+                continue;
+            }
+            match completion.result {
+                Ok(hash) => {
+                    self.save_status = if hash == self.last_autosave_hash {
+                        ShowfileSaveStatus::Clean
+                    } else {
+                        ShowfileSaveStatus::Dirty
+                    };
+                }
+                Err(error) => tracing::warn!("Failed to check showfile dirty state: {error}"),
+            }
+        }
+
+        if self.last_dirty_check.elapsed() < DIRTY_CHECK_INTERVAL
+            || self.dirty_check_in_flight
+            || self.save_in_flight
+        {
             return;
         }
         self.last_dirty_check = Instant::now();
@@ -288,18 +310,30 @@ impl BlaulichtApp {
             self.save_status = ShowfileSaveStatus::NoShowfile;
             return;
         }
-        if let Ok((_, hash)) = self.serialized_showfile() {
-            self.save_status = if hash == self.last_autosave_hash {
-                ShowfileSaveStatus::Clean
-            } else {
-                ShowfileSaveStatus::Dirty
-            };
+
+        let showfile = self.build_showfile();
+        let revision = self.dirty_revision;
+        let sender = self.dirty_check_sender.clone();
+        self.dirty_check_in_flight = true;
+        if let Err(error) = std::thread::Builder::new()
+            .name("showfile-dirty-check".to_owned())
+            .spawn(move || {
+                let result = Self::serialize_showfile(showfile).map(|(_, hash)| hash);
+                let _ = sender.send(crate::app::DirtyCheckCompletion { revision, result });
+            })
+        {
+            self.dirty_check_in_flight = false;
+            tracing::warn!("Failed to start showfile dirty check: {error}");
         }
     }
 
     fn serialized_showfile(&self) -> Result<(String, u64), String> {
-        let serialized = serde_json::to_string_pretty(&self.build_showfile())
-            .map_err(|error| error.to_string())?;
+        Self::serialize_showfile(self.build_showfile())
+    }
+
+    fn serialize_showfile(showfile: config::CoreShowfile) -> Result<(String, u64), String> {
+        let serialized =
+            serde_json::to_string_pretty(&showfile).map_err(|error| error.to_string())?;
         let mut hasher = std::hash::DefaultHasher::new();
         serialized.hash(&mut hasher);
         Ok((serialized, hasher.finish()))
@@ -391,6 +425,8 @@ impl BlaulichtApp {
     }
 
     pub(crate) fn reset_save_tracking(&mut self) {
+        self.dirty_revision = self.dirty_revision.wrapping_add(1);
+        self.last_dirty_check = Instant::now();
         self.last_autosave_hash = self
             .serialized_showfile()
             .map(|(_, hash)| hash)
@@ -416,20 +452,17 @@ impl BlaulichtApp {
             ShowfileSaveStatus::Saving => ("Saving...", egui::Color32::LIGHT_BLUE),
             ShowfileSaveStatus::Failed(_) => ("Save failed", egui::Color32::LIGHT_RED),
         };
+        const DOT_RADIUS: f32 = 4.0;
         egui::Area::new(egui::Id::new("showfile_save_status"))
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-6.0, 6.0))
             .order(egui::Order::Tooltip)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(140.0);
-                    ui.set_max_width(320.0);
-                    ui.add(
-                        egui::Label::new(egui::RichText::new(label).color(color))
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                    );
-                    if let ShowfileSaveStatus::Failed(error) = &self.save_status {
-                        ui.label(error);
-                    }
+                let (rect, response) = ui
+                    .allocate_exact_size(egui::Vec2::splat(DOT_RADIUS * 2.0), egui::Sense::hover());
+                ui.painter().circle_filled(rect.center(), DOT_RADIUS, color);
+                response.on_hover_text(match &self.save_status {
+                    ShowfileSaveStatus::Failed(error) => format!("{label}: {error}"),
+                    _ => label.to_owned(),
                 });
             });
     }
@@ -521,13 +554,30 @@ impl BlaulichtApp {
             }
         };
 
+        let mut engine = SaveEngineState::from(engine_snapshot);
+        Self::clear_volatile_engine_state(&mut engine);
+
         config::CoreShowfile {
             format_version: config::current_showfile_version(),
-            engine: SaveEngineState::from(engine_snapshot),
+            engine,
             artnet: artnet_state,
             plugin_state,
             stage: self.visualizer_ui_state.stage.clone(),
             ui: Some(self.showfile_ui_state()),
+        }
+    }
+
+    /// Animation timers advance on every engine tick; keeping them out of the
+    /// snapshot prevents a running animation from flagging the showfile dirty.
+    fn clear_volatile_engine_state(engine: &mut blaulicht_shared::SaveEngineState) {
+        for scene in &mut engine.scenes {
+            for selection in &mut scene.value_mut().sink.active_animations {
+                for animation in selection.value_mut() {
+                    for timer in &mut animation.value_mut().fixture_timers {
+                        *timer.value_mut() = Default::default();
+                    }
+                }
+            }
         }
     }
 }
