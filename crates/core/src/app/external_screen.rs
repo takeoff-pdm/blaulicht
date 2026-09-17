@@ -628,27 +628,30 @@ impl BlaulichtApp {
         }
     }
 
+    /// UI state to persist with the showfile. Plugin-owned external screens
+    /// are left out: they belong to the owning plugin's lifecycle (e.g. the
+    /// screens plugin recreates one from the monitor state), not to the
+    /// showfile, and persisting them re-spawned a window on every load even
+    /// with the plugin disabled and no monitor attached.
     pub(crate) fn showfile_ui_state(&self) -> ShowfileUiState {
         ShowfileUiState {
             main_screen_desktop_mode: Some(self.main_screen_desktop_mode.to_showfile()),
-            external_screens: self
-                .external_screens
-                .iter()
-                .map(ExternalScreen::to_showfile)
-                .collect(),
+            external_screens: showfile_external_screens(&self.external_screens),
         }
     }
 
+    /// Restore UI state from a showfile. User-created external screens are
+    /// replaced by the saved ones; plugin-owned screens currently open are
+    /// kept, and plugin-owned entries in the showfile (written by older
+    /// builds) are ignored.
     pub(crate) fn apply_showfile_ui_state(&mut self, ui_state: ShowfileUiState) {
         if let Some(main_screen) = ui_state.main_screen_desktop_mode {
             self.main_screen_desktop_mode = ExternalScreen::from_showfile(main_screen);
         }
 
-        self.external_screens = ui_state
-            .external_screens
-            .into_iter()
-            .map(ExternalScreen::from_showfile)
-            .collect();
+        let current = std::mem::take(&mut self.external_screens);
+        self.external_screens =
+            merge_external_screens_from_showfile(current, ui_state.external_screens);
         self.reset_external_screen_plugin_ui_tracking();
         self.sync_external_screen_infos();
     }
@@ -721,9 +724,73 @@ impl BlaulichtApp {
     }
 }
 
+/// Saved form of the user-created external screens only.
+fn showfile_external_screens(screens: &[ExternalScreen]) -> Vec<ShowfileExternalScreen> {
+    screens
+        .iter()
+        .filter(|screen| screen.owner_plugin_id.is_none())
+        .map(ExternalScreen::to_showfile)
+        .collect()
+}
+
+/// Keep the plugin-owned screens from `current`, then append the user-created
+/// screens from `saved`; plugin-owned entries in `saved` are dropped.
+fn merge_external_screens_from_showfile(
+    current: Vec<ExternalScreen>,
+    saved: Vec<ShowfileExternalScreen>,
+) -> Vec<ExternalScreen> {
+    current
+        .into_iter()
+        .filter(|screen| screen.owner_plugin_id.is_some())
+        .chain(
+            saved
+                .into_iter()
+                .filter(|screen| screen.owner_plugin_id.is_none())
+                .map(ExternalScreen::from_showfile),
+        )
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn showfile_leaves_out_plugin_owned_external_screens() {
+        let screens = vec![
+            ExternalScreen::new(vec2(1024.0, 768.0)),
+            ExternalScreen::new_owned(vec2(1920.0, 1080.0), Some(2)),
+        ];
+
+        let saved = showfile_external_screens(&screens);
+
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].width, 1024.0);
+        assert_eq!(saved[0].owner_plugin_id, None);
+    }
+
+    #[test]
+    fn loading_showfile_ignores_saved_plugin_owned_screens_and_keeps_open_ones() {
+        let current = vec![
+            ExternalScreen::new(vec2(640.0, 480.0)),
+            ExternalScreen::new_owned(vec2(1920.0, 1080.0), Some(2)),
+        ];
+        let mut stale_owned =
+            ExternalScreen::new_owned(vec2(1918.0, 1190.0), Some(2)).to_showfile();
+        stale_owned.x = Some(-486.0);
+        let saved = vec![
+            stale_owned,
+            ExternalScreen::new(vec2(1280.0, 720.0)).to_showfile(),
+        ];
+
+        let merged = merge_external_screens_from_showfile(current, saved);
+
+        let summary: Vec<_> = merged
+            .iter()
+            .map(|s| (s.dimensions.x, s.owner_plugin_id))
+            .collect();
+        assert_eq!(summary, vec![(1920.0, Some(2)), (1280.0, None)]);
+    }
 
     #[test]
     fn external_screen_showfile_round_trip_keeps_split_layout() {

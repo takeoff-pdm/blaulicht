@@ -300,3 +300,16 @@ temporarily in `config.toml` (not committed). All in `src/app/plugin_ui.rs`.
   fits the requested size into `available_size`, so a small preview canvas
   in a wide container is blown up; intended for full-window canvases, but
   plugins cannot opt out.
+
+## External screens (2026-09-17, investigated on the `bl` host)
+
+- [x] **Plugin-owned external screens persisted in the showfile.**
+  `showfile_ui_state` / `apply_showfile_ui_state` in `src/app/external_screen.rs`
+  saved and restored every external screen, including ones created by the
+  screens plugin while an HDMI monitor was attached. Every showfile on `bl`
+  carried such an entry (owner plugin 2), so each load re-spawned a 1918×1055
+  or 1918×1190 window with the plugin disabled and only the VGA panel present.
+  The screens plugin never misdetected anything: the session wrapper and the
+  watcher probe both reported VGA-only. Plugin-owned screens are now left out
+  when saving and ignored when loading (matching how ArtNet receivers are
+  handled); open plugin-owned screens survive a showfile load.
