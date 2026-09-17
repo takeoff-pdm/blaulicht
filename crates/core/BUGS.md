@@ -81,10 +81,10 @@ retained as descriptions of the fixed failures.
   (`crates/shared/src/state/engine.rs:125-152`) allows removing the reserved scene 0
   and never prunes `views`. `SetSceneFocus` on a missing id answers with
   `SetSceneFocus(0)` (`src/dmx/mod.rs:856`), which is re-sent to the bus every tick.
-- [ ] **Plugin tab selection keyed by `(0, tabs_id)` for every plugin.**
+- [x] **Plugin tab selection keyed by `(0, tabs_id)` for every plugin.**
   `src/app/plugin_ui.rs:591` ignores the plugin id, so two plugins sharing a tabs id
   fight over one selection and one renders no content.
-- [ ] **Nested plugin tab groups deadlock the UI thread.** Same block
+- [x] **Nested plugin tab groups deadlock the UI thread.** Same block
   (`src/app/plugin_ui.rs:590-633`) holds the `plugin_ui_tabs_selected` write lock
   while recursing into `render_plugin_ops`; a nested `BeginTabs` re-locks it.
 - [ ] **Pointer-palette depth off by one between `properties()` and `resolve()`.**
@@ -260,3 +260,43 @@ every bin and hides these. Screenshots are session artifacts, not committed.
   `COLLECTOR_DMX` still uses plain `bin_spectrum_to_u8` over the padded
   buffer, so plugins see ~55% empty bins. Left unchanged because bucket
   indexes are plugin-visible; switch it to `fit_spectrum: true` deliberately.
+
+## Plugin UI audit (2026-09-17, sample_egui_plugin + console at 800×480)
+
+Opened both plugin windows via `SetPluginUIOpen` with the bundles enabled
+temporarily in `config.toml` (not committed). All in `src/app/plugin_ui.rs`.
+
+- [x] **A tab group rendered every tab's content.** The selected tab's ops
+  were rendered with the full op list, so the renderer ran past the tab's
+  `EndTab` into the following tabs. Content is now bounded to `&ops[..end]`,
+  and the group resumes after its own `EndTabs` (found during the scan)
+  instead of the first `EndTabs` after the selected tab.
+- [x] **Collapsed sections leaked their content and closed the parent early.**
+  `CollapsingHeader::show` skips the body when collapsed, so the ops inside
+  were never consumed: the hidden widgets rendered below the header and the
+  `EndCollapsing` returned from the enclosing frame/tab level (the sample
+  plugin's tabs ended up outside their frame). Collapsed bodies are now
+  skipped depth-aware. Collapsing ids are also salted with plugin/instance/id.
+- [x] **Tab header and horizontal rows ran off the window.** The console's
+  nine tabs and four-button rows were clipped; both use `horizontal_wrapped`
+  now.
+- [x] **Text field labels.** Single-line labels were drawn *below* the field
+  and only while unfocused (layout jump on focus); multi-line ignored the
+  label. Both now show the label, and both keep the typed text in egui memory
+  while focused so the plugin's one-tick-late echo cannot clobber keystrokes.
+  Edit ids include the plugin id and animation instance.
+- [x] **Plugin RGBA treated as premultiplied.** Painter ops and the colour
+  picker built colours with `from_rgba_premultiplied` from straight RGBA (a
+  white line with alpha 200 is invalid premultiplied data) and reported
+  `to_array()` back. Both directions use unmultiplied sRGBA now.
+- [x] **Canvas with zero width/height divided by zero.** `PainterBegin`
+  computed `width / height` unguarded; degenerate canvases now skip their ops.
+- [x] **Windows titled only `Plugin UI #n`.** Floating and popped-out plugin
+  windows now append the plugin file stem. External-screen pane tabs still
+  use the bare number (`Pane::label` has no state access).
+- [ ] **`BeginFrameStyled*` ignore `margin_x`.** Only the vertical margin is
+  applied (`_mx` unused).
+- [ ] **Plugin canvases scale up to the available size.** `PainterBegin`
+  fits the requested size into `available_size`, so a small preview canvas
+  in a wide container is blown up; intended for full-window canvases, but
+  plugins cannot opt out.

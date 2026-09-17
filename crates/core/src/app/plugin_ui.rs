@@ -17,6 +17,26 @@ pub(crate) fn notify_plugin_ui_open(
     ));
 }
 
+/// Window/pane title for a plugin UI: the numeric id plus the plugin's file
+/// stem, so several open plugin windows can be told apart.
+pub(crate) fn plugin_ui_title(data: &crate::state::AppStateWrapper, plugin_id: u8) -> String {
+    let name = data
+        .state
+        .plugins
+        .read()
+        .unwrap()
+        .get(&plugin_id)
+        .and_then(|p| {
+            std::path::Path::new(p.path.as_ref())
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+        });
+    match name {
+        Some(name) => format!("Plugin UI #{plugin_id} · {name}"),
+        None => format!("Plugin UI #{plugin_id}"),
+    }
+}
+
 impl BlaulichtApp {
     pub(crate) fn render_plugin_ui_contents(&self, ui: &mut egui::Ui, plugin_id: u8) {
         if matches!(
@@ -74,7 +94,7 @@ impl BlaulichtApp {
                 continue;
             }
 
-            let title = format!("Plugin UI #{plugin_id}");
+            let title = plugin_ui_title(&self.data, *plugin_id);
             let is_popped_out = *popped_out_map.get(plugin_id).unwrap_or(&false);
 
             if is_popped_out {
@@ -197,9 +217,57 @@ impl BlaulichtApp {
     }
 }
 
+/// Show a text field whose committed value comes from the plugin a tick late.
+/// While the field has focus the text typed so far is kept in egui memory so
+/// the plugin's stale echo cannot overwrite it mid-keystroke; once focus is
+/// lost the plugin's value is shown again. Returns the new text when edited.
+fn plugin_text_edit(
+    ui: &mut egui::Ui,
+    plugin_id: u8,
+    animation_instance: Option<u64>,
+    id: u8,
+    text: &str,
+    multiline: bool,
+) -> Option<String> {
+    let edit_id = ui.make_persistent_id((
+        "plugin_text_edit",
+        plugin_id,
+        animation_instance,
+        id,
+        multiline,
+    ));
+    let has_focus = ui.memory(|m| m.has_focus(edit_id));
+    let mut s = if has_focus {
+        ui.data_mut(|d| {
+            d.get_temp::<String>(edit_id)
+                .unwrap_or_else(|| text.to_owned())
+        })
+    } else {
+        text.to_owned()
+    };
+
+    let response = if multiline {
+        ui.add(
+            egui::TextEdit::multiline(&mut s)
+                .id(edit_id)
+                .desired_rows(3)
+                .desired_width(300.0),
+        )
+    } else {
+        ui.add(egui::TextEdit::singleline(&mut s).id(edit_id))
+    };
+
+    ui.data_mut(|d| d.insert_temp(edit_id, s.clone()));
+    response.changed().then_some(s)
+}
+
+/// Render `ops` starting at `idx` until the ops run out or a matching `End*`
+/// op returns from the current nesting level. Callers bound nested content by
+/// passing a shorter slice (`&ops[..end]`); indexes stay relative to the full
+/// op list.
 pub(crate) fn render_plugin_ops(
     ui: &mut egui::Ui,
-    ops: &Vec<crate::ui_ops::WasmUiOp>,
+    ops: &[crate::ui_ops::WasmUiOp],
     idx: &mut usize,
     data: &crate::state::AppStateWrapper,
     plugin_id: u8,
@@ -378,48 +446,36 @@ pub(crate) fn render_plugin_ops(
                 *idx += 1;
             }
             Op::TextEdit { label, id, text } => {
-                let edit_id = ui.make_persistent_id(format!("text_edit_{}", id));
-                let has_focus = ui.memory(|m| m.has_focus(edit_id));
-                let mut s = if has_focus {
-                    ui.data_mut(|d| {
-                        d.get_temp::<String>(edit_id)
-                            .unwrap_or_else(|| text.clone())
-                    })
-                } else {
-                    text.clone()
-                };
-
-                let response = ui.text_edit_singleline(&mut s);
-
-                ui.data_mut(|d| d.insert_temp(edit_id, s.clone()));
-
-                if response.changed() {
-                    let evt = route_event(PluginUiEvent::Text { id: *id, text: s });
+                let response = ui.horizontal(|ui| {
+                    if !label.is_empty() {
+                        ui.label(label);
+                    }
+                    plugin_text_edit(ui, plugin_id, animation_instance, *id, text, false)
+                });
+                if let Some(text) = response.inner {
+                    let evt = route_event(PluginUiEvent::Text { id: *id, text });
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
-                } else if !response.has_focus() {
-                    ui.label(label);
                 }
                 *idx += 1;
             }
-            Op::TextEditMultiline { label: _, id, text } => {
-                let mut s = text.clone();
-                let resp = ui.add(
-                    egui::TextEdit::multiline(&mut s)
-                        .desired_rows(3)
-                        .desired_width(300.0),
-                );
-                if resp.changed() {
-                    let evt = route_event(PluginUiEvent::Text { id: *id, text: s });
+            Op::TextEditMultiline { label, id, text } => {
+                if !label.is_empty() {
+                    ui.label(label);
+                }
+                if let Some(text) =
+                    plugin_text_edit(ui, plugin_id, animation_instance, *id, text, true)
+                {
+                    let evt = route_event(PluginUiEvent::Text { id: *id, text });
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
             Op::ColorPicker { id, r, g, b, a } => {
-                let mut color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                let mut color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                 if ui.color_edit_button_srgba(&mut color).changed() {
-                    let [r, g, b, a] = color.to_array();
+                    let [r, g, b, a] = color.to_srgba_unmultiplied();
                     let evt = route_event(PluginUiEvent::Color {
                         id: *id,
                         r,
@@ -534,27 +590,43 @@ pub(crate) fn render_plugin_ops(
                 return;
             }
             Op::BeginCollapsing {
-                id: _,
+                id,
                 title,
                 default_open,
             } => {
                 *idx += 1;
-                egui::CollapsingHeader::new(title)
+                let response = egui::CollapsingHeader::new(title)
+                    .id_salt(("plugin_collapsing", plugin_id, animation_instance, *id))
                     .default_open(*default_open)
                     .show(ui, |ui| {
                         render_plugin_ops(ui, ops, idx, data, plugin_id, animation_instance);
                     });
+                if response.body_returned.is_none() {
+                    // Collapsed: egui skipped the body, so its ops are still
+                    // unconsumed. Skip to the matching EndCollapsing, or the
+                    // hidden content would render outside the header and its
+                    // EndCollapsing would end the enclosing container early.
+                    let mut depth = 1usize;
+                    while *idx < ops.len() && depth > 0 {
+                        match ops[*idx] {
+                            Op::BeginCollapsing { .. } => depth += 1,
+                            Op::EndCollapsing => depth -= 1,
+                            _ => {}
+                        }
+                        *idx += 1;
+                    }
+                }
             }
             Op::EndCollapsing => {
                 *idx += 1;
                 return;
             }
             Op::BeginTabs { id } => {
-                // Collect tabs metadata
+                // Collect tabs metadata: (tab id, title, content start, content end).
                 *idx += 1;
-                let start = *idx;
                 let mut tabs: Vec<(u8, String, usize, usize)> = Vec::new();
-                let mut scan = start;
+                let mut scan = *idx;
+                let mut end_tabs = ops.len();
                 while scan < ops.len() {
                     match &ops[scan] {
                         Op::BeginTab {
@@ -563,42 +635,48 @@ pub(crate) fn render_plugin_ops(
                             title,
                         } if tabs_id == id => {
                             let tab_start = scan + 1;
-                            // find EndTab
                             scan += 1;
                             let mut depth = 1;
                             while scan < ops.len() && depth > 0 {
                                 match &ops[scan] {
-                                    Op::BeginTab {
-                                        tabs_id: _,
-                                        tab_id: _,
-                                        title: _,
-                                    } => depth += 1,
+                                    Op::BeginTab { .. } => depth += 1,
                                     Op::EndTab => depth -= 1,
                                     _ => {}
                                 }
                                 scan += 1;
                             }
-                            let tab_end = scan - 1; // EndTab consumed in loop
+                            // `scan` is just past this tab's EndTab.
+                            let tab_end = scan.saturating_sub(1).max(tab_start);
                             tabs.push((*tab_id, title.clone(), tab_start, tab_end));
                         }
-                        Op::EndTabs => break,
+                        Op::EndTabs => {
+                            end_tabs = scan;
+                            break;
+                        }
                         _ => scan += 1,
                     }
                 }
 
-                // Current selection
-                let mut sel_map = data.state.plugin_ui_tabs_selected.write().unwrap();
-                let current = sel_map
-                    .entry((0, *id))
-                    .or_insert_with(|| tabs.get(0).map(|t| t.0).unwrap_or(0));
+                // Current selection, keyed per plugin so two plugins using the
+                // same tabs id do not share one selection. The lock is released
+                // before rendering: tab content may itself contain tab groups.
+                let key = (plugin_id, *id);
+                let default_tab = tabs.first().map(|t| t.0).unwrap_or(0);
+                let mut current = {
+                    let mut sel_map = data.state.plugin_ui_tabs_selected.write().unwrap();
+                    *sel_map.entry(key).or_insert(default_tab)
+                };
+                if !tabs.iter().any(|(tid, _, _, _)| *tid == current) {
+                    current = default_tab;
+                }
 
-                // Render tab header
+                // Tab header; wraps so many tabs stay reachable in a narrow window.
                 let mut selection_changed = false;
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (tab_id, title, _, _) in &tabs {
-                        let clicked = ui.selectable_label(*current == *tab_id, title).clicked();
-                        if clicked && *current != *tab_id {
-                            *current = *tab_id;
+                        let clicked = ui.selectable_label(current == *tab_id, title).clicked();
+                        if clicked && current != *tab_id {
+                            current = *tab_id;
                             selection_changed = true;
                         }
                     }
@@ -606,40 +684,38 @@ pub(crate) fn render_plugin_ops(
 
                 ui.separator();
 
-                // Emit selection change event
                 if selection_changed {
+                    data.state
+                        .plugin_ui_tabs_selected
+                        .write()
+                        .unwrap()
+                        .insert(key, current);
                     let evt = route_event(PluginUiEvent::TabChanged {
                         tabs_id: *id,
-                        tab_id: *current,
+                        tab_id: current,
                     });
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
-                // Render selected tab content
-                if let Some((_, _, s, e)) = tabs.iter().find(|(tid, _, _, _)| tid == current) {
+                // Render only the selected tab's content, bounded to its EndTab.
+                if let Some((_, _, s, e)) = tabs.iter().find(|(tid, _, _, _)| *tid == current) {
                     let mut inner_idx = *s;
+                    let bounded = &ops[..*e];
                     while inner_idx < *e {
                         render_plugin_ops(
                             ui,
-                            ops,
+                            bounded,
                             &mut inner_idx,
                             data,
                             plugin_id,
                             animation_instance,
                         );
                     }
-                    *idx = *e; // position at end of inner
                 }
 
-                // Advance idx to after EndTabs
-                while *idx < ops.len() {
-                    if matches!(ops[*idx], Op::EndTabs) {
-                        *idx += 1;
-                        break;
-                    }
-                    *idx += 1;
-                }
+                // Continue after this group's EndTabs.
+                *idx = (end_tabs + 1).min(ops.len());
             }
             Op::BeginTab { .. } | Op::EndTab | Op::EndTabs => {
                 // Should be handled in BeginTabs
@@ -657,13 +733,24 @@ pub(crate) fn render_plugin_ops(
             }
             Op::BeginHorizontal => {
                 *idx += 1;
-                ui.horizontal(|ui| {
+                // Wrap so rows of buttons stay reachable on the 800x480 panel
+                // instead of running past the window edge.
+                ui.horizontal_wrapped(|ui| {
                     render_plugin_ops(ui, ops, idx, data, plugin_id, animation_instance);
                 });
             }
             Op::EndHorizontal => {
                 *idx += 1;
                 return;
+            }
+            Op::PainterBegin { id, width, height } if *width <= 0 || *height <= 0 => {
+                // Degenerate canvas: skip its drawing ops instead of dividing by zero.
+                *idx += 1;
+                while *idx < ops.len() && !matches!(ops[*idx], Op::PainterEnd) {
+                    *idx += 1;
+                }
+                *idx = (*idx + 1).min(ops.len());
+                let _ = id;
             }
             Op::PainterBegin { id, width, height } => {
                 *idx += 1;
@@ -762,7 +849,7 @@ pub(crate) fn render_plugin_ops(
                             b,
                             a,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             let rct = egui::Rect::from_min_size(
                                 rect.min
                                     + egui::vec2(
@@ -783,7 +870,7 @@ pub(crate) fn render_plugin_ops(
                             b,
                             a,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             painter.circle_filled(
                                 rect.min
                                     + egui::vec2(
@@ -806,7 +893,7 @@ pub(crate) fn render_plugin_ops(
                             a,
                             thickness,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             painter.line_segment(
                                 [
                                     rect.min
@@ -834,7 +921,7 @@ pub(crate) fn render_plugin_ops(
                             a,
                             text,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             painter.text(
                                 rect.min
                                     + egui::vec2(
@@ -865,7 +952,7 @@ pub(crate) fn render_plugin_ops(
                             a,
                             thickness,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             let rct = egui::Rect::from_min_size(
                                 rect.min
                                     + egui::vec2(
@@ -892,7 +979,7 @@ pub(crate) fn render_plugin_ops(
                             a,
                             thickness,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             painter.circle_stroke(
                                 rect.min
                                     + egui::vec2(
@@ -919,7 +1006,7 @@ pub(crate) fn render_plugin_ops(
                             a,
                             thickness,
                         } => {
-                            let color = egui::Color32::from_rgba_premultiplied(*r, *g, *b, *a);
+                            let color = egui::Color32::from_rgba_unmultiplied(*r, *g, *b, *a);
                             let shape = egui::epaint::CubicBezierShape {
                                 points: [
                                     rect.min
