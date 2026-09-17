@@ -222,3 +222,41 @@ transitions. The empty node editor collapses until a node is selected; fitting
 also runs when the canvas changes size. Before screenshots remain in
 `/tmp/blaulicht-ui-audit/`. Core regression tests cover fader dragging to both
 range endpoints, label spacing, stable countdown header bounds, and graph fitting.
+
+## Audio page visual audit (2026-09-17, real capture)
+
+Viewed the Audio page with real PipeWire capture (a track played into a null
+sink whose monitor was the default source), because the noise mock saturates
+every bin and hides these. Screenshots are session artifacts, not committed.
+
+- [x] **Spectrogram top half is always black.** The input processor returns
+  its bounded, interpolated spectrum (~900 entries for a 2048-slot buffer);
+  `microphone.rs` pads the rest with defaults and `bin_spectrum_to_u8` binned
+  the padding as dead bins. The spectrogram collector output now uses
+  `bin_spectrum_to_u8_fitted` (`fit_spectrum: true`), which bins only the
+  populated prefix and spreads it over exactly 128 bins.
+- [x] **Black rows inside the spectrum.** The processor's cubic interpolation
+  leaves empty slots wherever it overshoots below zero; a bin made of such
+  holes averaged to 0. Fitted binning ignores holes and repeats the lower
+  neighbour for an all-hole bin.
+- [x] **Live spectrogram is aliased and drops beat markers.** With a 120 s
+  window at 60 Hz (~10 columns per pixel) `advance_spectrogram_ring` drew only
+  the column that crossed a pixel boundary and discarded the rest, so the
+  image was vertical static and most beats never showed. Columns are now
+  accumulated and averaged per pixel; beat/onset flags are OR-ed, matching
+  the full redraw in `create_spectrogram_image`.
+- [x] **Bins left a remainder strip and beat lines hid the spectrum.** Bins
+  used `floor(height / bins)` rows (7 px unused at 160 px); `bin_rows` now
+  distributes rows proportionally. Beat markers are blended (`draw_markers`)
+  instead of painting opaque red over a whole pixel column; onset markers are
+  a 4 px bar in the bottom padding instead of a 1 px dot.
+- [x] **Audio page cloned the whole spectrogram every frame.**
+  `audio.rs` cloned up to 7200 columns × 128 buckets per frame; it now holds
+  the read guard while updating the texture.
+- [x] **Time-series graphs render as dashed lines.** `TimeSeriesGraph::draw`
+  emitted each Catmull-Rom sub-segment as its own `line_segment`; the uncapped
+  ends left gaps on flat traces. It now adds one `Shape::line` polyline.
+- [ ] **DMX/plugin audio column has the same dead-top-half and hole issue.**
+  `COLLECTOR_DMX` still uses plain `bin_spectrum_to_u8` over the padded
+  buffer, so plugins see ~55% empty bins. Left unchanged because bucket
+  indexes are plugin-visible; switch it to `fit_spectrum: true` deliberately.

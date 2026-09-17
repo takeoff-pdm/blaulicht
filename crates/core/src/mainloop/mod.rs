@@ -163,10 +163,12 @@ pub fn run(
         // Interesting to think about, probably make this even bigger?
         bins_p_column: Some(128),
         raw: true,
+        fit_spectrum: false,
     };
     collector_outputs[COLLECTOR_SPECTROGRAM] = CollectorOutputSpec {
         bins_p_column: Some(128),
         raw: false,
+        fit_spectrum: true,
     };
 
     let audio_source = audio::RecoveringAudioSource::new(device, config.clone());

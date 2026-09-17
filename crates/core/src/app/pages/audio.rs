@@ -3,7 +3,8 @@ use crate::app::{components, BlaulichtApp};
 use crate::msg::FromFrontend;
 use crate::{config, utils};
 use blaulicht_audio_engine::{
-    AudioSpectrogram, BpmDetectStatus, CollectorOutput, SpectrogramDisplayOptions,
+    bin_rows, draw_markers, AudioSpectrogram, BpmDetectStatus, CollectorOutput,
+    SpectrogramDisplayOptions,
 };
 
 #[cfg(feature = "audio")]
@@ -60,6 +61,7 @@ impl BlaulichtApp {
         );
 
         self.spectro_scroll_px_offset = 0.0;
+        self.clear_spectrogram_pending();
         self.last_spectrogram_columns.set(spec.columns.len());
         self.last_spectrogram_max_columns.set(spec.max_columns);
         self.last_spectrogram_bucket_data_len.set(
@@ -113,28 +115,48 @@ impl BlaulichtApp {
         }
     }
 
-    fn draw_spectrogram_ring_column(
-        &mut self,
-        column: &CollectorOutput,
-        x_start: usize,
-        x_end: usize,
-    ) {
+    fn clear_spectrogram_pending(&mut self) {
+        self.spectro_pending_sum.clear();
+        self.spectro_pending_count = 0;
+        self.spectro_pending_beat = false;
+        self.spectro_pending_onset = false;
+    }
+
+    /// Fold one collector column into the pending accumulator. Several
+    /// columns usually share a single pixel column (a 120 s window at 60 Hz
+    /// is ~10 columns per pixel), so the pixel shows their average instead of
+    /// whichever column happened to cross the pixel boundary. Beat and onset
+    /// markers are kept if any of the folded columns carried them.
+    fn accumulate_spectrogram_column(&mut self, column: &CollectorOutput) {
+        let bins = &column.current_audio_colunn;
+        if self.spectro_pending_sum.len() != bins.len() {
+            self.spectro_pending_sum.clear();
+            self.spectro_pending_sum.resize(bins.len(), 0);
+            self.spectro_pending_count = 0;
+        }
+        for (sum, bin) in self.spectro_pending_sum.iter_mut().zip(bins) {
+            *sum += bin.volume as u32;
+        }
+        self.spectro_pending_count += 1;
+        self.spectro_pending_beat |= column.snapshot.beat_trigger;
+        self.spectro_pending_onset |= column.snapshot.actual_onset_peak;
+    }
+
+    /// Draw the averaged pending columns into `x_start..x_end` and clear them.
+    fn flush_spectrogram_pending(&mut self, x_start: usize, x_end: usize) {
         let [width, height_outer] = self.spectrogram_image_buffer.size;
         let Some(height) = height_outer.checked_sub(SPECTROGRAM_PAD_BOTTOM + SPECTROGRAM_PAD_TOP)
         else {
+            self.clear_spectrogram_pending();
             return;
         };
 
-        let bin_count = column.current_audio_colunn.len();
-        if bin_count == 0 || x_start >= x_end || x_end > width {
+        let bin_count = self.spectro_pending_sum.len();
+        let count = self.spectro_pending_count;
+        if bin_count == 0 || count == 0 || x_start >= x_end || x_end > width || height < bin_count {
+            self.clear_spectrogram_pending();
             return;
         }
-
-        let bucket_height = height as f32 / bin_count as f32;
-        if bucket_height < 1.0 {
-            return;
-        }
-        let bucket_height = bucket_height.floor() as usize;
 
         for x in x_start..x_end {
             for y in 0..height_outer {
@@ -143,9 +165,9 @@ impl BlaulichtApp {
         }
 
         for bin_index in 0..bin_count {
-            let y_max = SPECTROGRAM_PAD_TOP + ((bin_count - bin_index) * bucket_height);
-            let y_min = y_max - bucket_height;
-            let color = Self::spectrogram_color(column.current_audio_colunn[bin_index].volume);
+            let (y_min, y_max) = bin_rows(SPECTROGRAM_PAD_TOP, height, bin_count, bin_index);
+            let volume = (self.spectro_pending_sum[bin_index] / count) as u8;
+            let color = Self::spectrogram_color(volume);
 
             for y in y_min..y_max {
                 let row_start = y * width + x_start;
@@ -154,20 +176,19 @@ impl BlaulichtApp {
             }
         }
 
-        if column.snapshot.beat_trigger {
-            for y in 0..height_outer {
-                self.spectrogram_image_buffer.pixels[y * width + x_start] = Color32::RED;
-            }
-        }
+        draw_markers(
+            &mut self.spectrogram_image_buffer,
+            width,
+            height_outer,
+            height,
+            SPECTROGRAM_PAD_BOTTOM,
+            x_start,
+            x_end,
+            self.spectro_pending_beat,
+            self.spectro_pending_onset,
+        );
 
-        if column.snapshot.actual_onset_peak {
-            let dot_size = x_end - x_start;
-            let y_end = (height + (SPECTROGRAM_PAD_BOTTOM / 2)).min(height_outer);
-            let y_start = y_end.saturating_sub(dot_size);
-            for y in y_start..y_end {
-                self.spectrogram_image_buffer.pixels[y * width + x_start] = Color32::MAGENTA;
-            }
-        }
+        self.clear_spectrogram_pending();
     }
 
     fn advance_spectrogram_ring(&mut self, spec: &AudioSpectrogram) -> bool {
@@ -182,13 +203,14 @@ impl BlaulichtApp {
         let mut changed = false;
 
         for column in spec.columns.iter().filter(|c| c.snapshot.time > last_time) {
+            self.accumulate_spectrogram_column(column);
             self.spectro_scroll_px_offset += pixels_per_column;
             let pixels_to_advance = self.spectro_scroll_px_offset.floor() as usize;
             if pixels_to_advance > 0 {
                 self.spectro_scroll_px_offset -= pixels_to_advance as f32;
                 let write_width = pixels_to_advance.min(data_width);
                 self.shift_spectrogram_ring_left(write_width);
-                self.draw_spectrogram_ring_column(column, width - write_width, width);
+                self.flush_spectrogram_pending(width - write_width, width);
                 changed = true;
             }
 
@@ -844,10 +866,10 @@ impl BlaulichtApp {
                     };
                     let spec_width = ui.available_width();
 
-                    let spec = {
-                        let spec = self.data.state.audio_spectrogram.read().unwrap();
-                        spec.clone()
-                    };
+                    // Hold the read guard instead of cloning the spectrogram:
+                    // a full 120 s window is thousands of 128-bin columns.
+                    let state = self.data.state.clone();
+                    let spec = state.audio_spectrogram.read().unwrap();
                     let params = self.data.state.audio_params.read().unwrap();
                     let mut volume_value = params.volume as f32;
                     let mut gate_value = params.gate as f32;
@@ -884,6 +906,7 @@ impl BlaulichtApp {
                             }
                         }
                     }
+                    drop(spec);
 
                     {
                         ui.horizontal_wrapped(|ui| {

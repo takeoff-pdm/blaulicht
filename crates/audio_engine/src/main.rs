@@ -298,6 +298,7 @@ fn run_spectrogram(args: SpectrogramArgs) -> anyhow::Result<()> {
     let output = [CollectorOutputSpec {
         bins_p_column: Some(SPECTROGRAM_COLUMN_BIN_COUNT),
         raw: false,
+        fit_spectrum: true,
     }];
 
     let song_path_str = song_path.to_string_lossy();

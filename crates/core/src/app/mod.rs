@@ -178,8 +178,10 @@ pub struct BlaulichtApp {
 
     // Spectrogram smooth scrolling
     spectro_scroll_px_offset: f32,
-    spectro_last_instant: Option<Instant>,
-    spectro_last_new_column_instant: Option<Instant>,
+    /// Per-bin volume sums of the columns that have not yet advanced the
+    /// ring by a whole pixel; averaged into the next drawn pixel column.
+    spectro_pending_sum: Vec<u32>,
+    spectro_pending_count: u32,
     spectro_pending_beat: bool,
     spectro_pending_onset: bool,
     spectrogram_image_buffer: ColorImage,
@@ -392,8 +394,8 @@ impl BlaulichtApp {
             frame_count: 0,
             animation_time: 0.0,
             spectro_scroll_px_offset: 0.0,
-            spectro_last_instant: None,
-            spectro_last_new_column_instant: None,
+            spectro_pending_sum: Vec::new(),
+            spectro_pending_count: 0,
             spectro_pending_beat: false,
             spectro_pending_onset: false,
             spectrogram_image_buffer: ColorImage::default(),

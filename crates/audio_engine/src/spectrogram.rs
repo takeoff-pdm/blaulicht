@@ -137,6 +137,33 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
     col
 }
 
+/// Height in pixels of the onset marker drawn in the bottom padding.
+const ONSET_MARKER_HEIGHT: usize = 4;
+
+/// Mix the beat marker colour over a spectrogram pixel.
+fn blend_beat_marker(under: Color32) -> Color32 {
+    const ALPHA: u32 = 160;
+    let mix = |u: u8, m: u8| ((u as u32 * (255 - ALPHA) + m as u32 * ALPHA) / 255) as u8;
+    Color32::from_rgb(mix(under.r(), 255), mix(under.g(), 40), mix(under.b(), 40))
+}
+
+/// Pixel rows `[y_min, y_max)` covered by `bin_index` when `bin_count` bins
+/// share `height` rows below `pad_top`. Bin 0 is the lowest frequency and is
+/// drawn at the bottom; rows are distributed proportionally so the bins fill
+/// the whole area instead of leaving a remainder strip when
+/// `height % bin_count != 0`.
+pub fn bin_rows(
+    pad_top: usize,
+    height: usize,
+    bin_count: usize,
+    bin_index: usize,
+) -> (usize, usize) {
+    let from_top = bin_count - bin_index;
+    let y_max = pad_top + (from_top * height) / bin_count;
+    let y_min = pad_top + ((from_top - 1) * height) / bin_count;
+    (y_min, y_max)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_column(
     image_buffer: &mut ColorImage,
@@ -145,7 +172,6 @@ fn draw_column(
     height: usize,
     pad_top: usize,
     pad_btm: usize,
-    bucket_height: usize,
     bin_count: usize,
     x_start: usize,
     x_end: usize,
@@ -153,8 +179,7 @@ fn draw_column(
     options: &SpectrogramDisplayOptions,
 ) {
     for bin_index in 0..bin_count {
-        let y_max = pad_top + ((bin_count - bin_index) * bucket_height);
-        let y_min = y_max - bucket_height;
+        let (y_min, y_max) = bin_rows(pad_top, height, bin_count, bin_index);
 
         let bucket_color = spectrogram_color(column.current_audio_colunn[bin_index].volume);
         for y in y_min..y_max {
@@ -187,7 +212,6 @@ fn draw_averaged_columns(
     height: usize,
     pad_top: usize,
     pad_btm: usize,
-    bucket_height: usize,
     bin_count: usize,
     x_start: usize,
     x_end: usize,
@@ -199,8 +223,7 @@ fn draw_averaged_columns(
     let column_count = column_end - column_start;
 
     for bin_index in 0..bin_count {
-        let y_max = pad_top + ((bin_count - bin_index) * bucket_height);
-        let y_min = y_max - bucket_height;
+        let (y_min, y_max) = bin_rows(pad_top, height, bin_count, bin_index);
 
         let volume_sum: u32 = (column_start..column_end)
             .map(|column_index| columns[column_index].current_audio_colunn[bin_index].volume as u32)
@@ -233,8 +256,15 @@ fn draw_averaged_columns(
     }
 }
 
+/// Overlay beat and onset markers on the pixel columns `x_start..x_end`.
+///
+/// A beat is a translucent red line blended over the spectrum so the data
+/// underneath stays readable; with many collector columns per pixel a beat
+/// marks a whole pixel column, and opaque lines would hide a large share of
+/// the image at dense tempos. An onset is a short magenta bar in the bottom
+/// padding.
 #[allow(clippy::too_many_arguments)]
-fn draw_markers(
+pub fn draw_markers(
     image_buffer: &mut ColorImage,
     width: usize,
     height_outer: usize,
@@ -245,22 +275,24 @@ fn draw_markers(
     beat_trigger: bool,
     actual_onset_peak: bool,
 ) {
-    if x_start >= width {
+    if x_start >= width || x_start >= x_end {
         return;
     }
 
     if beat_trigger {
         for y in 0..height_outer {
-            image_buffer.pixels[y * width + x_start] = Color32::RED;
+            let pixel = &mut image_buffer.pixels[y * width + x_start];
+            *pixel = blend_beat_marker(*pixel);
         }
     }
 
     if actual_onset_peak {
-        let dot_size = x_end - x_start;
         let y_end = (height + (pad_btm / 2)).min(height_outer);
-        let y_start = y_end.saturating_sub(dot_size);
+        let y_start = y_end.saturating_sub(ONSET_MARKER_HEIGHT);
         for y in y_start..y_end {
-            image_buffer.pixels[y * width + x_start] = Color32::MAGENTA;
+            for x in x_start..x_end {
+                image_buffer.pixels[y * width + x] = Color32::MAGENTA;
+            }
         }
     }
 }
@@ -329,13 +361,10 @@ pub fn create_spectrogram_image(
         }
     }
 
-    let bucket_height = height as f32 / bin_count_per_column as f32;
-
-    if bucket_height < 1.0 {
+    if height < bin_count_per_column {
         return;
     }
 
-    let bucket_height = bucket_height.floor() as usize;
     let width_usize = width;
     let bin_count_per_column_usize = bin_count_per_column;
 
@@ -357,7 +386,6 @@ pub fn create_spectrogram_image(
                 height,
                 pad_top,
                 pad_btm,
-                bucket_height,
                 bin_count_per_column_usize,
                 x_start,
                 x_end,
@@ -394,7 +422,6 @@ pub fn create_spectrogram_image(
                 height,
                 pad_top,
                 pad_btm,
-                bucket_height,
                 bin_count_per_column_usize,
                 x_start,
                 x_end,
@@ -695,6 +722,32 @@ mod tests {
             spec.push_data(output);
         }
         spec
+    }
+
+    #[test]
+    fn beat_marker_keeps_the_spectrum_visible() {
+        let over_black = blend_beat_marker(Color32::BLACK);
+        let over_cyan = blend_beat_marker(Color32::from_rgb(0, 255, 255));
+        assert!(over_black.r() > 150 && over_black.g() < 40);
+        // The colour underneath still shows through.
+        assert!(over_cyan.g() > over_black.g() && over_cyan.b() > over_black.b());
+        assert!(over_cyan.r() > 150);
+    }
+
+    #[test]
+    fn bin_rows_fill_the_whole_area_without_gaps_or_overlap() {
+        let (pad_top, height, bins) = (5, 135, 128);
+        let mut covered = 0;
+        let mut expected_next = pad_top + height;
+        for bin_index in 0..bins {
+            let (y_min, y_max) = bin_rows(pad_top, height, bins, bin_index);
+            assert_eq!(y_max, expected_next, "bin {bin_index} leaves a gap");
+            assert!(y_max > y_min, "bin {bin_index} is empty");
+            covered += y_max - y_min;
+            expected_next = y_min;
+        }
+        assert_eq!(expected_next, pad_top);
+        assert_eq!(covered, height);
     }
 
     #[test]

@@ -211,17 +211,12 @@ impl TimeSeriesGraph {
             points = downsampled_points;
         }
 
-        // Draw smooth curves between points using cubic interpolation
+        // Draw the smoothed curve as one connected polyline. Emitting every
+        // sub-segment as its own `line_segment` left gaps between the
+        // un-capped segment ends, which made flat traces look dashed.
         if points.len() > 1 {
-            // Remove shadow rendering
-            // Create smooth curve points for main line
             let smooth_points = self.create_smooth_curve(&points, 0.0);
-            for i in 0..smooth_points.len() - 1 {
-                painter.line_segment(
-                    [smooth_points[i], smooth_points[i + 1]],
-                    (2.0, self.line_color),
-                );
-            }
+            painter.add(egui::Shape::line(smooth_points, (2.0, self.line_color)));
         }
         // Title and current value
         let current_value = if let Some((_, value)) = actual_data.last() {

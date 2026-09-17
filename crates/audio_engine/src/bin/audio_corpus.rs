@@ -86,10 +86,12 @@ fn process_file(path: &Path, output_dir: &Path) -> anyhow::Result<()> {
             CollectorOutputSpec {
                 bins_p_column: Some(BIN_COUNT),
                 raw: false,
+                fit_spectrum: false,
             },
             CollectorOutputSpec {
                 bins_p_column: Some(BIN_COUNT),
                 raw: true,
+                fit_spectrum: false,
             },
         ],
         Default::default(),

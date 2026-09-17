@@ -22,6 +22,11 @@ pub struct CollectorOutputSpec {
     // last_update: Instant,
     pub bins_p_column: Option<usize>, // If None, no columns will be included
     pub raw: bool,                    // Whether to apply envelopes, etc.
+    /// Bin only the populated prefix of the frequency buffer. Sources may hand
+    /// back fewer frequencies than the buffer holds (the input processor's
+    /// interpolated output is bounded to the configured frequency range), and
+    /// the trailing default slots would otherwise show up as dead bins.
+    pub fit_spectrum: bool,
 }
 
 impl Default for CollectorOutputSpec {
@@ -31,6 +36,7 @@ impl Default for CollectorOutputSpec {
             // last_update: Instant::now(),
             bins_p_column: Default::default(),
             raw: false,
+            fit_spectrum: false,
         }
     }
 }
@@ -583,9 +589,10 @@ where
         };
 
         // TODO: this also allocates in a hot loop :/
-        let current_audio_colunn = match output_spec.bins_p_column {
-            Some(num_bins) => bin_spectrum_to_u8(freqs, num_bins),
-            None => vec![],
+        let current_audio_colunn = match (output_spec.bins_p_column, output_spec.fit_spectrum) {
+            (Some(num_bins), true) => bin_spectrum_to_u8_fitted(freqs, num_bins),
+            (Some(num_bins), false) => bin_spectrum_to_u8(freqs, num_bins),
+            (None, _) => vec![],
         };
 
         let mut cursor = self.output_event_cursors[OUTPUT_INDEX];
@@ -680,6 +687,65 @@ pub struct LoopTempoDebugData {
 pub type AudioColumn = Vec<AudioBucket>;
 
 /// Needs to "summarize" the entire frequency spectrum into chunks
+/// Length of the populated prefix of a frequency buffer: everything after the
+/// last slot that carries a frequency or a volume is padding.
+pub fn spectrum_valid_len(values: &[Frequency]) -> usize {
+    values
+        .iter()
+        .rposition(|f| f.freq > 0.0 || f.volume > 0.0)
+        .map(|i| i + 1)
+        .unwrap_or(0)
+}
+
+/// Like [`bin_spectrum_to_u8`], but fitted to the populated part of the buffer:
+/// trailing padding is ignored, slots are spread evenly over exactly `bins`
+/// buckets, and empty "hole" slots (no frequency assigned, which the input
+/// processor's cubic interpolation leaves behind wherever it overshoots below
+/// zero) neither drag a bucket's average down nor blank it out. A bucket made
+/// only of holes repeats its lower neighbour.
+pub fn bin_spectrum_to_u8_fitted(values: &[Frequency], bins: usize) -> AudioColumn {
+    let values = &values[..spectrum_valid_len(values)];
+    if bins == 0 || values.is_empty() {
+        return Vec::new();
+    }
+
+    let mut column: AudioColumn = Vec::with_capacity(bins);
+    for bin in 0..bins {
+        let start = (bin * values.len()) / bins;
+        let end = (((bin + 1) * values.len()) / bins)
+            .max(start + 1)
+            .min(values.len());
+        let slots = values[start..end]
+            .iter()
+            .filter(|f| f.freq.is_finite() && f.freq > 0.0 && f.volume.is_finite());
+
+        let mut sum = 0.0f32;
+        let mut count = 0usize;
+        let mut freq_low = u64::MAX;
+        let mut freq_high = 0u64;
+        for slot in slots {
+            sum += slot.volume.max(0.0) * 15.0;
+            count += 1;
+            let freq = slot.freq as u64;
+            freq_low = freq_low.min(freq);
+            freq_high = freq_high.max(freq);
+        }
+
+        let bucket = if count > 0 {
+            AudioBucket {
+                volume: (sum / count as f32).clamp(0.0, u8::MAX as f32) as u8,
+                freq_bound_lower: freq_low,
+                freq_bound_upper: freq_high.max(freq_low + 1),
+            }
+        } else {
+            column.last().cloned().unwrap_or_default()
+        };
+        column.push(bucket);
+    }
+
+    column
+}
+
 pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
     if bins == 0 || values.is_empty() {
         return Vec::new();
@@ -689,7 +755,6 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
     // `len % bins != 0`, and downstream consumers resized the excess away,
     // silently dropping the top of the spectrum.
     let chunk_size = values.len().div_ceil(bins);
-
     // println!("chunk size: {chunk_size}");
 
     // let chunk_size = values.len() as f32 / bins as f32;
@@ -732,6 +797,55 @@ pub fn bin_spectrum_to_u8(values: &[Frequency], bins: usize) -> AudioColumn {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spectrum_valid_len_ignores_trailing_padding() {
+        let mut values = vec![Frequency::default(); 8];
+        values[0].freq = 50.0;
+        values[2].freq = 120.0;
+        values[2].volume = 1.0;
+        values[3].volume = 0.5;
+        assert_eq!(spectrum_valid_len(&values), 4);
+        assert_eq!(spectrum_valid_len(&[]), 0);
+        assert_eq!(spectrum_valid_len(&vec![Frequency::default(); 3]), 0);
+    }
+
+    #[test]
+    fn fitted_binning_skips_holes_and_fills_every_bin() {
+        // 16 populated slots, then padding; slots 4..8 are holes.
+        let mut values = vec![Frequency::default(); 32];
+        for (i, slot) in values.iter_mut().enumerate().take(16) {
+            slot.freq = 100.0 + i as f32;
+            slot.volume = 1.0;
+        }
+        for slot in &mut values[4..8] {
+            *slot = Frequency::default();
+        }
+
+        let column = bin_spectrum_to_u8_fitted(&values, 8);
+        assert_eq!(column.len(), 8);
+        // Every bin carries the populated volume (15), holes included.
+        assert!(column.iter().all(|b| b.volume == 15), "{column:?}");
+        // The all-hole bin (slots 4..6 and 6..8) repeats its neighbour's bounds.
+        assert_eq!(column[2].freq_bound_lower, column[1].freq_bound_lower);
+        assert_eq!(column[0].freq_bound_lower, 100);
+        assert_eq!(column[7].freq_bound_upper, 115);
+    }
+
+    #[test]
+    fn fitted_binning_handles_empty_and_fewer_slots_than_bins() {
+        assert!(bin_spectrum_to_u8_fitted(&[], 8).is_empty());
+        assert!(bin_spectrum_to_u8_fitted(&vec![Frequency::default(); 8], 8).is_empty());
+        let mut values = vec![Frequency::default(); 3];
+        for (i, slot) in values.iter_mut().enumerate() {
+            slot.freq = 50.0 * (i + 1) as f32;
+            slot.volume = (i + 1) as f32;
+        }
+        let column = bin_spectrum_to_u8_fitted(&values, 8);
+        assert_eq!(column.len(), 8);
+        assert_eq!(column[0].volume, 15);
+        assert_eq!(column[7].volume, 45);
+    }
 
     #[test]
     fn binning_handles_more_bins_than_input() {
