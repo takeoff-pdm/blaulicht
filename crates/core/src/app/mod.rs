@@ -32,6 +32,7 @@ pub mod components;
 mod debug;
 mod event;
 pub mod external_screen;
+mod jog;
 mod page;
 pub mod pages;
 mod plugin_ui;
@@ -297,6 +298,8 @@ pub struct BlaulichtApp {
     edit_fixture_rot_z_numberpad: Numberpad,
 
     add_group_open: bool,
+    rename_group_dialog_open: bool,
+    rename_group_name: String,
     delete_group_open: bool,
     delete_fixture: Option<(u8, u8)>,
     move_fixture_group_dialog_open: bool,
@@ -333,6 +336,7 @@ pub struct BlaulichtApp {
     /// frame (see `MainUiEvent::NumberpadAdjust`). Published to the egui
     /// context at the start of every frame and consumed by an open numberpad.
     pending_numberpad_delta: i32,
+    recent_fixture_property: jog::RecentFixtureProperty,
 }
 
 impl BlaulichtApp {
@@ -571,6 +575,8 @@ impl BlaulichtApp {
                 .field_width(140.0)
                 .range(0.0, 360.0),
             add_group_open: false,
+            rename_group_dialog_open: false,
+            rename_group_name: String::new(),
             delete_group_open: false,
             delete_fixture: None,
             move_fixture_group_dialog_open: false,
@@ -608,6 +614,7 @@ impl BlaulichtApp {
             lifecycle_action_after_save: None,
             allow_close_once: false,
             pending_numberpad_delta: 0,
+            recent_fixture_property: jog::RecentFixtureProperty::default(),
         }
     }
 }

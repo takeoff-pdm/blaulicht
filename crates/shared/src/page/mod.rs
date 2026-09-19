@@ -106,7 +106,9 @@ pub enum MainUiEvent {
     /// Relative adjustment of the numberpad dialog that is currently open in
     /// the main UI (e.g. driven by a jog wheel / encoder on a controller).
     /// Positive `delta` increases the entered value, negative decreases it.
-    /// Ignored when no numberpad dialog is open. Appended to preserve the
+    /// Without an open numberpad, adjusts the last scalar fixture setter if
+    /// touched within five seconds. Wheel activity renews that window.
+    /// Appended to preserve the
     /// bincode indices of existing variants.
     NumberpadAdjust {
         delta: i32,

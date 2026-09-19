@@ -18,6 +18,8 @@ impl BlaulichtApp {
             let mut empty = 0;
             match self.data.event_bus_connection.try_recv() {
                 Some(control_event) if control_event.originator() == EventOriginator::Web => {
+                    self.recent_fixture_property
+                        .observe(&control_event.body(), std::time::Instant::now());
                     if control_event_marks_showfile_dirty(&control_event.body()) {
                         self.mark_showfile_dirty();
                     }
@@ -25,6 +27,10 @@ impl BlaulichtApp {
                 // Don't handle web to avoid infinite loopbacks.
                 Some(control_event) if control_event.originator() != EventOriginator::Web => {
                     let body = control_event.body();
+                    if control_event.originator() == EventOriginator::Plugin {
+                        self.recent_fixture_property
+                            .observe(&body, std::time::Instant::now());
+                    }
                     if control_event_marks_showfile_dirty(&body) {
                         self.mark_showfile_dirty();
                     }

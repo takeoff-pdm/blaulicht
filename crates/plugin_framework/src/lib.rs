@@ -175,6 +175,10 @@ extern "C" {
 pub unsafe extern "C" fn internal_tick(tick_input_array: *mut u8, tick_input_length: usize) {
     let tick_array = unsafe { blaulicht::_get_array(tick_input_array, tick_input_length) };
 
+    // A fresh tick: the host may have published a new engine snapshot, so the
+    // cached decode has to be re-validated once before it is used again.
+    crate::state::invalidate_state_cache();
+
     // Run user code
     let envelope = PluginTickInput::deserialize(tick_array);
     let tick_input = envelope.common;

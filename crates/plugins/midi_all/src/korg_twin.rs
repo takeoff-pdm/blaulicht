@@ -215,7 +215,9 @@ impl KorgSubSystem {
                     midi.inject_cc(cc, v);
                 }
                 Hit::Jog { delta } if delta != 0 => {
-                    midi.inject_cc(JOG_WHEEL_CC, if delta > 0 { 1 } else { 127 });
+                    // The factory Korg jog-wheel assignment uses Inc/Dec
+                    // values 1 (clockwise) and 65 (counter-clockwise).
+                    midi.inject_cc(JOG_WHEEL_CC, if delta > 0 { 1 } else { 65 });
                 }
                 Hit::Jog { .. } => {}
             }

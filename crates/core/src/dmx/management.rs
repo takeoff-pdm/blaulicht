@@ -158,6 +158,16 @@ impl EngineState {
         Some(new_id)
     }
 
+    pub fn rename_group(&mut self, group_id: u8, name: String) -> bool {
+        match self.0.groups.get_mut(&group_id) {
+            Some(group) => {
+                group.name = name;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn add_fixture_to_group(&mut self, group_id: u8, fixture: Fixture) -> Option<u8> {
         let new_id = {
             let group = self.0.groups.get_mut(&group_id)?;

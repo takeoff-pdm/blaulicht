@@ -15,13 +15,20 @@ const KORG_DEVICE_NAME: &str = "nanoKONTROL Studio";
 
 pub const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 12];
 
-/// CC number of the big jog wheel. It is a relative encoder: clockwise ticks
-/// send 1..=63, counter-clockwise ticks send 127 down to 65 (two's complement
-/// in 7 bits), so 127 == -1.
-pub const JOG_WHEEL_CC: u8 = 60;
+/// Default CC number of the nanoKONTROL Studio's big jog wheel. In the
+/// factory Inc/Dec setup clockwise sends 1 and counter-clockwise sends 65.
+pub const JOG_WHEEL_CC: u8 = 82;
+/// CC used by older/custom Korg Kontrol Editor scenes.
+const LEGACY_JOG_WHEEL_CC: u8 = 60;
 
-fn jog_wheel_delta(value: u8) -> i32 {
-    if value < 64 {
+fn jog_wheel_delta(cc: u8, value: u8) -> i32 {
+    if cc == JOG_WHEEL_CC {
+        if value < 64 {
+            value as i32
+        } else {
+            -(value as i32 - 64)
+        }
+    } else if value < 64 {
         value as i32
     } else {
         value as i32 - 128
@@ -84,11 +91,13 @@ impl KorgSubSystem {
         println!("[KORG] done.");
     }
 
-    pub fn run(&mut self, input: TickInput) {
+    /// `mapped` is the user-mapping hook: events it consumes skip the
+    /// hardcoded handling below.
+    pub fn run(&mut self, input: TickInput, mapped: impl FnMut(&MidiEvent) -> bool) {
         self.sync(input.clock);
 
         let res = self.midi.poll(input.clock);
-        self.nano_in(res);
+        self.nano_in(res, mapped);
         self.nano_out(&input.events.events);
 
         for i in 0..COUNT_SELECT_BUTTONS as usize {
@@ -103,7 +112,7 @@ impl KorgSubSystem {
 //
 
 impl KorgSubSystem {
-    fn nano_in(&mut self, ev: Vec<MidiEvent>) {
+    fn nano_in(&mut self, ev: Vec<MidiEvent>, mut mapped: impl FnMut(&MidiEvent) -> bool) {
         // self.midi.send(0x90, 46, 127);
 
         // for i in 0..255 {
@@ -120,6 +129,9 @@ impl KorgSubSystem {
 
         for e in ev {
             // println!("KORG EVENT: {:?}", e);
+            if mapped(&e) {
+                continue;
+            }
 
             match (e.status, e.kind, e.value) {
                 // Toggle operating mode:
@@ -178,8 +190,8 @@ impl KorgSubSystem {
                 // Set button on the left.
                 (144, 82, 127) => {}
                 // Big jog wheel: relative modification of an open numberpad.
-                (176, JOG_WHEEL_CC, value) => {
-                    let delta = jog_wheel_delta(value);
+                (176, cc, value) if cc == JOG_WHEEL_CC || cc == LEGACY_JOG_WHEEL_CC => {
+                    let delta = jog_wheel_delta(cc, value);
                     if delta != 0 {
                         bpf::send_event(ControlEvent::MainUi(MainUiEvent::NumberpadAdjust {
                             delta,
@@ -197,18 +209,17 @@ impl KorgSubSystem {
         if current_time.wrapping_sub(self.last_sync) > 100 {
             self.last_sync = current_time;
 
-            // Sync state.
+            // Sync state. One decode, one copy: this used to fetch (and
+            // therefore clone) the whole engine state twice.
             let dmx = bpf::get_dmx();
-            self.dmx = dmx.clone();
 
-            // println!("SYNC STATE: {dmx:?}");
             self.active_groups = dmx.selection.group_ids.clone();
 
-            let dmx = bpf::get_dmx();
             let mut scenes = vec![dmx.current_scene_focus];
             scenes.extend_from_slice(&dmx.current_overlay_scenes);
-
             self.scenes = scenes;
+
+            self.dmx = dmx;
 
             self.nano_render_mode();
             self.nano_render_scenes();

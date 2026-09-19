@@ -24,6 +24,7 @@ members = [
     # "./blaulicht-analyzer",
 ]
 exclude = [
+    "./crates/plugins/midilight",
     "./crates/plugins/drums",
     "./crates/plugins/sample_egui_plugin",
     "./crates/plugins/midi_all",
@@ -42,5 +43,7 @@ exclude = [
     "./crates/plugins/inspector",
     "./crates/plugins/audio_reactor_animation_plugin",
     "./crates/plugins/pioneer_pro_dj_link",
+    "./crates/plugins/julia_animation_plugin",
+    "./crates/plugins/wasm_led_animation_plugin",
 ]
 resolver = "2"

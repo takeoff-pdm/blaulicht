@@ -3,6 +3,11 @@
 //! Receiving goes through three [`UdpPort`]s (one per Pro DJ Link channel)
 //! that the host fills once per tick. Sending goes through the host's shared
 //! outbound socket via [`bpf::send_udp`].
+//!
+//! Broadcasts are sent to the *directed* broadcast address of the interface
+//! we identify as (e.g. `10.10.25.255`), not to `255.255.255.255`: the latter
+//! leaves through the default route, which on a machine with wifi and a LINK
+//! cable is usually the wrong interface, and the CDJs never hear us.
 
 use std::collections::VecDeque;
 use std::net::Ipv4Addr;
@@ -11,6 +16,53 @@ use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::UdpPort;
 use prolink::adapter::{Channel, Destination, Received, Transport};
 use prolink::wire::MacAddr;
+
+/// The interface we present ourselves as on the LINK network.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Identity {
+    pub ip: Ipv4Addr,
+    pub prefix_len: u8,
+    pub broadcast: Ipv4Addr,
+    pub mac: MacAddr,
+}
+
+impl Identity {
+    /// Builds an identity; the directed broadcast is derived from the prefix
+    /// when the caller does not know it.
+    pub fn new(ip: Ipv4Addr, prefix_len: u8, mac: MacAddr, broadcast: Option<Ipv4Addr>) -> Self {
+        let prefix_len = prefix_len.min(32);
+        let broadcast = broadcast.unwrap_or_else(|| {
+            let mask = Self::mask(prefix_len);
+            Ipv4Addr::from(u32::from(ip) | !mask)
+        });
+        Self {
+            ip,
+            prefix_len,
+            broadcast,
+            mac,
+        }
+    }
+
+    fn mask(prefix_len: u8) -> u32 {
+        if prefix_len == 0 {
+            0
+        } else {
+            u32::MAX << (32 - prefix_len as u32)
+        }
+    }
+
+    /// Whether `other` lies in this interface's subnet.
+    pub fn contains(&self, other: Ipv4Addr) -> bool {
+        let mask = Self::mask(self.prefix_len);
+        (u32::from(self.ip) & mask) == (u32::from(other) & mask)
+    }
+}
+
+impl std::fmt::Display for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{} {}", self.ip, self.prefix_len, self.mac)
+    }
+}
 
 /// One datagram pulled from the host, waiting for the session to read it.
 struct Pending {
@@ -22,7 +74,8 @@ struct Pending {
 pub struct BlaulichtTransport {
     ports: [Option<UdpPort>; 3],
     pending: VecDeque<Pending>,
-    identity: Option<(Ipv4Addr, MacAddr)>,
+    identity: Option<Identity>,
+    transmit_enabled: bool,
 }
 
 /// Sending through the host never reports failure (the host logs it), and the
@@ -48,6 +101,7 @@ impl BlaulichtTransport {
                 ports,
                 pending: VecDeque::new(),
                 identity: None,
+                transmit_enabled: false,
             },
             errors,
         )
@@ -60,6 +114,7 @@ impl BlaulichtTransport {
             ports: [None, None, None],
             pending: VecDeque::new(),
             identity: None,
+            transmit_enabled: false,
         }
     }
 
@@ -67,8 +122,12 @@ impl BlaulichtTransport {
         self.ports.iter().all(Option::is_some)
     }
 
-    pub fn set_identity(&mut self, identity: Option<(Ipv4Addr, MacAddr)>) {
+    pub fn set_identity(&mut self, identity: Option<Identity>) {
         self.identity = identity;
+    }
+
+    pub fn set_transmit_enabled(&mut self, enabled: bool) {
+        self.transmit_enabled = enabled;
     }
 
     /// Pulls this tick's datagrams from the host. Call once per engine tick,
@@ -77,7 +136,9 @@ impl BlaulichtTransport {
         let mut count = 0;
         // Announce first: the library asks adapters to prioritise liveness.
         for channel in Channel::ALL {
-            let Some(port) = &self.ports[channel as usize] else { continue };
+            let Some(port) = &self.ports[channel as usize] else {
+                continue;
+            };
             for packet in port.poll() {
                 let source = packet
                     .src_addr
@@ -100,8 +161,16 @@ impl Transport for BlaulichtTransport {
     type Error = Never;
 
     fn send(&mut self, channel: Channel, dest: Destination, payload: &[u8]) -> Result<(), Never> {
+        // A receive-only transport is the default even if the protocol library
+        // attempts a response. Only an explicit Join may open this gate.
+        if !self.transmit_enabled {
+            return Ok(());
+        }
         let ip = match dest {
-            Destination::Broadcast => Ipv4Addr::BROADCAST,
+            Destination::Broadcast => self
+                .identity
+                .map(|i| i.broadcast)
+                .unwrap_or(Ipv4Addr::BROADCAST),
             Destination::Unicast(ip) => ip,
         };
         bpf::send_udp(&format!("{ip}:{}", channel.port()), payload);
@@ -123,10 +192,34 @@ impl Transport for BlaulichtTransport {
     }
 
     fn local_ipv4(&self) -> Option<Ipv4Addr> {
-        self.identity.map(|(ip, _)| ip)
+        self.identity.map(|i| i.ip)
     }
 
     fn local_mac(&self) -> Option<MacAddr> {
-        self.identity.map(|(_, mac)| mac)
+        self.identity.map(|i| i.mac)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAC: MacAddr = MacAddr([0x38, 0xf3, 0xab, 0xbc, 0x44, 0xe1]);
+
+    #[test]
+    fn broadcast_is_derived_from_the_prefix() {
+        let id = Identity::new(Ipv4Addr::new(10, 10, 25, 95), 24, MAC, None);
+        assert_eq!(id.broadcast, Ipv4Addr::new(10, 10, 25, 255));
+        let id = Identity::new(Ipv4Addr::new(169, 254, 3, 7), 16, MAC, None);
+        assert_eq!(id.broadcast, Ipv4Addr::new(169, 254, 255, 255));
+    }
+
+    #[test]
+    fn subnet_membership() {
+        let id = Identity::new(Ipv4Addr::new(10, 10, 25, 95), 24, MAC, None);
+        assert!(id.contains(Ipv4Addr::new(10, 10, 25, 58)));
+        assert!(!id.contains(Ipv4Addr::new(10, 10, 42, 63)));
+        let any = Identity::new(Ipv4Addr::new(1, 2, 3, 4), 0, MAC, None);
+        assert!(any.contains(Ipv4Addr::new(9, 9, 9, 9)));
     }
 }

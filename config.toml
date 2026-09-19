@@ -51,5 +51,15 @@ file_path = "./crates/plugins/bundle_debug/midi_all.wasm"
 enabled = true
 enable_watcher = true
 
+[[plugins]]
+file_path = "./crates/plugins/bundle_debug/julia_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "./crates/plugins/bundle_debug/midilight.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]
 plugin_2 = '{"version":1,"user":"{\"log_beats\":false,\"ip\":\"10.10.42.63\",\"mac\":\"02:11:22:33:44:55\",\"auto_join\":true}","animation_instances":{}}'

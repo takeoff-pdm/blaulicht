@@ -444,6 +444,16 @@ pub enum PluginUiEvent {
         dx: i32,
         dy: i32,
     },
+    CanvasDragStart {
+        id: u8,
+        x: i32,
+        y: i32,
+    },
+    CanvasDragEnd {
+        id: u8,
+        x: i32,
+        y: i32,
+    },
     CanvasPinch {
         id: u8,
         x: i32,

@@ -982,51 +982,56 @@ impl Plugin for SamplePlugin {
     }
 
     fn run(&mut self, input: TickInput) {
-        let state = bpf::get_dmx();
-        let scenes = state
-            .scenes
-            .iter()
-            .map(|(scene_id, scene)| (*scene_id, scene.name.clone()))
-            .collect::<Vec<_>>();
+        // Borrow the cached engine snapshot instead of cloning the whole
+        // state every tick; only the three derived lists are kept.
+        let (scenes, scene_speeds, view_infos) = bpf::with_dmx(|state| {
+            let scenes = state
+                .scenes
+                .iter()
+                .map(|(scene_id, scene)| (*scene_id, scene.name.clone()))
+                .collect::<Vec<_>>();
+
+            let scene_speeds = state
+                .scenes
+                .iter()
+                .map(|(scene_id, scene)| (*scene_id, scene.sink.master_speed))
+                .collect::<Vec<_>>();
+
+            let view_infos = state
+                .views
+                .iter()
+                .map(|(view_id, view)| {
+                    let base_scene_name = state
+                        .scenes
+                        .get(&view.base_scene)
+                        .map(|scene| scene.name.clone());
+                    let overlay_names = view
+                        .overlays
+                        .iter()
+                        .map(|overlay_id| {
+                            (
+                                *overlay_id,
+                                state.scenes.get(overlay_id).map(|scene| scene.name.clone()),
+                            )
+                        })
+                        .collect();
+                    ViewInfo {
+                        id: *view_id,
+                        view: view.clone(),
+                        base_scene_name,
+                        overlay_names,
+                    }
+                })
+                .collect::<Vec<_>>();
+            (scenes, scene_speeds, view_infos)
+        });
+
         if scenes != self.available_scenes {
             self.available_scenes = scenes;
         }
-
-        let scene_speeds = state
-            .scenes
-            .iter()
-            .map(|(scene_id, scene)| (*scene_id, scene.sink.master_speed))
-            .collect::<Vec<_>>();
         if scene_speeds != self.scene_speeds {
             self.scene_speeds = scene_speeds;
         }
-
-        let view_infos = state
-            .views
-            .iter()
-            .map(|(view_id, view)| {
-                let base_scene_name = state
-                    .scenes
-                    .get(&view.base_scene)
-                    .map(|scene| scene.name.clone());
-                let overlay_names = view
-                    .overlays
-                    .iter()
-                    .map(|overlay_id| {
-                        (
-                            *overlay_id,
-                            state.scenes.get(overlay_id).map(|scene| scene.name.clone()),
-                        )
-                    })
-                    .collect();
-                ViewInfo {
-                    id: *view_id,
-                    view: view.clone(),
-                    base_scene_name,
-                    overlay_names,
-                }
-            })
-            .collect::<Vec<_>>();
         // Preserve ordering from engine state (already sorted by view id)
         if view_infos != self.available_views {
             self.available_views = view_infos;

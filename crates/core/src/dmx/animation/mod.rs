@@ -646,6 +646,32 @@ impl FlashAnimationRuntime {
             None
         }
     }
+
+    /// Progress (0..=1) through the current On phase; 0 while Off. Drives the
+    /// opt-in per-lamp function, which stretches one 0-360 cycle over the
+    /// lamp's on-time.
+    fn on_progress(
+        &self,
+        now_ms: u64,
+        beat_position: Option<f64>,
+        spec: &FlashAnimationSpec,
+    ) -> f32 {
+        if self.phase != FlashPhase::On {
+            return 0.0;
+        }
+        let progress = match (spec.beat_aligned, beat_position) {
+            (true, Some(beat_position)) => {
+                let on_duration = spec.on_time_beats.as_float().max(f64::EPSILON);
+                (beat_position - self.phase_started_beats) / on_duration
+            }
+            (true, None) => 0.0,
+            (false, _) => {
+                let on_duration = spec.on_time_ms.max(1) as f64;
+                now_ms.saturating_sub(self.phase_started_ms) as f64 / on_duration
+            }
+        };
+        progress.clamp(0.0, 1.0) as f32
+    }
 }
 
 fn animation_cycle_duration_ms(
@@ -978,6 +1004,23 @@ impl AnimationClockRuntime {
                         let property = animation.spec_cloned.property;
                         let min = spec.amplitude_min.resolve(&palettes_snapshot, property);
                         let max = spec.amplitude_max.resolve(&palettes_snapshot, property);
+                        // Opt-in per-lamp shaping: one 0-360 cycle of the
+                        // chosen base function stretched over the on-time.
+                        let lit_value = match spec.lamp_function {
+                            Some(base) => {
+                                let progress = runtime.on_progress(
+                                    now_ms,
+                                    tempo_period_ms.map(|_| beat_position),
+                                    spec,
+                                );
+                                let (lo, hi) = (min.min(max) as f32, min.max(max) as f32);
+                                phaser::base_function_value(base, 1.0, progress * 360.0, lo, hi)
+                                    .round()
+                                    .clamp(0.0, u16::MAX as f32)
+                                    as u16
+                            }
+                            None => max,
+                        };
 
                         for fixture_index in 0..fixture_count {
                             let target_fixture = self.fixture_scratch[fixture_index];
@@ -985,7 +1028,7 @@ impl AnimationClockRuntime {
                                 continue;
                             }
                             let value = if active_fixture_indices.contains(&fixture_index) {
-                                max
+                                lit_value
                             } else {
                                 min
                             };
@@ -2528,6 +2571,7 @@ mod modulation_tests {
                     window_layout: FlashWindowLayout::Contiguous,
                     random_order: false,
                     reverse_after_n_iterations: None,
+                    lamp_function: None,
                 }),
             },
         );
@@ -3050,6 +3094,7 @@ mod modulation_tests {
                 window_layout: FlashWindowLayout::Contiguous,
                 random_order: false,
                 reverse_after_n_iterations: None,
+                lamp_function: None,
             }),
         }
     }
@@ -3070,6 +3115,57 @@ mod modulation_tests {
         }
 
         assert_eq!(animation_mut(&mut state, &fixtures, 0).iteration_count, 5);
+    }
+
+    /// The opt-in per-lamp function stretches one 0-360 cycle of a phaser
+    /// base function over a lamp's on-time; dark lamps and dark gaps stay at
+    /// min, and without the option the lit value is the hard max.
+    #[test]
+    fn flash_lamp_function_shapes_the_on_phase() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        let mut spec = flash_spec();
+        if let AnimationSpecBody::FlashAnimation(flash) = &mut spec.body {
+            flash.lamp_function = Some(MathematicalBaseFunction::Sawtooth);
+        }
+        add_animation(&mut state, SCENE, 0, fixtures.to_vec(), spec);
+
+        let mut clock = AnimationClockRuntime::default();
+        let audio = silent_disconnected_audio();
+        // 0..100 ms dark, 100..200 ms fixture A lit.
+        clock.tick(0, &mut state, &audio);
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_A), 0);
+
+        clock.tick(100, &mut state, &audio);
+        assert_eq!(
+            rendered_alpha(&clock, &state, SCENE, FIXTURE_A),
+            0,
+            "sawtooth starts at min when the lamp strikes"
+        );
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_B), 0);
+
+        clock.tick(150, &mut state, &audio);
+        let mid = rendered_alpha(&clock, &state, SCENE, FIXTURE_A);
+        assert!((126..=129).contains(&mid), "halfway through on-time: {mid}");
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_B), 0);
+
+        clock.tick(199, &mut state, &audio);
+        let late = rendered_alpha(&clock, &state, SCENE, FIXTURE_A);
+        assert!(late >= 250, "near the end of on-time: {late}");
+
+        clock.tick(200, &mut state, &audio);
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_A), 0);
+
+        // Switching the option off mid-run restores the hard max without
+        // restarting the sweep (B is lit 300..400 ms).
+        if let AnimationSpecBody::FlashAnimation(flash) =
+            &mut animation_mut(&mut state, &fixtures, 0).spec_cloned.body
+        {
+            flash.lamp_function = None;
+        }
+        clock.tick(350, &mut state, &audio);
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_B), 255);
+        assert_eq!(rendered_alpha(&clock, &state, SCENE, FIXTURE_A), 0);
     }
 
     /// A legacy (unbound) WASM body used to emit an absolute 0, blacking out
@@ -3125,6 +3221,57 @@ mod modulation_tests {
         assert!(
             timer < 600,
             "beat-aligned flash timer mirror is unbounded: {timer}"
+        );
+    }
+
+    /// In beat mode the per-lamp function follows beat position, not wall
+    /// time: halfway through a one-beat on-time the sawtooth is at mid-range.
+    #[test]
+    fn beat_aligned_flash_lamp_function_follows_beat_position() {
+        let fixtures = [FIXTURE_A, FIXTURE_B];
+        let mut state = engine_with_two_fixtures();
+        let mut spec = flash_spec();
+        if let AnimationSpecBody::FlashAnimation(flash) = &mut spec.body {
+            flash.beat_aligned = true;
+            flash.lamp_function = Some(MathematicalBaseFunction::Sawtooth);
+        }
+        add_animation(&mut state, SCENE, 0, fixtures.to_vec(), spec);
+
+        let mut clock = AnimationClockRuntime::default();
+        let mut samples = Vec::new();
+        let mut t = 0_u64;
+        while t <= 2_000 {
+            clock.tick(
+                t,
+                &mut state,
+                &beating_audio(500, t / 500 + 1, t % 500 == 0),
+            );
+            samples.push((t, rendered_alpha(&clock, &state, SCENE, FIXTURE_A)));
+            t += 25;
+        }
+        let lit: Vec<_> = samples.iter().filter(|(_, v)| *v > 0).collect();
+        assert!(!lit.is_empty(), "fixture A never lit: {samples:?}");
+        // One beat on-time == 500 ms; the sawtooth must ramp across it, so
+        // within any lit run values are non-decreasing and span the range.
+        let mut best_span = 0;
+        let mut run_min = u16::MAX;
+        let mut run_max = 0;
+        let mut prev = 0;
+        for (_, v) in &samples {
+            if *v > 0 {
+                assert!(*v >= prev, "sawtooth decreased mid on-time: {samples:?}");
+                run_min = run_min.min(*v);
+                run_max = run_max.max(*v);
+            } else {
+                best_span = best_span.max(run_max.saturating_sub(run_min));
+                run_min = u16::MAX;
+                run_max = 0;
+            }
+            prev = *v;
+        }
+        assert!(
+            best_span > 180,
+            "sawtooth did not sweep the range: {samples:?}"
         );
     }
 

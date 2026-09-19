@@ -29,7 +29,6 @@ pub fn generate(
             } else {
                 (amp_b, amp_a)
             };
-            let range = max - min;
 
             let mut mathematical_phaser = mathematical_phaser.clone();
             // `MathematicalPhaser` used to derive `Default`, which stored a
@@ -43,124 +42,13 @@ pub fn generate(
                 1.0
             };
 
-            match mathematical_phaser.base {
-                MathematicalBaseFunction::Sin => {
-                    let radians = degrees * mathematical_phaser.stretch_factor * (PI / 180.0);
-                    let sine = radians.sin();
-
-                    // Map from [-1,1] to [min,max]
-                    ((sine + 1.0) / 2.0) * range + min
-                }
-                MathematicalBaseFunction::Cos => {
-                    let radians = degrees * mathematical_phaser.stretch_factor * (PI / 180.0);
-                    let cosine = radians.cos();
-
-                    // Map from [-1,1] to [min,max]
-                    ((cosine + 1.0) / 2.0) * range + min
-                }
-                MathematicalBaseFunction::Triangle => {
-                    let degrees = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let phase = degrees / 360.0;
-
-                    let triangle = 4.0 * (phase - 0.5).abs() - 1.0; // -1 to 1
-
-                    // Map from [-1,1] to [min,max]
-                    ((triangle + 1.0) / 2.0) * range + min
-                }
-                MathematicalBaseFunction::Square1_2 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-
-                    // High in first half, low in second half
-                    if angle < 180.0 {
-                        max
-                    } else {
-                        min
-                    }
-                }
-                MathematicalBaseFunction::Square1_8 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-
-                    // High in first eigth, low in second half
-                    if angle < 360.0 / 8.0 {
-                        max
-                    } else {
-                        min
-                    }
-                }
-                MathematicalBaseFunction::Square1_16 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-
-                    if angle < 360.0 / 16.0 {
-                        max
-                    } else {
-                        min
-                    }
-                }
-                MathematicalBaseFunction::Spike1_8 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let spike_width = 360.0 / 8.0;
-
-                    if angle < spike_width {
-                        let phase = angle / spike_width;
-                        let smooth = (phase * PI).sin();
-                        smooth * range + min
-                    } else {
-                        min
-                    }
-                }
-                MathematicalBaseFunction::ExpSpike1_8 => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let hold = 360.0 / 8.0;
-                    let ramp = 360.0 - hold;
-
-                    if angle < ramp {
-                        let phase = angle / ramp;
-                        let exp = (phase * 6.0 - 6.0).exp();
-                        exp * range + min
-                    } else {
-                        max
-                    }
-                }
-
-                MathematicalBaseFunction::Sawtooth => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let phase = angle / 360.0;
-
-                    // Linear ramp from min to max
-                    min + phase * range
-                }
-                MathematicalBaseFunction::EaseIn => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let t = angle / 360.0;
-
-                    let percent = if t < 0.5 {
-                        2.0 * t * t
-                    } else {
-                        1.0 - 2.0 * (1.0 - t) * (1.0 - t)
-                    };
-
-                    percent * range + min
-                }
-                MathematicalBaseFunction::EaseOut => {
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let t = angle / 360.0;
-
-                    let percent = if t < 0.5 {
-                        2.0 * t * t
-                    } else {
-                        1.0 - 2.0 * (1.0 - t) * (1.0 - t)
-                    };
-
-                    (1.0 - percent) * range + min
-                }
-                MathematicalBaseFunction::EaseInOut => {
-                    // sin over the half period already stays in min..min+range;
-                    // clamping to 0..255 here broke 0..360 hue phasers.
-                    let angle = (degrees * mathematical_phaser.stretch_factor).rem_euclid(360.0);
-                    let radians = std::f32::consts::PI * angle / 360.0;
-                    radians.sin() * range + min
-                }
-            }
+            base_function_value(
+                mathematical_phaser.base,
+                mathematical_phaser.stretch_factor,
+                degrees,
+                min,
+                max,
+            )
         }
         // Keyframed phasers are not implemented yet. Keep the runtime alive
         // and leave the driven property at a deterministic safe value.
@@ -168,4 +56,134 @@ pub fn generate(
     };
 
     value.clamp(0.0, u16::MAX as f32) as u16
+}
+
+/// Evaluates one phaser base function at `degrees` (0..360) and maps it into
+/// `min..=max` (`min <= max`). Shared by phaser and per-lamp flash shaping.
+pub fn base_function_value(
+    base: MathematicalBaseFunction,
+    stretch_factor: f32,
+    degrees: f32,
+    min: f32,
+    max: f32,
+) -> f32 {
+    let range = max - min;
+    match base {
+        MathematicalBaseFunction::Sin => {
+            let radians = degrees * stretch_factor * (PI / 180.0);
+            let sine = radians.sin();
+
+            // Map from [-1,1] to [min,max]
+            ((sine + 1.0) / 2.0) * range + min
+        }
+        MathematicalBaseFunction::Cos => {
+            let radians = degrees * stretch_factor * (PI / 180.0);
+            let cosine = radians.cos();
+
+            // Map from [-1,1] to [min,max]
+            ((cosine + 1.0) / 2.0) * range + min
+        }
+        MathematicalBaseFunction::Triangle => {
+            let degrees = (degrees * stretch_factor).rem_euclid(360.0);
+            let phase = degrees / 360.0;
+
+            let triangle = 4.0 * (phase - 0.5).abs() - 1.0; // -1 to 1
+
+            // Map from [-1,1] to [min,max]
+            ((triangle + 1.0) / 2.0) * range + min
+        }
+        MathematicalBaseFunction::Square1_2 => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+
+            // High in first half, low in second half
+            if angle < 180.0 {
+                max
+            } else {
+                min
+            }
+        }
+        MathematicalBaseFunction::Square1_8 => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+
+            // High in first eigth, low in second half
+            if angle < 360.0 / 8.0 {
+                max
+            } else {
+                min
+            }
+        }
+        MathematicalBaseFunction::Square1_16 => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+
+            if angle < 360.0 / 16.0 {
+                max
+            } else {
+                min
+            }
+        }
+        MathematicalBaseFunction::Spike1_8 => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let spike_width = 360.0 / 8.0;
+
+            if angle < spike_width {
+                let phase = angle / spike_width;
+                let smooth = (phase * PI).sin();
+                smooth * range + min
+            } else {
+                min
+            }
+        }
+        MathematicalBaseFunction::ExpSpike1_8 => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let hold = 360.0 / 8.0;
+            let ramp = 360.0 - hold;
+
+            if angle < ramp {
+                let phase = angle / ramp;
+                let exp = (phase * 6.0 - 6.0).exp();
+                exp * range + min
+            } else {
+                max
+            }
+        }
+
+        MathematicalBaseFunction::Sawtooth => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let phase = angle / 360.0;
+
+            // Linear ramp from min to max
+            min + phase * range
+        }
+        MathematicalBaseFunction::EaseIn => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let t = angle / 360.0;
+
+            let percent = if t < 0.5 {
+                2.0 * t * t
+            } else {
+                1.0 - 2.0 * (1.0 - t) * (1.0 - t)
+            };
+
+            percent * range + min
+        }
+        MathematicalBaseFunction::EaseOut => {
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let t = angle / 360.0;
+
+            let percent = if t < 0.5 {
+                2.0 * t * t
+            } else {
+                1.0 - 2.0 * (1.0 - t) * (1.0 - t)
+            };
+
+            (1.0 - percent) * range + min
+        }
+        MathematicalBaseFunction::EaseInOut => {
+            // sin over the half period already stays in min..min+range;
+            // clamping to 0..255 here broke 0..360 hue phasers.
+            let angle = (degrees * stretch_factor).rem_euclid(360.0);
+            let radians = std::f32::consts::PI * angle / 360.0;
+            radians.sin() * range + min
+        }
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-shared"
-version = "0.22.3"
+version = "0.26.0"
 edition = "2024"
 
 [dependencies]

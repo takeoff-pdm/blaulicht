@@ -1,6 +1,8 @@
 // Wasm imports
 #[link(wasm_import_module = "blaulicht")]
 extern "C" {
+    fn bl_audio_tempo(plugin_id: u8, bpm: f32, beat: i32);
+    fn bl_audio_tempo_bar(plugin_id: u8, bpm: f32, beat: i32, beat_in_bar: i32, source: i32);
     fn bl_register_plugin_kind(
         plugin_id: i32,
         kind: i32,
@@ -1058,3 +1060,18 @@ macro_rules! nelapsed {
 }
 
 pub use nelapsed;
+
+/// Override analyzer timing for up to three beat periods (250..3000 ms).
+/// Call on each received beat with `beat = true`; tempo-only updates use false.
+/// Only the first active plugin owns timing. Send `None` to release ownership.
+/// Volume, bass, onsets and section detection remain analyzer-driven.
+pub fn audio_tempo(bpm: Option<f32>, beat: bool) {
+    unsafe { bl_audio_tempo(PLUGIN_ID, bpm.unwrap_or(0.0), i32::from(beat)) }
+}
+
+/// Publish externally measured tempo and optional 1-based beat-in-bar position.
+/// `source` identifies the selected device within this plugin. Zero BPM releases
+/// the lease, just like `audio_tempo`; position is meaningful only on a beat.
+pub fn audio_tempo_bar(bpm: Option<f32>, beat: bool, beat_in_bar: Option<u8>, source: u8) {
+    unsafe { bl_audio_tempo_bar(PLUGIN_ID, bpm.unwrap_or(0.0), i32::from(beat), i32::from(beat_in_bar.unwrap_or(0)), i32::from(source)) }
+}

@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-core"
-version = "0.22.3"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "artnet_protocol",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-shared"
-version = "0.22.3"
+version = "0.26.0"
 dependencies = [
  "bincode",
  "color_space",

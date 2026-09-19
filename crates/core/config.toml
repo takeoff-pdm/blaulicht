@@ -51,4 +51,15 @@ file_path = "../plugins/bundle_debug/midi_all.wasm"
 enabled = true
 enable_watcher = true
 
+[[plugins]]
+file_path = "../plugins/bundle_debug/pioneer_pro_dj_link.wasm"
+enabled = true
+enable_watcher = true
+
 [plugin_state]
+plugin_5 = '{"version":1,"user":"{\"log_beats\":true,\"ip\":\"\",\"mac\":\"\",\"auto_join\":false}","animation_instances":{}}'
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/julia_animation_plugin.wasm"
+enabled = true
+enable_watcher = true

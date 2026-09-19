@@ -10,7 +10,10 @@ use strum::EnumIter;
 // v6: MainUiEvent gained `NumberpadAdjust` (relative numberpad modification).
 // v8: PaletteOp gained `HueComplementary`.
 // v9: FlashWindowLayout gained `ByGroup`.
-pub const PLUGIN_ABI_VERSION: u32 = 9;
+// v10: FlashAnimationSpec gained `lamp_function`.
+// v11: bl_audio_tempo host import for leased plugin BPM/beat injection.
+// v12: bar-aware tempo metadata/import and canvas drag lifecycle events.
+pub const PLUGIN_ABI_VERSION: u32 = 12;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
@@ -106,6 +109,12 @@ pub struct CollectedAudioSnapshot {
     /// Monotonic event identity. Zero means that no event has been observed.
     #[serde(default)]
     pub beat_event_id: u64,
+    /// Position of the latest beat event in a four-beat bar (1..=4).
+    #[serde(default)]
+    pub beat_in_bar: Option<u8>,
+    /// External tempo owner and its selected device; None denotes the analyzer.
+    #[serde(default)]
+    pub tempo_source: Option<(u8, u8)>,
     /// Monotonic event identity. Zero means that no event has been observed.
     #[serde(default)]
     pub onset_event_id: u64,

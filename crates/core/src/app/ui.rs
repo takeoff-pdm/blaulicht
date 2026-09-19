@@ -93,8 +93,8 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
-        // Replace (not accumulate) so a delta that no open numberpad consumed
-        // this frame is dropped instead of applying to a dialog opened later.
+        // Give an open numberpad first priority. After rendering, any remaining
+        // delta adjusts the recent fixture property instead.
         crate::app::components::publish_relative_adjustment(
             ctx,
             std::mem::take(&mut self.pending_numberpad_delta),
@@ -202,6 +202,7 @@ impl eframe::App for BlaulichtApp {
                 self.render_main_screen(ctx);
             }
         }
+        self.finish_jog_adjustment(ctx);
     }
 }
 

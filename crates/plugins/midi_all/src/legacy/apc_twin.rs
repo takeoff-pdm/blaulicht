@@ -10,7 +10,7 @@ use blaulicht_plugin_framework::ui;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent};
 
 use crate::legacy::apc_midi::MidiDevice;
-use crate::legacy::mapping::{is_reserved_pad, LED_WHITE};
+use crate::legacy::mapping::{is_reserved_pad, LED_WHITE, SHIFT_NOTE};
 use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::LegacyState;
 
@@ -66,7 +66,6 @@ const TRACK_LABELS: [&str; 8] = ["VOLUME", "PAN", "SEND", "DEVICE", "UP", "DOWN"
 /// APC mini mk2 note numbers.
 const SCENE_LAUNCH_TOP: u8 = 112; // 112..=119, top to bottom
 const TRACK_BUTTON_FIRST: u8 = 100; // 100..=107, left to right
-const SHIFT_NOTE: u8 = 122;
 const FADER_FIRST_CC: u8 = 48; // 48..=55 channel faders, 56 master
 
 const PRESS_FLASH_MS: u32 = 150;
@@ -262,7 +261,7 @@ fn draw_pad(apc: &VirtualMidi, note: u8, clock: u32, learning: bool) {
     let (x, y, w, h) = pad_rect(note / 8, note % 8);
     let led = apc.led(note);
     let (r, g, b) = if led == 0 && is_reserved_pad(note) {
-        // Fixed pads (scene / intensity / video / page columns) get a faint
+        // Fixed pads (scene / video / page columns) get a faint
         // red tint so users learn they cannot be remapped.
         (52, 30, 34)
     } else {
@@ -282,13 +281,16 @@ fn draw_pad(apc: &VirtualMidi, note: u8, clock: u32, learning: bool) {
     ui::painter_text(x + 3, y + 2, 8, tr, tg, tb, 255, &format!("{note}"));
 }
 
-/// Round single-colour button (scene launch, track buttons, shift).
+/// Round single-colour button (scene launch, track buttons, shift). Like the
+/// hardware, track buttons light red and scene-launch buttons green for any
+/// non-zero velocity.
 fn draw_round_button(apc: &VirtualMidi, note: u8, (cx, cy): (i32, i32), clock: u32) {
     let v = apc.led(note);
-    let (r, g, b) = if v == 0 {
-        (48, 50, 56)
-    } else {
-        led_color(v)
+    let (r, g, b) = match note {
+        _ if v == 0 => (48, 50, 56),
+        TRACK_BUTTON_FIRST..=107 => (230, 40, 40),
+        SCENE_LAUNCH_TOP..=119 => (40, 220, 60),
+        _ => led_color(v),
     };
     ui::painter_circle(cx, cy, BUTTON_R, r, g, b, 255);
     let (sr, sg, sb, t) = pressed_stroke(apc, note, clock);

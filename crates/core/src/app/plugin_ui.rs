@@ -781,6 +781,30 @@ pub(crate) fn render_plugin_ops(
                     }
                 }
 
+                if resp.drag_started() {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        let origin = pos - resp.drag_delta() - rect.min;
+                        data.event_bus_connection.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            route_event(PluginUiEvent::CanvasDragStart {
+                                id: *id, x: (origin.x * scale_x) as i32,
+                                y: (origin.y * scale_y) as i32,
+                            }),
+                        ));
+                    }
+                }
+                if resp.drag_stopped() {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        let local = pos - rect.min;
+                        data.event_bus_connection.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            route_event(PluginUiEvent::CanvasDragEnd {
+                                id: *id, x: (local.x * scale_x) as i32,
+                                y: (local.y * scale_y) as i32,
+                            }),
+                        ));
+                    }
+                }
                 if resp.dragged() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let local_pos = pos - rect.min;

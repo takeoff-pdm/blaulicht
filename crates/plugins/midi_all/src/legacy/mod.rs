@@ -1,10 +1,10 @@
 mod apc_midi;
 mod apc_twin;
 mod page_nav;
-mod mapping;
+pub(crate) mod mapping;
 pub(crate) mod virtual_midi;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 
 use blaulicht_plugin_framework::{self as bpf, println, ui, MidiEvent};
@@ -27,7 +27,7 @@ const UI_TAB_TRIGGERS: u8 = 43;
 const UI_TAB_MISC: u8 = 44;
 const UI_TAB_KORG: u8 = 38;
 use crate::legacy::virtual_midi::VirtualMidi;
-use crate::legacy::mapping::{Mapping, MappingEditor};
+use crate::legacy::mapping::{ControlId, Mapping, MappingDevice, MappingEditor};
 
 #[derive(Default)]
 pub struct LegacyState {
@@ -54,7 +54,6 @@ pub struct LegacyState {
     // strobe_enabled: bool,
     // drums_enabled: bool,
     // drums_enabled_bef: bool,
-    intensity_mapping: Vec<u8>,
 
     // Control mappings (see mapping.rs).
     pub(crate) mappings: Vec<Mapping>,
@@ -63,6 +62,14 @@ pub struct LegacyState {
     pub(crate) mapping_log: VecDeque<String>,
     /// Open/closed state we last requested per plugin window (for toggles).
     pub(crate) plugin_ui_open: BTreeMap<u8, bool>,
+    /// Shift is down on the hardware (or toggled on via the twin).
+    pub(crate) shift_held: bool,
+    /// "Hold overlay" controls latched by shift+press (auto-hold); they flash.
+    pub(crate) latched_holds: BTreeSet<ControlId>,
+    /// Scene alphas remembered while a "Hold scene alpha" button is down.
+    pub(crate) held_alphas: BTreeMap<ControlId, Vec<(u8, u8)>>,
+    /// Last velocity sent per MIDI Mix button LED.
+    pub(crate) mix_lit_colors: BTreeMap<u8, u8>,
 }
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
@@ -171,35 +178,6 @@ impl LegacyState {
 
         }
 
-        let state = bpf::get_dmx();
-        if !state.scenes.is_empty() && self.intensity_mapping.is_empty() {
-            println!("RUNNING INIT for intensity");
-            self.intensity_mapping = vec![];
-
-            let mut index = 0;
-
-            for _ in 0..state.scenes.len() {
-                for (scene_id, scene) in state.scenes.iter() {
-                    let char_to_test = index.to_string().chars().nth(0).unwrap();
-                    let Some(name_char) = scene.name.chars().nth(0) else {
-                        continue;
-                    };
-                    // println!("TESTING INDEX {index} and scene {scene_id} | CHAR: {char_to_test} vs {name_char}");
-                    if name_char == char_to_test {
-                        self.intensity_mapping.push(*scene_id);
-                        println!("added intensity {index} --> Scene {scene_id}");
-                        index += 1;
-                        continue;
-                    }
-                }
-            }
-
-            if self.intensity_mapping.is_empty() {
-                self.intensity_mapping.push(0)
-            }
-
-            println!("INTENSITY: {:?}", self.intensity_mapping);
-        }
 
         // let state = unsafe {
         //     #[allow(static_mut_refs)]
@@ -306,7 +284,7 @@ impl LegacyState {
             let res = handle.poll(input.clock);
 
             match dev {
-                MidiDevice::MidiMix => self.midimix(handle, res),
+                MidiDevice::MidiMix => self.midimix(handle, res, input.clock),
                 MidiDevice::APCMini => self.apc(handle, res, input.clone()),
             }
         }
@@ -355,8 +333,13 @@ impl LegacyState {
         // state.midi_handle.send(176, 90, state.counter as u8 % 127);
     }
 
-    fn midimix(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>) {
+    fn midimix(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>, clock: u32) {
         for e in ev {
+            // User mappings run first; consumed events skip the legacy arms.
+            if self.handle_mapped_input(MappingDevice::MidiMix, &e) {
+                continue;
+            }
+
             match (e.status, e.kind, e.value) {
                 (176, 19, v) => {
                     bpf::send_event(ControlEvent::SetAlpha(
@@ -408,12 +391,13 @@ impl LegacyState {
                 }
             }
         }
+
+        self.sync_mix_leds(&conn, clock);
     }
 
     fn apc(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>, input: TickInput) {
         const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
 
-        const SCENES_INT: [u8; 5] = [60, 52, 44, 36, 28];
         const VIDEO_PADS: [u8; 8] = [62, 54, 46, 38, 30, 22, 14, 6];
 
         if self.is_apc_init {
@@ -454,7 +438,7 @@ impl LegacyState {
         //     state.last_update = input.clock;
         // }
 
-        let scene = bpf::get_dmx().current_scene_focus;
+        let scene = bpf::with_dmx(|dmx| dmx.current_scene_focus);
         if scene != self.last_scene {
             // for i in 0..64 {
             for s in SCENES {
@@ -463,16 +447,6 @@ impl LegacyState {
 
             if (scene as usize) < SCENES.len() {
                 conn.send(0x96, SCENES[scene as usize], 10);
-
-                for s in SCENES_INT {
-                    conn.send(0x96, s, 0);
-                }
-
-                if let Some(rev_mapped) = self.intensity_mapping.iter().position(|e| *e == scene) {
-                    if let Some(pad) = SCENES_INT.get(rev_mapped) {
-                        conn.send(0x96, *pad, 20);
-                    }
-                }
 
                 // }
                 // state.counter += 1.0;
@@ -490,7 +464,7 @@ impl LegacyState {
         for e in ev {
             // User mappings run first (learn-mode capture or execution).
             // Consumed events skip the legacy hardcoded arms entirely.
-            if self.handle_mapped_input(&e) {
+            if self.handle_mapped_input(MappingDevice::Apc, &e) {
                 continue;
             }
 
@@ -520,30 +494,10 @@ impl LegacyState {
                         value: val,
                     });
                 }
-                (144, scene, 127) if SCENES_INT.contains(&scene) => {
-                    let normal_index = SCENES_INT.iter().position(|v| *v == scene).unwrap();
-                    println!("INTENSITY: normal_index={normal_index}, scene={scene}");
-                    let Some(mapped_index) = self.intensity_mapping.get(normal_index).copied()
-                    else {
-                        println!("E: no intensity mapping for index {normal_index}");
-                        continue;
-                    };
-
-                    let dmx = bpf::get_dmx();
-
-                    if !dmx.scenes.contains_key(&mapped_index) {
-                        println!("E: no such scene");
-                        continue;
-                    }
-
-                    bpf::send_event(ControlEvent::SetSceneFocus(mapped_index));
-                }
                 (144, scene, 127) if SCENES.contains(&scene) => {
                     let index = SCENES.iter().position(|v| *v == scene).unwrap() as u8;
 
-                    let dmx = bpf::get_dmx();
-
-                    if !dmx.scenes.contains_key(&index) {
+                    if !bpf::with_dmx(|dmx| dmx.scenes.contains_key(&index)) {
                         println!("E: no such scene");
                         continue;
                     }

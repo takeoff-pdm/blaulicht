@@ -25,6 +25,7 @@ use crate::{
 };
 
 pub mod midi;
+pub(crate) mod profile;
 pub mod serial;
 pub(crate) mod tick;
 pub mod udp;
@@ -52,6 +53,15 @@ pub struct PluginManager {
     event_bus: SystemEventBusConnectionInst,
 
     state_ref: Arc<AppState>,
+
+    /// When the engine state was last serialized for the plugins.
+    last_engine_sync: Instant,
+
+    /// Digest of the previously published engine snapshot, for change stats.
+    last_engine_digest: Option<u64>,
+
+    /// Opt-in per-plugin tick breakdown (`BL_PROFILE_PLUGINS=1`).
+    profiler: profile::PluginProfiler,
 }
 
 #[cfg(not(feature = "wasmtime"))]
@@ -80,8 +90,9 @@ pub struct Plugin {
     udp_buffers: AddrDescriptor,
     animation_output_buffers: AddrDescriptor,
 
-    // When was the last time the engine state was written into that plugin?
-    last_dmx_engine_sync: Instant,
+    /// Digest of the engine snapshot this plugin's guest buffer already holds,
+    /// so an unchanged snapshot is not copied in again.
+    last_engine_state_digest: Option<u64>,
 }
 
 impl Plugin {
@@ -108,7 +119,7 @@ impl Plugin {
             serial_buffers: AddrDescriptor::dummy(),
             udp_buffers: AddrDescriptor::dummy(),
             animation_output_buffers: AddrDescriptor::dummy(),
-            last_dmx_engine_sync: Instant::now(),
+            last_engine_state_digest: None,
         })
     }
 
@@ -124,7 +135,7 @@ impl Plugin {
             serial_buffers: AddrDescriptor::dummy(),
             udp_buffers: AddrDescriptor::dummy(),
             animation_output_buffers: AddrDescriptor::dummy(),
-            last_dmx_engine_sync: Instant::now(),
+            last_engine_state_digest: None,
         })
     }
 }
@@ -160,6 +171,9 @@ impl PluginManager {
             udp_manager_ref,
             event_bus,
             state_ref: app_state_ref,
+            last_engine_sync: Instant::now() - Duration::from_secs(60),
+            last_engine_digest: None,
+            profiler: profile::PluginProfiler::new(),
         }
     }
 

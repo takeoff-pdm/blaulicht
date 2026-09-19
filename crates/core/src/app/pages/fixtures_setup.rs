@@ -209,6 +209,61 @@ impl BlaulichtApp {
         }
     }
 
+    pub fn render_rename_group_dialog(&mut self, ctx: &Context) {
+        if self.rename_group_dialog_open {
+            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
+            const SPACING: f32 = 16.0;
+            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
+
+            Dialog::new("Rename Group".to_string(), size)
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            components::TextInput::new(180.0)
+                                .with_hint_text("New Name")
+                                .ui(ui, &mut self.rename_group_name);
+                        });
+
+                    ui.add_space(SPACING);
+
+                    let mut confirm_pressed = false;
+                    ui.horizontal(|ui| {
+                        if components::button(ui, false, "CANCEL", BUTTON_SIZE) {
+                            self.rename_group_dialog_open = false;
+                            self.rename_group_name.clear();
+                        }
+
+                        if components::button(ui, true, "OK", BUTTON_SIZE) {
+                            confirm_pressed = true;
+                        }
+                    });
+
+                    ctx.input(|input| {
+                        if input.key_pressed(Key::Enter) {
+                            confirm_pressed = true;
+                        }
+                    });
+
+                    if confirm_pressed {
+                        let trimmed = self.rename_group_name.trim();
+
+                        if let (false, Some(group_id)) =
+                            (trimmed.is_empty(), self.add_fixture_group)
+                        {
+                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+
+                            if dmx_engine.rename_group(group_id, trimmed.to_string()) {
+                                self.rename_group_name.clear();
+                                self.rename_group_dialog_open = false;
+                            }
+                        }
+                    }
+                });
+        }
+    }
+
     fn render_dmx_override_create_dialog(&mut self, ctx: &Context) {
         if !self.add_dmx_override_open {
             self.close_dmx_override_numberpads();
@@ -782,6 +837,7 @@ impl BlaulichtApp {
         self.render_delete_scene_dialog(ctx);
         self.render_scene_changeset_dialog(ctx, &dmx_engine);
         self.render_add_group_dialog(ctx);
+        self.render_rename_group_dialog(ctx);
         self.render_delete_group(ctx);
         self.render_delete_fixture_dialog(ctx);
 
@@ -869,6 +925,16 @@ impl BlaulichtApp {
                             ) {
                                 // dmx_engine.create_groep(name)
                                 self.add_group_open = !self.add_group_open;
+                            }
+
+                            if components::button(ui, false, "Ren. Group", ButtonSize::Medium) {
+                                if let Some(group) = self
+                                    .add_fixture_group
+                                    .and_then(|id| dmx_engine.groups().get(&id))
+                                {
+                                    self.rename_group_name = group.name.clone();
+                                    self.rename_group_dialog_open = true;
+                                }
                             }
 
                             if components::button(

@@ -920,6 +920,10 @@ pub struct FlashAnimationSpec {
     pub random_order: bool,
     #[serde(default)]
     pub reverse_after_n_iterations: Option<u32>,
+    /// Opt-in: shapes each lamp's value across its on-time with a phaser base
+    /// function (0-360 deg stretched over the On phase). `None` = hard on/off.
+    #[serde(default)]
+    pub lamp_function: Option<MathematicalBaseFunction>,
 }
 
 fn default_flash_beat_duration() -> AnimationSpeedModifier {
@@ -940,6 +944,7 @@ impl Default for FlashAnimationSpec {
             window_layout: FlashWindowLayout::Contiguous,
             random_order: false,
             reverse_after_n_iterations: None,
+            lamp_function: None,
         }
     }
 }
@@ -1397,5 +1402,19 @@ mod tests {
             panic!("wrong decoded animation body");
         };
         assert_eq!(decoded, FlashAnimationSpec::default());
+
+        // The per-lamp function round-trips and is absent from legacy JSON.
+        let shaped = FlashAnimationSpec {
+            lamp_function: Some(MathematicalBaseFunction::Sawtooth),
+            ..FlashAnimationSpec::default()
+        };
+        let json = serde_json::to_string(&shaped).unwrap();
+        let decoded: FlashAnimationSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, shaped);
+
+        let legacy_json = json.replace(",\"lamp_function\":\"Sawtooth\"", "");
+        assert!(!legacy_json.contains("lamp_function"));
+        let legacy: FlashAnimationSpec = serde_json::from_str(&legacy_json).unwrap();
+        assert_eq!(legacy.lamp_function, None);
     }
 }

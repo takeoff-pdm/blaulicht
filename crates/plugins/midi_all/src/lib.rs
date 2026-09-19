@@ -3,6 +3,7 @@ mod korg_twin;
 mod legacy;
 
 use crate::korg::KorgSubSystem;
+use crate::legacy::mapping::MappingDevice;
 use crate::legacy::LegacyState;
 use blaulicht_plugin_framework as bpf;
 use blaulicht_plugin_framework::prelude::println;
@@ -29,7 +30,9 @@ impl Plugin for MidiAllPlugin {
         self.legacy_state.run(input.clone(), || {
             korg.render_twin(&input.events.events, input.id, input.clock)
         });
-        self.korg.run(input);
+        let legacy = &mut self.legacy_state;
+        self.korg
+            .run(input, |e| legacy.handle_mapped_input(MappingDevice::Korg, e));
     }
 }
 

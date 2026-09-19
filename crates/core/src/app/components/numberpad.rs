@@ -31,7 +31,7 @@ pub fn publish_relative_adjustment(ctx: &egui::Context, delta: i32) {
 }
 
 /// Takes (and clears) the relative adjustment published for this frame.
-fn take_relative_adjustment(ctx: &egui::Context) -> Option<i32> {
+pub(crate) fn take_relative_adjustment(ctx: &egui::Context) -> Option<i32> {
     ctx.data_mut(|d| {
         let delta = d.get_temp::<i32>(relative_adjustment_id());
         d.remove::<i32>(relative_adjustment_id());

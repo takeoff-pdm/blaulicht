@@ -1,3 +1,4 @@
+use crate::plugin::profile::PluginPhaseTimes;
 use crate::state::AppState;
 use crate::{
     msg::MidiEvent,
@@ -21,6 +22,63 @@ use std::{
 const MAX_MIDI_EVENTS: usize = 100;
 const SERIAL_BUFFER_CAPACITY: usize = 1000 * 1024;
 const UDP_BUFFER_CAPACITY: usize = 256 * 1024;
+
+#[cfg(feature = "wasmtime")]
+/// Buffers that are identical for every plugin in one tick. They used to be
+/// rebuilt (and, for the engine state, re-serialized) per plugin, which made
+/// the tick cost scale with the number of loaded plugins.
+pub(crate) struct SharedTickBuffers<'a> {
+    /// `None` when the caller passed no `AppState` (initial ticks / tests).
+    engine_state: Option<&'a [u8]>,
+    serial: &'a [u8],
+    udp: &'a [u8],
+}
+
+#[cfg(feature = "wasmtime")]
+/// FNV-1a over the serialized engine state, used only to detect "unchanged".
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+#[cfg(feature = "wasmtime")]
+/// Serializes the serial queue once, dropping the oldest entries if the result
+/// would overflow the guest buffer.
+fn serialize_serial(mut serial_received: Vec<SerialReceived>) -> Vec<u8> {
+    use blaulicht_shared::SerialCollector;
+
+    loop {
+        let bytes = SerialCollector::new(serial_received.clone()).serialize();
+        if bytes.len() <= SERIAL_BUFFER_CAPACITY || serial_received.is_empty() {
+            break bytes;
+        }
+        // Drop proportionally to the overshoot: popping one element per full
+        // re-serialization was O(n^2) on the tick thread.
+        let avg = (bytes.len() / serial_received.len()).max(1);
+        let drop_n = ((bytes.len() - SERIAL_BUFFER_CAPACITY) / avg).max(1);
+        serial_received.truncate(serial_received.len().saturating_sub(drop_n));
+    }
+}
+
+#[cfg(feature = "wasmtime")]
+/// Same as [`serialize_serial`], for the UDP queue.
+fn serialize_udp(mut udp_received: Vec<UdpReceived>) -> Vec<u8> {
+    use blaulicht_shared::UdpCollector;
+
+    loop {
+        let bytes = UdpCollector::new(udp_received.clone()).serialize();
+        if bytes.len() <= UDP_BUFFER_CAPACITY || udp_received.is_empty() {
+            break bytes;
+        }
+        let avg = (bytes.len() / udp_received.len()).max(1);
+        let drop_n = ((bytes.len() - UDP_BUFFER_CAPACITY) / avg).max(1);
+        udp_received.truncate(udp_received.len().saturating_sub(drop_n));
+    }
+}
 
 fn ensure_engine_state_fits_buffer(serialized_len: usize) -> anyhow::Result<()> {
     anyhow::ensure!(
@@ -159,6 +217,48 @@ impl PluginManager {
             events.push(event);
         }
 
+        //
+        // Buffers that are identical for every plugin this tick. Building them
+        // once here (instead of once per plugin) is what keeps the tick cost
+        // independent of how many plugins are loaded.
+        //
+        let mut profile_times = PluginPhaseTimes::default();
+        let serialize_start = Instant::now();
+        let engine_state_bytes = match app_state.as_ref() {
+            Some(app)
+                if self.last_engine_sync.elapsed() >= WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES =>
+            {
+                self.last_engine_sync = Instant::now();
+                let bytes = {
+                    let engine = app.dmx_engine.read().unwrap();
+                    engine.0.serialize()
+                };
+                // The framework allocates this same shared ABI size. Keep the
+                // check before writing so an oversized snapshot cannot corrupt
+                // wasm memory.
+                ensure_engine_state_fits_buffer(bytes.len())?;
+                let digest = fnv1a(&bytes);
+                self.profiler
+                    .record_engine_snapshot(bytes.len(), self.last_engine_digest != Some(digest));
+                self.last_engine_digest = Some(digest);
+                Some(bytes)
+            }
+            _ => None,
+        };
+        profile_times.engine_serialize = serialize_start.elapsed();
+
+        let io_start = Instant::now();
+        let serial_bytes = serialize_serial(serial_received);
+        let udp_bytes = serialize_udp(udp_received);
+        profile_times.io_serialize = io_start.elapsed();
+        self.profiler.record_shared(&profile_times);
+
+        let shared = SharedTickBuffers {
+            engine_state: engine_state_bytes.as_deref(),
+            serial: &serial_bytes,
+            udp: &udp_bytes,
+        };
+
         let mut err_res: HashMap<u8, _> = HashMap::new();
         {
             // TODO: skip all disabled plugins.
@@ -203,14 +303,10 @@ impl PluginManager {
                 };
                 // TODO: handle errors for each plugin separately.
                 // TODO: this clone might hurt?
-                if let Err(err) = plugin.tick(
-                    input,
-                    None,
-                    midi_events,
-                    serial_received.clone(),
-                    udp_received.clone(),
-                    app_state.clone(),
-                ) {
+                let mut times = PluginPhaseTimes::default();
+                let result = plugin.tick(input, None, midi_events, &shared, &mut times);
+                self.profiler.record(plugin_key, &times);
+                if let Err(err) = result {
                     let path = plugin_key;
                     err_res.insert(
                         path,
@@ -391,14 +487,15 @@ impl PluginManager {
                         .write()
                         .unwrap()
                         .insert(plugin_id, instance_id);
+                    let mut times = PluginPhaseTimes::default();
                     let tick_result = plugin.tick(
                         common,
                         Some(animation_input),
                         midi_events,
-                        serial_received.clone(),
-                        udp_received.clone(),
-                        app_state.clone(),
+                        &shared,
+                        &mut times,
                     );
+                    self.profiler.record(plugin_id, &times);
                     self.state_ref
                         .plugin_execution_instances
                         .write()
@@ -442,10 +539,13 @@ impl PluginManager {
             self.is_initial_tick = false;
         }
 
+        let elapsed = start.elapsed();
+        self.profiler.record_manager_tick(elapsed);
+
         // Process any errors.
         match self.disable_errored_plugins(err_res) {
             Some(err) => Err(err),
-            None => Ok(start.elapsed()),
+            None => Ok(elapsed),
         }
     }
 
@@ -528,17 +628,12 @@ impl Plugin {
         input: TickInput,
         animation: Option<AnimationTickInput>,
         mut midi_events: &[MidiEvent],
-        serial_received: Vec<SerialReceived>,
-        udp_received: Vec<UdpReceived>,
-        app_state: Option<Arc<AppState>>,
+        shared: &SharedTickBuffers<'_>,
+        times: &mut PluginPhaseTimes,
     ) -> anyhow::Result<Option<AnimationTickOutput>> {
-        //
-        // Tick function. (TODO: how slow is this?) -> replace with fixed handle?
-        //
-        let func = self.wasm_state.instance.get_typed_func::<(i32, i32), ()>(
-            &mut self.wasm_state.store,
-            "internal_tick", // TODO: external type and name constants.
-        )?;
+        // The typed handle is resolved once at load time; re-resolving it here
+        // would cost an export-name lookup on every plugin, every tick.
+        let func = self.tick_func.clone();
 
         ////////////// Tick Input ////////////
         let tick_array_offset = 0x10000; // Arbitrary offset
@@ -607,121 +702,83 @@ impl Plugin {
         }
 
         ////////////// APP STATE ////////////
-        if let Some(app) = app_state {
-            // TODO: profile this if this causes issues.
-            if self.last_dmx_engine_sync.elapsed().as_millis()
-                > WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES.as_millis()
-            {
-                self.last_dmx_engine_sync = Instant::now();
-                let state_array_bytes = {
-                    let engine = app.dmx_engine.read().unwrap();
-                    engine.0.serialize()
-                };
-
-                // The framework allocates this same shared ABI size. Keep the check
-                // before writing so an oversized snapshot cannot corrupt wasm memory.
-                ensure_engine_state_fits_buffer(state_array_bytes.len())?;
-
+        // The manager serialized the engine state once for this whole tick.
+        // Copying it into a plugin whose buffer already holds the identical
+        // snapshot is pure waste, so each plugin remembers what it last saw.
+        if let Some(state_array_bytes) = shared.engine_state {
+            let digest = fnv1a(state_array_bytes);
+            if self.last_engine_state_digest != Some(digest) {
+                let write_start = Instant::now();
                 let state_array_len = state_array_bytes.len() as u32;
 
                 // Write the state array to memory.
                 self.wasm_state.memory.write(
                     &mut self.wasm_state.store,
                     self.state_buffers.buffer_addr(),
-                    &state_array_bytes,
+                    state_array_bytes,
                 )?;
 
                 // Write the length of the state array to memory.
-                let mut state_length_bytes = Vec::new();
-                state_length_bytes.extend_from_slice(&state_array_len.to_le_bytes());
                 self.wasm_state.memory.write(
                     &mut self.wasm_state.store,
                     self.state_buffers.buffer_len_addr(),
-                    &state_length_bytes,
+                    &state_array_len.to_le_bytes(),
                 )?;
+                times.memory_write += write_start.elapsed();
+                self.last_engine_state_digest = Some(digest);
             }
         }
 
         ////////////////// Serial /////////////////////
         {
-            let mut serial_received = serial_received;
-            let serial_bytes = {
-                use blaulicht_shared::SerialCollector;
-
-                loop {
-                    let bytes = SerialCollector::new(serial_received.clone()).serialize();
-                    if bytes.len() <= SERIAL_BUFFER_CAPACITY || serial_received.is_empty() {
-                        break bytes;
-                    }
-                    // Drop proportionally to the overshoot: popping one element
-                    // per full re-serialization was O(n²) on the tick thread.
-                    let avg = (bytes.len() / serial_received.len()).max(1);
-                    let drop_n = ((bytes.len() - SERIAL_BUFFER_CAPACITY) / avg).max(1);
-                    serial_received.truncate(serial_received.len().saturating_sub(drop_n));
-                }
-            };
-
-            let serial_array_len = serial_bytes.len() as u32;
+            let write_start = Instant::now();
+            let serial_array_len = shared.serial.len() as u32;
 
             // Write the state array to memory.
             self.wasm_state.memory.write(
                 &mut self.wasm_state.store,
                 self.serial_buffers.buffer_addr(),
-                &serial_bytes,
+                shared.serial,
             )?;
 
             // Write the length of the state array to memory.
-            let mut serial_length_bytes = Vec::new();
-            serial_length_bytes.extend_from_slice(&serial_array_len.to_le_bytes());
             self.wasm_state.memory.write(
                 &mut self.wasm_state.store,
                 self.serial_buffers.buffer_len_addr(),
-                &serial_length_bytes,
+                &serial_array_len.to_le_bytes(),
             )?;
+            times.memory_write += write_start.elapsed();
         }
 
         ////////////////// UDP /////////////////////
         {
-            let mut udp_received = udp_received;
-            let udp_bytes = {
-                use blaulicht_shared::UdpCollector;
-
-                loop {
-                    let bytes = UdpCollector::new(udp_received.clone()).serialize();
-                    if bytes.len() <= UDP_BUFFER_CAPACITY || udp_received.is_empty() {
-                        break bytes;
-                    }
-                    let avg = (bytes.len() / udp_received.len()).max(1);
-                    let drop_n = ((bytes.len() - UDP_BUFFER_CAPACITY) / avg).max(1);
-                    udp_received.truncate(udp_received.len().saturating_sub(drop_n));
-                }
-            };
-
-            let udp_array_len = udp_bytes.len() as u32;
+            let write_start = Instant::now();
+            let udp_array_len = shared.udp.len() as u32;
 
             self.wasm_state.memory.write(
                 &mut self.wasm_state.store,
                 self.udp_buffers.buffer_addr(),
-                &udp_bytes,
+                shared.udp,
             )?;
 
-            let mut udp_length_bytes = Vec::new();
-            udp_length_bytes.extend_from_slice(&udp_array_len.to_le_bytes());
             self.wasm_state.memory.write(
                 &mut self.wasm_state.store,
                 self.udp_buffers.buffer_len_addr(),
-                &udp_length_bytes,
+                &udp_array_len.to_le_bytes(),
             )?;
+            times.memory_write += write_start.elapsed();
         }
 
         // Call the function with the pointer and length
-        catch_unwind(AssertUnwindSafe(|| {
+        let call_start = Instant::now();
+        let call_result = catch_unwind(AssertUnwindSafe(|| {
             func.call(
                 &mut self.wasm_state.store,
                 (tick_array_offset as i32, tick_array_len),
             )
-        }))
-        .map_err(|_| anyhow::anyhow!("WASM plugin panicked during tick"))??;
+        }));
+        times.wasm_call += call_start.elapsed();
+        call_result.map_err(|_| anyhow::anyhow!("WASM plugin panicked during tick"))??;
 
         if !is_animation {
             return Ok(None);

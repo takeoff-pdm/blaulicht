@@ -193,6 +193,7 @@ pub fn run(
     let mut plugins_time_of_last_tick = Instant::now();
     let mut spectrogram_time_of_last_tick = Instant::now();
     let mut plugin_audio_cursor = AudioEventCursor::default();
+    let mut tempo_overlay = crate::audio::external_tempo::TempoOverlay::default();
 
     // Speeds.
     let mut plugin_manager_tick_duration = Duration::default();
@@ -230,6 +231,7 @@ pub fn run(
                     manager.release_all();
                 }
 
+                *app_state.external_tempo.lock().unwrap() = Default::default();
                 plugin_manager.reload()?;
 
                 syslog!(system_out, "[ENGINE] Reload complete");
@@ -246,6 +248,8 @@ pub fn run(
 
         // Publish one fresh collector state before any consumer reads it. This
         // keeps plugin and DMX consumers on the same audio frame.
+        tempo_overlay.restore(&mut sig_collector.current);
+        let previous_beat_id = sig_collector.current.beat_event_id;
         sig_collector
             .tick(now)
             .with_context(|| "Failed to tick audio input")?;
@@ -266,6 +270,13 @@ pub fn run(
         ) {
             sig_collector.apply_tempo_estimate(fused.bpm, fused.confidence);
         }
+
+        tempo_overlay.apply(
+            &mut sig_collector.current,
+            previous_beat_id,
+            &mut app_state.external_tempo.lock().unwrap(),
+            Instant::now(),
+        );
 
         if plugins_time_of_last_tick.elapsed() >= PLUGINS_TICK_TIME {
             let midi = {

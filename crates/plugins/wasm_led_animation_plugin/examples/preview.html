@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WasmLED renderer preview</title>
+<style>body{margin:0;background:#080910;color:#e8e9f4;font:16px system-ui}main{max-width:960px;margin:auto;padding:24px}h1{margin-bottom:8px}p{color:#a8afc4}select,button{background:#222638;color:inherit;border:1px solid #57607b;border-radius:6px;padding:10px;margin-right:12px}canvas{width:100%;height:auto;background:#030409;border-radius:20px;margin-top:20px}label{margin-right:12px}</style>
+<main><h1>WasmLED</h1><p>Five independent arms · 99 pixels each · 120 BPM · actual Rust renderer</p>
+<select aria-label="Animation" id="effect"></select><button id="pause">Pause</button><label>Playback <input aria-label="Playback speed" id="speed" type="range" min="0.25" max="2" value="1" step="0.25"></label>
+<canvas id="stage" width="960" height="760"></canvas><p>12-second recorded excerpts at 15 fps; clips loop. Playback speed changes this recording, not the plugin BPM.</p></main>
+<script>
+const names=__NAMES__, clips=__CLIPS__, select=document.querySelector('#effect'),canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
+names.forEach((name,i)=>select.add(new Option(name,i)));
+let playing=true,position=0,last=performance.now();
+document.querySelector('#pause').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play'};
+select.onchange=()=>position=0;
+function draw(now){const dt=(now-last)/1000;last=now;if(playing)position=(position+dt*15*Number(document.querySelector('#speed').value))%180;
+const frame=clips[Number(select.value)][Math.floor(position)];ctx.fillStyle='#030409';ctx.fillRect(0,0,960,760);
+for(let tube=0;tube<5;tube++){const angle=-Math.PI/2+tube*Math.PI*2/5;
+for(let p=0;p<99;p++){const r=55+p*2.75,x=480+Math.cos(angle)*r,y=380+Math.sin(angle)*r,idx=(tube*99+p)*3;
+const color=`rgb(${frame[idx]},${frame[idx+1]},${frame[idx+2]})`;ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=9;ctx.beginPath();ctx.arc(x,y,2.6,0,Math.PI*2);ctx.fill();}
+ctx.shadowBlur=0;ctx.fillStyle='#a8afc4';ctx.font='16px system-ui';ctx.textAlign='center';ctx.fillText(`Tube ${tube+1}`,480+Math.cos(angle)*350,385+Math.sin(angle)*350);}
+requestAnimationFrame(draw)}requestAnimationFrame(draw);
+</script></html>

@@ -320,6 +320,7 @@ pub struct AppState {
     /// fixture `setup` routine for (lamp strike etc.). Drained by the engine.
     pending_fixture_inits: Mutex<Vec<(u8, u8)>>,
     pub audio: RwLock<AudioState>,
+    pub(crate) external_tempo: Mutex<crate::audio::external_tempo::ExternalTempo>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     pub artnet_output: RwLock<ArtNetOutput>,
     // pub audio_snapshot: RwLock<CollectedAudioSnapshot>,
@@ -398,6 +399,7 @@ impl AppState {
             dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
             audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
+            external_tempo: Mutex::new(Default::default()),
             audio_params: RwLock::new(SignalCollectorParams::default()),
             audio_spectrogram: RwLock::new(AudioSpectrogram::new(
                 40,

@@ -592,6 +592,7 @@ pub struct AnimationEditState {
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
     pub flash_layout_dialog_open: bool,
+    pub flash_lamp_fn_dialog_open: bool,
     pub speed_numberpad: Numberpad,
     pub flash_off_numberpad: Numberpad,
     pub flash_on_numberpad: Numberpad,
@@ -628,6 +629,7 @@ impl Default for AnimationEditState {
             math_base_fn_dialog_open: false,
             sync_mode_dialog_open: false,
             flash_layout_dialog_open: false,
+            flash_lamp_fn_dialog_open: false,
             speed_numberpad: Numberpad::new()
                 .dialog_title("speed-num")
                 .range(0.0, 30000.0),
@@ -690,6 +692,7 @@ impl AnimationEditState {
         self.sync_mode_dialog_open = false;
         self.math_base_fn_dialog_open = false;
         self.flash_layout_dialog_open = false;
+        self.flash_lamp_fn_dialog_open = false;
         self.speed_numberpad.close();
         self.flash_off_numberpad.close();
         self.flash_on_numberpad.close();
@@ -1141,6 +1144,19 @@ impl AnimationEditState {
             return;
         };
 
+        // Preview of the opt-in per-lamp function: one cycle == one on-time.
+        let lamp_fn_points = flash.lamp_function.map(|base| {
+            let a = flash.amplitude_min.resolve(palettes, preview_property) as f32;
+            let b = flash.amplitude_max.resolve(palettes, preview_property) as f32;
+            let (lo, hi) = (a.min(b), a.max(b));
+            (0..=360)
+                .map(|x| {
+                    let y = phaser::base_function_value(base, 1.0, x as f32, lo, hi);
+                    [x as f64, y as f64]
+                })
+                .collect::<PlotPoints<'_>>()
+        });
+
         ui.vertical(|ui| {
             ui.checkbox(&mut flash.beat_aligned, "Beat aligned");
             if flash.beat_aligned {
@@ -1233,8 +1249,39 @@ impl AnimationEditState {
                 });
             });
 
+            ui.horizontal(|ui| {
+                let mut enabled = flash.lamp_function.is_some();
+                if ui.checkbox(&mut enabled, "Per-lamp function").changed() {
+                    flash.lamp_function = if enabled {
+                        Some(MathematicalBaseFunction::default())
+                    } else {
+                        None
+                    };
+                }
+                if let Some(ref mut base) = flash.lamp_function {
+                    if components::button(
+                        ui,
+                        self.flash_lamp_fn_dialog_open,
+                        &format!("{:?}", base),
+                        ButtonSize::Medium.with_width(120.0),
+                    ) {
+                        self.flash_lamp_fn_dialog_open = true;
+                    }
+                    let (new_fn, changed) = components::selection_dialog(
+                        ctx,
+                        MathematicalBaseFunction::iter(),
+                        *base,
+                        &mut self.flash_lamp_fn_dialog_open,
+                        "Select Lamp FN".to_string(),
+                    );
+                    if changed {
+                        *base = new_fn;
+                    }
+                }
+            });
+
             ui.label(
-                "Animation and scene speed affect only the dark gap; on-time stays fixed. Beat mode follows the beat/sub-beat grid. 'By group' flashes each fixture group of the selection in turn.",
+                "Animation and scene speed affect only the dark gap; on-time stays fixed. Beat mode follows the beat/sub-beat grid. 'By group' flashes each fixture group of the selection in turn. Per-lamp function shapes each lamp over its on-time; dark gaps stay at min.",
             );
             ui.separator();
 
@@ -1303,6 +1350,15 @@ impl AnimationEditState {
                     PaletteBindingAction::None => {}
                 }
             });
+
+            if let Some(points) = lamp_fn_points {
+                ui.label("Per-lamp function over one on-time:");
+                Plot::new("flash_lamp_fn_plot")
+                    .height(96.0)
+                    .width(512.0)
+                    .default_y_bounds(-1.0, 260.0)
+                    .show(ui, |plot_ui| plot_ui.line(Line::new("lamp_fn", points)));
+            }
         });
     }
 
