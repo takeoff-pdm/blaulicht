@@ -302,7 +302,7 @@ pub struct BlaulichtApp {
     move_fixture_group_dialog_open: bool,
     new_group_name: String,
 
-    universe_simulations: [DmxSimulator; NUM_DMX_UNIVERSES],
+    dmx_simulator: DmxSimulator,
 
     fixture_perf_ui: FixturePerfUi,
 
@@ -329,6 +329,10 @@ pub struct BlaulichtApp {
     pending_lifecycle_action: Option<GuardedLifecycleAction>,
     lifecycle_action_after_save: Option<GuardedLifecycleAction>,
     allow_close_once: bool,
+    /// Accumulated relative numberpad adjustment received from plugins this
+    /// frame (see `MainUiEvent::NumberpadAdjust`). Published to the egui
+    /// context at the start of every frame and consumed by an open numberpad.
+    pending_numberpad_delta: i32,
 }
 
 impl BlaulichtApp {
@@ -586,7 +590,7 @@ impl BlaulichtApp {
                 active_palettes_cache: HashMap::new(),
             },
             system_ui_state: SystemUI::default(),
-            universe_simulations: [DmxSimulator::default(); NUM_DMX_UNIVERSES],
+            dmx_simulator: DmxSimulator::default(),
             last_autosave_check: Instant::now(),
             last_dirty_check: Instant::now(),
             dirty_check_in_flight: false,
@@ -603,6 +607,7 @@ impl BlaulichtApp {
             pending_lifecycle_action: None,
             lifecycle_action_after_save: None,
             allow_close_once: false,
+            pending_numberpad_delta: 0,
         }
     }
 }

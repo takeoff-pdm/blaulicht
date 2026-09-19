@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-use bincode::{config, Decode, Encode};
+use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{palette::PaletteKind, scene::FixtureSelection, AnimationSpec, MainUiEvent};
+use crate::{AnimationSpec, MainUiEvent, palette::PaletteKind, scene::FixtureSelection};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -58,7 +58,9 @@ pub enum EventOriginator {
     Plugin,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, EnumIter, PartialEq, Eq, Encode, Decode)]
+#[derive(
+    Serialize, Deserialize, Debug, Copy, Clone, EnumIter, PartialEq, Eq, Hash, Encode, Decode,
+)]
 pub enum AnimationSpeedModifier {
     _1_16,
     _1_8,

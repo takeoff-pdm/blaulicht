@@ -1,12 +1,12 @@
+use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::LegacyState;
-use blaulicht_plugin_framework::MidiConnection;
 use blaulicht_plugin_framework::{self as bpf};
 use blaulicht_shared::{AppPage, ControlEvent, MainUiEvent};
 
 const APC_PAGE_PADS: [u8; 8] = [63, 55, 47, 39, 31, 23, 15, 7];
 
 impl LegacyState {
-    pub fn sync_app_page(&mut self, conn: &MidiConnection) {
+    pub fn sync_app_page(&mut self, conn: &VirtualMidi) {
         for pad in APC_PAGE_PADS {
             conn.send(0x96, pad, 0);
         }

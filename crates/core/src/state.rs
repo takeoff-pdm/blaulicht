@@ -155,6 +155,10 @@ pub struct AppHealthState {
 pub struct ArtNetReceiver {
     pub address: SocketAddr,
     pub enabled: bool,
+    /// First DMX universe (0-based, inclusive) sent to this receiver.
+    pub first_universe: u8,
+    /// Last DMX universe (0-based, inclusive) sent to this receiver.
+    pub last_universe: u8,
     /// `None` => user-created (persisted to showfile, fully editable in UI).
     /// `Some(plugin_id)` => owned by a plugin (ephemeral, read-only in UI except enable toggle).
     pub owner_plugin_id: Option<u8>,
@@ -163,22 +167,43 @@ pub struct ArtNetReceiver {
 }
 
 impl ArtNetReceiver {
+    pub const MAX_UNIVERSE: u8 = (NUM_DMX_UNIVERSES - 1) as u8;
+
     pub fn new(address: SocketAddr) -> Self {
-        Self {
-            address,
-            enabled: true,
-            owner_plugin_id: None,
-            handle: 0,
-        }
+        Self::user(address, true)
     }
 
     pub fn user(address: SocketAddr, enabled: bool) -> Self {
         Self {
             address,
             enabled,
+            first_universe: 0,
+            last_universe: Self::MAX_UNIVERSE,
             owner_plugin_id: None,
             handle: 0,
         }
+    }
+
+    /// Restrict the receiver to `first..=last`; out-of-range or inverted
+    /// bounds are clamped/swapped so the range is always valid.
+    pub fn set_universe_range(&mut self, first: u8, last: u8) {
+        let first = first.min(Self::MAX_UNIVERSE);
+        let last = last.min(Self::MAX_UNIVERSE);
+        let (first, last) = if first <= last {
+            (first, last)
+        } else {
+            (last, first)
+        };
+        self.first_universe = first;
+        self.last_universe = last;
+    }
+
+    pub fn sends_all_universes(&self) -> bool {
+        self.first_universe == 0 && self.last_universe == Self::MAX_UNIVERSE
+    }
+
+    pub fn sends_universe(&self, universe_no: usize) -> bool {
+        (self.first_universe as usize..=self.last_universe as usize).contains(&universe_no)
     }
 }
 
@@ -207,6 +232,8 @@ impl ArtNetOutput {
         self.receivers.push(ArtNetReceiver {
             address,
             enabled: true,
+            first_universe: 0,
+            last_universe: ArtNetReceiver::MAX_UNIVERSE,
             owner_plugin_id: Some(plugin_id),
             handle,
         });
@@ -289,6 +316,9 @@ pub struct AppState {
     pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
     grand_master_percent: AtomicU8,
+    /// `(group_id, fixture_id)` pairs the UI asked the DMX engine to run the
+    /// fixture `setup` routine for (lamp strike etc.). Drained by the engine.
+    pending_fixture_inits: Mutex<Vec<(u8, u8)>>,
     pub audio: RwLock<AudioState>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     pub artnet_output: RwLock<ArtNetOutput>,
@@ -364,6 +394,7 @@ impl AppState {
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
             grand_master_percent: AtomicU8::new(100),
+            pending_fixture_inits: Mutex::new(Vec::new()),
             dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
             audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
@@ -406,6 +437,23 @@ impl AppState {
     pub fn set_grand_master_percent(&self, percent: u8) {
         self.grand_master_percent
             .store(percent.min(100), Ordering::Relaxed);
+    }
+
+    /// Ask the DMX engine to run the fixture's `setup` routine (e.g. a lamp
+    /// strike) without interrupting the running show.
+    pub fn request_fixture_init(&self, group_id: u8, fixture_id: u8) {
+        if let Ok(mut pending) = self.pending_fixture_inits.lock() {
+            if !pending.contains(&(group_id, fixture_id)) {
+                pending.push((group_id, fixture_id));
+            }
+        }
+    }
+
+    pub fn take_fixture_init_requests(&self) -> Vec<(u8, u8)> {
+        self.pending_fixture_inits
+            .lock()
+            .map(|mut pending| std::mem::take(&mut *pending))
+            .unwrap_or_default()
     }
 
     pub fn log(&self, msg: Cow<'static, str>) {

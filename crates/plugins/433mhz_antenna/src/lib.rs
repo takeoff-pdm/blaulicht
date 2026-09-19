@@ -231,7 +231,7 @@ impl ViewInfo {
 }
 
 pub struct SamplePlugin {
-    conn: SerialConnection,
+    conn: Option<SerialConnection>,
     remote_definitions: Vec<RemoteDefinition>,
     remote_enabled: Vec<bool>,
     log: VecDeque<String>,
@@ -257,7 +257,7 @@ impl Default for SamplePlugin {
         let remote_enabled = vec![true; remote_definitions.len()];
 
         Self {
-            conn: unsafe { SerialConnection::dummy() },
+            conn: None,
             remote_definitions,
             remote_enabled,
             log: VecDeque::new(),
@@ -489,8 +489,9 @@ impl SamplePlugin {
         let offset = remote_idx
             .checked_mul(MAX_REMOTE_BUTTONS)?
             .checked_add(button_idx)?;
-        let max_offset =
-            (SPEED_MODIFIER_SELECT_OPTION_BASE_ID - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID - 1) as usize;
+        let max_offset = (SPEED_MODIFIER_SELECT_OPTION_BASE_ID
+            - SPEED_MODIFIER_SELECT_BUTTON_BASE_ID
+            - 1) as usize;
         if offset > max_offset {
             return None;
         }
@@ -565,7 +566,9 @@ impl SamplePlugin {
                     if let Some(view_id) = remote.button_view_ids.get(btn_idx).copied().flatten() {
                         if let Some(view_info) = self.view_info(view_id).cloned() {
                             let cycle_start = remote.button_speed_cycle_start[btn_idx];
-                            let mut events = Vec::with_capacity(2 + view_info.view.overlays.len());
+                            // The view's own masters first (alpha + speed), then the
+                            // remote's speed cycle start overrides the speed.
+                            let mut events = view_info.view.apply_events();
                             events.push(ControlEvent::SetSceneMasterSpeed(
                                 view_info.view.base_scene,
                                 cycle_start,
@@ -574,8 +577,6 @@ impl SamplePlugin {
                                 events
                                     .push(ControlEvent::SetSceneMasterSpeed(*overlay, cycle_start));
                             }
-                            events.push(ControlEvent::SetSceneFocus(view_info.view.base_scene));
-                            events.push(ControlEvent::SetOverlays(view_info.view.overlays.clone()));
                             bpf::send_event(ControlEvent::Transaction(events));
 
                             self.cache_scene_speed(view_info.view.base_scene, cycle_start);
@@ -619,7 +620,13 @@ impl SamplePlugin {
     fn draw_ui(&mut self, events: &[ControlEventMessage], plugin_id: u8) {
         ui::begin();
 
-        ui::label("Configured 433MHz remotes");
+        ui::label_styled("433 MHz remotes", 18, false);
+        ui::label(if self.conn.is_some() {
+            "Receiver connected"
+        } else {
+            "Receiver disconnected · connect /dev/ttyUSB0 and reload the plugin."
+        });
+        ui::separator();
         if self.remote_definitions.is_empty() {
             ui::label("No remotes configured yet.");
         } else {
@@ -646,7 +653,8 @@ impl SamplePlugin {
                 ui::button("Add Remote", ADD_REMOTE_BUTTON_ID);
             }
             Some(wizard_state) => {
-                ui::label("Remote setup wizard");
+                ui::label_styled("Set up a remote", 16, false);
+                ui::label("Choose Record, then press the matching button on your remote.");
                 ui::text_edit("Name", WIZARD_NAME_TEXT_ID, &wizard_state.remote_name);
 
                 for button_index in 0..MAX_REMOTE_BUTTONS {
@@ -655,15 +663,24 @@ impl SamplePlugin {
                         .map(|signal| signal.to_string())
                         .unwrap_or_else(|| "Not recorded".to_string());
                     ui::label(&format!("Button {}: {}", button_index + 1, signal_text));
-                    ui::button(
-                        &format!("Record {}", button_index + 1),
+                    ui::button_styled(
+                        if wizard_state.pending_button == Some(button_index) {
+                            "Listening…"
+                        } else {
+                            "Record"
+                        },
                         WIZARD_RECORD_BASE_ID.saturating_add(button_index as u8),
+                        self.conn.is_some(),
                     );
                     ui::end_horizontal();
                 }
 
                 ui::begin_horizontal();
-                ui::button("Save remote", WIZARD_SAVE_BUTTON_ID);
+                ui::button_styled(
+                    "Save remote",
+                    WIZARD_SAVE_BUTTON_ID,
+                    wizard_state.is_complete(),
+                );
                 ui::button("Cancel", WIZARD_CANCEL_BUTTON_ID);
                 ui::end_horizontal();
 
@@ -674,16 +691,13 @@ impl SamplePlugin {
         }
 
         ui::separator();
-        ui::label("Button -> View mapping");
+        ui::label_styled("Button assignments", 16, false);
 
         if self.remote_definitions.is_empty() {
             ui::label("Add a remote to configure mappings.");
         } else {
             if self.available_views.is_empty() {
                 ui::label("No views available.");
-            }
-            if self.available_scenes.is_empty() {
-                ui::label("No scenes available for speed control.");
             }
             for (remote_idx, remote) in self.remote_definitions.iter().enumerate() {
                 if remote_idx > 0 {
@@ -764,9 +778,11 @@ impl SamplePlugin {
 
         if !self.log.is_empty() {
             ui::separator();
+            ui::begin_collapsing(140, "Recent receiver activity", false);
             for item in &self.log {
                 ui::label(item);
             }
+            ui::end_collapsing();
         }
 
         for event in events {
@@ -955,13 +971,13 @@ impl Plugin for SamplePlugin {
         self.load_state();
         let port_path = "/dev/ttyUSB0";
         println!("Open {port_path}...");
-        let serial = match SerialConnection::open(&port_path, 115200) {
-            Ok(p) => p,
-            Err(e) => {
-                panic!("Port error: {e}");
+        self.conn = match SerialConnection::open(&port_path, 115200) {
+            Ok(port) => Some(port),
+            Err(error) => {
+                self.push_log(format!("Receiver unavailable: {error}"));
+                None
             }
         };
-        self.conn = serial;
         println!("Antenna SERIAL plugin initialized");
     }
 
@@ -1021,7 +1037,12 @@ impl Plugin for SamplePlugin {
         self.clear_invalid_speed_selector();
         self.clear_invalid_speed_modifier_selector();
 
-        for ev in self.conn.poll() {
+        for ev in self
+            .conn
+            .as_ref()
+            .map(|conn| conn.poll())
+            .unwrap_or_default()
+        {
             if let Some(signal) = parse_receiver_signal(&ev.body) {
                 self.handle_signal(signal, input.clock);
             } else {

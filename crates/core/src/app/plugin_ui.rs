@@ -128,7 +128,7 @@ impl BlaulichtApp {
                     let mut pop_in_clicked = false;
                     egui::CentralPanel::default().show(ctx, |ui| {
                         ui.horizontal(|ui| {
-                            if ui.button("🗗 Pop In").clicked() {
+                            if plugin_action(ui, "Pop in", true) {
                                 pop_in_clicked = true;
                             }
                         });
@@ -174,10 +174,11 @@ impl BlaulichtApp {
                 let mut pop_out_clicked = false;
                 egui::Window::new(&title)
                     .open(&mut is_open)
+                    .default_size([560.0, 400.0])
                     .resizable(true)
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| {
-                            if ui.button("🗗 Pop Out").clicked() {
+                            if plugin_action(ui, "Pop out", true) {
                                 pop_out_clicked = true;
                             }
                         });
@@ -215,6 +216,30 @@ impl BlaulichtApp {
             }
         }
     }
+}
+
+/// Use the application's button geometry, expanding labels before truncating.
+fn plugin_button_size(ui: &egui::Ui, label: &str) -> components::ButtonSize {
+    let size = components::ButtonSize::Medium;
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(
+            label.to_owned(),
+            egui::FontId::proportional(size.dim().1),
+            ui.visuals().text_color(),
+        )
+        .size()
+        .x;
+    size.with_width(
+        (text_width + 24.0)
+            .max(size.dim().0.x)
+            .min(ui.max_rect().width().max(90.0)),
+    )
+}
+
+fn plugin_action(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
+    let size = plugin_button_size(ui, label);
+    components::action_button(ui, enabled, label, size, None)
 }
 
 /// Show a text field whose committed value comes from the plugin a tick late.
@@ -313,7 +338,7 @@ pub(crate) fn render_plugin_ops(
                 *idx += 1;
             }
             Op::Button { label, id } => {
-                if ui.button(label).clicked() {
+                if plugin_action(ui, label, true) {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
                     data.event_bus_connection
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
@@ -321,8 +346,7 @@ pub(crate) fn render_plugin_ops(
                 *idx += 1;
             }
             Op::ButtonStyled { label, id, enabled } => {
-                let clicked =
-                    components::button(ui, *enabled, label, components::ButtonSize::Medium);
+                let clicked = plugin_action(ui, label, *enabled);
                 if *enabled && clicked {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
                     data.event_bus_connection
@@ -503,35 +527,24 @@ pub(crate) fn render_plugin_ops(
                 margin_y,
             } => {
                 *idx += 1;
-                let px = (*pad_x).max(0) as f32;
-                let py = (*pad_y).max(0) as f32;
-                let _mx = (*margin_x).max(0) as f32;
-                let my = (*margin_y).max(0) as f32;
-                // Outer margins (vertical)
-                if my > 0.0 {
-                    ui.add_space(my);
-                }
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    // Inner padding via spaces
-                    ui.add_space(py);
-                    ui.horizontal(|ui| {
-                        if px > 0.0 {
-                            ui.add_space(px);
-                        }
+                egui::Frame::group(ui.style())
+                    .inner_margin(egui::Margin::symmetric(
+                        (*pad_x).clamp(0, 127) as i8,
+                        (*pad_y).clamp(0, 127) as i8,
+                    ))
+                    .outer_margin(egui::Margin::symmetric(
+                        (*margin_x).clamp(0, 127) as i8,
+                        (*margin_y).clamp(0, 127) as i8,
+                    ))
+                    .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(title).strong());
-                            ui.separator();
+                            if !title.is_empty() {
+                                ui.label(egui::RichText::new(title).strong());
+                                ui.separator();
+                            }
                             render_plugin_ops(ui, ops, idx, data, plugin_id, animation_instance);
                         });
-                        if px > 0.0 {
-                            ui.add_space(px);
-                        }
                     });
-                    ui.add_space(py);
-                });
-                if my > 0.0 {
-                    ui.add_space(my);
-                }
             }
             Op::BeginFrameStyledBorder {
                 id: _,
@@ -547,27 +560,23 @@ pub(crate) fn render_plugin_ops(
                 border_thickness,
             } => {
                 *idx += 1;
-                let px = (*pad_x).max(0) as f32;
-                let py = (*pad_y).max(0) as f32;
-                let _mx = (*margin_x).max(0) as f32;
-                let my = (*margin_y).max(0) as f32;
                 let stroke = egui::Stroke::new(
                     (*border_thickness).max(0) as f32,
                     egui::Color32::from_rgba_unmultiplied(
                         *border_r, *border_g, *border_b, *border_a,
                     ),
                 );
-                if my > 0.0 {
-                    ui.add_space(my);
-                }
-                let mut frame = egui::Frame::group(ui.style());
-                frame.stroke = stroke;
-                frame.show(ui, |ui| {
-                    ui.add_space(py);
-                    ui.horizontal(|ui| {
-                        if px > 0.0 {
-                            ui.add_space(px);
-                        }
+                egui::Frame::group(ui.style())
+                    .stroke(stroke)
+                    .inner_margin(egui::Margin::symmetric(
+                        (*pad_x).clamp(0, 127) as i8,
+                        (*pad_y).clamp(0, 127) as i8,
+                    ))
+                    .outer_margin(egui::Margin::symmetric(
+                        (*margin_x).clamp(0, 127) as i8,
+                        (*margin_y).clamp(0, 127) as i8,
+                    ))
+                    .show(ui, |ui| {
                         ui.vertical(|ui| {
                             if !title.is_empty() {
                                 ui.label(egui::RichText::new(title).strong());
@@ -575,15 +584,7 @@ pub(crate) fn render_plugin_ops(
                             }
                             render_plugin_ops(ui, ops, idx, data, plugin_id, animation_instance);
                         });
-                        if px > 0.0 {
-                            ui.add_space(px);
-                        }
                     });
-                    ui.add_space(py);
-                });
-                if my > 0.0 {
-                    ui.add_space(my);
-                }
             }
             Op::EndFrame => {
                 *idx += 1;
@@ -674,7 +675,8 @@ pub(crate) fn render_plugin_ops(
                 let mut selection_changed = false;
                 ui.horizontal_wrapped(|ui| {
                     for (tab_id, title, _, _) in &tabs {
-                        let clicked = ui.selectable_label(current == *tab_id, title).clicked();
+                        let size = plugin_button_size(ui, title);
+                        let clicked = components::button(ui, current == *tab_id, title, size);
                         if clicked && current != *tab_id {
                             current = *tab_id;
                             selection_changed = true;
@@ -754,31 +756,11 @@ pub(crate) fn render_plugin_ops(
             }
             Op::PainterBegin { id, width, height } => {
                 *idx += 1;
-                let available_size = ui.available_size();
-                tracing::debug!(
-                    "[Host] PainterBegin: canvas_id={}, requested={}x{}, available={:?}",
-                    id,
-                    width,
-                    height,
-                    available_size
-                );
-
-                // Use the requested dimensions if available_size is too small or zero
-                let effective_available = egui::vec2(
-                    available_size.x.max(*width as f32),
-                    available_size.y.max(*height as f32),
-                );
-
-                let aspect_ratio = *width as f32 / *height as f32;
-                let scaled_size = if effective_available.x / effective_available.y > aspect_ratio {
-                    egui::vec2(effective_available.y * aspect_ratio, effective_available.y)
-                } else {
-                    egui::vec2(effective_available.x, effective_available.x / aspect_ratio)
-                };
-                tracing::debug!(
-                    "[Host] PainterBegin: scaled_size={:?}, rect will be allocated",
-                    scaled_size
-                );
+                // Keep the requested aspect ratio, but fit the canvas to the pane.
+                // Pointer coordinates below are converted back to plugin coordinates.
+                let canvas_width = ui.available_width().max(1.0).min(*width as f32);
+                let scaled_size =
+                    egui::vec2(canvas_width, canvas_width * *height as f32 / *width as f32);
                 let (rect, resp) =
                     ui.allocate_exact_size(scaled_size, egui::Sense::click_and_drag());
                 tracing::debug!("[Host] PainterBegin: allocated rect={:?}", rect);

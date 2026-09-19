@@ -78,9 +78,17 @@ enum PendingHttp {
     /// updated from the response: the manual button syncs everything, the 10s
     /// auto-poll only refreshes temperature/fan so in-progress strip edits aren't
     /// clobbered.
-    Refresh { handle: u32, sync_strips: bool },
-    SendStrip { handle: u32, strip_id: usize },
-    AllOff { handle: u32 },
+    Refresh {
+        handle: u32,
+        sync_strips: bool,
+    },
+    SendStrip {
+        handle: u32,
+        strip_id: usize,
+    },
+    AllOff {
+        handle: u32,
+    },
 }
 
 #[derive(Default)]
@@ -191,9 +199,12 @@ impl LedTubesPlugin {
                                 if idx < STRIP_COUNT {
                                     let s = &mut self.state.strips[idx];
                                     s.brightness = strip.brightness.clamp(0, 31) as u8;
-                                    s.r = strip.rgb.first().copied().unwrap_or(0).clamp(0, 255) as u8;
-                                    s.g = strip.rgb.get(1).copied().unwrap_or(0).clamp(0, 255) as u8;
-                                    s.b = strip.rgb.get(2).copied().unwrap_or(0).clamp(0, 255) as u8;
+                                    s.r =
+                                        strip.rgb.first().copied().unwrap_or(0).clamp(0, 255) as u8;
+                                    s.g =
+                                        strip.rgb.get(1).copied().unwrap_or(0).clamp(0, 255) as u8;
+                                    s.b =
+                                        strip.rgb.get(2).copied().unwrap_or(0).clamp(0, 255) as u8;
                                     s.count = strip.active_segments.clamp(1, 200) as u8;
                                     s.index = strip.index.clamp(0, 199) as u8;
                                     s.span = strip.span.clamp(1, 20) as u8;
@@ -331,13 +342,11 @@ impl LedTubesPlugin {
     }
 
     fn load_state(&mut self) {
-        if let Some(data) =
-            bpf::load_plugin_state(blaulicht_shared::PluginStateLocation::Showfile)
+        if let Some(data) = bpf::load_plugin_state(blaulicht_shared::PluginStateLocation::Showfile)
         {
             if let Ok(saved) = serde_json::from_str::<SaveState>(&data) {
                 self.state = saved;
-                self.state.selected_strip =
-                    self.state.selected_strip.min(STRIP_COUNT as u8 - 1);
+                self.state.selected_strip = self.state.selected_strip.min(STRIP_COUNT as u8 - 1);
             }
         }
     }
@@ -359,6 +368,9 @@ impl LedTubesPlugin {
 
     fn handle_ui_event(&mut self, event: &PluginUiEvent) {
         match event {
+            PluginUiEvent::ComboBox { id, selected } if *id == UI_MODE => {
+                self.selected_mut().mode = (*selected).min((MODES.len() - 1) as u8);
+            }
             PluginUiEvent::Slider { id, value } | PluginUiEvent::HFader { id, value } => {
                 match *id {
                     UI_STRIP_SELECT => {
@@ -429,15 +441,17 @@ impl LedTubesPlugin {
             bpf::ui::label(&format!("Error: {}", err));
         }
 
+        bpf::ui::begin_collapsing(20, "Connection settings", false);
         bpf::ui::text_edit("Host", UI_HOST, &self.state.host);
 
         let artnet_status = match &self.artnet {
-            Some(h) => format!("Art-Net: {} (handle {})", h.addr(), h.handle()),
+            Some(h) => format!("Art-Net: {}", h.addr()),
             None if self.state.artnet_enabled => "Art-Net: REGISTER FAILED".to_string(),
             None => "Art-Net: disabled".to_string(),
         };
         bpf::ui::label(&artnet_status);
         bpf::ui::switch("Art-Net", UI_ARTNET_ENABLED, self.state.artnet_enabled);
+        bpf::ui::end_collapsing();
 
         bpf::ui::hfader(
             "Strip",
@@ -449,18 +463,25 @@ impl LedTubesPlugin {
 
         let strip_num = self.state.selected_strip + 1;
         let s = self.selected();
-        let mode_name = MODES.get(s.mode as usize).unwrap_or(&"off");
 
-        bpf::ui::label(&format!("--- Strip {} ---", strip_num));
-        bpf::ui::label(&format!("Mode: {}", mode_name));
-        bpf::ui::hfader("Mode", UI_MODE, 0, (MODES.len() - 1) as u8, s.mode);
-
-        bpf::ui::label(&format!("Brightness: {}", s.brightness));
+        bpf::ui::separator();
+        bpf::ui::label_styled(&format!("Strip {}", strip_num), 16, false);
+        bpf::ui::combo_box(
+            "Mode",
+            UI_MODE,
+            &MODES
+                .iter()
+                .map(|mode| (*mode).to_owned())
+                .collect::<Vec<_>>(),
+            s.mode,
+        );
         bpf::ui::hfader("Brightness", UI_BRIGHTNESS, 0, 31, s.brightness);
 
-        bpf::ui::button("Apply", UI_APPLY);
-        bpf::ui::button("All Off", UI_ALL_OFF);
-        bpf::ui::button("Refresh Status", UI_REFRESH);
+        bpf::ui::begin_horizontal();
+        bpf::ui::button("Apply to strip", UI_APPLY);
+        bpf::ui::button("All strips off", UI_ALL_OFF);
+        bpf::ui::button("Refresh status", UI_REFRESH);
+        bpf::ui::end_horizontal();
 
         bpf::ui::end_frame();
     }

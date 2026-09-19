@@ -1,8 +1,10 @@
 DIR := ${CURDIR}
-VERSION = 0.21.0
+VERSION = 0.22.3
 BUILD_OUTPUT_DIR = blaulicht-dist
 PACKAGE = blaulicht-core
 RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./target)
+# Only allocate a TTY when we have one (e.g. not under CI or a non-interactive shell).
+DOCKER_TTY := $(shell [ -t 0 ] && echo -it || echo -i)
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \
 		build-web build-archives build-archive-armhf build-archive-armel \
@@ -10,7 +12,7 @@ RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./ta
 
 # For cross-compilation to X86_64 Musl
 cargo-build-x64:
-	docker run -it \
+	docker run --rm $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUST_MIN_STACK=16777216 \
@@ -20,7 +22,7 @@ cargo-build-x64:
 
 # For cross-compilation to X86_64 Musl (HASWELL)
 cargo-build-x64-haswell:
-	docker run -it \
+	docker run --rm $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUSTFLAGS="-C target-cpu=haswell" \
@@ -37,7 +39,7 @@ cargo-build-x64-haswell:
 # 	cargo build --release --target x86_64-unknown-linux-gnu
 
 cargo-build-x64-debug:
-	docker run -it \
+	docker run --rm $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	blaulicht-cross \

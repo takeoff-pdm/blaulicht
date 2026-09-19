@@ -7,24 +7,24 @@ default_audio_device = "pipewire"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
-last_open_showfile = "/home/mik/maker.json"
+last_open_showfile = "/home/mik/work/private/blaulicht/SPARTACUS_DRAFT.json"
 
 [stream]
 channel_count = 2
 fft_resolution = 4096
-gravity = 100.0
 refresh_rate = 60
+gravity = 100.0
 
 [stream.processor]
+sampling_rate = 48000
 frequency_bounds = [
     40,
     20000,
 ]
-interpolation = "Cubic"
-position_normalisation = "Harmonic"
-sampling_rate = 48000
 volume = 1.0
 volume_normalisation = "Mixture"
+position_normalisation = "Harmonic"
+interpolation = "Cubic"
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
@@ -43,6 +43,11 @@ enable_watcher = true
 
 [[plugins]]
 file_path = "../plugins/bundle_debug/audio_reactor_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/midi_all.wasm"
 enabled = true
 enable_watcher = true
 

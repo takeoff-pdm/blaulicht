@@ -93,6 +93,12 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
+        // Replace (not accumulate) so a delta that no open numberpad consumed
+        // this frame is dropped instead of applying to a dialog opened later.
+        crate::app::components::publish_relative_adjustment(
+            ctx,
+            std::mem::take(&mut self.pending_numberpad_delta),
+        );
         self.poll_save_completion(ctx);
         self.detect_showfile_dirty();
         self.tick_autosave();
@@ -549,6 +555,8 @@ impl BlaulichtApp {
                     .map(|receiver| ShowfileArtNetReceiver {
                         address: receiver.address,
                         enabled: receiver.enabled,
+                        universes: (!receiver.sends_all_universes())
+                            .then_some((receiver.first_universe, receiver.last_universe)),
                     })
                     .collect(),
             }

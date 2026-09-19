@@ -1,4 +1,5 @@
 use crate::{
+    AnimationSpeedModifier, FixtureProperty, SectionState, SyncMode,
     fixture::{
         state::{FixtureGroup, FixtureState},
         value::FixtureValue,
@@ -7,9 +8,8 @@ use crate::{
     scene::{EngineSink, Scene},
     scene_graph::SceneGraphState,
     view::View,
-    AnimationSpeedModifier, FixtureProperty, SectionState, SyncMode,
 };
-use bincode::{config, Decode, Encode};
+use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
@@ -944,11 +944,16 @@ impl Default for FlashAnimationSpec {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Serialize, Deserialize, Clone, Copy, Encode, Decode, PartialEq, Eq, Default, EnumIter,
+)]
 pub enum FlashWindowLayout {
     #[default]
     Contiguous,
     Spaced,
+    /// One window per fixture group of the selection; `window_size` is ignored.
+    /// Appended to preserve the bincode indices of the existing variants.
+    ByGroup,
 }
 
 impl Display for FlashWindowLayout {
@@ -956,6 +961,7 @@ impl Display for FlashWindowLayout {
         match self {
             Self::Contiguous => write!(f, "Contiguous"),
             Self::Spaced => write!(f, "Spaced"),
+            Self::ByGroup => write!(f, "By group"),
         }
     }
 }
@@ -1129,11 +1135,7 @@ pub const MAX_ADD_DEPTH: f32 = 360.0;
 pub const MAX_SCALE_PERCENT: f32 = 400.0;
 
 fn finite_or(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() {
-        value
-    } else {
-        fallback
-    }
+    if value.is_finite() { value } else { fallback }
 }
 
 /// How the envelope reaches the output value.

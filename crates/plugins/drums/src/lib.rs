@@ -297,38 +297,45 @@ impl DrumPlugin {
                     PluginUiEvent::Button { id } if id == 13 => {
                         self.ui_mode = UiMode::Overview;
                     }
-                    PluginUiEvent::Button { id } if id >= SEQ_EDIT_BASE_ID && id < SEQ_DELETE_BASE_ID => {
+                    PluginUiEvent::Button { id }
+                        if id >= SEQ_EDIT_BASE_ID && id < SEQ_DELETE_BASE_ID =>
+                    {
                         let seq_idx = (id - SEQ_EDIT_BASE_ID) as usize;
                         if seq_idx < self.sequencers.len() {
                             let sequencer = &self.sequencers[seq_idx];
-                            let notes_str: Vec<String> = sequencer
-                                .midi_notes
-                                .iter()
-                                .map(|n| n.to_string())
-                                .collect();
+                            let notes_str: Vec<String> =
+                                sequencer.midi_notes.iter().map(|n| n.to_string()).collect();
                             self.temp_midi_note_input = notes_str.join(", ");
                             self.ui_mode = UiMode::EditingSequencer(seq_idx);
                         }
                     }
-                    PluginUiEvent::Button { id } if id >= SEQ_DELETE_BASE_ID && id < SEQ_ADD_STEP_BASE_ID => {
+                    PluginUiEvent::Button { id }
+                        if id >= SEQ_DELETE_BASE_ID && id < SEQ_ADD_STEP_BASE_ID =>
+                    {
                         let seq_idx = (id - SEQ_DELETE_BASE_ID) as usize;
                         self.delete_sequencer(seq_idx);
                     }
-                    PluginUiEvent::Button { id } if id >= SEQ_ADD_STEP_BASE_ID && id < SEQ_RENAME_BASE_ID => {
+                    PluginUiEvent::Button { id }
+                        if id >= SEQ_ADD_STEP_BASE_ID && id < SEQ_RENAME_BASE_ID =>
+                    {
                         let seq_idx = (id - SEQ_ADD_STEP_BASE_ID) as usize;
                         if seq_idx < self.sequencers.len() {
                             self.ui_mode = UiMode::AddingStep(seq_idx);
                             self.temp_scene_index = 0;
                         }
                     }
-                    PluginUiEvent::Button { id } if id >= SEQ_RENAME_BASE_ID && id < STEP_EDIT_BASE_ID => {
+                    PluginUiEvent::Button { id }
+                        if id >= SEQ_RENAME_BASE_ID && id < STEP_EDIT_BASE_ID =>
+                    {
                         let seq_idx = (id - SEQ_RENAME_BASE_ID) as usize;
                         if seq_idx < self.sequencers.len() {
                             self.temp_rename_name = self.sequencers[seq_idx].name.clone();
                             self.ui_mode = UiMode::RenamingSequencer(seq_idx);
                         }
                     }
-                    PluginUiEvent::Button { id } if id >= STEP_EDIT_BASE_ID && id < STEP_DELETE_BASE_ID => {
+                    PluginUiEvent::Button { id }
+                        if id >= STEP_EDIT_BASE_ID && id < STEP_DELETE_BASE_ID =>
+                    {
                         let step_idx = (id - STEP_EDIT_BASE_ID) as usize;
 
                         if let UiMode::EditingSequencer(seq_idx) = self.ui_mode {
@@ -342,7 +349,9 @@ impl DrumPlugin {
                             }
                         }
                     }
-                    PluginUiEvent::Button { id } if id >= STEP_DELETE_BASE_ID && id < STEP_DELETE_BASE_ID + ID_STRIDE => {
+                    PluginUiEvent::Button { id }
+                        if id >= STEP_DELETE_BASE_ID && id < STEP_DELETE_BASE_ID + ID_STRIDE =>
+                    {
                         let step_idx = (id - STEP_DELETE_BASE_ID) as usize;
 
                         if let UiMode::EditingSequencer(seq_idx) = self.ui_mode {
@@ -564,10 +573,11 @@ impl DrumPlugin {
 
         if !self.recent_midi_messages.is_empty() {
             bpf::ui::separator();
-            bpf::ui::label("Recent MIDI Messages:");
+            bpf::ui::begin_collapsing(240, "Recent MIDI messages", false);
             for msg in &self.recent_midi_messages {
                 bpf::ui::label(msg);
             }
+            bpf::ui::end_collapsing();
         }
     }
 

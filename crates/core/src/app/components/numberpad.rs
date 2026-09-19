@@ -1,5 +1,5 @@
 use egui::{
-    vec2, Align, Color32, DragValue, Event, Key, Label, Layout, Modifiers, Response, RichText,
+    vec2, Align, Color32, DragValue, Event, Id, Key, Label, Layout, Modifiers, Response, RichText,
     Sense, Ui, Vec2,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -9,6 +9,35 @@ use crate::app::components::{button, ButtonSize, Dialog};
 const LONG_PRESS_THRESHOLD: f64 = 0.35;
 const CLAMP_FLASH_DURATION: f64 = 0.35;
 static NEXT_DIALOG_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Step applied per unit of relative adjustment for non-integral targets.
+const FLOAT_RELATIVE_STEP: f64 = 0.1;
+
+fn relative_adjustment_id() -> Id {
+    Id::new("blaulicht::numberpad::relative_adjustment")
+}
+
+/// Publishes a relative adjustment (e.g. from a controller jog wheel) that an
+/// open numberpad dialog will apply to its entered value during this frame.
+/// Replaces any previously published value; a delta of 0 clears it.
+pub fn publish_relative_adjustment(ctx: &egui::Context, delta: i32) {
+    ctx.data_mut(|d| {
+        if delta == 0 {
+            d.remove::<i32>(relative_adjustment_id());
+        } else {
+            d.insert_temp(relative_adjustment_id(), delta);
+        }
+    });
+}
+
+/// Takes (and clears) the relative adjustment published for this frame.
+fn take_relative_adjustment(ctx: &egui::Context) -> Option<i32> {
+    ctx.data_mut(|d| {
+        let delta = d.get_temp::<i32>(relative_adjustment_id());
+        d.remove::<i32>(relative_adjustment_id());
+        delta.filter(|d| *d != 0)
+    })
+}
 
 #[derive(Debug, Default)]
 pub struct NumberpadState {
@@ -304,6 +333,11 @@ fn render_numberpad_contents<T: egui::emath::Numeric>(
         input.events = remaining_events;
     });
 
+    if let Some(delta) = take_relative_adjustment(ui.ctx()) {
+        clamp_applied |= apply_relative_adjustment::<T>(&mut state.input_buffer, delta, range);
+        ui.ctx().request_repaint();
+    }
+
     if clamp_applied {
         state.trigger_clamp_flash(now);
         ui.ctx().request_repaint();
@@ -413,6 +447,36 @@ fn handle_button_action<T: egui::emath::Numeric>(
         _ => {}
     }
 
+    clamped
+}
+
+/// Adds `delta` steps to the value currently entered in the numberpad buffer,
+/// clamping to the type bounds and the configured range. Returns whether a
+/// clamp was applied. The committed value is untouched until Enter is pressed.
+fn apply_relative_adjustment<T: egui::emath::Numeric>(
+    buffer: &mut String,
+    delta: i32,
+    range: Option<(f64, f64)>,
+) -> bool {
+    let current = match parse_numeric_input::<T>(buffer.as_str(), range) {
+        Some((parsed, _)) => parsed.to_f64(),
+        None => 0.0,
+    };
+
+    let step = if T::INTEGRAL {
+        1.0
+    } else {
+        FLOAT_RELATIVE_STEP
+    };
+    // Snap to the step grid so repeated ticks don't accumulate float drift
+    // (e.g. 1.3 - 1.3 == -2e-16, which would render as "-0").
+    let mut target = ((current / step).round() + delta as f64) * step;
+    if target.abs() < step / 1000.0 {
+        target = 0.0;
+    }
+    let (clamped_value, clamped) = clamp_value_to_bounds::<T>(target, range);
+
+    *buffer = format_numeric_value(&T::from_f64(clamped_value));
     clamped
 }
 
@@ -548,5 +612,49 @@ fn parse_numeric_input<T: egui::emath::Numeric>(
         Some((T::from_f64(value), clamped))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod relative_adjustment_tests {
+    use super::apply_relative_adjustment;
+
+    #[test]
+    fn integral_steps_by_one_and_clamps_to_range() {
+        let mut buffer = "5".to_string();
+        assert!(!apply_relative_adjustment::<u8>(
+            &mut buffer,
+            3,
+            Some((0.0, 10.0))
+        ));
+        assert_eq!(buffer, "8");
+        assert!(apply_relative_adjustment::<u8>(
+            &mut buffer,
+            5,
+            Some((0.0, 10.0))
+        ));
+        assert_eq!(buffer, "10");
+        assert!(apply_relative_adjustment::<u8>(
+            &mut buffer,
+            -20,
+            Some((0.0, 10.0))
+        ));
+        assert_eq!(buffer, "0");
+    }
+
+    #[test]
+    fn integral_clamps_to_type_bounds_without_range() {
+        let mut buffer = "254".to_string();
+        assert!(apply_relative_adjustment::<u8>(&mut buffer, 5, None));
+        assert_eq!(buffer, "255");
+    }
+
+    #[test]
+    fn float_steps_by_tenth() {
+        let mut buffer = "1".to_string();
+        assert!(!apply_relative_adjustment::<f32>(&mut buffer, 3, None));
+        assert_eq!(buffer, "1.3");
+        assert!(!apply_relative_adjustment::<f32>(&mut buffer, -13, None));
+        assert_eq!(buffer, "0");
     }
 }

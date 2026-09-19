@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        components::{self, clickable, ButtonSize},
+        components::{self, clickable, ButtonSize, Numberpad},
         BlaulichtApp,
     },
     msg::SystemMessage,
@@ -156,6 +156,9 @@ impl BlaulichtApp {
         let mut row_enabled = receiver.enabled;
         let mut toggle_changed = false;
         let mut delete_clicked = false;
+        let mut first_universe = receiver.first_universe;
+        let mut last_universe = receiver.last_universe;
+        let mut range_changed = false;
         let owner_plugin_id = receiver.owner_plugin_id;
         let is_plugin_owned = owner_plugin_id.is_some();
 
@@ -220,12 +223,43 @@ impl BlaulichtApp {
                             if components::Switch::new(&mut row_enabled).ui(ui).changed() {
                                 toggle_changed = true;
                             }
+
+                            ui.add_space(16.0);
+                            let pad_width = 58.0;
+                            if is_plugin_owned {
+                                ui.label(
+                                    RichText::new(format!("{first_universe}-{last_universe}"))
+                                        .font(FontId::monospace(input_font_size)),
+                                );
+                            } else {
+                                let pads = self
+                                    .system_ui_state
+                                    .artnet_universe_pads
+                                    .entry(receiver.address)
+                                    .or_insert_with(|| {
+                                        [
+                                            universe_numberpad("First", receiver.address)
+                                                .field_width(pad_width),
+                                            universe_numberpad("Last", receiver.address)
+                                                .field_width(pad_width),
+                                        ]
+                                    });
+                                let [first_pad, last_pad] = pads;
+                                if last_pad.ui(ui, &mut last_universe).changed() {
+                                    range_changed = true;
+                                }
+                                ui.label("-");
+                                if first_pad.ui(ui, &mut first_universe).changed() {
+                                    range_changed = true;
+                                }
+                            }
+                            ui.label(RichText::new("Universes").strong());
                         });
                     },
                 );
             });
 
-        if toggle_changed {
+        if toggle_changed || range_changed {
             let mut output = self.data.state.artnet_output.write().unwrap();
             if let Some(entry) = output.receivers.iter_mut().find(|entry| {
                 entry.address == receiver.address
@@ -233,6 +267,9 @@ impl BlaulichtApp {
                     && entry.handle == receiver.handle
             }) {
                 entry.enabled = row_enabled;
+                if range_changed {
+                    entry.set_universe_range(first_universe, last_universe);
+                }
             } else {
                 tracing::warn!("Art-Net receiver row {receiver_index} changed while editing");
             }
@@ -250,6 +287,9 @@ impl BlaulichtApp {
                     .map(|index| output.receivers.remove(index))
             };
             if removed.is_some() {
+                self.system_ui_state
+                    .artnet_universe_pads
+                    .remove(&receiver.address);
                 self.data
                     .system_message_sender
                     .send(SystemMessage::Log(
@@ -260,6 +300,12 @@ impl BlaulichtApp {
             }
         }
     }
+}
+
+fn universe_numberpad(label: &str, address: SocketAddr) -> Numberpad {
+    Numberpad::new()
+        .dialog_title(format!("{label} universe ({address})"))
+        .range(0.0, ArtNetReceiver::MAX_UNIVERSE as f64)
 }
 
 #[cfg(test)]

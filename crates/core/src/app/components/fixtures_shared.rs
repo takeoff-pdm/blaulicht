@@ -5,7 +5,7 @@ use crate::{
     },
     dmx::EngineState,
     event::SystemEventBusConnectionInst,
-    state::DmxBuffer,
+    state::{DmxBuffer, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
     fixture::state::{FixtureState, ResolvedFixtureState},
@@ -27,6 +27,8 @@ pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 #[derive(Default, Clone, Copy)]
 pub struct DmxSimulator {
     pub open: bool,
+    /// Universe shown in the simulation dialog (selected via the tab bar).
+    pub universe: usize,
     pub map_fixtures: bool,
 }
 
@@ -285,16 +287,42 @@ impl DmxSimulator {
 
 impl BlaulichtApp {
     pub fn render_dmx_simulation_dialog(&mut self, ctx: &Context, groups: &EngineGroups) {
-        for (universe, simulator) in self.universe_simulations.iter_mut().enumerate() {
-            if simulator.open {
-                Dialog::new(format!("DMX Universe {universe}"), egui::vec2(500.0, 500.0))
-                    .moveable()
-                    .show(ctx, |ui| {
-                        let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
-                        simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
-                    });
-            }
+        const WIDTH: f32 = 500.0;
+        const TAB_GAP: f32 = 4.0;
+
+        let simulator = &mut self.dmx_simulator;
+        if !simulator.open {
+            return;
         }
+
+        Dialog::new("Simulate DMX".to_string(), egui::vec2(WIDTH, 500.0))
+            .moveable()
+            .show(ctx, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(TAB_GAP, TAB_GAP);
+                    // Slack of one pixel so rounding never pushes the last tab onto a second row.
+                    let tab_width = ((ui.available_width()
+                        - TAB_GAP * (NUM_DMX_UNIVERSES - 1) as f32)
+                        / NUM_DMX_UNIVERSES as f32)
+                        .floor()
+                        - 1.0;
+                    for universe in 0..NUM_DMX_UNIVERSES {
+                        if components::Button::new(
+                            &format!("U{universe}"),
+                            ButtonSize::Medium.with_width(tab_width),
+                        )
+                        .ui(ui, simulator.universe == universe)
+                        {
+                            simulator.universe = universe;
+                        }
+                    }
+                });
+                ui.separator();
+
+                let universe = simulator.universe.min(NUM_DMX_UNIVERSES - 1);
+                let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
+                simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
+            });
     }
 
     pub fn render_scene_changeset_dialog(&self, ctx: &Context, dmx_engine: &EngineState) {

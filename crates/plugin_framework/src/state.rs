@@ -26,10 +26,21 @@ pub extern "C" fn __internal_get_global_state_buffer_length_start_addr() -> *mut
 pub fn get_dmx() -> EngineState {
     // Sanity check for memory usage.
     let curr_len = unsafe { GLOBAL_STATE_SOURCE.current_length };
-    if curr_len as usize > STATE_BUFFER_LEN {
+    // Initialization runs before the host publishes its first engine snapshot.
+    if curr_len == 0 || curr_len as usize > STATE_BUFFER_LEN {
         return EngineState::default();
     }
 
     let buf = unsafe { &GLOBAL_STATE_SOURCE.buffer[..curr_len as usize] };
     EngineState::deserialize(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_initial_snapshot_returns_default_state() {
+        assert_eq!(get_dmx().serialize(), EngineState::default().serialize());
+    }
 }

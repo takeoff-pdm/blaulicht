@@ -25,9 +25,10 @@ use blaulicht_shared::{
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
+    io::ErrorKind,
     mem,
-    net::UdpSocket,
+    net::{SocketAddr, UdpSocket},
     sync::{Arc, RwLockWriteGuard},
     time::{Duration, Instant},
 };
@@ -37,7 +38,42 @@ use tracing::{debug, error, warn};
 
 pub struct DmxEngineArtnetOutput {
     universe_buffers: [Vec<u8>; NUM_DMX_UNIVERSES],
-    socket: Option<UdpSocket>,
+    /// One non-blocking socket per destination. The kernel charges packets
+    /// waiting for ARP resolution (unreachable receiver) to the sending
+    /// socket's buffer; a shared blocking socket then stalls every
+    /// destination and the serial DMX output for the ARP timeout (~1 s).
+    sockets: HashMap<SocketAddr, UdpSocket>,
+}
+
+impl DmxEngineArtnetOutput {
+    fn new() -> Self {
+        Self {
+            universe_buffers: std::array::from_fn(|_| vec![0; 512]),
+            sockets: HashMap::new(),
+        }
+    }
+
+    fn bind_socket() -> std::io::Result<UdpSocket> {
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        socket.set_nonblocking(true)?;
+        Ok(socket)
+    }
+
+    /// Returns the socket for `destination`, binding one on first use.
+    fn socket_for(&mut self, destination: SocketAddr) -> Option<&UdpSocket> {
+        if !self.sockets.contains_key(&destination) {
+            match Self::bind_socket() {
+                Ok(socket) => {
+                    self.sockets.insert(destination, socket);
+                }
+                Err(err) => {
+                    error!("Could not create Art-Net socket for {destination}: {err}");
+                    return None;
+                }
+            }
+        }
+        self.sockets.get(&destination)
+    }
 }
 
 pub struct DmxEngine {
@@ -56,6 +92,10 @@ pub struct DmxEngine {
 
     running_setup: bool,
     setup_start_time: Instant,
+    /// Per-fixture setup runs requested from the UI ("Initialize"): the fixture
+    /// key and when the run started. Overlaid on the normal render for
+    /// `SETUP_SECS`, so the rest of the show keeps playing.
+    fixture_inits: Vec<((u8, u8), Instant)>,
 
     scene_graph_runtime: SceneGraphRuntime,
     animation_clock: animation::AnimationClockRuntime,
@@ -82,9 +122,6 @@ fn output_worker(
         let retry_due = Instant::now() >= retry_at;
         if retry_due {
             retry_at = Instant::now() + retry_interval;
-            if artnet.socket.is_none() {
-                artnet.socket = UdpSocket::bind("0.0.0.0:0").ok();
-            }
             for (universe_no, slot) in ports.iter_mut().enumerate() {
                 if slot.is_some() {
                     continue;
@@ -112,32 +149,62 @@ fn output_worker(
                 }
             }
         }
-        let mut artnet_failed = artnet.socket.is_none();
-        if let Some(ref mut socket) = artnet.socket {
-            let receivers = state_ref
-                .artnet_output
-                .read()
-                .map(|output| output.receivers.clone())
-                .unwrap_or_default();
-            for (universe_no, universe) in frame.universes.iter().enumerate() {
-                artnet.universe_buffers[universe_no].copy_from_slice(&universe[1..]);
-                let command = ArtCommand::Output(artnet_protocol::Output {
-                    port_address: (universe_no as u8).into(),
-                    physical: universe_no as u8,
-                    data: artnet.universe_buffers[universe_no].clone().into(),
-                    ..artnet_protocol::Output::default()
-                });
-                let Ok(bytes) = command.write_to_buffer() else {
-                    error!("Failed to serialize Art-Net output for universe {universe_no}");
+        // `(address, first_universe, last_universe)` per enabled receiver.
+        let receivers: Vec<(SocketAddr, u8, u8)> = state_ref
+            .artnet_output
+            .read()
+            .map(|output| {
+                output
+                    .receivers
+                    .iter()
+                    .filter(|destination| destination.enabled)
+                    .map(|destination| {
+                        (
+                            destination.address,
+                            destination.first_universe,
+                            destination.last_universe,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Drop sockets of removed receivers so their queued packets are freed.
+        artnet
+            .sockets
+            .retain(|address, _| receivers.iter().any(|(kept, ..)| kept == address));
+        let mut artnet_failed = false;
+        for (universe_no, universe) in frame.universes.iter().enumerate() {
+            let wants_universe = |&(_, first, last): &(SocketAddr, u8, u8)| {
+                (first as usize..=last as usize).contains(&universe_no)
+            };
+            // Skip serialising universes no receiver is subscribed to.
+            if !receivers.iter().any(wants_universe) {
+                continue;
+            }
+            artnet.universe_buffers[universe_no].copy_from_slice(&universe[1..]);
+            let command = ArtCommand::Output(artnet_protocol::Output {
+                port_address: (universe_no as u8).into(),
+                physical: universe_no as u8,
+                data: artnet.universe_buffers[universe_no].clone().into(),
+                ..artnet_protocol::Output::default()
+            });
+            let Ok(bytes) = command.write_to_buffer() else {
+                error!("Failed to serialize Art-Net output for universe {universe_no}");
+                continue;
+            };
+            for &(destination, ..) in receivers.iter().filter(|r| wants_universe(r)) {
+                let Some(socket) = artnet.socket_for(destination) else {
+                    artnet_failed = true;
                     continue;
                 };
-                for destination in receivers.iter().filter(|destination| destination.enabled) {
-                    if let Err(err) = socket.send_to(&bytes, destination.address) {
-                        if retry_due && universe_no == 0 {
-                            error!("Send ArtNet UDP to {}: {err:?}", destination.address);
-                        }
-                        artnet_failed = true;
+                if let Err(err) = socket.send_to(&bytes, destination) {
+                    // WouldBlock: the socket buffer is full of packets the
+                    // kernel cannot deliver (unresolved ARP). Skip this frame
+                    // for this destination instead of waiting for the kernel.
+                    if retry_due && universe_no == 0 && err.kind() != ErrorKind::WouldBlock {
+                        error!("Send ArtNet UDP to {destination}: {err:?}");
                     }
+                    artnet_failed = true;
                 }
             }
         }
@@ -251,33 +318,25 @@ impl DmxEngine {
         //
         // Initialize ArtNet.
         //
-        let socket = {
-            match UdpSocket::bind("0.0.0.0:0") {
-                Ok(s) => {
-                    health_state.artnet_health_state = true;
-
-                    let _ = system_out.send(SystemMessage::Log(
-                        "Initialized ArtNet".to_string(),
-                        LogLevel::Debug,
-                    ));
-
-                    Some(s)
-                }
-                Err(err) => {
-                    health_state.artnet_health_state = false;
-
-                    let _ = system_out.send(SystemMessage::Log(
-                        format!("Could not create ARTNET socket: {err}"),
-                        LogLevel::Err,
-                    ));
-                    None
-                }
+        // Sockets are bound per destination inside the output worker; here we
+        // only verify that UDP sockets can be created at all.
+        match DmxEngineArtnetOutput::bind_socket() {
+            Ok(_) => {
+                health_state.artnet_health_state = true;
+                let _ = system_out.send(SystemMessage::Log(
+                    "Initialized ArtNet".to_string(),
+                    LogLevel::Debug,
+                ));
             }
-        };
-        let artnet_output = DmxEngineArtnetOutput {
-            universe_buffers: std::array::from_fn(|_| vec![0; 512]),
-            socket,
-        };
+            Err(err) => {
+                health_state.artnet_health_state = false;
+                let _ = system_out.send(SystemMessage::Log(
+                    format!("Could not create ARTNET socket: {err}"),
+                    LogLevel::Err,
+                ));
+            }
+        }
+        let artnet_output = DmxEngineArtnetOutput::new();
 
         mem::drop(health_state);
 
@@ -307,6 +366,7 @@ impl DmxEngine {
             output_tx,
             running_setup: false,
             setup_start_time: Instant::now(),
+            fixture_inits: Vec::new(),
             scene_graph_runtime: SceneGraphRuntime::default(),
             animation_clock: animation::AnimationClockRuntime::default(),
             graph_overlay_scenes: Vec::new(),
@@ -376,6 +436,58 @@ impl DmxEngine {
         self.animation_tick(audio_output);
 
         self.render_universes();
+        self.run_fixture_inits();
+    }
+
+    /// Runs the `setup` routine of every fixture with a pending or active
+    /// "Initialize" request on top of the rendered frame.
+    fn run_fixture_inits(&mut self) {
+        for key in self.state_ref.take_fixture_init_requests() {
+            match self.fixture_inits.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, started)) => *started = Instant::now(),
+                None => self.fixture_inits.push((key, Instant::now())),
+            }
+        }
+        if self.fixture_inits.is_empty() {
+            return;
+        }
+
+        let state = self.state_ref.dmx_engine.read().unwrap();
+        let mut finished = Vec::new();
+        for ((group_id, fixture_id), started) in &self.fixture_inits {
+            let key = (*group_id, *fixture_id);
+            let Some(fix) = state
+                .0
+                .groups
+                .get(group_id)
+                .and_then(|group| group.fixtures.get(fixture_id))
+            else {
+                finished.push(key);
+                continue;
+            };
+            let elapsed = started.elapsed();
+            if elapsed.as_secs() >= SETUP_SECS {
+                finished.push(key);
+                let _ = self.system_out.send(SystemMessage::Log(
+                    format!("[DMX] Initialized fixture `{}`.", fix.name),
+                    LogLevel::Info,
+                ));
+                continue;
+            }
+            let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
+                finished.push(key);
+                continue;
+            };
+            let mut buffer = universe.write().unwrap();
+            fix.setup(
+                elapsed.as_millis() as i32,
+                &ResolvedFixtureState::default(),
+                &mut buffer.dmx_buffer,
+            );
+        }
+        mem::drop(state);
+        self.fixture_inits
+            .retain(|(key, _)| !finished.contains(key));
     }
 
     pub fn tick(&mut self, audio_snapshot: &CollectorOutput) -> DmxTickSpeeds {
@@ -417,7 +529,7 @@ impl DmxEngine {
             for fixture in &group.1.fixtures {
                 let fix = fixture.1;
 
-                let time = (Instant::now().duration_since(self.start_time)).as_millis() as u64;
+                let time = self.setup_start_time.elapsed().as_millis() as u64;
 
                 debug!("SETUP T: {time}");
 
@@ -1640,10 +1752,7 @@ mod artnet_scale_tests {
             output_worker(
                 output_rx,
                 [None, None],
-                DmxEngineArtnetOutput {
-                    universe_buffers: std::array::from_fn(|_| vec![0; 512]),
-                    socket: None, // Also exercise recovery from initial bind failure.
-                },
+                DmxEngineArtnetOutput::new(),
                 worker_state,
             )
         });
@@ -1684,10 +1793,7 @@ mod artnet_scale_tests {
             .receivers
             .push(ArtNetReceiver::new(receiver.local_addr().unwrap()));
 
-        let artnet = DmxEngineArtnetOutput {
-            universe_buffers: std::array::from_fn(|_| vec![0; 512]),
-            socket: Some(UdpSocket::bind("127.0.0.1:0").unwrap()),
-        };
+        let artnet = DmxEngineArtnetOutput::new();
         let (sender, output_rx) = bounded(1);
         let worker_state = Arc::clone(&state);
         let worker = std::thread::spawn(move || {

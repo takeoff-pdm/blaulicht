@@ -103,4 +103,12 @@ pub enum MainUiEvent {
     RemoveOwnedExternalScreen {
         owner_plugin_id: u8,
     },
+    /// Relative adjustment of the numberpad dialog that is currently open in
+    /// the main UI (e.g. driven by a jog wheel / encoder on a controller).
+    /// Positive `delta` increases the entered value, negative decreases it.
+    /// Ignored when no numberpad dialog is open. Appended to preserve the
+    /// bincode indices of existing variants.
+    NumberpadAdjust {
+        delta: i32,
+    },
 }

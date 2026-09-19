@@ -441,10 +441,7 @@ impl DDJSubSystem {
         self.dmx.current_scene_focus = view_info.view.base_scene;
         self.dmx.current_overlay_scenes = view_info.view.overlays.clone();
 
-        bpf::send_event(ControlEvent::Transaction(vec![
-            ControlEvent::SetSceneFocus(view_info.view.base_scene),
-            ControlEvent::SetOverlays(view_info.view.overlays.clone()),
-        ]));
+        bpf::send_event(ControlEvent::Transaction(view_info.view.apply_events()));
 
         self.push_log(format!("{button_label} -> {}", view_info.option_label()));
     }

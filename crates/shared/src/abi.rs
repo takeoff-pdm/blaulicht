@@ -1,5 +1,5 @@
 use crate::{AnimationSpeedModifier, ControlEventCollection, FixtureProperty};
-use bincode::{config, Decode, Encode};
+use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum::EnumIter;
@@ -7,7 +7,10 @@ use strum::EnumIter;
 /// Binary protocol version used for host-to-plugin snapshots.
 // v4: animation tick context (AnimationTickInput) added to the host envelope.
 // v5: UdpReceived gained `src_addr`; added bl_open_udp_port_loopback.
-pub const PLUGIN_ABI_VERSION: u32 = 5;
+// v6: MainUiEvent gained `NumberpadAdjust` (relative numberpad modification).
+// v8: PaletteOp gained `HueComplementary`.
+// v9: FlashWindowLayout gained `ByGroup`.
+pub const PLUGIN_ABI_VERSION: u32 = 9;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

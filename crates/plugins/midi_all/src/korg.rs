@@ -1,15 +1,32 @@
 use blaulicht_plugin_framework::MidiEvent;
-use blaulicht_plugin_framework::{self as bpf, println, MidiConnection};
+use blaulicht_plugin_framework::{self as bpf, println};
+
+use crate::legacy::virtual_midi::VirtualMidi;
 use blaulicht_shared::{
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EngineState, TickInput,
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EngineState, MainUiEvent,
+    TickInput,
 };
 use map_range::MapRange;
 use std::collections::HashSet;
 
-const SELECT_BUTTON_STARTER: u8 = 46;
+pub const SELECT_BUTTON_STARTER: u8 = 46;
 const COUNT_SELECT_BUTTONS: u8 = 8;
+const KORG_DEVICE_NAME: &str = "nanoKONTROL Studio";
 
-const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 12];
+pub const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 12];
+
+/// CC number of the big jog wheel. It is a relative encoder: clockwise ticks
+/// send 1..=63, counter-clockwise ticks send 127 down to 65 (two's complement
+/// in 7 bits), so 127 == -1.
+pub const JOG_WHEEL_CC: u8 = 60;
+
+fn jog_wheel_delta(value: u8) -> i32 {
+    if value < 64 {
+        value as i32
+    } else {
+        value as i32 - 128
+    }
+}
 
 //
 // Korg State.
@@ -17,7 +34,9 @@ const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 9, 1
 
 pub struct KorgSubSystem {
     selection_mode: bool,
-    midi_handle: MidiConnection,
+    /// Hardware handle plus LED/control shadow; runs virtual-only when the
+    /// nanoKONTROL is not attached (driven through the on-screen twin).
+    pub(crate) midi: VirtualMidi,
     active_groups: HashSet<u8>,
     last_sync: u32,
 
@@ -36,7 +55,7 @@ impl Default for KorgSubSystem {
     fn default() -> Self {
         Self {
             selection_mode: true,
-            midi_handle: unsafe { MidiConnection::dummy() },
+            midi: VirtualMidi::disconnected(KORG_DEVICE_NAME),
             active_groups: HashSet::new(),
             last_sync: 0,
 
@@ -60,15 +79,7 @@ impl KorgSubSystem {
     pub fn init(&mut self) {
         println!("[KORG] initializing...");
 
-        let name = "nanoKONTROL Studio";
-        let midi_handle = MidiConnection::open(name).unwrap();
-        println!(
-            "Got MIDI handle to device! HANDLE ID: {}",
-            midi_handle.get_meta().device_id
-        );
-
-        self.midi_handle = midi_handle;
-
+        self.midi = VirtualMidi::open(KORG_DEVICE_NAME);
         self.nano_init();
         println!("[KORG] done.");
     }
@@ -76,7 +87,7 @@ impl KorgSubSystem {
     pub fn run(&mut self, input: TickInput) {
         self.sync(input.clock);
 
-        let res = self.midi_handle.poll();
+        let res = self.midi.poll(input.clock);
         self.nano_in(res);
         self.nano_out(&input.events.events);
 
@@ -93,10 +104,10 @@ impl KorgSubSystem {
 
 impl KorgSubSystem {
     fn nano_in(&mut self, ev: Vec<MidiEvent>) {
-        // self.midi_handle.send(0x90, 46, 127);
+        // self.midi.send(0x90, 46, 127);
 
         // for i in 0..255 {
-        //     self.midi_handle.send(0xC1, i, 127);
+        //     self.midi.send(0xC1, i, 127);
         // }
 
         // conn.send(0x91, 102, 127);
@@ -166,19 +177,17 @@ impl KorgSubSystem {
                 }
                 // Set button on the left.
                 (144, 82, 127) => {}
-                (176, 60, value) => {
-                    // if value >= 60 {
-                    //     if state.brightness_mod > 0 {
-                    //         state.brightness_mod -= 1;
-                    //     }
-                    // } else if state.brightness_mod < 255 {
-                    //     state.brightness_mod += 1;
-                    // }
-
-                    // bpf::send_event(ControlEvent::SetAlpha(state.brightness_mod));
+                // Big jog wheel: relative modification of an open numberpad.
+                (176, JOG_WHEEL_CC, value) => {
+                    let delta = jog_wheel_delta(value);
+                    if delta != 0 {
+                        bpf::send_event(ControlEvent::MainUi(MainUiEvent::NumberpadAdjust {
+                            delta,
+                        }));
+                    }
                 }
                 _ => {
-                    println!("{}: {:?}", self.midi_handle.get_meta().device_id, e);
+                    println!("{}: {:?}", self.midi.device_id(), e);
                 }
             }
         }
@@ -209,27 +218,27 @@ impl KorgSubSystem {
 
     fn nano_render_mode(&mut self) {
         // for i in 0..127 {
-        //     self.midi_handle.send(0x90, i, 127);
+        //     self.midi.send(0x90, i, 127);
         // }
         // for i in 0..127 {
-        //     self.midi_handle.send(0xB0, i, 0);
+        //     self.midi.send(0xB0, i, 0);
         // }
 
         // for i in 80..82 {
-        //     self.midi_handle
+        //     self.midi
         //         .send(0xB0, i, self.selection_mode as u8 * 127);
         // }
 
-        self.midi_handle
+        self.midi
             .send(0xB0, 81, self.selection_mode as u8 * 127);
 
-        self.midi_handle
+        self.midi
             .send(0xB0, 80, !self.selection_mode as u8 * 127);
     }
 
     fn nano_blackout_groups(&mut self) {
         for g_index in 0..8 {
-            self.midi_handle
+            self.midi
                 .send(0x90, g_index + SELECT_BUTTON_STARTER, 0);
         }
     }
@@ -241,10 +250,10 @@ impl KorgSubSystem {
 
         for g_index in 0..8 {
             if self.active_groups.contains(&g_index) {
-                self.midi_handle
+                self.midi
                     .send(0x90, g_index + SELECT_BUTTON_STARTER, 127);
             } else {
-                self.midi_handle
+                self.midi
                     .send(0x90, g_index + SELECT_BUTTON_STARTER, 0);
             }
         }
@@ -268,7 +277,7 @@ impl KorgSubSystem {
                 None => false,
             };
 
-            self.midi_handle.send(
+            self.midi.send(
                 0x90,
                 g_index as u8 + SELECT_BUTTON_STARTER,
                 is_active as u8 * 127,

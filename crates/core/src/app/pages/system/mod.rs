@@ -1,6 +1,9 @@
-use crate::{app::ui::FileDialogOpenOrigin, state::NUM_DMX_UNIVERSES};
+use crate::{
+    app::{components::Numberpad, ui::FileDialogOpenOrigin},
+    state::NUM_DMX_UNIVERSES,
+};
 use egui_file_dialog::FileDialog;
-use std::path::PathBuf;
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 
 pub mod artnet;
 pub mod dmx;
@@ -63,6 +66,8 @@ pub struct SystemUI {
     new_artnet_address: String,
     new_artnet_port: String,
     artnet_input_error: Option<String>,
+    /// `[first, last]` universe numberpads per user-created receiver row.
+    artnet_universe_pads: HashMap<SocketAddr, [Numberpad; 2]>,
 }
 
 impl Default for SystemUI {
@@ -83,6 +88,7 @@ impl Default for SystemUI {
             new_artnet_address: String::new(),
             new_artnet_port: "6454".to_string(),
             artnet_input_error: None,
+            artnet_universe_pads: HashMap::new(),
         }
     }
 }

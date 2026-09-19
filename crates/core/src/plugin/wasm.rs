@@ -534,6 +534,11 @@ impl PluginManager {
         let so = self.system_out.clone();
 
         let socket = UdpSocket::bind("0.0.0.0:0")?;
+        // Plugins such as Pro DJ Link address 255.255.255.255 directly.
+        socket.set_broadcast(true)?;
+        // Never let an unreachable target (packets parked on unresolved ARP
+        // fill the send buffer) stall the plugin tick for the ARP timeout.
+        socket.set_nonblocking(true)?;
 
         linker.func_wrap::<_, ()>(
             "blaulicht",

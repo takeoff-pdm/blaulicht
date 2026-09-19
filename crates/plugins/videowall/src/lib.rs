@@ -373,8 +373,10 @@ impl VideowallPlugin {
             bpf::ui::label("No videos discovered.");
         }
 
-        bpf::ui::button("Refresh", REFRESH_BUTTON_ID);
-        bpf::ui::button("Set", SET_BUTTON_ID);
+        bpf::ui::begin_horizontal();
+        bpf::ui::button("Refresh videos", REFRESH_BUTTON_ID);
+        bpf::ui::button("Apply settings", SET_BUTTON_ID);
+        bpf::ui::end_horizontal();
         bpf::ui::end_frame();
     }
 }

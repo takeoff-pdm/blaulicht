@@ -1,4 +1,5 @@
 mod korg;
+mod korg_twin;
 mod legacy;
 
 use crate::korg::KorgSubSystem;
@@ -22,8 +23,13 @@ impl Plugin for MidiAllPlugin {
     }
 
     fn run(&mut self, input: TickInput) {
-        self.korg.run(input.clone());
-        self.legacy_state.run(input);
+        // UI first (the twin turns clicks into synthetic MIDI for this tick),
+        // then the subsystems poll their devices.
+        let korg = &mut self.korg;
+        self.legacy_state.run(input.clone(), || {
+            korg.render_twin(&input.events.events, input.id, input.clock)
+        });
+        self.korg.run(input);
     }
 }
 

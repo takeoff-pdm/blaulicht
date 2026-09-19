@@ -909,20 +909,13 @@ impl BlaulichtApp {
 
                             components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
 
-                        });
-
-                        ui.horizontal_wrapped(|ui| {
-                            for (universe, simulator) in
-                                self.universe_simulations.iter_mut().enumerate()
-                            {
-                                if components::button(
-                                    ui,
-                                    simulator.open,
-                                    &format!("Sim. DMX {universe}"),
-                                    ButtonSize::Medium,
-                                ) {
-                                    simulator.open = !simulator.open;
-                                }
+                            if components::button(
+                                ui,
+                                self.dmx_simulator.open,
+                                "Simulate",
+                                ButtonSize::Medium,
+                            ) {
+                                self.dmx_simulator.open = !self.dmx_simulator.open;
                             }
                         });
 
@@ -1307,6 +1300,26 @@ impl BlaulichtApp {
                                                                 );
                                                             }
                                                         }
+                                                    }
+
+                                                    ui.add_space(12.0);
+
+                                                    if components::button(
+                                                        ui,
+                                                        false,
+                                                        "Initialize",
+                                                        ButtonSize::Medium,
+                                                    ) {
+                                                        self.data
+                                                            .state
+                                                            .request_fixture_init(gid, fid);
+                                                        self.show_popup(PopupSpec::with_duration(
+                                                            Duration::from_secs(3),
+                                                            format!(
+                                                                "Initializing `{}` (10 s)",
+                                                                self.new_fixture_name
+                                                            ),
+                                                        ));
                                                     }
 
                                                     ui.add_space(12.0);

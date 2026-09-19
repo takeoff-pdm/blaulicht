@@ -1,10 +1,13 @@
 mod apc_midi;
+mod apc_twin;
 mod page_nav;
-mod view_trigger;
+mod mapping;
+pub(crate) mod virtual_midi;
 
 use std::collections::{BTreeMap, VecDeque};
+use std::rc::Rc;
 
-use blaulicht_plugin_framework::{self as bpf, println, ui, MidiConnection, MidiEvent};
+use blaulicht_plugin_framework::{self as bpf, println, ui, MidiEvent};
 use blaulicht_shared::{
     misc_event::videowall::{
         REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
@@ -14,12 +17,22 @@ use blaulicht_shared::{
 use map_range::MapRange;
 
 use crate::legacy::apc_midi::MidiDevice;
-use crate::legacy::view_trigger::{DropdownOpen, ViewTrigger, ViewTriggerWizard};
+
+// Plugin UI widget ids: 0 fans switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
+// editor (mapping.rs), 100.. mapping list rows. Tabs are a separate namespace
+// but stay out of those ranges anyway.
+const UI_TABS_ID: u8 = 41;
+const UI_TAB_TWIN: u8 = 42;
+const UI_TAB_TRIGGERS: u8 = 43;
+const UI_TAB_MISC: u8 = 44;
+const UI_TAB_KORG: u8 = 38;
+use crate::legacy::virtual_midi::VirtualMidi;
+use crate::legacy::mapping::{Mapping, MappingEditor};
 
 #[derive(Default)]
 pub struct LegacyState {
     counter: f32,
-    midi_handles: Vec<(MidiDevice, MidiConnection)>,
+    midi_handles: Vec<(MidiDevice, Rc<VirtualMidi>)>,
     // ids_to_midi_types: HashMap<MidiDevice, usize>,
     enabled: bool,
     last_update: u32,
@@ -43,14 +56,13 @@ pub struct LegacyState {
     // drums_enabled_bef: bool,
     intensity_mapping: Vec<u8>,
 
-    // View-trigger state (see view_trigger.rs).
-    pub(crate) view_triggers: Vec<ViewTrigger>,
-    pub(crate) view_trigger_wizard: Option<ViewTriggerWizard>,
-    pub(crate) view_trigger_dropdown_open: DropdownOpen,
-    pub(crate) view_trigger_log: VecDeque<String>,
-    pub(crate) last_pressed_view_pad: Option<u8>,
-    pub(crate) view_trigger_lit_colors: BTreeMap<u8, u8>,
-    pub(crate) available_view_ids: Vec<(u8, String)>,
+    // Control mappings (see mapping.rs).
+    pub(crate) mappings: Vec<Mapping>,
+    pub(crate) mapping_editor: MappingEditor,
+    pub(crate) mapping_lit_colors: BTreeMap<u8, u8>,
+    pub(crate) mapping_log: VecDeque<String>,
+    /// Open/closed state we last requested per plugin window (for toggles).
+    pub(crate) plugin_ui_open: BTreeMap<u8, bool>,
 }
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
@@ -78,14 +90,10 @@ impl LegacyState {
         // let mut ids_to_midi_types = HashMap::new();
 
         for dev in devices {
-            let name = dev.to_string();
-            let midi_handle = MidiConnection::open(&name).unwrap();
-            println!(
-                "Got MIDI handle to device {dev} | HANDLE ID: {}",
-                midi_handle.get_meta().device_id
-            );
-
-            midi_handles.push((dev, midi_handle));
+            // Never panics: a missing device runs virtual-only and (for the
+            // APC) is driven through the on-screen digital twin.
+            let midi_handle = VirtualMidi::open(&dev.to_string());
+            midi_handles.push((dev, Rc::new(midi_handle)));
         }
 
         self.hsv = (127, 127.0, 127.0);
@@ -96,7 +104,9 @@ impl LegacyState {
         self.last_update = 0;
         self.groups = vec![false; 8];
         self.brightness_mod = 0;
-        self.last_scene = 0;
+        // Force the first tick to light the scene pads (focus 0 would otherwise
+        // never sync because it equals the default).
+        self.last_scene = u8::MAX;
         self.current_app_page = Some(AppPage::Logs);
         self.last_app_page = None;
         self.page_update_from_ui = false;
@@ -110,7 +120,7 @@ impl LegacyState {
         self.set_fans(true);
 
         // Restore saved view-trigger assignments.
-        self.load_view_triggers();
+        self.load_mappings();
     }
 
     pub fn set_fans(&mut self, v: bool) {
@@ -118,11 +128,31 @@ impl LegacyState {
         self.fans = v;
     }
 
-    pub fn run(&mut self, input: TickInput) {
+    /// `korg_tab` renders the nanoKONTROL twin tab (owned by the Korg
+    /// subsystem, but it has to live inside this plugin's single tab bar).
+    pub fn run(&mut self, input: TickInput, korg_tab: impl FnOnce()) {
         {
             ui::begin();
+            ui::begin_tabs(UI_TABS_ID);
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_TWIN, "APC mini");
+            self.render_apc_twin(&input.events.events, input.id, input.clock);
+            ui::end_tab();
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_KORG, "nanoKONTROL");
+            korg_tab();
+            ui::end_tab();
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_TRIGGERS, "Mappings");
+            self.render_mappings_ui(&input.events.events, input.id);
+            ui::end_tab();
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_MISC, "Misc");
             let cid = 0;
             ui::switch("Fans", cid, self.fans);
+            ui::end_tab();
+
+            ui::end_tabs();
 
             for ev in &input.events.events {
                 match ev.body() {
@@ -139,7 +169,6 @@ impl LegacyState {
                 }
             }
 
-            self.render_view_trigger_ui(&input.events.events, input.id);
         }
 
         let state = bpf::get_dmx();
@@ -274,7 +303,7 @@ impl LegacyState {
 
         let handles = self.midi_handles.clone();
         for (dev, handle) in handles {
-            let res = handle.poll();
+            let res = handle.poll(input.clock);
 
             match dev {
                 MidiDevice::MidiMix => self.midimix(handle, res),
@@ -326,7 +355,7 @@ impl LegacyState {
         // state.midi_handle.send(176, 90, state.counter as u8 % 127);
     }
 
-    fn midimix(&mut self, conn: MidiConnection, ev: Vec<MidiEvent>) {
+    fn midimix(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>) {
         for e in ev {
             match (e.status, e.kind, e.value) {
                 (176, 19, v) => {
@@ -375,13 +404,13 @@ impl LegacyState {
                     // conn.send(144, 1, 0);
                 }
                 _ => {
-                    println!("{}: {:?}", conn.get_meta().device_id, e);
+                    println!("{}: {:?}", conn.device_id(), e);
                 }
             }
         }
     }
 
-    fn apc(&mut self, conn: MidiConnection, ev: Vec<MidiEvent>, input: TickInput) {
+    fn apc(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>, input: TickInput) {
         const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
 
         const SCENES_INT: [u8; 5] = [60, 52, 44, 36, 28];
@@ -393,9 +422,9 @@ impl LegacyState {
             }
 
             self.is_apc_init = false;
-            // Force the next view-trigger LED sync to re-light every
-            // assigned pad after the blackout above.
-            self.view_trigger_lit_colors.clear();
+            // Force the next mapping LED sync to re-light every mapped pad
+            // after the blackout above.
+            self.mapping_lit_colors.clear();
         }
 
         // if self.drums_enabled != self.drums_enabled_bef {
@@ -459,10 +488,9 @@ impl LegacyState {
         }
 
         for e in ev {
-            // View-trigger handling runs first. If the press was a
-            // wizard capture or fired an assigned trigger, skip the
-            // legacy match arms entirely.
-            if e.status == 144 && e.value == 127 && self.handle_view_trigger_press(e.kind) {
+            // User mappings run first (learn-mode capture or execution).
+            // Consumed events skip the legacy hardcoded arms entirely.
+            if self.handle_mapped_input(&e) {
                 continue;
             }
 
@@ -549,12 +577,12 @@ impl LegacyState {
                     }
                 }
                 _ => {
-                    println!("{}: {:?}", conn.get_meta().device_id, e);
+                    println!("{}: {:?}", conn.device_id(), e);
                 }
             }
         }
 
-        self.sync_view_trigger_leds(&conn);
+        self.sync_mapping_leds(&conn, input.clock);
     }
 
     // fn sync_drums_enabled(&mut self, conn: MidiConnection) {

@@ -64,6 +64,10 @@ impl BlaulichtApp {
                             MainUiEvent::RemoveOwnedExternalScreen { owner_plugin_id } => {
                                 self.remove_external_screen_for_owner(owner_plugin_id);
                             }
+                            MainUiEvent::NumberpadAdjust { delta } => {
+                                self.pending_numberpad_delta =
+                                    self.pending_numberpad_delta.saturating_add(delta);
+                            }
                         }
                     }
                 }

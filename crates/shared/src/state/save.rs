@@ -85,6 +85,10 @@ pub struct SaveEngineState {
 pub struct ShowfileArtNetReceiver {
     pub address: SocketAddr,
     pub enabled: bool,
+    /// Inclusive `(first, last)` 0-based DMX universe range sent to this
+    /// receiver. `None` means every universe (pre-range showfiles).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub universes: Option<(u8, u8)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
@@ -392,14 +396,9 @@ mod tests {
         );
 
         // Views.
-        engine.views.insert(
-            1,
-            View {
-                name: "View 1".to_string(),
-                base_scene: 1,
-                overlays: vec![1],
-            },
-        );
+        engine
+            .views
+            .insert(1, View::new("View 1".to_string(), 1, vec![1]));
 
         // Scenes.
         let mut fixture_states = BTreeMap::new();
@@ -1002,6 +1001,7 @@ mod tests {
                 receivers: vec![ShowfileArtNetReceiver {
                     address: "127.0.0.1:6454".parse().unwrap(),
                     enabled: true,
+                    universes: Some((0, 3)),
                 }],
             },
             plugin_state,
@@ -1014,6 +1014,7 @@ mod tests {
 
         assert_eq!(decoded.artnet.receivers.len(), 1);
         assert!(decoded.artnet.receivers[0].enabled);
+        assert_eq!(decoded.artnet.receivers[0].universes, Some((0, 3)));
         assert_eq!(
             decoded.artnet.receivers[0].address,
             "127.0.0.1:6454".parse().unwrap()

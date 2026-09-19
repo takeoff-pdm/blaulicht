@@ -1,0 +1,23 @@
+[package]
+name = "blaulicht-plugin-pioneer-pro-dj-link"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+blaulicht-shared = { path = "../../shared" }
+blaulicht-plugin-framework = { path = "../../plugin_framework" }
+# no_std build: the plugin supplies the network through `Transport`.
+prolink = { path = "/home/mik/Downloads/prolink-test/prolink-rs", default-features = false, features = ["alloc"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+overflow-checks = false
+strip = "debuginfo"

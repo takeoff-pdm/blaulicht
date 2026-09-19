@@ -591,6 +591,7 @@ pub struct AnimationEditState {
     pub working_state: AnimationSpec,
     pub math_base_fn_dialog_open: bool,
     pub sync_mode_dialog_open: bool,
+    pub flash_layout_dialog_open: bool,
     pub speed_numberpad: Numberpad,
     pub flash_off_numberpad: Numberpad,
     pub flash_on_numberpad: Numberpad,
@@ -626,6 +627,7 @@ impl Default for AnimationEditState {
             },
             math_base_fn_dialog_open: false,
             sync_mode_dialog_open: false,
+            flash_layout_dialog_open: false,
             speed_numberpad: Numberpad::new()
                 .dialog_title("speed-num")
                 .range(0.0, 30000.0),
@@ -687,6 +689,7 @@ impl AnimationEditState {
         self.working_state = spec;
         self.sync_mode_dialog_open = false;
         self.math_base_fn_dialog_open = false;
+        self.flash_layout_dialog_open = false;
         self.speed_numberpad.close();
         self.flash_off_numberpad.close();
         self.flash_on_numberpad.close();
@@ -1180,17 +1183,31 @@ impl AnimationEditState {
             }
 
             ui.horizontal(|ui| {
-                ui.label("Window size:");
-                flash.window_size = flash.window_size.max(1);
-                self.flash_window_numberpad.ui(ui, &mut flash.window_size);
+                ui.label("Layout:");
+                if components::button(
+                    ui,
+                    self.flash_layout_dialog_open,
+                    &flash.window_layout.to_string(),
+                    ButtonSize::Medium.with_width(120.0),
+                ) {
+                    self.flash_layout_dialog_open = true;
+                }
+                let (layout, layout_changed) = components::selection_dialog(
+                    ctx,
+                    FlashWindowLayout::iter(),
+                    flash.window_layout,
+                    &mut self.flash_layout_dialog_open,
+                    "Select Window Layout".to_string(),
+                );
+                if layout_changed {
+                    flash.window_layout = layout;
+                }
 
-                let mut spaced = flash.window_layout == FlashWindowLayout::Spaced;
-                if ui.checkbox(&mut spaced, "Spaced windows").changed() {
-                    flash.window_layout = if spaced {
-                        FlashWindowLayout::Spaced
-                    } else {
-                        FlashWindowLayout::Contiguous
-                    };
+                if flash.window_layout != FlashWindowLayout::ByGroup {
+                    ui.add_space(16.0);
+                    ui.label("Window size:");
+                    flash.window_size = flash.window_size.max(1);
+                    self.flash_window_numberpad.ui(ui, &mut flash.window_size);
                 }
                 ui.checkbox(&mut flash.random_order, "Random window order");
             });
@@ -1217,7 +1234,7 @@ impl AnimationEditState {
             });
 
             ui.label(
-                "Animation and scene speed affect only the dark gap; on-time stays fixed. Beat mode follows the beat/sub-beat grid.",
+                "Animation and scene speed affect only the dark gap; on-time stays fixed. Beat mode follows the beat/sub-beat grid. 'By group' flashes each fixture group of the selection in turn.",
             );
             ui.separator();
 

@@ -208,15 +208,16 @@ fn read_showfile_logic(
                 .filter(|r| r.owner_plugin_id.is_some())
                 .cloned()
                 .collect();
-            artnet_output.receivers =
-                preserved
-                    .into_iter()
-                    .chain(
-                        showfile.artnet.receivers.into_iter().map(|receiver| {
-                            ArtNetReceiver::user(receiver.address, receiver.enabled)
-                        }),
-                    )
-                    .collect();
+            artnet_output.receivers = preserved
+                .into_iter()
+                .chain(showfile.artnet.receivers.into_iter().map(|receiver| {
+                    let mut entry = ArtNetReceiver::user(receiver.address, receiver.enabled);
+                    if let Some((first, last)) = receiver.universes {
+                        entry.set_universe_range(first, last);
+                    }
+                    entry
+                }))
+                .collect();
 
             dmx.load_showfile(core_engine);
 
@@ -478,6 +479,59 @@ mod tests {
 
         assert_eq!(loaded.format_version, LEGACY_SHOWFILE_VERSION);
         assert_eq!(loaded.stage, StageScene::default());
+    }
+
+    #[test]
+    fn loading_a_showfile_restores_receiver_universe_ranges() {
+        use std::sync::RwLock;
+
+        let directory = TempDir::new("blaulicht-artnet-range").unwrap();
+        let path = directory.path().join("show.json");
+        let showfile = CoreShowfile {
+            format_version: current_showfile_version(),
+            engine: SaveEngineState::default(),
+            artnet: ShowfileArtNetState {
+                receivers: vec![
+                    blaulicht_shared::ShowfileArtNetReceiver {
+                        address: "10.0.0.1:6454".parse().unwrap(),
+                        enabled: true,
+                        universes: Some((5, 3)),
+                    },
+                    blaulicht_shared::ShowfileArtNetReceiver {
+                        address: "10.0.0.2:6454".parse().unwrap(),
+                        enabled: false,
+                        universes: None,
+                    },
+                ],
+            },
+            plugin_state: HashMap::new(),
+            stage: StageScene::default(),
+            ui: None,
+        };
+        fs::write(&path, serde_json::to_vec(&showfile).unwrap()).unwrap();
+
+        let dmx = RwLock::new(dmx::EngineState::default());
+        let artnet = RwLock::new(ArtNetOutput::default());
+        let plugin_state = Arc::new(Mutex::new(HashMap::new()));
+        read_showfile_logic(
+            path,
+            &mut dmx.write().unwrap(),
+            &mut artnet.write().unwrap(),
+            &plugin_state,
+        )
+        .unwrap();
+
+        let receivers = &artnet.read().unwrap().receivers;
+        assert_eq!(receivers.len(), 2);
+        // Inverted bounds are normalised on load.
+        assert_eq!(
+            (receivers[0].first_universe, receivers[0].last_universe),
+            (3, 5)
+        );
+        assert!(!receivers[0].sends_universe(2));
+        assert!(receivers[0].sends_universe(5));
+        // Pre-range showfiles keep sending every universe.
+        assert!(receivers[1].sends_all_universes());
     }
 
     #[test]

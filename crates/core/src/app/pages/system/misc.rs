@@ -336,198 +336,197 @@ impl BlaulichtApp {
         ui.heading(tab.label());
         ui.add_space(8.0);
 
-        egui::ScrollArea::vertical().show(ui, |ui| match tab {
-            SystemTab::General => {}
-            SystemTab::Dmx => {
-                let health = self.data.state.health_data.read().unwrap();
-                render_dmx_universe_rows(ui, &health.dmx_universes_healthy);
-            }
-            SystemTab::ArtNet => {
-                self.render_artnet_management(ui);
-            }
-            SystemTab::Plugins => {
-                self.render_plugin_management(ui, screen_id);
-            }
-            SystemTab::Midi => {
-                let health = self.data.state.health_data.read().unwrap();
-                if health.midi_health.available_devices.is_empty() {
-                    ui.label("No MIDI inputs detected.");
+        // Solid (non-floating) scroll bar so it stays visible instead of only
+        // fading in on hover; the content is laid out beside it.
+        ui.spacing_mut().scroll.floating = false;
+        ui.spacing_mut().scroll.bar_width = 10.0;
+        egui::ScrollArea::vertical()
+            .id_salt("system-tab-content")
+            .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+            .show(ui, |ui| match tab {
+                SystemTab::General => {}
+                SystemTab::Dmx => {
+                    let health = self.data.state.health_data.read().unwrap();
+                    render_dmx_universe_rows(ui, &health.dmx_universes_healthy);
                 }
-                for device in &health.midi_health.available_devices {
-                    let status = health
-                        .midi_health
-                        .devices
-                        .get(device)
-                        .map(|state| format!("{state:?}"))
-                        .unwrap_or_else(|| "AVAILABLE".to_string());
-                    ui.label(format!("{device}  {status}"));
+                SystemTab::ArtNet => {
+                    self.render_artnet_management(ui);
                 }
-            }
-            SystemTab::Serial => {
-                let health = self.data.state.health_data.read().unwrap();
-                if health.serial_health.devices.is_empty() {
-                    ui.label("No serial devices opened by Blaulicht.");
+                SystemTab::Plugins => {
+                    self.render_plugin_management(ui, screen_id);
                 }
-                let mut devices: Vec<_> = health.serial_health.devices.iter().collect();
-                devices.sort_by_key(|(name, _)| *name);
-                for (name, state) in devices {
-                    ui.label(format!("{name}  {state:?}"));
+                SystemTab::Midi => {
+                    let health = self.data.state.health_data.read().unwrap();
+                    if health.midi_health.available_devices.is_empty() {
+                        ui.label("No MIDI inputs detected.");
+                    }
+                    for device in &health.midi_health.available_devices {
+                        let status = health
+                            .midi_health
+                            .devices
+                            .get(device)
+                            .map(|state| format!("{state:?}"))
+                            .unwrap_or_else(|| "AVAILABLE".to_string());
+                        ui.label(format!("{device}  {status}"));
+                    }
                 }
-            }
-            SystemTab::Screens => {
-                if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
-                    self.add_external_screen();
+                SystemTab::Serial => {
+                    let health = self.data.state.health_data.read().unwrap();
+                    if health.serial_health.devices.is_empty() {
+                        ui.label("No serial devices opened by Blaulicht.");
+                    }
+                    let mut devices: Vec<_> = health.serial_health.devices.iter().collect();
+                    devices.sort_by_key(|(name, _)| *name);
+                    for (name, state) in devices {
+                        ui.label(format!("{name}  {state:?}"));
+                    }
                 }
-                ui.add_space(8.0);
-                if self.external_screens.is_empty() {
-                    ui.label("No external screens.");
+                SystemTab::Screens => {
+                    if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
+                        self.add_external_screen();
+                    }
+                    ui.add_space(8.0);
+                    if self.external_screens.is_empty() {
+                        ui.label("No external screens.");
+                    }
+                    let mut remove = None;
+                    for (index, screen) in self.external_screens.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "#{index}  {:.0} x {:.0}",
+                                screen.dimensions.x, screen.dimensions.y
+                            ));
+                            if screen.owner_plugin_id.is_none()
+                                && ui.small_button("Remove").clicked()
+                            {
+                                remove = Some(index);
+                            }
+                        });
+                    }
+                    if let Some(index) = remove {
+                        self.remove_external_screen(index);
+                    }
                 }
-                let mut remove = None;
-                for (index, screen) in self.external_screens.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "#{index}  {:.0} x {:.0}",
-                            screen.dimensions.x, screen.dimensions.y
-                        ));
-                        if screen.owner_plugin_id.is_none() && ui.small_button("Remove").clicked() {
-                            remove = Some(index);
-                        }
-                    });
-                }
-                if let Some(index) = remove {
-                    self.remove_external_screen(index);
-                }
-            }
-        });
+            });
     }
 
     fn render_plugin_management(&mut self, ui: &mut egui::Ui, screen_id: ScreenId) {
-        egui::ScrollArea::vertical()
-            .id_salt("system-plugin-list")
-            .auto_shrink([false, false])
-            .max_height(200.0)
-            .show(ui, |ui| {
-                {
-                    let plugins = self.data.state.plugins.read().unwrap();
-                    let current_visibility =
-                        self.data.state.plugin_ui_visibility.read().unwrap().clone();
+        // The caller (`render_system_tab_content`) already wraps the tab in a
+        // page-height scroll area, so the list is not scrolled separately here.
+        let plugins = self.data.state.plugins.read().unwrap();
+        let current_visibility = self.data.state.plugin_ui_visibility.read().unwrap().clone();
 
-                    for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
-                        let box_size = egui::vec2(ui.available_width(), 42.0);
-                        ui.allocate_ui_with_layout(
-                            box_size,
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                let (rect, _response) =
-                                    ui.allocate_exact_size(box_size, egui::Sense::empty());
-                                let painter = ui.painter();
+        for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
+            let box_size = egui::vec2(ui.available_width(), 42.0);
+            ui.allocate_ui_with_layout(
+                box_size,
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    let (rect, _response) = ui.allocate_exact_size(box_size, egui::Sense::empty());
+                    let painter = ui.painter();
 
-                                // State color and blinking logic
-                                let mut show_border = true;
-                                let border_color = match (plugin.has_errored(), plugin.is_enabled())
-                                {
-                                    // Alive and healthy.
-                                    (false, true) => egui::Color32::from_rgb(0, 200, 0),
-                                    // Dead, crashed.
-                                    (true, true) => {
-                                        let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 0, 0)
-                                    }
-                                    // Disabled.
-                                    (_, false) => {
-                                        let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
-                                        show_border = blink;
-                                        egui::Color32::from_rgb(200, 200, 0)
-                                    }
-                                };
+                    // State color and blinking logic
+                    let mut show_border = true;
+                    let border_color = match (plugin.has_errored(), plugin.is_enabled()) {
+                        // Alive and healthy.
+                        (false, true) => egui::Color32::from_rgb(0, 200, 0),
+                        // Dead, crashed.
+                        (true, true) => {
+                            let blink = ((self.animation_time * 8.0) as i32) % 2 == 0;
+                            show_border = blink;
+                            egui::Color32::from_rgb(200, 0, 0)
+                        }
+                        // Disabled.
+                        (_, false) => {
+                            let blink = ((self.animation_time * 2.0) as i32) % 2 == 0;
+                            show_border = blink;
+                            egui::Color32::from_rgb(200, 200, 0)
+                        }
+                    };
 
-                                // Draw the main box
-                                painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
+                    // Draw the main box
+                    painter.rect_filled(rect, 0.0, egui::Color32::from_gray(30));
 
-                                // Draw the left border if needed
-                                let border_width = 6.0;
-                                if show_border {
-                                    let border_rect = egui::Rect::from_min_max(
-                                        rect.left_top(),
-                                        rect.left_bottom() + egui::vec2(border_width, 0.0),
-                                    );
-                                    painter.rect_filled(border_rect, 0.0, border_color);
-                                }
-
-                                // Plugin name
-                                let path_str = plugin.path.to_string().to_string();
-                                let path = Path::new(&path_str);
-                                let basename = path.file_stem().unwrap().to_string_lossy();
-                                // let basename = path.file_name().unwrap().to_string_lossy();
-                                let name = format!("P:{basename} ({})", i + 1);
-
-                                let text_padding = 5.0;
-
-                                painter.text(
-                                    rect.left_center()
-                                        + egui::vec2(border_width + text_padding, 0.0),
-                                    egui::Align2::LEFT_CENTER,
-                                    name,
-                                    egui::FontId::monospace(12.0),
-                                    if plugin.has_errored() {
-                                        Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_gray(90)
-                                    },
-                                );
-                            },
+                    // Draw the left border if needed
+                    let border_width = 6.0;
+                    if show_border {
+                        let border_rect = egui::Rect::from_min_max(
+                            rect.left_top(),
+                            rect.left_bottom() + egui::vec2(border_width, 0.0),
                         );
-                        ui.horizontal(|ui| {
-                            // TODO: write a helper function for accessing this screen-specific
-                            // state.
-                            let visibility = *current_visibility
-                                .get(plugin_id)
-                                .unwrap_or(&PluginOpenState::CLOSED);
-
-                            let label = if visibility.open {
-                                "Hide UI"
-                            } else {
-                                "Show UI"
-                            };
-                            if ui.small_button(label).clicked() {
-                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-
-                                // PATCH: ensure that the window is only open on one screen.
-
-                                let entry =
-                                    map.entry(*plugin_id).or_insert(PluginOpenState::CLOSED);
-
-                                match visibility.open {
-                                    true => {
-                                        entry.open = false;
-                                    }
-                                    false => {
-                                        entry.open = true;
-                                        entry.screen_id = screen_id;
-                                    }
-                                };
-
-                                // Notify plugins.
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
-                                            plugin_id: *plugin_id,
-                                            open: entry.open,
-                                        }),
-                                    ));
-                            }
-                        });
-                        ui.add_space(8.0);
+                        painter.rect_filled(border_rect, 0.0, border_color);
                     }
 
-                    ui.separator();
+                    // Plugin name
+                    let path_str = plugin.path.to_string().to_string();
+                    let path = Path::new(&path_str);
+                    let basename = path.file_stem().unwrap().to_string_lossy();
+                    // let basename = path.file_name().unwrap().to_string_lossy();
+                    let name = format!("P:{basename} ({})", i + 1);
 
-                    mem::drop(plugins)
+                    let text_padding = 5.0;
+
+                    painter.text(
+                        rect.left_center() + egui::vec2(border_width + text_padding, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        name,
+                        egui::FontId::monospace(12.0),
+                        if plugin.has_errored() {
+                            Color32::WHITE
+                        } else {
+                            egui::Color32::from_gray(90)
+                        },
+                    );
+                },
+            );
+            ui.horizontal(|ui| {
+                // TODO: write a helper function for accessing this screen-specific
+                // state.
+                let visibility = *current_visibility
+                    .get(plugin_id)
+                    .unwrap_or(&PluginOpenState::CLOSED);
+
+                let label = if visibility.open {
+                    "Hide UI"
+                } else {
+                    "Show UI"
+                };
+                if ui.small_button(label).clicked() {
+                    let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
+
+                    // PATCH: ensure that the window is only open on one screen.
+
+                    let entry = map.entry(*plugin_id).or_insert(PluginOpenState::CLOSED);
+
+                    match visibility.open {
+                        true => {
+                            entry.open = false;
+                        }
+                        false => {
+                            entry.open = true;
+                            entry.screen_id = screen_id;
+                        }
+                    };
+
+                    // Notify plugins.
+                    self.data
+                        .event_bus_connection
+                        .send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
+                                plugin_id: *plugin_id,
+                                open: entry.open,
+                            }),
+                        ));
                 }
             });
+            ui.add_space(8.0);
+        }
+
+        ui.separator();
+
+        mem::drop(plugins)
     }
 }
 

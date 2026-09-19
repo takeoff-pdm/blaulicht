@@ -49,9 +49,15 @@ pub enum PaletteOp {
     Add(f32),
     Mul(f32),
     Div(f32),
-    Clamp { min: u16, max: u16 },
+    Clamp {
+        min: u16,
+        max: u16,
+    },
     Min(u16),
     Max(u16),
+    /// Treats the value as a hue in degrees and returns the complementary hue
+    /// (`(hue + 180) mod 360`).
+    HueComplementary,
 }
 
 impl PaletteOp {
@@ -69,6 +75,7 @@ impl PaletteOp {
             Self::Clamp { min, max } => value.clamp(min as f32, max as f32),
             Self::Min(n) => value.min(n as f32),
             Self::Max(n) => value.max(n as f32),
+            Self::HueComplementary => (value + 180.0).rem_euclid(360.0),
         }
     }
 
@@ -80,6 +87,7 @@ impl PaletteOp {
             Self::Clamp { .. } => "Clamp",
             Self::Min(_) => "Min",
             Self::Max(_) => "Max",
+            Self::HueComplementary => "HueComplementary",
         }
     }
 }
@@ -113,10 +121,7 @@ impl PaletteKind {
             // All branches go through `apply_value` so palette-bound (frozen)
             // slots are respected consistently across palette kinds.
             PaletteKind::Color(color) => {
-                state.apply_value(
-                    color.h.clamp(0.0, 360.0) as u16,
-                    FixtureProperty::ColorHue,
-                );
+                state.apply_value(color.h.clamp(0.0, 360.0) as u16, FixtureProperty::ColorHue);
                 state.apply_value(
                     color.s.map_range(0.0..1.0, 0.0..255.0) as u16,
                     FixtureProperty::ColorSaturation,
@@ -150,8 +155,7 @@ impl PaletteKind {
                     // Same depth as `properties_via_chain` above: resolving one
                     // hop shallower made deep chains report a property as
                     // covered and then resolve it to 0.
-                    let inner =
-                        resolve_via_chain(palettes, *target, prop, MAX_PALETTE_CHAIN_DEPTH);
+                    let inner = resolve_via_chain(palettes, *target, prop, MAX_PALETTE_CHAIN_DEPTH);
                     // Ops apply only to the selected property (or to all when
                     // none is selected). Other properties pass through, so e.g.
                     // a color target keeps its hue/saturation while only the
@@ -282,5 +286,18 @@ pub fn would_create_cycle(
             PaletteKind::Pointer { target: next, .. } => current = *next,
             _ => return false,
         }
+    }
+}
+
+#[cfg(test)]
+mod palette_op_tests {
+    use super::PaletteOp;
+
+    #[test]
+    fn hue_complementary_wraps_around_360() {
+        assert_eq!(PaletteOp::HueComplementary.apply(30.0), 210.0);
+        assert_eq!(PaletteOp::HueComplementary.apply(300.0), 120.0);
+        assert_eq!(PaletteOp::HueComplementary.apply(180.0), 0.0);
+        assert_eq!(PaletteOp::HueComplementary.apply(-30.0), 150.0);
     }
 }

@@ -117,6 +117,7 @@ enum PaletteOpKind {
     Clamp,
     Min,
     Max,
+    HueComplementary,
 }
 
 impl Display for PaletteOpKind {
@@ -128,18 +129,20 @@ impl Display for PaletteOpKind {
             Self::Clamp => write!(f, "Clamp"),
             Self::Min => write!(f, "Min"),
             Self::Max => write!(f, "Max"),
+            Self::HueComplementary => write!(f, "Hue Compl."),
         }
     }
 }
 
 impl PaletteOpKind {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Add,
         Self::Mul,
         Self::Div,
         Self::Clamp,
         Self::Min,
         Self::Max,
+        Self::HueComplementary,
     ];
 
     fn from_op(op: &PaletteOp) -> Self {
@@ -150,6 +153,7 @@ impl PaletteOpKind {
             PaletteOp::Clamp { .. } => Self::Clamp,
             PaletteOp::Min(_) => Self::Min,
             PaletteOp::Max(_) => Self::Max,
+            PaletteOp::HueComplementary => Self::HueComplementary,
         }
     }
 
@@ -161,6 +165,7 @@ impl PaletteOpKind {
             Self::Clamp => PaletteOp::Clamp { min: 0, max: 255 },
             Self::Min => PaletteOp::Min(255),
             Self::Max => PaletteOp::Max(0),
+            Self::HueComplementary => PaletteOp::HueComplementary,
         }
     }
 }
@@ -769,6 +774,9 @@ impl BlaulichtApp {
                     }
                     PaletteOp::Min(n) | PaletteOp::Max(n) => {
                         ui.add(egui::DragValue::new(n).range(0..=u16::MAX));
+                    }
+                    PaletteOp::HueComplementary => {
+                        ui.label("(hue + 180) mod 360");
                     }
                 }
 

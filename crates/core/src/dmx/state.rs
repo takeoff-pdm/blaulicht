@@ -362,11 +362,7 @@ impl Default for EngineState {
             selection_stack: VecDeque::new(),
             control_buffer: FixtureState::default(),
             views: hashmap! {
-                0 => View {
-                    name: "Default View".to_string(),
-                    base_scene: 0,
-                    overlays: vec![],
-                }
+                0 => View::new("Default View".to_string(), 0, vec![])
             }
             .into_iter()
             .collect(),
