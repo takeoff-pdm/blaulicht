@@ -430,6 +430,7 @@ impl BlaulichtApp {
         ui: &mut egui::Ui,
         render_context: crate::app::page::PageRenderContext,
     ) {
+        let panel_max = ui.clip_rect().max;
         self.render_add_animation_dialog(ctx, ui);
         self.render_presets_dialog(ctx, ui);
         self.render_delete_animation_dialog(ctx, ui);
@@ -544,7 +545,7 @@ impl BlaulichtApp {
                                         if let Some(value_changed) = self
                                             .animation_ui_state
                                             .edit_state
-                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.data, &[])
+                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.data, &dmx_engine.get_selection().fixtures, panel_max)
                                         {
                                             if let AnimationSpecBody::WasmPlugin(wasm) =
                                                 &value_changed.body
@@ -616,6 +617,9 @@ pub struct AnimationEditState {
     mod_preview_runtime: AudioModulationRuntime,
     mod_preview_sample: Option<AudioModulationSample>,
     pub(crate) wasm_editor_instance_id: u64,
+    /// Bottom-right corner of the visible panel, captured by the caller: nested layouts make
+    /// `available_height`/`available_width` meaningless by the time the plugin UI is rendered.
+    wasm_ui_panel_max: egui::Pos2,
 }
 
 impl Default for AnimationEditState {
@@ -681,6 +685,7 @@ impl Default for AnimationEditState {
             mod_preview_runtime: AudioModulationRuntime::default(),
             mod_preview_sample: None,
             wasm_editor_instance_id: NEXT_WASM_EDITOR_INSTANCE.fetch_add(1, Ordering::Relaxed),
+            wasm_ui_panel_max: egui::Pos2::ZERO,
         }
     }
 }
@@ -719,7 +724,9 @@ impl AnimationEditState {
         live_audio: &blaulicht_audio_engine::CollectorOutput,
         data: &crate::state::AppStateWrapper,
         wasm_fixtures: &[(u8, u8)],
+        panel_max: egui::Pos2,
     ) -> Option<AnimationSpec> {
+        self.wasm_ui_panel_max = panel_max;
         let mut apply_clicked = false;
         let mut upgrade_legacy_wasm = false;
 
@@ -769,6 +776,15 @@ impl AnimationEditState {
         data: &crate::state::AppStateWrapper,
         fixtures: &[(u8, u8)],
     ) {
+        /// Space reserved below the plugin UI for the editor's own Apply button.
+        const APPLY_ROW_HEIGHT: f32 = 44.0;
+        /// Floor for degenerate panels only; anything larger would overflow a short panel.
+        const MIN_WASM_UI_HEIGHT: f32 = 60.0;
+        /// ...or below this in a very narrow one.
+        const MIN_WASM_UI_WIDTH: f32 = 240.0;
+        /// Keeps the scroll bar off the panel border.
+        const PANEL_MARGIN: f32 = 12.0;
+
         let AnimationSpecBody::WasmPlugin(ref mut wasm) = self.working_state.body else {
             return;
         };
@@ -831,15 +847,39 @@ impl AnimationEditState {
                 .cloned();
             if let Some(ops) = ops {
                 ui.separator();
-                let mut index = 0;
-                crate::app::plugin_ui::render_plugin_ops(
-                    ui,
-                    &ops,
-                    &mut index,
-                    data,
-                    *plugin_id,
-                    Some(self.wasm_editor_instance_id),
-                );
+                // Plugin editor UIs are arbitrarily tall; keep them scrollable and leave room for
+                // the Apply button below instead of letting them overflow the panel.
+                // `available_height` is meaningless inside the surrounding horizontal layout, so
+                // derive the room left from the panel bottom the caller captured.
+                let cursor = ui.cursor().min;
+                // A panel inside a scroll area reports a clip rect larger than the window, so cap
+                // against the window too.
+                let screen = ui.ctx().screen_rect();
+                let limit = self.wasm_ui_panel_max.min(screen.max);
+                let height =
+                    (limit.y - cursor.y - APPLY_ROW_HEIGHT).max(MIN_WASM_UI_HEIGHT);
+                let width = (limit.x - cursor.x - PANEL_MARGIN)
+                    .min(ui.available_width())
+                    .max(MIN_WASM_UI_WIDTH);
+                let size = egui::vec2(width, height);
+                // `allocate_ui` claims the room first: nested layouts report almost no available
+                // height here, which would otherwise collapse the scroll area to a few pixels.
+                ui.allocate_ui(size, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("wasm_animation_editor", self.wasm_editor_instance_id))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            let mut index = 0;
+                            crate::app::plugin_ui::render_plugin_ops(
+                                ui,
+                                &ops,
+                                &mut index,
+                                data,
+                                *plugin_id,
+                                Some(self.wasm_editor_instance_id),
+                            );
+                        });
+                });
             } else {
                 ui.label("The plugin has not produced editor UI yet.");
             }

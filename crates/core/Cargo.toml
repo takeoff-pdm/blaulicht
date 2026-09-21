@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-core"
-version = "0.26.0"
+version = "0.28.0"
 authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
@@ -73,7 +73,7 @@ eframe = { version = "0.34.1", default-features = false, features = [
     #"persistence",   # Enable restoring app state when restarting the app.
 ] }
 egui_plot = "0.35.0"
-# egui_file = "0.26.0"
+# egui_file = "0.28.0"
 egui-phosphor = "0.12.0"
 egui_code_editor = { version = "=0.2.24" }
 egui_glow = "0.34.1"

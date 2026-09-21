@@ -10,7 +10,7 @@ use blaulicht_plugin_framework::ui;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, PluginUiEvent};
 
 use crate::legacy::apc_midi::MidiDevice;
-use crate::legacy::mapping::{is_reserved_pad, LED_WHITE, SHIFT_NOTE};
+use crate::legacy::mapping::{is_reserved_pad, LED_WHITE, SHIFT_NOTE, SINGLE_LED_ON};
 use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::LegacyState;
 
@@ -261,7 +261,7 @@ fn draw_pad(apc: &VirtualMidi, note: u8, clock: u32, learning: bool) {
     let (x, y, w, h) = pad_rect(note / 8, note % 8);
     let led = apc.led(note);
     let (r, g, b) = if led == 0 && is_reserved_pad(note) {
-        // Fixed pads (scene / video / page columns) get a faint
+        // Fixed pads (scene / page columns) get a faint
         // red tint so users learn they cannot be remapped.
         (52, 30, 34)
     } else {
@@ -283,12 +283,16 @@ fn draw_pad(apc: &VirtualMidi, note: u8, clock: u32, learning: bool) {
 
 /// Round single-colour button (scene launch, track buttons, shift). Like the
 /// hardware, track buttons light red and scene-launch buttons green for any
-/// non-zero velocity.
+/// non-zero velocity; `SINGLE_LED_ON` (a mapped but idle button) is drawn as a
+/// dim tint of that colour.
 fn draw_round_button(apc: &VirtualMidi, note: u8, (cx, cy): (i32, i32), clock: u32) {
     let v = apc.led(note);
+    let dim = v == SINGLE_LED_ON;
     let (r, g, b) = match note {
         _ if v == 0 => (48, 50, 56),
+        TRACK_BUTTON_FIRST..=107 if dim => (96, 28, 28),
         TRACK_BUTTON_FIRST..=107 => (230, 40, 40),
+        SCENE_LAUNCH_TOP..=119 if dim => (24, 84, 34),
         SCENE_LAUNCH_TOP..=119 => (40, 220, 60),
         _ => led_color(v),
     };

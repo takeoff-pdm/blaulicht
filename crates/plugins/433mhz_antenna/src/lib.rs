@@ -188,17 +188,10 @@ fn default_button_speed_cycle_start() -> [AnimationSpeedModifier; MAX_REMOTE_BUT
 struct ViewInfo {
     id: u8,
     view: View,
-    base_scene_name: Option<String>,
     overlay_names: Vec<(u8, Option<String>)>,
 }
 
 impl ViewInfo {
-    fn base_label(&self) -> String {
-        match &self.base_scene_name {
-            Some(name) => format!("{name} (#{})", self.view.base_scene),
-            None => format!("Scene #{}", self.view.base_scene),
-        }
-    }
 
     fn overlays_label(&self) -> String {
         if self.view.overlays.is_empty() {
@@ -221,10 +214,9 @@ impl ViewInfo {
 
     fn option_label(&self) -> String {
         format!(
-            "{} (#{}) – base {} – overlays {}",
+            "{} (#{}) – overlays {}",
             self.view.name,
             self.id,
-            self.base_label(),
             self.overlays_label()
         )
     }
@@ -569,17 +561,12 @@ impl SamplePlugin {
                             // The view's own masters first (alpha + speed), then the
                             // remote's speed cycle start overrides the speed.
                             let mut events = view_info.view.apply_events();
-                            events.push(ControlEvent::SetSceneMasterSpeed(
-                                view_info.view.base_scene,
-                                cycle_start,
-                            ));
                             for overlay in &view_info.view.overlays {
                                 events
                                     .push(ControlEvent::SetSceneMasterSpeed(*overlay, cycle_start));
                             }
                             bpf::send_event(ControlEvent::Transaction(events));
 
-                            self.cache_scene_speed(view_info.view.base_scene, cycle_start);
                             for overlay in &view_info.view.overlays {
                                 self.cache_scene_speed(*overlay, cycle_start);
                             }
@@ -985,15 +972,15 @@ impl Plugin for SamplePlugin {
         // Borrow the cached engine snapshot instead of cloning the whole
         // state every tick; only the three derived lists are kept.
         let (scenes, scene_speeds, view_infos) = bpf::with_dmx(|state| {
+            // `user_scenes()` hides the ephemeral BLANK scene, which must never
+            // show up as an assignable target on the remote.
             let scenes = state
-                .scenes
-                .iter()
+                .user_scenes()
                 .map(|(scene_id, scene)| (*scene_id, scene.name.clone()))
                 .collect::<Vec<_>>();
 
             let scene_speeds = state
-                .scenes
-                .iter()
+                .user_scenes()
                 .map(|(scene_id, scene)| (*scene_id, scene.sink.master_speed))
                 .collect::<Vec<_>>();
 
@@ -1001,10 +988,6 @@ impl Plugin for SamplePlugin {
                 .views
                 .iter()
                 .map(|(view_id, view)| {
-                    let base_scene_name = state
-                        .scenes
-                        .get(&view.base_scene)
-                        .map(|scene| scene.name.clone());
                     let overlay_names = view
                         .overlays
                         .iter()
@@ -1018,7 +1001,6 @@ impl Plugin for SamplePlugin {
                     ViewInfo {
                         id: *view_id,
                         view: view.clone(),
-                        base_scene_name,
                         overlay_names,
                     }
                 })

@@ -215,9 +215,13 @@ impl KorgSubSystem {
 
             self.active_groups = dmx.selection.group_ids.clone();
 
-            let mut scenes = vec![dmx.current_scene_focus];
-            scenes.extend_from_slice(&dmx.current_overlay_scenes);
-            self.scenes = scenes;
+            // The faders/knobs drive whatever is actually rendering: the
+            // overlay stack, or the single scene being previewed in live mode.
+            self.scenes = if dmx.live_mode {
+                vec![dmx.current_scene_focus]
+            } else {
+                dmx.current_overlay_scenes.clone()
+            };
 
             self.dmx = dmx;
 

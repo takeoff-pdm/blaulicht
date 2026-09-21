@@ -10,7 +10,7 @@ names.forEach((name,i)=>select.add(new Option(name,i)));
 let playing=true,position=0,last=performance.now();
 document.querySelector('#pause').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play'};
 select.onchange=()=>position=0;
-function draw(now){const dt=(now-last)/1000;last=now;if(playing)position=(position+dt*15*Number(document.querySelector('#speed').value))%180;
+function draw(now){const dt=Math.max(0,(now-last)/1000);last=now;if(playing)position=(position+dt*15*Number(document.querySelector('#speed').value))%180;
 const frame=clips[Number(select.value)][Math.floor(position)];ctx.fillStyle='#030409';ctx.fillRect(0,0,960,760);
 for(let tube=0;tube<5;tube++){const angle=-Math.PI/2+tube*Math.PI*2/5;
 for(let p=0;p<99;p++){const r=55+p*2.75,x=480+Math.cos(angle)*r,y=380+Math.sin(angle)*r,idx=(tube*99+p)*3;

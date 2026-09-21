@@ -5,7 +5,7 @@ use crate::{
         value::FixtureValue,
     },
     palette::Palette,
-    scene::{EngineSink, Scene},
+    scene::{BLANK_SCENE_ID, BLANK_SCENE_NAME, EngineSink, Scene},
     scene_graph::SceneGraphState,
     view::View,
 };
@@ -46,7 +46,8 @@ impl EngineSelection {
 pub type EngineGroups = BTreeMap<u8, FixtureGroup>;
 
 fn next_scene_id(scenes: &BTreeMap<u8, Scene>) -> Option<u8> {
-    (0..=u8::MAX).find(|id| !scenes.contains_key(id))
+    // `BLANK_SCENE_ID` (== u8::MAX) is reserved, hence the exclusive range.
+    (0..u8::MAX).find(|id| !scenes.contains_key(id))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
@@ -68,9 +69,13 @@ pub struct EngineState {
 
     pub views: BTreeMap<u8, View>,
 
-    // ID 0 is reserved for the 'empty' scene.
+    // ID 0 is reserved for the 'empty' scene, `BLANK_SCENE_ID` for the
+    // ephemeral blank base scene (see `ensure_blank_scene`).
     pub scenes: BTreeMap<u8, Scene>,
 
+    /// The scene every edit is written into, and the one the UI highlights.
+    /// This is *not* necessarily the rendered base layer -- see
+    /// [`EngineState::render_base_scene`].
     pub current_scene_focus: u8,
 
     // First scene is the least-significant.
@@ -84,9 +89,69 @@ pub struct EngineState {
 
     #[serde(default)]
     pub palettes: BTreeMap<u8, Palette>,
+
+    /// Programming mode: render only `current_scene_focus` and suppress every
+    /// overlay, so the operator sees the scene they are editing in isolation.
+    ///
+    /// Runtime-only and always `false` at boot. Persistence is governed by
+    /// `SaveEngineState`, which has no such field, so this stays `default`
+    /// rather than `skip` -- that keeps it visible to the inspector without
+    /// ever reaching a showfile.
+    #[serde(default)]
+    pub live_mode: bool,
 }
 
 impl EngineState {
+    /// The scene the renderer uses as its base layer.
+    ///
+    /// Normally the ephemeral `BLANK` scene, so that the operator's selection
+    /// never influences output: everything that plays lives in
+    /// `current_overlay_scenes`. In live mode the focused scene takes the base
+    /// slot instead, giving a real-time preview of what is being programmed.
+    ///
+    /// This is the single source of truth for the base layer; no other code may
+    /// recompute it from `live_mode` / `current_scene_focus`.
+    pub fn render_base_scene(&self) -> u8 {
+        if self.live_mode && self.scenes.contains_key(&self.current_scene_focus) {
+            self.current_scene_focus
+        } else {
+            BLANK_SCENE_ID
+        }
+    }
+
+    /// The overlays that actually render this frame.
+    ///
+    /// Live mode is exclusive: overlays are suppressed from the render but the
+    /// list itself is left untouched, so leaving live mode restores the rig
+    /// exactly as it was. (The scene-graph tick rewrites this list every frame,
+    /// so clearing it would be pointless anyway.)
+    pub fn rendered_overlays(&self) -> &[u8] {
+        if self.live_mode {
+            &[]
+        } else {
+            &self.current_overlay_scenes
+        }
+    }
+
+    /// Creates the ephemeral `BLANK` scene, or repairs it so that it holds a
+    /// default [`FixtureState`] for every currently patched fixture. Safe to
+    /// call repeatedly; it always resets `BLANK` to neutral.
+    pub fn ensure_blank_scene(&mut self) {
+        self.scenes.insert(
+            BLANK_SCENE_ID,
+            Scene {
+                sink: EngineSink::from_groups(&self.groups),
+                name: BLANK_SCENE_NAME.to_string(),
+            },
+        );
+    }
+
+    /// Scene ids excluding the ephemeral `BLANK` scene: what the user may
+    /// select, rename, delete, or bind to a view / scene graph.
+    pub fn user_scenes(&self) -> impl Iterator<Item = (&u8, &Scene)> {
+        self.scenes.iter().filter(|(id, _)| **id != BLANK_SCENE_ID)
+    }
+
     pub fn new_scene(&mut self, name: String) {
         if let Some(new_id) = next_scene_id(&self.scenes) {
             self.scenes.insert(
@@ -100,6 +165,9 @@ impl EngineState {
     }
 
     pub fn clone_scene(&mut self, name: String) {
+        if self.current_scene_focus == BLANK_SCENE_ID {
+            return;
+        }
         if let Some(new_id) = next_scene_id(&self.scenes) {
             if let Some(curr_scene) = self.scenes.get(&self.current_scene_focus) {
                 self.scenes.insert(
@@ -114,6 +182,9 @@ impl EngineState {
     }
 
     pub fn rename_scene(&mut self, scene_id: u8, name: String) -> bool {
+        if scene_id == BLANK_SCENE_ID {
+            return false;
+        }
         if let Some(scene) = self.scenes.get_mut(&scene_id) {
             scene.name = name;
             true
@@ -123,7 +194,13 @@ impl EngineState {
     }
 
     pub fn delete_scene(&mut self, scene_id: u8) -> bool {
-        if self.scenes.len() <= 1 {
+        if scene_id == BLANK_SCENE_ID {
+            return false;
+        }
+
+        // `BLANK` must not count towards the "keep at least one scene" floor,
+        // or the last user scene could never be deleted.
+        if self.user_scenes().count() <= 1 {
             return false;
         }
 
@@ -135,12 +212,11 @@ impl EngineState {
         self.current_overlay_scenes
             .retain(|overlay_id| *overlay_id != scene_id);
 
-        if self.current_scene_focus == scene_id {
-            if let Some((&new_focus, _)) = self.scenes.iter().next() {
-                self.current_scene_focus = new_focus;
-            }
-        } else if !self.scenes.contains_key(&self.current_scene_focus) {
-            if let Some((&new_focus, _)) = self.scenes.iter().next() {
+        if self.current_scene_focus == scene_id
+            || !self.scenes.contains_key(&self.current_scene_focus)
+        {
+            let new_focus = self.user_scenes().next().map(|(id, _)| *id);
+            if let Some(new_focus) = new_focus {
                 self.current_scene_focus = new_focus;
             }
         }
@@ -1416,5 +1492,125 @@ mod tests {
         assert!(!legacy_json.contains("lamp_function"));
         let legacy: FlashAnimationSpec = serde_json::from_str(&legacy_json).unwrap();
         assert_eq!(legacy.lamp_function, None);
+    }
+}
+
+#[cfg(test)]
+mod blank_scene_tests {
+    use super::*;
+
+    fn scene(name: &str) -> Scene {
+        Scene {
+            sink: EngineSink::from_groups(&BTreeMap::new()),
+            name: name.to_string(),
+        }
+    }
+
+    fn engine_with(scene_ids: &[u8]) -> EngineState {
+        let mut state = EngineState {
+            scenes: scene_ids.iter().map(|id| (*id, scene("s"))).collect(),
+            current_scene_focus: scene_ids[0],
+            ..EngineState::default()
+        };
+        state.ensure_blank_scene();
+        state
+    }
+
+    #[test]
+    fn base_is_blank_until_live_mode_is_entered() {
+        let mut state = engine_with(&[0, 1]);
+        state.current_scene_focus = 1;
+        state.current_overlay_scenes = vec![0];
+
+        assert_eq!(state.render_base_scene(), BLANK_SCENE_ID);
+        assert_eq!(state.rendered_overlays(), &[0]);
+
+        state.live_mode = true;
+        assert_eq!(state.render_base_scene(), 1);
+        // Live mode is exclusive, but the overlay list itself survives so that
+        // leaving live mode restores the rig exactly.
+        assert!(state.rendered_overlays().is_empty());
+        assert_eq!(state.current_overlay_scenes, vec![0]);
+
+        state.live_mode = false;
+        assert_eq!(state.rendered_overlays(), &[0]);
+    }
+
+    #[test]
+    fn live_mode_falls_back_to_blank_when_focus_is_gone() {
+        let mut state = engine_with(&[0]);
+        state.live_mode = true;
+        state.current_scene_focus = 9;
+        assert_eq!(state.render_base_scene(), BLANK_SCENE_ID);
+    }
+
+    #[test]
+    fn next_scene_id_never_hands_out_the_reserved_blank_id() {
+        let scenes: BTreeMap<u8, Scene> = (0..u8::MAX).map(|id| (id, scene("s"))).collect();
+        assert_eq!(next_scene_id(&scenes), None);
+    }
+
+    #[test]
+    fn ensure_blank_scene_is_neutral_and_covers_every_fixture() {
+        use crate::fixture::FixtureType;
+        use crate::fixture::light::Light;
+        use crate::fixture::state::{Fixture, FixtureGroup};
+
+        let mut state = engine_with(&[0]);
+        state.groups.insert(
+            3,
+            FixtureGroup {
+                fixtures: BTreeMap::from([(
+                    7,
+                    Fixture::new(
+                        0,
+                        1,
+                        "F".to_string(),
+                        FixtureType::from(Light::Generic3ChanNoAlpha),
+                    ),
+                )]),
+                ..FixtureGroup::default()
+            },
+        );
+        state.ensure_blank_scene();
+
+        let blank = &state.scenes[&BLANK_SCENE_ID];
+        assert_eq!(blank.name, BLANK_SCENE_NAME);
+        let blank_fixture = blank.sink.fixture_states.get(&(3, 7)).unwrap();
+        assert_eq!(
+            format!("{blank_fixture:?}"),
+            format!("{:?}", FixtureState::default())
+        );
+        assert!(blank.sink.changeset.is_empty());
+    }
+
+    #[test]
+    fn blank_is_read_only_and_does_not_count_towards_the_last_scene_floor() {
+        let mut state = engine_with(&[0, 1]);
+
+        assert!(!state.delete_scene(BLANK_SCENE_ID));
+        assert!(!state.rename_scene(BLANK_SCENE_ID, "nope".to_string()));
+
+        // Two user scenes plus BLANK: one delete is allowed, the next is not.
+        assert!(state.delete_scene(1));
+        assert!(!state.delete_scene(0));
+        assert!(state.scenes.contains_key(&BLANK_SCENE_ID));
+    }
+
+    #[test]
+    fn deleting_the_focused_scene_never_focuses_blank() {
+        let mut state = engine_with(&[0, 1]);
+        state.current_scene_focus = 1;
+        assert!(state.delete_scene(1));
+        assert_eq!(state.current_scene_focus, 0);
+    }
+
+    #[test]
+    fn user_scenes_excludes_blank() {
+        let state = engine_with(&[0, 1]);
+        assert_eq!(
+            state.user_scenes().map(|(id, _)| *id).collect::<Vec<_>>(),
+            vec![0, 1]
+        );
     }
 }

@@ -160,17 +160,10 @@ struct PersistedState {
 struct ViewInfo {
     id: u8,
     view: View,
-    base_scene_name: Option<String>,
     overlay_names: Vec<(u8, Option<String>)>,
 }
 
 impl ViewInfo {
-    fn base_label(&self) -> String {
-        match &self.base_scene_name {
-            Some(name) => format!("{name} (#{})", self.view.base_scene),
-            None => format!("Scene #{}", self.view.base_scene),
-        }
-    }
 
     fn overlays_label(&self) -> String {
         if self.view.overlays.is_empty() {
@@ -189,10 +182,9 @@ impl ViewInfo {
 
     fn option_label(&self) -> String {
         format!(
-            "{} (#{}) - base {} - overlays {}",
+            "{} (#{}) - overlays {}",
             self.view.name,
             self.id,
-            self.base_label(),
             self.overlays_label()
         )
     }
@@ -438,7 +430,6 @@ impl DDJSubSystem {
             return;
         };
 
-        self.dmx.current_scene_focus = view_info.view.base_scene;
         self.dmx.current_overlay_scenes = view_info.view.overlays.clone();
 
         bpf::send_event(ControlEvent::Transaction(view_info.view.apply_events()));
@@ -460,10 +451,6 @@ impl DDJSubSystem {
             .views
             .iter()
             .map(|(view_id, view)| {
-                let base_scene_name = dmx
-                    .scenes
-                    .get(&view.base_scene)
-                    .map(|scene| scene.name.clone());
                 let overlay_names = view
                     .overlays
                     .iter()
@@ -477,7 +464,6 @@ impl DDJSubSystem {
                 ViewInfo {
                     id: *view_id,
                     view: view.clone(),
-                    base_scene_name,
                     overlay_names,
                 }
             })

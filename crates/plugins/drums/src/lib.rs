@@ -477,7 +477,7 @@ impl DrumPlugin {
                         sequencer.name, sequencer.current_step_index, scene_name
                     );
 
-                    bpf::send_event(ControlEvent::SetSceneFocus(scene_index));
+                    bpf::send_event(ControlEvent::SetOverlays(vec![scene_index]));
                 }
             }
         }
@@ -769,7 +769,7 @@ impl Plugin for DrumPlugin {
         // Return to.
         let elapsed = input.clock.wrapping_sub(self.scene_changed);
         if self.scene_lifetime > 0 && elapsed > self.scene_lifetime {
-            send_event(ControlEvent::SetSceneFocus(self.return_to));
+            send_event(ControlEvent::SetOverlays(vec![self.return_to]));
             self.scene_lifetime = 0;
             self.scene_changed = 0;
             println!("return to | {elapsed}");

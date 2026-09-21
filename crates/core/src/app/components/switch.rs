@@ -1,5 +1,8 @@
 use egui::{pos2, vec2, Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
 
+/// Width of the drawn base plate. The widget may allocate more when its caption is wider.
+const PLATE_WIDTH: f32 = 64.0;
+
 /// A hardware-style toggle switch widget.
 ///
 /// Draws a chunky base plate with a sliding lever that snaps between two
@@ -23,12 +26,29 @@ impl<'a> Switch<'a> {
 
 impl<'a> Widget for Switch<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let label_space = if self.label.is_some() { 20.0 } else { 0.0 };
-        let desired_size = vec2(64.0, 44.0 + label_space);
+        // Lay the caption out before allocating: the label is painted centered under the
+        // plate, so a caption wider than the plate lands outside the allocated rect and is
+        // clipped by the surrounding container. Reserve the width the caption actually needs.
+        let galley = self.label.map(|label| {
+            ui.painter().layout_no_wrap(
+                label,
+                TextStyle::Body.resolve(ui.style()),
+                ui.visuals().text_color(),
+            )
+        });
+        let label_space = if galley.is_some() { 20.0 } else { 0.0 };
+        let width = galley
+            .as_ref()
+            .map_or(PLATE_WIDTH, |g| g.size().x.max(PLATE_WIDTH));
+        let desired_size = vec2(width, 44.0 + label_space);
 
         let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
         let body_height = (rect.height() - label_space).max(32.0);
-        let switch_rect = Rect::from_min_size(rect.min, vec2(rect.width(), body_height));
+        // The plate keeps its fixed size and centers inside a wider allocation.
+        let switch_rect = Rect::from_min_size(
+            pos2(rect.center().x - PLATE_WIDTH / 2.0, rect.top()),
+            vec2(PLATE_WIDTH, body_height),
+        );
 
         if response.clicked() {
             *self.state = !*self.state;
@@ -113,12 +133,7 @@ impl<'a> Widget for Switch<'a> {
         );
 
         // Optional label centered below the switch.
-        if let Some(label) = self.label {
-            let galley = painter.layout_no_wrap(
-                label,
-                TextStyle::Body.resolve(ui.style()),
-                ui.visuals().text_color(),
-            );
+        if let Some(galley) = galley {
             let text_pos = pos2(
                 rect.center().x - galley.size().x / 2.0,
                 switch_rect.bottom() + (label_space - galley.size().y) / 2.0,

@@ -69,6 +69,23 @@ impl Settings {
         2.0_f64.powf((self.speed.min(200) as f64 - 100.0) / 50.0)
     }
 }
+/// Measure real host time, including clock wrap. Update even while paused so
+/// resuming never integrates the paused interval. Cap long stalls at 250 ms.
+#[derive(Default)]
+pub struct MotionClock {
+    previous: Option<u32>,
+}
+impl MotionClock {
+    pub fn seconds(&mut self, clock: u32, initial_delta: u32) -> f64 {
+        let elapsed = self
+            .previous
+            .replace(clock)
+            .map(|last| clock.wrapping_sub(last))
+            .unwrap_or(initial_delta);
+        elapsed.min(250) as f64 / 1000.0
+    }
+}
+
 pub fn tempo(bpm: f64) -> (f64, bool) {
     if bpm.is_finite() && bpm > 0.0 {
         (bpm, false)
@@ -130,7 +147,7 @@ pub fn pixel(effect: u8, tube: usize, x: f64, beats: f64) -> Rgb {
     let offset = arm * 0.173;
     match effect {
         0 => {
-            let t = beats / 32.0;
+            let t = beats / 8.0;
             let n = 0.55 * wave(x * 1.3 - t + offset)
                 + 0.3 * wave(x * 3.1 + t * 0.7 + offset)
                 + 0.15 * wave(x * 6.0 - t * 0.4);

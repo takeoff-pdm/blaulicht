@@ -275,6 +275,10 @@ pub enum ControlEvent {
     RemoveOverlayScene(u8),
     AddOverlayScene(u8),
 
+    // Live (exclusive preview) mode: render only the focused scene.
+    SetLiveMode(bool),
+    ToggleLiveMode,
+
     // Scene masters.
     SetSceneMasterAlpha(u8, u8),
     SetSceneMasterSpeed(u8, AnimationSpeedModifier),
@@ -342,6 +346,8 @@ impl ControlEvent {
             | ControlEvent::SetOverlays(_)
             | ControlEvent::RemoveOverlayScene(_)
             | ControlEvent::AddOverlayScene(_)
+            | ControlEvent::SetLiveMode(_)
+            | ControlEvent::ToggleLiveMode
             | ControlEvent::SetSceneMasterAlpha(_, _)
             | ControlEvent::SetSceneMasterSpeed(_, _)
             | ControlEvent::SetChannelOverride(_, _, _)
@@ -516,7 +522,9 @@ impl ControlEvent {
             | ControlEvent::SetSceneFocus(_)
             | ControlEvent::SetOverlays(_)
             | Self::RemoveOverlayScene(_)
-            | Self::AddOverlayScene(_) => false,
+            | Self::AddOverlayScene(_)
+            | Self::SetLiveMode(_)
+            | Self::ToggleLiveMode => false,
             ControlEvent::SetSceneMasterAlpha(_, _) | ControlEvent::SetSceneMasterSpeed(_, _) => {
                 false
             }

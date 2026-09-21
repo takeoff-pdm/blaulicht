@@ -5,7 +5,9 @@ use crate::{
     },
     dmx::EngineState,
 };
-use blaulicht_shared::{view::View, ControlEvent, ControlEventMessage, EventOriginator};
+use blaulicht_shared::{
+    scene::BLANK_SCENE_ID, view::View, ControlEvent, ControlEventMessage, EventOriginator,
+};
 use egui::{Context, FontId, Frame, Key, Margin, RichText, TextEdit, Vec2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
@@ -21,7 +23,6 @@ pub struct ViewUI {
     delete_view_id: Option<u8>,
     new_view_name: String,
     overlay_picker_open: bool,
-    base_picker_open: bool,
     // For both overlay and base
     scene_picker_view_id: Option<u8>,
 }
@@ -36,7 +37,6 @@ impl Default for ViewUI {
             delete_view_id: None,
             new_view_name: DEFAULT_NEW_VIEW_NAME.to_string(),
             overlay_picker_open: false,
-            base_picker_open: false,
             scene_picker_view_id: None,
         }
     }
@@ -106,52 +106,6 @@ impl BlaulichtApp {
         }
     }
 
-    fn render_base_picker_dialog(&mut self, ctx: &Context) {
-        if !self.view_ui_state.base_picker_open {
-            return;
-        }
-
-        let Some(view_id) = self.view_ui_state.scene_picker_view_id else {
-            self.view_ui_state.base_picker_open = false;
-            return;
-        };
-
-        let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().clone() };
-
-        let Some(view) = engine_snapshot.0.views.get(&view_id) else {
-            self.view_ui_state.base_picker_open = false;
-            self.view_ui_state.scene_picker_view_id = None;
-            return;
-        };
-
-        let options: Vec<_> = engine_snapshot
-            .0
-            .scenes
-            .iter()
-            .filter(|(scene_id, _)| !view.overlays.contains(scene_id))
-            .map(|(key, scen)| (key, format!("{key} | {}", scen.name)))
-            .collect();
-
-        let current_selection = view.base_scene;
-
-        let (new_id, changed) = components::id_selection_dialog(
-            ctx,
-            options,
-            &current_selection,
-            &mut self.view_ui_state.base_picker_open,
-            "Base Scene".to_string(),
-        );
-
-        if changed {
-            self.view_ui_state.scene_picker_view_id = None;
-            let mut engine = self.data.state.dmx_engine.write().unwrap();
-            if let Some(view) = engine.0.views.get_mut(&view_id) {
-                view.base_scene = *new_id;
-                view.prune_masters();
-            }
-        }
-    }
-
     pub fn render_overlay_picker_dialog(&mut self, ctx: &Context) {
         if !self.view_ui_state.overlay_picker_open {
             return;
@@ -174,7 +128,7 @@ impl BlaulichtApp {
             .scenes
             .iter()
             .filter_map(|(scene_id, scene)| {
-                if *scene_id == view_snapshot.base_scene {
+                if *scene_id == BLANK_SCENE_ID {
                     return None;
                 }
 
@@ -244,7 +198,9 @@ impl BlaulichtApp {
                             new_name = DEFAULT_NEW_VIEW_NAME.to_string();
                         }
 
-                        let base_scene = engine.0.current_scene_focus;
+                        // A view captures what is playing, which is the
+                        // overlay stack -- the base slot belongs to BLANK.
+                        let overlays = engine.0.current_overlay_scenes.clone();
                         let new_id = (0..=u8::MAX)
                             .find(|candidate| !engine.0.views.contains_key(candidate))
                             .expect("view id overflow");
@@ -252,7 +208,7 @@ impl BlaulichtApp {
                         engine
                             .0
                             .views
-                            .insert(new_id, View::new(new_name.clone(), base_scene, vec![]));
+                            .insert(new_id, View::new(new_name.clone(), overlays));
 
                         drop(engine);
 
@@ -380,7 +336,6 @@ impl BlaulichtApp {
         self.render_add_view_dialog(ctx);
         self.render_delete_view(ctx);
         self.render_overlay_picker_dialog(ctx);
-        self.render_base_picker_dialog(ctx);
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
@@ -425,7 +380,6 @@ impl BlaulichtApp {
 
                         let Some(view_snapshot) = dmx_engine.0.views.get(&view_id).cloned() else {
                             self.view_ui_state.scene_picker_view_id = None;
-                            self.view_ui_state.base_picker_open = false;
                             self.view_ui_state.overlay_picker_open = false;
                             return;
                         };
@@ -470,25 +424,6 @@ impl BlaulichtApp {
                                         .unwrap_or_else(|| "Unknown".to_string())
                                 };
 
-                                // Base scene row.
-                                ui.label(RichText::new("Base Scene").strong());
-                                let base_id = view_snapshot.base_scene;
-                                let base_action = self.scene_row(
-                                    ui,
-                                    view_id,
-                                    base_id,
-                                    &scene_name(base_id),
-                                    &view_snapshot,
-                                    "Set Base",
-                                    true,
-                                );
-                                if base_action {
-                                    self.view_ui_state.base_picker_open = true;
-                                    self.view_ui_state.scene_picker_view_id = Some(view_id);
-                                }
-
-                                ui.add_space(6.0);
-
                                 // Overlay rows.
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new("Overlay Scenes").strong());
@@ -498,7 +433,7 @@ impl BlaulichtApp {
                                         .scenes
                                         .keys()
                                         .filter(|scene_id| {
-                                            **scene_id != view_snapshot.base_scene
+                                            **scene_id != BLANK_SCENE_ID
                                                 && !view_snapshot.overlays.contains(scene_id)
                                         })
                                         .count();

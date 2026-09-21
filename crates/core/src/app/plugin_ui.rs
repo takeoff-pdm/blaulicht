@@ -783,11 +783,12 @@ pub(crate) fn render_plugin_ops(
 
                 if resp.drag_started() {
                     if let Some(pos) = resp.interact_pointer_pos() {
-                        let origin = pos - resp.drag_delta() - rect.min;
+                        let origin = pos - resp.total_drag_delta().unwrap_or_default() - rect.min;
                         data.event_bus_connection.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragStart {
-                                id: *id, x: (origin.x * scale_x) as i32,
+                                id: *id,
+                                x: (origin.x * scale_x) as i32,
                                 y: (origin.y * scale_y) as i32,
                             }),
                         ));
@@ -799,7 +800,8 @@ pub(crate) fn render_plugin_ops(
                         data.event_bus_connection.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragEnd {
-                                id: *id, x: (local.x * scale_x) as i32,
+                                id: *id,
+                                x: (local.x * scale_x) as i32,
                                 y: (local.y * scale_y) as i32,
                             }),
                         ));

@@ -1073,5 +1073,13 @@ pub fn audio_tempo(bpm: Option<f32>, beat: bool) {
 /// `source` identifies the selected device within this plugin. Zero BPM releases
 /// the lease, just like `audio_tempo`; position is meaningful only on a beat.
 pub fn audio_tempo_bar(bpm: Option<f32>, beat: bool, beat_in_bar: Option<u8>, source: u8) {
-    unsafe { bl_audio_tempo_bar(PLUGIN_ID, bpm.unwrap_or(0.0), i32::from(beat), i32::from(beat_in_bar.unwrap_or(0)), i32::from(source)) }
+    unsafe {
+        bl_audio_tempo_bar(
+            PLUGIN_ID,
+            bpm.unwrap_or(0.0),
+            i32::from(beat),
+            i32::from(beat_in_bar.unwrap_or(0)),
+            i32::from(source),
+        )
+    }
 }

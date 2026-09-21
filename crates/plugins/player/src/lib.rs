@@ -507,7 +507,9 @@ impl TimelinePlugin {
                         continue;
                     }
                 };
-                bpf::send_event(ControlEvent::SetSceneFocus(scene_id));
+                // A base cue is "this scene is now the look": the render base
+                // belongs to BLANK, so that means an exclusive overlay stack.
+                bpf::send_event(ControlEvent::SetOverlays(vec![scene_id]));
                 bpf::send_event(ControlEvent::SetSceneMasterSpeed(scene_id, speed));
                 bpf::send_event(ControlEvent::SetSceneMasterAlpha(scene_id, cue.brightness));
             }
@@ -522,7 +524,7 @@ impl TimelinePlugin {
         if self.dmx_cache.scenes.is_empty() {
             ui::label("No scenes available.");
         } else {
-            for (scene_id, scene) in &self.dmx_cache.scenes {
+            for (scene_id, scene) in self.dmx_cache.user_scenes() {
                 let focus_marker = if *scene_id == self.dmx_cache.current_scene_focus {
                     "*"
                 } else {
@@ -543,7 +545,7 @@ impl TimelinePlugin {
             });
         }
 
-        for (scene_id, scene) in &self.dmx_cache.scenes {
+        for (scene_id, scene) in self.dmx_cache.user_scenes() {
             choices.push(SceneChoice {
                 key: SceneChoiceKey::Scene(*scene_id),
                 label: truncate_label(&format!("{}: {}", scene_id, scene.name), 24),

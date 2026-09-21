@@ -23,6 +23,43 @@ pub struct FixturePerfUi {
 }
 
 impl BlaulichtApp {
+    /// The `LIVE` toggle: exclusive programming mode.
+    ///
+    /// Off, the operator's selection has no effect on output -- the render base
+    /// is the ephemeral `BLANK` scene and whatever is playing stays playing, so
+    /// a scene can be built mid-set without disturbing the rig. On, the
+    /// selected scene takes the base slot and every overlay is suppressed,
+    /// giving a real-time preview of what is being programmed.
+    fn live_mode_toggle(&mut self, ui: &mut egui::Ui, live_mode: bool) {
+        // Scoped so the painter below can anchor the dot to the button's rect.
+        let scope = ui.scope(|ui| components::button(ui, live_mode, "LIVE", ButtonSize::Medium));
+
+        if scope.inner {
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::ToggleLiveMode,
+                ));
+        }
+
+        if live_mode {
+            const RADIUS: f32 = 4.0;
+            let rect = scope.response.rect;
+            ui.painter().circle_filled(
+                egui::pos2(rect.right() - RADIUS - 3.0, rect.top() + RADIUS + 3.0),
+                RADIUS,
+                Color32::RED,
+            );
+        }
+
+        scope.response.on_hover_text(if live_mode {
+            "Exclusive preview: only the selected scene renders. Click to return to the live rig."
+        } else {
+            "Edits go to the selected scene without affecting output. Click to preview it live."
+        });
+    }
+
     pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if self.add_animations_dialog_open {
             const HEIGHT: f32 = 430.0;
@@ -260,6 +297,19 @@ impl BlaulichtApp {
                                 }
                             };
 
+                            // Pushed to the far right of the toolbar. The height
+                            // is pinned to one button: a bare `with_layout` would
+                            // claim the whole panel and centre the toggle in it.
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(
+                                    ui.available_width(),
+                                    ButtonSize::Medium.dim().0.y,
+                                ),
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    self.live_mode_toggle(ui, dmx_engine.0.live_mode);
+                                },
+                            );
                         });
 
                         ui.separator();
@@ -573,6 +623,7 @@ impl BlaulichtApp {
                     }
 
                     let live_audio = self.live_audio_for_preview();
+                    let details_panel_max = ui.clip_rect().max;
                     let new_value_spec = self.fixture_perf_ui.scene_overview_animation_edit.show(
                         ui,
                         ctx,
@@ -580,6 +631,7 @@ impl BlaulichtApp {
                         &live_audio,
                         &self.data,
                         &selec.fixtures,
+                        details_panel_max,
                     );
 
                     if let Some(spec) = new_value_spec {

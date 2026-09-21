@@ -45,7 +45,14 @@ impl BlaulichtApp {
         painter.circle_filled(pos, radius, color);
     }
 
-    fn render_scene_performance(&mut self, ui: &mut egui::Ui, scene: (u8, &Scene), is_base: bool) {
+    /// `removable` is false for the exclusive live-mode card: that scene is
+    /// the render base, not an overlay, so there is nothing to remove.
+    fn render_scene_performance(
+        &mut self,
+        ui: &mut egui::Ui,
+        scene: (u8, &Scene),
+        removable: bool,
+    ) {
         egui::Frame::NONE
             .fill(ui.visuals().widgets.active.bg_fill)
             .inner_margin(Margin::symmetric(5, 5))
@@ -128,10 +135,10 @@ impl BlaulichtApp {
 
                             if components::action_button(
                                 ui,
-                                !is_base,
+                                removable,
                                 "DEL",
                                 ButtonSize::Small.with_width(22.0),
-                                Some("The base scene cannot be removed from the active view"),
+                                Some("The live preview scene is not an overlay"),
                             ) {
                                 self.data
                                     .event_bus_connection
@@ -214,17 +221,12 @@ impl BlaulichtApp {
         render_context: crate::app::page::PageRenderContext,
     ) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-        let base_scene = dmx_engine.0.current_scene_focus;
+        let live_mode = dmx_engine.0.live_mode;
         let current_overlays = dmx_engine.0.current_overlay_scenes.clone();
         let available_overlay_scenes: Vec<(u8, String)> = dmx_engine
             .0
-            .scenes
-            .iter()
+            .user_scenes()
             .filter_map(|(scene_id, scene)| {
-                if *scene_id == base_scene {
-                    return None;
-                }
-
                 if current_overlays.contains(scene_id) {
                     return None;
                 }
@@ -280,18 +282,33 @@ impl BlaulichtApp {
                     }
                 });
 
+                if live_mode {
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new(
+                            "LIVE - exclusive preview: overlays are suppressed until it is turned off",
+                        )
+                        .color(egui::Color32::RED)
+                        .strong(),
+                    );
+                }
+
                 ui.separator();
 
-                // Boolean values indicate whether scene is base.
-                let mut scenes = vec![(dmx_engine.0.current_scene_focus, true)];
-                scenes.extend(
+                // Boolean values indicate whether the scene can be removed.
+                // Live mode is exclusive: only the scene being programmed
+                // renders, and it occupies the base slot rather than the
+                // overlay stack.
+                let scenes: Vec<(u8, bool)> = if live_mode {
+                    vec![(dmx_engine.0.current_scene_focus, false)]
+                } else {
                     dmx_engine
                         .0
                         .current_overlay_scenes
                         .iter()
-                        .map(|s| (*s, false))
-                        .collect::<Vec<_>>(),
-                );
+                        .map(|s| (*s, true))
+                        .collect()
+                };
 
                 // 1. Define your card width (adjust to match your frame content)
                 let padding = 10.0;
@@ -321,7 +338,7 @@ impl BlaulichtApp {
                                         if !render_context.is_dynamic() {
                                             ui.set_min_width(500.0);
                                         }
-                                        for (i, (id, is_base)) in scenes.iter().enumerate() {
+                                        for (i, (id, removable)) in scenes.iter().enumerate() {
                                             if i > 0 && i % cols == 0 {
                                                 ui.end_row();
                                             }
@@ -330,11 +347,18 @@ impl BlaulichtApp {
                                                 continue;
                                             };
 
-                                            self.render_scene_performance(
-                                                ui,
-                                                (*id, scene_data),
-                                                *is_base,
-                                            );
+                                            // Key each card's widget ids on its
+                                            // scene rather than its position in
+                                            // the list -- live mode changes that
+                                            // list's length, and positional ids
+                                            // would migrate between cards.
+                                            ui.push_id(*id, |ui| {
+                                                self.render_scene_performance(
+                                                    ui,
+                                                    (*id, scene_data),
+                                                    *removable,
+                                                );
+                                            });
                                         }
                                     });
                             });

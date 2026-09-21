@@ -4,9 +4,9 @@ use crate::{
     engine::{AnimationSpec, EngineState},
     fixture::state::{Fixture, FixtureGroup, FixtureState},
     palette::Palette,
-    scene::{EngineSink, FixtureSelection, FixtureSelector, Scene},
+    scene::{BLANK_SCENE_ID, EngineSink, FixtureSelection, FixtureSelector, Scene},
     scene_graph::SceneGraphState,
-    view::View,
+    view::{View, ViewSceneMasters},
 };
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ where
 pub struct SaveEngineState {
     pub groups: Vec<SavedMapEntry<u8, SaveFixtureGroup>>,
     pub animations: Vec<SavedMapEntry<u8, AnimationTemplate>>,
-    pub views: Vec<SavedMapEntry<u8, View>>,
+    pub views: Vec<SavedMapEntry<u8, SavedView>>,
     pub scenes: Vec<SavedMapEntry<u8, SavedScene>>,
     pub current_scene_focus: u8,
     pub current_overlay_scenes: Vec<u8>,
@@ -134,6 +134,56 @@ impl From<SavedActiveAnimation> for ActiveAnimation {
             iteration_count: 0,
             reversed: false,
         }
+    }
+}
+
+/// On-disk shape of a [`View`].
+///
+/// Views used to own the render base via `base_scene`. That slot now belongs to
+/// the ephemeral `BLANK` scene, so the field is read-only legacy: showfiles
+/// written before the change still load, with their base folded into the front
+/// of the overlay stack. Nothing writes it any more.
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+pub struct SavedView {
+    pub name: String,
+    #[serde(default, skip_serializing)]
+    pub base_scene: Option<u8>,
+    pub overlays: Vec<u8>,
+    /// Kept as a map, exactly as `View` always serialized it: u8 keys are valid
+    /// JSON object keys, so converting this to `SavedMapEntry` would have
+    /// broken every existing showfile.
+    #[serde(default)]
+    pub masters: BTreeMap<u8, ViewSceneMasters>,
+}
+
+impl From<View> for SavedView {
+    fn from(value: View) -> Self {
+        Self {
+            name: value.name,
+            base_scene: None,
+            overlays: value.overlays,
+            masters: value.masters,
+        }
+    }
+}
+
+impl From<SavedView> for View {
+    fn from(value: SavedView) -> Self {
+        let mut overlays = value.overlays;
+
+        // Legacy: the base scene was the bottom-most layer of the view, so it
+        // becomes the least-significant overlay.
+        if let Some(base) = value.base_scene.filter(|base| !overlays.contains(base)) {
+            overlays.insert(0, base);
+        }
+
+        let mut view = Self {
+            name: value.name,
+            overlays,
+            masters: value.masters,
+        };
+        view.prune_masters();
+        view
     }
 }
 
@@ -256,12 +306,17 @@ impl From<EngineState> for SaveEngineState {
         let views = value
             .views
             .into_iter()
-            .map(|(key, view)| SavedMapEntry { key, value: view })
+            .map(|(key, view)| SavedMapEntry {
+                key,
+                value: SavedView::from(view),
+            })
             .collect();
 
+        // The BLANK scene is ephemeral: recreated at boot, never written out.
         let scenes = value
             .scenes
             .into_iter()
+            .filter(|(key, _)| *key != BLANK_SCENE_ID)
             .map(|(key, scene)| SavedMapEntry {
                 key,
                 value: SavedScene::from(scene),
@@ -304,7 +359,11 @@ impl TryFrom<SaveEngineState> for EngineState {
             .collect::<BTreeMap<_, _>>();
 
         let animations = SavedMapEntry::to_btree_map(value.animations);
-        let views = SavedMapEntry::to_btree_map(value.views);
+        let views: BTreeMap<u8, View> = value
+            .views
+            .into_iter()
+            .map(|SavedMapEntry { key, value }| (key, View::from(value)))
+            .collect();
 
         let scenes = value
             .scenes
@@ -330,6 +389,9 @@ impl TryFrom<SaveEngineState> for EngineState {
             overrides,
             scene_graphs: value.scene_graphs,
             palettes: SavedMapEntry::to_btree_map(value.palettes),
+            // Live mode is a programming aid, never restored from a showfile:
+            // booting into exclusive preview would black out a live rig.
+            live_mode: false,
         };
 
         // Legacy audio modes only ever exist on the wire; the in-memory model
@@ -398,7 +460,7 @@ mod tests {
         // Views.
         engine
             .views
-            .insert(1, View::new("View 1".to_string(), 1, vec![1]));
+            .insert(1, View::new("View 1".to_string(), vec![1]));
 
         // Scenes.
         let mut fixture_states = BTreeMap::new();
@@ -1027,5 +1089,113 @@ mod tests {
         let restored_engine =
             EngineState::try_from(decoded.engine).expect("Engine conversion should succeed");
         assert_eq!(restored_engine.groups.len(), engine.groups.len());
+    }
+}
+
+#[cfg(test)]
+mod blank_and_view_migration_tests {
+    use super::*;
+    use crate::scene::BLANK_SCENE_NAME;
+
+    fn scene(name: &str) -> Scene {
+        Scene {
+            sink: EngineSink::from_groups(&BTreeMap::new()),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn blank_scene_never_reaches_disk() {
+        let mut engine = EngineState {
+            scenes: BTreeMap::from([(0, scene("Real"))]),
+            ..EngineState::default()
+        };
+        engine.ensure_blank_scene();
+        assert_eq!(engine.scenes.len(), 2);
+
+        let saved = SaveEngineState::from(engine);
+        let keys: Vec<u8> = saved.scenes.iter().map(|entry| entry.key).collect();
+        assert_eq!(keys, vec![0]);
+
+        // ...and is not resurrected by the load path either: the engine
+        // recreates it in `load_showfile` against the live fixture patch.
+        // Live mode is a programming aid and must never be written out either.
+        assert!(!serde_json::to_string(&saved).unwrap().contains("live_mode"));
+
+        let restored = EngineState::try_from(saved).unwrap();
+        assert!(!restored.scenes.contains_key(&BLANK_SCENE_ID));
+        assert!(!restored.live_mode);
+    }
+
+    #[test]
+    fn legacy_view_base_scene_becomes_the_bottom_overlay() {
+        let saved: SavedView =
+            serde_json::from_str(r#"{"name":"v","base_scene":7,"overlays":[2,3]}"#).unwrap();
+        let view = View::from(saved);
+        assert_eq!(view.overlays, vec![7, 2, 3]);
+    }
+
+    #[test]
+    fn legacy_base_scene_already_in_overlays_is_not_duplicated() {
+        let saved: SavedView =
+            serde_json::from_str(r#"{"name":"v","base_scene":2,"overlays":[2,3]}"#).unwrap();
+        assert_eq!(View::from(saved).overlays, vec![2, 3]);
+    }
+
+    #[test]
+    fn view_round_trip_stops_writing_base_scene() {
+        let view = View::new("v".to_string(), vec![4, 5]);
+        let saved = SavedView::from(view.clone());
+        let json = serde_json::to_string(&saved).unwrap();
+        assert!(!json.contains("base_scene"));
+        assert_eq!(View::from(saved).overlays, view.overlays);
+    }
+
+    #[test]
+    fn view_masters_survive_a_round_trip_and_are_pruned() {
+        let mut view = View::new("v".to_string(), vec![4]);
+        view.masters.insert(
+            4,
+            ViewSceneMasters {
+                master_alpha: 42,
+                master_speed: AnimationSpeedModifier::_1,
+            },
+        );
+        // A master for a scene that is not an overlay must not survive.
+        view.masters.insert(9, ViewSceneMasters::default());
+
+        let restored = View::from(SavedView::from(view));
+        assert_eq!(restored.masters_for(4).master_alpha, 42);
+        assert_eq!(
+            restored.masters.keys().copied().collect::<Vec<_>>(),
+            vec![4]
+        );
+    }
+
+    /// Guards the exact on-disk shape of a pre-BLANK view. `masters` is a JSON
+    /// *object*; serializing it as an array would make every existing showfile
+    /// fail to parse and silently fall back to a default show.
+    #[test]
+    fn a_real_legacy_view_from_a_showfile_still_deserializes() {
+        let saved: SavedView = serde_json::from_str(
+            r#"{"name":"Default View","base_scene":3,"overlays":[2,4],"masters":{}}"#,
+        )
+        .expect("legacy view must still parse");
+        assert_eq!(View::from(saved).overlays, vec![3, 2, 4]);
+
+        let with_masters: SavedView = serde_json::from_str(
+            r#"{"name":"V","base_scene":1,"overlays":[2],"masters":{"2":{"master_alpha":50,"master_speed":"_1"}}}"#,
+        )
+        .expect("legacy view with masters must still parse");
+        let view = View::from(with_masters);
+        assert_eq!(view.overlays, vec![1, 2]);
+        assert_eq!(view.masters_for(2).master_alpha, 50);
+    }
+
+    #[test]
+    fn blank_scene_name_is_stable() {
+        let mut engine = EngineState::default();
+        engine.ensure_blank_scene();
+        assert_eq!(engine.scenes[&BLANK_SCENE_ID].name, BLANK_SCENE_NAME);
     }
 }

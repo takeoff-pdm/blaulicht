@@ -131,3 +131,16 @@ fn elapsed_time_partition_and_color_roundtrip() {
         .flatten()
         .all(|v| *v == 0.0));
 }
+
+#[test]
+fn real_clock_handles_slow_ticks_pause_and_wrap() {
+    let mut clock = MotionClock::default();
+    assert_eq!(clock.seconds(100, 12), 0.012);
+    assert_eq!(clock.seconds(150, 12), 0.05);
+    assert_eq!(clock.seconds(150, 12), 0.0);
+    assert_eq!(clock.seconds(10150, 12), 0.25);
+    assert_eq!(clock.seconds(10170, 12), 0.02);
+    let mut clock = MotionClock::default();
+    clock.seconds(u32::MAX - 9, 12);
+    assert_eq!(clock.seconds(10, 12), 0.02);
+}

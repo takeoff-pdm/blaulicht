@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use blaulicht_plugin_framework::{self as bpf, println, ui, MidiEvent};
 use blaulicht_shared::{
+    view::{View, ViewSceneMasters},
     AnimationSpeedModifier, AppPage, ControlEvent, ControlEventMessage, EngineState,
     MainUiEvent, PluginUiEvent,
 };
@@ -50,11 +51,12 @@ pub const MAX_MAPPINGS: usize = 64;
 // ---------------------------------------------------------------------------
 pub const APC_LED_STATUS: u8 = 0x96;
 /// The SHIFT button. Held (or toggled on the twin) it turns a "Hold overlay"
-/// press into a latched auto-hold; it is never assignable itself. Per the mk2
-/// protocol it has no LED, so it cannot be lit.
+/// press into a latched auto-hold; it is never assignable itself. It is held
+/// permanently lit at `LED_WHITE` so the modifier is always findable.
 pub const SHIFT_NOTE: u8 = 122;
 /// Single-LED status byte for the side buttons (track / scene launch): the
-/// mk2 only accepts these on channel 1 with velocity 0 off, 1 on, 2 blink.
+/// mk2 documents velocity 0 off, 1 on, 2 blink on channel 1, but in practice
+/// the buttons only light at `LED_WHITE` (3), which is what mapped ones use.
 pub const APC_SINGLE_LED_STATUS: u8 = 0x90;
 pub const SINGLE_LED_ON: u8 = 1;
 pub const LED_OFF: u8 = 0;
@@ -96,7 +98,6 @@ const HOLD_FLASH_ON: u32 = 250;
 // Reserved pads: still driven by the hardcoded legacy arms in mod.rs.
 // ---------------------------------------------------------------------------
 const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
-const VIDEO_PADS: [u8; 8] = [62, 54, 46, 38, 30, 22, 14, 6];
 const PAGE_PADS: [u8; 8] = [63, 55, 47, 39, 31, 23, 15, 7];
 
 /// Side buttons (track 100..108, scene launch 112..120) have a single-colour
@@ -114,9 +115,7 @@ fn led_status(note: u8) -> u8 {
 }
 
 pub fn is_reserved_pad(pad: u8) -> bool {
-    SCENES.contains(&pad)
-        || VIDEO_PADS.contains(&pad)
-        || PAGE_PADS.contains(&pad)
+    SCENES.contains(&pad) || PAGE_PADS.contains(&pad)
 }
 
 /// All pages, in navbar order. Stored in mappings by value (serde name).
@@ -359,6 +358,9 @@ fn one_or_many<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     TriggerView(u8),
+    /// View active while the button is held; the look present at press time is
+    /// restored on release. Shift+press latches it until the button is tapped.
+    HoldView(u8),
     FocusScene(u8),
     ToggleOverlay(u8),
     /// Overlay active while the button is held (press adds, release removes).
@@ -378,6 +380,7 @@ pub enum Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionKind {
     TriggerView,
+    HoldView,
     FocusScene,
     ToggleOverlay,
     HoldOverlay,
@@ -389,8 +392,9 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    const BUTTON_KINDS: [ActionKind; 7] = [
+    const BUTTON_KINDS: [ActionKind; 8] = [
         ActionKind::TriggerView,
+        ActionKind::HoldView,
         ActionKind::FocusScene,
         ActionKind::ToggleOverlay,
         ActionKind::HoldOverlay,
@@ -411,7 +415,8 @@ impl ActionKind {
     fn label(&self) -> &'static str {
         match self {
             ActionKind::TriggerView => "Trigger view",
-            ActionKind::FocusScene => "Focus scene",
+            ActionKind::HoldView => "Hold view (shift+press latches)",
+            ActionKind::FocusScene => "Solo scene",
             ActionKind::ToggleOverlay => "Toggle overlay scene",
             ActionKind::HoldOverlay => "Hold overlay scene (shift+press latches)",
             ActionKind::NavigatePage => "Navigate to page",
@@ -425,6 +430,7 @@ impl ActionKind {
     fn default_color(&self) -> u8 {
         match self {
             ActionKind::TriggerView => 21,      // green
+            ActionKind::HoldView => 25,         // mint
             ActionKind::FocusScene => 9,        // orange
             ActionKind::ToggleOverlay => 37,    // cyan
             ActionKind::HoldOverlay => 13,      // yellow
@@ -438,7 +444,7 @@ impl ActionKind {
     /// Target choices as `(code, name)`; `code` round-trips through `Action::with_target`.
     fn targets(&self, dmx: &EngineState) -> Vec<(u8, String)> {
         match self {
-            ActionKind::TriggerView => dmx
+            ActionKind::TriggerView | ActionKind::HoldView => dmx
                 .views
                 .iter()
                 .map(|(id, v)| (*id, format!("{} (#{id})", v.name)))
@@ -467,6 +473,7 @@ impl ActionKind {
     fn with_target(&self, code: u8) -> Action {
         match self {
             ActionKind::TriggerView => Action::TriggerView(code),
+            ActionKind::HoldView => Action::HoldView(code),
             ActionKind::FocusScene => Action::FocusScene(code),
             ActionKind::ToggleOverlay => Action::ToggleOverlay(code),
             ActionKind::HoldOverlay => Action::HoldOverlay(code),
@@ -488,6 +495,7 @@ impl Action {
     fn kind(&self) -> ActionKind {
         match self {
             Action::TriggerView(_) => ActionKind::TriggerView,
+            Action::HoldView(_) => ActionKind::HoldView,
             Action::FocusScene(_) => ActionKind::FocusScene,
             Action::ToggleOverlay(_) => ActionKind::ToggleOverlay,
             Action::HoldOverlay(_) => ActionKind::HoldOverlay,
@@ -519,6 +527,7 @@ impl Action {
     fn target_code(&self) -> u8 {
         match self {
             Action::TriggerView(t)
+            | Action::HoldView(t)
             | Action::FocusScene(t)
             | Action::ToggleOverlay(t)
             | Action::HoldOverlay(t)
@@ -551,6 +560,11 @@ impl Action {
                 .get(id)
                 .map(|v| format!("View: {}", v.name))
                 .unwrap_or_else(|| missing("View", *id)),
+            Action::HoldView(id) => dmx
+                .views
+                .get(id)
+                .map(|v| format!("Hold view: {}", v.name))
+                .unwrap_or_else(|| missing("Hold view", *id)),
             Action::FocusScene(id) => dmx
                 .scenes
                 .get(id)
@@ -851,7 +865,7 @@ impl LegacyState {
             MappingEditor::Learning { editing, .. } if learning_here => {
                 if !control.is_assignable() {
                     self.push_mapping_log(format!(
-                        "{} is fixed (scene/page/video column) — pick another",
+                        "{} is fixed (scene/page column) — pick another",
                         control.label()
                     ));
                     return true;
@@ -913,7 +927,7 @@ impl LegacyState {
                 Some(idx) => {
                     let action = self.mappings[idx].action.clone();
                     match action {
-                        Action::HoldOverlay(scene) => {
+                        Action::HoldOverlay(_) | Action::HoldView(_) => {
                             match hold_press_kind(
                                 self.latched_holds.contains(&control),
                                 self.shift_held,
@@ -928,7 +942,12 @@ impl LegacyState {
                                     self.execute(control, &action, value);
                                 }
                                 // A twin click cannot be held, so it toggles.
-                                HoldPress::Toggle => self.toggle_overlay(scene),
+                                HoldPress::Toggle => match action {
+                                    Action::HoldOverlay(scene) => self.toggle_overlay(scene),
+                                    // `execute` restores the remembered look
+                                    // when the view is already held.
+                                    _ => self.execute(control, &action, value),
+                                },
                                 HoldPress::Hold => self.execute(control, &action, value),
                             }
                         }
@@ -966,6 +985,38 @@ impl LegacyState {
         }
     }
 
+    /// The look currently on stage, as a view: the overlay stack plus the
+    /// master alpha / speed of every scene in it.
+    fn current_look(dmx: &EngineState) -> View {
+        let overlays = dmx.current_overlay_scenes.clone();
+        let masters = overlays
+            .iter()
+            .filter_map(|id| {
+                dmx.scenes.get(id).map(|s| {
+                    (
+                        *id,
+                        ViewSceneMasters {
+                            master_alpha: s.sink.master_alpha_fader,
+                            master_speed: s.sink.master_speed,
+                        },
+                    )
+                })
+            })
+            .collect();
+        View {
+            name: String::new(),
+            overlays,
+            masters,
+        }
+    }
+
+    /// Puts the look remembered at press time back and forgets it.
+    fn restore_held_view(&mut self, control: ControlId) {
+        if let Some(prev) = self.held_views.remove(&control) {
+            bpf::send_event(ControlEvent::Transaction(prev.apply_events()));
+        }
+    }
+
     /// Button release counterpart of `execute` (only hold actions care).
     fn execute_release(&mut self, control: ControlId, action: &Action) {
         match action {
@@ -975,6 +1026,7 @@ impl LegacyState {
                 }
             }
             Action::HoldSceneAlpha { .. } => self.restore_held_alpha(control),
+            Action::HoldView(_) => self.restore_held_view(control),
             _ => {}
         }
     }
@@ -992,7 +1044,26 @@ impl LegacyState {
                     None => self.push_mapping_log(format!("View #{view_id} no longer exists")),
                 }
             }
-            Action::FocusScene(scene) => bpf::send_event(ControlEvent::SetSceneFocus(*scene)),
+            Action::HoldView(view_id) => match self.held_views.remove(&control) {
+                // Second press without a release (twin click): restore.
+                Some(prev) => bpf::send_event(ControlEvent::Transaction(prev.apply_events())),
+                None => {
+                    let dmx = bpf::get_dmx();
+                    match dmx.views.get(view_id) {
+                        Some(view) => {
+                            let events = view.apply_events();
+                            self.held_views.insert(control, Self::current_look(&dmx));
+                            bpf::send_event(ControlEvent::Transaction(events));
+                        }
+                        None => self.push_mapping_log(format!("View #{view_id} no longer exists")),
+                    }
+                }
+            },
+            // Scene focus is only the edit target now, so a pad that used to
+            // "focus" a scene makes it the whole look instead.
+            Action::FocusScene(scene) => {
+                bpf::send_event(ControlEvent::SetOverlays(vec![*scene]))
+            }
             Action::ToggleOverlay(scene) => self.toggle_overlay(*scene),
             Action::HoldOverlay(scene) => {
                 if !bpf::with_dmx(|dmx| dmx.current_overlay_scenes.contains(scene)) {
@@ -1059,11 +1130,12 @@ impl LegacyState {
     /// Whether the mapping's target is currently active (for bright LEDs).
     fn action_active(&self, m: &Mapping, dmx: &EngineState) -> bool {
         match &m.action {
-            Action::TriggerView(id) => dmx.views.get(id).is_some_and(|v| {
-                v.base_scene == dmx.current_scene_focus
-                    && v.overlays == dmx.current_overlay_scenes
-            }),
-            Action::FocusScene(s) => dmx.current_scene_focus == *s,
+            Action::TriggerView(id) => dmx
+                .views
+                .get(id)
+                .is_some_and(|v| v.overlays == dmx.current_overlay_scenes),
+            Action::HoldView(_) => self.held_views.contains_key(&m.control),
+            Action::FocusScene(s) => dmx.current_overlay_scenes == [*s],
             Action::ToggleOverlay(s) | Action::HoldOverlay(s) => {
                 dmx.current_overlay_scenes.contains(s)
             }
@@ -1101,8 +1173,10 @@ impl LegacyState {
                     self.action_active(m, dmx)
                 };
                 let color = if is_single_led(note) {
-                    // Side buttons cannot dim: on while active, off otherwise.
-                    if bright { SINGLE_LED_ON } else { LED_OFF }
+                    // The side buttons only light reliably at the placeholder
+                    // velocity the learn blink uses, so they ignore `m.color`:
+                    // white while active, the dim step while merely mapped.
+                    if bright { LED_WHITE } else { SINGLE_LED_ON }
                 } else if bright {
                     m.color
                 } else {
@@ -1135,6 +1209,10 @@ impl LegacyState {
                 }
             }
         }
+
+        // Shift is never mapped, but it is a modifier the operator has to find
+        // in the dark: keep it lit at the placeholder velocity at all times.
+        desired.insert(SHIFT_NOTE, LED_WHITE);
 
         desired
     }
@@ -1200,7 +1278,10 @@ impl LegacyState {
         self.latched_holds.retain(|control| {
             mappings
                 .iter()
-                .any(|m| m.control == *control && matches!(m.action, Action::HoldOverlay(_)))
+                .any(|m| {
+                    m.control == *control
+                        && matches!(m.action, Action::HoldOverlay(_) | Action::HoldView(_))
+                })
         });
 
         let desired = bpf::with_dmx(|dmx| self.desired_leds(clock, dmx));

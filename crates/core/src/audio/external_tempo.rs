@@ -21,7 +21,15 @@ impl ExternalTempo {
         self.update_bar(owner, bpm, beat, None, 0, now);
     }
 
-    pub fn update_bar(&mut self, owner: u8, bpm: f32, beat: bool, position: Option<u8>, device: u8, now: Instant) {
+    pub fn update_bar(
+        &mut self,
+        owner: u8,
+        bpm: f32,
+        beat: bool,
+        position: Option<u8>,
+        device: u8,
+        now: Instant,
+    ) {
         self.expire(now);
         if self.source.is_some_and(|(id, _, _)| id != owner) {
             return;
@@ -131,6 +139,39 @@ mod tests {
         overlay.restore(&mut snapshot);
         overlay.apply(&mut snapshot, 8, &mut source, now + Duration::from_secs(2));
         assert_eq!(snapshot.bpm, 97.0);
+    }
+
+    #[test]
+    fn bar_metadata_tracks_latest_beat_and_clears_on_release_or_expiry() {
+        let now = Instant::now();
+        let mut source = ExternalTempo::default();
+        let mut overlay = TempoOverlay::default();
+        let mut snapshot = CollectedAudioSnapshot::default();
+        source.update_bar(2, 120.0, true, Some(2), 1, now);
+        source.update_bar(2, 120.0, true, Some(3), 1, now);
+        overlay.apply(&mut snapshot, 10, &mut source, now);
+        assert_eq!(snapshot.beat_event_id, 12);
+        assert_eq!(snapshot.beat_in_bar, Some(3));
+        assert_eq!(snapshot.tempo_source, Some((2, 1)));
+        overlay.restore(&mut snapshot);
+        assert_eq!(snapshot.beat_in_bar, None);
+        assert_eq!(snapshot.tempo_source, None);
+        source.update_bar(2, 125.0, true, Some(1), 3, now);
+        overlay.apply(&mut snapshot, 12, &mut source, now);
+        assert_eq!(snapshot.beat_in_bar, Some(1));
+        assert_eq!(snapshot.tempo_source, Some((2, 3)));
+        overlay.restore(&mut snapshot);
+        source.update_bar(2, 125.0, true, Some(9), 3, now);
+        overlay.apply(&mut snapshot, 13, &mut source, now);
+        assert_eq!(snapshot.beat_in_bar, None);
+        overlay.restore(&mut snapshot);
+        overlay.apply(&mut snapshot, 14, &mut source, now + Duration::from_secs(4));
+        assert_eq!(snapshot.tempo_source, None);
+        source.update_bar(2, 120.0, true, Some(4), 1, now);
+        source.update(2, 0.0, false, now);
+        overlay.apply(&mut snapshot, 14, &mut source, now);
+        assert_eq!(snapshot.beat_in_bar, None);
+        assert_eq!(snapshot.tempo_source, None);
     }
 
     #[test]

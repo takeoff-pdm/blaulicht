@@ -18,7 +18,7 @@ use blaulicht_shared::{
         state::{FixtureState, MergeStrategy, ResolvedFixtureState},
         value::FixtureValue,
     },
-    scene::{FixtureSelection, FixtureSelector},
+    scene::{FixtureSelection, FixtureSelector, BLANK_SCENE_ID},
     scene_graph::{AudioConditions, SceneGraphRuntime},
     ActiveAnimation, AnimationSpecBody, ControlEvent, ControlEventMessage, EventOriginator,
     FixtureProperty, LogLevel, CONTROLS_REQUIRING_SELECTION,
@@ -573,7 +573,7 @@ impl DmxEngine {
         // Reflect the scenes of every enabled graph's active node into the normal
         // overlay list, so they show up in the performance view and render through
         // the standard overlay path (no separate scene-graph render path).
-        let base = state.0.current_scene_focus;
+        let base = state.0.render_base_scene();
         let mut new_graph_scenes: Vec<u8> = state
             .0
             .scene_graphs
@@ -604,12 +604,18 @@ impl DmxEngine {
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
         let palettes = &state.0.palettes;
-        let base_scene_id = state.0.current_scene_focus;
+        let base_scene_id = state.0.render_base_scene();
+        let Some(base_scene) = state.0.scenes.get(&base_scene_id) else {
+            // `curr_scene()` would unwrap here and take the DMX thread with it.
+            warn!("Skipping render: base scene {base_scene_id} is missing");
+            return;
+        };
+        let rendered_overlays = state.0.rendered_overlays();
 
         // For each fixture, merge all scene states.
         for group in &state.0.groups {
             for fixture in &group.1.fixtures {
-                let curr_scene = state.curr_scene();
+                let curr_scene = base_scene;
 
                 // Apply base scene state.
                 let fixture_key = (*group.0, *fixture.0);
@@ -644,7 +650,7 @@ impl DmxEngine {
                     * curr_scene.sink.master_alpha_fader as f32)
                     as u8;
 
-                for overlay_id in &state.0.current_overlay_scenes {
+                for overlay_id in rendered_overlays {
                     let Some(this_scene) = state.0.scenes.get(overlay_id) else {
                         warn!("Skipping missing overlay scene {overlay_id}");
                         continue;
@@ -996,30 +1002,28 @@ impl DmxEngine {
                 (None, None)
             }
             ControlEvent::SetSceneFocus(id) => {
+                if id == BLANK_SCENE_ID {
+                    return (Some("BLANK scene is read-only"), None);
+                }
+
                 if !state.0.scenes.contains_key(&id) {
                     return (Some("Illegal scene"), Some(ControlEvent::SetSceneFocus(0)));
                 }
 
-                // PATCH: reset all animations in that scene
-                // BUG: this also starts all animations that were manually paused.
-                // HOW TO FIX: ADD A SWITCH TO ANIMATIONS THAT DISABLE THEM.
+                // Focus is purely the edit target: it must not touch the
+                // overlay stack, and it must not restart the animations of a
+                // scene that may be playing live right now. Both of those
+                // belong to entering live mode instead.
                 state.0.current_scene_focus = id;
-                // The base scene must never also be an overlay: it would be
-                // merged onto itself with master alpha applied twice.
-                state.0.current_overlay_scenes.retain(|s| *s != id);
-
-                // let animations = state.0.animation_templates.clone();
-
-                let anim = &mut state.curr_scene_mut().sink.active_animations;
-                for (_selec, anim_set) in anim.iter_mut() {
-                    for (anim_id, anim) in anim_set.iter_mut() {
-                        // TODO: this can be done prettier.
-                        if anim.enabled {
-                            anim.reset_timers(anim.spec_cloned.sync_mode());
-                            debug!("Reset animation: {anim_id}");
-                        }
-                    }
-                }
+                (None, None)
+            }
+            ControlEvent::SetLiveMode(enabled) => {
+                Self::set_live_mode(&mut state.0, enabled);
+                (None, None)
+            }
+            ControlEvent::ToggleLiveMode => {
+                let enabled = !state.0.live_mode;
+                Self::set_live_mode(&mut state.0, enabled);
                 (None, None)
             }
             ControlEvent::RemoveOverlayScene(scene_id) => {
@@ -1042,12 +1046,12 @@ impl DmxEngine {
                 }
             }
             ControlEvent::AddOverlayScene(scene_id) => {
-                if !state.0.scenes.contains_key(&scene_id) {
-                    return (Some("Illegal scene"), None);
+                if scene_id == BLANK_SCENE_ID {
+                    return (Some("BLANK scene cannot be an overlay"), None);
                 }
 
-                if scene_id == state.0.current_scene_focus {
-                    return (Some("Base scene cannot appear in overlays"), None);
+                if !state.0.scenes.contains_key(&scene_id) {
+                    return (Some("Illegal scene"), None);
                 }
 
                 if state.0.current_overlay_scenes.contains(&scene_id) {
@@ -1079,8 +1083,8 @@ impl DmxEngine {
                 (None, None)
             }
             ControlEvent::SetOverlays(overlays) => {
-                if overlays.contains(&state.0.current_scene_focus) {
-                    return (Some("Base scene cannot appear in overlays"), None);
+                if overlays.contains(&BLANK_SCENE_ID) {
+                    return (Some("BLANK scene cannot be an overlay"), None);
                 }
 
                 if overlays
@@ -1232,6 +1236,13 @@ impl DmxEngine {
         ev: ControlEventMessage,
     ) -> (Option<&'static str>, Option<ControlEvent>) {
         let current_scene_focus = state.0.current_scene_focus;
+
+        // Defensive: `SetSceneFocus` rejects BLANK, but every arm below
+        // unwraps `scenes[current_scene_focus]` and would author into the
+        // read-only scene if focus ever drifted there.
+        if current_scene_focus == BLANK_SCENE_ID {
+            return (Some("BLANK scene is read-only"), None);
+        }
 
         let (msg, undo, effective_properties) = match ev.body() {
             ControlEvent::AddAnimation(id) => {
@@ -1644,6 +1655,38 @@ impl DmxEngine {
     }
 }
 
+impl DmxEngine {
+    /// Enters or leaves exclusive programming mode.
+    ///
+    /// On the `false -> true` edge the focused scene's enabled animations are
+    /// restarted, so the operator sees the scene from the top. Leaving live
+    /// mode only clears the flag: `current_overlay_scenes` was never touched,
+    /// so the rig comes back exactly as it was.
+    fn set_live_mode(state: &mut blaulicht_shared::EngineState, enabled: bool) {
+        if state.live_mode == enabled {
+            return;
+        }
+        state.live_mode = enabled;
+
+        if !enabled {
+            return;
+        }
+
+        let focus = state.current_scene_focus;
+        let Some(scene) = state.scenes.get_mut(&focus) else {
+            return;
+        };
+        for anim_set in scene.sink.active_animations.values_mut() {
+            for (anim_id, anim) in anim_set.iter_mut() {
+                if anim.enabled {
+                    anim.reset_timers(anim.spec_cloned.sync_mode());
+                    debug!("Reset animation: {anim_id}");
+                }
+            }
+        }
+    }
+}
+
 fn apply_grand_master(alpha: u8, percent: u8) -> u8 {
     ((alpha as u16 * percent.min(100) as u16) / 100) as u8
 }
@@ -1652,7 +1695,7 @@ fn apply_scene_graph_node_controls(
     state: &mut blaulicht_shared::EngineState,
     activated_nodes: &[(u8, u8)],
 ) {
-    let base = state.current_scene_focus;
+    let base = state.render_base_scene();
     for (graph_id, node_id) in activated_nodes {
         let Some(node) = state
             .scene_graphs

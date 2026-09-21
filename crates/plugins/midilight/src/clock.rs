@@ -10,7 +10,8 @@ pub struct BeatClock {
     last_event: u64,
     last_source: Option<(u8, u8)>,
     since_beat_ms: f64,
-    travelled: f64,
+    counting_bar: bool,
+    correction: f64,
 }
 
 impl BeatClock {
@@ -18,14 +19,21 @@ impl BeatClock {
         self.running = false;
         self.step = 0.0;
         self.loops = 0;
-        self.travelled = 0.0;
+        self.counting_bar = false;
+        self.correction = 0.0;
         self.estimated = false;
     }
 
     /// Returns true only when entering estimated bar alignment (log once).
     pub fn update(&mut self, now: u32, audio: &CollectedAudioSnapshot) -> bool {
-        let dt = self.last_clock.replace(now).map(|last| now.wrapping_sub(last)).unwrap_or(0) as f64;
-        let fresh = audio.beat_trigger && audio.beat_event_id != 0 && audio.beat_event_id != self.last_event;
+        let dt = self
+            .last_clock
+            .replace(now)
+            .map(|last| now.wrapping_sub(last))
+            .unwrap_or(0) as f64;
+        let fresh = audio.beat_trigger
+            && audio.beat_event_id != 0
+            && audio.beat_event_id != self.last_event;
         self.last_event = audio.beat_event_id;
         if self.last_source != audio.tempo_source {
             self.reset();
@@ -51,6 +59,7 @@ impl BeatClock {
             if !self.running {
                 self.step = f64::from(position.unwrap_or(1) - 1) * 4.0;
                 self.running = true;
+                self.counting_bar = self.step == 0.0;
                 self.estimated = position.is_none();
                 return self.estimated;
             }
@@ -59,14 +68,17 @@ impl BeatClock {
             return false;
         }
         let advance = dt / period * 4.0;
-        let mut next = self.step + advance;
+        let adjustment = self.correction.clamp(-advance * 0.15, advance * 0.15);
+        self.correction -= adjustment;
+        let mut next = self.step + advance + adjustment;
         let mut anchored = false;
         if fresh {
             if position.is_none() && !self.estimated {
                 self.estimated = true;
                 warning = true;
             }
-            let target = position.map(|p| f64::from(p - 1) * 4.0)
+            let target = position
+                .map(|p| f64::from(p - 1) * 4.0)
                 .unwrap_or_else(|| (next / 4.0).round() * 4.0);
             let modulus = if position.is_some() { 16.0 } else { 4.0 };
             let error = (target - next + modulus / 2.0).rem_euclid(modulus) - modulus / 2.0;
@@ -74,20 +86,22 @@ impl BeatClock {
                 // Authoritative bar acquisition/source seek, not a completed loop.
                 next = target;
                 anchored = true;
-                self.travelled = 0.0;
+                self.counting_bar = target == 0.0;
+                self.correction = 0.0;
                 self.loops = 0;
             } else {
                 // Bound corrections so jitter never moves the playhead backwards.
-                next += error.clamp(-advance * 0.25, advance * 0.25);
+                self.correction = error;
             }
             if position.is_some() {
                 self.estimated = false;
             }
         }
-        if !anchored {
-            self.travelled += (next - self.step).max(0.0);
+        if !anchored && next >= 16.0 {
+            let crossed = (next / 16.0).floor() as u64;
+            self.loops += crossed - u64::from(!self.counting_bar);
+            self.counting_bar = true;
         }
-        self.loops = (self.travelled / 16.0).floor() as u64;
         self.step = next.rem_euclid(16.0);
         warning
     }
@@ -97,8 +111,14 @@ impl BeatClock {
 mod tests {
     use super::*;
     fn audio(id: u64, position: Option<u8>) -> CollectedAudioSnapshot {
-        CollectedAudioSnapshot { bpm: 120.0, source_status: AudioSourceStatus::Active,
-            beat_trigger: true, beat_event_id: id, beat_in_bar: position, ..Default::default() }
+        CollectedAudioSnapshot {
+            bpm: 120.0,
+            source_status: AudioSourceStatus::Active,
+            beat_trigger: true,
+            beat_event_id: id,
+            beat_in_bar: position,
+            ..Default::default()
+        }
     }
     #[test]
     fn alignment_deduplication_and_sixteenths() {
@@ -130,6 +150,25 @@ mod tests {
         assert!(clock.running);
         assert_eq!(clock.step, 0.0);
     }
+    #[test]
+    fn reversal_counts_full_bars_not_initial_partial_bar() {
+        let mut clock = BeatClock::default();
+        clock.update(0, &audio(1, Some(3)));
+        for beat in 1..=6 {
+            clock.update(
+                beat * 500,
+                &audio(u64::from(beat + 1), Some(((beat + 2) % 4 + 1) as u8)),
+            );
+            if beat < 6 {
+                assert_eq!(clock.loops, 0);
+            }
+        }
+        assert_eq!(clock.loops, 1);
+        assert_eq!(clock.step, 0.0);
+        clock.reset();
+        assert_eq!(clock.loops, 0);
+    }
+
     #[test]
     fn clock_wrap_source_switch_and_tempo_change() {
         let mut clock = BeatClock::default();

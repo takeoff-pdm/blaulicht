@@ -10,8 +10,9 @@ use std::rc::Rc;
 use blaulicht_plugin_framework::{self as bpf, println, ui, MidiEvent};
 use blaulicht_shared::{
     misc_event::videowall::{
-        REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED, SET_VIDEO_INDEX,
+        REQUEST_STATUS_REFRESH, SET_BRIGHTNESS, SET_FRY, SET_ROTATION, SET_SPEED,
     },
+    view::View,
     AppPage, ControlEvent, MainUiEvent, PluginUiEvent, TickInput,
 };
 use map_range::MapRange;
@@ -68,6 +69,9 @@ pub struct LegacyState {
     pub(crate) latched_holds: BTreeSet<ControlId>,
     /// Scene alphas remembered while a "Hold scene alpha" button is down.
     pub(crate) held_alphas: BTreeMap<ControlId, Vec<(u8, u8)>>,
+    /// The look (overlays + masters) remembered while a "Hold view" button is
+    /// down; restored on release.
+    pub(crate) held_views: BTreeMap<ControlId, View>,
     /// Last velocity sent per MIDI Mix button LED.
     pub(crate) mix_lit_colors: BTreeMap<u8, u8>,
 }
@@ -398,8 +402,6 @@ impl LegacyState {
     fn apc(&mut self, conn: Rc<VirtualMidi>, ev: Vec<MidiEvent>, input: TickInput) {
         const SCENES: [u8; 8] = [56, 48, 40, 32, 24, 16, 8, 0];
 
-        const VIDEO_PADS: [u8; 8] = [62, 54, 46, 38, 30, 22, 14, 6];
-
         if self.is_apc_init {
             for i in 0..64 {
                 conn.send(0x96, i as u8, 0);
@@ -511,14 +513,6 @@ impl LegacyState {
                         self.current_app_page = Some(app_page.clone());
                         self.sync_app_page(&conn);
                         bpf::send_event(ControlEvent::MainUi(MainUiEvent::NavigatePage(app_page)));
-                    }
-                }
-                (128, pad, _) if VIDEO_PADS.contains(&pad) => {
-                    if let Some(idx) = VIDEO_PADS.iter().position(|v| *v == pad) {
-                        bpf::send_event(ControlEvent::MiscEvent {
-                            descriptor: SET_VIDEO_INDEX,
-                            value: idx as u8,
-                        });
                     }
                 }
                 (176, 56, val) => {

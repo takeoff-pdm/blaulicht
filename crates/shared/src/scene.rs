@@ -14,6 +14,13 @@ use crate::{
     palette::Palette,
 };
 
+/// Reserved id of the ephemeral, read-only `BLANK` scene. It is created at
+/// engine boot, is never allocated to a user scene and never reaches a
+/// showfile. It holds a default [`FixtureState`] for every patched fixture and
+/// acts as the neutral render base whenever live mode is off.
+pub const BLANK_SCENE_ID: u8 = u8::MAX;
+pub const BLANK_SCENE_NAME: &str = "BLANK";
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct FixtureSelection {
     pub fixtures: Vec<(u8, u8)>,

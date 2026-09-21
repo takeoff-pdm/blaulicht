@@ -13,7 +13,8 @@ use strum::EnumIter;
 // v10: FlashAnimationSpec gained `lamp_function`.
 // v11: bl_audio_tempo host import for leased plugin BPM/beat injection.
 // v12: bar-aware tempo metadata/import and canvas drag lifecycle events.
-pub const PLUGIN_ABI_VERSION: u32 = 12;
+// v13: ephemeral BLANK base scene + EngineState.live_mode; View lost base_scene.
+pub const PLUGIN_ABI_VERSION: u32 = 13;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

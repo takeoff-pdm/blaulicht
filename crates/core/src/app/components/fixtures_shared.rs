@@ -1143,7 +1143,9 @@ impl BlaulichtApp {
         let panel_width = 100.0;
         let panel_padding = 2.0;
 
-        let number_of_items_total = dmx_engine.0.scenes.len();
+        // The ephemeral BLANK scene is never user-selectable, so it must stay
+        // out of both the list and the pagination maths.
+        let number_of_items_total = dmx_engine.0.user_scenes().count();
         const ITEMS_PER_PAGE: usize = 5;
         let total_pages = number_of_items_total.div_ceil(ITEMS_PER_PAGE);
         let last_page = total_pages.saturating_sub(1);
@@ -1179,7 +1181,7 @@ impl BlaulichtApp {
                     ui.horizontal_wrapped(|ui| {
                         let start = self.scene_page_index * ITEMS_PER_PAGE;
                         for (scene_id, scene) in
-                            dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE)
+                            dmx_engine.0.user_scenes().skip(start).take(ITEMS_PER_PAGE)
                         {
                             let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
                             let label = format!("{scene_id} | {}", scene.name);
@@ -1242,7 +1244,7 @@ impl BlaulichtApp {
                 ui.add_space(5.0);
 
                 let start = self.scene_page_index * ITEMS_PER_PAGE;
-                let page_items = dmx_engine.0.scenes.iter().skip(start).take(ITEMS_PER_PAGE);
+                let page_items = dmx_engine.0.user_scenes().skip(start).take(ITEMS_PER_PAGE);
 
                 for (scene_id, scene) in page_items {
                     let is_selected = dmx_engine.0.current_scene_focus == *scene_id;

@@ -200,6 +200,8 @@ fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
         | ControlEvent::PopSelection
         | ControlEvent::MainUi(_)
         | ControlEvent::PluginUi(_, _)
+        | ControlEvent::SetLiveMode(_)
+        | ControlEvent::ToggleLiveMode
         | ControlEvent::MiscEvent { .. } => false,
         ControlEvent::Transaction(events) => events.iter().any(control_event_marks_showfile_dirty),
         _ => true,

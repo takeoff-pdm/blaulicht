@@ -1,6 +1,6 @@
 use blaulicht_shared::{
     fixture::{state::FixtureState, value::FixtureValue},
-    scene::{EngineSink, FixtureSelection, Scene},
+    scene::{EngineSink, FixtureSelection, Scene, BLANK_SCENE_ID, BLANK_SCENE_NAME},
     view::View,
     AnimationSpec, AnimationSpecBody, AnimationSpecBodyPhaser, AnimationTemplate, EngineGroups,
     EngineSelection, FixtureProperty, MathematicalBaseFunction, MathematicalPhaser, PhaserDuration,
@@ -70,6 +70,7 @@ impl<'engine> EngineState {
             overrides: self.0.overrides.clone(),
             scene_graphs: self.0.scene_graphs.clone(),
             palettes: self.0.palettes.clone(),
+            live_mode: self.0.live_mode,
         })
     }
 
@@ -98,7 +99,19 @@ impl<'engine> EngineState {
         }
     }
 
-    pub fn load_showfile(&mut self, mut other: blaulicht_shared::EngineState) {
+    /// Loads an engine state into the running engine.
+    ///
+    /// `migrate_legacy_base_scene` is for showfiles written before the base
+    /// slot was handed to the ephemeral `BLANK` scene. Back then
+    /// `current_scene_focus` *was* the rendered base layer, so it has to be
+    /// folded into the overlay stack or the show would load dark. Newer
+    /// showfiles pass `false`: there, focus is only the edit target and must
+    /// not start playing just because it was selected when the file was saved.
+    pub fn load_showfile(
+        &mut self,
+        mut other: blaulicht_shared::EngineState,
+        migrate_legacy_base_scene: bool,
+    ) {
         // Showfiles are external input: an out-of-range fixture address would
         // panic the DMX thread on the first render (unchecked universe indexing).
         for group in other.groups.values_mut() {
@@ -121,7 +134,9 @@ impl<'engine> EngineState {
         let overrides = self.0.overrides.clone();
         tracing::debug!("ov: {overrides:?}");
 
-        let current_scene_focus = match &other.scenes.contains_key(&other.current_scene_focus) {
+        let focus_is_valid = other.scenes.contains_key(&other.current_scene_focus)
+            && other.current_scene_focus != BLANK_SCENE_ID;
+        let current_scene_focus = match focus_is_valid {
             true => other.current_scene_focus,
             false => {
                 tracing::debug!("Loading backup scene... | SCENES: {:?}", other.scenes);
@@ -131,7 +146,11 @@ impl<'engine> EngineState {
                     tracing::debug!("CREATE BACKUP SCENE...");
                 }
 
-                let backup_id = other.scenes.keys().next().unwrap();
+                let backup_id = other
+                    .scenes
+                    .keys()
+                    .find(|id| **id != BLANK_SCENE_ID)
+                    .unwrap();
                 tracing::debug!("LOADED BACKUP ID: {backup_id}");
                 *backup_id
             }
@@ -197,9 +216,17 @@ impl<'engine> EngineState {
             })
             .collect();
 
+        // The focused scene may legitimately also be an overlay: focus is the
+        // edit target, the base slot belongs to BLANK.
         other
             .current_overlay_scenes
-            .retain(|scene_id| *scene_id != current_scene_focus && scenes.contains_key(scene_id));
+            .retain(|scene_id| *scene_id != BLANK_SCENE_ID && scenes.contains_key(scene_id));
+
+        if migrate_legacy_base_scene && !other.current_overlay_scenes.contains(&current_scene_focus)
+        {
+            other.current_overlay_scenes.insert(0, current_scene_focus);
+        }
+
         let valid_scene_ids: HashSet<u8> = scenes.keys().copied().collect();
         other.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
@@ -208,8 +235,13 @@ impl<'engine> EngineState {
             current_scene_focus,
             scenes,
             overrides,
+            live_mode: false,
             ..other
         });
+
+        // BLANK is ephemeral: it is absent from every showfile and is rebuilt
+        // here against the freshly loaded fixture patch.
+        self.0.ensure_blank_scene();
     }
 
     pub fn groups(&self) -> &EngineGroups {
@@ -362,7 +394,7 @@ impl Default for EngineState {
             selection_stack: VecDeque::new(),
             control_buffer: FixtureState::default(),
             views: hashmap! {
-                0 => View::new("Default View".to_string(), 0, vec![])
+                0 => View::new("Default View".to_string(), vec![0])
             }
             .into_iter()
             .collect(),
@@ -370,15 +402,21 @@ impl Default for EngineState {
                0 => Scene{
                    name: "Default Scene".to_string(),
                    sink: EngineSink::from_groups(&groups),
+               },
+               BLANK_SCENE_ID => Scene{
+                   name: BLANK_SCENE_NAME.to_string(),
+                   sink: EngineSink::from_groups(&groups),
                }
             }
             .into_iter()
             .collect(),
             current_scene_focus: 0,
-            current_overlay_scenes: vec![],
+            // The default scene plays as an overlay; BLANK holds the base slot.
+            current_overlay_scenes: vec![0],
             overrides: BTreeMap::new(),
             scene_graphs: Default::default(),
             palettes: Default::default(),
+            live_mode: false,
         };
 
         Self(state)
@@ -418,5 +456,114 @@ mod tests {
         engine.0.selection.fixtures_in_group.insert(0);
 
         assert_eq!(engine.get_selection().fixtures, vec![(0, 0), (1, 0)]);
+    }
+}
+
+#[cfg(test)]
+mod blank_scene_load_tests {
+    use super::*;
+    use blaulicht_shared::fixture::{
+        light::Light,
+        state::{Fixture, FixtureGroup},
+        FixtureType,
+    };
+
+    fn group_with_fixture() -> FixtureGroup {
+        FixtureGroup {
+            fixtures: BTreeMap::from([(
+                0,
+                Fixture::new(
+                    0,
+                    1,
+                    "Fixture".to_string(),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                ),
+            )]),
+            ..FixtureGroup::default()
+        }
+    }
+
+    fn showfile(focus: u8, overlays: Vec<u8>) -> blaulicht_shared::EngineState {
+        let groups = BTreeMap::from([(0, group_with_fixture())]);
+        blaulicht_shared::EngineState {
+            scenes: BTreeMap::from([
+                (
+                    0,
+                    Scene {
+                        sink: EngineSink::from_groups(&groups),
+                        name: "A".to_string(),
+                    },
+                ),
+                (
+                    1,
+                    Scene {
+                        sink: EngineSink::from_groups(&groups),
+                        name: "B".to_string(),
+                    },
+                ),
+            ]),
+            groups,
+            current_scene_focus: focus,
+            current_overlay_scenes: overlays,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn blank_scene_is_recreated_on_load_with_every_fixture() {
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(0, vec![]), false);
+
+        let blank = engine.0.scenes.get(&BLANK_SCENE_ID).expect("BLANK missing");
+        assert_eq!(blank.name, BLANK_SCENE_NAME);
+        assert!(blank.sink.fixture_states.contains_key(&(0, 0)));
+        assert_eq!(engine.0.render_base_scene(), BLANK_SCENE_ID);
+        assert!(!engine.0.live_mode);
+    }
+
+    #[test]
+    fn legacy_showfile_promotes_its_base_scene_to_an_overlay() {
+        // Pre-BLANK showfiles rendered `current_scene_focus` as the base. If it
+        // did not become an overlay the show would load completely dark.
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(1, vec![0]), true);
+
+        assert_eq!(engine.0.current_overlay_scenes, vec![1, 0]);
+        assert_eq!(engine.0.current_scene_focus, 1);
+    }
+
+    #[test]
+    fn current_showfile_does_not_promote_the_edit_target() {
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(1, vec![0]), false);
+
+        // Focus is only what was being edited; it must not start playing.
+        assert_eq!(engine.0.current_overlay_scenes, vec![0]);
+        assert_eq!(engine.0.current_scene_focus, 1);
+    }
+
+    #[test]
+    fn legacy_migration_does_not_duplicate_an_already_playing_base() {
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(0, vec![0, 1]), true);
+        assert_eq!(engine.0.current_overlay_scenes, vec![0, 1]);
+    }
+
+    #[test]
+    fn focus_never_lands_on_blank_when_the_saved_focus_is_invalid() {
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(200, vec![]), false);
+        assert_ne!(engine.0.current_scene_focus, BLANK_SCENE_ID);
+        assert!(engine.0.scenes.contains_key(&engine.0.current_scene_focus));
+    }
+
+    #[test]
+    fn a_focused_scene_may_also_be_an_overlay() {
+        // The whole point of the split: selecting a playing scene to edit it
+        // must not pull it out of the live rig.
+        let mut engine = EngineState::default();
+        engine.load_showfile(showfile(0, vec![0, 1]), false);
+        assert_eq!(engine.0.current_scene_focus, 0);
+        assert!(engine.0.current_overlay_scenes.contains(&0));
     }
 }

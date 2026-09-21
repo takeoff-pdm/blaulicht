@@ -9,6 +9,7 @@ use bpf::{AnimationPluginDescriptor, BlaulichtAnimationPlugin};
 #[derive(Default)]
 struct WasmLed {
     engine: Engine,
+    clock: MotionClock,
 }
 impl WasmLed {
     fn events(&mut self, common: &TickInput) {
@@ -20,6 +21,7 @@ impl WasmLed {
             let s = &mut self.engine.settings;
             match event {
                 PluginUiEvent::ComboBox { id: 1, selected } => s.effect = selected.min(9),
+                PluginUiEvent::Button { id } if (30..40).contains(&id) => s.effect = id - 30,
                 PluginUiEvent::Slider { id: 2, value } => s.speed = value.min(200),
                 PluginUiEvent::Slider { id: 3, value } => s.brightness = value,
                 PluginUiEvent::Slider { id: 4, value } => s.hue = value,
@@ -39,6 +41,7 @@ impl WasmLed {
 impl BlaulichtAnimationPlugin for WasmLed {
     fn initialize(&mut self, _: &AnimationTickInput, _: &TickInput) {
         self.engine = Engine::default();
+        self.clock = MotionClock::default();
         if let Some(raw) = bpf::load_plugin_state(bpf::PluginStateLocation::Showfile) {
             self.engine.settings = Settings::load(&raw);
         }
@@ -47,7 +50,7 @@ impl BlaulichtAnimationPlugin for WasmLed {
     fn run(&mut self, input: &AnimationTickInput, common: &TickInput) -> AnimationTickOutput {
         self.events(common);
         let Some(frame) = self.engine.frame(
-            input.delta_ms as f64 / 1000.0,
+            self.clock.seconds(common.clock, input.delta_ms),
             common.audio_data.bpm as f64,
             input.speed_factor.as_float() * input.scene_speed_factor.as_float(),
             input.paused,
@@ -77,12 +80,18 @@ impl BlaulichtAnimationPlugin for WasmLed {
         let s = &self.engine.settings;
         bpf::ui::begin();
         bpf::ui::label_styled("WasmLED", 22, true);
-        bpf::ui::combo_box(
-            "Animation",
-            1,
-            &NAMES.iter().map(|n| n.to_string()).collect::<Vec<_>>(),
-            s.effect,
-        );
+        bpf::ui::label(&format!("Animation: {}", NAMES[s.effect as usize]));
+        for row in 0..5 {
+            bpf::ui::begin_horizontal();
+            for effect in row * 2..row * 2 + 2 {
+                bpf::ui::button_styled(
+                    NAMES[effect],
+                    30 + effect as u8,
+                    s.effect as usize != effect,
+                );
+            }
+            bpf::ui::end_horizontal();
+        }
         bpf::ui::label(DESCRIPTIONS[s.effect as usize]);
         bpf::ui::slider(
             &format!("Speed ({:.2}x)", s.multiplier()),
@@ -99,7 +108,12 @@ impl BlaulichtAnimationPlugin for WasmLed {
             bpm,
             if fallback { " (fallback)" } else { "" }
         ));
-        bpf::ui::label("Tempo-paced motion; no audio response or downbeat sync.");
+        match common.audio_data.tempo_source {
+            Some((_, player)) => bpf::ui::label(&format!("External tempo: player {player}")),
+            None => bpf::ui::label(
+                "No external tempo. Enable Sync to audio in Pro DJ Link for CDJ BPM.",
+            ),
+        }
         bpf::ui::separator();
         for tube in 0..TUBES {
             bpf::ui::checkbox(

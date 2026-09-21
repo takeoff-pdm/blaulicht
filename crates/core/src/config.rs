@@ -20,6 +20,11 @@ use tracing::debug;
 use crate::stage::{StageScene, STAGE_SHOWFILE_VERSION};
 
 const LEGACY_SHOWFILE_VERSION: u32 = 0;
+
+/// First showfile version in which the render base is the ephemeral `BLANK`
+/// scene rather than `current_scene_focus`. Anything older needs its stored
+/// focus folded into the overlay stack on load.
+const BLANK_BASE_SHOWFILE_VERSION: u32 = 4;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[cfg(feature = "audio")]
@@ -188,6 +193,7 @@ fn read_showfile_logic(
     match serde_json::from_str::<CoreShowfile>(&string) {
         Ok(showfile) => {
             let legacy_coordinates = showfile.format_version == LEGACY_SHOWFILE_VERSION;
+            let legacy_base_scene = showfile.format_version < BLANK_BASE_SHOWFILE_VERSION;
             let mut core_engine: EngineState = showfile
                 .engine
                 .try_into()
@@ -219,7 +225,7 @@ fn read_showfile_logic(
                 }))
                 .collect();
 
-            dmx.load_showfile(core_engine);
+            dmx.load_showfile(core_engine, legacy_base_scene);
 
             let mut stage = showfile.stage;
             stage.sanitize();
@@ -246,7 +252,7 @@ fn read_showfile_logic(
                 artnet_output
                     .receivers
                     .retain(|r| r.owner_plugin_id.is_some());
-                dmx.load_showfile(core_format);
+                dmx.load_showfile(core_format, true);
 
                 Ok(LoadedShowfileState::default())
             }
@@ -332,7 +338,7 @@ pub fn close_showfile(
         .receivers
         .retain(|r| r.owner_plugin_id.is_some());
 
-    dmx.load_showfile(EngineState::default());
+    dmx.load_showfile(EngineState::default(), false);
 }
 
 impl Default for Config {

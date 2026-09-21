@@ -892,12 +892,16 @@ impl PluginManager {
 
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
-            "blaulicht", "bl_audio_tempo_bar",
+            "blaulicht",
+            "bl_audio_tempo_bar",
             move |plugin_id: i32, bpm: f32, beat: i32, position: i32, device: i32| {
                 state_ref.external_tempo.lock().unwrap().update_bar(
-                    plugin_id as u8, bpm, beat != 0,
+                    plugin_id as u8,
+                    bpm,
+                    beat != 0,
                     (1..=4).contains(&position).then_some(position as u8),
-                    device as u8, std::time::Instant::now(),
+                    device as u8,
+                    std::time::Instant::now(),
                 );
             },
         )?;
