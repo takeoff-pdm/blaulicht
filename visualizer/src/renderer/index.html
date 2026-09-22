@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>blaulicht visualizer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+
+    <div id="empty" class="empty">
+      <h1>blaulicht visualizer</h1>
+      <p>Open a blaulicht showfile to build the rig, then feed it Art-Net.</p>
+      <button id="empty-open" class="primary">Open showfile…</button>
+      <p class="hint">Or start the app with a path: <code>npm start -- ../SPARTACUS_DRAFT.json</code></p>
+    </div>
+
+    <header id="topbar" class="panel hidden">
+      <div class="brand">blaulicht<span>visualizer</span></div>
+      <div class="stat"><label>Show</label><span id="stat-show">—</span></div>
+      <div class="stat"><label>Fixtures</label><span id="stat-fixtures">0</span></div>
+      <div class="stat"><label>Universes</label><span id="stat-universes">0</span></div>
+      <div class="stat"><label>Art-Net</label><span id="stat-artnet">—</span></div>
+      <div class="stat"><label>Packets/s</label><span id="stat-rate">0</span></div>
+      <div class="stat"><label>FPS</label><span id="stat-fps">0</span></div>
+    </header>
+
+    <aside id="sidebar" class="panel hidden">
+      <section>
+        <h2>Source</h2>
+        <button id="open-showfile">Open showfile…</button>
+        <label class="row">
+          <span>Listen port</span>
+          <input id="port" type="number" min="1" max="65535" value="6454" />
+        </label>
+        <div id="receiver-error" class="error hidden"></div>
+      </section>
+
+      <section>
+        <h2>Demo console</h2>
+        <p class="note">Transmits real Art-Net to the receiver, so the whole path is exercised.</p>
+        <label class="row">
+          <span>Enabled</span>
+          <input id="demo-enabled" type="checkbox" />
+        </label>
+        <label class="row">
+          <span>Pattern</span>
+          <select id="demo-pattern"></select>
+        </label>
+      </section>
+
+      <section>
+        <h2>Look</h2>
+        <label class="row"><span>Beams</span><input id="opt-beams" type="checkbox" checked /></label>
+        <label class="row"><span>Floor pools</span><input id="opt-pools" type="checkbox" checked /></label>
+        <label class="row"><span>Bloom</span><input id="opt-bloom" type="checkbox" checked /></label>
+        <label class="row"><span>Room</span><input id="opt-room" type="checkbox" checked /></label>
+        <label class="row"><span>Haze</span><input id="opt-haze" type="range" min="0" max="1" step="0.01" value="0.65" /></label>
+        <label class="row"><span>Beam gain</span><input id="opt-gain" type="range" min="0.2" max="3" step="0.05" value="1" /></label>
+        <label class="row"><span>Exposure</span><input id="opt-exposure" type="range" min="0.2" max="2.5" step="0.05" value="1.05" /></label>
+      </section>
+
+      <section>
+        <h2>Universes</h2>
+        <div id="universe-list" class="universes"></div>
+      </section>
+
+      <section id="warnings-section" class="hidden">
+        <h2>Showfile notes</h2>
+        <ul id="warnings" class="warnings"></ul>
+      </section>
+    </aside>
+
+    <div id="inspector" class="panel inspector hidden">
+      <button id="inspector-close" class="close">×</button>
+      <h2 id="insp-name">—</h2>
+      <div class="insp-grid">
+        <label>Group</label><span id="insp-group">—</span>
+        <label>Profile</label><span id="insp-profile">—</span>
+        <label>Patch</label><span id="insp-patch">—</span>
+        <label>Dimmer</label><span id="insp-alpha">—</span>
+        <label>Colour</label><span id="insp-colour">—</span>
+        <label>Pan / Tilt</label><span id="insp-pantilt">—</span>
+        <label>Strobe</label><span id="insp-strobe">—</span>
+      </div>
+      <h3>Channels</h3>
+      <div id="insp-channels" class="channels"></div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

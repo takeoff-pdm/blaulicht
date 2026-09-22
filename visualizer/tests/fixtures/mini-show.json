@@ -1,0 +1,41 @@
+{
+  "format_version": 4,
+  "engine": {
+    "groups": [
+      {
+        "key": 0,
+        "value": {
+          "name": "Front Truss",
+          "fixtures": [
+            { "key": 0, "value": { "name": "Par L", "type_": { "Light": "AdjMegaHexPar" },
+              "pos": { "x": 0.0, "y": 0.0, "z": 0.0 }, "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
+              "start_addr": 1, "universe_no": 0 } },
+            { "key": 1, "value": { "name": "Par R", "type_": { "Light": "AdjMegaHexPar" },
+              "pos": { "x": 0.0, "y": 0.0, "z": 0.0 }, "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
+              "start_addr": 8, "universe_no": 0 } }
+          ]
+        }
+      },
+      {
+        "key": 1,
+        "value": {
+          "name": "Heads",
+          "fixtures": [
+            { "key": 0, "value": { "name": "Mac 1", "type_": { "MovingHead": "MartinMac250E" },
+              "pos": { "x": 0.0, "y": 0.0, "z": 0.0 }, "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
+              "start_addr": 100, "universe_no": 1 } },
+            { "key": 1, "value": { "name": "Haze", "type_": { "Dimmer": "FogMachineSingle" },
+              "pos": { "x": 0.0, "y": 0.0, "z": 0.0 }, "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
+              "start_addr": 200, "universe_no": 1 } }
+          ]
+        }
+      }
+    ]
+  },
+  "artnet": { "receivers": [{ "address": "127.0.0.1:6454", "enabled": true }] },
+  "stage": {
+    "version": 3,
+    "room": { "visible": true, "width": 14.0, "depth": 10.0, "height": 6.0,
+      "floor_color": [28, 30, 38], "wall_color": [38, 41, 50] }
+  }
+}

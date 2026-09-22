@@ -1,0 +1,33 @@
+{
+  "name": "blaulicht-visualizer",
+  "version": "1.0.0",
+  "description": "State-of-the-art real-time Art-Net / DMX 3D visualizer for blaulicht showfiles",
+  "main": "dist/main/main.cjs",
+  "type": "module",
+  "scripts": {
+    "build:main": "esbuild src/main/main.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=dist/main/main.cjs && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=dist/main/preload.cjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "dev": "npm run build:main && concurrently -k \"vite\" \"wait-on tcp:5273 && cross-env VITE_DEV_SERVER_URL=http://localhost:5273 electron .\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/three": "^0.186.0",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.4.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "wait-on": "^9.1.0"
+  }
+}
