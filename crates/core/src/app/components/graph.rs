@@ -225,19 +225,24 @@ impl TimeSeriesGraph {
             0
         };
 
-        // Title with current value - styled with padding, smaller monospace font, and translucent background
+        // Title with current value - styled with padding, smaller monospace font, and
+        // translucent background. The badge is anchored inside `graph_rect` (the plotted
+        // area), not `rect`: anchoring to the outer rect left it straddling the plot's
+        // top-left corner, half of it sitting on the page background.
         let title_text = format!("{}: {}", self.title, current_value);
         let title_font = egui::FontId::monospace(14.0);
-        let padding = 8.0;
+        let padding = 6.0;
         let margin = 4.0;
-        let estimated_width = title_text.len() as f32 * 8.0; // Rough estimate for monospace font
-        let estimated_height = 20.0; // Fixed height for the background
+        let text_color = egui::Color32::from_rgb(220, 220, 220);
 
-        // Place background in the upper-left corner, fully inside the graph
-        let bg_left = rect.min.x + margin;
-        let bg_top = rect.min.y + margin;
-        let bg_right = (bg_left + estimated_width + padding * 2.0).min(rect.max.x - margin);
-        let bg_bottom = (bg_top + estimated_height + padding * 2.0).min(rect.max.y - margin);
+        // Measure the text instead of estimating from the character count, so the badge
+        // never ends up wider or narrower than the label it wraps.
+        let galley = painter.layout_no_wrap(title_text, title_font, text_color);
+
+        let bg_left = graph_rect.min.x + margin;
+        let bg_top = graph_rect.min.y + margin;
+        let bg_right = (bg_left + galley.size().x + padding * 2.0).min(graph_rect.max.x - margin);
+        let bg_bottom = (bg_top + galley.size().y + padding * 2.0).min(graph_rect.max.y - margin);
         let bg_rect =
             egui::Rect::from_min_max(egui::pos2(bg_left, bg_top), egui::pos2(bg_right, bg_bottom));
 
@@ -246,14 +251,10 @@ impl TimeSeriesGraph {
         painter.rect_filled(bg_rect, 4.0, bg_color);
 
         // Draw title text, always inside the background
-        let text_x = bg_left + padding;
-        let text_y = bg_top + padding;
-        painter.text(
-            egui::pos2(text_x, text_y),
-            egui::Align2::LEFT_TOP,
-            &title_text,
-            title_font,
-            egui::Color32::from_rgb(220, 220, 220),
+        painter.galley(
+            egui::pos2(bg_left + padding, bg_top + padding),
+            galley,
+            text_color,
         );
     }
 

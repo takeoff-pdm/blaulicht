@@ -50,6 +50,12 @@ impl BlaulichtApp {
 
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        // `egui_phosphor` only registers its glyphs in the proportional family, so an icon
+        // painted with a monospace `FontId` (the icon-only buttons on the Art-Net and Screens
+        // pages) fell back to tofu. Register it as a monospace fallback as well.
+        if let Some(font_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+            font_keys.insert(1, "phosphor".into());
+        }
         blaulicht_assets::add_to_fonts(&mut fonts);
         egui_extras::install_image_loaders(&cc.egui_ctx);
 

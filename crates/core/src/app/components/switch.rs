@@ -83,10 +83,11 @@ impl<'a> Widget for Switch<'a> {
             StrokeKind::Inside,
         );
 
-        // Groove the lever slides in
+        // Groove the lever slides in. It has to be tall enough to contain the lever below,
+        // otherwise the lever juts out above and below the track and reads as a clipping bug.
         let groove_rect = Rect::from_center_size(
             switch_rect.center(),
-            vec2(switch_rect.width() * 0.65, switch_rect.height() * 0.42),
+            vec2(switch_rect.width() * 0.65, switch_rect.height() * 0.56),
         );
         painter.rect_filled(groove_rect, 4.0, Color32::from_rgb(18, 18, 21));
         painter.rect_stroke(
@@ -107,9 +108,13 @@ impl<'a> Widget for Switch<'a> {
                 },
             groove_rect.center().y,
         );
+        // Inset inside the groove on every side so the lever always sits within the track.
         let lever_rect = Rect::from_center_size(
             lever_center,
-            vec2(groove_rect.width() * 0.35, switch_rect.height() * 0.7),
+            vec2(
+                groove_rect.width() * 0.35,
+                (groove_rect.height() - 5.0).max(4.0),
+            ),
         );
 
         let lever_base = Color32::from_rgb(196, 196, 205);

@@ -242,7 +242,7 @@ impl BlaulichtApp {
                 for (id, view) in paginated_views {
                     let id = **id;
 
-                    let label = format!("{id} | {}", view.name);
+                    let label = components::indexed_label(id, &view.name);
                     let is_selected = selected_view_id == Some(id);
                     if components::button(
                         ui,
@@ -374,13 +374,22 @@ impl BlaulichtApp {
 
                         ui.separator();
 
+                        // Without a selection the panel used to render as a blank slab with no
+                        // explanation; mirror the "No Animation Selected" hint of the
+                        // animations page so the empty state reads as intentional.
                         let Some(view_id) = self.view_ui_state.selected_view_id else {
+                            ui.heading("View Details");
+                            ui.add_space(4.0);
+                            ui.label("No View Selected");
                             return;
                         };
 
                         let Some(view_snapshot) = dmx_engine.0.views.get(&view_id).cloned() else {
                             self.view_ui_state.scene_picker_view_id = None;
                             self.view_ui_state.overlay_picker_open = false;
+                            ui.heading("View Details");
+                            ui.add_space(4.0);
+                            ui.label("No View Selected");
                             return;
                         };
 

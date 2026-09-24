@@ -372,7 +372,7 @@ impl BlaulichtApp {
                 for (id, animation) in paginated_animations {
                     let id = **id;
 
-                    let label = format!("{id} | {}", animation.spec.name);
+                    let label = components::indexed_label(id, &animation.spec.name);
 
                     let is_selected = selected_animation_id == Some(id);
                     if components::button(

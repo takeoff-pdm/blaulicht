@@ -534,7 +534,13 @@ fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth
     for (universe, state) in states.iter().enumerate() {
         ui.group(|ui| {
             ui.strong(format!("Universe {universe}"));
-            ui.label(format!("Port: {}", state.port));
+            // Unconfigured universes carry an empty port, which rendered as a bare "Port:".
+            let port = if state.port.trim().is_empty() {
+                "-"
+            } else {
+                state.port.trim()
+            };
+            ui.label(format!("Port: {port}"));
             match &state.state {
                 crate::state::DmxHealthState::Healthy => {
                     ui.colored_label(Color32::LIGHT_GREEN, "ONLINE");

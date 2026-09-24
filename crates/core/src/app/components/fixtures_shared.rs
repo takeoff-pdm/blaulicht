@@ -1184,7 +1184,7 @@ impl BlaulichtApp {
                             dmx_engine.0.user_scenes().skip(start).take(ITEMS_PER_PAGE)
                         {
                             let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
-                            let label = format!("{scene_id} | {}", scene.name);
+                            let label = components::indexed_label(scene_id, &scene.name);
                             if components::button(
                                 ui,
                                 is_selected,
@@ -1249,7 +1249,7 @@ impl BlaulichtApp {
                 for (scene_id, scene) in page_items {
                     let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
 
-                    let label = format!("{scene_id} | {}", scene.name);
+                    let label = components::indexed_label(scene_id, &scene.name);
                     if components::button(
                         ui,
                         is_selected,

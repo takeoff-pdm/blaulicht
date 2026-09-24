@@ -43,3 +43,15 @@ pub fn elide_text(ui: &egui::Ui, text: &str, font_id: FontId, max_width: f32) ->
 
     best
 }
+
+/// Label for an entry in one of the id-prefixed pick lists (scenes, views,
+/// animations). Entries may carry an empty name, which rendered as a bare
+/// `"4 | "` with a dangling separator; fall back to a placeholder instead.
+pub fn indexed_label(id: impl std::fmt::Display, name: &str) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        format!("{id} | (unnamed)")
+    } else {
+        format!("{id} | {name}")
+    }
+}

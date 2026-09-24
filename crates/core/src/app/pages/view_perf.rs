@@ -24,7 +24,7 @@ impl Default for ViewPerfUI {
     }
 }
 
-const VIEW_PERFORMANCE_SCENE_WIDTH: f32 = 110.0;
+const VIEW_PERFORMANCE_SCENE_WIDTH: f32 = 128.0;
 const VIEW_PERFORMANCE_SCENE_HEIGHT: f32 = 82.0;
 
 impl BlaulichtApp {
@@ -96,7 +96,7 @@ impl BlaulichtApp {
                                 ui,
                                 rst_enabled,
                                 "RST",
-                                ButtonSize::Small.with_width(22.0),
+                                ButtonSize::Small.with_width(34.0),
                                 Some("Scene level and speed are already at their defaults"),
                             ) {
                                 self.data
@@ -121,7 +121,7 @@ impl BlaulichtApp {
                                 ui,
                                 !is_off,
                                 "OFF",
-                                ButtonSize::Small.with_width(22.0),
+                                ButtonSize::Small.with_width(34.0),
                             ) {
                                 self.data
                                     .event_bus_connection
@@ -137,7 +137,7 @@ impl BlaulichtApp {
                                 ui,
                                 removable,
                                 "DEL",
-                                ButtonSize::Small.with_width(22.0),
+                                ButtonSize::Small.with_width(34.0),
                                 Some("The live preview scene is not an overlay"),
                             ) {
                                 self.data
