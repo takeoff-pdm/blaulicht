@@ -37,8 +37,11 @@ Commits follow conventional prefixes (`feat:`, `fix:`, `refactor:`, `chore:`) an
 ## Configuration & Deployment Notes
 Adjust defaults via `config.toml` and keep secrets out of version control. Release artifacts live in `target/` and `dist/`; do not commit them. Coordinate with maintainers before modifying `update.sh` (deploys to the production `bl` host) or `screen_driver.sh`.
 
+## Tickets
+Planned work lives in `../../TICKETS/` as one file per ticket: `NNN-slug.planned.md`, then `.doing.md` and `.done.md`. To change a status, `git mv` the file. The index and a raw-idea inbox are in `../../TODO.md`. Read `TICKETS/README.md` before starting a ticket: check `Depends on`, claim it with a committed rename to `.doing.md`, and never run two ABI-bumping tickets in parallel.
+
 ## Plugin ABI
-`PLUGIN_ABI_VERSION` lives in `crates/shared/src/abi.rs` (currently 7). Any change to serialized shared types (`TickInput`, `UdpReceived`, `ControlEvent`, host function signatures, …) must bump it and rebuild all plugins with `cd crates/plugins && make build_noopt`. The engine rejects a `.wasm` with a mismatched ABI at load, so stale bundles fail loudly rather than silently misbehave.
+`PLUGIN_ABI_VERSION` lives in `crates/shared/src/abi.rs` (currently 13; check the file, it changes often). Any change to serialized shared types (`TickInput`, `UdpReceived`, `ControlEvent`, host function signatures, …) must bump it and rebuild all plugins with `cd crates/plugins && make build_noopt`. The engine rejects a `.wasm` with a mismatched ABI at load, so stale bundles fail loudly rather than silently misbehave.
 
 ## Live Inspection (inspector + blctl)
 The `inspector` plugin (`crates/plugins/inspector`, enabled in `config.toml`, hot-reloaded by the plugin watcher) listens on `127.0.0.1:9099`, loopback only. Drive it with:
