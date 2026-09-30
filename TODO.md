@@ -16,7 +16,7 @@ Target navigation (agreed 2026-09-27):
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 001 | [Unify host logging (one path to terminal + Logs page)](TICKETS/001-unify-host-logging.doing.md) | doing | — |
+| 001 | [Unify host logging (one path to terminal + Logs page)](TICKETS/001-unify-host-logging.done.md) | done | — |
 | 002 | [Visible startup progress (per-stage checklist)](TICKETS/002-startup-progress.planned.md) | planned | 001 |
 | 003 | [Showfile name instead of abspath; audio page header order](TICKETS/003-showfile-name-and-audio-header.planned.md) | planned | — |
 | 004 | [Selectable dummy audio input (silence / noise)](TICKETS/004-audio-dummy-input.planned.md) | planned | — |
@@ -86,6 +86,8 @@ Raw ideas that are not ticketed yet. Add new notes here, and turn them into tick
 Items marked `→ TICKET NNN` are covered by that ticket.
 
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
+- Plugin logs: drop the `[MIDI]` / `[LEGACY]` / `[Midi All]` prefixes in plugins now that the Logs page shows the plugin as source; `midi_all` logs every event at info (`---> EVENT: ...`). (from 001)
+- Logs page keeps only 100 entries (`LogWindow::new(100)`); startup nearly fills it. Raise or make configurable. (from 001)
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet
