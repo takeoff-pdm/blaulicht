@@ -45,7 +45,13 @@ pub enum SystemMessage {
     // System.
     Heartbeat(usize),
     EngineInitializationComplete,
-    Log(String, LogLevel),
+    /// Host log line for the Logs page. Only `crate::log`'s tracing layer
+    /// sends this; everything else logs through `tracing`.
+    Log {
+        message: String,
+        level: LogLevel,
+        source: Cow<'static, str>,
+    },
     WasmLog(WasmLogBody),
 
     TickSpeeds(TickSpeeds),

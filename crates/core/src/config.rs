@@ -1,11 +1,9 @@
 use crate::{
     dmx,
-    msg::SystemMessage,
     state::{ArtNetOutput, ArtNetReceiver},
 };
 use anyhow::{anyhow, Context, Result};
-use blaulicht_shared::{AppPage, EngineState, LogLevel, SaveEngineState, ShowfileArtNetState};
-use crossbeam_channel::Sender;
+use blaulicht_shared::{AppPage, EngineState, SaveEngineState, ShowfileArtNetState};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -160,21 +158,14 @@ pub fn read_showfile(
     dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
     artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
     plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
-    system_message_sender: Sender<SystemMessage>,
 ) -> Option<LoadedShowfileState> {
     match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
         Ok(loaded_state) => {
-            let _ = system_message_sender.send(SystemMessage::Log(
-                format!("Loaded showfile from {file:?}"),
-                LogLevel::Info,
-            ));
+            tracing::info!("Loaded showfile {}", file.display());
             Some(loaded_state)
         }
         Err(e) => {
-            let _ = system_message_sender.send(SystemMessage::Log(
-                format!("Read showfile <{file:?}> ERR: {e}"),
-                LogLevel::Err,
-            ));
+            tracing::error!("Failed to read showfile {}: {e}", file.display());
             None
         }
     }

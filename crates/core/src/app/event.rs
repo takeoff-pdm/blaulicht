@@ -2,12 +2,26 @@ use crate::{app::BlaulichtApp, config, msg::SystemMessage};
 use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
 use crossbeam_channel::TryRecvError;
 use std::collections::hash_map::Entry;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "audio")]
 use cpal::traits::DeviceTrait;
 
+/// Logs page source for a plugin log line: the plugin's file stem, so each
+/// plugin can be filtered on its own.
+fn plugin_log_source(plugin_id: u8, plugin_path: Option<&str>) -> String {
+    plugin_path
+        .and_then(|path| Path::new(path).file_stem())
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| format!("Plugin {plugin_id}"))
+}
+
 impl BlaulichtApp {
+    fn plugin_log_source(&self, plugin_id: u8) -> String {
+        let plugins = self.data.state.plugins.read().unwrap();
+        plugin_log_source(plugin_id, plugins.get(&plugin_id).map(|p| p.path.as_ref()))
+    }
+
     pub(crate) fn handle_events(&mut self) {
         let mut drained: usize = 0;
         loop {
@@ -40,9 +54,7 @@ impl BlaulichtApp {
                                 self.navbar.navigate_to(app_page)
                             }
                             MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
-                                tracing::debug!(
-                                    "[UI] Set plugin <{plugin_id}> visibility to: {open}"
-                                );
+                                tracing::debug!("Set plugin {plugin_id} UI visibility to {open}");
                                 let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
                                 if let Entry::Occupied(ref mut entry) = map.entry(plugin_id) {
                                     entry.get_mut().open = open;
@@ -90,16 +102,21 @@ impl BlaulichtApp {
                     SystemMessage::EngineInitializationComplete => {
                         self.engine_initialization_complete = true;
                     }
-                    SystemMessage::Log(log_msg, level) => {
+                    SystemMessage::Log {
+                        message,
+                        level,
+                        source,
+                    } => {
                         self.log_window
-                            .add_log(level, log_msg, None, "System".to_string());
+                            .add_log(level, message, None, source.into_owned());
                     }
                     SystemMessage::WasmLog(wasm_log_body) => {
+                        let source = self.plugin_log_source(wasm_log_body.plugin_id);
                         self.log_window.add_log(
                             wasm_log_body.level.clone(),
-                            format!("PID: {} | {}", wasm_log_body.plugin_id, wasm_log_body.msg),
+                            wasm_log_body.msg.into_owned(),
                             wasm_log_body.additional,
-                            "WASM".to_string(),
+                            source,
                         );
                     }
                     SystemMessage::TickSpeeds(speeds) => {
@@ -205,5 +222,19 @@ fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
         | ControlEvent::MiscEvent { .. } => false,
         ControlEvent::Transaction(events) => events.iter().any(control_event_marks_showfile_dirty),
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plugin_log_source;
+
+    #[test]
+    fn plugin_logs_are_attributed_to_the_plugin_file_stem() {
+        assert_eq!(
+            plugin_log_source(3, Some("./crates/plugins/bundle_debug/inspector.wasm")),
+            "inspector"
+        );
+        assert_eq!(plugin_log_source(7, None), "Plugin 7");
     }
 }

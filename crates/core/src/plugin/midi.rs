@@ -1,4 +1,3 @@
-use blaulicht_shared::LogLevel;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
@@ -66,7 +65,7 @@ impl MidiManager {
         };
 
         if let Err(err) = manager.enumerate_devices() {
-            warn!("[MIDI] Initial device enumeration failed: {:?}", err);
+            warn!("Initial device enumeration failed: {:?}", err);
         }
 
         manager
@@ -93,7 +92,7 @@ impl MidiManager {
 
     pub fn reload(&mut self) {
         if let Err(err) = self.enumerate_devices() {
-            warn!("[MIDI] Failed to refresh devices on reload: {:?}", err);
+            warn!("Failed to refresh devices on reload: {:?}", err);
         }
     }
 
@@ -161,9 +160,9 @@ impl MidiManager {
             })
             .ok_or(MidiError::DeviceNotFound)?;
 
-        debug!("[MIDI-IN] Connecting to: {device_name}");
+        debug!("Connecting to: {device_name}");
 
-        info!("[MIDI-IN] About to call midi_in.connect()...");
+        info!("About to call midi_in.connect()...");
         let send = self.midi_in_sender.clone();
 
         let _conn_in = midi_in
@@ -193,14 +192,14 @@ impl MidiManager {
                         data0,
                         data1,
                     }) {
-                        warn!("[MIDI] Dropping input event: channel disconnected: {err}");
+                        warn!("Dropping input event: channel disconnected: {err}");
                     }
                 },
                 (),
             )
             .map_err(|e| MidiError::Other(e.to_string()))?;
 
-        info!("[MIDI-IN] Successfully connected input!");
+        info!("Successfully connected input!");
 
         let conn_out = match MidiOutput::new("midi-sender") {
             Ok(midi_out) => {
@@ -215,7 +214,7 @@ impl MidiManager {
                 match out_port {
                     Some(port) => {
                         trace!(
-                            "[MIDI-OUT] Connecting to: {}",
+                            "Connecting to: {}",
                             midi_out
                                 .port_name(port)
                                 .map_err(|e| MidiError::Other(e.to_string()))?
@@ -224,22 +223,19 @@ impl MidiManager {
                         match midi_out.connect(port, "midi-sender") {
                             Ok(conn) => Some(conn),
                             Err(e) => {
-                                warn!("[MIDI-OUT] Failed to connect: {}", e);
+                                warn!("Failed to connect: {}", e);
                                 None
                             }
                         }
                     }
                     None => {
-                        debug!(
-                            "[MIDI-OUT] No output port found for device: {}",
-                            device_name
-                        );
+                        debug!("No output port found for device: {}", device_name);
                         None
                     }
                 }
             }
             Err(e) => {
-                warn!("[MIDI-OUT] Failed to create MIDI output: {}", e);
+                warn!("Failed to create MIDI output: {}", e);
                 None
             }
         };
@@ -267,7 +263,7 @@ impl MidiManager {
                 Ok(data) => incoming_events.push(data),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    warn!("[MIDI] Input channel disconnected; stopping input processing");
+                    warn!("Input channel disconnected; stopping input processing");
                     break;
                 }
             }
@@ -292,10 +288,7 @@ impl MidiManager {
 
                     if let Some(ref mut output) = output_device.output {
                         if let Err(err) = output.send(&[sig.status, sig.data0, sig.data1]) {
-                            let _ = self.system_message_sender.send(SystemMessage::Log(
-                                format!("MIDI ERROR: {err}"),
-                                LogLevel::Err,
-                            ));
+                            error!("MIDI output send failed: {err}");
                         }
                     } else {
                         debug!("MIDI output not available for device {}", sig.device);
@@ -304,7 +297,7 @@ impl MidiManager {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     // TODO: how to handle this?
-                    tracing::warn!("[MIDI] Terminating...");
+                    tracing::warn!("Terminating...");
                     return Ok(vec![]);
                 }
             };

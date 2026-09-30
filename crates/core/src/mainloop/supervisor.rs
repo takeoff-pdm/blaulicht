@@ -5,10 +5,8 @@ use crate::{
     mainloop::{self, bg_worker},
     msg::{AudioDeviceT, SystemMessage},
     state::AppState,
-    syslog,
 };
-use crate::{msg::FromFrontend, utils};
-use blaulicht_shared::LogLevel;
+use crate::{log::target, msg::FromFrontend, utils};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use std::{
     sync::{
@@ -57,7 +55,7 @@ pub fn supervisor_thread(
     event_bus_connection_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
 ) {
-    tracing::info!("[SUPERVISOR] Thread started!");
+    tracing::info!("Supervisor started");
 
     // Start background worker.
     {
@@ -88,7 +86,7 @@ pub fn supervisor_thread(
 
     loop {
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
-            tracing::warn!("[SUPERVISOR] Shutting down...");
+            tracing::warn!("Supervisor shutting down");
 
             signal_mainloop(
                 Arc::clone(&audio_thread_control_signal),
@@ -102,7 +100,7 @@ pub fn supervisor_thread(
 
         match from_frontend.try_recv() {
             Ok(FromFrontend::Reload) => {
-                tracing::info!("[SUPERVISOR] Got reload request");
+                tracing::info!("Supervisor got reload request");
 
                 if AudioThreadControlSignal::from(
                     audio_thread_control_signal.load(Ordering::Relaxed),
@@ -121,7 +119,7 @@ pub fn supervisor_thread(
                 auto_select_audio_device = false;
             }
             Err(TryRecvError::Disconnected) => {
-                tracing::warn!("[SUPERVISOR] Shutting down.");
+                tracing::warn!("Supervisor shutting down");
 
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
@@ -148,19 +146,19 @@ pub fn supervisor_thread(
                 .send(SystemMessage::AudioDevicesView(devices))
                 .is_err()
             {
-                tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
+                tracing::info!("System channel closed; supervisor shutting down");
                 break;
             }
 
             match automatic_device {
                 Some(device) => {
                     let device_name = device.name().unwrap_or_else(|_| "unknown".to_owned());
-                    tracing::info!("[audio] Automatically selected input device: {device_name}");
+                    tracing::info!(target: target::AUDIO, "Automatically selected input device: {device_name}");
                     audio_device = Some(device);
                     device_changed = true;
                 }
                 None => {
-                    tracing::error!("[audio] No input device is available");
+                    tracing::error!(target: target::AUDIO, "No input device is available");
                     let _ = system_out.send(SystemMessage::EngineInitializationComplete);
                 }
             }
@@ -186,13 +184,11 @@ pub fn supervisor_thread(
         if audio_device.is_none() {
             let devices = utils::get_input_devices_flat();
 
-            // TODO: add an aggregate log macro which logs to the channel and the console.
-
             if system_out
                 .send(SystemMessage::AudioDevicesView(devices))
                 .is_err()
             {
-                tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
+                tracing::info!("System channel closed; supervisor shutting down");
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
                     Arc::clone(&app_state),
@@ -202,9 +198,9 @@ pub fn supervisor_thread(
             }
 
             if !sent_no_device_available_log_message {
-                syslog!(
-                    system_out,
-                    "[audio] No audio device selected, waiting for selection..."
+                tracing::info!(
+                    target: target::AUDIO,
+                    "No audio device selected, waiting for selection"
                 );
 
                 sent_no_device_available_log_message = true;
@@ -217,7 +213,7 @@ pub fn supervisor_thread(
                 .send(SystemMessage::AudioSelected(audio_input_device.clone()))
                 .is_err()
             {
-                tracing::info!("[SUPERVISOR] System channel closed; shutting down.");
+                tracing::info!("System channel closed; supervisor shutting down");
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
                     Arc::clone(&app_state),
@@ -234,7 +230,7 @@ pub fn supervisor_thread(
                     AudioThreadControlSignal::ABORT,
                 );
                 if handle.join().is_err() {
-                    tracing::warn!("[SUPERVISOR] Previous audio worker did not exit cleanly");
+                    tracing::warn!("Previous engine thread did not exit cleanly");
                 }
             }
             {
@@ -269,44 +265,27 @@ pub fn supervisor_thread(
                     .unwrap_or_else(|_| Err(anyhow::anyhow!("Engine thread panicked")));
                     if let Err(err) = result {
                         // `{err:#}` prints the full anyhow context chain.
-                        tracing::error!("[audio] THREAD CRASH: {err:#}");
-                        syslog!(sys, format!("[audio] {err}"), LogLevel::Err);
+                        tracing::error!("Engine thread crashed: {err:#}");
 
                         signal_mainloop(
                             Arc::clone(&audio_thread_control_signal),
                             Arc::clone(&app_state),
                             AudioThreadControlSignal::CRASHED,
                         );
+                    } else {
+                        tracing::info!("Engine thread stopped");
                     }
-
-                    let _ = sys.send(SystemMessage::Log(
-                        "[audio] Thread died.".into(),
-                        LogLevel::Warn,
-                    ));
                 }));
             }
 
             device_changed = false;
             tracing::info!(
-                "[AUDIO] Main thread started: <{}>",
+                target: target::AUDIO,
+                "Engine started with audio input \"{}\"",
                 audio_input_device
                     .as_ref()
                     .and_then(|device| device.name().ok())
-                    .unwrap_or_else(|| "no audio input".to_string())
-            );
-
-            syslog!(
-                sys,
-                format!(
-                    "[audio] Using device \"{}\"",
-                    app_state
-                        .audio
-                        .read()
-                        .unwrap()
-                        .device_name
-                        .clone()
-                        .unwrap_or_else(|| "None".to_string())
-                )
+                    .unwrap_or_else(|| "none".to_string())
             );
         }
 

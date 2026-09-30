@@ -415,7 +415,7 @@ where
 
     fn calibrate(&mut self, now: usize) {
         if now - self.scratch.last_calibrate_time > 1000 {
-            println!("Calibration is new.");
+            log::debug!("Auto-calibration restarted");
             self.params.gate = 60;
             self.params.changed = true;
         }
@@ -428,7 +428,7 @@ where
                     v => v,
                 };
 
-                println!("Gate: {last_gate}");
+                log::debug!("Auto-calibration gate: {last_gate}");
 
                 self.params.gate = last_gate - 1;
                 self.params.changed = true;

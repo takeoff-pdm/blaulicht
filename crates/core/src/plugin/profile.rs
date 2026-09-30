@@ -127,16 +127,16 @@ impl PluginProfiler {
 
         let ticks = self.manager_ticks.max(1);
         let mut lines = vec![format!(
-            "[PROFILE] {ticks} plugin ticks/s, last tick {last_total:?}, manager overhead {:?}",
+            "Plugin profile: {ticks} ticks/s, last tick {last_total:?}, manager overhead {:?}",
             self.manager_overhead
         )];
 
         lines.push(format!(
-            "[PROFILE]   engine snapshots: {}/{} changed, {} bytes",
+            "  engine snapshots: {}/{} changed, {} bytes",
             self.snapshots_changed, self.snapshots, self.snapshot_len,
         ));
         lines.push(format!(
-            "[PROFILE]   shared/tick: engine {:?}, io {:?}",
+            "  shared/tick: engine {:?}, io {:?}",
             self.shared.engine_serialize / ticks,
             self.shared.io_serialize / ticks,
         ));
@@ -146,7 +146,7 @@ impl PluginProfiler {
             totals.add(&entry.times);
             let per_tick = entry.times.total() / entry.ticks.max(1);
             lines.push(format!(
-                "[PROFILE]   plugin {plugin_id}: {:?}/tick over {} calls \
+                "  plugin {plugin_id}: {:?}/tick over {} calls \
                  (engine {:?}, io {:?}, memwrite {:?}, wasm {:?})",
                 per_tick,
                 entry.ticks,
@@ -157,7 +157,7 @@ impl PluginProfiler {
             ));
         }
         lines.push(format!(
-            "[PROFILE]   totals/tick: engine {:?}, io {:?}, memwrite {:?}, wasm {:?}",
+            "  totals/tick: engine {:?}, io {:?}, memwrite {:?}, wasm {:?}",
             totals.engine_serialize / ticks,
             totals.io_serialize / ticks,
             totals.memory_write / ticks,

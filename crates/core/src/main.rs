@@ -3,103 +3,22 @@ use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::msg::{FromFrontend, SystemMessage, TERMINAL_ONLY_LOG_TARGET};
+use blaulicht_core::msg::FromFrontend;
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
-use blaulicht_shared::LogLevel;
 use clap::Parser;
-use crossbeam_channel::Sender;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tracing::{info, Event, Level, Subscriber};
-use tracing_subscriber::layer::{Context as TraceContext, SubscriberExt};
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer};
+use tracing::info;
 use winit::event_loop::EventLoop;
 
 #[cfg(feature = "dhat")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
-
-#[derive(Clone)]
-struct SystemOutLayer {
-    system_out: Sender<SystemMessage>,
-}
-
-impl SystemOutLayer {
-    fn new(system_out: Sender<SystemMessage>) -> Self {
-        Self { system_out }
-    }
-}
-
-#[derive(Default)]
-struct LogVisitor {
-    message: Option<String>,
-    fields: Vec<String>,
-}
-
-impl tracing::field::Visit for LogVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "message" {
-            self.message = Some(value.to_string());
-        } else {
-            self.fields.push(format!("{}={value}", field.name()));
-        }
-    }
-
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.message = Some(format!("{value:?}"));
-        } else {
-            self.fields.push(format!("{}={value:?}", field.name()));
-        }
-    }
-}
-
-impl<S> Layer<S> for SystemOutLayer
-where
-    S: Subscriber,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: TraceContext<'_, S>) {
-        if event.metadata().target() == TERMINAL_ONLY_LOG_TARGET {
-            return;
-        }
-
-        let level = match *event.metadata().level() {
-            Level::ERROR => LogLevel::Err,
-            Level::WARN => LogLevel::Warn,
-            Level::INFO => LogLevel::Info,
-            Level::DEBUG | Level::TRACE => LogLevel::Debug,
-        };
-
-        let mut visitor = LogVisitor::default();
-        event.record(&mut visitor);
-
-        let message = match visitor.message {
-            Some(msg) => msg,
-            None if !visitor.fields.is_empty() => visitor.fields.join(" "),
-            None => event.metadata().target().to_string(),
-        };
-
-        let _ = self.system_out.send(SystemMessage::Log(message, level));
-    }
-}
-
-fn init_tracing(system_out: Sender<SystemMessage>) {
-    let _ = tracing_log::LogTracer::init();
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-
-    let subscriber = tracing_subscriber::registry()
-        .with(env_filter)
-        .with(tracing_subscriber::fmt::layer())
-        .with(SystemOutLayer::new(system_out));
-
-    let _ = subscriber.try_init();
-}
 
 fn main() -> anyhow::Result<()> {
     #[cfg(feature = "dhat")]
@@ -113,7 +32,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
-    init_tracing(system_out.clone());
+    blaulicht_core::log::init_tracing(system_out.clone());
 
     let cfg = config::read_config(config_filepath.clone())?;
     let Some(cfg) = cfg else {
@@ -125,7 +44,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let version = env!("CARGO_PKG_VERSION");
-    info!("[INIT] Starting BLAULICHT {version}");
+    info!("Starting BLAULICHT {version}");
 
     //
     // Audio.
@@ -250,7 +169,6 @@ fn main() -> anyhow::Result<()> {
             &mut dmx,
             &mut artnet,
             &app_state.plugin_state_storage,
-            system_out.clone(),
         );
     };
 

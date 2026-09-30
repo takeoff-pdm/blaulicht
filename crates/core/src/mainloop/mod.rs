@@ -11,7 +11,7 @@ use crate::{
     msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
     state::AppState,
-    syslog, system_message, util,
+    system_message, util,
 };
 use anyhow::{anyhow, Context};
 use blaulicht_audio_engine::{
@@ -125,12 +125,8 @@ pub fn run(
     // DMX Engine.
     //
     let dmx_appstate = Arc::clone(&app_state);
-    let mut dmx_engine = DmxEngine::new(
-        dmx_appstate,
-        event_bus_dmx,
-        system_out.clone(),
-        config.dmx_out_devices.clone(),
-    );
+    let mut dmx_engine =
+        DmxEngine::new(dmx_appstate, event_bus_dmx, config.dmx_out_devices.clone());
     // TODO: add a command for starting + stopping setup.
     if config.run_setup_on_reload {
         dmx_engine.start_setup();
@@ -202,7 +198,7 @@ pub fn run(
     // Boost the current thread.
     // NOTE: this is done only now since the previous init code could starve the UI thread.
     // (mainly the Wasm setup).
-    util::increase_thread_priority(system_out.clone());
+    util::increase_thread_priority();
     initialization_guard.complete();
 
     loop {
@@ -215,16 +211,16 @@ pub fn run(
 
         match control {
             AudioThreadControlSignal::ABORT => {
-                syslog!(system_out, "[AUDIO] Received kill signal.");
+                tracing::info!("Engine received stop signal");
                 break;
             }
             AudioThreadControlSignal::RELOAD => {
-                syslog!(system_out, "[ENGINE] Reload start.");
+                tracing::info!("Engine reload started");
                 match midi_manager.lock() {
                     Ok(mut manager) => manager.reload(),
-                    Err(err) => tracing::warn!(
-                        "[ENGINE] Failed to acquire MIDI manager lock during reload: {err}"
-                    ),
+                    Err(err) => {
+                        tracing::warn!("Failed to acquire MIDI manager lock during reload: {err}")
+                    }
                 }
 
                 if let Ok(mut manager) = udp_manager.lock() {
@@ -234,7 +230,7 @@ pub fn run(
                 *app_state.external_tempo.lock().unwrap() = Default::default();
                 plugin_manager.reload()?;
 
-                syslog!(system_out, "[ENGINE] Reload complete");
+                tracing::info!("Engine reload complete");
 
                 complete_reload(&thread_control_signal, &app_state);
             }

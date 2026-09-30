@@ -135,7 +135,7 @@ impl SerialManager {
             self.device_id_counter = next;
             current
         }) else {
-            error!("[SERIAL] Device ID space exhausted; refusing '{port_path}'");
+            error!("Device ID space exhausted; refusing '{port_path}'");
             return None;
         };
 

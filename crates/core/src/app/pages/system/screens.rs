@@ -1,11 +1,7 @@
-use crate::{
-    app::{
-        components::{self, clickable, ButtonSize, Dialog},
-        BlaulichtApp,
-    },
-    msg::SystemMessage,
+use crate::app::{
+    components::{self, clickable, ButtonSize, Dialog},
+    BlaulichtApp,
 };
-use blaulicht_shared::LogLevel;
 use egui::{Color32, Context, FontId, Frame, Margin, RichText, ScrollArea};
 
 impl BlaulichtApp {
@@ -140,13 +136,7 @@ impl BlaulichtApp {
 
                 if let Some(index) = delete_index {
                     if self.remove_external_screen(index) {
-                        self.data
-                            .system_message_sender
-                            .send(SystemMessage::Log(
-                                format!("Removed external screen #{index}."),
-                                LogLevel::Info,
-                            ))
-                            .unwrap();
+                        tracing::info!("Removed external screen #{index}");
                     }
                 }
 

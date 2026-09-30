@@ -763,7 +763,7 @@ pub(crate) fn render_plugin_ops(
                     egui::vec2(canvas_width, canvas_width * *height as f32 / *width as f32);
                 let (rect, resp) =
                     ui.allocate_exact_size(scaled_size, egui::Sense::click_and_drag());
-                tracing::debug!("[Host] PainterBegin: allocated rect={:?}", rect);
+                tracing::debug!("PainterBegin: allocated rect={:?}", rect);
 
                 let scale_x = *width as f32 / scaled_size.x;
                 let scale_y = *height as f32 / scaled_size.y;

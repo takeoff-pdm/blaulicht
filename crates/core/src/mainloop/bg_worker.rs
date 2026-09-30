@@ -16,7 +16,7 @@ use crate::state::AppState;
 const BG_WORKER_TICK_DURATION: Duration = Duration::from_millis(16); // 60fps
 
 pub fn spawn_bg_worker(app_state: Arc<AppState>) {
-    info!("[BACKGROUND] Started worker");
+    info!("Background worker started");
 
     let mut count = 0u64;
     let mut output_dir = match env::var_os("BLAULICHT_SPECTROGRAM_DIR") {
@@ -24,15 +24,12 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
             let dir = PathBuf::from(path);
             match fs::create_dir_all(&dir) {
                 Ok(_) => {
-                    info!(
-                        "[BACKGROUND] Writing spectrogram snapshots to {}",
-                        dir.display()
-                    );
+                    info!("Writing spectrogram snapshots to {}", dir.display());
                     Some(dir)
                 }
                 Err(err) => {
                     warn!(
-                        "[BACKGROUND] Unable to create spectrogram output directory {}: {err}",
+                        "Unable to create spectrogram output directory {}: {err}",
                         dir.display()
                     );
                     None
@@ -40,7 +37,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
             }
         }
         None => {
-            info!("[BACKGROUND] Spectrogram output directory not set; skipping disk writes.");
+            info!("Spectrogram output directory not set; skipping disk writes.");
             None
         }
     };
@@ -83,7 +80,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
             let path = dir.join(format!("{count}.bmp"));
             if let Err(err) = imgbuf.save_with_format(&path, image::ImageFormat::Bmp) {
                 warn!(
-                    "[BACKGROUND] Failed to write spectrogram frame {}: {err}",
+                    "Failed to write spectrogram frame {}: {err}",
                     path.display()
                 );
                 // Disable further writes if the error is persistent (e.g. permission denied)
@@ -95,7 +92,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
 
         if start.elapsed() > BG_WORKER_TICK_DURATION {
             warn!(
-                "[BACKGROUND] Tick took: {:?}, but tick period is {:?}",
+                "Background worker tick took {:?}, but the tick period is {:?}",
                 start.elapsed(),
                 BG_WORKER_TICK_DURATION
             );

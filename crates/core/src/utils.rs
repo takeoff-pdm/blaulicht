@@ -2,34 +2,8 @@
 
 use std::io::{Read, Write};
 use std::process::exit;
-use tracing_subscriber::EnvFilter;
 
 use crate::msg::{AudioDeviceT, AudioHostT};
-
-pub fn init_logger() {
-    let _ = tracing_log::LogTracer::init();
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .try_init();
-}
-
-#[macro_export]
-macro_rules! syslog {
-    ($system_out:expr,$message:expr) => {{
-        use blaulicht_shared::LogLevel;
-        use $crate::msg::SystemMessage;
-
-        // The UI receiver may already be gone during shutdown; don't panic.
-        let _ = $system_out.send(SystemMessage::Log(($message).into(), LogLevel::Info));
-    }};
-
-    ($system_out:expr,$message:expr,$level:expr) => {{
-        use $crate::msg::SystemMessage;
-
-        let _ = $system_out.send(SystemMessage::Log(($message).into(), $level));
-    }};
-}
 
 #[cfg(feature = "audio")]
 mod with_audio_feature {

@@ -307,7 +307,7 @@ pub fn create_spectrogram_image(
     // let image = egui::ColorImage::new([width, height_outer], pixels);
 
     if image_buffer.size != [width, height_outer] {
-        println!("WARN: called image re-alloc");
+        log::debug!("Spectrogram image re-allocated");
         let pixels = vec![Color32::BLACK; width * height_outer];
         *image_buffer = egui::ColorImage::new([width, height_outer], pixels);
     }

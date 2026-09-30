@@ -1,35 +1,23 @@
-use crate::msg::SystemMessage;
 use audio_thread_priority::promote_current_thread_to_real_time;
-use blaulicht_shared::LogLevel;
-use crossbeam_channel::Sender;
 use thread_priority::ThreadPriority;
 
-pub fn increase_thread_priority(system_sender: Sender<SystemMessage>) {
-    // realtime(system_sender);
-    conservative(system_sender);
+pub fn increase_thread_priority() {
+    // realtime();
+    conservative();
 }
 
-fn conservative(system_sender: Sender<SystemMessage>) {
+fn conservative() {
     match thread_priority::set_current_thread_priority(ThreadPriority::Max) {
-        Ok(_) => tracing::info!("SUCCESS: set thread priority"),
-        Err(err) => {
-            let msg = format!("FAILED: set thread priority: {err}");
-            tracing::error!("{msg}");
-            system_sender.send(SystemMessage::Log(msg, LogLevel::Warn));
-        }
+        Ok(_) => tracing::info!("Raised engine thread priority"),
+        Err(err) => tracing::warn!("Failed to raise engine thread priority: {err}"),
     }
 }
 
-fn realtime(system_sender: Sender<SystemMessage>) {
+#[allow(dead_code)]
+fn realtime() {
     match promote_current_thread_to_real_time(512, 44100) {
-        Ok(_h) => {
-            tracing::info!("SUCCESS: set thread priority to REALTIME");
-        }
-        Err(e) => {
-            let msg = format!("FAILED: set thread priority to REALTIME: {e}");
-            tracing::error!("{msg}");
-            system_sender.send(SystemMessage::Log(msg, LogLevel::Warn));
-        }
+        Ok(_h) => tracing::info!("Raised engine thread priority to realtime"),
+        Err(e) => tracing::warn!("Failed to raise engine thread priority to realtime: {e}"),
     }
 
     // // Do some real-time work...
