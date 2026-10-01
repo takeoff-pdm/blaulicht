@@ -15,7 +15,7 @@ pub struct MidiAllPlugin {
 impl Plugin for MidiAllPlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.ddj.init();
-        println!("[Midi DDJ] Initialized");
+        println!("Initialized");
     }
 
     fn run(&mut self, input: TickInput) {

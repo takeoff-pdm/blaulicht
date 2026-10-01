@@ -23,7 +23,7 @@ impl<T> SystemEventBusConnection<T> {
         match self.from_exchange_receiver.try_recv() {
             Ok(event) => Some(event),
             Err(TryRecvError::Disconnected) => {
-                tracing::debug!("[BUS] Exchange disconnected.");
+                tracing::debug!("Event bus: Exchange disconnected.");
                 None
             }
             Err(TryRecvError::Empty) => None,
@@ -34,10 +34,10 @@ impl<T> SystemEventBusConnection<T> {
         match self.to_exchange_sender.try_send(event) {
             Ok(_) => {}
             Err(TrySendError::Disconnected(_)) => {
-                tracing::debug!("[BUS] Exchange disconnected.");
+                tracing::debug!("Event bus: Exchange disconnected.");
             }
             Err(TrySendError::Full(_)) => {
-                tracing::debug!("[BUS] Exchange buffer is full.")
+                tracing::debug!("Event bus: Exchange buffer is full.")
             }
         }
     }
@@ -95,7 +95,7 @@ where
         let mut members = self.broadcast_members.lock().unwrap();
         members.insert(id, to_connection_sender);
 
-        tracing::debug!("[BUS] new connection: {id}");
+        tracing::debug!("Event bus: new connection {id}");
 
         conn
     }
@@ -111,12 +111,12 @@ where
             let msg = match self.receiver.recv() {
                 Ok(msg) => msg,
                 Err(_) => {
-                    tracing::warn!("[BUS] Exchange disconnected, stopping event bus.");
+                    tracing::warn!("Event bus: Exchange disconnected, stopping event bus.");
                     break;
                 }
             };
             debug_assert!({
-                tracing::debug!("[BUS] ---> {msg:?}");
+                tracing::trace!("Event bus ---> {msg:?}");
                 true
             });
 
@@ -127,7 +127,7 @@ where
                 match client.try_send(msg.clone()) {
                     Ok(_) => {}
                     Err(TrySendError::Full(_)) => {
-                        tracing::warn!("[BUS] System event bus buffer is full");
+                        tracing::warn!("Event bus: System event bus buffer is full");
                     }
                     Err(TrySendError::Disconnected(_)) => match members_to_remove {
                         Some(ref mut mem) => {

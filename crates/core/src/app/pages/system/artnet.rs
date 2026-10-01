@@ -3,10 +3,8 @@ use crate::{
         components::{self, clickable, ButtonSize, Numberpad},
         BlaulichtApp,
     },
-    msg::SystemMessage,
     state::ArtNetReceiver,
 };
-use blaulicht_shared::LogLevel;
 use egui::{Color32, FontId, Frame, Margin, RichText, ScrollArea, Widget};
 use std::net::SocketAddr;
 
@@ -72,13 +70,10 @@ impl BlaulichtApp {
                                             .receivers
                                             .push(ArtNetReceiver::new(socket_addr));
 
-                                        self.data
-                                            .system_message_sender
-                                            .send(SystemMessage::Log(
-                                                format!("Added ArtNet receiver {socket_addr}."),
-                                                LogLevel::Info,
-                                            ))
-                                            .unwrap();
+                                        tracing::info!(
+                                            target: crate::log::target::DMX,
+                                            "Added Art-Net receiver {socket_addr}"
+                                        );
 
                                         self.system_ui_state.new_artnet_address.clear();
                                         self.system_ui_state.new_artnet_port = "6454".to_string();
@@ -290,13 +285,11 @@ impl BlaulichtApp {
                 self.system_ui_state
                     .artnet_universe_pads
                     .remove(&receiver.address);
-                self.data
-                    .system_message_sender
-                    .send(SystemMessage::Log(
-                        format!("Removed ArtNet receiver {}.", receiver.address),
-                        LogLevel::Info,
-                    ))
-                    .unwrap();
+                tracing::info!(
+                    target: crate::log::target::DMX,
+                    "Removed Art-Net receiver {}",
+                    receiver.address
+                );
             }
         }
     }

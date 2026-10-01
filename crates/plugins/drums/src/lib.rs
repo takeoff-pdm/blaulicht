@@ -251,7 +251,7 @@ impl DrumPlugin {
             if let ControlEvent::MiscEvent { descriptor, value } = e.body() {
                 if descriptor == 42 {
                     self.enabled = value != 0;
-                    println!("DRUMS ENABLED: {}", self.enabled);
+                    println!("Drums {}", if self.enabled { "enabled" } else { "disabled" });
                 }
             }
 

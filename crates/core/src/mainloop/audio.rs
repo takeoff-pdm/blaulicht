@@ -81,7 +81,7 @@ impl AudioSource for RecoveringAudioSource {
                 match open_stream(device, self.config.clone()) {
                     Ok(source) => self.source = Some(source),
                     Err(err) => {
-                        tracing::warn!("[audio] Input unavailable; lighting continues: {err:#}")
+                        tracing::warn!(target: crate::log::target::AUDIO, "Input unavailable; lighting continues: {err:#}")
                     }
                 }
             }

@@ -19,7 +19,7 @@ use map_range::MapRange;
 
 use crate::legacy::apc_midi::MidiDevice;
 
-// Plugin UI widget ids: 0 fans switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
+// Plugin UI widget ids: 0 fans switch, 1 verbose switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
 // editor (mapping.rs), 100.. mapping list rows. Tabs are a separate namespace
 // but stay out of those ranges anyway.
 const UI_TABS_ID: u8 = 41;
@@ -27,6 +27,8 @@ const UI_TAB_TWIN: u8 = 42;
 const UI_TAB_TRIGGERS: u8 = 43;
 const UI_TAB_MISC: u8 = 44;
 const UI_TAB_KORG: u8 = 38;
+const UI_FANS_SWITCH_ID: u8 = 0;
+const UI_VERBOSE_SWITCH_ID: u8 = 1;
 use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::mapping::{ControlId, Mapping, MappingDevice, MappingEditor};
 
@@ -80,8 +82,6 @@ pub struct LegacyState {
 
 impl LegacyState {
     pub fn init(&mut self) {
-        println!("[LEGACY] Initializing...");
-
         // bpf::send_event(ControlEvent::MiscEvent {
         //     descriptor: SET_VIDEO_INDEX,
         //     value: 0,
@@ -159,8 +159,8 @@ impl LegacyState {
             ui::end_tab();
 
             ui::begin_tab(UI_TABS_ID, UI_TAB_MISC, "Misc");
-            let cid = 0;
-            ui::switch("Fans", cid, self.fans);
+            ui::switch("Fans", UI_FANS_SWITCH_ID, self.fans);
+            ui::switch("Verbose logging", UI_VERBOSE_SWITCH_ID, crate::verbose());
             ui::end_tab();
 
             ui::end_tabs();
@@ -171,8 +171,10 @@ impl LegacyState {
                         if pid != input.id {
                             continue;
                         }
-                        if cid == id {
-                            self.set_fans(value);
+                        match id {
+                            UI_FANS_SWITCH_ID => self.set_fans(value),
+                            UI_VERBOSE_SWITCH_ID => crate::set_verbose(value),
+                            _ => {}
                         }
                     }
                     ControlEvent::MiscEvent { .. } => {}
@@ -280,7 +282,7 @@ impl LegacyState {
                 _ => {}
             }
 
-            println!("---> EVENT: {ev:?}");
+            vlog!("Event: {ev:?}");
         }
 
         let handles = self.midi_handles.clone();
@@ -391,7 +393,7 @@ impl LegacyState {
                     // conn.send(144, 1, 0);
                 }
                 _ => {
-                    println!("{}: {:?}", conn.device_id(), e);
+                    vlog!("Unhandled MIDI from device {}: {:?}", conn.device_id(), e);
                 }
             }
         }
@@ -453,7 +455,7 @@ impl LegacyState {
                 // }
                 // state.counter += 1.0;
                 // state.last_update = input.clock;
-                println!("sync scene");
+                vlog!("Synced scene pads to scene {scene}");
 
                 self.last_scene = scene;
             }
@@ -490,7 +492,6 @@ impl LegacyState {
                     });
                 }
                 (176, 55, val) => {
-                    println!("val");
                     bpf::send_event(ControlEvent::MiscEvent {
                         descriptor: SET_BRIGHTNESS,
                         value: val,
@@ -500,7 +501,7 @@ impl LegacyState {
                     let index = SCENES.iter().position(|v| *v == scene).unwrap() as u8;
 
                     if !bpf::with_dmx(|dmx| dmx.scenes.contains_key(&index)) {
-                        println!("E: no such scene");
+                        bpf::bl_log(&format!("Pad pressed for missing scene {index}"), blaulicht_shared::LogLevel::Warn);
                         continue;
                     }
 
@@ -525,7 +526,7 @@ impl LegacyState {
                     }
                 }
                 _ => {
-                    println!("{}: {:?}", conn.device_id(), e);
+                    vlog!("Unhandled MIDI from device {}: {:?}", conn.device_id(), e);
                 }
             }
         }

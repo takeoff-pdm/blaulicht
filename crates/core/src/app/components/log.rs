@@ -5,7 +5,7 @@
 use blaulicht_shared::LogLevel;
 use chrono::{DateTime, Local};
 use egui::{Context, RichText};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use strum::IntoEnumIterator;
 
 use crate::app::components::{self, ButtonSize, Dialog};
@@ -36,6 +36,8 @@ pub struct LogWindow {
     filter_dialog_open: bool,
     selected_log_level: Option<LogLevel>,
     select_dialog_open: bool,
+    selected_source: Option<String>,
+    source_dialog_open: bool,
     // log_height: f32,
 }
 
@@ -46,6 +48,13 @@ pub struct LogEntry {
     pub message: String,
     pub additional: Option<String>,
     source: String,
+}
+
+fn log_entry_matches_source(entry: &LogEntry, selected_source: Option<&str>) -> bool {
+    match selected_source {
+        Some(source) => entry.source == source,
+        None => true,
+    }
 }
 
 fn log_entry_matches_filter(entry: &LogEntry, filter_text: &str) -> bool {
@@ -72,7 +81,19 @@ impl LogWindow {
             filter_dialog_open: false,
             selected_log_level: None,
             select_dialog_open: false,
+            selected_source: None,
+            source_dialog_open: false,
         }
+    }
+
+    /// Sources of the buffered logs, sorted, for the source filter.
+    fn known_sources(&self) -> Vec<String> {
+        self.logs
+            .iter()
+            .map(|entry| entry.source.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     pub fn add_log(
@@ -168,6 +189,38 @@ impl LogWindow {
                     }
                 }
             }
+
+            if components::button(
+                ui,
+                self.selected_source.is_some(),
+                "Filter Source",
+                BUTTON_SIZE,
+            ) {
+                self.source_dialog_open = true;
+            }
+
+            if self.source_dialog_open {
+                const ALL_SOURCES: &str = "All";
+                let mut options = vec![ALL_SOURCES.to_string()];
+                options.extend(self.known_sources());
+
+                let (new_source, changed) = components::selection_dialog(
+                    ctx,
+                    options,
+                    self.selected_source
+                        .clone()
+                        .unwrap_or_else(|| ALL_SOURCES.to_string()),
+                    &mut self.source_dialog_open,
+                    "Select Log Source".to_string(),
+                );
+
+                if changed {
+                    self.selected_source = match new_source.as_str() {
+                        ALL_SOURCES => None,
+                        other => Some(other.to_string()),
+                    }
+                }
+            }
         });
 
         if self.filter_dialog_open {
@@ -229,7 +282,9 @@ impl LogWindow {
                         Some(_) | None => {}
                     }
 
-                    if !log_entry_matches_filter(entry, &self.filter_text) {
+                    if !log_entry_matches_source(entry, self.selected_source.as_deref())
+                        || !log_entry_matches_filter(entry, &self.filter_text)
+                    {
                         continue;
                     }
 
@@ -308,6 +363,10 @@ impl LogWindow {
             ui.label(format!("Total logs: {}", self.logs.len()));
             ui.separator();
             ui.label(format!("Filtered level: {:?}", self.selected_log_level));
+            if let Some(source) = &self.selected_source {
+                ui.separator();
+                ui.label(format!("Source: {source}"));
+            }
             if !self.filter_text.is_empty() {
                 ui.separator();
                 ui.label(format!("Filter: '{}'", self.filter_text));
@@ -318,7 +377,9 @@ impl LogWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_button_label, log_entry_matches_filter, LogWindow};
+    use super::{
+        filter_button_label, log_entry_matches_filter, log_entry_matches_source, LogWindow,
+    };
     use blaulicht_shared::LogLevel;
 
     #[test]
@@ -344,5 +405,32 @@ mod tests {
         assert_eq!(entry.additional.as_deref(), Some("hidden_function_name"));
         assert!(log_entry_matches_filter(entry, "hidden_function"));
         assert!(!log_entry_matches_filter(entry, "unrelated"));
+    }
+
+    #[test]
+    fn source_filter_keeps_only_the_selected_source() {
+        let mut window = LogWindow::new(10);
+        window.add_log(LogLevel::Info, "a".to_string(), None, "DMX".to_string());
+        window.add_log(
+            LogLevel::Info,
+            "b".to_string(),
+            None,
+            "inspector".to_string(),
+        );
+        window.add_log(LogLevel::Info, "c".to_string(), None, "DMX".to_string());
+
+        assert_eq!(window.known_sources(), vec!["DMX", "inspector"]);
+
+        let dmx: Vec<_> = window
+            .logs
+            .iter()
+            .filter(|entry| log_entry_matches_source(entry, Some("DMX")))
+            .map(|entry| entry.message.as_str())
+            .collect();
+        assert_eq!(dmx, vec!["a", "c"]);
+        assert!(window
+            .logs
+            .iter()
+            .all(|entry| log_entry_matches_source(entry, None)));
     }
 }

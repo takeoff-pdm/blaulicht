@@ -429,7 +429,7 @@ impl BlaulichtApp {
             )
             .with_autoscale(),
             fps_samples: VecDeque::with_capacity(5),
-            log_window: LogWindow::new(100),
+            log_window: LogWindow::new(200),
             // current_page: AppPage::Logs,
             last_heartbeat_frame: 0,
             selected_fixture_group: None,

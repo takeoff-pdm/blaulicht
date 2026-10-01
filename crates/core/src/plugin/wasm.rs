@@ -311,12 +311,7 @@ pub(crate) fn clone_animation_instance_state(
 #[cfg(not(feature = "wasmtime"))]
 impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
-        self.system_out
-            .send(SystemMessage::Log(
-                "WASM subsystem is disabled. (compile flags)".to_string(),
-                LogLevel::Warn,
-            ))
-            .unwrap();
+        tracing::warn!("WASM subsystem is disabled (compile flags)");
         Ok(())
     }
 }
@@ -330,7 +325,7 @@ impl PluginManager {
     pub fn instantiate_plugins(&mut self) -> anyhow::Result<()> {
         use tempdir::TempDir;
 
-        tracing::debug!("[WASM] subsystem initializing...");
+        tracing::debug!("subsystem initializing...");
 
         //
         // basic engine setup.
@@ -348,7 +343,7 @@ impl PluginManager {
         let wasmtime_cache_dir = TempDir::new("blaulicht_wasm_cache")?;
 
         tracing::info!(
-            "[WASM] Cache dir at {}",
+            "WASM cache dir at {}",
             wasmtime_cache_dir.path().to_string_lossy()
         );
 
@@ -372,7 +367,7 @@ impl PluginManager {
 
             let plugin_name = plugin.file_path.to_string();
 
-            tracing::debug!("[WASM] Initializing plugin <{plugin_name}>...");
+            tracing::debug!("Initializing plugin <{plugin_name}>...");
 
             let result = (|| -> anyhow::Result<Plugin> {
                 let wasm_bytes = fs::read(&plugin.file_path)
@@ -395,7 +390,7 @@ impl PluginManager {
                     .map(|version| version as u32);
                 if abi_version != Some(blaulicht_shared::PLUGIN_ABI_VERSION) {
                     tracing::error!(
-                    "[WASM] Plugin <{plugin_name}> uses unsupported ABI {:?}; expected {}. Rebuild the plugin.",
+                    "Plugin <{plugin_name}> uses unsupported ABI {:?}; expected {}. Rebuild the plugin.",
                     abi_version,
                     blaulicht_shared::PLUGIN_ABI_VERSION
                 );
@@ -406,7 +401,7 @@ impl PluginManager {
                 // initialize data.
                 //
 
-                tracing::info!("[WASM] Loaded plugin <{plugin_name}>");
+                tracing::info!("Loaded plugin <{plugin_name}>");
 
                 // store the instance and store for future use
                 let plugin_wasm_state = PluginWasmState {
@@ -453,14 +448,14 @@ impl PluginManager {
                     self.plugins.insert(plugin_id as u8, plugin);
                 }
                 Err(err) => {
-                    tracing::error!("[WASM] Failed to load <{plugin_name}>: {err:#}");
+                    tracing::error!("Failed to load <{plugin_name}>: {err:#}");
                     self.disable_errored_plugins(HashMap::from([(plugin_id as u8, err)]));
                 }
             }
         }
 
         tracing::debug!(
-            "[WASM]: loaded and instantiated {} wasm modules.",
+            "Loaded and instantiated {} WASM modules",
             self.plugins.len()
         );
 
@@ -531,8 +526,6 @@ impl PluginManager {
             },
         )?;
 
-        let so = self.system_out.clone();
-
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         // Plugins such as Pro DJ Link address 255.255.255.255 directly.
         socket.set_broadcast(true)?;
@@ -570,11 +563,10 @@ impl PluginManager {
                 socket
                     .send_to(&body_buffer, target_addr.clone())
                     .unwrap_or_else(|e| {
-                        so.send(SystemMessage::Log(
-                            format!("udp error: send to {target_addr}: {e}"),
-                            LogLevel::Err,
-                        ))
-                        .expect("failed to send log message");
+                        tracing::error!(
+                            target: crate::log::target::UDP,
+                            "Send to {target_addr} failed: {e}"
+                        );
                         0
                     });
             },
@@ -601,8 +593,7 @@ impl PluginManager {
 
                 let report_memory_error =
                     |action: &str, err: wasmtime::MemoryAccessError| {
-                        let msg = format!("WASM: {action}: {err}");
-                        tracing::error!("{msg}");
+                        tracing::error!("{action}: {err}");
                     };
 
                 let write_stdout_to_guest = |caller: &mut Caller<'_, ()>,
@@ -667,22 +658,22 @@ impl PluginManager {
                             let max_payload = capacity.saturating_sub(1);
                             if capacity > 0 && stdout_bytes.len() > max_payload {
                                 tracing::warn!(
-                                        "WASM: Command STDOUT truncated to fit into buffer of size {capacity}");
+                                        "Command STDOUT truncated to fit into buffer of size {capacity}");
                             }
                         }
 
-                        tracing::debug!("WASM: Command STDOUT: {stdout}");
-                        tracing::debug!("WASM: Command STDERR: {stderr}");
+                        tracing::debug!("Command STDOUT: {stdout}");
+                        tracing::debug!("Command STDERR: {stderr}");
 
                         if !o.status.success() {
                             let code = o.status.code().unwrap_or(199);
-                            tracing::error!("WASM: Command failed with code: {code}");
+                            tracing::error!("Command failed with code: {code}");
                         }
                     }
                     Err(err) => {
                         write_stdout_to_guest(&mut caller, &[]);
 
-                        tracing::error!("WASM: Command invocation error: {err}");
+                        tracing::error!("Command invocation error: {err}");
                     }
                 }
             },
@@ -835,7 +826,7 @@ impl PluginManager {
                         LogLevel::Info
                     });
 
-                tracing::debug!("WASM: {received_string}");
+                tracing::debug!("{received_string}");
 
                 so.send(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
@@ -865,10 +856,7 @@ impl PluginManager {
                 let event = match std::panic::catch_unwind(|| ControlEvent::deserialize(&buffer)) {
                     Ok(event) => event,
                     Err(_) => {
-                        tracing::warn!(
-                            "WASM: Failed to deserialize ControlEvent (len={})",
-                            str_len
-                        );
+                        tracing::warn!("Failed to deserialize ControlEvent (len={})", str_len);
                         return;
                     }
                 };
@@ -1036,7 +1024,7 @@ impl PluginManager {
             move |plugin_id: i32, width: i32, height: i32| {
                 if width <= 0 || height <= 0 {
                     tracing::warn!(
-                        "WASM: Refusing to create external screen with invalid size {width}x{height}"
+                        "Refusing to create external screen with invalid size {width}x{height}"
                     );
                     return 0;
                 }
@@ -1069,7 +1057,7 @@ impl PluginManager {
 
                 if !exists {
                     tracing::warn!(
-                        "WASM: Refusing to remove unknown owned external screen for plugin {owner_plugin_id}"
+                        "Refusing to remove unknown owned external screen for plugin {owner_plugin_id}"
                     );
                     return 0;
                 }
@@ -2019,7 +2007,7 @@ impl PluginManager {
                     data0: kind as u8,
                     data1: value as u8,
                 }) {
-                    tracing::warn!("[WASM] Dropping outgoing MIDI event: {err}");
+                    tracing::warn!(target: crate::log::target::MIDI, "Dropping outgoing MIDI event: {err}");
                 }
             },
         )?;
@@ -2242,25 +2230,19 @@ impl PluginManager {
                 let socket_addr: std::net::SocketAddr = match addr_str.parse() {
                     Ok(a) => a,
                     Err(err) => {
-                        let _ = so.send(SystemMessage::Log(
-                            format!(
-                                "Plugin {plugin_id} tried to register invalid ArtNet \
-                                 receiver address '{addr_str}': {err}"
-                            ),
-                            LogLevel::Warn,
-                        ));
+                        tracing::warn!(
+                            "Plugin {plugin_id} tried to register invalid Art-Net \
+                             receiver address '{addr_str}': {err}"
+                        );
                         return 0;
                     }
                 };
 
                 if !socket_addr.is_ipv4() {
-                    let _ = so.send(SystemMessage::Log(
-                        format!(
-                            "Plugin {plugin_id} tried to register non-IPv4 ArtNet \
-                             receiver '{addr_str}'"
-                        ),
-                        LogLevel::Warn,
-                    ));
+                    tracing::warn!(
+                        "Plugin {plugin_id} tried to register non-IPv4 Art-Net \
+                         receiver '{addr_str}'"
+                    );
                     return 0;
                 }
 
@@ -2270,13 +2252,10 @@ impl PluginManager {
                 drop(artnet_output);
 
                 if handle == 0 {
-                    let _ = so.send(SystemMessage::Log(
-                        format!(
-                            "Plugin {plugin_id} could not register ArtNet receiver \
-                             '{addr_str}' (address conflict)"
-                        ),
-                        LogLevel::Warn,
-                    ));
+                    tracing::warn!(
+                        "Plugin {plugin_id} could not register Art-Net receiver \
+                         '{addr_str}' (address conflict)"
+                    );
                 } else {
                     tracing::debug!(
                         "Plugin {plugin_id} registered ArtNet receiver '{addr_str}' (handle={handle})"

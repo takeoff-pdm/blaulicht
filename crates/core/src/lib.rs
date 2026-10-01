@@ -8,6 +8,7 @@ pub mod command;
 pub mod config;
 pub mod dmx;
 pub mod event;
+pub mod log;
 pub mod mainloop;
 pub mod msg;
 pub mod plugin;

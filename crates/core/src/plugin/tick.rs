@@ -186,7 +186,7 @@ impl PluginManager {
             Err(err) => {
                 if !self.has_crashed {
                     tracing::error!(
-                        "[Plugin] Wasm engine crash: {}",
+                        "WASM engine crash: {}",
                         super::wasm::compact_wasm_error(&err)
                     );
                     self.has_crashed = true;

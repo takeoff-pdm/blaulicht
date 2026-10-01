@@ -5,9 +5,7 @@ use crate::{
         BlaulichtApp, PopupSpec, ShowfileSaveStatus,
     },
     config,
-    msg::SystemMessage,
 };
-use blaulicht_shared::LogLevel;
 use egui::{Context, FontFamily, FontId, Ui};
 use egui_file_dialog::{FileDialog, Filter};
 use egui_phosphor::regular as ph;
@@ -89,7 +87,6 @@ impl BlaulichtApp {
             &mut dmx,
             &mut artnet,
             &self.data.state.plugin_state_storage,
-            self.data.system_message_sender.clone(),
         );
         mem::drop(artnet);
         mem::drop(dmx);
@@ -100,10 +97,6 @@ impl BlaulichtApp {
             tracing::error!("Failed to persist loaded showfile config: {err}");
         }
 
-        let _ = self.data.system_message_sender.send(SystemMessage::Log(
-            format!("Loaded showfile from {file:?}"),
-            LogLevel::Info,
-        ));
         mem::drop(config);
 
         if let Some(loaded_state) = loaded_state {

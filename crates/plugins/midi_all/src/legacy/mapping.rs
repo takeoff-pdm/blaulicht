@@ -656,7 +656,7 @@ impl LegacyState {
                 self.push_mapping_log("Dropped mapping on Shift (now a modifier)".to_string());
             }
             self.sort_mappings();
-            println!("[mapping] loaded {} mappings", self.mappings.len());
+            println!("Loaded {} mappings", self.mappings.len());
             return;
         }
 
@@ -672,13 +672,13 @@ impl LegacyState {
                     })
                     .collect();
                 self.sort_mappings();
-                println!(
-                    "[mapping] migrated {} view triggers to mappings",
-                    self.mappings.len()
-                );
+                println!("Migrated {} view triggers to mappings", self.mappings.len());
                 self.save_mappings();
             }
-            Err(e) => println!("[mapping] failed to deserialize plugin state: {e}"),
+            Err(e) => bpf::bl_log(
+                &format!("Failed to deserialize mapping state: {e}"),
+                blaulicht_shared::LogLevel::Err,
+            ),
         }
     }
 
@@ -689,7 +689,10 @@ impl LegacyState {
         };
         match serde_json::to_string(&state) {
             Ok(json) => bpf::save_plugin_state(bpf::PluginStateLocation::Showfile, &json),
-            Err(e) => println!("[mapping] failed to serialize state: {e}"),
+            Err(e) => bpf::bl_log(
+                &format!("Failed to serialize mapping state: {e}"),
+                blaulicht_shared::LogLevel::Err,
+            ),
         }
     }
 
@@ -702,7 +705,7 @@ impl LegacyState {
     }
 
     fn push_mapping_log(&mut self, msg: String) {
-        println!("[mapping] {msg}");
+        println!("{msg}");
         self.mapping_log.push_back(msg);
         while self.mapping_log.len() > 4 {
             self.mapping_log.pop_front();

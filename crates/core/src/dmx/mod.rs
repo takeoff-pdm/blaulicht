@@ -10,7 +10,7 @@ pub mod animation;
 pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
-    msg::{DmxTickSpeeds, SystemMessage},
+    msg::DmxTickSpeeds,
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
@@ -21,7 +21,7 @@ use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, BLANK_SCENE_ID},
     scene_graph::{AudioConditions, SceneGraphRuntime},
     ActiveAnimation, AnimationSpecBody, ControlEvent, ControlEventMessage, EventOriginator,
-    FixtureProperty, LogLevel, CONTROLS_REQUIRING_SELECTION,
+    FixtureProperty, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
@@ -32,7 +32,7 @@ use std::{
     sync::{Arc, RwLockWriteGuard},
     time::{Duration, Instant},
 };
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, trace, warn};
 
 // TODO: maybe fuse this together?
 
@@ -82,7 +82,6 @@ pub struct DmxEngine {
     dmx_previous: [u8; 513], // Starting at 1
     // TODO: add more, internal state.
     event_bus_connection: SystemEventBusConnectionInst,
-    system_out: Sender<SystemMessage>,
 
     // This is not part of state_ref since this is only a cache
     // animation_base_times: BTreeMap<u8, f64>,
@@ -238,7 +237,7 @@ fn output_worker(
                             .map(|state| state.port.clone())
                     })
                     .unwrap_or_else(|| format!("universe {universe_no}"));
-                error!("[DMX] Output disabled on {port_path}: {err}");
+                error!("Output disabled on {port_path}: {err}");
                 if let Ok(mut health) = state_ref.health_data.write() {
                     health.dmx_universes_healthy[universe_no] =
                         DmxHealth::error(port_path, format!("DMX output disabled: {err}"));
@@ -256,16 +255,10 @@ impl DmxEngine {
     pub fn start_setup(&mut self) {
         self.running_setup = true;
         self.setup_start_time = Instant::now();
-        let _ = self.system_out.send(SystemMessage::Log(
-            "[DMX] Engine setup started...".to_string(),
-            LogLevel::Debug,
-        ));
+        debug!("Fixture setup started");
     }
 
-    fn open_hw_interface(
-        port_path: &str,
-        sys: Sender<SystemMessage>,
-    ) -> (Option<Box<dyn SerialPort>>, DmxHealth) {
+    fn open_hw_interface(port_path: &str) -> (Option<Box<dyn SerialPort>>, DmxHealth) {
         // TODO: use USB intrinsics for detection: look at v1 branch
 
         // Open your Enttec device (likely /dev/ttyUSB0)
@@ -279,15 +272,14 @@ impl DmxEngine {
             .open()
         {
             Ok(port) => {
-                let _ = sys.send(SystemMessage::Log(
-                    format!("[DMX] iface {port_path} (baud = {baud_rate}): OK"),
-                    LogLevel::Info,
-                ));
+                info!("Opened DMX interface {port_path} (baud = {baud_rate})");
                 (Some(port), DmxHealth::healthy(port_path.to_string()))
             }
             Err(err) => {
-                let error_message = format!("[DMX] Could not establish link to interface \"{port_path}\" (baud = {baud_rate}): {err}");
-                let _ = sys.send(SystemMessage::Log(error_message.clone(), LogLevel::Err));
+                let error_message = format!(
+                    "Could not establish link to DMX interface \"{port_path}\" (baud = {baud_rate}): {err}"
+                );
+                error!("{error_message}");
                 (None, DmxHealth::error(port_path.to_string(), error_message))
             }
         }
@@ -296,7 +288,6 @@ impl DmxEngine {
     pub fn new(
         state_ref: Arc<AppState>,
         event_bus_connection: SystemEventBusConnectionInst,
-        system_out: Sender<SystemMessage>,
         universe_dmx_out_devices: [String; 2],
     ) -> Self {
         let mut health_state = state_ref.health_data.write().unwrap();
@@ -308,7 +299,7 @@ impl DmxEngine {
 
         for (universe, port) in dmx_universe_ports.iter_mut().enumerate() {
             let (dmx_port, port_health_state) =
-                Self::open_hw_interface(&universe_dmx_out_devices[universe], system_out.clone());
+                Self::open_hw_interface(&universe_dmx_out_devices[universe]);
 
             health_state.dmx_universes_healthy[universe] = port_health_state;
 
@@ -323,17 +314,11 @@ impl DmxEngine {
         match DmxEngineArtnetOutput::bind_socket() {
             Ok(_) => {
                 health_state.artnet_health_state = true;
-                let _ = system_out.send(SystemMessage::Log(
-                    "Initialized ArtNet".to_string(),
-                    LogLevel::Debug,
-                ));
+                debug!("Initialized Art-Net");
             }
             Err(err) => {
                 health_state.artnet_health_state = false;
-                let _ = system_out.send(SystemMessage::Log(
-                    format!("Could not create ARTNET socket: {err}"),
-                    LogLevel::Err,
-                ));
+                error!("Could not create Art-Net socket: {err}");
             }
         }
         let artnet_output = DmxEngineArtnetOutput::new();
@@ -348,7 +333,7 @@ impl DmxEngine {
                 output_worker(output_rx, dmx_universe_ports, artnet_output, output_state)
             });
         if let Err(err) = worker_result {
-            error!("[DMX] Failed to start output worker: {err}");
+            error!("Failed to start output worker: {err}");
         }
 
         {
@@ -360,7 +345,6 @@ impl DmxEngine {
             state_ref,
             dmx_previous: [0; 513],
             event_bus_connection,
-            system_out,
             // animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
             output_tx,
@@ -385,10 +369,7 @@ impl DmxEngine {
 
             if self.setup_start_time.elapsed().as_secs() >= SETUP_SECS {
                 self.running_setup = false;
-                let _ = self.system_out.send(SystemMessage::Log(
-                    "[DMX] Engine setup complete.".to_string(),
-                    LogLevel::Info,
-                ));
+                info!("Fixture setup complete");
             }
 
             return;
@@ -408,9 +389,7 @@ impl DmxEngine {
                     let (msg, event) = self.apply(&mut state, ev);
 
                     if let Some(msg) = msg {
-                        let _ = self
-                            .system_out
-                            .send(SystemMessage::Log(msg.to_string(), LogLevel::Debug));
+                        debug!("{msg}");
                     }
 
                     if let Some(ev) = event {
@@ -468,10 +447,7 @@ impl DmxEngine {
             let elapsed = started.elapsed();
             if elapsed.as_secs() >= SETUP_SECS {
                 finished.push(key);
-                let _ = self.system_out.send(SystemMessage::Log(
-                    format!("[DMX] Initialized fixture `{}`.", fix.name),
-                    LogLevel::Info,
-                ));
+                info!("Initialized fixture `{}`", fix.name);
                 continue;
             }
             let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
@@ -517,7 +493,7 @@ impl DmxEngine {
         }
         match self.output_tx.try_send(frame) {
             Ok(()) | Err(TrySendError::Full(_)) => {}
-            Err(TrySendError::Disconnected(_)) => error!("[DMX] Output worker is unavailable"),
+            Err(TrySendError::Disconnected(_)) => error!("Output worker is unavailable"),
         }
         now.elapsed()
     }
@@ -531,7 +507,7 @@ impl DmxEngine {
 
                 let time = self.setup_start_time.elapsed().as_millis() as u64;
 
-                debug!("SETUP T: {time}");
+                trace!("Fixture setup at {time} ms");
 
                 let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
                     warn!(
@@ -941,7 +917,7 @@ impl DmxEngine {
                 }
             }
             ControlEvent::MiscEvent { descriptor, value } => {
-                warn!("MISC: Not implemented in DMX: {descriptor:?} | {value:?}");
+                warn!("Not implemented in DMX: {descriptor:?} | {value:?}");
                 (None, None)
             }
             ControlEvent::RemoveChange {

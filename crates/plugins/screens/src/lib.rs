@@ -369,7 +369,7 @@ impl ScreensPlugin {
     }
 
     fn log(&self, level: LogLevel, message: String) {
-        bpf::bl_log(&format!("screens: {message}"), level);
+        bpf::bl_log(&message, level);
     }
 }
 

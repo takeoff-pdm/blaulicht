@@ -205,12 +205,7 @@ impl PluginManager {
                 .read()
                 .unwrap()
                 .keys()
-                .map(|plugin_id| {
-                    (
-                        *plugin_id,
-                        anyhow!("Engine initialization log::error: {err}"),
-                    )
-                })
+                .map(|plugin_id| (*plugin_id, anyhow!("Engine initialization error: {err}")))
                 .collect();
 
             self.disable_errored_plugins(plugin_error_list);
@@ -220,9 +215,9 @@ impl PluginManager {
 
         self.is_initial_tick = true;
 
-        // Ignore any tick log::errors caused by misbehaving plugins.
-        // Only return on serious log::errors.
-        tracing::debug!("[Wasm] Running initial tick...");
+        // Ignore any tick errors caused by misbehaving plugins.
+        // Only return on serious errors.
+        tracing::debug!("Running initial plugin tick");
         if self
             .tick(CollectedAudioSnapshot::default(), &[], vec![], vec![], None)
             .is_err()
@@ -258,7 +253,7 @@ impl PluginManager {
         }
 
         {
-            // Reset all plugins which got temporarily disabled due to log::errors.
+            // Reset all plugins which got temporarily disabled due to errors.
             let mut plugins = self.state_ref.plugins.write().unwrap();
             for (_, plug) in plugins.iter_mut() {
                 plug.set_errored(false);

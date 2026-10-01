@@ -240,19 +240,17 @@ impl DDJSubSystem {
     pub fn init(&mut self) {
         self.load_state();
 
-        println!("[DDJ_200] initializing...");
-
         let name = "DDJ-200";
         match MidiConnection::open(name) {
             Ok(midi_handle) => {
                 println!(
-                    "Got MIDI handle to device! HANDLE ID: {}",
+                    "Connected to DDJ-200 (handle id {})",
                     midi_handle.get_meta().device_id
                 );
                 self.midi_handle = Some(midi_handle);
             }
             Err(err) if ALLOW_MISSING_DDJ_200 => {
-                println!("[DDJ_200] MIDI device unavailable, continuing without hardware: {err}");
+                println!("MIDI device unavailable, continuing without hardware: {err}");
                 self.push_log("DDJ-200 not connected; UI debug mode active");
             }
             Err(err) => {
@@ -260,7 +258,7 @@ impl DDJSubSystem {
             }
         }
 
-        println!("[DDJ_200] done.");
+        println!("DDJ-200 initialized");
     }
 
     pub fn run(&mut self, input: TickInput) {
@@ -395,7 +393,7 @@ impl DDJSubSystem {
                         }
                         self.activate_view(button_idx);
                     } else {
-                        println!("DDJ-200 MIDI: {:?}", e);
+                        println!("Unhandled MIDI: {:?}", e);
                     }
                 }
                 _ => {}

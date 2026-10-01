@@ -1,3 +1,29 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Per-event diagnostics (bus events, unhandled MIDI, mode warnings) are only
+/// logged while "Verbose logging" is on in the Misc tab. Not persisted.
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed)
+}
+
+pub(crate) fn set_verbose(on: bool) {
+    VERBOSE.store(on, Ordering::Relaxed);
+}
+
+/// Logs at debug level, but only while verbose logging is enabled.
+macro_rules! vlog {
+    ($($arg:tt)*) => {
+        if $crate::verbose() {
+            blaulicht_plugin_framework::bl_log(
+                &format!($($arg)*),
+                blaulicht_shared::LogLevel::Debug,
+            );
+        }
+    };
+}
+
 mod korg;
 mod korg_twin;
 mod legacy;
@@ -20,7 +46,7 @@ impl Plugin for MidiAllPlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.korg.init();
         self.legacy_state.init();
-        println!("[Midi All] Initialized");
+        println!("Initialized");
     }
 
     fn run(&mut self, input: TickInput) {

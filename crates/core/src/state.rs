@@ -530,7 +530,7 @@ impl PluginState {
     }
 
     pub fn log(&mut self, msg: Cow<'static, str>) {
-        tracing::debug!("[WASM] [{}] {msg}", self.path);
+        tracing::debug!(target: crate::log::target::PLUGIN, "{}: {msg}", self.path);
         self.logs.push_back(msg);
         if self.logs.len() == self.logs.capacity() {
             // If the buffer is full, remove 1/4 of its first contents.

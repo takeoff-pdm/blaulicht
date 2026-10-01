@@ -128,7 +128,7 @@ impl TimelinePlugin {
             if let Ok(saved) = serde_json::from_str::<SaveState>(&json) {
                 self.state = saved;
             } else {
-                println!("Timeline: state loading failed, using defaults");
+                println!("state loading failed, using defaults");
                 self.state = SaveState::default();
             }
         }
@@ -175,7 +175,7 @@ impl TimelinePlugin {
                     cue.ui_id = base_id;
                     used[slot] = true;
                 } else {
-                    println!("Timeline: ran out of cue ids; cue will be read-only");
+                    println!("ran out of cue ids; cue will be read-only");
                 }
             }
         }
@@ -241,7 +241,7 @@ impl TimelinePlugin {
 
     fn add_cue(&mut self) {
         if self.state.cues.len() >= MAX_CUES {
-            println!("Timeline: cue limit reached ({MAX_CUES})");
+            println!("cue limit reached ({MAX_CUES})");
             return;
         }
 
@@ -249,7 +249,7 @@ impl TimelinePlugin {
         let ui_id = match self.next_available_cue_base_id() {
             Some(id) => id,
             None => {
-                println!("Timeline: ran out of cue ids; cannot add cue");
+                println!("ran out of cue ids; cannot add cue");
                 return;
             }
         };
@@ -466,7 +466,7 @@ impl TimelinePlugin {
             let speed = speed_from_index(cue.speed_index);
 
             println!(
-                "Timeline: firing cue {} -> scene {} (speed {}, brightness {})",
+                "firing cue {} -> scene {} (speed {}, brightness {})",
                 idx + 1,
                 cue.scene_text,
                 speed.as_str(),
@@ -483,7 +483,7 @@ impl TimelinePlugin {
                 let scene_id = match parse_scene_id(&cue.scene_text) {
                     Some(scene_id) => scene_id,
                     None => {
-                        println!("Timeline: invalid scene id '{}'", cue.scene_text);
+                        println!("invalid scene id '{}'", cue.scene_text);
                         self.fired[idx] = true;
                         continue;
                     }
@@ -494,7 +494,7 @@ impl TimelinePlugin {
                 bpf::send_event(ControlEvent::SetSceneMasterAlpha(scene_id, cue.brightness));
             } else {
                 if is_remove_all(&cue.scene_text) {
-                    println!("Timeline: RemoveAll is only valid for overlay cues.");
+                    println!("RemoveAll is only valid for overlay cues.");
                     self.fired[idx] = true;
                     continue;
                 }
@@ -502,7 +502,7 @@ impl TimelinePlugin {
                 let scene_id = match parse_scene_id(&cue.scene_text) {
                     Some(scene_id) => scene_id,
                     None => {
-                        println!("Timeline: invalid scene id '{}'", cue.scene_text);
+                        println!("invalid scene id '{}'", cue.scene_text);
                         self.fired[idx] = true;
                         continue;
                     }

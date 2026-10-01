@@ -209,13 +209,13 @@ impl Plugin for InspectorPlugin {
             Ok(udp) => {
                 self.udp = Some(udp);
                 bpf::bl_log(
-                    &format!("[inspector] listening on 127.0.0.1:{BIND_PORT}"),
+                    &format!("listening on 127.0.0.1:{BIND_PORT}"),
                     LogLevel::Info,
                 );
             }
             Err(e) => {
                 self.error = format!("bind failed: {e}");
-                bpf::bl_log(&format!("[inspector] {}", self.error), LogLevel::Err);
+                bpf::bl_log(&format!("{}", self.error), LogLevel::Err);
             }
         }
     }
