@@ -51,7 +51,7 @@ pub fn discover_ifaces() -> Vec<Iface> {
     let out = bpf::system("ip -j addr show up 2>/dev/null");
     if out.trim().is_empty() {
         bpf::bl_log(
-            "Pro DJ Link: `ip -j addr` produced no output; cannot detect the LINK interface",
+            "`ip -j addr` produced no output; cannot detect the LINK interface",
             LogLevel::Err,
         );
         return Vec::new();
@@ -60,7 +60,7 @@ pub fn discover_ifaces() -> Vec<Iface> {
         Ok(ifaces) => ifaces,
         Err(e) => {
             bpf::bl_log(
-                &format!("Pro DJ Link: cannot parse `ip -j addr`: {e}"),
+                &format!("cannot parse `ip -j addr`: {e}"),
                 LogLevel::Err,
             );
             Vec::new()

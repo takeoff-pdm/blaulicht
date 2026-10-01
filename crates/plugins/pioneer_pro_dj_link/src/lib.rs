@@ -372,7 +372,7 @@ impl ProDjLinkPlugin {
             }
             Event::EventsDropped { count } => {
                 bpf::bl_log(
-                    &format!("Pro DJ Link: {count} events dropped"),
+                    &format!("{count} events dropped"),
                     LogLevel::Warn,
                 );
             }
@@ -730,7 +730,7 @@ impl Plugin for ProDjLinkPlugin {
                 Ok(Some(event)) => self.handle_event(event),
                 Ok(None) => break,
                 Err(e) => {
-                    bpf::bl_log(&format!("Pro DJ Link: {e}"), LogLevel::Err);
+                    bpf::bl_log(&format!("Session poll failed: {e}"), LogLevel::Err);
                     break;
                 }
             }

@@ -86,8 +86,6 @@ Raw ideas that are not ticketed yet. Add new notes here, and turn them into tick
 Items marked `→ TICKET NNN` are covered by that ticket.
 
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
-- Plugin logs: drop the `[MIDI]` / `[LEGACY]` / `[Midi All]` prefixes in plugins now that the Logs page shows the plugin as source; `midi_all` logs every event at info (`---> EVENT: ...`). (from 001)
-- Logs page keeps only 100 entries (`LogWindow::new(100)`); startup nearly fills it. Raise or make configurable. (from 001)
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet

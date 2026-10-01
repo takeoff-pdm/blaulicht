@@ -38,14 +38,11 @@ impl VirtualMidi {
     pub fn open(name: &str) -> Self {
         let hardware = match MidiConnection::open(name) {
             Ok(conn) => {
-                println!(
-                    "[MIDI] {name}: connected, handle id {}",
-                    conn.get_meta().device_id
-                );
+                println!("{name}: connected, handle id {}", conn.get_meta().device_id);
                 Some(conn)
             }
             Err(err) => {
-                println!("[MIDI] {name}: not connected, virtual only ({err})");
+                println!("{name}: not connected, virtual only ({err})");
                 None
             }
         };

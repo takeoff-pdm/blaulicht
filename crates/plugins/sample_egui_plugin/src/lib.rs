@@ -35,27 +35,27 @@ impl SamplePlugin {
                 match ui_ev {
                     PluginUiEvent::Button { id } if id == 1 => {
                         self.clicks = self.clicks.saturating_add(1);
-                        println!("Sample: Button clicked! -> {}", self.clicks);
+                        println!("Button clicked! -> {}", self.clicks);
                     }
                     PluginUiEvent::Checkbox { id, checked } if id == 2 => {
                         self.enabled = checked;
-                        println!("Sample: Checkbox enabled = {}", self.enabled);
+                        println!("Checkbox enabled = {}", self.enabled);
                     }
                     PluginUiEvent::Slider { id, value } if id == 3 => {
                         self.intensity = value;
-                        println!("Sample: Slider intensity = {}", self.intensity);
+                        println!("Slider intensity = {}", self.intensity);
                     }
                     PluginUiEvent::Text { id, text } if id == 4 => {
-                        println!("Sample: Text changed = {}", text);
+                        println!("Text changed = {}", text);
                         self.name = text.chars().take(32).collect();
                     }
                     PluginUiEvent::Text { id, text } if id == 6 => {
-                        println!("Sample: Bio changed");
+                        println!("Bio changed");
                         self.bio = text;
                     }
                     PluginUiEvent::Color { id, r, g, b, a } if id == 7 => {
                         self.color = (r, g, b, a);
-                        println!("Sample: Color changed = rgba({}, {}, {}, {})", r, g, b, a);
+                        println!("Color changed = rgba({}, {}, {}, {})", r, g, b, a);
                     }
                     _ => {}
                 }

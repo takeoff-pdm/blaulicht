@@ -84,11 +84,9 @@ impl Default for KorgSubSystem {
 
 impl KorgSubSystem {
     pub fn init(&mut self) {
-        println!("[KORG] initializing...");
-
         self.midi = VirtualMidi::open(KORG_DEVICE_NAME);
         self.nano_init();
-        println!("[KORG] done.");
+        println!("nanoKONTROL initialized");
     }
 
     /// `mapped` is the user-mapping hook: events it consumes skip the
@@ -151,7 +149,7 @@ impl KorgSubSystem {
                         .contains(&key) =>
                 {
                     if !self.selection_mode {
-                        println!("WARN: not in selection mode");
+                        vlog!("nanoKONTROL group select outside selection mode");
                     }
 
                     let g_idx = key - SELECT_BUTTON_STARTER;
@@ -169,7 +167,7 @@ impl KorgSubSystem {
                 // Faders
                 (176, fader_byte, value) if FADER_BYTES.contains(&fader_byte) => {
                     if self.selection_mode {
-                        println!("WARN: in selection_mode");
+                        vlog!("nanoKONTROL fader ignored in selection mode");
                         continue;
                     }
 
@@ -179,7 +177,7 @@ impl KorgSubSystem {
                 }
                 (176, knob_byte, value) if knob_byte >= 13 && knob_byte <= 20 => {
                     if self.selection_mode {
-                        println!("WARN: in selection_mode");
+                        vlog!("nanoKONTROL knob ignored in selection mode");
                         continue;
                     }
 
@@ -199,7 +197,7 @@ impl KorgSubSystem {
                     }
                 }
                 _ => {
-                    println!("{}: {:?}", self.midi.device_id(), e);
+                    vlog!("Unhandled MIDI from device {}: {:?}", self.midi.device_id(), e);
                 }
             }
         }

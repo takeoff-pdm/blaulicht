@@ -539,7 +539,7 @@ impl SamplePlugin {
             break;
         }
 
-        println!("button-index: {button_descriptor:?}");
+        println!("Received button {button_descriptor:?}");
         if button_descriptor.is_none() {
             self.push_log(format!("Unmapped signal {}", sig));
             return;

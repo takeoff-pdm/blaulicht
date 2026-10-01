@@ -64,7 +64,7 @@ impl BlaulichtAnimationPlugin for Midilight {
                 self.pattern = pattern;
             } else {
                 bpf::bl_log(
-                    "Midilight: invalid saved pattern; starting with an empty roll",
+                    "invalid saved pattern; starting with an empty roll",
                     blaulicht_shared::LogLevel::Warn,
                 );
             }
@@ -96,7 +96,7 @@ impl BlaulichtAnimationPlugin for Midilight {
             self.clock.reset();
         }
         if self.clock.update(common.clock, &common.audio_data) && valid {
-            bpf::bl_log("Midilight: source has no bar position; estimating bar alignment from the first beat", blaulicht_shared::LogLevel::Warn);
+            bpf::bl_log("source has no bar position; estimating bar alignment from the first beat", blaulicht_shared::LogLevel::Warn);
         }
         if !valid {
             self.clock.reset();

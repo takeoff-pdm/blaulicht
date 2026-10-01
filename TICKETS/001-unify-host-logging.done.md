@@ -71,3 +71,10 @@ Original review notes (2026-09-27):
 - Plugin-side messages still carry their own prefixes (`[MIDI]`, `[LEGACY]`, `[Midi All]` in `midi_all`), and `midi_all` logs every event at info (`---> EVENT: ...`).
 - The Logs page keeps only 100 entries (`LogWindow::new(100)`). Startup alone nearly fills it.
 - A nightly rustc ICE (incremental dep-graph) happened once during the x11 build; `CARGO_INCREMENTAL=0` worked around it.
+
+**Follow-ups done (2026-10-01)**
+- Plugin-side prefixes are removed in all plugins: 433mhz_antenna, ddj_200, ddj_400, drums, inspector, midi_all, midilight, pioneer_pro_dj_link, player, sample_egui_plugin, screens. The Logs page source already names the plugin.
+- `midi_all` has a "Verbose logging" switch on its Misc tab (widget id 1, next to Fans). It is off by default and not persisted. While it is on, per-event diagnostics are logged at Debug: bus events, unhandled MIDI, nanoKONTROL selection-mode notices and scene-pad sync. Lifecycle messages are always logged. Mapping (de)serialization failures and presses on a missing scene now log at Err/Warn.
+- The Logs page keeps 200 entries.
+- Verified on the headless display: no `Event:` lines with verbose off; `Event: …` Debug lines appear right after switching it on and stop after switching it off.
+
