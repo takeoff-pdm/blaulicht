@@ -3,7 +3,7 @@ use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::msg::FromFrontend;
+use blaulicht_core::msg::{FromFrontend, StageStatus, StartupStage, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
@@ -42,6 +42,19 @@ fn main() -> anyhow::Result<()> {
         );
         return Ok(());
     };
+
+    let send_stage = |stage, status| {
+        let _ = system_out.send(SystemMessage::StartupStage { stage, status });
+    };
+    send_stage(
+        StartupStage::Config,
+        StageStatus::ok(
+            config_filepath
+                .file_name()
+                .unwrap_or(config_filepath.as_os_str())
+                .to_string_lossy(),
+        ),
+    );
 
     let version = env!("CARGO_PKG_VERSION");
     info!("Starting BLAULICHT {version}");
@@ -162,15 +175,29 @@ fn main() -> anyhow::Result<()> {
     // info!("Blaulicht is shutting down...");
 
     if let Some(showfile) = cfg.last_open_showfile {
+        let name = showfile
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        send_stage(StartupStage::Showfile, StageStatus::running(name.clone()));
         let mut dmx = app_state.dmx_engine.write().unwrap();
         let mut artnet = app_state.artnet_output.write().unwrap();
-        let _ = config::read_showfile(
+        let loaded = config::read_showfile(
             showfile.clone(),
             &mut dmx,
             &mut artnet,
             &app_state.plugin_state_storage,
         );
-    };
+        send_stage(
+            StartupStage::Showfile,
+            match loaded {
+                Some(_) => StageStatus::ok(name),
+                None => StageStatus::failed(format!("{name}: could not load, see Logs")),
+            },
+        );
+    } else {
+        send_stage(StartupStage::Showfile, StageStatus::ok("none"));
+    }
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

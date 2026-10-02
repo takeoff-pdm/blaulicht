@@ -37,6 +37,7 @@ mod page;
 pub mod pages;
 mod plugin_ui;
 mod popup;
+mod startup;
 mod theme;
 mod ui;
 
@@ -225,6 +226,7 @@ pub struct BlaulichtApp {
     popup_open_time: Instant,
     init_popup_open_time: Instant,
     engine_initialization_complete: bool,
+    startup_progress: startup::StartupProgress,
 
     set_audio_device_popup_open: bool,
     audio_info_dialog_open: bool,
@@ -448,6 +450,7 @@ impl BlaulichtApp {
             popup_open_time: Instant::now(),
             init_popup_open_time: Instant::now(),
             engine_initialization_complete: false,
+            startup_progress: startup::StartupProgress::default(),
             set_audio_device_popup_open: false,
             audio_info_dialog_open: false,
             bass_low_numberpad: Numberpad::new()

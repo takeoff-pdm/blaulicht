@@ -19,7 +19,7 @@ use wasmtime::{Instance, Memory, Store, TypedFunc};
 use crate::{
     config::PluginConfig,
     event::SystemEventBusConnectionInst,
-    msg::{FromFrontend, MidiEvent, SystemMessage},
+    msg::{FromFrontend, MidiEvent, StageStatus, StartupStage, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, wasm::AddrDescriptor},
     state::AppState,
 };
@@ -140,6 +140,24 @@ impl Plugin {
     }
 }
 
+/// File stem of a plugin path, e.g. `inspector` for `bundle_debug/inspector.wasm`.
+pub(crate) fn plugin_display_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_owned())
+}
+
+/// Plugins stage summary: `k/N` loaded, plus the names of failed plugins.
+pub(crate) fn plugin_stage_status(total: usize, failed: &[String]) -> StageStatus {
+    let loaded = total.saturating_sub(failed.len());
+    if failed.is_empty() {
+        StageStatus::ok(format!("{loaded}/{total}"))
+    } else {
+        StageStatus::failed(format!("{loaded}/{total} · failed: {}", failed.join(", ")))
+    }
+}
+
 pub struct PluginReloadRequest {
     pub file_path: PathBuf,
 }
@@ -199,6 +217,8 @@ impl PluginManager {
 
     pub fn init(&mut self) -> anyhow::Result<()> {
         if let Err(err) = self.instantiate_plugins() {
+            self.send_plugin_stage(StageStatus::failed(format!("{err:#}")));
+
             let plugin_error_list: HashMap<u8, anyhow::Error> = self
                 .state_ref
                 .plugins
@@ -225,7 +245,43 @@ impl PluginManager {
             tracing::error!("Plugin(s) failed to initialize.");
         };
 
+        self.report_plugin_stage();
+
         Ok(())
+    }
+
+    fn send_plugin_stage(&self, status: StageStatus) {
+        let _ = self.system_out.send(SystemMessage::StartupStage {
+            stage: StartupStage::Plugins,
+            status,
+        });
+    }
+
+    /// Final Plugins stage after instantiation and the initial tick, which can
+    /// both disable plugins.
+    fn report_plugin_stage(&self) {
+        if cfg!(not(feature = "wasmtime")) {
+            self.send_plugin_stage(StageStatus::ok("disabled (compile flags)"));
+            return;
+        }
+        let state = self.state_ref.plugins.read().unwrap();
+        let enabled: Vec<(usize, &PluginConfig)> = self
+            .plugin_config
+            .iter()
+            .enumerate()
+            .filter(|(_, plugin)| plugin.enabled)
+            .collect();
+        let failed: Vec<String> = enabled
+            .iter()
+            .filter(|(id, _)| {
+                u8::try_from(*id)
+                    .ok()
+                    .and_then(|id| state.get(&id))
+                    .is_some_and(|plugin| plugin.has_errored())
+            })
+            .map(|(_, plugin)| plugin_display_name(&plugin.file_path))
+            .collect();
+        self.send_plugin_stage(plugin_stage_status(enabled.len(), &failed));
     }
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
@@ -494,5 +550,32 @@ mod recovery_tests {
         manager.reload().unwrap();
         assert!(!manager.plugins.contains_key(&0));
         assert!(state.plugins.read().unwrap()[&0].has_errored());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::msg::StageState;
+
+    #[test]
+    fn plugin_stage_status_counts_loaded_plugins() {
+        assert_eq!(plugin_stage_status(3, &[]), StageStatus::ok("3/3"));
+        assert_eq!(plugin_stage_status(0, &[]), StageStatus::ok("0/0"));
+        let failed = plugin_stage_status(3, &["broken".to_owned(), "led_tubes".to_owned()]);
+        assert_eq!(failed.state, StageState::Failed);
+        assert_eq!(
+            failed.detail.as_deref(),
+            Some("1/3 · failed: broken, led_tubes")
+        );
+    }
+
+    #[test]
+    fn plugin_display_name_is_the_file_stem() {
+        assert_eq!(
+            plugin_display_name("./crates/plugins/bundle_debug/inspector.wasm"),
+            "inspector"
+        );
+        assert_eq!(plugin_display_name("console"), "console");
     }
 }

@@ -2,6 +2,7 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     BlaulichtApp, PopupSpec,
 };
+use crate::msg::StageState;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 use std::time::{Duration, Instant};
 
@@ -89,7 +90,8 @@ impl BlaulichtApp {
         }
 
         let screen_rect = ctx.screen_rect();
-        let popup_size = egui::Vec2::new(370.0, 250.0); // desired popup size
+        const LOGO_HEIGHT: f32 = 110.0;
+        let popup_size = egui::Vec2::new(370.0, 330.0); // desired popup size
 
         let center_pos = egui::Pos2::new(
             screen_rect.center().x - popup_size.x / 2.0,
@@ -148,31 +150,10 @@ impl BlaulichtApp {
                     //     ui.add_space(8.0);
                     // }
 
-                    ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE));
-                    // Compensate for the transparent lower margin in the logo SVG.
-                    ui.add_space(-24.0);
+                    ui.add(egui::Image::new(blaulicht_assets::LOGO_IMAGE).max_height(LOGO_HEIGHT));
+                    ui.add_space(4.0);
 
-                    const LOADING_TEXT: &str = "Loading…";
-                    let spinner_size = ui.spacing().interact_size.y;
-                    let text_width = ui
-                        .painter()
-                        .layout_no_wrap(
-                            LOADING_TEXT.to_owned(),
-                            egui::TextStyle::Body.resolve(ui.style()),
-                            ui.visuals().text_color(),
-                        )
-                        .size()
-                        .x;
-                    let loading_width = spinner_size + ui.spacing().item_spacing.x + text_width;
-
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(loading_width, spinner_size),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.spinner();
-                            ui.label(LOADING_TEXT);
-                        },
-                    );
+                    self.render_startup_checklist(ui);
                     ui.add_space(8.0);
 
                     let current_log = self
@@ -186,5 +167,60 @@ impl BlaulichtApp {
                 })
             });
         true
+    }
+
+    fn render_startup_checklist(&self, ui: &mut egui::Ui) {
+        const ICON_WIDTH: f32 = 20.0;
+        const LABEL_WIDTH: f32 = 90.0;
+        const ROW_HEIGHT: f32 = 20.0;
+
+        for (stage, status) in self.startup_progress.iter() {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), ROW_HEIGHT),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.add_space(12.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ICON_WIDTH, ROW_HEIGHT),
+                        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                        |ui| match stage_icon(status.state) {
+                            Some((icon, color)) => {
+                                ui.label(RichText::new(icon).size(16.0).color(color));
+                            }
+                            None => {
+                                ui.add(egui::Spinner::new().size(14.0));
+                            }
+                        },
+                    );
+                    let label_color = match status.state {
+                        StageState::Pending => Color32::from_gray(120),
+                        StageState::Failed => Color32::LIGHT_RED,
+                        _ => ui.visuals().text_color(),
+                    };
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(LABEL_WIDTH, ROW_HEIGHT),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| ui.label(RichText::new(stage.label()).color(label_color)),
+                    );
+                    if let Some(detail) = &status.detail {
+                        ui.add(
+                            egui::Label::new(RichText::new(detail).color(Color32::from_gray(150)))
+                                .truncate(),
+                        );
+                    }
+                },
+            );
+        }
+    }
+}
+
+/// Checklist icon and color for a stage; `None` means "draw a spinner".
+fn stage_icon(state: StageState) -> Option<(&'static str, Color32)> {
+    use egui_phosphor::regular as icons;
+    match state {
+        StageState::Pending => Some((icons::CIRCLE, Color32::from_gray(100))),
+        StageState::Ok => Some((icons::CHECK_CIRCLE, Color32::from_rgb(90, 200, 110))),
+        StageState::Failed => Some((icons::X_CIRCLE, Color32::LIGHT_RED)),
+        StageState::Running | StageState::Restarting => None,
     }
 }

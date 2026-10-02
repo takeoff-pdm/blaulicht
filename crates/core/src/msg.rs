@@ -45,6 +45,12 @@ pub enum SystemMessage {
     // System.
     Heartbeat(usize),
     EngineInitializationComplete,
+    /// Progress of one engine startup stage, shown in the init popup and the
+    /// navbar status indicator. Host-internal, never sent to plugins.
+    StartupStage {
+        stage: StartupStage,
+        status: StageStatus,
+    },
     /// Host log line for the Logs page. Only `crate::log`'s tracing layer
     /// sends this; everything else logs through `tracing`.
     Log {
@@ -75,6 +81,78 @@ pub enum SystemMessage {
         label: String,
         duration_ms: u32,
     },
+}
+
+/// Engine startup stages, in the order they are shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::EnumIter, strum::EnumCount)]
+pub enum StartupStage {
+    Config,
+    Showfile,
+    Audio,
+    Plugins,
+    DmxEngine,
+    MainLoop,
+}
+
+impl StartupStage {
+    pub fn label(self) -> &'static str {
+        match self {
+            StartupStage::Config => "Config",
+            StartupStage::Showfile => "Showfile",
+            StartupStage::Audio => "Audio",
+            StartupStage::Plugins => "Plugins",
+            StartupStage::DmxEngine => "DMX engine",
+            StartupStage::MainLoop => "Main loop",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StageState {
+    Pending,
+    Running,
+    Ok,
+    Failed,
+    /// Only used for [`StartupStage::MainLoop`] while the supervisor restarts
+    /// a crashed engine.
+    Restarting,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StageStatus {
+    pub state: StageState,
+    pub detail: Option<String>,
+}
+
+impl StageStatus {
+    pub const PENDING: Self = Self {
+        state: StageState::Pending,
+        detail: None,
+    };
+
+    fn with(state: StageState, detail: impl Into<String>) -> Self {
+        let detail = detail.into();
+        Self {
+            state,
+            detail: (!detail.is_empty()).then_some(detail),
+        }
+    }
+
+    pub fn running(detail: impl Into<String>) -> Self {
+        Self::with(StageState::Running, detail)
+    }
+
+    pub fn ok(detail: impl Into<String>) -> Self {
+        Self::with(StageState::Ok, detail)
+    }
+
+    pub fn failed(detail: impl Into<String>) -> Self {
+        Self::with(StageState::Failed, detail)
+    }
+
+    pub fn restarting(detail: impl Into<String>) -> Self {
+        Self::with(StageState::Restarting, detail)
+    }
 }
 
 /// Tracing target for events that must only reach the terminal / file

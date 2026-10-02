@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     event::SystemEventBusConnectionInst,
     mainloop::{self, bg_worker},
-    msg::{AudioDeviceT, SystemMessage},
+    msg::{AudioDeviceT, StageStatus, StartupStage, SystemMessage},
     state::AppState,
 };
 use crate::{log::target, msg::FromFrontend, utils};
@@ -46,6 +46,10 @@ pub(super) fn complete_reload(signal: &AtomicU8, app_state: &AppState) {
     }
 }
 
+fn send_stage(system_out: &Sender<SystemMessage>, stage: StartupStage, status: StageStatus) {
+    let _ = system_out.send(SystemMessage::StartupStage { stage, status });
+}
+
 pub fn supervisor_thread(
     from_frontend: Receiver<FromFrontend>,
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -83,6 +87,7 @@ pub fn supervisor_thread(
 
     let mut is_initial_device_changed = true;
     let mut auto_select_audio_device = true;
+    let mut restarting_after_crash = false;
 
     loop {
         if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
@@ -138,6 +143,11 @@ pub fn supervisor_thread(
 
         if auto_select_audio_device && audio_device.is_none() {
             auto_select_audio_device = false;
+            send_stage(
+                &system_out,
+                StartupStage::Audio,
+                StageStatus::running("selecting device"),
+            );
             let devices = utils::get_input_devices_flat();
             let automatic_device = utils::default_input_device()
                 .or_else(|| devices.first().map(|(_, device)| device.clone()));
@@ -159,6 +169,11 @@ pub fn supervisor_thread(
                 }
                 None => {
                     tracing::error!(target: target::AUDIO, "No input device is available");
+                    send_stage(
+                        &system_out,
+                        StartupStage::Audio,
+                        StageStatus::failed("no input device"),
+                    );
                     let _ = system_out.send(SystemMessage::EngineInitializationComplete);
                 }
             }
@@ -168,6 +183,19 @@ pub fn supervisor_thread(
         if AudioThreadControlSignal::from(audio_thread_control_signal.load(Ordering::Relaxed))
             == AudioThreadControlSignal::CRASHED
         {
+            restarting_after_crash = true;
+            send_stage(
+                &system_out,
+                StartupStage::MainLoop,
+                StageStatus::restarting("restarting after crash"),
+            );
+            for stage in [
+                StartupStage::Audio,
+                StartupStage::Plugins,
+                StartupStage::DmxEngine,
+            ] {
+                send_stage(&system_out, stage, StageStatus::PENDING);
+            }
             if !is_initial_device_changed {
                 thread::sleep(Duration::from_secs(2));
             }
@@ -244,6 +272,15 @@ pub fn supervisor_thread(
 
                 let app_state = Arc::clone(&app_state);
 
+                // After a crash the stage already shows "restarting".
+                if !std::mem::take(&mut restarting_after_crash) {
+                    send_stage(
+                        &sys,
+                        StartupStage::MainLoop,
+                        StageStatus::running("starting engine"),
+                    );
+                }
+
                 // Set running before spawn, so a later ABORT cannot be overwritten.
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
@@ -266,6 +303,11 @@ pub fn supervisor_thread(
                     if let Err(err) = result {
                         // `{err:#}` prints the full anyhow context chain.
                         tracing::error!("Engine thread crashed: {err:#}");
+                        send_stage(
+                            &sys,
+                            StartupStage::MainLoop,
+                            StageStatus::failed(format!("crashed: {err:#}")),
+                        );
 
                         signal_mainloop(
                             Arc::clone(&audio_thread_control_signal),
