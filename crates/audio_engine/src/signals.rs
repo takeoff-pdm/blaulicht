@@ -87,6 +87,16 @@ mod tests {
     }
 
     #[test]
+    fn loud_volume_saturates_instead_of_wrapping() {
+        // Mean bin volume 30 maps to 300, past the u8 range.
+        let mut collector = collector_with_freqs(vec![frequency(60.0, 30.0)], 100);
+        // The first call only records a sample; the second publishes it.
+        collector.volume().unwrap();
+        collector.volume().unwrap();
+        assert_eq!(collector.current.volume, u8::MAX);
+    }
+
+    #[test]
     fn quiet_bass_holds_bpm_and_resyncs_beat() {
         let mut collector = collector_with_freqs(
             vec![
@@ -1162,7 +1172,8 @@ where
             // let volume_sum = self.freqs.iter().map(|f| f.volume).sum::<f32>() * 10.0;
             // let volume_avg = volume_sum / self.freqs.len() as f32;
 
-            let volume = volume_mean as u8;
+            // Saturate: a plain cast wraps loud input around to small values.
+            let volume = volume_mean.min(u8::MAX as usize) as u8;
             &[Signal::Volume(volume)]
         });
 
