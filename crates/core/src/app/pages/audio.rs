@@ -805,12 +805,6 @@ impl BlaulichtApp {
                         |ui| {
                             ui.set_min_height(ButtonSize::Medium.dim().0.y);
 
-                            if components::button(ui, false, "Change Device", ButtonSize::Medium) {
-                                self.set_audio_device_popup_open = true;
-                            }
-
-                            ui.separator();
-
                             ui.label(
                                 RichText::new("Current Input:").size(ButtonSize::Medium.dim().1),
                             );
@@ -819,6 +813,10 @@ impl BlaulichtApp {
                                     .size(ButtonSize::Medium.dim().1)
                                     .color(Color32::LIGHT_RED),
                             );
+
+                            if components::button(ui, false, "Change Device", ButtonSize::Medium) {
+                                self.set_audio_device_popup_open = true;
+                            }
 
                             ui.separator();
 
