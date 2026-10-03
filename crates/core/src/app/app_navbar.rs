@@ -1,11 +1,19 @@
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::Context;
 
-use crate::app::BlaulichtApp;
+use crate::app::{components::NavbarStatus, BlaulichtApp};
 
 impl BlaulichtApp {
     pub fn show_navbar(&mut self, ctx: &Context) {
-        let Some(page_change) = self.navbar.ui(ctx) else {
+        let summary = self.startup_progress.summary();
+        let status = self
+            .startup_progress
+            .indicator()
+            .map(|indicator| NavbarStatus {
+                indicator,
+                summary: &summary,
+            });
+        let Some(page_change) = self.navbar.ui(ctx, status) else {
             return;
         };
 

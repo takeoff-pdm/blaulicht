@@ -358,6 +358,9 @@ impl PluginManager {
 
         let mut modules = HashMap::new();
 
+        let enabled_total = self.plugin_config.iter().filter(|p| p.enabled).count();
+        let mut enabled_index = 0;
+
         for (plugin_id, plugin) in self.plugin_config.clone().iter().enumerate() {
             anyhow::ensure!(plugin_id <= u8::MAX as usize, "too many configured plugins");
             if !plugin.enabled {
@@ -366,6 +369,15 @@ impl PluginManager {
             }
 
             let plugin_name = plugin.file_path.to_string();
+
+            enabled_index += 1;
+            let _ = self.system_out.send(SystemMessage::StartupStage {
+                stage: crate::msg::StartupStage::Plugins,
+                status: crate::msg::StageStatus::running(format!(
+                    "{enabled_index}/{enabled_total} · {}",
+                    super::plugin_display_name(&plugin_name)
+                )),
+            });
 
             tracing::debug!("Initializing plugin <{plugin_name}>...");
 

@@ -8,7 +8,7 @@ use crate::{
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::complete_reload,
-    msg::{AudioDeviceT, DmxTickSpeeds, SystemMessage, TickSpeeds},
+    msg::{AudioDeviceT, DmxTickSpeeds, StageStatus, StartupStage, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
     state::AppState,
     system_message, util,
@@ -28,12 +28,19 @@ use std::{
 };
 pub use supervisor::supervisor_thread;
 
+#[cfg(feature = "audio")]
+use cpal::traits::DeviceTrait;
+
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);
 const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 
+/// Reports engine startup stages to the UI. Dropping it before `complete()`
+/// (an early `?` return or a panic) marks the running stage as failed and
+/// still releases the init popup.
 struct EngineInitializationGuard {
     system_out: Sender<SystemMessage>,
+    current_stage: Option<StartupStage>,
     completed: bool,
 }
 
@@ -41,8 +48,27 @@ impl EngineInitializationGuard {
     fn new(system_out: Sender<SystemMessage>) -> Self {
         Self {
             system_out,
+            current_stage: None,
             completed: false,
         }
+    }
+
+    fn send(&self, stage: StartupStage, status: StageStatus) {
+        let _ = self
+            .system_out
+            .send(SystemMessage::StartupStage { stage, status });
+    }
+
+    fn begin(&mut self, stage: StartupStage, detail: impl Into<String>) {
+        self.current_stage = Some(stage);
+        self.send(stage, StageStatus::running(detail));
+    }
+
+    fn finish(&mut self, stage: StartupStage, status: StageStatus) {
+        if self.current_stage == Some(stage) {
+            self.current_stage = None;
+        }
+        self.send(stage, status);
     }
 
     fn complete(&mut self) {
@@ -55,11 +81,18 @@ impl EngineInitializationGuard {
 
 impl Drop for EngineInitializationGuard {
     fn drop(&mut self) {
-        if !self.completed {
-            let _ = self
-                .system_out
-                .send(SystemMessage::EngineInitializationComplete);
+        if self.completed {
+            return;
         }
+        if let Some(stage) = self.current_stage.take() {
+            self.send(
+                stage,
+                StageStatus::failed("engine stopped during init, see Logs"),
+            );
+        }
+        let _ = self
+            .system_out
+            .send(SystemMessage::EngineInitializationComplete);
     }
 }
 
@@ -117,13 +150,18 @@ pub fn run(
         plugin_manager.load_plugin_states(plugin_state);
     }
 
+    // The plugin manager reports k/N progress and the final result itself;
+    // the guard only covers a panic or early return in between.
+    initialization_guard.begin(StartupStage::Plugins, "");
     plugin_manager
         .init()
         .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
+    initialization_guard.current_stage = None;
 
     //
     // DMX Engine.
     //
+    initialization_guard.begin(StartupStage::DmxEngine, "");
     let dmx_appstate = Arc::clone(&app_state);
     let mut dmx_engine =
         DmxEngine::new(dmx_appstate, event_bus_dmx, config.dmx_out_devices.clone());
@@ -131,6 +169,7 @@ pub fn run(
     if config.run_setup_on_reload {
         dmx_engine.start_setup();
     }
+    initialization_guard.finish(StartupStage::DmxEngine, StageStatus::ok(""));
 
     //
     // Audio signal collector.
@@ -167,6 +206,11 @@ pub fn run(
         fit_spectrum: true,
     };
 
+    initialization_guard.begin(StartupStage::Audio, "starting signal collector");
+    let audio_status = match &device {
+        Some(device) => StageStatus::ok(device.name().unwrap_or_else(|_| "unknown".to_owned())),
+        None => StageStatus::failed("no input device"),
+    };
     let audio_source = audio::RecoveringAudioSource::new(device, config.clone());
 
     let mut sig_collector = SignalCollector::new(
@@ -177,6 +221,7 @@ pub fn run(
         0,
     )
     .with_context(|| "Failed to create signal collector")?;
+    initialization_guard.finish(StartupStage::Audio, audio_status);
     let mut loop_tempo = LoopTempoRuntime::default();
     let mut captured_samples = Vec::new();
 
@@ -199,6 +244,7 @@ pub fn run(
     // NOTE: this is done only now since the previous init code could starve the UI thread.
     // (mainly the Wasm setup).
     util::increase_thread_priority();
+    initialization_guard.finish(StartupStage::MainLoop, StageStatus::ok(""));
     initialization_guard.complete();
 
     loop {
@@ -357,4 +403,61 @@ pub fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drain(rx: &crossbeam_channel::Receiver<SystemMessage>) -> Vec<String> {
+        rx.try_iter()
+            .map(|msg| match msg {
+                SystemMessage::StartupStage { stage, status } => {
+                    format!("{stage:?}:{:?}", status.state)
+                }
+                SystemMessage::EngineInitializationComplete => "complete".to_owned(),
+                _ => "other".to_owned(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dropped_guard_fails_the_running_stage() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        {
+            let mut guard = EngineInitializationGuard::new(tx);
+            guard.begin(StartupStage::DmxEngine, "");
+            guard.finish(StartupStage::DmxEngine, StageStatus::ok(""));
+            guard.begin(StartupStage::Audio, "");
+        }
+        assert_eq!(
+            drain(&rx),
+            [
+                "DmxEngine:Running",
+                "DmxEngine:Ok",
+                "Audio:Running",
+                "Audio:Failed",
+                "complete"
+            ]
+        );
+    }
+
+    #[test]
+    fn completed_guard_sends_nothing_on_drop() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        {
+            let mut guard = EngineInitializationGuard::new(tx);
+            guard.begin(StartupStage::Audio, "");
+            guard.finish(StartupStage::Audio, StageStatus::ok("mic"));
+            guard.complete();
+        }
+        assert_eq!(drain(&rx), ["Audio:Running", "Audio:Ok", "complete"]);
+    }
+
+    #[test]
+    fn dropped_guard_without_stage_only_completes() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        drop(EngineInitializationGuard::new(tx));
+        assert_eq!(drain(&rx), ["complete"]);
+    }
 }

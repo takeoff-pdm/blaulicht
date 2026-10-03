@@ -161,7 +161,10 @@ pub fn read_showfile(
 ) -> Option<LoadedShowfileState> {
     match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
         Ok(loaded_state) => {
-            tracing::info!("Loaded showfile {}", file.display());
+            tracing::info!(
+                "Loaded showfile {}",
+                absolute_showfile_path(&file).display()
+            );
             Some(loaded_state)
         }
         Err(e) => {
@@ -286,6 +289,24 @@ fn migrate_legacy_fixture_coordinates(engine: &mut EngineState) {
 
 pub const fn current_showfile_version() -> u32 {
     STAGE_SHOWFILE_VERSION
+}
+
+/// File name of a showfile for display, falling back to the whole path when it has none.
+pub fn showfile_display_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Absolute form of `path` for logging; keeps `path` unchanged if it can't be resolved.
+pub fn absolute_showfile_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(path))
+        .unwrap_or_else(|_| path.to_path_buf())
 }
 
 pub fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
@@ -541,5 +562,25 @@ mod tests {
 
         assert_eq!(fs::read(&path).unwrap(), b"new showfile");
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn showfile_display_name_is_the_file_name() {
+        assert_eq!(
+            showfile_display_name(Path::new("/home/user/shows/club.json")),
+            "club.json"
+        );
+        assert_eq!(showfile_display_name(Path::new("club.json")), "club.json");
+        assert_eq!(showfile_display_name(Path::new("/")), "/");
+    }
+
+    #[test]
+    fn absolute_showfile_path_resolves_relative_paths() {
+        let relative = Path::new("shows/club.json");
+        let absolute = absolute_showfile_path(relative);
+        assert!(absolute.is_absolute());
+        assert!(absolute.ends_with(relative));
+        let already = Path::new("/srv/club.json");
+        assert_eq!(absolute_showfile_path(already), already);
     }
 }

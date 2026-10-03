@@ -385,6 +385,12 @@ impl BlaulichtApp {
         std::thread::spawn(move || {
             let result = config::write_atomic(&path, serialized.as_bytes())
                 .map_err(|error| error.to_string());
+            if result.is_ok() {
+                tracing::info!(
+                    "Saved showfile {}",
+                    config::absolute_showfile_path(&path).display()
+                );
+            }
             let _ = sender.send(crate::app::SaveCompletion {
                 hash,
                 manual,

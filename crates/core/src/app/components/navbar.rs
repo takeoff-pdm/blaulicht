@@ -2,7 +2,16 @@ use blaulicht_shared::AppPage;
 use egui::{Context, Frame, Separator, Widget};
 use strum::IntoEnumIterator;
 
-use crate::app::components::{self, ButtonSize};
+use crate::app::{
+    components::{self, ButtonSize},
+    startup::StartupIndicator,
+};
+
+/// Navbar slot for a startup stage that failed or is still running.
+pub struct NavbarStatus<'a> {
+    pub indicator: StartupIndicator,
+    pub summary: &'a str,
+}
 
 pub fn app_page_to_icon(from: &AppPage) -> &'static str {
     match from {
@@ -39,7 +48,8 @@ impl Navbar {
         self.current_page
     }
 
-    pub fn ui(&mut self, ctx: &Context) -> Option<AppPage> {
+    /// `status`, if given, adds a slot below the pages; clicking it opens Logs.
+    pub fn ui(&mut self, ctx: &Context, status: Option<NavbarStatus<'_>>) -> Option<AppPage> {
         const WIDTH: f32 = 45.0;
 
         let mut changed = None;
@@ -51,7 +61,8 @@ impl Navbar {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
-                let button_count = AppPage::iter().count();
+                let page_count = AppPage::iter().count();
+                let button_count = page_count + usize::from(status.is_some());
                 // let spacing_top_bottom = 3.0;
                 // let spacing = 6.0;
                 let sep_spacing = 3.0;
@@ -89,8 +100,56 @@ impl Navbar {
                         Separator::default().spacing(sep_spacing).ui(ui);
                     }
                 }
+
+                if let Some(status) = &status {
+                    let size = egui::vec2(WIDTH, button_height);
+                    if status_slot(ui, size, status) && self.current_page != AppPage::Logs {
+                        self.current_page = AppPage::Logs;
+                        changed = Some(AppPage::Logs);
+                    }
+                }
             });
 
         changed
     }
+}
+
+fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -> bool {
+    use egui_phosphor::regular as icons;
+    let (icon, caption, color) = match status.indicator {
+        StartupIndicator::Failed => (icons::WARNING, "FAIL", egui::Color32::LIGHT_RED),
+        StartupIndicator::Restarting => (
+            icons::ARROWS_CLOCKWISE,
+            "RESTART",
+            egui::Color32::from_rgb(240, 180, 60),
+        ),
+        StartupIndicator::Running => (icons::HOURGLASS, "BUSY", egui::Color32::LIGHT_BLUE),
+    };
+
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    let fill = if response.hovered() {
+        color.gamma_multiply(0.3)
+    } else {
+        color.gamma_multiply(0.15)
+    };
+    painter.rect_filled(rect, 2.0, fill);
+    painter.text(
+        rect.center() - egui::vec2(0.0, 5.0),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        egui::FontId::proportional(16.0),
+        color,
+    );
+    painter.text(
+        rect.center() + egui::vec2(0.0, 10.0),
+        egui::Align2::CENTER_CENTER,
+        caption,
+        egui::FontId::proportional(8.0),
+        color,
+    );
+
+    response
+        .on_hover_text(format!("{}\nClick to open Logs.", status.summary))
+        .clicked()
 }

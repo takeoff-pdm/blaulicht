@@ -102,6 +102,9 @@ impl BlaulichtApp {
                     SystemMessage::EngineInitializationComplete => {
                         self.engine_initialization_complete = true;
                     }
+                    SystemMessage::StartupStage { stage, status } => {
+                        self.startup_progress.apply(stage, status);
+                    }
                     SystemMessage::Log {
                         message,
                         level,

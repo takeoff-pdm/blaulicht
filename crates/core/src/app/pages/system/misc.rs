@@ -145,23 +145,26 @@ impl BlaulichtApp {
                 ui.spacing_mut().item_spacing = default_item_spacing;
                 ui.set_width(main_column_width);
                 ui.horizontal_wrapped(|ui| {
-                    let showfile = self
-                        .data
-                        .config
-                        .lock()
-                        .unwrap()
-                        .last_open_showfile
-                        .as_ref()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "N/A".to_string());
+                    let showfile = self.data.config.lock().unwrap().last_open_showfile.clone();
 
                     ui.label("showfile:");
 
-                    ui.label(
-                        egui::RichText::new(showfile)
+                    let name = showfile
+                        .as_deref()
+                        .map(crate::config::showfile_display_name)
+                        .unwrap_or_else(|| "N/A".to_string());
+                    let name_label = ui.label(
+                        egui::RichText::new(name)
                             .strong()
                             .font(FontId::monospace(14.0)),
                     );
+                    if let Some(path) = &showfile {
+                        name_label.on_hover_text(
+                            crate::config::absolute_showfile_path(path)
+                                .to_string_lossy()
+                                .into_owned(),
+                        );
+                    }
 
                     if let Some(saved_at) = self.last_save_time {
                         let ago = saved_at.elapsed().as_secs();
