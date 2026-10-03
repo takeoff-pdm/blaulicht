@@ -1,6 +1,9 @@
 use crate::{AudioSource, Frequency};
 use rand::Rng; // Import the trait to use .gen_range()
 
+/// Real FFT bins rarely exceed ~2.5; louder noise saturates bass and volume.
+const MAX_BIN_VOLUME: f32 = 2.5;
+
 #[derive(Clone)]
 pub struct AudioSourceNoise {
     freq_buffer: Vec<Frequency>,
@@ -66,7 +69,7 @@ impl AudioSourceNoise {
         let mut rng = rand::rng(); // Create a local random generator
 
         self.freq_buffer.iter_mut().for_each(|freq| {
-            freq.volume = rng.random_range(0.0..50.0);
+            freq.volume = rng.random_range(0.0..MAX_BIN_VOLUME);
         });
 
         &self.freq_buffer

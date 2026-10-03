@@ -202,6 +202,7 @@ mod tests {
             blaulicht_shared::AudioSourceStatus::Active
         );
         assert!(current.volume > 0, "noise volume: {}", current.volume);
+        assert!(current.bass < u8::MAX, "noise saturates bass");
     }
 
     #[test]
