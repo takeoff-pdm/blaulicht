@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 use std::process::exit;
 
-use crate::msg::{AudioDeviceT, AudioHostT};
+use crate::msg::{AudioDeviceT, AudioHostT, AudioInput, DummyInput};
 
 #[cfg(feature = "audio")]
 mod with_audio_feature {
@@ -96,6 +96,14 @@ pub fn device_from_name(dev_id: String) -> Option<AudioDeviceT> {
 
     #[cfg(not(feature = "audio"))]
     return Some(AudioDeviceT::default());
+}
+
+/// Resolves a configured device name, including the reserved dummy names.
+pub fn input_from_name(name: String) -> Option<AudioInput> {
+    match DummyInput::from_name(&name) {
+        Some(dummy) => Some(AudioInput::Dummy(dummy)),
+        None => device_from_name(name).map(AudioInput::Device),
+    }
 }
 
 pub fn device_from_names(host_id: String, dev_id: String) -> Option<AudioDeviceT> {

@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 [features]
 default = ["audio", "wayland", "wasmtime"] # ["wasmtime"]   # keep it on by default
 wasmtime = ["dep:rustc-demangle", "dep:wasmtime"]
-audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in"]
+audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in", "blaulicht-audio-engine/noise"]
 audio-mock = ["blaulicht-audio-engine/noise"]
 wayland = ["eframe/wayland"]
 x11 = ["eframe/x11"]

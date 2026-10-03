@@ -56,6 +56,11 @@ impl AudioSourceNoise {
         self.sample_rate
     }
 
+    /// The most recently generated frame, without generating a new one.
+    pub fn frequencies(&self) -> &[Frequency] {
+        &self.freq_buffer
+    }
+
     /// Get frequencies at a specific time in seconds
     pub fn get_frequencies_at_time(&mut self, _time_millis: usize) -> &[Frequency] {
         let mut rng = rand::rng(); // Create a local random generator

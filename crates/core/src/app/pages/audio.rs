@@ -1,14 +1,11 @@
 use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
-use crate::msg::FromFrontend;
+use crate::msg::{AudioInput, DummyInput, FromFrontend};
 use crate::{config, utils};
 use blaulicht_audio_engine::{
     bin_rows, draw_markers, AudioSpectrogram, BpmDetectStatus, CollectorOutput,
     SpectrogramDisplayOptions,
 };
-
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
 
 use egui::{vec2, Color32, FontId, Frame, Margin, RichText, Widget};
 use std::mem;
@@ -262,28 +259,21 @@ impl BlaulichtApp {
             return;
         }
 
-        const NONE_LABEL: &str = "None";
-
         let mut options = self.available_audio_devices.clone();
-        debug_assert!(!options.contains(&NONE_LABEL.to_string()));
-        options.push(NONE_LABEL.to_string());
+        options.extend(DummyInput::ALL.map(|dummy| dummy.name().to_owned()));
 
         let (new_device, changed) = components::selection_dialog(
             ctx,
             options,
-            match selected_device.clone() {
-                Some(val) => val,
-                None => NONE_LABEL.to_string(),
-            },
+            selected_device
+                .clone()
+                .unwrap_or_else(|| DummyInput::Silence.name().to_owned()),
             &mut self.set_audio_device_popup_open,
             "Select Audio Device".to_string(),
         );
 
         if changed {
-            *selected_device = match new_device.as_str() {
-                NONE_LABEL => None,
-                other => Some(other.to_string()),
-            };
+            *selected_device = Some(new_device);
         }
     }
 
@@ -829,12 +819,13 @@ impl BlaulichtApp {
                     self.render_choose_audio_device_popup(ctx, &mut selected_device);
 
                     if selected_device != before {
-                        let new_dev = selected_device
-                            .and_then(|d| utils::device_from_name(d))
-                            .or_else(|| {
-                                tracing::warn!("Selected audio device is no longer available");
-                                None
-                            });
+                        let new_dev =
+                            selected_device
+                                .and_then(utils::input_from_name)
+                                .or_else(|| {
+                                    tracing::warn!("Selected audio device is no longer available");
+                                    None
+                                });
                         if self
                             .data
                             .from_frontend_sender
@@ -846,8 +837,7 @@ impl BlaulichtApp {
 
                         let mut config_mut = self.data.config.lock().unwrap();
 
-                        config_mut.default_audio_device =
-                            new_dev.as_ref().and_then(|d| d.name().ok());
+                        config_mut.default_audio_device = new_dev.as_ref().map(AudioInput::name);
 
                         let path = PathBuf::from(&self.data.config_path);
                         if let Err(err) = config::write_config(path, config_mut.clone()) {
