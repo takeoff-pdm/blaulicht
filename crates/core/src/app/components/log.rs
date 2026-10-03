@@ -27,6 +27,147 @@ fn log_level_color(from: &LogLevel) -> egui::Color32 {
     }
 }
 
+const LOG_FONT_SIZE: f32 = 12.0;
+const LOG_TIME_COL_WIDTH: f32 = 60.0;
+const LOG_LEVEL_COL_WIDTH: f32 = 48.0;
+const LOG_SOURCE_COL_WIDTH: f32 = 118.0;
+const LOG_COL_GAP: f32 = 8.0;
+
+fn log_level_label(level: &LogLevel) -> &'static str {
+    match level {
+        LogLevel::Debug => "DEBUG",
+        LogLevel::Info => "INFO",
+        LogLevel::Warn => "WARN",
+        LogLevel::Err => "ERROR",
+    }
+}
+
+/// Message text color: problems keep their level color, routine lines use the
+/// normal text color so the level badge carries the signal.
+fn log_message_color(ui: &egui::Ui, level: &LogLevel) -> egui::Color32 {
+    match level {
+        LogLevel::Debug => ui.visuals().weak_text_color(),
+        LogLevel::Info => ui.visuals().text_color(),
+        LogLevel::Warn | LogLevel::Err => log_level_color(level),
+    }
+}
+
+/// Runs `add_contents` in a column of exactly `width`.
+fn log_column<R>(
+    ui: &mut egui::Ui,
+    width: f32,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    ui.allocate_ui_with_layout(
+        egui::vec2(width, 0.0),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.set_width(width);
+            add_contents(ui)
+        },
+    )
+    .inner
+}
+
+fn draw_log_header(ui: &mut egui::Ui) {
+    let header = |text: &str| RichText::new(text).size(11.0).strong().weak();
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = LOG_COL_GAP;
+        log_column(ui, LOG_TIME_COL_WIDTH, |ui| ui.label(header("TIME")));
+        log_column(ui, LOG_LEVEL_COL_WIDTH, |ui| ui.label(header("LEVEL")));
+        log_column(ui, LOG_SOURCE_COL_WIDTH, |ui| ui.label(header("SOURCE")));
+        ui.label(header("MESSAGE"));
+    });
+}
+
+fn draw_log_row(ui: &mut egui::Ui, entry: &LogEntry, striped: bool) {
+    // Reserve the background slot first so the stripe is painted below the row.
+    let background = ui.painter().add(egui::Shape::Noop);
+    let level_color = log_level_color(&entry.level);
+    let message_color = log_message_color(ui, &entry.level);
+    let time: DateTime<Local> = entry.timestamp.into();
+
+    let row = ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = LOG_COL_GAP;
+
+        log_column(ui, LOG_TIME_COL_WIDTH, |ui| {
+            ui.label(
+                RichText::new(time.format("%H:%M:%S").to_string())
+                    .monospace()
+                    .size(LOG_FONT_SIZE)
+                    .color(ui.visuals().weak_text_color()),
+            );
+        });
+
+        log_column(ui, LOG_LEVEL_COL_WIDTH, |ui| {
+            egui::Frame::new()
+                .fill(level_color.gamma_multiply(0.18))
+                .corner_radius(3.0)
+                .inner_margin(egui::Margin::symmetric(4, 0))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(log_level_label(&entry.level))
+                            .monospace()
+                            .size(11.0)
+                            .strong()
+                            .color(level_color),
+                    );
+                });
+        });
+
+        log_column(ui, LOG_SOURCE_COL_WIDTH, |ui| {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(&entry.source)
+                        .monospace()
+                        .size(LOG_FONT_SIZE)
+                        .color(ui.visuals().strong_text_color()),
+                )
+                .truncate(),
+            )
+            .on_hover_text(&entry.source);
+        });
+
+        let message_width = ui.available_width();
+        log_column(ui, message_width, |ui| {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(entry.message.trim_end())
+                        .monospace()
+                        .size(LOG_FONT_SIZE)
+                        .color(message_color),
+                )
+                .wrap(),
+            );
+
+            if let Some(additional) = entry.additional.as_deref() {
+                egui::CollapsingHeader::new(RichText::new("Full trace").size(11.0).monospace())
+                    .id_salt((entry.timestamp, &entry.source, &entry.message))
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(additional)
+                                .size(11.0)
+                                .monospace()
+                                .color(message_color),
+                        );
+                    });
+            }
+        });
+    });
+
+    if striped {
+        ui.painter().set(
+            background,
+            egui::Shape::rect_filled(
+                row.response.rect.expand2(egui::vec2(2.0, 1.0)),
+                2.0,
+                ui.visuals().faint_bg_color,
+            ),
+        );
+    }
+}
+
 /// A log window component that displays scrolling log messages
 pub struct LogWindow {
     pub logs: VecDeque<LogEntry>,
@@ -267,14 +408,15 @@ impl LogWindow {
         //     ui.add(egui::Slider::new(&mut self.log_height, 100.0..=600.0).text("height"));
         // });
 
+        draw_log_header(ui);
+
         let scroll_output = egui::ScrollArea::vertical()
             .max_height(ui.available_height())
             .max_width(ctx.screen_rect().width() - 100.0)
             .auto_shrink([false, false])
             .stick_to_bottom(self.auto_scroll)
             .show(ui, |ui| {
-                ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-
+                let mut row_index = 0usize;
                 for entry in &self.logs {
                     // Apply filters
                     match &self.selected_log_level {
@@ -288,63 +430,8 @@ impl LogWindow {
                         continue;
                     }
 
-                    let datetime: DateTime<Local> = entry.timestamp.into();
-                    let time_formatted = datetime.format("%H:%M:%S").to_string();
-                    let prefix = format!(
-                        "[{}] {:?} | {} |",
-                        time_formatted, entry.level, entry.source
-                    );
-                    let indent = " ".repeat(prefix.chars().count() + 1);
-                    let color = log_level_color(&entry.level);
-
-                    let mut lines = entry
-                        .message
-                        .split('\n')
-                        .map(|line| line.trim_end_matches('\r'));
-
-                    if let Some(first_line) = lines.next() {
-                        let first = if first_line.is_empty() {
-                            format!("{prefix} ")
-                        } else {
-                            format!("{prefix} {first_line}")
-                        };
-
-                        ui.colored_label(color, RichText::new(first).size(12.0).monospace());
-
-                        for line in lines {
-                            let continuation = if line.is_empty() {
-                                format!("{indent} ")
-                            } else {
-                                format!("{indent}{line}")
-                            };
-
-                            ui.colored_label(
-                                color,
-                                RichText::new(continuation).size(12.0).monospace(),
-                            );
-                        }
-                    } else {
-                        ui.colored_label(
-                            color,
-                            RichText::new(format!("{prefix} ")).size(12.0).monospace(),
-                        );
-                    }
-
-                    if let Some(additional) = entry.additional.as_deref() {
-                        egui::CollapsingHeader::new(
-                            RichText::new("Full trace").size(11.0).monospace(),
-                        )
-                        .id_salt((entry.timestamp, &entry.source, &entry.message))
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.colored_label(
-                                color,
-                                RichText::new(additional).size(11.0).monospace(),
-                            );
-                        });
-                    }
-
-                    ui.separator();
+                    draw_log_row(ui, entry, row_index % 2 == 1);
+                    row_index += 1;
                 }
             });
 
