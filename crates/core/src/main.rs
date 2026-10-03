@@ -75,7 +75,7 @@ fn main() -> anyhow::Result<()> {
     match cfg.default_audio_device {
         None => {}
         Some(ref name) => {
-            if let Some(dev) = utils::device_from_name(name.clone()) {
+            if let Some(dev) = utils::input_from_name(name.clone()) {
                 info!("Using default audio device: <{name}> from configuration file.");
                 from_frontend_sender
                     .send(FromFrontend::SelectInputDevice(Some(dev)))

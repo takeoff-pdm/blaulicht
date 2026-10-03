@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     event::SystemEventBusConnectionInst,
     mainloop::{self, bg_worker},
-    msg::{AudioDeviceT, StageStatus, StartupStage, SystemMessage},
+    msg::{AudioInput, DummyInput, StageStatus, StartupStage, SystemMessage},
     state::AppState,
 };
 use crate::{log::target, msg::FromFrontend, utils};
@@ -16,9 +16,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
 
 pub fn signal_mainloop(
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -71,7 +68,7 @@ pub fn supervisor_thread(
 
     let heartbeat_delay = Duration::from_millis(1000);
 
-    let mut audio_device: Option<AudioDeviceT> = None;
+    let mut audio_device: Option<AudioInput> = None;
     let mut device_changed = true;
     let mut audio_thread: Option<thread::JoinHandle<()>> = None;
 
@@ -82,8 +79,6 @@ pub fn supervisor_thread(
     );
 
     let mut seq = 0;
-
-    let mut sent_no_device_available_log_message = false;
 
     let mut is_initial_device_changed = true;
     let mut auto_select_audio_device = true;
@@ -119,7 +114,7 @@ pub fn supervisor_thread(
                 }
             }
             Ok(FromFrontend::SelectInputDevice(dev)) => {
-                audio_device = dev;
+                audio_device = Some(dev.unwrap_or(AudioInput::Dummy(DummyInput::Silence)));
                 device_changed = true;
                 auto_select_audio_device = false;
             }
@@ -162,21 +157,20 @@ pub fn supervisor_thread(
 
             match automatic_device {
                 Some(device) => {
-                    let device_name = device.name().unwrap_or_else(|_| "unknown".to_owned());
-                    tracing::info!(target: target::AUDIO, "Automatically selected input device: {device_name}");
+                    let device = AudioInput::Device(device);
+                    tracing::info!(target: target::AUDIO, "Automatically selected input device: {}", device.name());
                     audio_device = Some(device);
-                    device_changed = true;
                 }
                 None => {
-                    tracing::error!(target: target::AUDIO, "No input device is available");
-                    send_stage(
-                        &system_out,
-                        StartupStage::Audio,
-                        StageStatus::failed("no input device"),
+                    tracing::warn!(
+                        target: target::AUDIO,
+                        "No input device is available; using {}",
+                        DummyInput::Silence.name()
                     );
-                    let _ = system_out.send(SystemMessage::EngineInitializationComplete);
+                    audio_device = Some(AudioInput::Dummy(DummyInput::Silence));
                 }
             }
+            device_changed = true;
         }
 
         // Check if the thread crashed and attempt to restart it.
@@ -206,10 +200,11 @@ pub fn supervisor_thread(
         // Syncronize to config file.
         if device_changed {
             let mut audio = app_state.audio.write().unwrap();
-            audio.device_name = audio_device.as_ref().and_then(|dev| dev.name().ok());
+            audio.device_name = audio_device.as_ref().map(AudioInput::name);
         }
 
-        if audio_device.is_none() {
+        // Keep the device list fresh so hot-plugged hardware can be picked.
+        if matches!(audio_device, None | Some(AudioInput::Dummy(_))) {
             let devices = utils::get_input_devices_flat();
 
             if system_out
@@ -224,18 +219,11 @@ pub fn supervisor_thread(
                 );
                 break;
             }
-
-            if !sent_no_device_available_log_message {
-                tracing::info!(
-                    target: target::AUDIO,
-                    "No audio device selected, waiting for selection"
-                );
-
-                sent_no_device_available_log_message = true;
-            }
         }
         if device_changed {
-            let audio_input_device = audio_device.clone();
+            let audio_input_device = audio_device
+                .clone()
+                .unwrap_or(AudioInput::Dummy(DummyInput::Silence));
 
             if system_out
                 .send(SystemMessage::AudioSelected(audio_input_device.clone()))
@@ -324,10 +312,7 @@ pub fn supervisor_thread(
             tracing::info!(
                 target: target::AUDIO,
                 "Engine started with audio input \"{}\"",
-                audio_input_device
-                    .as_ref()
-                    .and_then(|device| device.name().ok())
-                    .unwrap_or_else(|| "none".to_string())
+                audio_input_device.name()
             );
         }
 

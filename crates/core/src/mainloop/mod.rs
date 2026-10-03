@@ -8,7 +8,7 @@ use crate::{
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
     mainloop::supervisor::complete_reload,
-    msg::{AudioDeviceT, DmxTickSpeeds, StageStatus, StartupStage, SystemMessage, TickSpeeds},
+    msg::{AudioInput, DmxTickSpeeds, StageStatus, StartupStage, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
     state::AppState,
     system_message, util,
@@ -27,9 +27,6 @@ use std::{
     time::{Duration, Instant},
 };
 pub use supervisor::supervisor_thread;
-
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);
@@ -97,7 +94,7 @@ impl Drop for EngineInitializationGuard {
 }
 
 pub fn run(
-    device: Option<AudioDeviceT>,
+    input: AudioInput,
     system_out: Sender<SystemMessage>,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
@@ -207,11 +204,8 @@ pub fn run(
     };
 
     initialization_guard.begin(StartupStage::Audio, "starting signal collector");
-    let audio_status = match &device {
-        Some(device) => StageStatus::ok(device.name().unwrap_or_else(|_| "unknown".to_owned())),
-        None => StageStatus::failed("no input device"),
-    };
-    let audio_source = audio::RecoveringAudioSource::new(device, config.clone());
+    let audio_status = StageStatus::ok(input.name());
+    let audio_source = audio::RecoveringAudioSource::new(input, config.clone());
 
     let mut sig_collector = SignalCollector::new(
         SignalCollectorParams::default(),

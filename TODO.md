@@ -19,7 +19,7 @@ Target navigation (agreed 2026-09-27):
 | 001 | [Unify host logging (one path to terminal + Logs page)](TICKETS/001-unify-host-logging.done.md) | done | — |
 | 002 | [Visible startup progress (per-stage checklist)](TICKETS/002-startup-progress.done.md) | done | 001 |
 | 003 | [Showfile name instead of abspath; audio page header order](TICKETS/003-showfile-name-and-audio-header.done.md) | done | — |
-| 004 | [Selectable dummy audio input (silence / noise)](TICKETS/004-audio-dummy-input.planned.md) | planned | — |
+| 004 | [Selectable dummy audio input (silence / noise)](TICKETS/004-audio-dummy-input.done.md) | done | — |
 | 005 | [Generic sub-page navigation for all pages](TICKETS/005-subpage-navigation.planned.md) | planned | — |
 
 ### E2 — Setup page

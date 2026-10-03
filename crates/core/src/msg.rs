@@ -66,7 +66,7 @@ pub enum SystemMessage {
     // LoopSpeed(Duration),
     // TickSpeed(Duration),
     // Audio.
-    AudioSelected(Option<AudioDeviceT>),
+    AudioSelected(AudioInput),
     AudioDevicesView(Vec<(AudioHostT, AudioDeviceT)>),
     // DMX.
     DMX(Box<[u8; 513]>),
@@ -205,8 +205,53 @@ impl MockAudioDevice {
     }
 }
 
+/// Virtual inputs that work without audio hardware.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DummyInput {
+    Silence,
+    Noise,
+}
+
+impl DummyInput {
+    pub const ALL: [Self; 2] = [Self::Silence, Self::Noise];
+
+    /// Reserved device name, also stored as `default_audio_device`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Silence => "Dummy: Silence",
+            Self::Noise => "Dummy: Noise",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|dummy| dummy.name() == name)
+    }
+}
+
+#[derive(Clone)]
+pub enum AudioInput {
+    Device(AudioDeviceT),
+    Dummy(DummyInput),
+}
+
+impl AudioInput {
+    pub fn name(&self) -> String {
+        match self {
+            #[cfg(feature = "audio")]
+            Self::Device(device) => {
+                use cpal::traits::DeviceTrait;
+                device.name().unwrap_or_else(|_| "unknown".to_owned())
+            }
+            #[cfg(not(feature = "audio"))]
+            Self::Device(device) => device.name().unwrap_or_default(),
+            Self::Dummy(dummy) => dummy.name().to_owned(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum FromFrontend {
     Reload,
-    SelectInputDevice(Option<AudioDeviceT>),
+    /// `None` falls back to [`DummyInput::Silence`].
+    SelectInputDevice(Option<AudioInput>),
 }
