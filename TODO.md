@@ -26,7 +26,7 @@ Target navigation (agreed 2026-09-27):
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 006 | [Setup page with Fixtures / Groups / Scenes sub-pages](TICKETS/006-setup-page-shell.doing.md) | doing | 005 |
+| 006 | [Setup page with Fixtures / Groups / Scenes sub-pages](TICKETS/006-setup-page-shell.done.md) | done | 005 |
 | 007 | [Fixture setup UX: add-fixture affordance, default names, bulk rename](TICKETS/007-fixture-setup-ux.planned.md) | planned | 006 |
 | 008 | [Fixture identify wizard](TICKETS/008-identify-wizard.planned.md) | planned | 006 |
 | 009 | [View preparation into Setup › Views, with a Test button](TICKETS/009-views-into-setup-with-test.planned.md) | planned | 006, 020 |
@@ -90,6 +90,8 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - `crates/plugins/pioneer_pro_dj_link/Cargo.toml` has an absolute path dependency (`/home/mik/Downloads/prolink-test/prolink-rs`), so `make build_noopt` fails for it everywhere else.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
 - In `--desktop` mode, `NavigatePage` / `NavigateSubPage` don't bring the page's dock tab to the front (found in 005).
+- In `--desktop` mode, a dock pane in "Default (723 x 480)" render mode that is shorter than 480 px clips the sub-page tab bar (System, Setup); Dynamic mode shows it (found in 006).
+- Group and fixture tiles use `name.truncate(10)`, which panics when byte 10 is inside a multi-byte char (e.g. umlauts) (`group_tile`, `group_selection` in `fixtures_shared.rs`, found in 006).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet
