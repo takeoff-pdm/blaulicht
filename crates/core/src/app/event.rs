@@ -215,6 +215,7 @@ fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
     match event {
         ControlEvent::SelectGroup(_)
         | ControlEvent::DeSelectGroup(_)
+        | ControlEvent::SelectFolder(_)
         | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
         | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
         | ControlEvent::RemoveSelection
@@ -233,7 +234,42 @@ fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::plugin_log_source;
+    use super::{control_event_marks_showfile_dirty, plugin_log_source};
+    use blaulicht_shared::{
+        folder::{FolderItem, FolderKind},
+        ControlEvent,
+    };
+
+    #[test]
+    fn selecting_a_folder_is_not_show_data_but_editing_folders_is() {
+        assert!(!control_event_marks_showfile_dirty(
+            &ControlEvent::SelectFolder(0)
+        ));
+        // The Programmer's folder deselect and the SelectFolder rollback.
+        assert!(!control_event_marks_showfile_dirty(
+            &ControlEvent::Transaction(vec![
+                ControlEvent::DeSelectGroup(0),
+                ControlEvent::LimitSelectionToFixtureInCurrentGroup(1),
+            ])
+        ));
+        for event in [
+            ControlEvent::CreateFolder {
+                id: 0,
+                kind: FolderKind::Groups,
+                parent: None,
+                name: "Stage".to_string(),
+            },
+            ControlEvent::RenameFolder(0, "Front".to_string()),
+            ControlEvent::DeleteFolder(0),
+            ControlEvent::MoveToFolder {
+                item: FolderItem::Group(1),
+                folder: Some(0),
+            },
+            ControlEvent::ReorderFolder(0, 2),
+        ] {
+            assert!(control_event_marks_showfile_dirty(&event), "{event:?}");
+        }
+    }
 
     #[test]
     fn plugin_logs_are_attributed_to_the_plugin_file_stem() {

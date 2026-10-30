@@ -300,10 +300,11 @@ pub fn visible_rows<F: Copy + Ord, L: Copy + Ord>(
 }
 
 /// Indentation in pixels for a row at `depth`, shrunk so the row body keeps at
-/// least [`MIN_BODY_WIDTH`] when `reserved` pixels (toggle, move button) are taken.
-pub fn indent_width(depth: usize, step: f32, available: f32, reserved: f32) -> f32 {
+/// least `min_body` (default [`MIN_BODY_WIDTH`]) when `reserved` pixels (toggle,
+/// move button) are taken.
+pub fn indent_width(depth: usize, step: f32, available: f32, reserved: f32, min_body: f32) -> f32 {
     let wanted = depth as f32 * step;
-    let max = (available - reserved - MIN_BODY_WIDTH).max(0.0);
+    let max = (available - reserved - min_body).max(0.0);
     wanted.min(max)
 }
 
@@ -317,10 +318,13 @@ pub fn indent_width(depth: usize, step: f32, available: f32, reserved: f32) -> f
 pub struct Tree<'a, F, L> {
     id: Id,
     items: &'a [TreeItem<F, L>],
-    selected: Option<TreeKey<F, L>>,
+    selected: BTreeSet<TreeKey<F, L>>,
     move_button: bool,
     row_height: f32,
     indent: f32,
+    toggle_width: f32,
+    min_body_width: f32,
+    compact: bool,
 }
 
 impl<'a, F, L> Tree<'a, F, L>
@@ -333,16 +337,48 @@ where
         Self {
             id: tree_id(id_salt),
             items,
-            selected: None,
+            selected: BTreeSet::new(),
             move_button: false,
             row_height: TREE_ROW_HEIGHT,
             indent: TREE_INDENT,
+            toggle_width: TOGGLE_WIDTH,
+            min_body_width: MIN_BODY_WIDTH,
+            compact: false,
         }
     }
 
-    /// Highlight one row (usually the selected leaf).
+    /// Highlight one row (usually the selected leaf). Replaces earlier
+    /// [`Self::selected`] / [`Self::selected_keys`] calls.
     pub fn selected(mut self, key: Option<TreeKey<F, L>>) -> Self {
-        self.selected = key;
+        self.selected = key.into_iter().collect();
+        self
+    }
+
+    /// Highlight several rows (multi-selection, e.g. the Programmer's groups).
+    /// Adds to the rows already highlighted.
+    pub fn selected_keys(mut self, keys: impl IntoIterator<Item = TreeKey<F, L>>) -> Self {
+        self.selected.extend(keys);
+        self
+    }
+
+    /// Width of the expand/collapse hit area (default 40 px). Narrow columns
+    /// can trade some of it for label room.
+    pub fn toggle_width(mut self, width: f32) -> Self {
+        self.toggle_width = width;
+        self
+    }
+
+    /// Indentation stops growing before the row body gets narrower than this
+    /// (default 96 px).
+    pub fn min_body_width(mut self, width: f32) -> Self {
+        self.min_body_width = width;
+        self
+    }
+
+    /// Narrow-column look: no folder icon (the chevron and the item count
+    /// already mark folders) and less padding, so labels keep more room.
+    pub fn compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
         self
     }
 
@@ -373,7 +409,7 @@ where
         let rows = visible_rows(self.items, &state.collapsed);
 
         let full_width = ui.available_width();
-        let reserved = TOGGLE_WIDTH
+        let reserved = self.toggle_width
             + ITEM_GAP
             + if self.move_button {
                 MOVE_WIDTH + ITEM_GAP
@@ -386,9 +422,16 @@ where
 
         for row in &rows {
             let item = &self.items[row.item];
-            let indent = indent_width(row.depth, self.indent, full_width, reserved);
-            let body_width = (full_width - indent - reserved).max(MIN_BODY_WIDTH.min(full_width));
-            let is_selected = self.selected == Some(item.key);
+            let indent = indent_width(
+                row.depth,
+                self.indent,
+                full_width,
+                reserved,
+                self.min_body_width,
+            );
+            let body_width =
+                (full_width - indent - reserved).max(self.min_body_width.min(full_width));
+            let is_selected = self.selected.contains(&item.key);
 
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -401,7 +444,7 @@ where
 
                 // Expand/collapse toggle (empty space for leaves, so labels line up).
                 let (toggle_rect, toggle) = ui.allocate_exact_size(
-                    egui::vec2(TOGGLE_WIDTH, h),
+                    egui::vec2(self.toggle_width, h),
                     match item.key {
                         TreeKey::Folder(_) => Sense::click(),
                         TreeKey::Leaf(_) => Sense::hover(),
@@ -430,7 +473,9 @@ where
                     is_selected,
                     ButtonColor::Blue.into(),
                     ButtonSize::Custom(body_width, h, 16.0),
-                    |ui, rect, fg| paint_body(ui, rect, fg, is_folder, &item.label, detail),
+                    |ui, rect, fg| {
+                        paint_body(ui, rect, fg, is_folder, self.compact, &item.label, detail)
+                    },
                 );
                 if body_clicked {
                     action = Some(match item.key {
@@ -543,16 +588,17 @@ fn paint_body(
     rect: Rect,
     fg: Color32,
     is_folder: bool,
+    compact: bool,
     label: &str,
     detail: Option<String>,
 ) {
-    const PAD: f32 = 10.0;
-    let mut x = rect.left() + PAD;
-    if is_folder {
+    let pad: f32 = if compact { 6.0 } else { 10.0 };
+    let mut x = rect.left() + pad;
+    if is_folder && !compact {
         paint_folder_icon(ui, egui::pos2(x, rect.center().y - 6.5), fg);
         x += 16.0 + 8.0;
     }
-    let text_width = (rect.right() - PAD - x).max(0.0);
+    let text_width = (rect.right() - pad - x).max(0.0);
 
     let (label_y, label_align) = if detail.is_some() {
         (rect.top() + 8.0, egui::Align2::LEFT_TOP)
@@ -782,12 +828,16 @@ mod tests {
 
     #[test]
     fn indent_shrinks_to_keep_body_width() {
-        assert_eq!(indent_width(0, 16.0, 300.0, 44.0), 0.0);
-        assert_eq!(indent_width(2, 16.0, 300.0, 44.0), 32.0);
+        assert_eq!(indent_width(0, 16.0, 300.0, 44.0, MIN_BODY_WIDTH), 0.0);
+        assert_eq!(indent_width(2, 16.0, 300.0, 44.0, MIN_BODY_WIDTH), 32.0);
         // 300 - 44 - 96 = 160 px max indent.
-        assert_eq!(indent_width(50, 16.0, 300.0, 44.0), 160.0);
+        assert_eq!(indent_width(50, 16.0, 300.0, 44.0, MIN_BODY_WIDTH), 160.0);
         // Too narrow for any indent.
-        assert_eq!(indent_width(3, 16.0, 100.0, 44.0), 0.0);
+        assert_eq!(indent_width(3, 16.0, 100.0, 44.0, MIN_BODY_WIDTH), 0.0);
+        // A smaller minimum body leaves room for indentation in narrow columns:
+        // 150 - 32 - 80 = 38 px max indent.
+        assert_eq!(indent_width(2, 12.0, 150.0, 32.0, 80.0), 24.0);
+        assert_eq!(indent_width(5, 12.0, 150.0, 32.0, 80.0), 38.0);
     }
 
     #[test]

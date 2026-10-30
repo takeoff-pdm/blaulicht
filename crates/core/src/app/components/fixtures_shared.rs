@@ -1,6 +1,9 @@
 use crate::{
     app::{
-        components::{self, ButtonColor, ButtonSize, Dialog, HFader},
+        components::{
+            self, tree_id, ButtonSize, Dialog, HFader, TreeAction, TreeKey, TreeState,
+            NARROW_TREE_WIDTH, SETUP_GROUP_TREE,
+        },
         BlaulichtApp, Selection,
     },
     dmx::EngineState,
@@ -8,7 +11,7 @@ use crate::{
     state::{DmxBuffer, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
-    fixture::state::{FixtureGroup, FixtureState, ResolvedFixtureState},
+    fixture::state::{FixtureState, ResolvedFixtureState},
     palette::Palette,
     ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
@@ -22,42 +25,8 @@ use std::{
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 
-/// One group button as used by the group lists (Setup and Programmer):
-/// name on top, fixture count and id below. Returns whether it was clicked.
-pub fn group_tile(
-    ui: &mut egui::Ui,
-    group_id: u8,
-    group: &FixtureGroup,
-    is_selected: bool,
-) -> bool {
-    components::clickable(
-        ui,
-        is_selected,
-        ButtonColor::Blue.into(),
-        ButtonSize::Large.with_height(50.0),
-        |ui, rect, fg_color| {
-            let painter = ui.painter();
-            let fixture_count = group.fixtures.len();
-            let mut name = group.name.clone();
-            name.truncate(10);
-
-            painter.text(
-                rect.left_top() + egui::vec2(12.0, 8.0),
-                egui::Align2::LEFT_TOP,
-                &name,
-                egui::FontId::proportional(16.0),
-                fg_color,
-            );
-            painter.text(
-                rect.left_bottom() - egui::vec2(-12.0, 8.0),
-                egui::Align2::LEFT_BOTTOM,
-                format!("{} FX | #{}", fixture_count, group_id),
-                egui::FontId::proportional(12.0),
-                fg_color,
-            );
-        },
-    )
-}
+/// Collapse state of the Programmer's group tree (kept for the session).
+const PROGRAMMER_GROUP_TREE: &str = "programmer_groups";
 
 #[derive(Default, Clone, Copy)]
 pub struct DmxSimulator {
@@ -360,6 +329,8 @@ impl BlaulichtApp {
             });
     }
 
+    /// Setup › Fixtures' picker: the group tree (one group at a time) and the
+    /// fixtures of the selected group. Returns `(group, fixture, changed)`.
     pub fn group_selection(
         &mut self,
         groups: &EngineGroups,
@@ -380,29 +351,45 @@ impl BlaulichtApp {
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
                 ui.set_min_height(ui.available_height());
-                ui.vertical(|ui| {
-                    ui.label("Groups:");
-                    ui.add_space(8.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(NARROW_TREE_WIDTH, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(NARROW_TREE_WIDTH);
+                        ui.label("Groups:");
+                        ui.add_space(8.0);
 
-                    egui::ScrollArea::vertical()
-                        .id_salt("sgroups")
-                        .show(ui, |ui| {
-                            ui.set_height(400.0);
-                            for (group_id, group) in groups.iter() {
-                                let is_selected = selected_group == Some(*group_id);
+                        // Same folders and collapse state as Setup › Groups.
+                        let items = components::group_tree_items(&dmx_engine.0);
+                        let action = egui::ScrollArea::vertical()
+                            .id_salt("sgroups")
+                            .show(ui, |ui| {
+                                ui.set_height(400.0);
+                                components::narrow_tree(SETUP_GROUP_TREE, &items)
+                                    .selected(selected_group.map(TreeKey::Leaf))
+                                    .show(ui)
+                            })
+                            .inner;
 
-                                if group_tile(ui, *group_id, group, is_selected) {
-                                    // Toggle group selection
-                                    if !is_selected {
-                                        group_result = *group_id;
-                                        changed = true;
-                                    };
-                                }
-
-                                ui.add_space(2.0);
+                        match action {
+                            Some(TreeAction::SelectLeaf(group_id))
+                                if selected_group != Some(group_id) =>
+                            {
+                                group_result = group_id;
+                                changed = true;
                             }
-                        });
-                });
+                            // A picker has no use for folder selection: a tap
+                            // opens or closes the folder, like its chevron.
+                            Some(TreeAction::TapFolder(folder)) => {
+                                let id = tree_id(SETUP_GROUP_TREE);
+                                let mut state = TreeState::<u16>::load(ui.ctx(), id);
+                                state.toggle(folder);
+                                state.store(ui.ctx(), id);
+                            }
+                            _ => {}
+                        }
+                    },
+                );
 
                 ui.vertical(|ui| {
                     ui.label("Fixtures");
@@ -528,37 +515,60 @@ impl BlaulichtApp {
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
                 ui.set_min_height(ui.available_height());
-                ui.vertical(|ui| {
-                    ui.label("Groups:");
-                    ui.add_space(8.0);
-                    ui.set_min_height(ui.available_height());
+                ui.allocate_ui_with_layout(
+                    egui::vec2(NARROW_TREE_WIDTH, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(NARROW_TREE_WIDTH);
+                        ui.label("Groups:");
+                        ui.add_space(8.0);
+                        ui.set_min_height(ui.available_height());
 
-                    egui::ScrollArea::vertical()
-                        .id_salt("sgroups-p")
-                        .show(ui, |ui| {
-                            ui.set_height(400.0);
-                            ui.add_space(8.0);
-                            for (group_id, group) in groups.iter() {
-                                let is_selected = selection.group_ids.contains(group_id);
+                        let items = components::group_tree_items(&dmx_engine.0);
+                        let highlighted = selection
+                            .group_ids
+                            .iter()
+                            .map(|id| TreeKey::Leaf(*id))
+                            .chain(
+                                components::fully_selected_group_folders(&dmx_engine.0)
+                                    .into_iter()
+                                    .map(TreeKey::Folder),
+                            );
 
-                                if group_tile(ui, *group_id, group, is_selected) {
-                                    // Toggle group selection
-                                    let msg = if is_selected {
-                                        ControlEvent::DeSelectGroup(*group_id)
-                                    } else {
-                                        ControlEvent::SelectGroup(*group_id)
-                                    };
+                        let action = egui::ScrollArea::vertical()
+                            .id_salt("sgroups-p")
+                            .show(ui, |ui| {
+                                ui.set_height(400.0);
+                                ui.add_space(8.0);
+                                components::narrow_tree(PROGRAMMER_GROUP_TREE, &items)
+                                    .selected_keys(highlighted)
+                                    .show(ui)
+                            })
+                            .inner;
 
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(EventOriginator::Web, msg));
-                                }
-
-                                ui.add_space(2.0);
+                        let msg = match action {
+                            // Toggle group selection
+                            Some(TreeAction::SelectLeaf(group_id)) => {
+                                Some(if selection.group_ids.contains(&group_id) {
+                                    ControlEvent::DeSelectGroup(group_id)
+                                } else {
+                                    ControlEvent::SelectGroup(group_id)
+                                })
                             }
-                            // self.selected_fixture_group = selected_group;
-                        });
-                });
+                            // Select every group under the folder (or deselect
+                            // them when all are selected).
+                            Some(TreeAction::TapFolder(folder)) => {
+                                components::folder_tap_event(&dmx_engine.0, folder)
+                            }
+                            Some(TreeAction::MoveRequested(_)) | None => None,
+                        };
+                        if let Some(msg) = msg {
+                            self.data
+                                .event_bus_connection
+                                .send(ControlEventMessage::new(EventOriginator::Web, msg));
+                        }
+                    },
+                );
 
                 // Right: fixtures in selected group
                 // Get selection info
