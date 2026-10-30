@@ -3,7 +3,8 @@
 //! on it (with remove buttons), and save one of them as a new template.
 //!
 //! Everything goes through the existing animation events: applying sends
-//! `AddAnimation`, removing sends `RemoveAnimation`. A starter preset
+//! `AddAnimation` + `PlayAnimation` in one `Transaction`, removing sends
+//! `RemoveAnimation`. A starter preset
 //! (`AnimationPreset`) is not a template, so applying one first reuses the
 //! template named after it or creates that template, the same way the
 //! Animations page does. Editing templates stays on the Animations page.
@@ -121,17 +122,31 @@ pub(crate) fn unique_template_name(
         .unwrap()
 }
 
-/// Tapping a template toggles it: applied if it is not on the selection yet,
-/// removed if it is.
+/// Tapping a template toggles it: applied and started if it is not on the
+/// selection yet (a new animation starts paused), removed if it is. The
+/// transaction rolls back as a whole when the engine rejects the add.
 pub(crate) fn toggle_animation_event(template_id: u8, active: bool) -> ControlEvent {
     if active {
         ControlEvent::RemoveAnimation(template_id)
     } else {
-        ControlEvent::AddAnimation(template_id)
+        ControlEvent::Transaction(vec![
+            ControlEvent::AddAnimation(template_id),
+            ControlEvent::PlayAnimation(template_id),
+        ])
     }
 }
 
-/// Templates that are not named after a starter preset, by id. The others are
+/// A template's label: its name, or `#id` when it has none.
+fn template_label(id: u8, name: &str) -> String {
+    if name.trim().is_empty() {
+        format!("#{id}")
+    } else {
+        name.to_string()
+    }
+}
+
+/// Templates that are not named after a starter preset, by id, with their
+/// labels. The others are
 /// reached through their preset button.
 fn saved_templates(
     templates: &BTreeMap<u8, AnimationTemplate>,
@@ -142,7 +157,13 @@ fn saved_templates(
     templates
         .iter()
         .filter(|(_, template)| !preset_names.contains(template.spec.name.as_str()))
-        .map(|(id, template)| (*id, template.spec.name.clone(), template.spec.property))
+        .map(|(id, template)| {
+            (
+                *id,
+                template_label(*id, &template.spec.name),
+                template.spec.property,
+            )
+        })
         .collect()
 }
 
@@ -268,7 +289,8 @@ impl BlaulichtApp {
         const ACTIVE_WIDTH: f32 = 240.0;
         const ROW_BUTTON: f32 = 32.0;
         const SAVE_BUTTON: f32 = 54.0;
-        const PRESET_BUTTON: f32 = 116.0;
+        // Preset buttons per row.
+        const PRESET_COLUMNS: usize = 4;
 
         let scene = dmx_engine.curr_scene();
         let selection = dmx_engine.get_selection().sorted();
@@ -282,7 +304,7 @@ impl BlaulichtApp {
                         .map(|(id, animation)| {
                             (
                                 *id,
-                                animation.spec_cloned.name.clone(),
+                                template_label(*id, &animation.spec_cloned.name),
                                 animation.spec_cloned.property,
                                 animation.enabled,
                             )
@@ -402,91 +424,116 @@ impl BlaulichtApp {
                 //
                 // Saved templates and starter presets.
                 //
-                ui.vertical(|ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("programmer_animation_presets")
-                        .max_height(LIST_HEIGHT)
-                        .min_scrolled_height(LIST_HEIGHT)
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let size = ButtonSize::Medium.with_width(PRESET_BUTTON);
-                            // One tap applies or removes; the button shows
-                            // whether it is on the selection.
-                            let tap = |ui: &mut egui::Ui,
-                                       label: &str,
-                                       property: FixtureProperty,
-                                       is_active: bool,
-                                       hover: &str|
-                             -> bool {
-                                let enabled =
-                                    has_selection && (is_active || !frozen.contains(&property));
-                                let reason = if !has_selection {
-                                    "Nothing selected".to_string()
-                                } else {
-                                    format!("{property} is bound to a palette")
-                                };
-                                let response = ui.scope(|ui| {
-                                    if enabled {
-                                        components::button(ui, is_active, label, size)
+                // The column gets an explicit width: inside the horizontal
+                // row the wrapped button rows would otherwise grow the dialog
+                // instead of wrapping.
+                let column_width = (WIDTH - ACTIVE_WIDTH - 2.0 * ui.spacing().item_spacing.x - 8.0)
+                    .max(PRESET_COLUMNS as f32 * 60.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(column_width, LIST_HEIGHT),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(column_width);
+                        egui::ScrollArea::vertical()
+                            .id_salt("programmer_animation_presets")
+                            .max_height(LIST_HEIGHT)
+                            .min_scrolled_height(LIST_HEIGHT)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let spacing = ui.spacing().item_spacing.x;
+                                // Leave room for the scroll bar.
+                                let size = ButtonSize::Medium.with_width(
+                                    ((column_width - 12.0 - spacing * (PRESET_COLUMNS - 1) as f32)
+                                        / PRESET_COLUMNS as f32)
+                                        .floor(),
+                                );
+                                // One tap applies or removes; the button shows
+                                // whether it is on the selection.
+                                let tap = |ui: &mut egui::Ui,
+                                           label: &str,
+                                           property: FixtureProperty,
+                                           is_active: bool,
+                                           hover: &str|
+                                 -> bool {
+                                    let enabled =
+                                        has_selection && (is_active || !frozen.contains(&property));
+                                    let reason = if !has_selection {
+                                        "Nothing selected".to_string()
                                     } else {
-                                        components::action_button(
-                                            ui,
-                                            false,
-                                            label,
-                                            size,
-                                            Some(&reason),
-                                        )
+                                        format!("{property} is bound to a palette")
+                                    };
+                                    let response = ui.scope(|ui| {
+                                        if enabled {
+                                            components::button(ui, is_active, label, size)
+                                        } else {
+                                            components::action_button(
+                                                ui,
+                                                false,
+                                                label,
+                                                size,
+                                                Some(&reason),
+                                            )
+                                        }
+                                    });
+                                    if enabled {
+                                        response.response.on_hover_text(hover);
                                     }
-                                });
-                                if enabled {
-                                    response.response.on_hover_text(hover);
+                                    response.inner
+                                };
+
+                                // Fixed rows: `horizontal_wrapped` does not
+                                // wrap inside the dialog's horizontal row.
+                                if !saved.is_empty() {
+                                    ui.label(RichText::new("Saved").strong());
+                                    for row in saved.chunks(PRESET_COLUMNS) {
+                                        ui.horizontal(|ui| {
+                                            for (id, name, property) in row {
+                                                let is_active = active_ids.contains(id);
+                                                if tap(
+                                                    ui,
+                                                    name,
+                                                    *property,
+                                                    is_active,
+                                                    &format!("Template #{id} · {property}"),
+                                                ) {
+                                                    self.send_animation_event(
+                                                        toggle_animation_event(*id, is_active),
+                                                    );
+                                                }
+                                            }
+                                        });
+                                    }
+                                    ui.add_space(6.0);
                                 }
-                                response.inner
-                            };
 
-                            if !saved.is_empty() {
-                                ui.label(RichText::new("Saved").strong());
-                                ui.horizontal_wrapped(|ui| {
-                                    for (id, name, property) in &saved {
-                                        let is_active = active_ids.contains(id);
-                                        if tap(
-                                            ui,
-                                            name,
-                                            *property,
-                                            is_active,
-                                            &format!("Template #{id} · {property}"),
-                                        ) {
-                                            self.send_animation_event(toggle_animation_event(
-                                                *id, is_active,
-                                            ));
-                                        }
+                                for category in AnimationPresetCategory::iter() {
+                                    ui.label(RichText::new(category.label()).strong())
+                                        .on_hover_text(category.description());
+                                    let presets: Vec<AnimationPreset> =
+                                        category.presets().collect();
+                                    for row in presets.chunks(PRESET_COLUMNS) {
+                                        ui.horizontal(|ui| {
+                                            for preset in row {
+                                                let is_active =
+                                                    preset_template_id(templates, *preset)
+                                                        .is_some_and(|id| active_ids.contains(&id));
+                                                if tap(
+                                                    ui,
+                                                    preset.label(),
+                                                    preset.property(),
+                                                    is_active,
+                                                    preset.description(),
+                                                ) {
+                                                    self.toggle_preset(*preset, &active_ids);
+                                                }
+                                            }
+                                        });
                                     }
-                                });
-                                ui.add_space(6.0);
-                            }
-
-                            for category in AnimationPresetCategory::iter() {
-                                ui.label(RichText::new(category.label()).strong())
-                                    .on_hover_text(category.description());
-                                ui.horizontal_wrapped(|ui| {
-                                    for preset in category.presets() {
-                                        let is_active = preset_template_id(templates, preset)
-                                            .is_some_and(|id| active_ids.contains(&id));
-                                        if tap(
-                                            ui,
-                                            preset.label(),
-                                            preset.property(),
-                                            is_active,
-                                            preset.description(),
-                                        ) {
-                                            self.toggle_preset(preset, &active_ids);
-                                        }
-                                    }
-                                });
-                                ui.add_space(6.0);
-                            }
-                        });
-                });
+                                    ui.add_space(6.0);
+                                }
+                            });
+                    },
+                );
             });
 
             ui.separator();
@@ -681,10 +728,26 @@ mod tests {
     }
 
     #[test]
+    fn unnamed_templates_are_labelled_by_id() {
+        let templates = BTreeMap::from([(4, template(" ")), (5, template("Color"))]);
+        let labels: Vec<String> = saved_templates(&templates)
+            .into_iter()
+            .map(|(_, label, _)| label)
+            .collect();
+        assert_eq!(labels, vec!["#4".to_string(), "Color".to_string()]);
+    }
+
+    #[test]
     fn a_tap_toggles_the_animation() {
+        let ControlEvent::Transaction(events) = toggle_animation_event(4, false) else {
+            panic!("applying is a transaction");
+        };
         assert!(matches!(
-            toggle_animation_event(4, false),
-            ControlEvent::AddAnimation(4)
+            events.as_slice(),
+            [
+                ControlEvent::AddAnimation(4),
+                ControlEvent::PlayAnimation(4)
+            ]
         ));
         assert!(matches!(
             toggle_animation_event(4, true),
@@ -756,6 +819,7 @@ mod tests {
             let animations = selection_animations(guard.curr_scene(), &selection).unwrap();
             assert_eq!(animations.keys().copied().collect::<Vec<_>>(), vec![id]);
             assert_eq!(animations[&id].spec_cloned.name, "Kick Flash");
+            assert!(animations[&id].enabled, "an applied preset runs");
             assert!(guard.0.scenes[&1].sink.active_animations.is_empty());
         }
 
