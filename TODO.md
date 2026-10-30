@@ -50,7 +50,7 @@ Target navigation (agreed 2026-09-27):
 | 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.planned.md) | planned | 016, 006, 030 |
 | 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017, 030 |
 | 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.done.md) | done | — |
-| 031 | [Folder follow-ups (ids, undo, order, names) and the unloadable Kuze showfile](TICKETS/031-folders-followups.planned.md) | planned | 016 |
+| 031 | [Folder follow-ups (ids, undo, order, names) and the unloadable Kuze showfile](TICKETS/031-folders-followups.doing.md) | doing | 016 |
 
 ### E5 — DMX overrides
 
