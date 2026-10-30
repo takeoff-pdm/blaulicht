@@ -12,7 +12,7 @@ use blaulicht_shared::{
     palette::Palette,
     ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
-use egui::{Align2, Color32, Context, FontId, Frame, Margin, RichText, Vec2, Widget};
+use egui::{Align2, Color32, Context, FontId, Frame, Margin, Vec2, Widget};
 use map_range::MapRange;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -358,65 +358,6 @@ impl BlaulichtApp {
                 let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
                 simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
             });
-    }
-
-    pub fn render_scene_changeset_dialog(&self, ctx: &Context, dmx_engine: &EngineState) {
-        if self.current_scene_changeset_dialog_open {
-            const HEIGHT: f32 = 500.0;
-            const WIDTH: f32 = 200.0;
-
-            Dialog::new(
-                "Current Scene Changeset".to_string(),
-                egui::vec2(WIDTH, HEIGHT),
-            )
-            .moveable()
-            .show(ctx, |ui| {
-                let scene = dmx_engine.curr_scene();
-
-                ui.allocate_ui_with_layout(
-                    egui::vec2(WIDTH, HEIGHT),
-                    egui::Layout::left_to_right(egui::Align::Min),
-                    |ui| {
-                        ui.vertical(|ui| {
-                            ui.heading("Scene Changeset");
-                            ui.separator();
-
-                            let mut changeset_organized: BTreeMap<(u8, u8), Vec<FixtureProperty>> =
-                                BTreeMap::new();
-
-                            for change in &scene.sink.changeset {
-                                match changeset_organized.get_mut(&(change.gid, change.fid)) {
-                                    Some(entry) => entry.push(change.property),
-                                    None => {
-                                        changeset_organized.insert(
-                                            (change.gid, change.fid),
-                                            vec![change.property],
-                                        );
-                                    }
-                                }
-                            }
-
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                if changeset_organized.is_empty() {
-                                    ui.label("No Changes Yet");
-                                }
-
-                                for ((gid, fid), properties) in changeset_organized {
-                                    ui.label(
-                                        RichText::new(format!("GID: {gid} | FID: {fid}"))
-                                            .color(Color32::LIGHT_GREEN),
-                                    );
-
-                                    for prop in properties {
-                                        ui.label(format!("- {prop}"));
-                                    }
-                                }
-                            });
-                        });
-                    },
-                );
-            });
-        }
     }
 
     pub fn group_selection(

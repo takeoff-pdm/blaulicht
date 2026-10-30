@@ -1,8 +1,8 @@
 //! Setup › Scenes: the scene list with new, clone, rename and delete.
 //!
-//! Scene *content* (changes, animations) is edited elsewhere: the Scene
-//! Changes and Scene Animations dialogs live on FixturesPerformance until the
-//! Programmer page (ticket 011) takes them over.
+//! Scene *content* (changes, animations) is edited on the Programmer page
+//! (`pages/programmer.rs`): its Scene Changes panel and dialog, and the Scene
+//! Animations dialog.
 
 use crate::app::{
     components::{self, ButtonSize, Dialog, DEFAULT_NEW_SCENE_NAME},
