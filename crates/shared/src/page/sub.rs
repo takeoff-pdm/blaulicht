@@ -41,6 +41,10 @@ pub enum AppSubPage {
     Setup_Fixtures,
     Setup_Groups,
     Setup_Scenes,
+    // Setup page, tabs added by ticket 010. They took over the old Animations
+    // and Palettes pages (see `AppPage::moved_to`).
+    Setup_Animations,
+    Setup_Palettes,
 }
 
 impl AppSubPage {
@@ -54,9 +58,11 @@ impl AppSubPage {
             | AppSubPage::System_Serial
             | AppSubPage::System_Plugins
             | AppSubPage::System_Screens => AppPage::System,
-            AppSubPage::Setup_Fixtures | AppSubPage::Setup_Groups | AppSubPage::Setup_Scenes => {
-                AppPage::Setup
-            }
+            AppSubPage::Setup_Fixtures
+            | AppSubPage::Setup_Groups
+            | AppSubPage::Setup_Scenes
+            | AppSubPage::Setup_Animations
+            | AppSubPage::Setup_Palettes => AppPage::Setup,
         }
     }
 
@@ -73,6 +79,8 @@ impl AppSubPage {
             AppSubPage::Setup_Fixtures => "Fixtures",
             AppSubPage::Setup_Groups => "Groups",
             AppSubPage::Setup_Scenes => "Scenes",
+            AppSubPage::Setup_Animations => "Animations",
+            AppSubPage::Setup_Palettes => "Palettes",
         }
     }
 }
@@ -134,6 +142,8 @@ mod tests {
         assert_eq!(index(AppSubPage::Setup_Fixtures), [7]);
         assert_eq!(index(AppSubPage::Setup_Groups), [8]);
         assert_eq!(index(AppSubPage::Setup_Scenes), [9]);
+        assert_eq!(index(AppSubPage::Setup_Animations), [10]);
+        assert_eq!(index(AppSubPage::Setup_Palettes), [11]);
 
         let event = MainUiEvent::NavigateSubPage(AppSubPage::System_Dmx);
         assert_eq!(
@@ -192,5 +202,58 @@ mod tests {
             event,
             MainUiEvent::NavigatePage(AppPage::Programmer)
         ));
+    }
+
+    #[test]
+    fn animations_and_palettes_moved_into_setup() {
+        assert_eq!(
+            AppPage::Animations.moved_to(),
+            Some(AppSubPage::Setup_Animations)
+        );
+        assert_eq!(
+            AppPage::Palettes.moved_to(),
+            Some(AppSubPage::Setup_Palettes)
+        );
+        for page in AppPage::iter() {
+            if let Some(subpage) = page.moved_to() {
+                // A moved page points at a tab of a page that is still shown.
+                assert_eq!(subpage.page().moved_to(), None, "{page:?}");
+                assert!(subpage.page().list_subpages().contains(&subpage));
+            }
+        }
+        // The variants stay, with their indices and JSON names, so old plugin
+        // events and showfile dock layouts still parse.
+        assert_eq!(
+            bincode::encode_to_vec(AppPage::Animations, config::standard()).unwrap(),
+            [7]
+        );
+        assert_eq!(
+            bincode::encode_to_vec(AppPage::Palettes, config::standard()).unwrap(),
+            [8]
+        );
+        let event: MainUiEvent = serde_json::from_str(r#"{"NavigatePage":"Palettes"}"#).unwrap();
+        assert!(matches!(
+            event,
+            MainUiEvent::NavigatePage(AppPage::Palettes)
+        ));
+    }
+
+    #[test]
+    fn the_navbar_leaves_out_moved_pages() {
+        let pages: Vec<AppPage> = AppPage::navbar_pages().collect();
+        assert!(!pages.contains(&AppPage::Animations));
+        assert!(!pages.contains(&AppPage::Palettes));
+        assert_eq!(pages.len(), AppPage::iter().count() - 2);
+        assert_eq!(pages.first(), Some(&AppPage::Logs));
+        assert_eq!(
+            AppPage::Setup.list_subpages(),
+            &[
+                AppSubPage::Setup_Fixtures,
+                AppSubPage::Setup_Groups,
+                AppSubPage::Setup_Scenes,
+                AppSubPage::Setup_Animations,
+                AppSubPage::Setup_Palettes,
+            ]
+        );
     }
 }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Context, Frame, Separator, Widget};
-use strum::IntoEnumIterator;
 
 use crate::app::{
     components::{self, ButtonSize},
@@ -39,14 +38,22 @@ pub struct Navbar {
 
 impl Navbar {
     pub fn new(initial_page: AppPage) -> Self {
-        Self {
-            current_page: initial_page,
+        let mut navbar = Self {
+            current_page: AppPage::Logs,
             subpages: HashMap::new(),
-        }
+        };
+        navbar.navigate_to(initial_page);
+        navbar
     }
 
+    /// Switches to `page`. A page that moved into another page's tab
+    /// ([`AppPage::moved_to`], e.g. Animations into Setup › Animations) opens
+    /// that tab instead, so old `NavigatePage` events keep working.
     pub fn navigate_to(&mut self, page: AppPage) {
-        self.current_page = page;
+        match page.moved_to() {
+            Some(subpage) => self.navigate_to_subpage(subpage),
+            None => self.current_page = page,
+        }
     }
 
     pub fn page(&self) -> AppPage {
@@ -86,7 +93,7 @@ impl Navbar {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
-                let page_count = AppPage::iter().count();
+                let page_count = AppPage::navbar_pages().count();
                 let button_count = page_count + usize::from(status.is_some());
                 // let spacing_top_bottom = 3.0;
                 // let spacing = 6.0;
@@ -104,7 +111,7 @@ impl Navbar {
 
                 // ui.add_space(spacing_top_bottom);
 
-                for (idx, page) in AppPage::iter().enumerate() {
+                for (idx, page) in AppPage::navbar_pages().enumerate() {
                     let is_selected = self.current_page == page;
                     // let label = page.short().to_uppercase();
                     let label = app_page_to_icon(&page);
@@ -226,5 +233,34 @@ mod tests {
             navbar.subpage(AppPage::System),
             Some(AppSubPage::System_Serial)
         );
+    }
+
+    #[test]
+    fn moved_pages_open_their_setup_tab() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        navbar.navigate_to(AppPage::Animations);
+        assert_eq!(navbar.page(), AppPage::Setup);
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Animations)
+        );
+
+        navbar.navigate_to(AppPage::Palettes);
+        assert_eq!(navbar.page(), AppPage::Setup);
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Palettes)
+        );
+
+        // Navigating to Setup itself keeps the selected tab.
+        navbar.navigate_to(AppPage::Audio);
+        navbar.navigate_to(AppPage::Setup);
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Palettes)
+        );
+
+        let navbar = Navbar::new(AppPage::Animations);
+        assert_eq!(navbar.page(), AppPage::Setup);
     }
 }

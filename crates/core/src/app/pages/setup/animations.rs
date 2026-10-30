@@ -23,7 +23,8 @@ use blaulicht_shared::{
 use egui::{Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use strum::IntoEnumIterator;
 
-const ANIMATIONS_PER_PAGE: usize = 5;
+/// Four, not five, since the Setup tab bar takes the room of the fifth at 800x480.
+const ANIMATIONS_PER_PAGE: usize = 4;
 
 pub struct AnimationUI {
     pub pagination: Pagination,
@@ -387,10 +388,12 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn animations_ui(
+    /// Setup › Animations. Also rendered on its own for a desktop dock pane
+    /// still showing the old Animations page (`AppPage::Animations`).
+    pub(crate) fn setup_animations_ui(
         &mut self,
-        ctx: &Context,
         ui: &mut egui::Ui,
+        ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
         let panel_max = ui.clip_rect().max;

@@ -3,6 +3,8 @@
 //! - [`fixtures`]: Setup › Fixtures, the group picker and fixture editor.
 //! - [`groups`]: Setup › Groups, the group list and group dialogs.
 //! - [`scenes`]: Setup › Scenes, the scene list and scene dialogs.
+//! - [`animations`]: Setup › Animations, the animation template editor.
+//! - [`palettes`]: Setup › Palettes, the palette list and palette dialogs.
 //!
 //! To add a tab, append an `AppSubPage::Setup_<Tab>` variant (see
 //! `blaulicht_shared::AppSubPage`), add a module here and a match arm in
@@ -44,6 +46,8 @@ impl BlaulichtApp {
             }
             AppSubPage::Setup_Groups => app.setup_groups_ui(ui, ctx, render_context, &dmx_engine),
             AppSubPage::Setup_Scenes => app.setup_scenes_ui(ui, ctx, render_context, &dmx_engine),
+            AppSubPage::Setup_Animations => app.setup_animations_ui(ui, ctx, render_context),
+            AppSubPage::Setup_Palettes => app.setup_palettes_ui(ui, ctx, render_context),
             _ => {}
         });
     }
