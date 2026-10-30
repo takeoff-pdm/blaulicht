@@ -4,6 +4,7 @@ use crate::{
         state::{FixtureGroup, FixtureState},
         value::FixtureValue,
     },
+    folder::{Folder, FolderId},
     palette::Palette,
     scene::{BLANK_SCENE_ID, BLANK_SCENE_NAME, EngineSink, Scene},
     scene_graph::SceneGraphState,
@@ -99,6 +100,10 @@ pub struct EngineState {
     /// ever reaching a showfile.
     #[serde(default)]
     pub live_mode: bool,
+
+    /// Folder tree for groups, scenes and palettes (see [`crate::folder`]).
+    #[serde(default)]
+    pub folders: BTreeMap<FolderId, Folder>,
 }
 
 impl EngineState {
@@ -142,6 +147,7 @@ impl EngineState {
             Scene {
                 sink: EngineSink::from_groups(&self.groups),
                 name: BLANK_SCENE_NAME.to_string(),
+                folder: None,
             },
         );
     }
@@ -159,6 +165,7 @@ impl EngineState {
                 Scene {
                     sink: EngineSink::from_groups(&self.groups),
                     name,
+                    folder: None,
                 },
             );
         }
@@ -175,6 +182,8 @@ impl EngineState {
                     Scene {
                         sink: curr_scene.sink.clone(),
                         name,
+                        // A clone lands next to its source.
+                        folder: curr_scene.folder,
                     },
                 );
             }
@@ -1503,6 +1512,7 @@ mod blank_scene_tests {
         Scene {
             sink: EngineSink::from_groups(&BTreeMap::new()),
             name: name.to_string(),
+            folder: None,
         }
     }
 

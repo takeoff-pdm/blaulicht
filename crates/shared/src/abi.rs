@@ -14,7 +14,9 @@ use strum::EnumIter;
 // v11: bl_audio_tempo host import for leased plugin BPM/beat injection.
 // v12: bar-aware tempo metadata/import and canvas drag lifecycle events.
 // v13: ephemeral BLANK base scene + EngineState.live_mode; View lost base_scene.
-pub const PLUGIN_ABI_VERSION: u32 = 13;
+// v14: folders (EngineState.folders, `folder` on FixtureGroup/Scene/Palette) and
+//      the folder ControlEvents.
+pub const PLUGIN_ABI_VERSION: u32 = 14;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

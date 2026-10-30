@@ -469,6 +469,7 @@ mod tests {
             FixtureGroup {
                 name: "Group".into(),
                 fixtures: BTreeMap::from([(0, fixture)]),
+                folder: None,
             },
         );
 

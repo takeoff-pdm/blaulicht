@@ -46,7 +46,7 @@ Target navigation (agreed 2026-09-27):
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 016 | [Folder hierarchy data model for groups, scenes and palettes](TICKETS/016-folders-data-model.planned.md) | planned | — |
+| 016 | [Folder hierarchy data model for groups, scenes and palettes](TICKETS/016-folders-data-model.done.md) | done | — |
 | 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.planned.md) | planned | 016, 006 |
 | 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017 |
 

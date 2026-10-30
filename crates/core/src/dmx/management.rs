@@ -787,6 +787,7 @@ mod tests {
             FixtureGroup {
                 name: "Group".to_string(),
                 fixtures: BTreeMap::new(),
+                folder: None,
             },
         );
         engine.add_fixture_to_group(
@@ -859,6 +860,7 @@ mod tests {
             FixtureGroup {
                 name: "Source".to_string(),
                 fixtures: BTreeMap::new(),
+                folder: None,
             },
         );
         engine.0.groups.insert(
@@ -866,6 +868,7 @@ mod tests {
             FixtureGroup {
                 name: "Target".to_string(),
                 fixtures: BTreeMap::new(),
+                folder: None,
             },
         );
 
