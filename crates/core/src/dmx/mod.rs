@@ -1203,15 +1203,18 @@ impl DmxEngine {
                 }
             }
             // Folders: the logic and its tests live in `blaulicht_shared::folder`.
-            ControlEvent::CreateFolder { kind, parent, name } => {
-                (state.0.create_folder(kind, parent, name).err(), None)
+            // A successful event returns its rollback (the event that undoes it).
+            folder_event @ (ControlEvent::CreateFolder { .. }
+            | ControlEvent::RenameFolder(_, _)
+            | ControlEvent::DeleteFolder(_)
+            | ControlEvent::MoveToFolder { .. }
+            | ControlEvent::SelectFolder(_)
+            | ControlEvent::ReorderFolder(_, _)) => {
+                match state.0.apply_folder_event(folder_event) {
+                    Ok(rollback) => (None, Some(rollback)),
+                    Err(err) => (Some(err), None),
+                }
             }
-            ControlEvent::RenameFolder(id, name) => (state.0.rename_folder(id, name).err(), None),
-            ControlEvent::DeleteFolder(id) => (state.0.delete_folder(id).err(), None),
-            ControlEvent::MoveToFolder { item, folder } => {
-                (state.0.move_to_folder(item, folder).err(), None)
-            }
-            ControlEvent::SelectFolder(id) => (state.0.select_folder(id).err(), None),
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)
@@ -1874,5 +1877,229 @@ mod artnet_scale_tests {
 
         drop(sender);
         worker.join().unwrap();
+    }
+}
+
+/// Folder events and their rollbacks through the real `DmxEngine::apply`,
+/// including the `Transaction`, `DeSelectGroup` and
+/// `LimitSelectionToFixtureInCurrentGroup` arms the rollbacks use. The folder
+/// logic itself is tested in `blaulicht_shared::folder`.
+#[cfg(test)]
+mod folder_event_tests {
+    use super::DmxEngine;
+    use crate::{event::SystemEventBus, state::AppState};
+    use blaulicht_shared::{
+        fixture::{
+            light::Light,
+            state::{Fixture, FixtureGroup},
+            FixtureType,
+        },
+        folder::{FolderId, FolderItem, FolderKind},
+        palette::{Palette, PaletteKind},
+        ControlEvent, ControlEventMessage, EventOriginator, HSVColor, SaveEngineState,
+    };
+    use std::{
+        collections::{BTreeMap, HashSet},
+        sync::Arc,
+    };
+
+    struct Harness {
+        engine: DmxEngine,
+        app: Arc<AppState>,
+    }
+
+    /// Everything a folder event can change: the persisted state (as its
+    /// showfile JSON) and the selection (as sets).
+    #[derive(Debug, PartialEq)]
+    struct Snapshot {
+        saved: String,
+        group_ids: HashSet<u8>,
+        fixtures_in_group: HashSet<u8>,
+    }
+
+    impl Harness {
+        fn new() -> Self {
+            let app = Arc::new(AppState::new(&[]));
+            let mut bus = SystemEventBus::new();
+            let engine = DmxEngine::new(
+                Arc::clone(&app),
+                bus.new_connection(),
+                [String::new(), String::new()],
+            );
+
+            let fixture = |addr| {
+                Fixture::new(
+                    0,
+                    addr,
+                    format!("F{addr}"),
+                    FixtureType::from(Light::Generic3ChanNoAlpha),
+                )
+            };
+            {
+                let state = &mut app.dmx_engine.write().unwrap().0;
+                for gid in 0..4u8 {
+                    let fixtures = (0..5u8)
+                        .map(|fid| (fid, fixture(1 + 3 * (gid as usize * 5 + fid as usize))))
+                        .collect();
+                    state.groups.insert(
+                        gid,
+                        FixtureGroup {
+                            name: format!("G{gid}"),
+                            fixtures,
+                            folder: None,
+                        },
+                    );
+                }
+                state.new_scene("A".to_string());
+                state.new_scene("B".to_string());
+                state.palettes = BTreeMap::from([(
+                    0,
+                    Palette {
+                        name: "P".to_string(),
+                        kind: PaletteKind::Color(HSVColor::default()),
+                        folder: None,
+                    },
+                )]);
+                state.ensure_blank_scene();
+            }
+            Self { engine, app }
+        }
+
+        fn send(&self, event: ControlEvent) -> (Option<&'static str>, Option<ControlEvent>) {
+            let mut state = self.app.dmx_engine.write().unwrap();
+            self.engine.apply(
+                &mut state,
+                ControlEventMessage::new(EventOriginator::Web, event),
+            )
+        }
+
+        fn ok(&self, event: ControlEvent) -> Option<ControlEvent> {
+            let (err, rollback) = self.send(event.clone());
+            assert_eq!(err, None, "{event:?} failed");
+            rollback
+        }
+
+        fn snapshot(&self) -> Snapshot {
+            let state = self.app.dmx_engine.read().unwrap().0.clone();
+            Snapshot {
+                group_ids: state.selection.group_ids.clone(),
+                fixtures_in_group: state.selection.fixtures_in_group.clone(),
+                saved: serde_json::to_string(&SaveEngineState::from(state)).unwrap(),
+            }
+        }
+
+        /// Applies `event` and then the rollback the engine returned for it,
+        /// and checks that the state is back where it was.
+        fn round_trip(&self, event: ControlEvent) {
+            let before = self.snapshot();
+            let rollback = self
+                .ok(event.clone())
+                .unwrap_or_else(|| panic!("{event:?} returned no rollback"));
+            assert_ne!(self.snapshot(), before, "{event:?} changed nothing");
+            self.ok(rollback);
+            assert_eq!(self.snapshot(), before, "rollback of {event:?}");
+        }
+
+        fn create(&self, id: FolderId, kind: FolderKind, parent: Option<FolderId>, name: &str) {
+            let rollback = self.ok(ControlEvent::CreateFolder {
+                id,
+                kind,
+                parent,
+                name: name.to_string(),
+            });
+            assert!(matches!(rollback, Some(ControlEvent::DeleteFolder(rid)) if rid == id));
+        }
+    }
+
+    #[test]
+    fn folder_events_and_their_rollbacks_through_the_engine() {
+        let h = Harness::new();
+        let (top, mid, leaf, side, songs, colors) = (0, 1, 2, 3, 4, 5);
+        h.create(top, FolderKind::Groups, None, "Top");
+        h.create(mid, FolderKind::Groups, Some(top), "Mid");
+        h.create(leaf, FolderKind::Groups, Some(mid), "Leaf");
+        h.create(side, FolderKind::Groups, Some(top), "Side");
+        h.create(songs, FolderKind::Scenes, None, "Songs");
+        h.create(colors, FolderKind::Palettes, None, "Colors");
+        for (item, folder) in [
+            (FolderItem::Group(0), mid),
+            (FolderItem::Group(1), mid),
+            (FolderItem::Group(2), leaf),
+            (FolderItem::Scene(1), songs),
+        ] {
+            h.ok(ControlEvent::MoveToFolder {
+                item,
+                folder: Some(folder),
+            });
+        }
+        h.ok(ControlEvent::ReorderFolder(mid, 2));
+
+        // Rejected events change nothing and return no rollback.
+        let before = h.snapshot();
+        for event in [
+            ControlEvent::CreateFolder {
+                id: mid,
+                kind: FolderKind::Groups,
+                parent: None,
+                name: "Taken id".to_string(),
+            },
+            ControlEvent::CreateFolder {
+                id: 9,
+                kind: FolderKind::Groups,
+                parent: None,
+                name: "  ".to_string(),
+            },
+            ControlEvent::CreateFolder {
+                id: 9,
+                kind: FolderKind::Groups,
+                parent: Some(top),
+                name: "side".to_string(),
+            },
+            ControlEvent::RenameFolder(side, "MID".to_string()),
+            ControlEvent::MoveToFolder {
+                item: FolderItem::Folder(top),
+                folder: Some(leaf),
+            },
+        ] {
+            let (err, rollback) = h.send(event.clone());
+            assert!(err.is_some(), "{event:?} was accepted");
+            assert!(rollback.is_none());
+        }
+        assert_eq!(h.snapshot(), before);
+
+        h.round_trip(ControlEvent::CreateFolder {
+            id: 9,
+            kind: FolderKind::Groups,
+            parent: Some(side),
+            name: "New".to_string(),
+        });
+        h.round_trip(ControlEvent::RenameFolder(mid, "Middle".to_string()));
+        h.round_trip(ControlEvent::ReorderFolder(mid, 7));
+        for (item, folder) in [
+            (FolderItem::Group(0), Some(side)),
+            (FolderItem::Group(3), Some(leaf)),
+            (FolderItem::Scene(0), Some(songs)),
+            (FolderItem::Scene(1), None),
+            (FolderItem::Palette(0), Some(colors)),
+            (FolderItem::Folder(mid), Some(side)),
+            (FolderItem::Folder(leaf), None),
+        ] {
+            h.round_trip(ControlEvent::MoveToFolder { item, folder });
+        }
+        // Nested child folders and items, then a root folder, then the other
+        // kinds.
+        h.round_trip(ControlEvent::DeleteFolder(mid));
+        h.round_trip(ControlEvent::DeleteFolder(top));
+        h.round_trip(ControlEvent::DeleteFolder(songs));
+        h.round_trip(ControlEvent::DeleteFolder(colors));
+
+        // A group with a fixture filter is selected; the folder adds groups
+        // 0..=2, which clears the filter. The rollback restores both.
+        h.ok(ControlEvent::SelectGroup(3));
+        h.ok(ControlEvent::LimitSelectionToFixtureInCurrentGroup(4));
+        h.ok(ControlEvent::LimitSelectionToFixtureInCurrentGroup(1));
+        h.round_trip(ControlEvent::SelectFolder(top));
+        assert_eq!(h.snapshot().group_ids, HashSet::from([3]));
+        assert_eq!(h.snapshot().fixtures_in_group, HashSet::from([1, 4]));
     }
 }

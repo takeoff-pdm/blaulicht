@@ -1141,18 +1141,20 @@ mod blank_and_view_migration_tests {
             )]),
             ..EngineState::default()
         };
-        let groups = engine
-            .create_folder(FolderKind::Groups, None, "Front".to_string())
+        let (groups, wash, scenes, palettes) = (0, 1, 2, 3);
+        engine
+            .create_folder(groups, FolderKind::Groups, None, "Front".to_string())
             .unwrap();
-        let wash = engine
-            .create_folder(FolderKind::Groups, Some(groups), "Wash".to_string())
+        engine
+            .create_folder(wash, FolderKind::Groups, Some(groups), "Wash".to_string())
             .unwrap();
-        let scenes = engine
-            .create_folder(FolderKind::Scenes, None, "Songs".to_string())
+        engine
+            .create_folder(scenes, FolderKind::Scenes, None, "Songs".to_string())
             .unwrap();
-        let palettes = engine
-            .create_folder(FolderKind::Palettes, None, "Colors".to_string())
+        engine
+            .create_folder(palettes, FolderKind::Palettes, None, "Colors".to_string())
             .unwrap();
+        engine.reorder_folder(wash, 4).unwrap();
         engine
             .move_to_folder(FolderItem::Group(4), Some(wash))
             .unwrap();
@@ -1195,6 +1197,31 @@ mod blank_and_view_migration_tests {
         assert_eq!(restored.groups[&1].folder, None);
         assert_eq!(restored.scenes[&0].folder, None);
         assert_eq!(restored.palettes[&3].folder, None);
+    }
+
+    #[test]
+    fn folders_saved_before_folder_order_still_load() {
+        // Shape written by ticket 016: folders without `order`.
+        let json = r#"{
+            "groups": [{"key": 1, "value": {"name": "G", "fixtures": [], "folder": 6}}],
+            "animations": [],
+            "views": [],
+            "scenes": [],
+            "current_scene_focus": 0,
+            "current_overlay_scenes": [],
+            "overrides": [],
+            "folders": [
+                {"key": 0, "value": {"name": "Stage", "parent": null, "kind": "Groups"}},
+                {"key": 6, "value": {"name": "Front", "parent": 0, "kind": "Groups"}}
+            ]
+        }"#;
+        let restored =
+            EngineState::try_from(serde_json::from_str::<SaveEngineState>(json).unwrap()).unwrap();
+
+        assert_eq!(restored.folders.len(), 2);
+        assert_eq!(restored.folders[&6].parent, Some(0));
+        assert!(restored.folders.values().all(|folder| folder.order == 0));
+        assert_eq!(restored.groups[&1].folder, Some(6));
     }
 
     #[test]

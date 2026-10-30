@@ -17,7 +17,9 @@ use strum::EnumIter;
 // v14: folders (EngineState.folders, `folder` on FixtureGroup/Scene/Palette) and
 //      the folder ControlEvents.
 // v15: MainUiEvent gained `NavigateSubPage`; AppSubPage gained `System_Screens`.
-pub const PLUGIN_ABI_VERSION: u32 = 15;
+// v17: `CreateFolder` carries the new folder's `id`, `Folder` gained `order`,
+//      ControlEvent gained `ReorderFolder` (ticket 031; 16 is ticket 006).
+pub const PLUGIN_ABI_VERSION: u32 = 17;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

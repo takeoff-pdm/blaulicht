@@ -331,20 +331,30 @@ pub enum ControlEvent {
     // Folders for groups, scenes and palettes (see `crate::folder`). Appended
     // to preserve the bincode indices of existing control events.
     //
-    /// Creates a folder under `parent` (`None` = root), which must be a folder
-    /// of the same kind. The new folder gets the lowest free id
-    /// (`folder::next_folder_id`).
+    // The engine answers every successful folder event with its rollback
+    // (`EngineState::folder_rollback`), sent on the bus with originator
+    // `DmxEngine`; applying it undoes the event. A failed folder event changes
+    // nothing and sends no rollback.
+    //
+    /// Creates folder `id` under `parent` (`None` = root), which must be a
+    /// folder of the same kind. The sender picks the id with
+    /// `folder::next_folder_id`; a taken id is rejected. The name is trimmed;
+    /// an empty name, or one a sibling folder of the same kind already uses
+    /// (ignoring case), is rejected.
     CreateFolder {
+        id: FolderId,
         kind: FolderKind,
         parent: Option<FolderId>,
         name: String,
     },
+    /// Renames a folder, with the same name rules as `CreateFolder`.
     RenameFolder(FolderId, String),
     /// Deletes a folder only: its subfolders and items move to its parent.
     DeleteFolder(FolderId),
     /// Moves a group, scene, palette or folder into `folder` (`None` = root).
-    /// Rejected if the target holds another kind of item, or if a folder
-    /// would move into itself or one of its descendants.
+    /// Rejected if the target holds another kind of item, or if a folder would
+    /// move into itself or one of its descendants, or next to a sibling folder
+    /// with the same name.
     MoveToFolder {
         item: FolderItem,
         folder: Option<FolderId>,
@@ -352,6 +362,9 @@ pub enum ControlEvent {
     /// Adds every group in this groups folder and, recursively, its
     /// subfolders to the selection, like one `SelectGroup` per group.
     SelectFolder(FolderId),
+    /// Sets a folder's position among its siblings, which sort by
+    /// `(order, name)` (`folder::sorted_children`).
+    ReorderFolder(FolderId, u16),
 }
 
 impl ControlEvent {
@@ -400,7 +413,8 @@ impl ControlEvent {
             | ControlEvent::RenameFolder(_, _)
             | ControlEvent::DeleteFolder(_)
             | ControlEvent::MoveToFolder { .. }
-            | ControlEvent::SelectFolder(_) => {
+            | ControlEvent::SelectFolder(_)
+            | ControlEvent::ReorderFolder(_, _) => {
                 return None;
             }
             ControlEvent::AssignPaletteToProperty(prop, _) => *prop,
@@ -582,7 +596,8 @@ impl ControlEvent {
             | ControlEvent::RenameFolder(_, _)
             | ControlEvent::DeleteFolder(_)
             | ControlEvent::MoveToFolder { .. }
-            | ControlEvent::SelectFolder(_) => false,
+            | ControlEvent::SelectFolder(_)
+            | ControlEvent::ReorderFolder(_, _) => false,
         }
     }
 }
