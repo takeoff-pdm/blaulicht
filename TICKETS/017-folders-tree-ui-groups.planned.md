@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Epic | E4 Hierarchy (folders) |
-| Depends on | 016, 006 |
+| Depends on | 016, 006, 030 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/setup/groups.rs`, `crates/core/src/app/components/fixtures_shared.rs (group_selection)`, new: crates/core/src/app/components/tree.rs (reusable)
+**Touches:** `crates/core/src/app/pages/setup/groups.rs`, `crates/core/src/app/components/fixtures_shared.rs (group_selection)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -14,11 +14,12 @@ Original review notes (2026-09-27):
 > fixture groups should be hierarchical
 
 ## Scope
-- Build a reusable collapsible tree widget (`components/tree.rs`) that fits both the 800x480 integrated layout and desktop mode. 018 reuses it.
+- Use the reusable tree widget from 030 (`components/tree.rs`) for the group trees below; 018 uses it too.
 - In Setup › Groups: create, rename and delete folders, and move groups into folders (drag or a "Move to…" dialog, since touch is primary).
 - In the Programmer, group selection is shown as a tree. Tapping a folder selects all its groups (`SelectFolder`), and collapsed state is remembered per session.
 
 ## Out of scope
+- The generic tree widget itself (030).
 - Scenes and palettes (018).
 
 ## Key code

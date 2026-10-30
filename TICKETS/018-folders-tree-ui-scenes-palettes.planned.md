@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Epic | E4 Hierarchy (folders) |
-| Depends on | 016, 006, 010, 017 |
+| Depends on | 016, 006, 010, 017, 030 |
 | ABI / showfile | none |
 
 **Touches:** `crates/core/src/app/pages/setup/scenes.rs`, `crates/core/src/app/pages/palettes.rs`, `crates/core/src/app/components/fixtures_shared.rs (scene_overview)`, view/performance scene pickers
@@ -15,7 +15,7 @@ Original review notes (2026-09-27):
 > like everything, we need hierarchies
 
 ## Scope
-- Use the tree widget from 017 in Setup › Scenes, Setup › Palettes, the Programmer palette-assignment dialog, and the scene/overlay pickers (views, performance).
+- Use the tree widget from 030 (`components/tree.rs`) in Setup › Scenes, Setup › Palettes, the Programmer palette-assignment dialog, and the scene/overlay pickers (views, performance).
 - Add folder CRUD and move-to-folder for scenes and palettes.
 
 ## Out of scope

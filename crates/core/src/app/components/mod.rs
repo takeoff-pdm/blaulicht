@@ -21,6 +21,7 @@ mod speed_knob;
 mod switch;
 mod text;
 mod text_input;
+mod tree;
 
 pub use button::*;
 pub use button_new::*;
@@ -44,6 +45,7 @@ pub use speed_knob::*;
 pub use switch::*;
 pub use text::*;
 pub use text_input::*;
+pub use tree::*;
 
 /// Display label (with a state glyph) and color for a detected audio section.
 /// Shared by the audio page and the scene-graph page so they stay in sync.
