@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use crate::{
     ControlEvent, FixtureProperty, HSVColor, RGBColor,
     fixture::{FixtureType, value::FixtureValue},
+    folder::FolderId,
     palette::Palette,
 };
 
@@ -28,6 +29,9 @@ pub struct FixtureOrientation {
 pub struct FixtureGroup {
     pub name: String,
     pub fixtures: BTreeMap<u8, Fixture>,
+    /// Groups folder this group sits in; `None` is the root.
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]

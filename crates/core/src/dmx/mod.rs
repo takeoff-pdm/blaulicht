@@ -1112,10 +1112,14 @@ impl DmxEngine {
                         ) {
                             return (Some("Pointer palette would form a cycle"), None);
                         }
-                        state
-                            .0
-                            .palettes
-                            .insert(id, blaulicht_shared::palette::Palette { name, kind });
+                        state.0.palettes.insert(
+                            id,
+                            blaulicht_shared::palette::Palette {
+                                name,
+                                kind,
+                                folder: None,
+                            },
+                        );
                         (None, None)
                     }
                     None => (Some("Max palettes reached"), None),
@@ -1198,6 +1202,16 @@ impl DmxEngine {
                     None => (Some("Scene graph not found"), None),
                 }
             }
+            // Folders: the logic and its tests live in `blaulicht_shared::folder`.
+            ControlEvent::CreateFolder { kind, parent, name } => {
+                (state.0.create_folder(kind, parent, name).err(), None)
+            }
+            ControlEvent::RenameFolder(id, name) => (state.0.rename_folder(id, name).err(), None),
+            ControlEvent::DeleteFolder(id) => (state.0.delete_folder(id).err(), None),
+            ControlEvent::MoveToFolder { item, folder } => {
+                (state.0.move_to_folder(item, folder).err(), None)
+            }
+            ControlEvent::SelectFolder(id) => (state.0.select_folder(id).err(), None),
             CONTROLS_REQUIRING_SELECTION!() => {
                 let curr_selection = state.get_selection().sorted();
                 self.apply_on_selection_and_scene(&curr_selection, state, ev)

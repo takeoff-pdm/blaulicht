@@ -51,6 +51,8 @@ impl<'engine> EngineState {
                                 master_speed: scene.sink.master_speed,
                                 palette_assignments: BTreeMap::new(),
                             },
+                            // Kept: the folder trees render every scene.
+                            folder: scene.folder,
                         },
                     )
                 }
@@ -71,6 +73,7 @@ impl<'engine> EngineState {
             scene_graphs: self.0.scene_graphs.clone(),
             palettes: self.0.palettes.clone(),
             live_mode: self.0.live_mode,
+            folders: self.0.folders.clone(),
         })
     }
 
@@ -127,6 +130,13 @@ impl<'engine> EngineState {
                     fixture.start_addr = clamped;
                 }
             }
+        }
+
+        let repaired = other.repair_folders();
+        if repaired > 0 {
+            tracing::warn!(
+                "Showfile: moved {repaired} item(s) with invalid folder references to the root"
+            );
         }
 
         let groups = other.groups.clone();
@@ -402,10 +412,12 @@ impl Default for EngineState {
                0 => Scene{
                    name: "Default Scene".to_string(),
                    sink: EngineSink::from_groups(&groups),
+                   folder: None,
                },
                BLANK_SCENE_ID => Scene{
                    name: BLANK_SCENE_NAME.to_string(),
                    sink: EngineSink::from_groups(&groups),
+                   folder: None,
                }
             }
             .into_iter()
@@ -417,6 +429,7 @@ impl Default for EngineState {
             scene_graphs: Default::default(),
             palettes: Default::default(),
             live_mode: false,
+            folders: BTreeMap::new(),
         };
 
         Self(state)
@@ -492,6 +505,7 @@ mod blank_scene_load_tests {
                     Scene {
                         sink: EngineSink::from_groups(&groups),
                         name: "A".to_string(),
+                        folder: None,
                     },
                 ),
                 (
@@ -499,6 +513,7 @@ mod blank_scene_load_tests {
                     Scene {
                         sink: EngineSink::from_groups(&groups),
                         name: "B".to_string(),
+                        folder: None,
                     },
                 ),
             ]),

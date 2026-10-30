@@ -1743,6 +1743,7 @@ mod modulation_tests {
         let mut group = blaulicht_shared::fixture::state::FixtureGroup {
             name: "Group".to_string(),
             fixtures: BTreeMap::new(),
+            folder: None,
         };
         for (index, name) in ["A", "B"].into_iter().enumerate() {
             group.fixtures.insert(
@@ -1764,6 +1765,7 @@ mod modulation_tests {
             blaulicht_shared::scene::Scene {
                 name: "Scene".to_string(),
                 sink: blaulicht_shared::scene::EngineSink::from_groups(&state.groups),
+                folder: None,
             },
         );
         state.current_scene_focus = SCENE;
@@ -1993,6 +1995,7 @@ mod modulation_tests {
             let mut group = blaulicht_shared::fixture::state::FixtureGroup {
                 name: format!("LED strip {}", universe + 1),
                 fixtures: BTreeMap::new(),
+                folder: None,
             };
             for pixel in 0..PIXELS_PER_STRIP {
                 let fixture_id = pixel as u8;
@@ -2016,6 +2019,7 @@ mod modulation_tests {
             blaulicht_shared::scene::Scene {
                 name: "LED test".to_string(),
                 sink: blaulicht_shared::scene::EngineSink::from_groups(&state.groups),
+                folder: None,
             },
         );
         state.current_scene_focus = SCENE;
@@ -2107,6 +2111,7 @@ mod modulation_tests {
             Palette {
                 name: "Dim".to_string(),
                 kind: PaletteKind::Single(FixtureProperty::Alpha, 80),
+                folder: None,
             },
         );
         {
@@ -3009,6 +3014,7 @@ mod modulation_tests {
             Palette {
                 name: "Cyan".to_string(),
                 kind: PaletteKind::Single(FixtureProperty::ColorHue, 180),
+                folder: None,
             },
         );
         let sink = &mut state.scenes.get_mut(&SCENE).unwrap().sink;

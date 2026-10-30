@@ -11,6 +11,7 @@ use crate::{
         state::{FixtureGroup, FixtureState},
         value::FixtureValue,
     },
+    folder::FolderId,
     palette::Palette,
 };
 
@@ -96,6 +97,9 @@ impl FixtureSelection {
 pub struct Scene {
     pub sink: EngineSink,
     pub name: String,
+    /// Scenes folder this scene sits in; `None` is the root.
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 impl Scene {

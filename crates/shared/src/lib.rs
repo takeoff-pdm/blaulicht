@@ -16,6 +16,8 @@ pub mod fixture;
 mod state;
 pub use state::*;
 
+pub mod folder;
+
 pub mod palette;
 
 pub mod scene;

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     FixtureProperty, HSVColor,
     fixture::state::{FixtureOrientation, FixtureState},
+    folder::FolderId,
 };
 
 /// Maximum recursion depth when resolving chains of pointer palettes.
@@ -16,6 +17,9 @@ pub const MAX_PALETTE_CHAIN_DEPTH: u8 = 4;
 pub struct Palette {
     pub name: String,
     pub kind: PaletteKind,
+    /// Palettes folder this palette sits in; `None` is the root.
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]

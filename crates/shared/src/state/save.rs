@@ -3,6 +3,7 @@ use crate::{
     EngineSelection,
     engine::{AnimationSpec, EngineState},
     fixture::state::{Fixture, FixtureGroup, FixtureState},
+    folder::{Folder, FolderId},
     palette::Palette,
     scene::{BLANK_SCENE_ID, EngineSink, FixtureSelection, FixtureSelector, Scene},
     scene_graph::SceneGraphState,
@@ -18,6 +19,8 @@ use std::net::SocketAddr;
 pub struct SaveFixtureGroup {
     pub name: String,
     pub fixtures: Vec<SavedMapEntry<u8, Fixture>>,
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -79,6 +82,8 @@ pub struct SaveEngineState {
     pub scene_graphs: SceneGraphState,
     #[serde(default)]
     pub palettes: Vec<SavedMapEntry<u8, Palette>>,
+    #[serde(default)]
+    pub folders: Vec<SavedMapEntry<FolderId, Folder>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -191,6 +196,8 @@ impl From<SavedView> for View {
 pub struct SavedScene {
     pub sink: SavedEngineSink,
     pub name: String,
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 impl From<Scene> for SavedScene {
@@ -225,6 +232,7 @@ impl From<Scene> for SavedScene {
                 palette_assignments: SavedMapEntry::from_btree_map(value.sink.palette_assignments),
             },
             name: value.name,
+            folder: value.folder,
         }
     }
 }
@@ -238,6 +246,7 @@ impl TryFrom<SavedScene> for Scene {
         Ok(Self {
             sink,
             name: value.name,
+            folder: value.folder,
         })
     }
 }
@@ -296,6 +305,7 @@ impl From<EngineState> for SaveEngineState {
                     value: SaveFixtureGroup {
                         name: group.name,
                         fixtures,
+                        folder: group.folder,
                     },
                 }
             })
@@ -333,6 +343,7 @@ impl From<EngineState> for SaveEngineState {
             overrides: SavedMapEntry::from_btree_map(value.overrides),
             scene_graphs: value.scene_graphs,
             palettes: SavedMapEntry::from_btree_map(value.palettes),
+            folders: SavedMapEntry::from_btree_map(value.folders),
         }
     }
 }
@@ -353,6 +364,7 @@ impl TryFrom<SaveEngineState> for EngineState {
                     FixtureGroup {
                         name: value.name,
                         fixtures,
+                        folder: value.folder,
                     },
                 )
             })
@@ -392,6 +404,7 @@ impl TryFrom<SaveEngineState> for EngineState {
             // Live mode is a programming aid, never restored from a showfile:
             // booting into exclusive preview would black out a live rig.
             live_mode: false,
+            folders: SavedMapEntry::to_btree_map(value.folders),
         };
 
         // Legacy audio modes only ever exist on the wire; the in-memory model
@@ -442,6 +455,7 @@ mod tests {
             FixtureGroup {
                 name: "Group 1".to_string(),
                 fixtures,
+                folder: None,
             },
         );
 
@@ -514,6 +528,7 @@ mod tests {
                     palette_assignments: Default::default(),
                 },
                 name: "Scene 1".to_string(),
+                folder: None,
             },
         );
 
@@ -1101,7 +1116,85 @@ mod blank_and_view_migration_tests {
         Scene {
             sink: EngineSink::from_groups(&BTreeMap::new()),
             name: name.to_string(),
+            folder: None,
         }
+    }
+
+    #[test]
+    fn folders_survive_a_round_trip() {
+        use crate::{
+            HSVColor,
+            folder::{FolderItem, FolderKind},
+            palette::{Palette, PaletteKind},
+        };
+
+        let mut engine = EngineState {
+            groups: BTreeMap::from([(4, FixtureGroup::default())]),
+            scenes: BTreeMap::from([(0, scene("Real"))]),
+            palettes: BTreeMap::from([(
+                2,
+                Palette {
+                    name: "Red".to_string(),
+                    kind: PaletteKind::Color(HSVColor::default()),
+                    folder: None,
+                },
+            )]),
+            ..EngineState::default()
+        };
+        let groups = engine
+            .create_folder(FolderKind::Groups, None, "Front".to_string())
+            .unwrap();
+        let wash = engine
+            .create_folder(FolderKind::Groups, Some(groups), "Wash".to_string())
+            .unwrap();
+        let scenes = engine
+            .create_folder(FolderKind::Scenes, None, "Songs".to_string())
+            .unwrap();
+        let palettes = engine
+            .create_folder(FolderKind::Palettes, None, "Colors".to_string())
+            .unwrap();
+        engine
+            .move_to_folder(FolderItem::Group(4), Some(wash))
+            .unwrap();
+        engine
+            .move_to_folder(FolderItem::Scene(0), Some(scenes))
+            .unwrap();
+        engine
+            .move_to_folder(FolderItem::Palette(2), Some(palettes))
+            .unwrap();
+
+        let json = serde_json::to_string(&SaveEngineState::from(engine.clone())).unwrap();
+        let restored =
+            EngineState::try_from(serde_json::from_str::<SaveEngineState>(&json).unwrap()).unwrap();
+
+        assert_eq!(restored.folders, engine.folders);
+        assert_eq!(restored.groups[&4].folder, Some(wash));
+        assert_eq!(restored.scenes[&0].folder, Some(scenes));
+        assert_eq!(restored.palettes[&2].folder, Some(palettes));
+    }
+
+    #[test]
+    fn showfiles_without_folders_still_load() {
+        // Shape of a pre-folder showfile: no `folders`, no per-item `folder`.
+        let json = r#"{
+            "groups": [{"key": 1, "value": {"name": "G", "fixtures": []}}],
+            "animations": [],
+            "views": [],
+            "scenes": [{"key": 0, "value": {"name": "S", "sink": {
+                "fixture_states": [], "active_animations": [], "changeset": [],
+                "master_alpha_fader": 100, "master_alpha_speed": "_1"}}}],
+            "current_scene_focus": 0,
+            "current_overlay_scenes": [],
+            "overrides": [],
+            "palettes": [{"key": 3, "value": {"name": "P", "kind": {"Single": ["Alpha", 7]}}}]
+        }"#;
+        let restored =
+            EngineState::try_from(serde_json::from_str::<SaveEngineState>(json).unwrap()).unwrap();
+
+        assert!(restored.folders.is_empty());
+        assert_eq!(restored.groups[&1].folder, None);
+        assert_eq!(restored.scenes[&0].folder, None);
+        assert_eq!(restored.palettes[&3].folder, None);
     }
 
     #[test]

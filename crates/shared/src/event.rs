@@ -4,7 +4,12 @@ use bincode::{Decode, Encode, config};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{AnimationSpec, MainUiEvent, palette::PaletteKind, scene::FixtureSelection};
+use crate::{
+    AnimationSpec, MainUiEvent,
+    folder::{FolderId, FolderItem, FolderKind},
+    palette::PaletteKind,
+    scene::FixtureSelection,
+};
 
 /// This event is emitted by the UI or the plugin system to control fixtures in the DMX engine.
 /// All emitted events are processed by the DMX engine and applied to the fixtures.
@@ -321,6 +326,32 @@ pub enum ControlEvent {
     /// UI interaction routed to one isolated WASM animation object. Appended
     /// to preserve the bincode indices of existing control events.
     AnimationPluginUi(PluginUiEvent, u8, u64),
+
+    //
+    // Folders for groups, scenes and palettes (see `crate::folder`). Appended
+    // to preserve the bincode indices of existing control events.
+    //
+    /// Creates a folder under `parent` (`None` = root), which must be a folder
+    /// of the same kind. The new folder gets the lowest free id
+    /// (`folder::next_folder_id`).
+    CreateFolder {
+        kind: FolderKind,
+        parent: Option<FolderId>,
+        name: String,
+    },
+    RenameFolder(FolderId, String),
+    /// Deletes a folder only: its subfolders and items move to its parent.
+    DeleteFolder(FolderId),
+    /// Moves a group, scene, palette or folder into `folder` (`None` = root).
+    /// Rejected if the target holds another kind of item, or if a folder
+    /// would move into itself or one of its descendants.
+    MoveToFolder {
+        item: FolderItem,
+        folder: Option<FolderId>,
+    },
+    /// Adds every group in this groups folder and, recursively, its
+    /// subfolders to the selection, like one `SelectGroup` per group.
+    SelectFolder(FolderId),
 }
 
 impl ControlEvent {
@@ -364,7 +395,12 @@ impl ControlEvent {
             | ControlEvent::UnassignPaletteFromSelection(_)
             | ControlEvent::SetFocusedSceneGraph(_)
             | ControlEvent::SetSceneGraphEnabled(_, _)
-            | ControlEvent::ToggleSceneGraphEnabled(_) => {
+            | ControlEvent::ToggleSceneGraphEnabled(_)
+            | ControlEvent::CreateFolder { .. }
+            | ControlEvent::RenameFolder(_, _)
+            | ControlEvent::DeleteFolder(_)
+            | ControlEvent::MoveToFolder { .. }
+            | ControlEvent::SelectFolder(_) => {
                 return None;
             }
             ControlEvent::AssignPaletteToProperty(prop, _) => *prop,
@@ -542,6 +578,11 @@ impl ControlEvent {
             ControlEvent::SetFocusedSceneGraph(_) => false,
             ControlEvent::SetSceneGraphEnabled(_, _) => false,
             ControlEvent::ToggleSceneGraphEnabled(_) => false,
+            ControlEvent::CreateFolder { .. }
+            | ControlEvent::RenameFolder(_, _)
+            | ControlEvent::DeleteFolder(_)
+            | ControlEvent::MoveToFolder { .. }
+            | ControlEvent::SelectFolder(_) => false,
         }
     }
 }
