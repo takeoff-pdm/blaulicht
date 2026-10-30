@@ -1,8 +1,8 @@
 use crate::{
     app::{
         components::{
-            self, tree_id, ButtonSize, Dialog, HFader, TreeAction, TreeKey, TreeState,
-            NARROW_TREE_WIDTH, SETUP_GROUP_TREE,
+            self, ButtonSize, Dialog, HFader, TreeAction, TreeKey, NARROW_TREE_WIDTH,
+            SETUP_GROUP_TREE,
         },
         BlaulichtApp, Selection,
     },
@@ -381,10 +381,7 @@ impl BlaulichtApp {
                             // A picker has no use for folder selection: a tap
                             // opens or closes the folder, like its chevron.
                             Some(TreeAction::TapFolder(folder)) => {
-                                let id = tree_id(SETUP_GROUP_TREE);
-                                let mut state = TreeState::<u16>::load(ui.ctx(), id);
-                                state.toggle(folder);
-                                state.store(ui.ctx(), id);
+                                components::toggle_folder(ui.ctx(), SETUP_GROUP_TREE, folder);
                             }
                             _ => {}
                         }

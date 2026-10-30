@@ -18,7 +18,6 @@ mod scenes;
 
 pub use animations::AnimationUI;
 pub use fixtures::{AddFixtureIncrementAxis, AddFixtureKind};
-pub use groups::SetupGroupsUi;
 pub use palettes::PaletteUI;
 
 use crate::app::{page::PageRenderContext, BlaulichtApp};
