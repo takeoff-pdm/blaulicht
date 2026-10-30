@@ -330,7 +330,8 @@ impl BlaulichtApp {
                                             for (selection, animations) in
                                                 &scene.sink.active_animations
                                             {
-                                                if *selection != dmx_engine.get_selection() {
+                                                // The engine keys animations by the sorted selection.
+                                                if *selection != dmx_engine.get_selection().sorted() {
                                                     continue;
                                                 }
 
@@ -562,11 +563,7 @@ impl BlaulichtApp {
         // The panel sits in a horizontal row, so `available_height` is only the
         // row height: size the list from what is left of the visible column.
         // The selection's animation cards below it keep room for one card.
-        let selection_has_animations = scene
-            .sink
-            .active_animations
-            .get(&dmx_engine.get_selection())
-            .is_some_and(|animations| !animations.is_empty());
+        let selection_has_animations = Self::selection_animation_count(dmx_engine) > 0;
         let reserve = if selection_has_animations { 140.0 } else { 8.0 };
         let list_height = (ui.clip_rect().bottom() - ui.cursor().top() - reserve).max(100.0);
 
