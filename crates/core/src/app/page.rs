@@ -1,6 +1,8 @@
-use crate::app::BlaulichtApp;
+use crate::app::{components, BlaulichtApp};
 use crate::state::ScreenId;
-use blaulicht_shared::AppPage;
+use blaulicht_shared::{
+    AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
+};
 use egui::Context;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +76,56 @@ fn finite_dimension(value: f32) -> f32 {
         value.max(1.0)
     } else {
         1.0
+    }
+}
+
+/// Sub-page navigation. A page with tabs declares them in
+/// `AppPage::list_subpages` and renders through [`BlaulichtApp::subpage_ui`];
+/// the selected tab per page lives in the navbar state, so it survives page
+/// switches and is shared by every screen that shows the page.
+impl BlaulichtApp {
+    /// The tab `page` currently shows; `None` for a page without sub-pages.
+    pub(crate) fn current_subpage(&self, page: AppPage) -> Option<AppSubPage> {
+        self.navbar.subpage(page)
+    }
+
+    /// Selects `subpage` within its page (the current page stays as it is,
+    /// since the click may come from another screen) and tells plugins with a
+    /// `NavigateSubPage` event. Use it for in-page links to a tab.
+    pub(crate) fn open_subpage(&mut self, subpage: AppSubPage) {
+        if self.current_subpage(subpage.page()) == Some(subpage) {
+            return;
+        }
+        self.navbar.select_subpage(subpage);
+        // Web originator: notifies plugins without looping back into the UI.
+        self.data
+            .event_bus_connection
+            .send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::MainUi(MainUiEvent::NavigateSubPage(subpage)),
+            ));
+    }
+
+    /// Renders `page` with its sub-page tab bar along the bottom edge and calls
+    /// `content` with the active tab and a `Ui` for the area above the bar.
+    /// Returns `None`, drawing nothing, if `page` has no sub-pages.
+    pub(crate) fn subpage_ui<R>(
+        &mut self,
+        ui: &mut egui::Ui,
+        page: AppPage,
+        content: impl FnOnce(&mut Self, &mut egui::Ui, AppSubPage) -> R,
+    ) -> Option<R> {
+        let active = self.current_subpage(page)?;
+        let (mut content_ui, clicked) =
+            components::subpage_tabs_layout(ui, page.list_subpages(), active);
+        let active = match clicked {
+            Some(subpage) => {
+                self.open_subpage(subpage);
+                subpage
+            }
+            None => active,
+        };
+        Some(content(self, &mut content_ui, active))
     }
 }
 
