@@ -1,3 +1,10 @@
+//! Setup › Palettes: the palette list with create, edit, unassign and delete.
+//!
+//! Layout: toolbar on top, then [`BlaulichtApp::setup_palette_list`]. Ticket
+//! 018 replaces the flat list with a folder tree; the toolbar is where folder
+//! actions go. Assigning a palette to a selection is done in the Programmer
+//! (`render_palette_assignment_dialog` in `pages/programmer.rs`).
+
 use std::collections::BTreeMap;
 use std::fmt::Display;
 
@@ -380,7 +387,10 @@ impl BlaulichtApp {
             });
     }
 
-    pub fn palettes_ui(
+    /// Setup › Palettes: a toolbar on top, then [`Self::setup_palette_list`].
+    /// Also rendered on its own for a desktop dock pane still showing the old
+    /// Palettes page (`AppPage::Palettes`).
+    pub(crate) fn setup_palettes_ui(
         &mut self,
         ui: &mut egui::Ui,
         ctx: &Context,
@@ -400,9 +410,16 @@ impl BlaulichtApp {
         self.render_palette_edit_dialog(ctx, &palettes_snapshot);
         self.render_delete_palette_dialog(ctx);
 
-        ui.heading("Palettes");
-        ui.add_space(8.0);
+        render_context.horizontal(ui, egui::Align::Min, |ui| {
+            self.palette_toolbar(ui);
+        });
 
+        ui.separator();
+
+        self.setup_palette_list(ui, render_context, &palettes_snapshot);
+    }
+
+    fn palette_toolbar(&mut self, ui: &mut egui::Ui) {
         if components::button(ui, false, "Create Palette", ButtonSize::Medium) {
             self.palette_ui_state.create_dialog_open = true;
             self.palette_ui_state.new_name = "New Palette".to_string();
@@ -411,9 +428,17 @@ impl BlaulichtApp {
             self.palette_ui_state.pointer_property = None;
             self.palette_ui_state.pointer_ops.clear();
         }
+    }
 
-        ui.add_space(12.0);
-
+    /// The scrolling list of all palettes. Each row has a color preview (an
+    /// editable swatch for a Color palette), `[id] name (kind)`, and Unassign,
+    /// Edit and Delete. Ticket 018 replaces this list with a folder tree.
+    fn setup_palette_list(
+        &mut self,
+        ui: &mut egui::Ui,
+        render_context: crate::app::page::PageRenderContext,
+        palettes_snapshot: &[(u8, Palette)],
+    ) {
         if palettes_snapshot.is_empty() {
             ui.label(RichText::new("No palettes defined.").weak());
             return;
@@ -425,29 +450,21 @@ impl BlaulichtApp {
         let palettes_map: BTreeMap<u8, Palette> = palettes_snapshot.iter().cloned().collect();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for (id, palette) in &palettes_snapshot {
+            for (id, palette) in palettes_snapshot {
                 render_context.horizontal(ui, egui::Align::Center, |ui| {
                     if let Some(new_hsv) = Self::render_palette_preview(ui, palette, &palettes_map)
                     {
                         color_update = Some((*id, new_hsv));
                     }
 
-                    let kind_label = match &palette.kind {
-                        PaletteKind::Color(_) => "Color",
-                        PaletteKind::Position(_) => "Position",
-                        PaletteKind::Beam { .. } => "Beam",
-                        PaletteKind::Single(prop, _) => match prop {
-                            FixtureProperty::Alpha => "Alpha",
-                            FixtureProperty::Strobe => "Strobe",
-                            FixtureProperty::Focus => "Focus",
-                            _ => "Single",
-                        },
-                        PaletteKind::Pointer { .. } => "Pointer",
-                    };
-
                     ui.label(
-                        RichText::new(format!("[{}] {} ({})", id, palette.name, kind_label))
-                            .strong(),
+                        RichText::new(format!(
+                            "[{}] {} ({})",
+                            id,
+                            palette.name,
+                            palette_kind_label(&palette.kind)
+                        ))
+                        .strong(),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -982,4 +999,38 @@ fn palette_resolved_rgb(kind: &PaletteKind, palettes: &BTreeMap<u8, Palette>) ->
     let mut state = FixtureState::default();
     kind.apply_to(&mut state, palettes);
     Some(state.resolve(palettes).color.into())
+}
+
+/// Short kind name shown after a palette's name, e.g. "Color" or "Strobe".
+fn palette_kind_label(kind: &PaletteKind) -> &'static str {
+    match kind {
+        PaletteKind::Color(_) => "Color",
+        PaletteKind::Position(_) => "Position",
+        PaletteKind::Beam { .. } => "Beam",
+        PaletteKind::Single(prop, _) => match prop {
+            FixtureProperty::Alpha => "Alpha",
+            FixtureProperty::Strobe => "Strobe",
+            FixtureProperty::Focus => "Focus",
+            _ => "Single",
+        },
+        PaletteKind::Pointer { .. } => "Pointer",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kind_labels_name_single_properties() {
+        let beam = PaletteKind::Beam {
+            focus: 0,
+            strobe_speed: 0,
+        };
+        assert_eq!(palette_kind_label(&beam), "Beam");
+        let strobe = PaletteKind::Single(FixtureProperty::Strobe, 10);
+        assert_eq!(palette_kind_label(&strobe), "Strobe");
+        let pan = PaletteKind::Single(FixtureProperty::Pan, 10);
+        assert_eq!(palette_kind_label(&pan), "Single");
+    }
 }

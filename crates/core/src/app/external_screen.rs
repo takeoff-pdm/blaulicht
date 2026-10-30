@@ -13,7 +13,6 @@ use egui::{pos2, vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2,
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{DockArea, DockState, Node, NodeIndex, Split, Style, Tree};
 use std::collections::HashSet;
-use strum::IntoEnumIterator;
 
 #[derive(Clone)]
 pub(crate) struct Pane {
@@ -118,7 +117,7 @@ impl ExternalScreen {
     pub(crate) fn new_owned(dimensions: Vec2, owner_plugin_id: Option<u8>) -> Self {
         // let tabs = (1..=8).map(|idx| Pane::new(format!("Tab {idx}"))).collect();
 
-        let tabs = AppPage::iter().map(|page| Pane::new(page)).collect();
+        let tabs = AppPage::navbar_pages().map(Pane::new).collect();
 
         Self {
             dock_state: DockState::new(tabs),
@@ -157,7 +156,7 @@ impl ExternalScreen {
             ids
         };
 
-        for page in AppPage::iter() {
+        for page in AppPage::navbar_pages() {
             if !present_pages.contains(&page) {
                 self.dock_state.push_to_first_leaf(Pane::new(page));
             }
@@ -187,7 +186,8 @@ impl ExternalScreen {
         }
     }
 
-    pub(crate) fn from_showfile(saved: ShowfileExternalScreen) -> Self {
+    pub(crate) fn from_showfile(mut saved: ShowfileExternalScreen) -> Self {
+        migrate_moved_pages(&mut saved.layout);
         let mut dock_state = DockState::new(seed_tabs_for_saved_node(&saved.layout));
         apply_saved_dock_node(
             dock_state.main_surface_mut(),
@@ -224,7 +224,7 @@ impl ExternalScreen {
 
 fn default_saved_dock_node() -> ShowfileDockNode {
     ShowfileDockNode::Leaf {
-        tabs: AppPage::iter()
+        tabs: AppPage::navbar_pages()
             .map(|page| ShowfileDockTab::PageConfig {
                 page,
                 render_mode: PageRenderMode::Default,
@@ -232,6 +232,85 @@ fn default_saved_dock_node() -> ShowfileDockNode {
             .collect(),
         active: 0,
     }
+}
+
+/// The page a dock tab shows, with its render mode; `None` for a plugin tab.
+fn saved_tab_page(tab: &ShowfileDockTab) -> Option<(AppPage, PageRenderMode)> {
+    match *tab {
+        ShowfileDockTab::Page(page) => Some((page, PageRenderMode::Default)),
+        ShowfileDockTab::PageConfig { page, render_mode } => Some((page, render_mode)),
+        ShowfileDockTab::PluginUi { .. } => None,
+    }
+}
+
+/// Rewrites the tabs of pages that moved into another page's sub-page
+/// ([`AppPage::moved_to`]: Animations and Palettes into Setup, ticket 010) in
+/// a saved layout. Such a tab becomes a tab of the page it moved into, in the
+/// same place and render mode, unless the layout already has that page; then
+/// it is dropped, and only a leaf left without tabs gets the page (again).
+fn migrate_moved_pages(layout: &mut ShowfileDockNode) {
+    fn collect_pages(node: &ShowfileDockNode, pages: &mut Vec<AppPage>) {
+        match node {
+            ShowfileDockNode::Leaf { tabs, .. } => pages.extend(
+                tabs.iter()
+                    .filter_map(saved_tab_page)
+                    .map(|(page, _)| page)
+                    .filter(|page| page.moved_to().is_none()),
+            ),
+            ShowfileDockNode::Split { first, second, .. } => {
+                collect_pages(first, pages);
+                collect_pages(second, pages);
+            }
+        }
+    }
+
+    fn migrate(node: &mut ShowfileDockNode, present: &mut Vec<AppPage>) {
+        match node {
+            ShowfileDockNode::Leaf { tabs, active } => {
+                let old_active = *active;
+                let mut kept = Vec::with_capacity(tabs.len());
+                let mut new_active = None;
+                let mut fallback = None;
+                for (index, tab) in tabs.drain(..).enumerate() {
+                    let moved = saved_tab_page(&tab).and_then(|(page, render_mode)| {
+                        page.moved_to().map(|subpage| (subpage.page(), render_mode))
+                    });
+                    let tab = match moved {
+                        None => tab,
+                        Some((host, render_mode)) => {
+                            let host_tab = ShowfileDockTab::PageConfig {
+                                page: host,
+                                render_mode,
+                            };
+                            if present.contains(&host) {
+                                fallback.get_or_insert(host_tab);
+                                continue;
+                            }
+                            present.push(host);
+                            host_tab
+                        }
+                    };
+                    if index == old_active {
+                        new_active = Some(kept.len());
+                    }
+                    kept.push(tab);
+                }
+                if kept.is_empty() {
+                    kept.extend(fallback);
+                }
+                *active = new_active.unwrap_or(old_active.min(kept.len().saturating_sub(1)));
+                *tabs = kept;
+            }
+            ShowfileDockNode::Split { first, second, .. } => {
+                migrate(first, present);
+                migrate(second, present);
+            }
+        }
+    }
+
+    let mut present = Vec::new();
+    collect_pages(layout, &mut present);
+    migrate(layout, &mut present);
 }
 
 fn seed_tabs_for_saved_node(node: &ShowfileDockNode) -> Vec<Pane> {
@@ -754,6 +833,7 @@ fn merge_external_screens_from_showfile(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
     #[test]
     fn showfile_leaves_out_plugin_owned_external_screens() {
@@ -892,5 +972,152 @@ mod tests {
             plugin_id: 9,
             render_mode: PageRenderMode::Dynamic,
         }));
+    }
+
+    fn leaf_tabs(node: &ShowfileDockNode) -> Vec<Vec<ShowfileDockTab>> {
+        match node {
+            ShowfileDockNode::Leaf { tabs, .. } => vec![tabs.clone()],
+            ShowfileDockNode::Split { first, second, .. } => {
+                let mut leaves = leaf_tabs(first);
+                leaves.extend(leaf_tabs(second));
+                leaves
+            }
+        }
+    }
+
+    fn page_tab(page: AppPage) -> ShowfileDockTab {
+        ShowfileDockTab::PageConfig {
+            page,
+            render_mode: PageRenderMode::Default,
+        }
+    }
+
+    #[test]
+    fn new_docks_leave_out_moved_pages() {
+        let mut screen = ExternalScreen::new(vec2(1024.0, 768.0));
+        screen.ensure_core_tabs();
+        let tabs = leaf_tabs(&screen.to_showfile().layout).concat();
+        assert!(!tabs.contains(&page_tab(AppPage::Animations)));
+        assert!(!tabs.contains(&page_tab(AppPage::Palettes)));
+        assert!(tabs.contains(&page_tab(AppPage::Setup)));
+        assert_eq!(tabs.len(), AppPage::navbar_pages().count());
+    }
+
+    #[test]
+    fn saved_moved_page_tabs_are_dropped_when_setup_is_open() {
+        // The layout saved before ticket 010: Animations and Palettes next to
+        // other pages, Setup (saved as `FixturesSetup`) in its own leaf.
+        let layout: ShowfileDockNode = serde_json::from_str(
+            r#"{"Split": {"axis": "Horizontal", "fraction": 0.5,
+                "first": {"Leaf": {"tabs": ["System", "Animations", "Palettes", {"plugin_id": 0}], "active": 3}},
+                "second": {"Leaf": {"tabs": ["FixturesSetup"], "active": 0}}}}"#,
+        )
+        .unwrap();
+        let mut migrated = layout.clone();
+        migrate_moved_pages(&mut migrated);
+
+        let ShowfileDockNode::Split { first, second, .. } = migrated else {
+            panic!("expected split layout");
+        };
+        let ShowfileDockNode::Leaf { tabs, active } = *first else {
+            panic!("expected leaf");
+        };
+        // Animations and Palettes are gone, the other tabs are untouched
+        // (still in the legacy bare form), and the active plugin tab stays
+        // active.
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[0], ShowfileDockTab::Page(AppPage::System));
+        assert!(matches!(
+            tabs[1],
+            ShowfileDockTab::PluginUi { plugin_id: 0, .. }
+        ));
+        assert_eq!(active, 1);
+        assert_eq!(
+            leaf_tabs(&second),
+            vec![vec![ShowfileDockTab::Page(AppPage::Setup)]]
+        );
+
+        // Loading it fills in the missing pages, but not the moved ones.
+        let screen = ExternalScreen::from_showfile(ShowfileExternalScreen {
+            width: 1500.0,
+            height: 950.0,
+            x: None,
+            y: None,
+            owner_plugin_id: None,
+            layout,
+        });
+        let tabs = leaf_tabs(&screen.to_showfile().layout).concat();
+        for page in AppPage::iter() {
+            let count = tabs
+                .iter()
+                .filter(|tab| saved_tab_page(tab).map(|(p, _)| p) == Some(page))
+                .count();
+            let expected = usize::from(page.moved_to().is_none());
+            assert_eq!(count, expected, "{page:?}");
+        }
+    }
+
+    #[test]
+    fn a_saved_moved_page_becomes_setup_in_its_place() {
+        let mut layout = ShowfileDockNode::Split {
+            axis: ShowfileDockSplitAxis::Vertical,
+            fraction: 0.5,
+            first: Box::new(ShowfileDockNode::Leaf {
+                tabs: vec![page_tab(AppPage::Logs)],
+                active: 0,
+            }),
+            second: Box::new(ShowfileDockNode::Leaf {
+                tabs: vec![
+                    ShowfileDockTab::PageConfig {
+                        page: AppPage::Palettes,
+                        render_mode: PageRenderMode::Dynamic,
+                    },
+                    ShowfileDockTab::Page(AppPage::Animations),
+                ],
+                active: 1,
+            }),
+        };
+        migrate_moved_pages(&mut layout);
+
+        let ShowfileDockNode::Split { second, .. } = layout else {
+            panic!("expected split layout");
+        };
+        // Palettes became Setup with its render mode; Animations was dropped
+        // because Setup is now there.
+        let ShowfileDockNode::Leaf { tabs, active } = *second else {
+            panic!("expected leaf");
+        };
+        assert_eq!(
+            tabs,
+            vec![ShowfileDockTab::PageConfig {
+                page: AppPage::Setup,
+                render_mode: PageRenderMode::Dynamic,
+            }]
+        );
+        assert_eq!(active, 0);
+    }
+
+    #[test]
+    fn a_leaf_with_only_moved_pages_keeps_a_setup_tab() {
+        let mut layout = ShowfileDockNode::Split {
+            axis: ShowfileDockSplitAxis::Horizontal,
+            fraction: 0.5,
+            first: Box::new(ShowfileDockNode::Leaf {
+                tabs: vec![page_tab(AppPage::Setup)],
+                active: 0,
+            }),
+            second: Box::new(ShowfileDockNode::Leaf {
+                tabs: vec![page_tab(AppPage::Palettes)],
+                active: 0,
+            }),
+        };
+        migrate_moved_pages(&mut layout);
+        assert_eq!(
+            leaf_tabs(&layout),
+            vec![
+                vec![page_tab(AppPage::Setup)],
+                vec![page_tab(AppPage::Setup)]
+            ]
+        );
     }
 }

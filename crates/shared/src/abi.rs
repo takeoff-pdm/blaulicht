@@ -21,7 +21,9 @@ use strum::EnumIter;
 //      `Setup_Fixtures`, `Setup_Groups` and `Setup_Scenes`.
 // v17: `CreateFolder` carries the new folder's `id`, `Folder` gained `order`,
 //      ControlEvent gained `ReorderFolder` (ticket 031).
-pub const PLUGIN_ABI_VERSION: u32 = 17;
+// v18: AppSubPage gained `Setup_Animations` and `Setup_Palettes`; the Animations
+//      and Palettes pages moved into Setup (ticket 010).
+pub const PLUGIN_ABI_VERSION: u32 = 18;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

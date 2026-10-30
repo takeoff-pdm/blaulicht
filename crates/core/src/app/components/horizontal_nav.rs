@@ -38,22 +38,32 @@ pub fn subpage_tab_bar(
 ) -> Option<AppSubPage> {
     let available = ui.available_width();
     let columns = subpage_tab_columns(available, subpages.len());
+    // Whole pixels, so that rounding never makes a row wider than `available`.
     let tab_width = ((available - TAB_GAP * columns.saturating_sub(1) as f32) / columns as f32)
+        .floor()
         .max(TAB_MIN_WIDTH);
 
     let mut clicked = None;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(TAB_GAP, TAB_GAP);
-        for &subpage in subpages {
-            let is_active = subpage == active;
-            if components::Button::new(subpage.label(), ButtonSize::Medium.with_width(tab_width))
+    ui.spacing_mut().item_spacing = egui::vec2(TAB_GAP, TAB_GAP);
+    // Explicit rows of `columns` tabs, the same rows `subpage_tab_bar_height`
+    // reserves. (`horizontal_wrapped` could wrap the last tab into a row
+    // below the clip rect when the widths add up to just over `available`.)
+    for row in subpages.chunks(columns) {
+        ui.horizontal(|ui| {
+            for &subpage in row {
+                let is_active = subpage == active;
+                if components::Button::new(
+                    subpage.label(),
+                    ButtonSize::Medium.with_width(tab_width),
+                )
                 .ui(ui, is_active)
-                && !is_active
-            {
-                clicked = Some(subpage);
+                    && !is_active
+                {
+                    clicked = Some(subpage);
+                }
             }
-        }
-    });
+        });
+    }
     clicked
 }
 

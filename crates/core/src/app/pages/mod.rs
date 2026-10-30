@@ -1,6 +1,5 @@
-mod animations;
+mod animation_spec_editor;
 mod audio;
-mod palettes;
 mod programmer;
 mod programmer_animations;
 mod scene_graph;
@@ -10,8 +9,7 @@ mod view;
 mod view_perf;
 mod visualizer;
 
-pub use animations::*;
-pub use palettes::*;
+pub use animation_spec_editor::*;
 pub use programmer::*;
 pub use programmer_animations::*;
 pub use scene_graph::*;

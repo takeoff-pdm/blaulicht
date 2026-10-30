@@ -30,7 +30,7 @@ Target navigation (agreed 2026-09-27):
 | 007 | [Fixture setup UX: add-fixture affordance, default names, bulk rename](TICKETS/007-fixture-setup-ux.planned.md) | planned | 006 |
 | 008 | [Fixture identify wizard](TICKETS/008-identify-wizard.planned.md) | planned | 006 |
 | 009 | [View preparation into Setup › Views, with a Test button](TICKETS/009-views-into-setup-with-test.planned.md) | planned | 006, 020 |
-| 010 | [Animation template editor and Palettes page become Setup sub-pages](TICKETS/010-editors-into-setup.planned.md) | planned | 006, 012 |
+| 010 | [Animation template editor and Palettes page become Setup sub-pages](TICKETS/010-editors-into-setup.done.md) | done | 006, 012 |
 
 ### E3 — Programmer
 
@@ -95,6 +95,9 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - In `--desktop` mode, the Programmer in a "Default (723 x 480)" pane is narrower than the kiosk page, so its right column (masters, Scene Changes) is cut off at the pane edge; Dynamic mode fits. 017's wider group tree column (120 px instead of 90) makes the cut about 30 px larger; by the kiosk's ~10 px slack it was probably cut by ~20 px before, but that wasn't checked (found in 017).
 - Removing a scene change (`RemoveChange`, Programmer row X / Undo all) sets the property to 0 in the scene instead of restoring an earlier value (found in 011).
 - At 800x480 the Programmer's right column (scene changes + animation cards) does not scroll, so only the first animation card of a selection is fully visible; the Animations dialog lists all of them (found in 012).
+- Setup › Animations: the template details form does not scroll, so long forms (audio modulation: section multipliers and below) run under the tab bar at 800x480. Already cut off on the old Animations page, a little less (found in 010).
+- Setup › Animations: the Starter Presets dialog is 520 px tall, so at 800x480 only one preset row shows between its filters and Close (unchanged since before 010).
+- In `--desktop` mode, loading a dock layout that lacks pages appends them to the first leaf with `push_to_first_leaf`, which also makes the last appended tab active, overriding the saved active tab (seen in 010).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet

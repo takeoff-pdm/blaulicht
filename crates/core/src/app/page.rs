@@ -161,11 +161,14 @@ impl BlaulichtApp {
             AppPage::Programmer => {
                 self.programmer_ui(ui, ctx, render_context);
             }
+            // Moved into Setup (`AppPage::moved_to`): the navbar redirects
+            // them and saved dock panes are migrated, so this only renders
+            // the editor alone should a caller still pass the old page.
             AppPage::Animations => {
-                self.animations_ui(ctx, ui, render_context);
+                self.setup_animations_ui(ui, ctx, render_context);
             }
             AppPage::Palettes => {
-                self.palettes_ui(ui, ctx, render_context);
+                self.setup_palettes_ui(ui, ctx, render_context);
             }
             AppPage::SceneGraph => {
                 self.scene_graph_ui(ui, ctx, render_context);

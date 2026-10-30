@@ -1,7 +1,7 @@
 pub use crate::page::sub::AppSubPage;
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 pub mod sub;
 
@@ -24,7 +24,9 @@ pub enum AppPage {
     /// showfile dock layouts, plugin state and blctl commands working.
     #[serde(alias = "FixturesPerformance")]
     Programmer,
+    /// Moved to Setup › Animations (ticket 010); see [`AppPage::moved_to`].
     Animations,
+    /// Moved to Setup › Palettes (ticket 010); see [`AppPage::moved_to`].
     Palettes,
     SceneGraph,
     Visualizer,
@@ -67,6 +69,8 @@ impl AppPage {
                 AppSubPage::Setup_Fixtures,
                 AppSubPage::Setup_Groups,
                 AppSubPage::Setup_Scenes,
+                AppSubPage::Setup_Animations,
+                AppSubPage::Setup_Palettes,
             ],
             AppPage::View => &[],
             AppPage::ViewPerformance => &[],
@@ -76,6 +80,25 @@ impl AppPage {
             AppPage::SceneGraph => &[],
             AppPage::Visualizer => &[],
         }
+    }
+
+    /// The sub-page that replaced this page, for pages that became a tab of
+    /// another page. Such a page is kept so that its index and JSON name stay
+    /// valid (plugins, showfile dock layouts, blctl), but it is not shown on
+    /// its own: `NavigatePage` to it opens this sub-page instead, and the
+    /// navbar and desktop dock leave it out.
+    pub const fn moved_to(self) -> Option<AppSubPage> {
+        match self {
+            AppPage::Animations => Some(AppSubPage::Setup_Animations),
+            AppPage::Palettes => Some(AppSubPage::Setup_Palettes),
+            _ => None,
+        }
+    }
+
+    /// Pages shown in the navbar and the desktop dock, in order: every page
+    /// that has not moved into another page ([`AppPage::moved_to`]).
+    pub fn navbar_pages() -> impl Iterator<Item = AppPage> {
+        AppPage::iter().filter(|page| page.moved_to().is_none())
     }
 
     /// The tab a page shows until another one is selected: the first listed.
