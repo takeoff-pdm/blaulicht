@@ -60,7 +60,7 @@ The 017/018 tree UIs need stable ids, undo and a deterministic order. This ticke
 - [x] For every folder event, applying it and then its rollback leaves `EngineState` unchanged. Unit tests cover this, including deleting a folder that has nested child folders and items of its kind.
 - [x] `CreateFolder` with a taken id, an empty name or a duplicate sibling name is rejected without changing the state.
 - [x] Siblings sort by `(order, name)`. A showfile without `order` still loads.
-- [ ] `Kuze_Theater.json` loads with its real groups and scenes (`blctl state`), or has been replaced by a migrated file that does. The choice is recorded in Notes. **Open:** option (b) is recommended with evidence in Notes, but replacing a showfile needs the maintainer's approval, so nothing was replaced.
+- [x] `Kuze_Theater.json` loads with its real groups and scenes (`blctl state`), or has been replaced by a migrated file that does. The choice is recorded in Notes. Option (b), applied after maintainer approval (see Notes).
 - [x] ABI bumped and plugins rebuilt.
 
 ## Verification
@@ -233,3 +233,17 @@ Everything ran in the blenv container `blenv-agent-aea950689efc0dfab-d72ae592`, 
   `app/`, left out because this ticket stays out of UI files.
 - The engine's `Transaction` arm drops its sub-events' rollbacks. If 011 or later wants a generic
   undo, it could return a reversed `Transaction` of them.
+
+### Kuze follow-up (applied after maintainer approval, 2026-10-30)
+- Compared before replacing:
+  - `Kuze_Theater.migrated.json` and `Kuze_migrated.json` are byte-identical.
+  - Old vs. migrated: same top-level keys, and the only differences are format changes (272 diffs, all in fixture-state and amplitude shapes).
+  - All 208 fixture-state values match after the unit mapping (`h` truncated degrees, `s`/`v` × 255, the rest identical).
+- Applied option (b): `git mv -f Kuze_Theater.migrated.json Kuze_Theater.json`, and removed `Kuze_migrated.json`.
+- `17.01.json` was **not** replaced. `17.01_migrated.json` is a later, edited show, not just a migration:
+  - its groups, fixtures, names and addresses differ;
+  - it has palette assignments and audio-modulation animations that the old file lacks;
+  - its scene changesets differ.
+
+  `17.01.new.json` and `17.01.freq.json` are later revisions again. Which of these to keep is the maintainer's call.
+
