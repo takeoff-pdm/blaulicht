@@ -6,8 +6,8 @@ use crate::{
         },
         external_screen::Pane,
         pages::{
-            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI,
-            FixturePerfUi, SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
+            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI, ProgrammerUi,
+            SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
         },
     },
     msg::TickSpeeds,
@@ -309,7 +309,7 @@ pub struct BlaulichtApp {
 
     dmx_simulator: DmxSimulator,
 
-    fixture_perf_ui: FixturePerfUi,
+    programmer_ui_state: ProgrammerUi,
 
     view_ui_state: ViewUI,
     view_perf_ui_state: ViewPerfUI,
@@ -590,7 +590,7 @@ impl BlaulichtApp {
             visualizer_ui_state: VisualizerUiState::default(),
             scene_graph_ui_state: SceneGraphUI::default(),
             palette_ui_state: PaletteUI::default(),
-            fixture_perf_ui: FixturePerfUi {
+            programmer_ui_state: ProgrammerUi {
                 scene_overview_animation_edit: AnimationEditState::default(),
                 scene_overview_animation_selection_edit: None,
                 scene_overview_animation_selection_edit_need_to_load: false,

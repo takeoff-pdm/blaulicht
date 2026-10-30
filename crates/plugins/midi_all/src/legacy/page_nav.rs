@@ -34,7 +34,7 @@ impl LegacyState {
             39 => Some(AppPage::Setup),
             31 => Some(AppPage::View),
             23 => Some(AppPage::ViewPerformance),
-            15 => Some(AppPage::FixturesPerformance),
+            15 => Some(AppPage::Programmer),
             7 => Some(AppPage::Animations),
             _ => None,
         }
@@ -48,7 +48,7 @@ impl LegacyState {
             AppPage::Setup => 39,
             AppPage::View => 31,
             AppPage::ViewPerformance => 23,
-            AppPage::FixturesPerformance => 15,
+            AppPage::Programmer => 15,
             AppPage::Animations => 7,
             AppPage::Visualizer | AppPage::SceneGraph | AppPage::Palettes => return None,
         };

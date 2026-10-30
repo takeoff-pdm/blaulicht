@@ -22,7 +22,7 @@ use std::{
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 
-/// One group button as used by the group lists (Setup and FixturesPerformance):
+/// One group button as used by the group lists (Setup and Programmer):
 /// name on top, fixture count and id below. Returns whether it was clicked.
 pub fn group_tile(
     ui: &mut egui::Ui,

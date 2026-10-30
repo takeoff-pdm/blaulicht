@@ -13,7 +13,7 @@ use blaulicht_shared::{
 use egui::{Color32, Context, RichText};
 use std::collections::HashMap;
 
-pub struct FixturePerfUi {
+pub struct ProgrammerUi {
     pub scene_overview_animation_edit: AnimationEditState,
     pub scene_overview_animation_selection_edit: Option<(FixtureSelection, u8)>,
     pub scene_overview_animation_selection_edit_need_to_load: bool,
@@ -139,7 +139,7 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn fixtures_ui(
+    pub fn programmer_ui(
         &mut self,
         ui: &mut egui::Ui,
         ctx: &Context,
@@ -221,7 +221,7 @@ impl BlaulichtApp {
 
                             {
                                 let active_count = self
-                                    .fixture_perf_ui
+                                    .programmer_ui_state
                                     .active_palettes_cache
                                     .get(&dmx_engine.get_selection())
                                     .map(|v| v.len())
@@ -231,12 +231,12 @@ impl BlaulichtApp {
                                 ui.add_enabled_ui(!selection_empty, |ui| {
                                     if components::button(
                                         ui,
-                                        self.fixture_perf_ui.palette_dialog_open,
+                                        self.programmer_ui_state.palette_dialog_open,
                                         &label,
                                         ButtonSize::Medium,
                                     ) {
-                                        self.fixture_perf_ui.palette_dialog_open =
-                                            !self.fixture_perf_ui.palette_dialog_open;
+                                        self.programmer_ui_state.palette_dialog_open =
+                                            !self.programmer_ui_state.palette_dialog_open;
                                     }
                                 });
                             }
@@ -469,13 +469,13 @@ impl BlaulichtApp {
                                                                             ButtonSize::Medium,
                                                                         ) {
                                                                             self.current_scene_animations_dialog_open = true;
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .scene_overview_animation_selection_edit =
                                                                                 Some((selection.to_owned(), *animation_id));
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .scene_overview_animation_selection_edit_need_to_load =
                                                                                 true;
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .close_scene_overview_after_child = true;
                                                                         }
                                                                     });
@@ -574,8 +574,9 @@ impl BlaulichtApp {
 
                 let scene = dmx_engine.curr_scene();
 
-                if let Some((selec, anim_id)) =
-                    &self.fixture_perf_ui.scene_overview_animation_selection_edit
+                if let Some((selec, anim_id)) = &self
+                    .programmer_ui_state
+                    .scene_overview_animation_selection_edit
                 {
                     let Some(animation) = scene
                         .sink
@@ -583,17 +584,18 @@ impl BlaulichtApp {
                         .get(selec)
                         .and_then(|animations| animations.get(anim_id))
                     else {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit = None;
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = false;
                         return;
                     };
 
                     if self
-                        .fixture_perf_ui
+                        .programmer_ui_state
                         .scene_overview_animation_selection_edit_need_to_load
                     {
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_edit
                             .load_state(animation.spec_cloned.clone());
 
@@ -612,27 +614,28 @@ impl BlaulichtApp {
                                 &self.data.state,
                                 &wasm.plugin_key,
                                 source,
-                                self.fixture_perf_ui
+                                self.programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
                             );
                         }
 
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
                     let live_audio = self.live_audio_for_preview();
                     let details_panel_max = ui.clip_rect().max;
-                    let new_value_spec = self.fixture_perf_ui.scene_overview_animation_edit.show(
-                        ui,
-                        ctx,
-                        &dmx_engine.0.palettes,
-                        &live_audio,
-                        &self.data,
-                        &selec.fixtures,
-                        details_panel_max,
-                    );
+                    let new_value_spec =
+                        self.programmer_ui_state.scene_overview_animation_edit.show(
+                            ui,
+                            ctx,
+                            &dmx_engine.0.palettes,
+                            &live_audio,
+                            &self.data,
+                            &selec.fixtures,
+                            details_panel_max,
+                        );
 
                     if let Some(spec) = new_value_spec {
                         if let blaulicht_shared::AnimationSpecBody::WasmPlugin(wasm) = &spec.body {
@@ -647,7 +650,7 @@ impl BlaulichtApp {
                             crate::plugin::wasm::clone_animation_instance_state(
                                 &self.data.state,
                                 &wasm.plugin_key,
-                                self.fixture_perf_ui
+                                self.programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
                                 target,
@@ -664,11 +667,12 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
-                        if self.fixture_perf_ui.close_scene_overview_after_child {
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit = None;
+                        if self.programmer_ui_state.close_scene_overview_after_child {
                             self.current_scene_animations_dialog_open = false;
                         }
-                        self.fixture_perf_ui.close_scene_overview_after_child = false;
+                        self.programmer_ui_state.close_scene_overview_after_child = false;
                     }
                 } else {
                     self.render_normal_scene_animations(ui, scene);
@@ -770,11 +774,12 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, false, "Edit", ButtonSize::Medium) {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit =
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit =
                             Some((selection.to_owned(), *animation_id));
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = true;
-                        self.fixture_perf_ui.close_scene_overview_after_child = false;
+                        self.programmer_ui_state.close_scene_overview_after_child = false;
                     }
                 }
             }
@@ -792,10 +797,10 @@ impl BlaulichtApp {
     /// current scene's sink. Stores the result keyed by the current selection.
     fn refresh_active_palettes_cache(&mut self, dmx_engine: &EngineState) {
         let selection = dmx_engine.get_selection();
-        self.fixture_perf_ui.active_palettes_cache.clear();
+        self.programmer_ui_state.active_palettes_cache.clear();
 
         if selection.fixtures.is_empty() {
-            self.fixture_perf_ui
+            self.programmer_ui_state
                 .active_palettes_cache
                 .insert(selection, Vec::new());
             return;
@@ -818,13 +823,13 @@ impl BlaulichtApp {
         let mut active = active.unwrap_or_default();
         active.sort_unstable();
         active.dedup();
-        self.fixture_perf_ui
+        self.programmer_ui_state
             .active_palettes_cache
             .insert(selection, active);
     }
 
     fn render_palette_assignment_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
-        if !self.fixture_perf_ui.palette_dialog_open {
+        if !self.programmer_ui_state.palette_dialog_open {
             return;
         }
 
@@ -833,7 +838,7 @@ impl BlaulichtApp {
 
         let selection = dmx_engine.get_selection();
         let active: Vec<u8> = self
-            .fixture_perf_ui
+            .programmer_ui_state
             .active_palettes_cache
             .get(&selection)
             .cloned()
@@ -846,7 +851,7 @@ impl BlaulichtApp {
                     ui.label("No selection.");
                     ui.add_space(8.0);
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
-                        self.fixture_perf_ui.palette_dialog_open = false;
+                        self.programmer_ui_state.palette_dialog_open = false;
                     }
                     return;
                 }
@@ -937,7 +942,7 @@ impl BlaulichtApp {
                 ui.add_space(12.0);
                 ui.separator();
                 if components::button(ui, true, "Close", ButtonSize::Medium) {
-                    self.fixture_perf_ui.palette_dialog_open = false;
+                    self.programmer_ui_state.palette_dialog_open = false;
                 }
             });
     }

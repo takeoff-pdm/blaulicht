@@ -170,7 +170,7 @@ const APP_PAGE_LABELS: [&str; 9] = [
     "Setup",
     "View",
     "View Perf",
-    "Fixtures Perf",
+    "Programmer",
     "Animations",
     "Visualizer",
 ];
@@ -1401,7 +1401,7 @@ fn page_from_index(idx: u8) -> AppPage {
         3 => AppPage::Setup,
         4 => AppPage::View,
         5 => AppPage::ViewPerformance,
-        6 => AppPage::FixturesPerformance,
+        6 => AppPage::Programmer,
         7 => AppPage::Animations,
         8 => AppPage::Visualizer,
         _ => AppPage::Logs,

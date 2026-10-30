@@ -158,8 +158,8 @@ impl BlaulichtApp {
             AppPage::ViewPerformance => {
                 self.view_perf_ui(ui, ctx, render_context);
             }
-            AppPage::FixturesPerformance => {
-                self.fixtures_ui(ui, ctx, render_context);
+            AppPage::Programmer => {
+                self.programmer_ui(ui, ctx, render_context);
             }
             AppPage::Animations => {
                 self.animations_ui(ctx, ui, render_context);

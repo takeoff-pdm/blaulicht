@@ -174,4 +174,23 @@ mod tests {
             serde_json::from_str(r#"{"NavigatePage":"FixturesSetup"}"#).unwrap();
         assert!(matches!(event, MainUiEvent::NavigatePage(AppPage::Setup)));
     }
+
+    #[test]
+    fn programmer_keeps_the_fixtures_performance_index_and_name() {
+        // `Programmer` took over `FixturesPerformance`'s slot (ticket 011).
+        assert_eq!(
+            bincode::encode_to_vec(AppPage::Programmer, config::standard()).unwrap(),
+            [6]
+        );
+        let old: AppPage = serde_json::from_str(r#""FixturesPerformance""#).unwrap();
+        assert_eq!(old, AppPage::Programmer);
+        let new: AppPage = serde_json::from_str(r#""Programmer""#).unwrap();
+        assert_eq!(new, AppPage::Programmer);
+        let event: MainUiEvent =
+            serde_json::from_str(r#"{"NavigatePage":"FixturesPerformance"}"#).unwrap();
+        assert!(matches!(
+            event,
+            MainUiEvent::NavigatePage(AppPage::Programmer)
+        ));
+    }
 }

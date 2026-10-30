@@ -19,7 +19,11 @@ pub enum AppPage {
     Setup,
     View,
     ViewPerformance,
-    FixturesPerformance,
+    /// Selection, fixture attributes, palettes and the focused scene's changes.
+    /// Named `FixturesPerformance` before ticket 011; the alias keeps old
+    /// showfile dock layouts, plugin state and blctl commands working.
+    #[serde(alias = "FixturesPerformance")]
+    Programmer,
     Animations,
     Palettes,
     SceneGraph,
@@ -35,7 +39,7 @@ impl AppPage {
             AppPage::Setup => "Setup",
             AppPage::View => "Views",
             AppPage::ViewPerformance => "V. Perf",
-            AppPage::FixturesPerformance => "F. Perf",
+            AppPage::Programmer => "Programmer",
             AppPage::Animations => "Anim",
             AppPage::Palettes => "Palettes",
             AppPage::SceneGraph => "Graph",
@@ -66,7 +70,7 @@ impl AppPage {
             ],
             AppPage::View => &[],
             AppPage::ViewPerformance => &[],
-            AppPage::FixturesPerformance => &[],
+            AppPage::Programmer => &[],
             AppPage::Animations => &[],
             AppPage::Palettes => &[],
             AppPage::SceneGraph => &[],
