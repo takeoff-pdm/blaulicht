@@ -32,6 +32,8 @@ CARGO_VOLUME = "blenv-cargo"
 LABEL = "blenv"
 MAIN_WINDOW = "blaulicht"
 DEFAULT_SETTLE_MS = 400
+# `AppPage` names. Animations and Palettes still parse but open the Setup tabs
+# Setup_Animations / Setup_Palettes (ticket 010).
 APP_PAGES = (
     "Logs System Audio Setup View ViewPerformance Programmer "
     "Animations Palettes SceneGraph Visualizer"
