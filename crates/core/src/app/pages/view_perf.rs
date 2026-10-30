@@ -1,27 +1,20 @@
 use crate::app::{
-    components::{self, ButtonSize, Knob, SpeedKnob},
+    components::{self, ButtonSize, Knob, SpeedKnob, TreeItem},
     BlaulichtApp,
 };
 use blaulicht_shared::{
-    scene::Scene, AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+    folder::FolderId,
+    scene::{Scene, BLANK_SCENE_ID},
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
 };
 use egui::{Color32, Context, Margin, Pos2};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
 
+#[derive(Default)]
 pub struct ViewPerfUI {
     overlay_picker_open: bool,
-    overlay_selection: Option<u8>,
-}
-
-impl Default for ViewPerfUI {
-    fn default() -> Self {
-        Self {
-            overlay_picker_open: false,
-            overlay_selection: None,
-        }
-    }
 }
 
 const VIEW_PERFORMANCE_SCENE_WIDTH: f32 = 128.0;
@@ -170,10 +163,12 @@ impl BlaulichtApp {
             });
     }
 
+    /// The overlay picker: the scene tree with only the scenes that are not
+    /// overlays yet (and only folders holding one of them).
     fn render_view_perf_overlay_picker_dialog(
         &mut self,
         ctx: &Context,
-        available_scenes: &[(u8, String)],
+        available_scenes: &[TreeItem<FolderId, u8>],
     ) {
         if !self.view_perf_ui_state.overlay_picker_open {
             return;
@@ -181,36 +176,24 @@ impl BlaulichtApp {
 
         if available_scenes.is_empty() {
             self.view_perf_ui_state.overlay_picker_open = false;
-            self.view_perf_ui_state.overlay_selection = None;
             return;
         }
 
-        let current_selection = self
-            .view_perf_ui_state
-            .overlay_selection
-            .unwrap_or(available_scenes[0].0);
-
-        let (selected_id, changed) = components::id_selection_dialog(
+        if let Some(scene_id) = components::tree_picker_dialog(
             ctx,
-            available_scenes.to_vec(),
-            current_selection,
+            "Select Overlay Scene",
+            components::SCENE_PICKER_TREE,
+            available_scenes,
+            None,
+            "No more scenes to add",
             &mut self.view_perf_ui_state.overlay_picker_open,
-            "Select Overlay Scene".to_string(),
-        );
-
-        self.view_perf_ui_state.overlay_selection = Some(selected_id);
-
-        if changed {
+        ) {
             self.data
                 .event_bus_connection
                 .send(ControlEventMessage::new(
                     EventOriginator::Web,
-                    ControlEvent::AddOverlayScene(selected_id),
+                    ControlEvent::AddOverlayScene(scene_id),
                 ));
-        }
-
-        if !self.view_perf_ui_state.overlay_picker_open {
-            self.view_perf_ui_state.overlay_selection = None;
         }
     }
 
@@ -223,17 +206,10 @@ impl BlaulichtApp {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
         let live_mode = dmx_engine.0.live_mode;
         let current_overlays = dmx_engine.0.current_overlay_scenes.clone();
-        let available_overlay_scenes: Vec<(u8, String)> = dmx_engine
-            .0
-            .user_scenes()
-            .filter_map(|(scene_id, scene)| {
-                if current_overlays.contains(scene_id) {
-                    return None;
-                }
-
-                Some((*scene_id, format!("{} ({})", scene.name, scene_id)))
-            })
-            .collect();
+        let available_overlay_scenes =
+            components::prune_empty_folders(components::scene_tree_items(&dmx_engine.0, |id| {
+                id != BLANK_SCENE_ID && !current_overlays.contains(&id)
+            }));
 
         let groups = dmx_engine.groups();
         self.render_dmx_simulation_dialog(ctx, groups);
