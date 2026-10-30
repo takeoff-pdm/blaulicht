@@ -19,7 +19,7 @@ ENV RUSTUP_HOME=/opt/rustup \
 RUN curl -sSf https://sh.rustup.rs | CARGO_HOME=/opt/cargo sh -s -- -y --profile minimal \
         --default-toolchain ${RUST_NIGHTLY} \
     && CARGO_HOME=/opt/cargo rustup target add wasm32-unknown-unknown \
-    && CARGO_HOME=/opt/cargo rustup component add rust-src \
+    && CARGO_HOME=/opt/cargo rustup component add rust-src clippy rustfmt \
     && chmod -R a+rX /opt/rustup /opt/cargo
 
 # RUSTUP_TOOLCHAIN beats rust-toolchain.toml, so a pinned date is used instead of rustup
