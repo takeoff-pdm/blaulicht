@@ -86,6 +86,9 @@ impl BlaulichtApp {
                                 self.pending_numberpad_delta =
                                     self.pending_numberpad_delta.saturating_add(delta);
                             }
+                            MainUiEvent::NavigateSubPage(subpage) => {
+                                self.navbar.navigate_to_subpage(subpage)
+                            }
                         }
                     }
                 }

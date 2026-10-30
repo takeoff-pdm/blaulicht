@@ -1,4 +1,6 @@
-use blaulicht_shared::AppPage;
+use std::collections::HashMap;
+
+use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Context, Frame, Separator, Widget};
 use strum::IntoEnumIterator;
 
@@ -31,12 +33,15 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
 
 pub struct Navbar {
     pub current_page: AppPage,
+    /// Selected tab per page. Pages without an entry show their default tab.
+    subpages: HashMap<AppPage, AppSubPage>,
 }
 
 impl Navbar {
     pub fn new(initial_page: AppPage) -> Self {
         Self {
             current_page: initial_page,
+            subpages: HashMap::new(),
         }
     }
 
@@ -46,6 +51,26 @@ impl Navbar {
 
     pub fn page(&self) -> AppPage {
         self.current_page
+    }
+
+    /// Selects `subpage` and switches to the page that owns it.
+    pub fn navigate_to_subpage(&mut self, subpage: AppSubPage) {
+        self.select_subpage(subpage);
+        self.current_page = subpage.page();
+    }
+
+    /// Selects `subpage` in its page without switching the current page.
+    pub fn select_subpage(&mut self, subpage: AppSubPage) {
+        self.subpages.insert(subpage.page(), subpage);
+    }
+
+    /// The tab `page` shows: the selected one, else its default. `None` for a
+    /// page without sub-pages.
+    pub fn subpage(&self, page: AppPage) -> Option<AppSubPage> {
+        self.subpages
+            .get(&page)
+            .copied()
+            .or_else(|| page.default_subpage())
     }
 
     /// `status`, if given, adds a slot below the pages; clicking it opens Logs.
@@ -152,4 +177,54 @@ fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -
     response
         .on_hover_text(format!("{}\nClick to open Logs.", status.summary))
         .clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Navbar;
+    use blaulicht_shared::{AppPage, AppSubPage};
+
+    #[test]
+    fn pages_start_on_their_default_subpage() {
+        let navbar = Navbar::new(AppPage::Logs);
+        assert_eq!(
+            navbar.subpage(AppPage::System),
+            Some(AppSubPage::System_System)
+        );
+        assert_eq!(navbar.subpage(AppPage::Logs), None);
+    }
+
+    #[test]
+    fn navigating_to_a_subpage_switches_to_its_page() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        navbar.navigate_to_subpage(AppSubPage::System_Midi);
+        assert_eq!(navbar.page(), AppPage::System);
+        assert_eq!(
+            navbar.subpage(AppPage::System),
+            Some(AppSubPage::System_Midi)
+        );
+    }
+
+    #[test]
+    fn selecting_a_subpage_keeps_the_current_page() {
+        let mut navbar = Navbar::new(AppPage::Audio);
+        navbar.select_subpage(AppSubPage::System_Plugins);
+        assert_eq!(navbar.page(), AppPage::Audio);
+        assert_eq!(
+            navbar.subpage(AppPage::System),
+            Some(AppSubPage::System_Plugins)
+        );
+    }
+
+    #[test]
+    fn selection_survives_leaving_the_page() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        navbar.navigate_to_subpage(AppSubPage::System_Serial);
+        navbar.navigate_to(AppPage::Audio);
+        navbar.navigate_to(AppPage::System);
+        assert_eq!(
+            navbar.subpage(AppPage::System),
+            Some(AppSubPage::System_Serial)
+        );
+    }
 }

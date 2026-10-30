@@ -20,7 +20,7 @@ Target navigation (agreed 2026-09-27):
 | 002 | [Visible startup progress (per-stage checklist)](TICKETS/002-startup-progress.done.md) | done | 001 |
 | 003 | [Showfile name instead of abspath; audio page header order](TICKETS/003-showfile-name-and-audio-header.done.md) | done | — |
 | 004 | [Selectable dummy audio input (silence / noise)](TICKETS/004-audio-dummy-input.done.md) | done | — |
-| 005 | [Generic sub-page navigation for all pages](TICKETS/005-subpage-navigation.planned.md) | planned | — |
+| 005 | [Generic sub-page navigation for all pages](TICKETS/005-subpage-navigation.done.md) | done | — |
 
 ### E2 — Setup page
 
@@ -89,6 +89,7 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 
 - `crates/plugins/pioneer_pro_dj_link/Cargo.toml` has an absolute path dependency (`/home/mik/Downloads/prolink-test/prolink-rs`), so `make build_noopt` fails for it everywhere else.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
+- In `--desktop` mode, `NavigatePage` / `NavigateSubPage` don't bring the page's dock tab to the front (found in 005).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet

@@ -5,7 +5,9 @@ use strum::EnumIter;
 
 pub mod sub;
 
-#[derive(Debug, Clone, Copy, PartialEq, EnumIter, Serialize, Deserialize, Encode, Decode)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize, Encode, Decode,
+)]
 pub enum AppPage {
     Logs,
     System,
@@ -37,6 +39,9 @@ impl AppPage {
         }
     }
 
+    /// Sub-pages (tabs) of this page in tab order; empty for a page without
+    /// tabs. Every [`AppSubPage`] whose [`AppSubPage::page`] is `self` must be
+    /// listed here exactly once (checked by a test in `page::sub`).
     pub fn list_subpages(&self) -> &'static [AppSubPage] {
         match self {
             AppPage::Logs => &[],
@@ -47,6 +52,7 @@ impl AppPage {
                 AppSubPage::System_Plugins,
                 AppSubPage::System_Midi,
                 AppSubPage::System_Serial,
+                AppSubPage::System_Screens,
             ],
             AppPage::Audio => &[],
             AppPage::FixturesSetup => &[],
@@ -58,6 +64,11 @@ impl AppPage {
             AppPage::SceneGraph => &[],
             AppPage::Visualizer => &[],
         }
+    }
+
+    /// The tab a page shows until another one is selected: the first listed.
+    pub fn default_subpage(&self) -> Option<AppSubPage> {
+        self.list_subpages().first().copied()
     }
 }
 
@@ -113,4 +124,9 @@ pub enum MainUiEvent {
     NumberpadAdjust {
         delta: i32,
     },
+    /// Show a sub-page (tab) and switch to the page that owns it
+    /// ([`AppSubPage::page`]). The UI also emits it when a tab is clicked,
+    /// then without switching the main page. Appended to preserve the bincode
+    /// indices of existing variants.
+    NavigateSubPage(AppSubPage),
 }

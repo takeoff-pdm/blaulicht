@@ -4,28 +4,134 @@ use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-#[derive(Debug, Clone, Copy, PartialEq, EnumIter, Serialize, Deserialize, Encode, Decode)]
+use crate::AppPage;
+
+/// A tab inside an [`AppPage`], shown in the page's sub-page tab bar.
+///
+/// Every variant belongs to exactly one page ([`AppSubPage::page`]) and must be
+/// listed, in tab order, by that page's [`AppPage::list_subpages`]; the first
+/// entry there is the page's default tab.
+///
+/// To add sub-pages to a page:
+/// 1. Append variants named `<Page>_<Tab>` **at the end** of this enum. The
+///    bincode index is part of the plugin ABI, so bump `PLUGIN_ABI_VERSION`.
+/// 2. Add them to [`AppSubPage::page`] and [`AppSubPage::label`] (the compiler
+///    points at both).
+/// 3. List them in [`AppPage::list_subpages`].
+///
+/// Page code that matches on its own tabs needs a `_` arm, so that adding
+/// another page's variants doesn't break it.
+///
+/// Variant names are also the JSON names used by `NavigateSubPage` events, e.g.
+/// `{"MainUi":{"NavigateSubPage":"System_Dmx"}}`.
+#[allow(non_camel_case_types)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize, Encode, Decode,
+)]
 pub enum AppSubPage {
-    // System Page
+    // System page. `System_System` is the "General" tab.
     System_System,
     System_Dmx,
     System_ArtNet,
     System_Midi,
     System_Serial,
     System_Plugins,
+    System_Screens,
+}
+
+impl AppSubPage {
+    /// The page this sub-page is a tab of.
+    pub const fn page(self) -> AppPage {
+        match self {
+            AppSubPage::System_System
+            | AppSubPage::System_Dmx
+            | AppSubPage::System_ArtNet
+            | AppSubPage::System_Midi
+            | AppSubPage::System_Serial
+            | AppSubPage::System_Plugins
+            | AppSubPage::System_Screens => AppPage::System,
+        }
+    }
+
+    /// Tab label.
+    pub const fn label(self) -> &'static str {
+        match self {
+            AppSubPage::System_System => "General",
+            AppSubPage::System_Dmx => "DMX",
+            AppSubPage::System_ArtNet => "Art-Net",
+            AppSubPage::System_Midi => "MIDI",
+            AppSubPage::System_Serial => "Serial",
+            AppSubPage::System_Plugins => "Plugins",
+            AppSubPage::System_Screens => "Screens",
+        }
+    }
 }
 
 impl Display for AppSubPage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let str = match self {
-            AppSubPage::System_System => "System",
-            AppSubPage::System_Dmx => "Dmx",
-            AppSubPage::System_ArtNet => "Artnet",
-            AppSubPage::System_Midi => "Midi",
-            AppSubPage::System_Serial => "Serial",
-            AppSubPage::System_Plugins => "Plugins",
-        };
+        f.write_str(self.label())
+    }
+}
 
-        write!(f, "{str}")
+#[cfg(test)]
+mod tests {
+    use super::AppSubPage;
+    use crate::{AppPage, MainUiEvent};
+    use bincode::config;
+    use strum::IntoEnumIterator;
+
+    #[test]
+    fn every_subpage_is_listed_exactly_once_by_its_page() {
+        for subpage in AppSubPage::iter() {
+            let listed_by: Vec<AppPage> = AppPage::iter()
+                .filter(|page| page.list_subpages().contains(&subpage))
+                .collect();
+            assert_eq!(listed_by, vec![subpage.page()], "{subpage:?}");
+            let count = subpage
+                .page()
+                .list_subpages()
+                .iter()
+                .filter(|listed| **listed == subpage)
+                .count();
+            assert_eq!(count, 1, "{subpage:?} listed twice");
+        }
+    }
+
+    #[test]
+    fn default_subpage_is_the_first_listed() {
+        assert_eq!(
+            AppPage::System.default_subpage(),
+            Some(AppSubPage::System_System)
+        );
+        assert_eq!(AppPage::Logs.default_subpage(), None);
+    }
+
+    #[test]
+    fn existing_bincode_indices_are_stable() {
+        let index =
+            |subpage: AppSubPage| bincode::encode_to_vec(subpage, config::standard()).unwrap();
+        assert_eq!(index(AppSubPage::System_System), [0]);
+        assert_eq!(index(AppSubPage::System_Dmx), [1]);
+        assert_eq!(index(AppSubPage::System_ArtNet), [2]);
+        assert_eq!(index(AppSubPage::System_Midi), [3]);
+        assert_eq!(index(AppSubPage::System_Serial), [4]);
+        assert_eq!(index(AppSubPage::System_Plugins), [5]);
+        assert_eq!(index(AppSubPage::System_Screens), [6]);
+
+        let event = MainUiEvent::NavigateSubPage(AppSubPage::System_Dmx);
+        assert_eq!(
+            bincode::encode_to_vec(event, config::standard()).unwrap(),
+            [7, 1]
+        );
+    }
+
+    #[test]
+    fn navigate_subpage_json_matches_the_documented_blctl_form() {
+        let event: MainUiEvent =
+            serde_json::from_str(r#"{"NavigateSubPage":"System_Plugins"}"#).unwrap();
+        assert!(matches!(
+            event,
+            MainUiEvent::NavigateSubPage(AppSubPage::System_Plugins)
+        ));
     }
 }

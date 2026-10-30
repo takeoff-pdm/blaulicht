@@ -1,14 +1,15 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
-        pages::system::SystemTab,
         BlaulichtApp, GuardedLifecycleAction, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
     state::{PluginOpenState, ScreenId, NUM_DMX_UNIVERSES},
 };
-use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
+use blaulicht_shared::{
+    AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
+};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
 use std::{mem, path::Path, process::Command, time::Duration};
 
@@ -79,49 +80,19 @@ impl BlaulichtApp {
         self.render_serial_dialog(ctx);
         self.render_screens_dialog(ctx);
 
-        let available_size = ui.available_size().max(egui::vec2(1.0, 1.0));
-        let (page_rect, _) = ui.allocate_exact_size(available_size, egui::Sense::hover());
-        let tab_height = system_tab_bar_height(page_rect.width()).min(page_rect.height());
-        let tab_rect = egui::Rect::from_min_max(
-            egui::pos2(page_rect.min.x, page_rect.max.y - tab_height),
-            page_rect.max,
-        );
-        let content_rect =
-            egui::Rect::from_min_max(page_rect.min, egui::pos2(page_rect.max.x, tab_rect.min.y));
-        let mut tab_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(tab_rect)
-                .layout(egui::Layout::top_down(egui::Align::Min)),
-        );
-        tab_ui.set_clip_rect(tab_rect);
-        // Draw the divider manually so its height matches what
-        // `system_tab_bar_height` reserves (a plain `separator()` adds style
-        // dependent padding and would push the buttons out of the clip rect).
-        tab_ui.spacing_mut().item_spacing.y = SYSTEM_TAB_GAP;
-        let (divider_rect, _) = tab_ui.allocate_exact_size(
-            egui::vec2(tab_ui.available_width(), SYSTEM_TAB_DIVIDER_HEIGHT),
-            egui::Sense::hover(),
-        );
-        tab_ui.painter().hline(
-            divider_rect.x_range(),
-            divider_rect.center().y,
-            tab_ui.visuals().widgets.noninteractive.bg_stroke,
-        );
-        self.render_system_tab_bar(&mut tab_ui, render_context);
+        self.subpage_ui(ui, AppPage::System, |app, ui, subpage| match subpage {
+            AppSubPage::System_System => app.render_system_general(ui, ctx, render_context),
+            other => app.render_system_tab_content(ui, screen_id, other),
+        });
+    }
 
-        let mut content_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(content_rect)
-                .layout(egui::Layout::top_down(egui::Align::Min)),
-        );
-        content_ui.set_clip_rect(content_rect);
-        let ui = &mut content_ui;
-
-        if self.system_ui_state.active_tab != SystemTab::General {
-            self.render_system_tab_content(ui, screen_id);
-            return;
-        }
-
+    /// The General tab: showfile, theme, lifecycle and health overview.
+    fn render_system_general(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        render_context: crate::app::page::PageRenderContext,
+    ) {
         let button_size = ButtonSize::Medium.with_width(110.0);
         const HEALTH_COLUMN_WIDTH: f32 = 136.0;
         let narrow = render_context.is_dynamic()
@@ -311,31 +282,12 @@ impl BlaulichtApp {
         });
     }
 
-    fn render_system_tab_bar(
+    fn render_system_tab_content(
         &mut self,
         ui: &mut egui::Ui,
-        _render_context: crate::app::page::PageRenderContext,
+        screen_id: ScreenId,
+        tab: AppSubPage,
     ) {
-        let available = ui.available_width();
-        let columns = system_tab_bar_columns(available);
-        let tab_width = ((available - SYSTEM_TAB_GAP * columns.saturating_sub(1) as f32)
-            / columns as f32)
-            .max(SYSTEM_TAB_MIN_WIDTH);
-
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(SYSTEM_TAB_GAP, SYSTEM_TAB_GAP);
-            for tab in SystemTab::ALL {
-                if components::Button::new(tab.label(), ButtonSize::Medium.with_width(tab_width))
-                    .ui(ui, self.system_ui_state.active_tab == tab)
-                {
-                    self.system_ui_state.active_tab = tab;
-                }
-            }
-        });
-    }
-
-    fn render_system_tab_content(&mut self, ui: &mut egui::Ui, screen_id: ScreenId) {
-        let tab = self.system_ui_state.active_tab;
         ui.heading(tab.label());
         ui.add_space(8.0);
 
@@ -348,18 +300,17 @@ impl BlaulichtApp {
             .auto_shrink([false, false])
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
             .show(ui, |ui| match tab {
-                SystemTab::General => {}
-                SystemTab::Dmx => {
+                AppSubPage::System_Dmx => {
                     let health = self.data.state.health_data.read().unwrap();
                     render_dmx_universe_rows(ui, &health.dmx_universes_healthy);
                 }
-                SystemTab::ArtNet => {
+                AppSubPage::System_ArtNet => {
                     self.render_artnet_management(ui);
                 }
-                SystemTab::Plugins => {
+                AppSubPage::System_Plugins => {
                     self.render_plugin_management(ui, screen_id);
                 }
-                SystemTab::Midi => {
+                AppSubPage::System_Midi => {
                     let health = self.data.state.health_data.read().unwrap();
                     if health.midi_health.available_devices.is_empty() {
                         ui.label("No MIDI inputs detected.");
@@ -374,7 +325,7 @@ impl BlaulichtApp {
                         ui.label(format!("{device}  {status}"));
                     }
                 }
-                SystemTab::Serial => {
+                AppSubPage::System_Serial => {
                     let health = self.data.state.health_data.read().unwrap();
                     if health.serial_health.devices.is_empty() {
                         ui.label("No serial devices opened by Blaulicht.");
@@ -385,7 +336,7 @@ impl BlaulichtApp {
                         ui.label(format!("{name}  {state:?}"));
                     }
                 }
-                SystemTab::Screens => {
+                AppSubPage::System_Screens => {
                     if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
                         self.add_external_screen();
                     }
@@ -411,6 +362,9 @@ impl BlaulichtApp {
                         self.remove_external_screen(index);
                     }
                 }
+                // General is rendered by `render_system_general`; other
+                // pages' tabs never reach this page.
+                _ => {}
             });
     }
 
@@ -557,41 +511,10 @@ fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth
     }
 }
 
-const SYSTEM_TAB_GAP: f32 = 2.0;
-const SYSTEM_TAB_MIN_WIDTH: f32 = 86.0;
-const SYSTEM_TAB_DIVIDER_HEIGHT: f32 = 1.0;
-
-/// Number of tab buttons that fit into one row at the given width.
-fn system_tab_bar_columns(width: f32) -> usize {
-    (((width.max(SYSTEM_TAB_MIN_WIDTH) + SYSTEM_TAB_GAP) / (SYSTEM_TAB_MIN_WIDTH + SYSTEM_TAB_GAP))
-        .floor() as usize)
-        .clamp(1, SystemTab::ALL.len())
-}
-
-/// Exact height of the bottom tab bar: divider, gap below it, and the wrapped
-/// button rows. Must stay in sync with how `system_ui` draws the bar.
-fn system_tab_bar_height(width: f32) -> f32 {
-    let rows = SystemTab::ALL.len().div_ceil(system_tab_bar_columns(width));
-    SYSTEM_TAB_DIVIDER_HEIGHT
-        + SYSTEM_TAB_GAP
-        + rows as f32 * ButtonSize::Medium.dim().0.y
-        + rows.saturating_sub(1) as f32 * SYSTEM_TAB_GAP
-}
-
 #[cfg(test)]
 mod system_layout_tests {
-    use super::{render_dmx_universe_rows, system_tab_bar_height};
+    use super::render_dmx_universe_rows;
     use crate::state::{DmxHealth, NUM_DMX_UNIVERSES};
-
-    #[test]
-    fn system_tab_bar_reserves_one_or_more_content_sized_rows() {
-        let wide = system_tab_bar_height(800.0);
-        let narrow = system_tab_bar_height(280.0);
-
-        assert!(wide > 20.0 && wide < 60.0);
-        assert!(narrow > wide);
-        assert!(narrow < 160.0);
-    }
 
     #[test]
     fn ten_dmx_universes_scroll_vertically_without_horizontal_overflow() {

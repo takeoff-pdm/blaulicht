@@ -16,7 +16,8 @@ use strum::EnumIter;
 // v13: ephemeral BLANK base scene + EngineState.live_mode; View lost base_scene.
 // v14: folders (EngineState.folders, `folder` on FixtureGroup/Scene/Palette) and
 //      the folder ControlEvents.
-pub const PLUGIN_ABI_VERSION: u32 = 14;
+// v15: MainUiEvent gained `NavigateSubPage`; AppSubPage gained `System_Screens`.
+pub const PLUGIN_ABI_VERSION: u32 = 15;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
