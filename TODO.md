@@ -49,7 +49,7 @@ Target navigation (agreed 2026-09-27):
 | 016 | [Folder hierarchy data model for groups, scenes and palettes](TICKETS/016-folders-data-model.planned.md) | planned | — |
 | 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.planned.md) | planned | 016, 006, 030 |
 | 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017, 030 |
-| 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.planned.md) | planned | — |
+| 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.doing.md) | doing | — |
 
 ### E5 — DMX overrides
 
