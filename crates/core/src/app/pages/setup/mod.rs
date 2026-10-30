@@ -8,11 +8,15 @@
 //! `blaulicht_shared::AppSubPage`), add a module here and a match arm in
 //! [`BlaulichtApp::setup_ui`].
 
+mod animations;
 mod fixtures;
 mod groups;
+mod palettes;
 mod scenes;
 
+pub use animations::AnimationUI;
 pub use fixtures::{AddFixtureIncrementAxis, AddFixtureKind};
+pub use palettes::PaletteUI;
 
 use crate::app::{page::PageRenderContext, BlaulichtApp};
 use blaulicht_shared::{AppPage, AppSubPage};
