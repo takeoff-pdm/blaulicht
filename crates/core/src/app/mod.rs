@@ -304,6 +304,8 @@ pub struct BlaulichtApp {
     setup_groups_ui: components::SetupFolderUi,
     /// Setup › Scenes: selected folder and the open folder dialog.
     setup_scenes_ui: components::SetupFolderUi,
+    /// Setup › Palettes: selected folder and the open folder dialog.
+    setup_palettes_ui: components::SetupFolderUi,
 
     dmx_simulator: DmxSimulator,
 
@@ -580,6 +582,7 @@ impl BlaulichtApp {
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             setup_groups_ui: components::SetupFolderUi::default(),
             setup_scenes_ui: components::SetupFolderUi::default(),
+            setup_palettes_ui: components::SetupFolderUi::default(),
             view_ui_state: ViewUI::default(),
             view_perf_ui_state: ViewPerfUI::default(),
             animation_ui_state: AnimationUI::default(),
