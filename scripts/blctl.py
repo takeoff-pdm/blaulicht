@@ -13,6 +13,8 @@ Examples:
   blctl.py beat --watch
   blctl.py state scenes.1.sink.master_speed
   blctl.py event '{"SetSceneFocus": 1}'
+  blctl.py event '{"MainUi":{"NavigatePage":"Audio"}}'
+  blctl.py event '{"MainUi":{"NavigateSubPage":"System_Plugins"}}'
   blctl.py override 0 1 255
   blctl.py clear 0 1
   blctl.py tap
