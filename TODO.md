@@ -30,7 +30,7 @@ Target navigation (agreed 2026-09-27):
 | 007 | [Fixture setup UX: add-fixture affordance, default names, bulk rename](TICKETS/007-fixture-setup-ux.planned.md) | planned | 006 |
 | 008 | [Fixture identify wizard](TICKETS/008-identify-wizard.planned.md) | planned | 006 |
 | 009 | [View preparation into Setup › Views, with a Test button](TICKETS/009-views-into-setup-with-test.planned.md) | planned | 006, 020 |
-| 010 | [Animation template editor and Palettes page become Setup sub-pages](TICKETS/010-editors-into-setup.planned.md) | planned | 006, 012 |
+| 010 | [Animation template editor and Palettes page become Setup sub-pages](TICKETS/010-editors-into-setup.doing.md) | doing | 006, 012 |
 
 ### E3 — Programmer
 
