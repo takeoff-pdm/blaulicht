@@ -856,8 +856,7 @@ impl AnimationEditState {
                 // against the window too.
                 let screen = ui.ctx().screen_rect();
                 let limit = self.wasm_ui_panel_max.min(screen.max);
-                let height =
-                    (limit.y - cursor.y - APPLY_ROW_HEIGHT).max(MIN_WASM_UI_HEIGHT);
+                let height = (limit.y - cursor.y - APPLY_ROW_HEIGHT).max(MIN_WASM_UI_HEIGHT);
                 let width = (limit.x - cursor.x - PANEL_MARGIN)
                     .min(ui.available_width())
                     .max(MIN_WASM_UI_WIDTH);
