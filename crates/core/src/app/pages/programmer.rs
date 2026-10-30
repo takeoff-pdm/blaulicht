@@ -5,7 +5,7 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, Knob, SpeedKnob},
-        pages::AnimationEditState,
+        pages::{AnimationEditState, AnimationPresetsUi},
         BlaulichtApp,
     },
     dmx::EngineState,
@@ -32,6 +32,8 @@ pub struct ProgrammerUi {
     pub scene_changes_dialog_open: bool,
     /// The "Undo all scene changes?" confirmation.
     pub undo_all_changes_confirm_open: bool,
+    /// The Animations dialog: presets and templates for the selection.
+    pub animation_presets: AnimationPresetsUi,
 }
 
 impl BlaulichtApp {
@@ -72,85 +74,6 @@ impl BlaulichtApp {
         });
     }
 
-    pub fn render_add_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
-        if self.add_animations_dialog_open {
-            const HEIGHT: f32 = 430.0;
-            const WIDTH: f32 = 500.0;
-
-            Dialog::new("Add Scene Animation".to_string(), egui::vec2(WIDTH, HEIGHT))
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    // let scene = dmx_engine.curr_scene();
-                    ui.separator();
-
-                    ui.set_min_height(HEIGHT - 100.0);
-
-                    // let mut selected_anim: Option<u8> = None;
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.set_min_height(HEIGHT - 100.0);
-                        // Add Animation Selection: Prettier fixed-height boxes
-                        ui.label("Add Animation:");
-                        ui.add_space(4.0);
-                        egui::ScrollArea::vertical()
-                            .max_height(HEIGHT - 100.0)
-                            .show(ui, |ui| {
-                                for (anim_id, anim) in &dmx_engine.0.animation_templates {
-                                    if components::button(
-                                        ui,
-                                        self.add_selected_animation == Some(*anim_id),
-                                        &format!("#{} {}", anim_id, anim.spec.name),
-                                        ButtonSize::Medium.with_width(300.0),
-                                    ) {
-                                        self.add_selected_animation = Some(*anim_id);
-                                    }
-                                    ui.add_space(4.0);
-                                }
-                            });
-                    });
-
-                    ui.separator();
-
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(300.0, 20.0),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.set_width(300.0);
-
-                            if components::button(
-                                ui,
-                                false,
-                                "Cancel",
-                                ButtonSize::Medium.with_width(140.0),
-                            ) {
-                                self.add_animations_dialog_open = false;
-                                self.add_selected_animation = None;
-                            }
-                            ui.add_space(4.0);
-
-                            if components::button(
-                                ui,
-                                true,
-                                "Add",
-                                ButtonSize::Medium.with_width(140.0),
-                            ) {
-                                if let Some(anim_id) = self.add_selected_animation {
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::AddAnimation(anim_id),
-                                        ));
-                                    self.add_animations_dialog_open = false;
-                                    self.add_selected_animation = None;
-                                }
-                            }
-                        },
-                    );
-                });
-        }
-    }
-
     pub fn programmer_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -172,7 +95,7 @@ impl BlaulichtApp {
         //
         self.render_dmx_simulation_dialog(ctx, groups);
         self.render_scene_animations_dialog(ctx, &dmx_engine);
-        self.render_add_animations_dialog(ctx, &dmx_engine);
+        self.render_animation_presets_dialog(ctx, &dmx_engine);
         self.render_palette_assignment_dialog(ctx, &dmx_engine);
         if self.programmer_ui_state.scene_changes_dialog_open {
             // Renders the Undo all confirmation itself, stacked on top.
@@ -221,12 +144,15 @@ impl BlaulichtApp {
 
                             if components::button(
                                 ui,
-                                self.add_animations_dialog_open,
-                                "Add Animations",
+                                self.programmer_ui_state.animation_presets.open,
+                                &format!(
+                                    "Animations ({})",
+                                    Self::selection_animation_count(&dmx_engine)
+                                ),
                                 button_size,
                             ) {
-                                self.add_animations_dialog_open =
-                                    !self.add_animations_dialog_open;
+                                self.programmer_ui_state.animation_presets.open =
+                                    !self.programmer_ui_state.animation_presets.open;
                             }
 
                             self.clear_selection_button(
