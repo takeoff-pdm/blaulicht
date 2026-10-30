@@ -17,7 +17,9 @@ use strum::EnumIter;
 // v14: folders (EngineState.folders, `folder` on FixtureGroup/Scene/Palette) and
 //      the folder ControlEvents.
 // v15: MainUiEvent gained `NavigateSubPage`; AppSubPage gained `System_Screens`.
-pub const PLUGIN_ABI_VERSION: u32 = 15;
+// v16: AppPage::FixturesSetup renamed to `Setup` (same index); AppSubPage gained
+//      `Setup_Fixtures`, `Setup_Groups` and `Setup_Scenes`.
+pub const PLUGIN_ABI_VERSION: u32 = 16;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

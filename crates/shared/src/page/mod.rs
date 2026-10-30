@@ -12,7 +12,11 @@ pub enum AppPage {
     Logs,
     System,
     Audio,
-    FixturesSetup,
+    /// Fixtures, groups and scenes setup. Named `FixturesSetup` before it got
+    /// sub-pages; the alias keeps old showfile dock layouts, plugin state and
+    /// blctl commands working.
+    #[serde(alias = "FixturesSetup")]
+    Setup,
     View,
     ViewPerformance,
     FixturesPerformance,
@@ -28,7 +32,7 @@ impl AppPage {
             AppPage::Logs => "Logs",
             AppPage::System => "Sys",
             AppPage::Audio => "Audio",
-            AppPage::FixturesSetup => "F. Setup",
+            AppPage::Setup => "Setup",
             AppPage::View => "Views",
             AppPage::ViewPerformance => "V. Perf",
             AppPage::FixturesPerformance => "F. Perf",
@@ -55,7 +59,11 @@ impl AppPage {
                 AppSubPage::System_Screens,
             ],
             AppPage::Audio => &[],
-            AppPage::FixturesSetup => &[],
+            AppPage::Setup => &[
+                AppSubPage::Setup_Fixtures,
+                AppSubPage::Setup_Groups,
+                AppSubPage::Setup_Scenes,
+            ],
             AppPage::View => &[],
             AppPage::ViewPerformance => &[],
             AppPage::FixturesPerformance => &[],

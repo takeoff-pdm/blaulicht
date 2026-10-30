@@ -37,6 +37,10 @@ pub enum AppSubPage {
     System_Serial,
     System_Plugins,
     System_Screens,
+    // Setup page.
+    Setup_Fixtures,
+    Setup_Groups,
+    Setup_Scenes,
 }
 
 impl AppSubPage {
@@ -50,6 +54,9 @@ impl AppSubPage {
             | AppSubPage::System_Serial
             | AppSubPage::System_Plugins
             | AppSubPage::System_Screens => AppPage::System,
+            AppSubPage::Setup_Fixtures | AppSubPage::Setup_Groups | AppSubPage::Setup_Scenes => {
+                AppPage::Setup
+            }
         }
     }
 
@@ -63,6 +70,9 @@ impl AppSubPage {
             AppSubPage::System_Serial => "Serial",
             AppSubPage::System_Plugins => "Plugins",
             AppSubPage::System_Screens => "Screens",
+            AppSubPage::Setup_Fixtures => "Fixtures",
+            AppSubPage::Setup_Groups => "Groups",
+            AppSubPage::Setup_Scenes => "Scenes",
         }
     }
 }
@@ -104,6 +114,10 @@ mod tests {
             Some(AppSubPage::System_System)
         );
         assert_eq!(AppPage::Logs.default_subpage(), None);
+        assert_eq!(
+            AppPage::Setup.default_subpage(),
+            Some(AppSubPage::Setup_Fixtures)
+        );
     }
 
     #[test]
@@ -117,6 +131,9 @@ mod tests {
         assert_eq!(index(AppSubPage::System_Serial), [4]);
         assert_eq!(index(AppSubPage::System_Plugins), [5]);
         assert_eq!(index(AppSubPage::System_Screens), [6]);
+        assert_eq!(index(AppSubPage::Setup_Fixtures), [7]);
+        assert_eq!(index(AppSubPage::Setup_Groups), [8]);
+        assert_eq!(index(AppSubPage::Setup_Scenes), [9]);
 
         let event = MainUiEvent::NavigateSubPage(AppSubPage::System_Dmx);
         assert_eq!(
@@ -133,5 +150,28 @@ mod tests {
             event,
             MainUiEvent::NavigateSubPage(AppSubPage::System_Plugins)
         ));
+        let event: MainUiEvent =
+            serde_json::from_str(r#"{"NavigateSubPage":"Setup_Groups"}"#).unwrap();
+        assert!(matches!(
+            event,
+            MainUiEvent::NavigateSubPage(AppSubPage::Setup_Groups)
+        ));
+    }
+
+    #[test]
+    fn setup_keeps_the_fixtures_setup_index_and_name() {
+        // `Setup` took over `FixturesSetup`'s slot: same bincode index, and the
+        // old JSON name still parses (showfile dock layouts, plugin state, blctl).
+        assert_eq!(
+            bincode::encode_to_vec(AppPage::Setup, config::standard()).unwrap(),
+            [3]
+        );
+        let old: AppPage = serde_json::from_str(r#""FixturesSetup""#).unwrap();
+        assert_eq!(old, AppPage::Setup);
+        let new: AppPage = serde_json::from_str(r#""Setup""#).unwrap();
+        assert_eq!(new, AppPage::Setup);
+        let event: MainUiEvent =
+            serde_json::from_str(r#"{"NavigatePage":"FixturesSetup"}"#).unwrap();
+        assert!(matches!(event, MainUiEvent::NavigatePage(AppPage::Setup)));
     }
 }

@@ -36,7 +36,7 @@ Two equivalent interfaces:
 7. When done: `scripts/blenv stop`, or `scripts/blenv down` (the build cache is kept;
    `--volumes` removes it too).
 
-Shortcuts: `scripts/blenv nav <Page>` (Logs System Audio FixturesSetup View
+Shortcuts: `scripts/blenv nav <Page>` (Logs System Audio Setup View
 ViewPerformance FixturesPerformance Animations Palettes SceneGraph Visualizer),
 `scripts/blenv plugin-ui <id>` (ids: 0 inspector, 1 julia, 2 audio reactor, 3 chaos,
 4 sample egui), `scripts/blenv windows` (titles for `--window`), `scripts/blenv vnc` (lets

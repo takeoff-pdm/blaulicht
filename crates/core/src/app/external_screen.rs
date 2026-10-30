@@ -47,7 +47,7 @@ impl Pane {
             PaneKind::Page(AppPage::Logs) => "Logs".to_string(),
             PaneKind::Page(AppPage::System) => "System".to_string(),
             PaneKind::Page(AppPage::Audio) => "Audio".to_string(),
-            PaneKind::Page(AppPage::FixturesSetup) => "Fixtures Setup".to_string(),
+            PaneKind::Page(AppPage::Setup) => "Setup".to_string(),
             PaneKind::Page(AppPage::View) => "View".to_string(),
             PaneKind::Page(AppPage::ViewPerformance) => "View Performance".to_string(),
             PaneKind::Page(AppPage::FixturesPerformance) => "Fixtures Performance".to_string(),
