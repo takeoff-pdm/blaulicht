@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "blaulicht-env": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--script", "tools/blenv/mcp_server.py"]
+    }
+  }
+}
