@@ -8,13 +8,11 @@ use crate::{
     state::{DmxBuffer, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
-    fixture::state::{FixtureState, ResolvedFixtureState},
+    fixture::state::{FixtureGroup, FixtureState, ResolvedFixtureState},
     palette::Palette,
     ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
-use egui::{
-    Align2, Color32, Context, FontId, Frame, Key, Margin, RichText, TextBuffer, Vec2, Widget,
-};
+use egui::{Align2, Color32, Context, FontId, Frame, Margin, RichText, Vec2, Widget};
 use map_range::MapRange;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -23,6 +21,43 @@ use std::{
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
+
+/// One group button as used by the group lists (Setup and FixturesPerformance):
+/// name on top, fixture count and id below. Returns whether it was clicked.
+pub fn group_tile(
+    ui: &mut egui::Ui,
+    group_id: u8,
+    group: &FixtureGroup,
+    is_selected: bool,
+) -> bool {
+    components::clickable(
+        ui,
+        is_selected,
+        ButtonColor::Blue.into(),
+        ButtonSize::Large.with_height(50.0),
+        |ui, rect, fg_color| {
+            let painter = ui.painter();
+            let fixture_count = group.fixtures.len();
+            let mut name = group.name.clone();
+            name.truncate(10);
+
+            painter.text(
+                rect.left_top() + egui::vec2(12.0, 8.0),
+                egui::Align2::LEFT_TOP,
+                &name,
+                egui::FontId::proportional(16.0),
+                fg_color,
+            );
+            painter.text(
+                rect.left_bottom() - egui::vec2(-12.0, 8.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{} FX | #{}", fixture_count, group_id),
+                egui::FontId::proportional(12.0),
+                fg_color,
+            );
+        },
+    )
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct DmxSimulator {
@@ -384,196 +419,6 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn render_clone_scene_dialog(&mut self, ctx: &Context) {
-        if !self.clone_scene_dialog_open {
-            return;
-        }
-
-        const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-        const SPACING: f32 = 16.0;
-
-        let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-
-        Dialog::new("Clone Scene".to_string(), size)
-            .with_backdrop()
-            .show(ctx, |ui| {
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        components::TextInput::new(180.0)
-                            .with_hint_text("New Name")
-                            .ui(ui, &mut self.new_scene_name);
-                    });
-
-                ui.add_space(SPACING);
-
-                let mut button_pressed = false;
-
-                ui.horizontal(|ui| {
-                    if components::button(ui, false, "CANCEL", BUTTON_SIZE) {
-                        self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                        self.clone_scene_dialog_open = false;
-                    }
-                    button_pressed = components::button(ui, true, "OK", BUTTON_SIZE);
-                });
-
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        button_pressed = true;
-                    }
-                });
-
-                if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.clone_scene(self.new_scene_name.take());
-                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                    self.clone_scene_dialog_open = false;
-                }
-            });
-    }
-
-    pub fn render_add_scene_dialog(&mut self, ctx: &Context) {
-        if !self.new_scene_dialog_open {
-            return;
-        }
-
-        const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-        const SPACING: f32 = 16.0;
-
-        let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-
-        Dialog::new("Create Scene".to_string(), size)
-            .with_backdrop()
-            .show(ctx, |ui| {
-                Frame::new()
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        components::TextInput::new(180.0)
-                            .with_hint_text("Scene Name")
-                            .ui(ui, &mut self.new_scene_name);
-                    });
-
-                ui.add_space(SPACING);
-
-                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
-                ctx.input(|input| {
-                    if input.key_pressed(Key::Enter) {
-                        button_pressed = true;
-                    }
-                });
-
-                if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.new_scene(self.new_scene_name.take());
-                    self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
-                    self.new_scene_dialog_open = false;
-                }
-            });
-    }
-
-    pub fn render_rename_scene_dialog(&mut self, ctx: &Context) {
-        if self.rename_scene_dialog_open {
-            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-            const SPACING: f32 = 16.0;
-            let size = egui::vec2(200.0, BUTTON_SIZE.dim().0.y * 2.0 + SPACING);
-
-            // if self.rename_scene_name.is_empty() {
-            //     let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-            //     if let Some(scene) = dmx_engine.0.scenes.get(&dmx_engine.0.current_scene_focus) {
-            //         self.rename_scene_name = scene.name.clone();
-            //     }
-            // }
-
-            Dialog::new("Rename Scene".to_string(), size)
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(10, 6))
-                        .show(ui, |ui| {
-                            components::TextInput::new(180.0)
-                                .with_hint_text("New Name")
-                                .ui(ui, &mut self.rename_scene_name);
-                        });
-
-                    ui.add_space(SPACING);
-
-                    let mut confirm_pressed = false;
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "CANCEL", BUTTON_SIZE) {
-                            self.rename_scene_dialog_open = false;
-                            self.rename_scene_name.clear();
-                        }
-
-                        if components::button(ui, true, "OK", BUTTON_SIZE) {
-                            confirm_pressed = true;
-                        }
-                    });
-
-                    ctx.input(|input| {
-                        if input.key_pressed(Key::Enter) {
-                            confirm_pressed = true;
-                        }
-                    });
-
-                    if confirm_pressed {
-                        let trimmed = self.rename_scene_name.trim();
-
-                        if !trimmed.is_empty() {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                            let scene_id = dmx_engine.0.current_scene_focus;
-
-                            if dmx_engine.rename_scene(scene_id, trimmed.to_string()) {
-                                self.rename_scene_name.clear();
-                                self.rename_scene_dialog_open = false;
-                            }
-                        }
-                    }
-                });
-        }
-    }
-
-    pub fn render_delete_scene_dialog(&mut self, ctx: &Context) {
-        if self.delete_scene_dialog_open {
-            const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
-            const WIDTH: f32 = 240.0;
-            const HEIGHT: f32 = 130.0;
-
-            let can_delete = {
-                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-                dmx_engine.0.scenes.len() > 1
-            };
-
-            Dialog::new("Delete Scene".to_string(), egui::vec2(WIDTH, HEIGHT))
-                .with_backdrop()
-                .show(ctx, |ui| {
-                    ui.heading(RichText::new("Delete this scene?").strong());
-                    ui.add_space(12.0);
-
-                    if !can_delete {
-                        ui.label("At least one scene must remain.");
-                        ui.add_space(12.0);
-                    }
-
-                    ui.horizontal(|ui| {
-                        if can_delete {
-                            if components::button(ui, false, "Confirm", BUTTON_SIZE) {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                let scene_id = dmx_engine.0.current_scene_focus;
-
-                                if dmx_engine.delete_scene(scene_id) {
-                                    self.delete_scene_dialog_open = false;
-                                }
-                            }
-                        }
-
-                        if components::button(ui, true, "Cancel", BUTTON_SIZE) {
-                            self.delete_scene_dialog_open = false;
-                        }
-                    });
-                });
-        }
-    }
-
     pub fn group_selection(
         &mut self,
         groups: &EngineGroups,
@@ -605,33 +450,7 @@ impl BlaulichtApp {
                             for (group_id, group) in groups.iter() {
                                 let is_selected = selected_group == Some(*group_id);
 
-                                if components::clickable(
-                                    ui,
-                                    is_selected,
-                                    ButtonColor::Blue.into(),
-                                    ButtonSize::Large.with_height(50.0),
-                                    |ui, rect, fg_color| {
-                                        let painter = ui.painter();
-                                        let fixture_count = group.fixtures.len();
-                                        let mut name = group.name.clone();
-                                        name.truncate(10);
-
-                                        painter.text(
-                                            rect.left_top() + egui::vec2(12.0, 8.0),
-                                            egui::Align2::LEFT_TOP,
-                                            &name,
-                                            egui::FontId::proportional(16.0),
-                                            fg_color,
-                                        );
-                                        painter.text(
-                                            rect.left_bottom() - egui::vec2(-12.0, 8.0),
-                                            egui::Align2::LEFT_BOTTOM,
-                                            format!("{} FX | #{}", fixture_count, group_id),
-                                            egui::FontId::proportional(12.0),
-                                            fg_color,
-                                        );
-                                    },
-                                ) {
+                                if group_tile(ui, *group_id, group, is_selected) {
                                     // Toggle group selection
                                     if !is_selected {
                                         group_result = *group_id;
@@ -781,35 +600,7 @@ impl BlaulichtApp {
                             for (group_id, group) in groups.iter() {
                                 let is_selected = selection.group_ids.contains(group_id);
 
-                                let _name = format!("GRP {}", group_id);
-
-                                if components::clickable(
-                                    ui,
-                                    is_selected,
-                                    ButtonColor::Blue.into(),
-                                    ButtonSize::Large.with_height(50.0),
-                                    |ui, rect, fg_color| {
-                                        let painter = ui.painter();
-                                        let fixture_count = group.fixtures.len();
-                                        let mut name = group.name.clone();
-                                        name.truncate(10);
-
-                                        painter.text(
-                                            rect.left_top() + egui::vec2(12.0, 8.0),
-                                            egui::Align2::LEFT_TOP,
-                                            &name,
-                                            egui::FontId::proportional(16.0),
-                                            fg_color,
-                                        );
-                                        painter.text(
-                                            rect.left_bottom() - egui::vec2(-12.0, 8.0),
-                                            egui::Align2::LEFT_BOTTOM,
-                                            format!("{} FX | #{}", fixture_count, group_id),
-                                            egui::FontId::proportional(12.0),
-                                            fg_color,
-                                        );
-                                    },
-                                ) {
+                                if group_tile(ui, *group_id, group, is_selected) {
                                     // Toggle group selection
                                     let msg = if is_selected {
                                         ControlEvent::DeSelectGroup(*group_id)

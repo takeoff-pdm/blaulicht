@@ -1,9 +1,9 @@
 mod animations;
 mod audio;
 mod fixtures_perf;
-mod fixtures_setup;
 mod palettes;
 mod scene_graph;
+mod setup;
 mod system;
 mod view;
 mod view_perf;
@@ -11,9 +11,9 @@ mod visualizer;
 
 pub use animations::*;
 pub use fixtures_perf::*;
-pub use fixtures_setup::*;
 pub use palettes::*;
 pub use scene_graph::*;
+pub use setup::*;
 pub use system::*;
 pub use view::*;
 pub use view_perf::*;

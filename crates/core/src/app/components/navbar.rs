@@ -20,7 +20,7 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
         AppPage::Logs => egui_phosphor::regular::TERMINAL_WINDOW,
         AppPage::System => egui_phosphor::regular::GEAR,
         AppPage::Audio => egui_phosphor::regular::WAVEFORM,
-        AppPage::FixturesSetup => egui_phosphor::regular::WRENCH,
+        AppPage::Setup => egui_phosphor::regular::WRENCH,
         AppPage::View => egui_phosphor::regular::STACK,
         AppPage::ViewPerformance => egui_phosphor::regular::GAME_CONTROLLER,
         AppPage::FixturesPerformance => egui_phosphor::regular::FADERS,

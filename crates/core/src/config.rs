@@ -566,6 +566,24 @@ mod tests {
     }
 
     #[test]
+    fn dock_tabs_saved_as_fixtures_setup_load_as_setup() {
+        // Showfiles from before ticket 006 store the Setup page under its old
+        // name, both as a bare value and in a page config.
+        let legacy: ShowfileDockTab = serde_json::from_str(r#""FixturesSetup""#).unwrap();
+        assert_eq!(legacy, ShowfileDockTab::Page(AppPage::Setup));
+
+        let config: ShowfileDockTab =
+            serde_json::from_str(r#"{"page":"FixturesSetup","render_mode":"Dynamic"}"#).unwrap();
+        assert_eq!(
+            config,
+            ShowfileDockTab::PageConfig {
+                page: AppPage::Setup,
+                render_mode: PageRenderMode::Dynamic,
+            }
+        );
+    }
+
+    #[test]
     fn showfile_display_name_is_the_file_name() {
         assert_eq!(
             showfile_display_name(Path::new("/home/user/shows/club.json")),

@@ -149,8 +149,8 @@ impl BlaulichtApp {
             AppPage::Audio => {
                 self.audio_ui(ui, ctx, render_context);
             }
-            AppPage::FixturesSetup => {
-                self.fixtures_ui_setup(ui, ctx, render_context);
+            AppPage::Setup => {
+                self.setup_ui(ui, ctx, render_context);
             }
             AppPage::View => {
                 self.view_ui(ui, ctx, render_context);

@@ -33,7 +33,7 @@ LABEL = "blenv"
 MAIN_WINDOW = "blaulicht"
 DEFAULT_SETTLE_MS = 400
 APP_PAGES = (
-    "Logs System Audio FixturesSetup View ViewPerformance FixturesPerformance "
+    "Logs System Audio Setup View ViewPerformance FixturesPerformance "
     "Animations Palettes SceneGraph Visualizer"
 ).split()
 
