@@ -1,8 +1,9 @@
 use crate::{
-    app::{pages::system::SystemTab, BlaulichtApp},
+    app::BlaulichtApp,
     state::{MidiDeviceState, SerialDeviceState},
 };
 use blaulicht_assets::icons;
+use blaulicht_shared::AppSubPage;
 use egui::{Color32, Frame, Label, Margin, RichText, Ui, Vec2};
 
 pub const DMX_ICON: &str = icons::DMX;
@@ -147,6 +148,8 @@ impl BlaulichtApp {
         };
 
         let health_data = self.data.state.health_data.read().unwrap();
+        // Applied once the state locks are released.
+        let mut open_tab = None;
 
         let midi_has_error = health_data
             .midi_health
@@ -198,7 +201,7 @@ impl BlaulichtApp {
                 dimensions,
                 left_inset,
             ) {
-                self.system_ui_state.active_tab = SystemTab::Dmx;
+                open_tab = Some(AppSubPage::System_Dmx);
             }
         }
 
@@ -213,7 +216,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.active_tab = SystemTab::ArtNet;
+            open_tab = Some(AppSubPage::System_ArtNet);
         }
 
         // MIDI subsystem
@@ -227,7 +230,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.active_tab = SystemTab::Midi;
+            open_tab = Some(AppSubPage::System_Midi);
         }
 
         if Self::render_compact_health_box(
@@ -240,7 +243,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.active_tab = SystemTab::Serial;
+            open_tab = Some(AppSubPage::System_Serial);
         }
 
         if Self::render_compact_health_box(
@@ -253,7 +256,7 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.active_tab = SystemTab::Plugins;
+            open_tab = Some(AppSubPage::System_Plugins);
         }
 
         let screen_count = self.external_screens.len();
@@ -268,7 +271,13 @@ impl BlaulichtApp {
             dimensions,
             left_inset,
         ) {
-            self.system_ui_state.active_tab = SystemTab::Screens;
+            open_tab = Some(AppSubPage::System_Screens);
+        }
+
+        drop(plugins);
+        drop(health_data);
+        if let Some(subpage) = open_tab {
+            self.open_subpage(subpage);
         }
     }
 }
