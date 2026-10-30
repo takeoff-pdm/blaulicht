@@ -1,3 +1,7 @@
+//! The Programmer page (formerly "Fixtures Performance"): scene list, group
+//! and fixture selection, fixture attributes, palettes, animations and the
+//! focused scene's changes.
+
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, Knob, SpeedKnob},
@@ -8,18 +12,26 @@ use crate::{
 };
 use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, Scene},
-    ControlEvent, ControlEventMessage, EventOriginator,
+    ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
 };
 use egui::{Color32, Context, RichText};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub struct FixturePerfUi {
+/// Buttons in the Programmer toolbar, LIVE included.
+const TOOLBAR_BUTTONS: usize = 7;
+
+pub struct ProgrammerUi {
     pub scene_overview_animation_edit: AnimationEditState,
     pub scene_overview_animation_selection_edit: Option<(FixtureSelection, u8)>,
     pub scene_overview_animation_selection_edit_need_to_load: bool,
     pub close_scene_overview_after_child: bool,
     pub palette_dialog_open: bool,
     pub active_palettes_cache: HashMap<FixtureSelection, Vec<u8>>,
+    /// The full Scene Changes dialog (all changes of the focused scene, by
+    /// fixture).
+    pub scene_changes_dialog_open: bool,
+    /// The "Undo all scene changes?" confirmation.
+    pub undo_all_changes_confirm_open: bool,
 }
 
 impl BlaulichtApp {
@@ -30,9 +42,9 @@ impl BlaulichtApp {
     /// a scene can be built mid-set without disturbing the rig. On, the
     /// selected scene takes the base slot and every overlay is suppressed,
     /// giving a real-time preview of what is being programmed.
-    fn live_mode_toggle(&mut self, ui: &mut egui::Ui, live_mode: bool) {
+    fn live_mode_toggle(&mut self, ui: &mut egui::Ui, live_mode: bool, size: ButtonSize) {
         // Scoped so the painter below can anchor the dot to the button's rect.
-        let scope = ui.scope(|ui| components::button(ui, live_mode, "LIVE", ButtonSize::Medium));
+        let scope = ui.scope(|ui| components::button(ui, live_mode, "LIVE", size));
 
         if scope.inner {
             self.data
@@ -139,7 +151,7 @@ impl BlaulichtApp {
         }
     }
 
-    pub fn fixtures_ui(
+    pub fn programmer_ui(
         &mut self,
         ui: &mut egui::Ui,
         ctx: &Context,
@@ -147,6 +159,8 @@ impl BlaulichtApp {
     ) {
         let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
         let groups = dmx_engine.groups();
+
+        self.clear_selection_shortcut(ctx, &dmx_engine);
 
         //
         // Refresh the active-palettes cache for the current selection.
@@ -160,6 +174,12 @@ impl BlaulichtApp {
         self.render_scene_animations_dialog(ctx, &dmx_engine);
         self.render_add_animations_dialog(ctx, &dmx_engine);
         self.render_palette_assignment_dialog(ctx, &dmx_engine);
+        if self.programmer_ui_state.scene_changes_dialog_open {
+            // Renders the Undo all confirmation itself, stacked on top.
+            self.render_scene_changes_dialog(ctx, &dmx_engine);
+        } else {
+            self.render_undo_all_changes_dialog(ctx, &dmx_engine);
+        }
 
         //
         // Main UI start.
@@ -178,11 +198,22 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         render_context.horizontal(ui, egui::Align::Min, |ui| {
+                            // Narrow dynamic panes wrap the toolbar instead.
+                            let button_size = if render_context.is_narrow_dynamic() {
+                                ButtonSize::Medium
+                            } else {
+                                ButtonSize::Medium.with_width(toolbar_button_width(
+                                    ui.available_width(),
+                                    ui.spacing().item_spacing.x,
+                                    TOOLBAR_BUTTONS,
+                                ))
+                            };
+
                             if components::button(
                                 ui,
                                 self.current_scene_animations_dialog_open,
                                 "Scene Animations",
-                                ButtonSize::Medium,
+                                button_size,
                             ) {
                                 self.current_scene_animations_dialog_open =
                                     !self.current_scene_animations_dialog_open;
@@ -192,17 +223,23 @@ impl BlaulichtApp {
                                 ui,
                                 self.add_animations_dialog_open,
                                 "Add Animations",
-                                ButtonSize::Medium,
+                                button_size,
                             ) {
                                 self.add_animations_dialog_open =
                                     !self.add_animations_dialog_open;
                             }
 
+                            self.clear_selection_button(
+                                ui,
+                                !dmx_engine.selection().is_empty(),
+                                button_size,
+                            );
+
                             if components::button(
                                 ui,
                                 !dmx_engine.selection().fixtures_in_group.is_empty(),
                                 "UnLmt",
-                                ButtonSize::Medium,
+                                button_size,
                             ) {
                                 if let (1, Some(&curr_group)) = (
                                     dmx_engine.selection().group_ids.len(),
@@ -221,7 +258,7 @@ impl BlaulichtApp {
 
                             {
                                 let active_count = self
-                                    .fixture_perf_ui
+                                    .programmer_ui_state
                                     .active_palettes_cache
                                     .get(&dmx_engine.get_selection())
                                     .map(|v| v.len())
@@ -231,12 +268,12 @@ impl BlaulichtApp {
                                 ui.add_enabled_ui(!selection_empty, |ui| {
                                     if components::button(
                                         ui,
-                                        self.fixture_perf_ui.palette_dialog_open,
+                                        self.programmer_ui_state.palette_dialog_open,
                                         &label,
-                                        ButtonSize::Medium,
+                                        button_size,
                                     ) {
-                                        self.fixture_perf_ui.palette_dialog_open =
-                                            !self.fixture_perf_ui.palette_dialog_open;
+                                        self.programmer_ui_state.palette_dialog_open =
+                                            !self.programmer_ui_state.palette_dialog_open;
                                     }
                                 });
                             }
@@ -245,7 +282,7 @@ impl BlaulichtApp {
                                 ui,
                                 !dmx_engine.selection().fixtures_in_group.is_empty(),
                                 "Lmt All",
-                                ButtonSize::Medium,
+                                button_size,
                             ) {
                                 if let (1, Some(&curr_group), Some(group)) = (
                                     dmx_engine.selection().group_ids.len(),
@@ -307,7 +344,7 @@ impl BlaulichtApp {
                                 ),
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    self.live_mode_toggle(ui, dmx_engine.0.live_mode);
+                                    self.live_mode_toggle(ui, dmx_engine.0.live_mode, button_size);
                                 },
                             );
                         });
@@ -361,7 +398,7 @@ impl BlaulichtApp {
                                             ui.separator();
                                             ui.add_space(12.0);
                                             ui.set_max_width(ui.available_width().max(1.0));
-                                            self.scene_changes(ui, &dmx_engine);
+                                            self.scene_changes_panel(ui, &dmx_engine);
                                             ui.separator();
 
                                             for (selection, animations) in
@@ -469,13 +506,13 @@ impl BlaulichtApp {
                                                                             ButtonSize::Medium,
                                                                         ) {
                                                                             self.current_scene_animations_dialog_open = true;
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .scene_overview_animation_selection_edit =
                                                                                 Some((selection.to_owned(), *animation_id));
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .scene_overview_animation_selection_edit_need_to_load =
                                                                                 true;
-                                                                            self.fixture_perf_ui
+                                                                            self.programmer_ui_state
                                                                                 .close_scene_overview_after_child = true;
                                                                         }
                                                                     });
@@ -496,67 +533,312 @@ impl BlaulichtApp {
         );
     }
 
-    fn scene_changes(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
-        ui.heading("Scene Changes");
-        ui.add_space(8.0);
+    /// Sends `RemoveAllSelection`.
+    fn clear_selection(&self) {
+        self.data
+            .event_bus_connection
+            .send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::RemoveAllSelection,
+            ));
+    }
+
+    /// The toolbar's Clear button; disabled while nothing is selected.
+    fn clear_selection_button(&self, ui: &mut egui::Ui, has_selection: bool, size: ButtonSize) {
+        let scope = ui.scope(|ui| {
+            components::action_button(ui, has_selection, "Clear", size, Some("Nothing selected"))
+        });
+        if scope.inner {
+            self.clear_selection();
+        }
+        if has_selection {
+            scope.response.on_hover_text("Clear the selection (Esc)");
+        }
+    }
+
+    /// `Esc` clears the selection, unless a text field has focus or a dialog
+    /// is open (dialogs close on `Esc`).
+    /// The key is consumed, so a Programmer shown in several panes clears once.
+    fn clear_selection_shortcut(&self, ctx: &Context, dmx_engine: &EngineState) {
+        let modal_open = ctx.memory(|memory| memory.top_modal_layer().is_some());
+        let allowed = clear_selection_shortcut_allowed(
+            ctx.text_edit_focused(),
+            modal_open,
+            dmx_engine.selection().is_empty(),
+        );
+        if allowed
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.clear_selection();
+        }
+    }
+
+    /// Removes one change (fixture property) from the focused scene.
+    fn remove_scene_change(&self, change: FixtureSelector) {
+        let FixtureSelector { gid, fid, property } = change;
+        self.data
+            .event_bus_connection
+            .send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::RemoveChange {
+                    selection: FixtureSelection {
+                        fixtures: vec![(gid, fid)],
+                    },
+                    property,
+                },
+            ));
+    }
+
+    /// The Scene Changes panel in the right column: the focused scene's
+    /// changes with a remove button per row, plus All (the full dialog) and
+    /// Undo all (with confirmation).
+    fn scene_changes_panel(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        const ROW_BUTTON: f32 = 28.0;
 
         let scene = dmx_engine.curr_scene();
         let groups = dmx_engine.groups();
+        let changes = sorted_changes(&scene.sink.changeset);
 
-        let mut changes: Vec<FixtureSelector> = scene.sink.changeset.iter().cloned().collect();
-        changes.sort_by(|a, b| {
-            a.gid
-                .cmp(&b.gid)
-                .then(a.fid.cmp(&b.fid))
-                .then((a.property as u8).cmp(&(b.property as u8)))
+        ui.heading("Scene Changes");
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            let width = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0)
+                .floor()
+                .max(40.0);
+            let size = ButtonSize::Medium.with_width(width);
+            if components::button(
+                ui,
+                self.programmer_ui_state.scene_changes_dialog_open,
+                &format!("All ({})", changes.len()),
+                size,
+            ) {
+                self.programmer_ui_state.scene_changes_dialog_open =
+                    !self.programmer_ui_state.scene_changes_dialog_open;
+            }
+            if components::action_button(
+                ui,
+                !changes.is_empty(),
+                "Undo all",
+                size,
+                Some("No changes"),
+            ) {
+                self.programmer_ui_state.undo_all_changes_confirm_open = true;
+            }
         });
+        ui.add_space(4.0);
 
         if changes.is_empty() {
             ui.label("No Scene Changes");
             return;
         }
 
+        // The panel sits in a horizontal row, so `available_height` is only the
+        // row height: size the list from what is left of the visible column.
+        // The selection's animation cards below it keep room for one card.
+        let selection_has_animations = scene
+            .sink
+            .active_animations
+            .get(&dmx_engine.get_selection())
+            .is_some_and(|animations| !animations.is_empty());
+        let reserve = if selection_has_animations { 140.0 } else { 8.0 };
+        let list_height = (ui.clip_rect().bottom() - ui.cursor().top() - reserve).max(100.0);
+
         egui::ScrollArea::vertical()
-            .max_height(180.0)
-            .min_scrolled_height(100.0)
+            .id_salt("programmer_scene_changes")
+            .max_height(list_height)
+            .min_scrolled_height(list_height)
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for change in changes {
-                    let FixtureSelector { gid, fid, property } = change;
-
-                    let (group_name, fixture_name) = groups
-                        .get(&gid)
-                        .map(|group| {
-                            let fixture_name = group
-                                .fixtures
-                                .get(&fid)
-                                .map(|fixture| fixture.name.as_str())
-                                .unwrap_or("Unknown fixture");
-                            (group.name.as_str(), fixture_name)
-                        })
-                        .unwrap_or(("Unknown group", "Unknown fixture"));
-
-                    ui.vertical(|ui| {
-                        ui.add(egui::Label::new(format!(
-                            "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name}) · {property}"
-                        )).wrap());
-
-                        if components::button(ui, false, "Delete", ButtonSize::Medium) {
-                            let selection = FixtureSelection {
-                                fixtures: vec![(gid, fid)],
-                            };
-
-                            self.data.event_bus_connection.send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::RemoveChange {
-                                    selection,
-                                    property,
-                                },
-                            ));
+                    let (group_name, fixture_name) = change_names(groups, &change);
+                    ui.horizontal(|ui| {
+                        if components::button(
+                            ui,
+                            false,
+                            egui_phosphor::regular::X,
+                            ButtonSize::Medium.with_width(ROW_BUTTON),
+                        ) {
+                            self.remove_scene_change(change.clone());
                         }
+                        ui.vertical(|ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(change.property.to_string())
+                                        .color(Color32::WHITE),
+                                )
+                                .truncate(),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(format!("{group_name} · {fixture_name}")).small(),
+                                )
+                                .truncate(),
+                            );
+                        });
                     });
+                    ui.add_space(2.0);
                 }
             });
+    }
+
+    /// All changes of the focused scene, grouped by fixture; every property
+    /// can be removed on its own, or all of them with Undo all.
+    fn render_scene_changes_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if !self.programmer_ui_state.scene_changes_dialog_open {
+            return;
+        }
+
+        const WIDTH: f32 = 560.0;
+        const HEIGHT: f32 = 400.0;
+        const LIST_HEIGHT: f32 = 260.0;
+        const CHIP_WIDTH: f32 = 120.0;
+
+        let scene = dmx_engine.curr_scene();
+        let groups = dmx_engine.groups();
+        let changes = sorted_changes(&scene.sink.changeset);
+
+        let mut by_fixture: BTreeMap<(u8, u8), Vec<FixtureSelector>> = BTreeMap::new();
+        for change in &changes {
+            by_fixture
+                .entry((change.gid, change.fid))
+                .or_default()
+                .push(change.clone());
+        }
+
+        // Esc belongs to the confirmation while it is open.
+        let confirm_open = self.programmer_ui_state.undo_all_changes_confirm_open;
+
+        let response = Dialog::new("Scene Changes".to_string(), egui::vec2(WIDTH, HEIGHT))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(format!("Scene Changes: {} ({})", scene.name, changes.len()));
+                ui.label("Tap a property to remove that change from the scene.");
+                ui.separator();
+
+                egui::ScrollArea::vertical()
+                    .id_salt("programmer_scene_changes_dialog")
+                    // The dialog window has no fixed height, so the list
+                    // needs an explicit one.
+                    .max_height(LIST_HEIGHT)
+                    .min_scrolled_height(LIST_HEIGHT)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if by_fixture.is_empty() {
+                            ui.label("No Scene Changes");
+                        }
+                        for ((gid, fid), fixture_changes) in &by_fixture {
+                            let (group_name, fixture_name) =
+                                change_names(groups, &fixture_changes[0]);
+                            ui.label(
+                                RichText::new(format!(
+                                    "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name})"
+                                ))
+                                .color(Color32::LIGHT_GREEN),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                for change in fixture_changes {
+                                    let label = format!(
+                                        "{} {}",
+                                        egui_phosphor::regular::X,
+                                        change.property
+                                    );
+                                    if components::button(
+                                        ui,
+                                        false,
+                                        &label,
+                                        ButtonSize::Medium.with_width(CHIP_WIDTH),
+                                    ) {
+                                        self.remove_scene_change(change.clone());
+                                    }
+                                }
+                            });
+                            ui.add_space(6.0);
+                        }
+                    });
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if components::action_button(
+                        ui,
+                        !changes.is_empty(),
+                        "Undo all",
+                        ButtonSize::Medium.with_width(140.0),
+                        Some("No changes"),
+                    ) {
+                        self.programmer_ui_state.undo_all_changes_confirm_open = true;
+                    }
+                    if components::button(ui, true, "Close", ButtonSize::Medium.with_width(140.0)) {
+                        self.programmer_ui_state.scene_changes_dialog_open = false;
+                    }
+                });
+
+                // Nested, so the confirmation gets the higher modal order and
+                // stays above this dialog even after it was clicked.
+                self.render_undo_all_changes_dialog(ui.ctx(), dmx_engine);
+            });
+
+        if response.cancel_requested && !confirm_open {
+            self.programmer_ui_state.scene_changes_dialog_open = false;
+        }
+    }
+
+    /// Confirmation for Undo all: removes every change of the focused scene
+    /// (one `RemoveChange` per property, in one `Transaction`). Other scenes
+    /// are not touched.
+    fn render_undo_all_changes_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        if !self.programmer_ui_state.undo_all_changes_confirm_open {
+            return;
+        }
+
+        const WIDTH: f32 = 380.0;
+        const HEIGHT: f32 = 170.0;
+
+        let scene = dmx_engine.curr_scene();
+        let count = scene.sink.changeset.len();
+
+        let response = Dialog::new(
+            "Undo All Scene Changes".to_string(),
+            egui::vec2(WIDTH, HEIGHT),
+        )
+        .with_backdrop()
+        .show(ctx, |ui| {
+            ui.heading("Undo all changes?");
+            ui.add_space(4.0);
+            ui.label(format!(
+                "Removes all {count} changes from the scene \"{}\". Other scenes keep their changes.",
+                scene.name
+            ));
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if components::button(
+                    ui,
+                    false,
+                    "Cancel",
+                    ButtonSize::Medium.with_width(140.0),
+                ) {
+                    self.programmer_ui_state.undo_all_changes_confirm_open = false;
+                }
+                if components::action_button(
+                    ui,
+                    count > 0,
+                    "Undo all",
+                    ButtonSize::Medium.with_width(140.0),
+                    Some("No changes"),
+                ) {
+                    if let Some(event) = undo_all_changes_event(&scene.sink.changeset) {
+                        self.data
+                            .event_bus_connection
+                            .send(ControlEventMessage::new(EventOriginator::Web, event));
+                    }
+                    self.programmer_ui_state.undo_all_changes_confirm_open = false;
+                }
+            });
+        });
+
+        if response.cancel_requested {
+            self.programmer_ui_state.undo_all_changes_confirm_open = false;
+        }
     }
 
     pub fn render_scene_animations_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
@@ -574,8 +856,9 @@ impl BlaulichtApp {
 
                 let scene = dmx_engine.curr_scene();
 
-                if let Some((selec, anim_id)) =
-                    &self.fixture_perf_ui.scene_overview_animation_selection_edit
+                if let Some((selec, anim_id)) = &self
+                    .programmer_ui_state
+                    .scene_overview_animation_selection_edit
                 {
                     let Some(animation) = scene
                         .sink
@@ -583,17 +866,18 @@ impl BlaulichtApp {
                         .get(selec)
                         .and_then(|animations| animations.get(anim_id))
                     else {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit = None;
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = false;
                         return;
                     };
 
                     if self
-                        .fixture_perf_ui
+                        .programmer_ui_state
                         .scene_overview_animation_selection_edit_need_to_load
                     {
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_edit
                             .load_state(animation.spec_cloned.clone());
 
@@ -612,27 +896,28 @@ impl BlaulichtApp {
                                 &self.data.state,
                                 &wasm.plugin_key,
                                 source,
-                                self.fixture_perf_ui
+                                self.programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
                             );
                         }
 
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = false;
                     }
 
                     let live_audio = self.live_audio_for_preview();
                     let details_panel_max = ui.clip_rect().max;
-                    let new_value_spec = self.fixture_perf_ui.scene_overview_animation_edit.show(
-                        ui,
-                        ctx,
-                        &dmx_engine.0.palettes,
-                        &live_audio,
-                        &self.data,
-                        &selec.fixtures,
-                        details_panel_max,
-                    );
+                    let new_value_spec =
+                        self.programmer_ui_state.scene_overview_animation_edit.show(
+                            ui,
+                            ctx,
+                            &dmx_engine.0.palettes,
+                            &live_audio,
+                            &self.data,
+                            &selec.fixtures,
+                            details_panel_max,
+                        );
 
                     if let Some(spec) = new_value_spec {
                         if let blaulicht_shared::AnimationSpecBody::WasmPlugin(wasm) = &spec.body {
@@ -647,7 +932,7 @@ impl BlaulichtApp {
                             crate::plugin::wasm::clone_animation_instance_state(
                                 &self.data.state,
                                 &wasm.plugin_key,
-                                self.fixture_perf_ui
+                                self.programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
                                 target,
@@ -664,11 +949,12 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit = None;
-                        if self.fixture_perf_ui.close_scene_overview_after_child {
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit = None;
+                        if self.programmer_ui_state.close_scene_overview_after_child {
                             self.current_scene_animations_dialog_open = false;
                         }
-                        self.fixture_perf_ui.close_scene_overview_after_child = false;
+                        self.programmer_ui_state.close_scene_overview_after_child = false;
                     }
                 } else {
                     self.render_normal_scene_animations(ui, scene);
@@ -770,11 +1056,12 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, false, "Edit", ButtonSize::Medium) {
-                        self.fixture_perf_ui.scene_overview_animation_selection_edit =
+                        self.programmer_ui_state
+                            .scene_overview_animation_selection_edit =
                             Some((selection.to_owned(), *animation_id));
-                        self.fixture_perf_ui
+                        self.programmer_ui_state
                             .scene_overview_animation_selection_edit_need_to_load = true;
-                        self.fixture_perf_ui.close_scene_overview_after_child = false;
+                        self.programmer_ui_state.close_scene_overview_after_child = false;
                     }
                 }
             }
@@ -792,10 +1079,10 @@ impl BlaulichtApp {
     /// current scene's sink. Stores the result keyed by the current selection.
     fn refresh_active_palettes_cache(&mut self, dmx_engine: &EngineState) {
         let selection = dmx_engine.get_selection();
-        self.fixture_perf_ui.active_palettes_cache.clear();
+        self.programmer_ui_state.active_palettes_cache.clear();
 
         if selection.fixtures.is_empty() {
-            self.fixture_perf_ui
+            self.programmer_ui_state
                 .active_palettes_cache
                 .insert(selection, Vec::new());
             return;
@@ -818,13 +1105,13 @@ impl BlaulichtApp {
         let mut active = active.unwrap_or_default();
         active.sort_unstable();
         active.dedup();
-        self.fixture_perf_ui
+        self.programmer_ui_state
             .active_palettes_cache
             .insert(selection, active);
     }
 
     fn render_palette_assignment_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
-        if !self.fixture_perf_ui.palette_dialog_open {
+        if !self.programmer_ui_state.palette_dialog_open {
             return;
         }
 
@@ -833,7 +1120,7 @@ impl BlaulichtApp {
 
         let selection = dmx_engine.get_selection();
         let active: Vec<u8> = self
-            .fixture_perf_ui
+            .programmer_ui_state
             .active_palettes_cache
             .get(&selection)
             .cloned()
@@ -846,7 +1133,7 @@ impl BlaulichtApp {
                     ui.label("No selection.");
                     ui.add_space(8.0);
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
-                        self.fixture_perf_ui.palette_dialog_open = false;
+                        self.programmer_ui_state.palette_dialog_open = false;
                     }
                     return;
                 }
@@ -937,8 +1224,212 @@ impl BlaulichtApp {
                 ui.add_space(12.0);
                 ui.separator();
                 if components::button(ui, true, "Close", ButtonSize::Medium) {
-                    self.fixture_perf_ui.palette_dialog_open = false;
+                    self.programmer_ui_state.palette_dialog_open = false;
                 }
             });
+    }
+}
+
+/// Width of one toolbar button so `count` of them fit in `available` (at most
+/// the usual 90 px, at least 60 px).
+fn toolbar_button_width(available: f32, spacing: f32, count: usize) -> f32 {
+    let default = ButtonSize::Medium.dim().0.x;
+    if count == 0 {
+        return default;
+    }
+    let gaps = spacing * count.saturating_sub(1) as f32;
+    ((available - gaps) / count as f32)
+        .floor()
+        .clamp(60.0, default)
+}
+
+/// Whether `Esc` may clear the selection: not while typing, not while a
+/// dialog is open (it closes on `Esc`), and only if there is a selection.
+fn clear_selection_shortcut_allowed(
+    text_edit_focused: bool,
+    modal_open: bool,
+    selection_empty: bool,
+) -> bool {
+    !text_edit_focused && !modal_open && !selection_empty
+}
+
+/// A scene's changes ordered by group, fixture and property.
+fn sorted_changes(changeset: &HashSet<FixtureSelector>) -> Vec<FixtureSelector> {
+    let mut changes: Vec<FixtureSelector> = changeset.iter().cloned().collect();
+    changes.sort_by_key(|change| (change.gid, change.fid, change.property as u8));
+    changes
+}
+
+/// Group and fixture name of a change, or "Unknown …" for stale ids.
+fn change_names<'a>(
+    groups: &'a blaulicht_shared::EngineGroups,
+    change: &FixtureSelector,
+) -> (&'a str, &'a str) {
+    let Some(group) = groups.get(&change.gid) else {
+        return ("Unknown group", "Unknown fixture");
+    };
+    let fixture = group
+        .fixtures
+        .get(&change.fid)
+        .map(|fixture| fixture.name.as_str())
+        .unwrap_or("Unknown fixture");
+    (group.name.as_str(), fixture)
+}
+
+/// The event behind Undo all: one `RemoveChange` per changed property,
+/// covering every fixture that changed it, in one `Transaction`. Like the
+/// per-row remove, it acts on the focused scene. `None` without changes.
+pub(crate) fn undo_all_changes_event(changeset: &HashSet<FixtureSelector>) -> Option<ControlEvent> {
+    let mut by_property: BTreeMap<u8, (FixtureProperty, Vec<(u8, u8)>)> = BTreeMap::new();
+    for change in sorted_changes(changeset) {
+        by_property
+            .entry(change.property as u8)
+            .or_insert_with(|| (change.property, Vec::new()))
+            .1
+            .push((change.gid, change.fid));
+    }
+    if by_property.is_empty() {
+        return None;
+    }
+    Some(ControlEvent::Transaction(
+        by_property
+            .into_values()
+            .map(|(property, fixtures)| ControlEvent::RemoveChange {
+                selection: FixtureSelection { fixtures },
+                property,
+            })
+            .collect(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        clear_selection_shortcut_allowed, sorted_changes, toolbar_button_width,
+        undo_all_changes_event,
+    };
+    use crate::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
+    use blaulicht_shared::{
+        scene::FixtureSelector, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    };
+    use std::{collections::HashSet, sync::Arc};
+
+    fn changes(entries: &[(u8, u8, FixtureProperty)]) -> HashSet<FixtureSelector> {
+        entries
+            .iter()
+            .map(|(gid, fid, property)| ((*gid, *fid), *property).into())
+            .collect()
+    }
+
+    #[test]
+    fn undo_all_groups_the_changes_by_property() {
+        let event = undo_all_changes_event(&changes(&[
+            (1, 2, FixtureProperty::Alpha),
+            (0, 0, FixtureProperty::Alpha),
+            (0, 0, FixtureProperty::Pan),
+        ]))
+        .unwrap();
+        let ControlEvent::Transaction(events) = event else {
+            panic!("expected a transaction, got {event:?}");
+        };
+        assert_eq!(events.len(), 2);
+        let mut removed = Vec::new();
+        for event in events {
+            let ControlEvent::RemoveChange {
+                selection,
+                property,
+            } = event
+            else {
+                panic!("expected RemoveChange, got {event:?}");
+            };
+            for (gid, fid) in selection.fixtures {
+                removed.push((gid, fid, property as u8));
+            }
+        }
+        removed.sort_unstable();
+        let mut expected = vec![
+            (0, 0, FixtureProperty::Alpha as u8),
+            (1, 2, FixtureProperty::Alpha as u8),
+            (0, 0, FixtureProperty::Pan as u8),
+        ];
+        expected.sort_unstable();
+        assert_eq!(removed, expected);
+    }
+
+    #[test]
+    fn undo_all_without_changes_sends_nothing() {
+        assert!(undo_all_changes_event(&HashSet::new()).is_none());
+    }
+
+    #[test]
+    fn undo_all_empties_the_focused_scene_and_keeps_the_others() {
+        let state = Arc::new(AppState::new(&[]));
+        let mut bus = SystemEventBus::new();
+        let engine = DmxEngine::new(state.clone(), bus.new_connection(), Default::default());
+
+        let focused_changes = changes(&[
+            (0, 0, FixtureProperty::Alpha),
+            (0, 1, FixtureProperty::ColorHue),
+            (1, 0, FixtureProperty::Alpha),
+        ]);
+        let other_changes = changes(&[
+            (0, 0, FixtureProperty::Alpha),
+            (1, 0, FixtureProperty::Tilt),
+        ]);
+        {
+            let mut guard = state.dmx_engine.write().unwrap();
+            guard.0.new_scene("Focused".to_string());
+            guard.0.new_scene("Other".to_string());
+            guard.0.current_scene_focus = 0;
+            guard.0.scenes.get_mut(&0).unwrap().sink.changeset = focused_changes.clone();
+            guard.0.scenes.get_mut(&1).unwrap().sink.changeset = other_changes.clone();
+        }
+
+        let event = undo_all_changes_event(&focused_changes).unwrap();
+        let mut guard = state.dmx_engine.write().unwrap();
+        let (error, _) = engine.apply(
+            &mut guard,
+            ControlEventMessage::new(EventOriginator::Web, event),
+        );
+
+        assert_eq!(error, None);
+        assert!(guard.0.scenes[&0].sink.changeset.is_empty());
+        assert_eq!(guard.0.scenes[&1].sink.changeset, other_changes);
+    }
+
+    #[test]
+    fn changes_are_sorted_by_group_fixture_and_property() {
+        let sorted = sorted_changes(&changes(&[
+            (1, 0, FixtureProperty::Alpha),
+            (0, 1, FixtureProperty::Pan),
+            (0, 1, FixtureProperty::Alpha),
+        ]));
+        let keys: Vec<_> = sorted
+            .iter()
+            .map(|change| (change.gid, change.fid, change.property as u8))
+            .collect();
+        let mut expected = keys.clone();
+        expected.sort_unstable();
+        assert_eq!(keys, expected);
+        assert_eq!(keys.len(), 3);
+    }
+
+    #[test]
+    fn escape_clears_only_a_non_empty_selection_outside_text_fields_and_dialogs() {
+        assert!(clear_selection_shortcut_allowed(false, false, false));
+        assert!(!clear_selection_shortcut_allowed(true, false, false));
+        assert!(!clear_selection_shortcut_allowed(false, true, false));
+        assert!(!clear_selection_shortcut_allowed(false, false, true));
+    }
+
+    #[test]
+    fn toolbar_buttons_shrink_to_fit_but_not_below_the_minimum() {
+        // Kiosk (800 px window): seven buttons fit next to each other.
+        let width = toolbar_button_width(617.0, 8.0, 7);
+        assert!(width < 90.0);
+        assert!(7.0 * width + 6.0 * 8.0 <= 617.0);
+        // Wide panes keep the usual width.
+        assert_eq!(toolbar_button_width(2000.0, 8.0, 7), 90.0);
+        assert_eq!(toolbar_button_width(100.0, 8.0, 7), 60.0);
     }
 }

@@ -37,7 +37,7 @@ Two equivalent interfaces:
    `--volumes` removes it too).
 
 Shortcuts: `scripts/blenv nav <Page>` (Logs System Audio Setup View
-ViewPerformance FixturesPerformance Animations Palettes SceneGraph Visualizer),
+ViewPerformance Programmer Animations Palettes SceneGraph Visualizer),
 `scripts/blenv plugin-ui <id>` (ids: 0 inspector, 1 julia, 2 audio reactor, 3 chaos,
 4 sample egui), `scripts/blenv windows` (titles for `--window`), `scripts/blenv vnc` (lets
 the user watch live with macOS Screen Sharing).

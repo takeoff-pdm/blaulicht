@@ -6,8 +6,8 @@ use crate::{
         },
         external_screen::Pane,
         pages::{
-            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI,
-            FixturePerfUi, SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
+            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI, ProgrammerUi,
+            SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
         },
     },
     msg::TickSpeeds,
@@ -217,7 +217,6 @@ pub struct BlaulichtApp {
     rename_scene_dialog_open: bool,
     rename_scene_name: String,
     delete_scene_dialog_open: bool,
-    current_scene_changeset_dialog_open: bool,
     current_scene_animations_dialog_open: bool,
     add_animations_dialog_open: bool,
     add_selected_animation: Option<u8>,
@@ -309,7 +308,7 @@ pub struct BlaulichtApp {
 
     dmx_simulator: DmxSimulator,
 
-    fixture_perf_ui: FixturePerfUi,
+    programmer_ui_state: ProgrammerUi,
 
     view_ui_state: ViewUI,
     view_perf_ui_state: ViewPerfUI,
@@ -442,7 +441,6 @@ impl BlaulichtApp {
             rename_scene_dialog_open: false,
             rename_scene_name: String::new(),
             delete_scene_dialog_open: false,
-            current_scene_changeset_dialog_open: false,
             current_scene_animations_dialog_open: false,
             add_animations_dialog_open: false,
             add_selected_animation: None,
@@ -590,13 +588,15 @@ impl BlaulichtApp {
             visualizer_ui_state: VisualizerUiState::default(),
             scene_graph_ui_state: SceneGraphUI::default(),
             palette_ui_state: PaletteUI::default(),
-            fixture_perf_ui: FixturePerfUi {
+            programmer_ui_state: ProgrammerUi {
                 scene_overview_animation_edit: AnimationEditState::default(),
                 scene_overview_animation_selection_edit: None,
                 scene_overview_animation_selection_edit_need_to_load: false,
                 close_scene_overview_after_child: false,
                 palette_dialog_open: false,
                 active_palettes_cache: HashMap::new(),
+                scene_changes_dialog_open: false,
+                undo_all_changes_confirm_open: false,
             },
             system_ui_state: SystemUI::default(),
             dmx_simulator: DmxSimulator::default(),

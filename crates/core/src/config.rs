@@ -584,6 +584,14 @@ mod tests {
     }
 
     #[test]
+    fn dock_tabs_saved_as_fixtures_performance_load_as_programmer() {
+        // Showfiles from before ticket 011 store the Programmer page under its
+        // old name.
+        let legacy: ShowfileDockTab = serde_json::from_str(r#""FixturesPerformance""#).unwrap();
+        assert_eq!(legacy, ShowfileDockTab::Page(AppPage::Programmer));
+    }
+
+    #[test]
     fn showfile_display_name_is_the_file_name() {
         assert_eq!(
             showfile_display_name(Path::new("/home/user/shows/club.json")),

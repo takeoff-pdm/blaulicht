@@ -50,7 +50,7 @@ impl Pane {
             PaneKind::Page(AppPage::Setup) => "Setup".to_string(),
             PaneKind::Page(AppPage::View) => "View".to_string(),
             PaneKind::Page(AppPage::ViewPerformance) => "View Performance".to_string(),
-            PaneKind::Page(AppPage::FixturesPerformance) => "Fixtures Performance".to_string(),
+            PaneKind::Page(AppPage::Programmer) => "Programmer".to_string(),
             PaneKind::Page(AppPage::Animations) => "Animations".to_string(),
             PaneKind::Page(AppPage::Palettes) => "Palettes".to_string(),
             PaneKind::Page(AppPage::SceneGraph) => "Scene Graph".to_string(),
