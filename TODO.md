@@ -50,6 +50,7 @@ Target navigation (agreed 2026-09-27):
 | 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.planned.md) | planned | 016, 006, 030 |
 | 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017, 030 |
 | 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.done.md) | done | — |
+| 031 | [Folder follow-ups (ids, undo, order, names) and the unloadable Kuze showfile](TICKETS/031-folders-followups.planned.md) | planned | 016 |
 
 ### E5 — DMX overrides
 
@@ -86,6 +87,7 @@ Target navigation (agreed 2026-09-27):
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
 Items marked `→ TICKET NNN` are covered by that ticket.
 
+- `crates/plugins/pioneer_pro_dj_link/Cargo.toml` has an absolute path dependency (`/home/mik/Downloads/prolink-test/prolink-rs`), so `make build_noopt` fails for it everywhere else.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??

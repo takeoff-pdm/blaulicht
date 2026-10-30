@@ -34,7 +34,7 @@ verify and finish it. The index is in the root [`TODO.md`](../TODO.md).
 
 ## Hotspots (don't run these in parallel)
 - **Plugin ABI**: tickets that bump `PLUGIN_ABI_VERSION` (`crates/shared/src/abi.rs`) must run one at a time,
-  because two bumps from the same base version collide. They are currently 005, 013, 015, 016, 019 and 020, and
+  because two bumps from the same base version collide. They are currently 005, 013, 015, 016, 019, 020 and 031, and
   possibly 006, 010, 011, 014, 024 and 029 (see each ticket's ABI line). After a bump, run
   `cd crates/plugins && make build_noopt` and grep the output for `^error`, because the Makefile reports success even when a build fails.
 - **Showfile shape**: new fields need `#[serde(default)]`. Load a scratch copy of an existing showfile and confirm with
