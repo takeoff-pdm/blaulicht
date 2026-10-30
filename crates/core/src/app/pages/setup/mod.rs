@@ -13,6 +13,7 @@ mod groups;
 mod scenes;
 
 pub use fixtures::{AddFixtureIncrementAxis, AddFixtureKind};
+pub use groups::SetupGroupsUi;
 
 use crate::app::{page::PageRenderContext, BlaulichtApp};
 use blaulicht_shared::{AppPage, AppSubPage};
