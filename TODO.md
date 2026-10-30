@@ -36,7 +36,7 @@ Target navigation (agreed 2026-09-27):
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 011 | [Programmer page: rename, clear selection, scene changes with undo-all](TICKETS/011-programmer-page.doing.md) | doing | 006 |
+| 011 | [Programmer page: rename, clear selection, scene changes with undo-all](TICKETS/011-programmer-page.done.md) | done | 006 |
 | 012 | [Apply animation presets from the Programmer](TICKETS/012-programmer-animation-presets.planned.md) | planned | 011 |
 | 013 | [Per-scene selection lock (freeze) in the Programmer](TICKETS/013-programmer-selection-lock.planned.md) | planned | 011 |
 | 014 | [Bug: pointer to a color palette shows a different color](TICKETS/014-palette-pointer-color-fix.planned.md) | planned | — |
@@ -92,6 +92,7 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - In `--desktop` mode, `NavigatePage` / `NavigateSubPage` don't bring the page's dock tab to the front (found in 005).
 - In `--desktop` mode, a dock pane in "Default (723 x 480)" render mode that is shorter than 480 px clips the sub-page tab bar (System, Setup); Dynamic mode shows it (found in 006).
 - Group and fixture tiles use `name.truncate(10)`, which panics when byte 10 is inside a multi-byte char (e.g. umlauts) (`group_tile`, `group_selection` in `fixtures_shared.rs`, found in 006).
+- Removing a scene change (`RemoveChange`, Programmer row X / Undo all) sets the property to 0 in the scene instead of restoring an earlier value (found in 011).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet
