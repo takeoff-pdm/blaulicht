@@ -20,7 +20,7 @@ Target navigation (agreed 2026-09-27):
 | 002 | [Visible startup progress (per-stage checklist)](TICKETS/002-startup-progress.done.md) | done | 001 |
 | 003 | [Showfile name instead of abspath; audio page header order](TICKETS/003-showfile-name-and-audio-header.done.md) | done | — |
 | 004 | [Selectable dummy audio input (silence / noise)](TICKETS/004-audio-dummy-input.done.md) | done | — |
-| 005 | [Generic sub-page navigation for all pages](TICKETS/005-subpage-navigation.planned.md) | planned | — |
+| 005 | [Generic sub-page navigation for all pages](TICKETS/005-subpage-navigation.doing.md) | doing | — |
 
 ### E2 — Setup page
 
