@@ -6,7 +6,7 @@
 | Depends on | 016, 006, 010, 017, 030 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/setup/scenes.rs`, `crates/core/src/app/pages/palettes.rs`, `crates/core/src/app/components/fixtures_shared.rs (scene_overview)`, view/performance scene pickers
+**Touches:** `crates/core/src/app/pages/setup/scenes.rs`, `crates/core/src/app/pages/setup/palettes.rs (setup_palette_list, since 010)`, `crates/core/src/app/components/fixtures_shared.rs (scene_overview)`, view/performance scene pickers
 
 ## Problem
 Original review notes (2026-09-27):
