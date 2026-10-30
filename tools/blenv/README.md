@@ -1,0 +1,59 @@
+# blenv: headless blaulicht in Docker
+
+Runs `blaulicht-core` (egui, X11, Mesa llvmpipe) in a Debian container on a virtual display
+(Xvfb `:9`, 1600x1000, openbox) with VNC, `xdotool` and ImageMagick, so agents and people can
+screenshot and click the real UI without a monitor. One container per git worktree.
+
+```sh
+scripts/blenv up            # build image (first time), start container
+scripts/blenv build         # plugins (inspector + sample/animation set) + core
+scripts/blenv run           # start app (800x480 kiosk layout); --desktop for 1500x950
+scripts/blenv screenshot    # -> .blenv/shots/<ts>.png
+scripts/blenv click 100 40  # window-relative coordinates
+scripts/blenv nav Audio     # page switch through the inspector
+scripts/blenv blctl audio   # any scripts/blctl.py command, run in the container
+scripts/blenv vnc           # watch live (macOS Screen Sharing)
+scripts/blenv down          # remove container, keep build cache (--volumes: drop it too)
+```
+
+Full command list: `scripts/blenv --help`. Agents can also use the `blaulicht-env` MCP
+server (`.mcp.json`, `uv run --script tools/blenv/mcp_server.py`) and the skill in
+`.claude/skills/blaulicht-env/`.
+
+## How it fits together
+
+| Piece | Where |
+|---|---|
+| Image: toolchain (nightly + wasm32), X/GL/input tools. No source. | `Dockerfile`, tag `blenv:<hash of Dockerfile>` |
+| Container entry: Xvfb (GLX off, so GL goes through EGL) + openbox + x11vnc | `container/entrypoint.sh`, `container/openbox-rc.xml` |
+| Builds: `cargo build -p blaulicht-core --no-default-features --features "x11 audio wasmtime"`, plugins to `crates/plugins/bundle_debug/` | `container/build.sh` |
+| App start: config from template, inspector ping wait, window at 0,0 | `container/run-app.sh`, `config.template.toml` |
+| Host CLI and library | `blenv.py` (Python 3.9+, stdlib only), shim `scripts/blenv` |
+| MCP server | `mcp_server.py` |
+
+Per instance (`blenv-<worktree>-<hash>`): container, volume `…-target` (`/build`, cargo
+target dirs) and `…-state` (`/state`: generated config, `app.log`, showfile copies, VNC
+password). The cargo registry volume `blenv-cargo` is shared by all instances. VNC is
+published on a random `127.0.0.1` port, which `scripts/blenv vnc` prints.
+
+## Notes
+
+- Rendering is Mesa llvmpipe via EGL. Xvfb runs with `-extension GLX` because its GLX
+  visuals have no multisampling and the app requests 4x MSAA + 24-bit depth; EGL configs
+  have both. The Visualizer page renders (slowly).
+- openbox is required: without a window manager, egui external-screen viewports are
+  recreated every frame. Decorations are off for every window, as on the kiosk. Input and
+  window screenshots raise the target window first, since windows can overlap.
+- Loading a showfile replaces the `-e` external screens with the ones saved in the
+  showfile (app behaviour, `apply_showfile_ui_state`).
+- Audio is built with the real `audio` feature, so the Audio page runs the real cpal/ALSA
+  enumeration. The container has no sound devices (no `/dev/snd`, no sound server), so the
+  list shows only `Dummy: Silence` and `Dummy: Noise`; the config selects `Dummy: Noise`.
+- The template config only enables hardware-free plugins: 0 inspector, 1 julia,
+  2 audio reactor, 3 chaos, 4 sample egui. Edit `config.template.toml` to change that.
+  The repo `config.toml` is not used.
+- `BLENV_FEATURES` and `CARGO_BUILD_JOBS` are forwarded to `blenv build`. If a new nightly
+  breaks the build, pin it by changing `ARG RUST_NIGHTLY=nightly` in the Dockerfile to
+  `nightly-YYYY-MM-DD`; the image tag follows the Dockerfile hash, so `blenv up` rebuilds.
+- `scripts/blenv list` shows all instances; `scripts/blenv gc [--yes]` removes stopped ones
+  and the volumes of instances whose worktree was deleted.

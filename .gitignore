@@ -17,3 +17,8 @@ blaulicht-*
 *.tar.gz
 install/blaulicht
 *.codex
+
+# blenv screenshots and scratch
+.blenv/
+tools/blenv/__pycache__/
+!/.claude/skills/blaulicht-env/

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Host entry point for the blenv Docker UI test environment (tools/blenv/README.md).
+exec python3 "$(dirname "$0")/../tools/blenv/blenv.py" "$@"
