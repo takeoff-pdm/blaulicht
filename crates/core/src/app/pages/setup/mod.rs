@@ -1,10 +1,14 @@
 //! The Setup page ([`AppPage::Setup`]): one sub-page per thing being set up.
 //!
 //! - [`fixtures`]: Setup › Fixtures, the group picker and fixture editor.
-//! - [`groups`]: Setup › Groups, the group list and group dialogs.
-//! - [`scenes`]: Setup › Scenes, the scene list and scene dialogs.
+//! - [`groups`]: Setup › Groups, the group tree (folders) and group dialogs.
+//! - [`scenes`]: Setup › Scenes, the scene tree (folders) and scene dialogs.
 //! - [`animations`]: Setup › Animations, the animation template editor.
-//! - [`palettes`]: Setup › Palettes, the palette list and palette dialogs.
+//! - [`palettes`]: Setup › Palettes, the palette tree (folders) and palette
+//!   dialogs.
+//!
+//! Groups, Scenes and Palettes share one layout and their folder handling
+//! (`components::SetupFolderUi`, `FolderDialog`, `folder_details`).
 //!
 //! To add a tab, append an `AppSubPage::Setup_<Tab>` variant (see
 //! `blaulicht_shared::AppSubPage`), add a module here and a match arm in
@@ -18,7 +22,7 @@ mod scenes;
 
 pub use animations::AnimationUI;
 pub use fixtures::{AddFixtureIncrementAxis, AddFixtureKind};
-pub use groups::SetupGroupsUi;
+pub(crate) use palettes::palette_kind_label;
 pub use palettes::PaletteUI;
 
 use crate::app::{page::PageRenderContext, BlaulichtApp};

@@ -123,32 +123,23 @@ impl BlaulichtApp {
             return;
         };
 
-        let available_scenes: Vec<(u8, String)> = engine_snapshot
-            .0
-            .scenes
-            .iter()
-            .filter_map(|(scene_id, scene)| {
-                if *scene_id == BLANK_SCENE_ID {
-                    return None;
-                }
+        // Scenes in folders; only folders with a scene left to add.
+        let available_scenes = components::prune_empty_folders(components::scene_tree_items(
+            &engine_snapshot.0,
+            |scene_id| scene_id != BLANK_SCENE_ID && !view_snapshot.overlays.contains(&scene_id),
+        ));
 
-                if view_snapshot.overlays.contains(scene_id) {
-                    return None;
-                }
-
-                Some((*scene_id, format!("{} ({})", scene.name.clone(), scene_id)))
-            })
-            .collect();
-
-        let (new_id, changed) = components::id_selection_dialog(
+        let picked = components::tree_picker_dialog(
             ctx,
-            available_scenes,
-            255,
+            "Select Overlay",
+            components::SCENE_PICKER_TREE,
+            &available_scenes,
+            None,
+            "No more scenes to add",
             &mut self.view_ui_state.overlay_picker_open,
-            "Select Overlay".to_string(),
         );
 
-        if changed {
+        if let Some(new_id) = picked {
             self.view_ui_state.scene_picker_view_id = None;
             let mut engine = self.data.state.dmx_engine.write().unwrap();
             if let Some(view) = engine.0.views.get_mut(&view_id) {

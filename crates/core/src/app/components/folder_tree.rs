@@ -14,27 +14,46 @@
 //!   event that is rejected. [`folder_tap_event`] is the Programmer's
 //!   "tap a folder" (select its groups, or deselect them when all are selected).
 //!
+//! - **Setup pages**: [`SetupFolderUi`] is the folder selection and dialog
+//!   state of one Setup tree (Groups, Scenes, Palettes);
+//!   [`SetupFolderUi::follow`] keeps the tree in step with a sent folder
+//!   event, and [`folder_details`] draws the selected folder's details.
+//! - **Pickers**: [`scene_tree_items`] and [`palette_tree_items`] build the
+//!   scene and palette trees, [`prune_empty_folders`] drops folders with
+//!   nothing to pick, and [`tree_picker_dialog`] is a dialog that picks one
+//!   leaf (a folder tap opens or closes the folder).
+//!
 //! There is no undo stack in the UI yet. When one is added, compute the undo
 //! event with `EngineState::folder_rollback` before sending.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
     hash::Hash,
+    time::{Duration, Instant},
 };
 
 use blaulicht_shared::{
     folder::{self, Folder, FolderId, FolderItem, FolderKind},
+    palette::Palette,
+    scene::BLANK_SCENE_ID,
     ControlEvent, EngineState,
 };
 use egui::{Color32, Context, RichText};
 
 use crate::app::components::{
-    self, ButtonSize, Dialog, TextInput, Tree, TreeAction, TreeItem, TreeKey,
+    self, tree_id, ButtonSize, Dialog, TextInput, Tree, TreeAction, TreeItem, TreeKey, TreeState,
 };
 
 /// Collapse-state salt of the Setup group tree (Setup › Groups), shared with
 /// the Setup › Fixtures group picker so both show the same folders open.
 pub const SETUP_GROUP_TREE: &str = "setup_groups";
+/// Collapse-state salt of the Setup › Scenes tree.
+pub const SETUP_SCENE_TREE: &str = "setup_scenes";
+/// Collapse-state salt of the Setup › Palettes tree.
+pub const SETUP_PALETTE_TREE: &str = "setup_palettes";
+/// Collapse-state salt of the scene pickers (overlay pickers on View and
+/// View Performance), shared so a folder closed in one is closed in the other.
+pub const SCENE_PICKER_TREE: &str = "scene_picker";
 
 /// Width of a narrow picker column (the Programmer's and Setup › Fixtures'
 /// group trees). At 800x480 the Programmer has about 30 px more than the old
@@ -86,6 +105,108 @@ pub fn group_tree_items(state: &EngineState) -> Vec<TreeItem<FolderId, u8>> {
             .with_detail(format!("{} FX | #{id}", group.fixtures.len()))
     }));
     items
+}
+
+/// The scene tree: every scenes folder, then each scene for which `include`
+/// is true as a leaf (by id), labelled with its name and `#id`. The BLANK
+/// scene can't be moved into a folder (engine rule), so if it is included it
+/// is always at the top level.
+pub fn scene_tree_items(
+    state: &EngineState,
+    include: impl Fn(u8) -> bool,
+) -> Vec<TreeItem<FolderId, u8>> {
+    let mut items = folder_tree_items(&state.folders, FolderKind::Scenes);
+    items.extend(
+        state
+            .scenes
+            .iter()
+            .filter(|(id, _)| include(**id))
+            .map(|(id, scene)| {
+                let parent = if *id == BLANK_SCENE_ID {
+                    None
+                } else {
+                    scene.folder
+                };
+                TreeItem::leaf(*id, parent, scene.name.clone()).with_detail(format!("#{id}"))
+            }),
+    );
+    items
+}
+
+/// The palette tree: every palettes folder, then each palette for which
+/// `include` is true as a leaf (by id), with `detail(palette)` after its id
+/// (`"#3 | Color"`).
+pub fn palette_tree_items(
+    state: &EngineState,
+    include: impl Fn(u8) -> bool,
+    detail: impl Fn(&Palette) -> &'static str,
+) -> Vec<TreeItem<FolderId, u8>> {
+    let mut items = folder_tree_items(&state.folders, FolderKind::Palettes);
+    items.extend(
+        state
+            .palettes
+            .iter()
+            .filter(|(id, _)| include(**id))
+            .map(|(id, palette)| {
+                TreeItem::leaf(*id, palette.folder, palette.name.clone())
+                    .with_detail(format!("#{id} | {}", detail(palette)))
+            }),
+    );
+    items
+}
+
+/// Drops every folder that has no leaf anywhere below it, for pickers: a
+/// folder with nothing to pick would only be a dead end. Leaves and the
+/// order of the remaining items are kept. Safe on parent cycles.
+pub fn prune_empty_folders<F, L>(items: Vec<TreeItem<F, L>>) -> Vec<TreeItem<F, L>>
+where
+    F: Copy + Ord,
+{
+    let parents: BTreeMap<F, Option<F>> = items
+        .iter()
+        .filter_map(|it| match it.key {
+            TreeKey::Folder(f) => Some((f, it.parent)),
+            TreeKey::Leaf(_) => None,
+        })
+        .collect();
+    let mut used = BTreeSet::new();
+    for it in &items {
+        if let TreeKey::Leaf(_) = it.key {
+            let mut current = it.parent;
+            while let Some(f) = current {
+                // Stops at a folder already marked (and so on cycles) and at
+                // a parent that is not in the list.
+                if !parents.contains_key(&f) || !used.insert(f) {
+                    break;
+                }
+                current = parents[&f];
+            }
+        }
+    }
+    items
+        .into_iter()
+        .filter(|it| match it.key {
+            TreeKey::Folder(f) => used.contains(&f),
+            TreeKey::Leaf(_) => true,
+        })
+        .collect()
+}
+
+/// Opens or closes `folder` in the tree with collapse-state salt `salt`, as
+/// its chevron would. Pickers call this for a folder tap.
+pub fn toggle_folder(ctx: &Context, salt: impl Hash, folder: FolderId) {
+    let id = tree_id(salt);
+    let mut state = TreeState::<FolderId>::load(ctx, id);
+    state.toggle(folder);
+    state.store(ctx, id);
+}
+
+/// Opens `folder` in the tree with collapse-state salt `salt`.
+pub fn expand_folder(ctx: &Context, salt: impl Hash, folder: FolderId) {
+    let id = tree_id(salt);
+    let mut state = TreeState::<FolderId>::load(ctx, id);
+    state.set_collapsed(folder, false);
+    state.store(ctx, id);
 }
 
 /// Groups folders whose groups (recursively) are all selected, for
@@ -312,6 +433,149 @@ pub fn move_target_items(state: &EngineState, item: FolderItem) -> Vec<TreeItem<
             _ => None,
         })
         .collect()
+}
+
+/// Every item of `kind` under `folder`, recursively (groups, user scenes or
+/// palettes; not folders), by id: `(id, name, its folder)`.
+pub fn items_in_subtree(
+    state: &EngineState,
+    kind: FolderKind,
+    folder: FolderId,
+) -> Vec<(u8, String, Option<FolderId>)> {
+    let subtree = folder::folder_subtree(&state.folders, folder);
+    let inside = |f: &Option<FolderId>| f.is_some_and(|f| subtree.contains(&f));
+    match kind {
+        FolderKind::Groups => state
+            .groups
+            .iter()
+            .filter(|(_, g)| inside(&g.folder))
+            .map(|(id, g)| (*id, g.name.clone(), g.folder))
+            .collect(),
+        FolderKind::Scenes => state
+            .user_scenes()
+            .filter(|(_, s)| inside(&s.folder))
+            .map(|(id, s)| (*id, s.name.clone(), s.folder))
+            .collect(),
+        FolderKind::Palettes => state
+            .palettes
+            .iter()
+            .filter(|(_, p)| inside(&p.folder))
+            .map(|(id, p)| (*id, p.name.clone(), p.folder))
+            .collect(),
+    }
+}
+
+//
+// Setup pages.
+//
+
+/// When a folder was just created, the engine applies `CreateFolder` on its
+/// next tick; until then (at most this long) a missing folder is not a reason
+/// to drop the selection.
+const PENDING_FOLDER_GRACE: Duration = Duration::from_secs(2);
+
+/// Folder state of one Setup tree (Setup › Groups, Scenes, Palettes): the
+/// selected folder and the open folder dialog. The page keeps its own item
+/// selection (group, focused scene, palette); while `folder` is set, the
+/// folder is the selection.
+#[derive(Debug, Default)]
+pub struct SetupFolderUi {
+    /// The selected folder. While set, it is the selection (not the item).
+    pub folder: Option<FolderId>,
+    /// Folder dialogs (create, rename, delete, move to…).
+    pub dialog: FolderDialog,
+    /// When `folder` was just created (see [`PENDING_FOLDER_GRACE`]).
+    pending_since: Option<Instant>,
+}
+
+impl SetupFolderUi {
+    /// Drops a selected folder that no longer exists (deleted, or a new
+    /// showfile), unless it was just created and is still on its way.
+    pub fn drop_missing_folder(&mut self, state: &EngineState) {
+        let Some(id) = self.folder else { return };
+        if state.folders.contains_key(&id) {
+            self.pending_since = None;
+        } else if !self
+            .pending_since
+            .is_some_and(|since| since.elapsed() < PENDING_FOLDER_GRACE)
+        {
+            self.folder = None;
+            self.pending_since = None;
+        }
+    }
+
+    /// Follows a folder event from the dialog in the tree with collapse-state
+    /// salt `tree_salt`: a new folder gets selected and its parent opened, the
+    /// target of a move is opened, and a deleted folder is deselected. The
+    /// caller sends the event.
+    pub fn follow(&mut self, ctx: &Context, tree_salt: impl Hash, event: &ControlEvent) {
+        let expand = match event {
+            ControlEvent::CreateFolder { id, parent, .. } => {
+                self.folder = Some(*id);
+                self.pending_since = Some(Instant::now());
+                *parent
+            }
+            ControlEvent::MoveToFolder { folder, .. } => *folder,
+            ControlEvent::DeleteFolder(id) => {
+                if self.folder == Some(*id) {
+                    self.folder = None;
+                }
+                None
+            }
+            _ => None,
+        };
+        if let Some(folder) = expand {
+            expand_folder(ctx, tree_salt, folder);
+        }
+    }
+}
+
+/// Name, place and contents of a Setup folder: how many items of `kind` are
+/// directly in it, its subfolders and every item under it with its path.
+pub fn folder_details(ui: &mut egui::Ui, state: &EngineState, kind: FolderKind, folder: FolderId) {
+    let (Some(f), Some(summary)) = (state.folders.get(&folder), delete_summary(state, folder))
+    else {
+        ui.label(RichText::new(format!("No {} selected", kind_noun(kind, 1))).color(Color32::GRAY));
+        return;
+    };
+
+    ui.label(RichText::new("Folder").size(12.0));
+    ui.add_space(6.0);
+    ui.label(RichText::new(&f.name).size(18.0).strong());
+    ui.add_space(6.0);
+    ui.label(format!("In: {}", folder_path(&state.folders, f.parent)));
+    ui.add_space(6.0);
+
+    let all = items_in_subtree(state, kind, folder);
+    let mut contents = format!("{} {} here", summary.items, kind_noun(kind, summary.items));
+    if summary.subfolders > 0 {
+        contents += &format!(
+            ", {} {}, {} {} in total",
+            summary.subfolders,
+            if summary.subfolders == 1 {
+                "subfolder"
+            } else {
+                "subfolders"
+            },
+            all.len(),
+            kind_noun(kind, all.len()),
+        );
+    }
+    ui.label(contents);
+    ui.add_space(6.0);
+
+    egui::ScrollArea::vertical()
+        .id_salt(("setup-folder-items", kind))
+        .show(ui, |ui| {
+            for (id, name, place) in &all {
+                let place = if *place == Some(folder) {
+                    String::new()
+                } else {
+                    format!("  ({})", folder_path(&state.folders, *place))
+                };
+                ui.label(RichText::new(format!("#{id}  {name}{place}")).size(12.0));
+            }
+        });
 }
 
 //
@@ -689,6 +953,87 @@ fn move_dialog(
     (confirm, cancel || response.cancel_requested)
 }
 
+const PICKER_WIDTH: f32 = 360.0;
+const PICKER_ROW_HEIGHT: f32 = 48.0;
+const PICKER_LIST_HEIGHT: f32 = 290.0;
+
+/// A dialog that picks one leaf of a folder tree (a scene, a palette).
+/// Tapping a leaf picks it and closes the dialog; tapping a folder opens or
+/// closes it (a picker has no use for picking a folder). `selected` is
+/// highlighted. Close, Esc and a tap on the backdrop close it without a pick.
+/// `tree_salt` names the collapse state (see [`tree_id`]).
+pub fn tree_picker_dialog(
+    ctx: &Context,
+    title: &str,
+    tree_salt: impl Hash + Copy,
+    items: &[TreeItem<FolderId, u8>],
+    selected: Option<u8>,
+    empty_text: &str,
+    open: &mut bool,
+) -> Option<u8> {
+    if !*open {
+        return None;
+    }
+
+    let rows = {
+        let state = TreeState::<FolderId>::load(ctx, tree_id(tree_salt));
+        components::visible_rows(items, state.collapsed()).len()
+    };
+    let list_height = ((rows.max(1)) as f32 * (PICKER_ROW_HEIGHT + 2.0)).min(PICKER_LIST_HEIGHT);
+    let close_size = ButtonSize::Medium.with_width(160.0);
+
+    let mut picked = None;
+    let mut close = false;
+    let response = Dialog::new(
+        format!("tree-picker::{title}"),
+        egui::vec2(PICKER_WIDTH, 100.0 + list_height + close_size.dim().0.y),
+    )
+    .with_backdrop()
+    .dismiss_on_backdrop()
+    .show(ctx, |ui| {
+        ui.label(RichText::new(title).strong().size(16.0));
+        ui.add_space(6.0);
+
+        let width = ui.available_width();
+        if items.iter().all(|it| matches!(it.key, TreeKey::Folder(_))) {
+            ui.label(RichText::new(empty_text).color(Color32::GRAY));
+        } else {
+            egui::ScrollArea::vertical()
+                .id_salt(("tree-picker-list", title))
+                .max_height(PICKER_LIST_HEIGHT)
+                // The dialog has no fixed height; keep every row visible up
+                // to the maximum instead of egui's 64 px minimum.
+                .min_scrolled_height(list_height)
+                .show(ui, |ui| {
+                    ui.set_width(width);
+                    match Tree::new(tree_salt, items)
+                        .selected(selected.map(TreeKey::Leaf))
+                        .row_height(PICKER_ROW_HEIGHT)
+                        .show(ui)
+                    {
+                        Some(TreeAction::SelectLeaf(leaf)) => picked = Some(leaf),
+                        Some(TreeAction::TapFolder(f)) => toggle_folder(ui.ctx(), tree_salt, f),
+                        Some(TreeAction::MoveRequested(_)) | None => {}
+                    }
+                });
+        }
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.vertical_centered(|ui| {
+            if components::button(ui, false, "Close", close_size) {
+                close = true;
+            }
+        });
+    });
+
+    if picked.is_some() || close || response.cancel_requested {
+        *open = false;
+    }
+    picked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -943,6 +1288,199 @@ mod tests {
         assert_eq!(delete_summary(&s, 42), None);
         assert_eq!(kind_noun(FolderKind::Scenes, 1), "scene");
         assert_eq!(kind_noun(FolderKind::Palettes, 0), "palettes");
+    }
+
+    /// [`state`] plus scenes 0..=3 and BLANK, palettes 0..=3. Scenes folders
+    /// Show(10) > Slow(11) next to the empty Songs(4); palettes folder
+    /// Colors(12). Scene 1 in Show, 2 in Slow; palettes 0, 1 in Colors.
+    fn scenes_and_palettes() -> EngineState {
+        use blaulicht_shared::{
+            palette::PaletteKind,
+            scene::{EngineSink, Scene},
+            FixtureProperty,
+        };
+        let mut s = state();
+        s.ensure_blank_scene();
+        for id in 0..4u8 {
+            s.scenes.insert(
+                id,
+                Scene {
+                    sink: EngineSink::from_groups(&s.groups),
+                    name: format!("S{id}"),
+                    folder: None,
+                },
+            );
+            s.palettes.insert(
+                id,
+                Palette {
+                    name: format!("P{id}"),
+                    kind: PaletteKind::Single(FixtureProperty::Alpha, 0),
+                    folder: None,
+                },
+            );
+        }
+        s.create_folder(10, FolderKind::Scenes, None, "Show".to_string())
+            .unwrap();
+        s.create_folder(11, FolderKind::Scenes, Some(10), "Slow".to_string())
+            .unwrap();
+        s.create_folder(12, FolderKind::Palettes, None, "Colors".to_string())
+            .unwrap();
+        for (item, folder) in [
+            (FolderItem::Scene(1), 10),
+            (FolderItem::Scene(2), 11),
+            (FolderItem::Palette(0), 12),
+            (FolderItem::Palette(1), 12),
+        ] {
+            s.move_to_folder(item, Some(folder)).unwrap();
+        }
+        s
+    }
+
+    fn shown(items: &[TreeItem<FolderId, u8>]) -> Vec<(TreeKey<FolderId, u8>, usize)> {
+        components::visible_rows(items, &BTreeSet::new())
+            .into_iter()
+            .map(|row| (items[row.item].key, row.depth))
+            .collect()
+    }
+
+    #[test]
+    fn scene_items_nest_scenes_and_keep_blank_at_the_top_level() {
+        let mut s = scenes_and_palettes();
+        // Even if a broken state put BLANK into a folder, the tree shows it
+        // at the top level (the engine never moves it).
+        s.scenes.get_mut(&BLANK_SCENE_ID).unwrap().folder = Some(11);
+
+        let user = scene_tree_items(&s, |id| id != BLANK_SCENE_ID);
+        assert_eq!(
+            shown(&user),
+            vec![
+                (F(10), 0),
+                (F(11), 1),
+                (L(2), 2),
+                (L(1), 1),
+                (F(4), 0),
+                (L(0), 0),
+                (L(3), 0),
+            ]
+        );
+        // Only scenes folders; groups folders stay out.
+        assert!(!user.iter().any(|it| it.key == F(0)));
+        let s1 = user.iter().find(|it| it.key == L(1)).unwrap();
+        assert_eq!(
+            (s1.label.as_str(), s1.detail.as_deref()),
+            ("S1", Some("#1"))
+        );
+
+        let all = scene_tree_items(&s, |_| true);
+        let blank = all.iter().find(|it| it.key == L(BLANK_SCENE_ID)).unwrap();
+        assert_eq!(blank.parent, None);
+    }
+
+    #[test]
+    fn palette_items_carry_id_and_kind() {
+        let s = scenes_and_palettes();
+        let items = palette_tree_items(&s, |id| id != 3, |_| "Alpha");
+        assert_eq!(
+            shown(&items),
+            vec![(F(12), 0), (L(0), 1), (L(1), 1), (L(2), 0)]
+        );
+        let p1 = items.iter().find(|it| it.key == L(1)).unwrap();
+        assert_eq!(p1.detail.as_deref(), Some("#1 | Alpha"));
+    }
+
+    #[test]
+    fn pruning_keeps_only_folders_with_leaves_below() {
+        let mut s = scenes_and_palettes();
+        s.create_folder(13, FolderKind::Scenes, Some(10), "Empty".to_string())
+            .unwrap();
+        // Only scene 2 (in Songs / Slow) left to pick: Songs and Slow stay,
+        // Empty goes.
+        let items = prune_empty_folders(scene_tree_items(&s, |id| id == 2));
+        assert_eq!(shown(&items), vec![(F(10), 0), (F(11), 1), (L(2), 2)]);
+        // Nothing to pick: no folders either.
+        assert!(prune_empty_folders(scene_tree_items(&s, |_| false)).is_empty());
+
+        // A parent cycle and a missing parent don't hang it.
+        let cyclic: Vec<TreeItem<FolderId, u8>> = vec![
+            TreeItem::folder(1, Some(2), "a"),
+            TreeItem::folder(2, Some(1), "b"),
+            TreeItem::folder(3, None, "empty"),
+            TreeItem::leaf(7, Some(1), "x"),
+            TreeItem::leaf(8, Some(99), "orphan"),
+        ];
+        let kept: Vec<_> = keys(&prune_empty_folders(cyclic));
+        assert_eq!(kept, vec![F(1), F(2), L(7), L(8)]);
+    }
+
+    #[test]
+    fn subtree_items_per_kind() {
+        let s = scenes_and_palettes();
+        let ids = |kind, f| -> Vec<u8> {
+            items_in_subtree(&s, kind, f)
+                .into_iter()
+                .map(|(id, ..)| id)
+                .collect()
+        };
+        assert_eq!(ids(FolderKind::Scenes, 10), vec![1, 2]);
+        assert_eq!(ids(FolderKind::Scenes, 11), vec![2]);
+        assert_eq!(ids(FolderKind::Palettes, 12), vec![0, 1]);
+        // Same set as `folder_group_ids`, which Setup › Groups showed before.
+        assert_eq!(
+            ids(FolderKind::Groups, 0),
+            s.folder_group_ids(0).into_iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            items_in_subtree(&s, FolderKind::Scenes, 11),
+            vec![(2, "S2".to_string(), Some(11))]
+        );
+    }
+
+    #[test]
+    fn setup_folder_ui_follows_folder_events() {
+        let ctx = Context::default();
+        let s = scenes_and_palettes();
+        let mut ui_state = SetupFolderUi::default();
+        let collapsed =
+            |ctx: &Context, f| TreeState::<FolderId>::load(ctx, tree_id("t")).is_collapsed(f);
+
+        // Create: the new folder is selected, its parent opened, and the
+        // selection survives until the engine has applied the event.
+        toggle_folder(&ctx, "t", 10);
+        assert!(collapsed(&ctx, 10));
+        let create = create_folder_event(&s, FolderKind::Scenes, Some(10), "New").unwrap();
+        ui_state.follow(&ctx, "t", &create);
+        // The lowest free id (groups folders 0..=4 come from `state()`).
+        assert_eq!(ui_state.folder, Some(5));
+        assert!(!collapsed(&ctx, 10));
+        ui_state.drop_missing_folder(&s);
+        assert_eq!(ui_state.folder, Some(5));
+
+        // A move opens its target.
+        toggle_folder(&ctx, "t", 11);
+        ui_state.follow(
+            &ctx,
+            "t",
+            &ControlEvent::MoveToFolder {
+                item: FolderItem::Scene(0),
+                folder: Some(11),
+            },
+        );
+        assert!(!collapsed(&ctx, 11));
+
+        // Deleting the selected folder deselects it; another one is kept.
+        ui_state.folder = Some(11);
+        ui_state.follow(&ctx, "t", &ControlEvent::DeleteFolder(10));
+        assert_eq!(ui_state.folder, Some(11));
+        ui_state.follow(&ctx, "t", &ControlEvent::DeleteFolder(11));
+        assert_eq!(ui_state.folder, None);
+
+        // A folder that is gone (and was not just created) is dropped.
+        let mut tapped = SetupFolderUi {
+            folder: Some(42),
+            ..SetupFolderUi::default()
+        };
+        tapped.drop_missing_folder(&s);
+        assert_eq!(tapped.folder, None);
     }
 
     #[test]

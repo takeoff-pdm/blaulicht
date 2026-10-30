@@ -3,7 +3,7 @@
 //!
 //! The selected group is `add_fixture_group`, shared with the Fixtures tab, so
 //! picking a group here and switching tabs shows its fixtures there. A folder
-//! can be selected instead ([`SetupGroupsUi::folder`]); Rename and Delete act
+//! can be selected instead (`setup_groups_ui`, a [`SetupFolderUi`]); Rename and Delete act
 //! on whichever is selected, and new groups and folders go into the selected
 //! folder (the top level otherwise).
 //!
@@ -11,11 +11,12 @@
 //! and the details of the selected group or folder on the right. Every row has
 //! a "Move…" button that opens the folder picker ([`FolderDialog::Move`]).
 
+#[cfg(doc)]
+use crate::app::components::SetupFolderUi;
 use crate::app::{
     components::{
-        self, delete_summary, folder_path, group_tree_items, kind_noun, tree_id, ButtonSize,
-        Dialog, FolderDialog, Tree, TreeAction, TreeKey, TreeState, DEFAULT_NEW_GROUP_NAME,
-        SETUP_GROUP_TREE,
+        self, folder_details, group_tree_items, ButtonSize, Dialog, FolderDialog, Tree, TreeAction,
+        TreeKey, DEFAULT_NEW_GROUP_NAME, SETUP_GROUP_TREE,
     },
     page::PageRenderContext,
     BlaulichtApp,
@@ -26,22 +27,6 @@ use blaulicht_shared::{
     AppSubPage, ControlEvent, ControlEventMessage, EngineGroups, EventOriginator,
 };
 use egui::{Color32, Context, Frame, Key, Margin, RichText};
-use std::time::{Duration, Instant};
-
-/// Setup › Groups state beyond the shared `add_fixture_group`.
-#[derive(Debug, Default)]
-pub struct SetupGroupsUi {
-    /// The selected folder. While set, it is the selection (not the group).
-    pub folder: Option<FolderId>,
-    /// Folder dialogs (create, rename, delete, move to…).
-    pub dialog: FolderDialog,
-    /// When `folder` was just created: the engine applies `CreateFolder` on
-    /// its next tick, so until then (at most [`PENDING_FOLDER_GRACE`]) a
-    /// missing folder is not a reason to drop the selection.
-    pending_since: Option<Instant>,
-}
-
-const PENDING_FOLDER_GRACE: Duration = Duration::from_secs(2);
 
 impl BlaulichtApp {
     pub(super) fn setup_groups_ui(
@@ -60,18 +45,7 @@ impl BlaulichtApp {
 
         // A folder that no longer exists (deleted, or a new showfile) is
         // no selection, unless it was just created and is still on its way.
-        let ui_state = &mut self.setup_groups_ui;
-        if let Some(id) = ui_state.folder {
-            if dmx_engine.0.folders.contains_key(&id) {
-                ui_state.pending_since = None;
-            } else if !ui_state
-                .pending_since
-                .is_some_and(|since| since.elapsed() < PENDING_FOLDER_GRACE)
-            {
-                ui_state.folder = None;
-                ui_state.pending_since = None;
-            }
-        }
+        self.setup_groups_ui.drop_missing_folder(&dmx_engine.0);
 
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             self.group_toolbar(ui, dmx_engine);
@@ -107,27 +81,7 @@ impl BlaulichtApp {
     /// folder gets selected, the target of a move is expanded, and a deleted
     /// folder is deselected.
     fn apply_group_folder_event(&mut self, ctx: &Context, event: ControlEvent) {
-        let expand = match &event {
-            ControlEvent::CreateFolder { id, parent, .. } => {
-                self.setup_groups_ui.folder = Some(*id);
-                self.setup_groups_ui.pending_since = Some(Instant::now());
-                *parent
-            }
-            ControlEvent::MoveToFolder { folder, .. } => *folder,
-            ControlEvent::DeleteFolder(id) => {
-                if self.setup_groups_ui.folder == Some(*id) {
-                    self.setup_groups_ui.folder = None;
-                }
-                None
-            }
-            _ => None,
-        };
-        if let Some(folder) = expand {
-            let id = tree_id(SETUP_GROUP_TREE);
-            let mut state = TreeState::<FolderId>::load(ctx, id);
-            state.set_collapsed(folder, false);
-            state.store(ctx, id);
-        }
+        self.setup_groups_ui.follow(ctx, SETUP_GROUP_TREE, &event);
         self.data
             .event_bus_connection
             .send(ControlEventMessage::new(EventOriginator::Web, event));
@@ -235,57 +189,7 @@ impl BlaulichtApp {
 
     /// Name, place and contents of the selected folder.
     fn setup_folder_details(ui: &mut egui::Ui, dmx_engine: &EngineState, folder: FolderId) {
-        let state = &dmx_engine.0;
-        let (Some(f), Some(summary)) = (state.folders.get(&folder), delete_summary(state, folder))
-        else {
-            ui.label(RichText::new("No group selected").color(Color32::GRAY));
-            return;
-        };
-
-        ui.label(RichText::new("Folder").size(12.0));
-        ui.add_space(6.0);
-        ui.label(RichText::new(&f.name).size(18.0).strong());
-        ui.add_space(6.0);
-        ui.label(format!("In: {}", folder_path(&state.folders, f.parent)));
-        ui.add_space(6.0);
-
-        let all = state.folder_group_ids(folder);
-        let mut contents = format!(
-            "{} {} here",
-            summary.items,
-            kind_noun(FolderKind::Groups, summary.items)
-        );
-        if summary.subfolders > 0 {
-            contents += &format!(
-                ", {} {}, {} {} in total",
-                summary.subfolders,
-                if summary.subfolders == 1 {
-                    "subfolder"
-                } else {
-                    "subfolders"
-                },
-                all.len(),
-                kind_noun(FolderKind::Groups, all.len()),
-            );
-        }
-        ui.label(contents);
-        ui.add_space(6.0);
-
-        egui::ScrollArea::vertical()
-            .id_salt("setup-folder-groups")
-            .show(ui, |ui| {
-                for gid in &all {
-                    let Some(group) = state.groups.get(gid) else {
-                        continue;
-                    };
-                    let place = if group.folder == Some(folder) {
-                        String::new()
-                    } else {
-                        format!("  ({})", folder_path(&state.folders, group.folder))
-                    };
-                    ui.label(RichText::new(format!("#{gid}  {}{place}", group.name)).size(12.0));
-                }
-            });
+        folder_details(ui, &dmx_engine.0, FolderKind::Groups, folder);
     }
 
     /// Name, id and fixtures of the selected group.

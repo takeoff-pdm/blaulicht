@@ -1,23 +1,33 @@
-//! Setup › Palettes: the palette list with create, edit, unassign and delete.
+//! Setup › Palettes: the palette tree (palettes in folders) with create,
+//! edit, unassign, delete and move.
 //!
-//! Layout: toolbar on top, then [`BlaulichtApp::setup_palette_list`]. Ticket
-//! 018 replaces the flat list with a folder tree; the toolbar is where folder
-//! actions go. Assigning a palette to a selection is done in the Programmer
-//! (`render_palette_assignment_dialog` in `pages/programmer.rs`).
+//! Layout as in Setup › Groups and Scenes: toolbar on top, then
+//! [`BlaulichtApp::setup_palette_tree`] on the left and the selected palette
+//! or folder on the right. A palette or a folder can be selected
+//! (`PaletteUI::selected_palette` / `setup_palettes_ui`); Edit (Rename for a
+//! folder) and Delete act on the selection, and new palettes and folders go
+//! into the selected folder. Every row has a "Move…" button that opens the
+//! folder picker. Assigning a palette to a selection is done in the
+//! Programmer (`render_palette_assignment_dialog` in `pages/programmer.rs`).
 
 use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use crate::app::{
-    components::{self, ButtonSize, Dialog, HFader},
+    components::{
+        self, folder_details, folder_path, palette_tree_items, ButtonSize, Dialog, FolderDialog,
+        HFader, Tree, TreeAction, TreeKey, SETUP_PALETTE_TREE,
+    },
     BlaulichtApp,
 };
 use blaulicht_shared::{
     fixture::state::FixtureState,
+    folder::{FolderId, FolderItem, FolderKind},
     palette::{Palette, PaletteKind, PaletteOp},
-    ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty, HSVColor, RGBColor,
+    ControlEvent, ControlEventMessage, EngineState, EventOriginator, FixtureProperty, HSVColor,
+    RGBColor,
 };
-use egui::{Context, RichText, Widget};
+use egui::{Color32, Context, RichText, Widget};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum PaletteKindSelection {
@@ -217,6 +227,9 @@ impl Display for PaletteTargetOption {
 }
 
 pub struct PaletteUI {
+    /// The palette selected in the Setup › Palettes tree (unless a folder is,
+    /// see `setup_palettes_ui`).
+    selected_palette: Option<u8>,
     create_dialog_open: bool,
     edit_dialog_open: bool,
     delete_dialog_open: bool,
@@ -248,6 +261,7 @@ pub struct PaletteUI {
 impl Default for PaletteUI {
     fn default() -> Self {
         Self {
+            selected_palette: None,
             create_dialog_open: false,
             edit_dialog_open: false,
             delete_dialog_open: false,
@@ -387,8 +401,9 @@ impl BlaulichtApp {
             });
     }
 
-    /// Setup › Palettes: a toolbar on top, then [`Self::setup_palette_list`].
-    /// Also rendered on its own for a desktop dock pane still showing the old
+    /// Setup › Palettes: a toolbar on top, then [`Self::setup_palette_tree`]
+    /// on the left and the selected palette or folder on the right. Also
+    /// rendered on its own for a desktop dock pane still showing the old
     /// Palettes page (`AppPage::Palettes`).
     pub(crate) fn setup_palettes_ui(
         &mut self,
@@ -396,30 +411,73 @@ impl BlaulichtApp {
         ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
-        let palettes_snapshot: Vec<(u8, Palette)> = {
-            let engine = self.data.state.dmx_engine.read().unwrap();
-            engine
-                .0
-                .palettes
-                .iter()
-                .map(|(id, p)| (*id, p.clone()))
-                .collect()
-        };
+        let engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
+        let state = &engine.0;
+        let palettes_snapshot: Vec<(u8, Palette)> = state
+            .palettes
+            .iter()
+            .map(|(id, p)| (*id, p.clone()))
+            .collect();
 
         self.render_palette_create_dialog(ctx, &palettes_snapshot);
         self.render_palette_edit_dialog(ctx, &palettes_snapshot);
         self.render_delete_palette_dialog(ctx);
+        if let Some(event) = self.setup_palettes_ui.dialog.show(ctx, state) {
+            self.setup_palettes_ui
+                .follow(ctx, SETUP_PALETTE_TREE, &event);
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(EventOriginator::Web, event));
+        }
+        self.setup_palettes_ui.drop_missing_folder(state);
+        if self
+            .palette_ui_state
+            .selected_palette
+            .is_some_and(|id| !state.palettes.contains_key(&id))
+        {
+            self.palette_ui_state.selected_palette = None;
+        }
 
         render_context.horizontal(ui, egui::Align::Min, |ui| {
-            self.palette_toolbar(ui);
+            self.palette_toolbar(ui, state);
         });
 
         ui.separator();
 
-        self.setup_palette_list(ui, render_context, &palettes_snapshot);
+        ui.allocate_ui_with_layout(
+            ui.available_size(),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                let tree_width = (ui.available_width() * 0.45).clamp(220.0, 380.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(tree_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(tree_width);
+                        self.setup_palette_tree(ui, state);
+                    },
+                );
+
+                ui.separator();
+
+                ui.vertical(|ui| match self.setup_palettes_ui.folder {
+                    Some(folder) => folder_details(ui, state, FolderKind::Palettes, folder),
+                    None => self.setup_palette_details(ui, state),
+                });
+            },
+        );
     }
 
-    fn palette_toolbar(&mut self, ui: &mut egui::Ui) {
+    /// Create Palette | New Folder | Edit (Rename for a folder) | Delete. Edit
+    /// and Delete act on the selected palette or folder.
+    fn palette_toolbar(&mut self, ui: &mut egui::Ui, state: &EngineState) {
+        let folder = self.setup_palettes_ui.folder;
+        let palette = self
+            .palette_ui_state
+            .selected_palette
+            .filter(|id| state.palettes.contains_key(id));
+        let has_selection = folder.is_some() || palette.is_some();
+
         if components::button(ui, false, "Create Palette", ButtonSize::Medium) {
             self.palette_ui_state.create_dialog_open = true;
             self.palette_ui_state.new_name = "New Palette".to_string();
@@ -428,76 +486,134 @@ impl BlaulichtApp {
             self.palette_ui_state.pointer_property = None;
             self.palette_ui_state.pointer_ops.clear();
         }
+
+        if components::button(ui, false, "New Folder", ButtonSize::Medium) {
+            self.setup_palettes_ui.dialog = FolderDialog::create(FolderKind::Palettes, folder);
+        }
+
+        let edit_label = if folder.is_some() { "Rename" } else { "Edit" };
+        if components::action_button(
+            ui,
+            has_selection,
+            edit_label,
+            ButtonSize::Medium,
+            Some("Select a palette or folder"),
+        ) {
+            if let Some(folder) = folder {
+                self.setup_palettes_ui.dialog = FolderDialog::rename(state, folder);
+            } else if let Some((id, p)) = palette.and_then(|id| state.palettes.get_key_value(&id)) {
+                self.palette_ui_state.load_from_palette(p);
+                self.palette_ui_state.edit_palette_id = Some(*id);
+                self.palette_ui_state.edit_dialog_open = true;
+            }
+        }
+
+        if components::action_button(
+            ui,
+            has_selection,
+            "Delete",
+            ButtonSize::Medium,
+            Some("Select a palette or folder"),
+        ) {
+            if let Some(folder) = folder {
+                self.setup_palettes_ui.dialog = FolderDialog::delete(folder);
+            } else if palette.is_some() {
+                self.palette_ui_state.delete_palette_id = palette;
+                self.palette_ui_state.delete_dialog_open = true;
+            }
+        }
     }
 
-    /// The scrolling list of all palettes. Each row has a color preview (an
-    /// editable swatch for a Color palette), `[id] name (kind)`, and Unassign,
-    /// Edit and Delete. Ticket 018 replaces this list with a folder tree.
-    fn setup_palette_list(
-        &mut self,
-        ui: &mut egui::Ui,
-        render_context: crate::app::page::PageRenderContext,
-        palettes_snapshot: &[(u8, Palette)],
-    ) {
-        if palettes_snapshot.is_empty() {
+    /// The tree of folders and palettes (`#id | kind` under each name).
+    /// Tapping a palette selects it, tapping a folder selects the folder,
+    /// "Move…" opens the folder picker for that row.
+    fn setup_palette_tree(&mut self, ui: &mut egui::Ui, state: &EngineState) {
+        ui.label("Palettes:");
+        ui.add_space(8.0);
+
+        let items = palette_tree_items(state, |_| true, |p| palette_kind_label(&p.kind));
+        if items.is_empty() {
             ui.label(RichText::new("No palettes defined.").weak());
             return;
         }
 
-        let mut color_update: Option<(u8, HSVColor)> = None;
+        let selected = match self.setup_palettes_ui.folder {
+            Some(folder) => Some(TreeKey::Folder(folder)),
+            None => self.palette_ui_state.selected_palette.map(TreeKey::Leaf),
+        };
 
-        // Map view of the snapshot so previews can resolve pointer chains.
-        let palettes_map: BTreeMap<u8, Palette> = palettes_snapshot.iter().cloned().collect();
+        let action = egui::ScrollArea::vertical()
+            .id_salt("setup-palettes")
+            .show(ui, |ui| {
+                Tree::new(SETUP_PALETTE_TREE, &items)
+                    .selected(selected)
+                    .with_move_button(true)
+                    .show(ui)
+            })
+            .inner;
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for (id, palette) in palettes_snapshot {
-                render_context.horizontal(ui, egui::Align::Center, |ui| {
-                    if let Some(new_hsv) = Self::render_palette_preview(ui, palette, &palettes_map)
-                    {
-                        color_update = Some((*id, new_hsv));
-                    }
-
-                    ui.label(
-                        RichText::new(format!(
-                            "[{}] {} ({})",
-                            id,
-                            palette.name,
-                            palette_kind_label(&palette.kind)
-                        ))
-                        .strong(),
-                    );
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if components::button(ui, false, "Delete", ButtonSize::Small) {
-                            self.palette_ui_state.delete_palette_id = Some(*id);
-                            self.palette_ui_state.delete_dialog_open = true;
-                        }
-
-                        if components::button(ui, false, "Edit", ButtonSize::Small) {
-                            let engine = self.data.state.dmx_engine.read().unwrap();
-                            if let Some(p) = engine.0.palettes.get(id) {
-                                self.palette_ui_state.load_from_palette(p);
-                                self.palette_ui_state.edit_palette_id = Some(*id);
-                                self.palette_ui_state.edit_dialog_open = true;
-                            }
-                        }
-
-                        if components::button(ui, false, "Unassign", ButtonSize::Small) {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::UnassignPalette(*id),
-                                ));
-                        }
-                    });
-                });
-
-                ui.separator();
+        match action {
+            Some(TreeAction::SelectLeaf(id)) => {
+                self.setup_palettes_ui.folder = None;
+                self.palette_ui_state.selected_palette = Some(id);
             }
-        });
+            Some(TreeAction::TapFolder(folder)) => {
+                self.setup_palettes_ui.folder = Some(folder);
+            }
+            Some(TreeAction::MoveRequested(key)) => {
+                let item = match key {
+                    TreeKey::Folder(id) => FolderItem::Folder(id),
+                    TreeKey::Leaf(id) => FolderItem::Palette(id),
+                };
+                self.setup_palettes_ui.dialog = FolderDialog::move_item(state, item);
+            }
+            None => {}
+        }
+    }
 
-        if let Some((id, new_color)) = color_update {
+    /// The selected palette: color preview (an editable swatch for a Color
+    /// palette), name, kind, folder, and Unassign.
+    fn setup_palette_details(&mut self, ui: &mut egui::Ui, state: &EngineState) {
+        let Some((id, palette)) = self
+            .palette_ui_state
+            .selected_palette
+            .and_then(|id| state.palettes.get(&id).map(|p| (id, p)))
+        else {
+            ui.label(RichText::new("No palette selected").color(Color32::GRAY));
+            return;
+        };
+
+        ui.label(RichText::new(format!("Selected Palette: #{id}")).size(12.0));
+        ui.add_space(6.0);
+        let mut color_update = None;
+        ui.horizontal(|ui| {
+            color_update = Self::render_palette_preview(ui, palette, &state.palettes);
+            ui.label(RichText::new(&palette.name).size(18.0).strong());
+        });
+        ui.add_space(6.0);
+        ui.label(format!("Type: {}", palette_kind_label(&palette.kind)));
+        ui.add_space(6.0);
+        ui.label(format!(
+            "In: {}",
+            folder_path(&state.folders, palette.folder)
+        ));
+        ui.add_space(12.0);
+
+        if components::button(ui, false, "Unassign", ButtonSize::Medium) {
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::UnassignPalette(id),
+                ));
+        }
+        ui.label(
+            RichText::new("Unassign removes it from every fixture in every scene.")
+                .size(12.0)
+                .color(Color32::GRAY),
+        );
+
+        if let Some(new_color) = color_update {
             self.data
                 .event_bus_connection
                 .send(ControlEventMessage::new(
@@ -872,12 +988,14 @@ impl BlaulichtApp {
         if should_create {
             let name = self.palette_ui_state.new_name.clone();
             if let Some(kind) = self.palette_ui_state.build_palette_kind() {
+                let event = create_palette_event(
+                    palettes,
+                    self.setup_palettes_ui.folder,
+                    ControlEvent::CreatePalette(name, kind),
+                );
                 self.data
                     .event_bus_connection
-                    .send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::CreatePalette(name, kind),
-                    ));
+                    .send(ControlEventMessage::new(EventOriginator::Web, event));
                 self.palette_ui_state.create_dialog_open = false;
             }
         }
@@ -1001,8 +1119,34 @@ fn palette_resolved_rgb(kind: &PaletteKind, palettes: &BTreeMap<u8, Palette>) ->
     Some(state.resolve(palettes).color.into())
 }
 
+/// The event for "Create Palette": `create` itself, or, with a folder
+/// selected, a `Transaction` of `create` and moving the new palette into that
+/// folder. The engine gives a new palette the lowest free id, so that is the
+/// id moved (as with `CreateFolder`, the id is picked from the UI's copy of
+/// the state).
+fn create_palette_event(
+    palettes: &[(u8, Palette)],
+    folder: Option<FolderId>,
+    create: ControlEvent,
+) -> ControlEvent {
+    let Some(folder) = folder else {
+        return create;
+    };
+    let Some(id) = (0..=u8::MAX).find(|id| !palettes.iter().any(|(pid, _)| pid == id)) else {
+        // No free id: the engine rejects the create anyway.
+        return create;
+    };
+    ControlEvent::Transaction(vec![
+        create,
+        ControlEvent::MoveToFolder {
+            item: FolderItem::Palette(id),
+            folder: Some(folder),
+        },
+    ])
+}
+
 /// Short kind name shown after a palette's name, e.g. "Color" or "Strobe".
-fn palette_kind_label(kind: &PaletteKind) -> &'static str {
+pub(crate) fn palette_kind_label(kind: &PaletteKind) -> &'static str {
     match kind {
         PaletteKind::Color(_) => "Color",
         PaletteKind::Position(_) => "Position",
@@ -1032,5 +1176,51 @@ mod tests {
         assert_eq!(palette_kind_label(&strobe), "Strobe");
         let pan = PaletteKind::Single(FixtureProperty::Pan, 10);
         assert_eq!(palette_kind_label(&pan), "Single");
+    }
+
+    fn palette(name: &str) -> Palette {
+        Palette {
+            name: name.to_string(),
+            kind: PaletteKind::Single(FixtureProperty::Alpha, 0),
+            folder: None,
+        }
+    }
+
+    fn create() -> ControlEvent {
+        ControlEvent::CreatePalette(
+            "New".to_string(),
+            PaletteKind::Single(FixtureProperty::Alpha, 1),
+        )
+    }
+
+    #[test]
+    fn new_palettes_go_into_the_selected_folder() {
+        let palettes = vec![(0, palette("a")), (2, palette("b"))];
+        // No folder: just the create.
+        assert_eq!(
+            format!("{:?}", create_palette_event(&palettes, None, create())),
+            format!("{:?}", create())
+        );
+        // A folder: the create plus a move of the lowest free id (1, the one
+        // the engine picks).
+        assert_eq!(
+            format!("{:?}", create_palette_event(&palettes, Some(7), create())),
+            format!(
+                "{:?}",
+                ControlEvent::Transaction(vec![
+                    create(),
+                    ControlEvent::MoveToFolder {
+                        item: FolderItem::Palette(1),
+                        folder: Some(7),
+                    },
+                ])
+            )
+        );
+        // No free id: the engine rejects the create, nothing to move.
+        let full: Vec<(u8, Palette)> = (0..=u8::MAX).map(|id| (id, palette("p"))).collect();
+        assert_eq!(
+            format!("{:?}", create_palette_event(&full, Some(7), create())),
+            format!("{:?}", create())
+        );
     }
 }

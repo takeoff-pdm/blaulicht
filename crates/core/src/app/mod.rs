@@ -231,9 +231,6 @@ pub struct BlaulichtApp {
     bass_high_numberpad: Numberpad,
     manual_bpm_numberpad: Numberpad,
 
-    // TODO: move into custom scroll area or whatever
-    scene_page_index: usize,
-
     system_ui_state: SystemUI,
 
     add_dmx_override_open: bool,
@@ -304,7 +301,11 @@ pub struct BlaulichtApp {
     move_fixture_group_dialog_open: bool,
     new_group_name: String,
     /// Setup › Groups: selected folder and the open folder dialog.
-    setup_groups_ui: pages::SetupGroupsUi,
+    setup_groups_ui: components::SetupFolderUi,
+    /// Setup › Scenes: selected folder and the open folder dialog.
+    setup_scenes_ui: components::SetupFolderUi,
+    /// Setup › Palettes: selected folder and the open folder dialog.
+    setup_palettes_ui: components::SetupFolderUi,
 
     dmx_simulator: DmxSimulator,
 
@@ -461,7 +462,6 @@ impl BlaulichtApp {
                 .dialog_title("Manual BPM")
                 .field_width(140.0)
                 .range(60.0, 220.0),
-            scene_page_index: 0,
             add_dmx_override_open: false,
             add_dmx_override_chan: 1,
             add_dmx_override_uni: 0,
@@ -580,7 +580,9 @@ impl BlaulichtApp {
             delete_fixture: None,
             move_fixture_group_dialog_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
-            setup_groups_ui: pages::SetupGroupsUi::default(),
+            setup_groups_ui: components::SetupFolderUi::default(),
+            setup_scenes_ui: components::SetupFolderUi::default(),
+            setup_palettes_ui: components::SetupFolderUi::default(),
             view_ui_state: ViewUI::default(),
             view_perf_ui_state: ViewPerfUI::default(),
             animation_ui_state: AnimationUI::default(),

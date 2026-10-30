@@ -5,7 +5,7 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, Knob, SpeedKnob},
-        pages::{AnimationEditState, AnimationPresetsUi},
+        pages::{palette_kind_label, AnimationEditState, AnimationPresetsUi},
         BlaulichtApp,
     },
     dmx::EngineState,
@@ -1067,81 +1067,43 @@ impl BlaulichtApp {
                 ));
                 ui.add_space(8.0);
 
-                ui.heading("Active");
-                ui.separator();
-                if active.is_empty() {
-                    ui.label("None.");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("active_palettes")
-                        .max_height(120.0)
-                        .show(ui, |ui| {
-                            for palette_id in &active {
-                                let name = dmx_engine
-                                    .0
-                                    .palettes
-                                    .get(palette_id)
-                                    .map(|p| p.name.as_str())
-                                    .unwrap_or("?");
-                                let label = format!(
-                                    "{} {palette_id}: {name}",
-                                    egui_phosphor::regular::LETTER_CIRCLE_P
-                                );
-                                if components::button(
-                                    ui,
-                                    true,
-                                    &label,
-                                    ButtonSize::Medium.with_width(WIDTH - 40.0),
-                                ) {
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::UnassignPaletteFromSelection(*palette_id),
-                                        ));
-                                }
-                                ui.add_space(2.0);
-                            }
-                        });
-                }
-
-                ui.add_space(10.0);
-                ui.heading("Available");
+                // One palette tree (folders as in Setup › Palettes, which
+                // manages them). Active palettes are highlighted, and a tap
+                // assigns or unassigns, like groups in the group tree. A
+                // folder tap opens or closes the folder. The active list in
+                // apply order stays readable above, since a closed folder
+                // hides its palettes.
+                let state = &dmx_engine.0;
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(active_palettes_summary(state, &active))
+                            .size(13.0)
+                            .strong(),
+                    )
+                    .truncate(),
+                );
+                ui.label(
+                    RichText::new("Tap a palette to assign or unassign it.")
+                        .size(12.0)
+                        .color(Color32::GRAY),
+                );
+                ui.add_space(4.0);
                 ui.separator();
 
-                let available: Vec<(u8, String)> = dmx_engine
-                    .0
-                    .palettes
-                    .iter()
-                    .filter(|(id, _)| !active.contains(id))
-                    .map(|(id, p)| (*id, p.name.clone()))
-                    .collect();
-
-                if available.is_empty() {
-                    ui.label("No more palettes to assign.");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("available_palettes")
-                        .max_height(180.0)
-                        .show(ui, |ui| {
-                            for (palette_id, name) in &available {
-                                let label = format!("{palette_id}: {name}");
-                                if components::button(
-                                    ui,
-                                    false,
-                                    &label,
-                                    ButtonSize::Medium.with_width(WIDTH - 40.0),
-                                ) {
-                                    self.data
-                                        .event_bus_connection
-                                        .send(ControlEventMessage::new(
-                                            EventOriginator::Web,
-                                            ControlEvent::AssignPaletteToSelection(*palette_id),
-                                        ));
-                                }
-                                ui.add_space(2.0);
-                            }
-                        });
+                let items = components::palette_tree_items(
+                    state,
+                    |_| true,
+                    |p| palette_kind_label(&p.kind),
+                );
+                if state.palettes.is_empty() {
+                    ui.label("No palettes. Create them in Setup › Palettes.");
+                } else if let Some(id) = palette_assignment_tree(ui, &items, &active) {
+                    self.data
+                        .event_bus_connection
+                        .send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            palette_toggle_event(&active, id),
+                        ));
                 }
 
                 ui.add_space(12.0);
@@ -1151,6 +1113,73 @@ impl BlaulichtApp {
                 }
             });
     }
+}
+
+/// Collapse state of the palette dialog's tree (kept for the session).
+const PALETTE_ASSIGN_TREE: &str = "palette_assign";
+const PALETTE_TREE_HEIGHT: f32 = 290.0;
+const PALETTE_TREE_ROW_HEIGHT: f32 = 48.0;
+
+/// The palette dialog's tree in a scroll area, with the `active` palettes
+/// highlighted. Returns the tapped palette; a folder tap opens or closes the
+/// folder.
+fn palette_assignment_tree(
+    ui: &mut egui::Ui,
+    items: &[components::TreeItem<u16, u8>],
+    active: &[u8],
+) -> Option<u8> {
+    let width = ui.available_width();
+    let rows = {
+        let state =
+            components::TreeState::<u16>::load(ui.ctx(), components::tree_id(PALETTE_ASSIGN_TREE));
+        components::visible_rows(items, state.collapsed()).len()
+    };
+    let action = egui::ScrollArea::vertical()
+        .id_salt(PALETTE_ASSIGN_TREE)
+        .max_height(PALETTE_TREE_HEIGHT)
+        // The dialog has no fixed height; without this the list shrinks to
+        // egui's 64 px minimum and shows only one or two rows.
+        .min_scrolled_height(
+            (rows as f32 * (PALETTE_TREE_ROW_HEIGHT + 2.0)).min(PALETTE_TREE_HEIGHT),
+        )
+        .show(ui, |ui| {
+            ui.set_width(width);
+            components::Tree::new(PALETTE_ASSIGN_TREE, items)
+                .selected_keys(active.iter().map(|id| components::TreeKey::Leaf(*id)))
+                .row_height(PALETTE_TREE_ROW_HEIGHT)
+                .show(ui)
+        })
+        .inner;
+    match action {
+        Some(components::TreeAction::SelectLeaf(id)) => Some(id),
+        Some(components::TreeAction::TapFolder(folder)) => {
+            components::toggle_folder(ui.ctx(), PALETTE_ASSIGN_TREE, folder);
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Tapping palette `id` in the palette dialog: unassign it if it is active
+/// for the selection, assign it otherwise.
+fn palette_toggle_event(active: &[u8], id: u8) -> ControlEvent {
+    if active.contains(&id) {
+        ControlEvent::UnassignPaletteFromSelection(id)
+    } else {
+        ControlEvent::AssignPaletteToSelection(id)
+    }
+}
+
+/// `Active: Red, Amber` in apply order (`Active: none` without any).
+fn active_palettes_summary(state: &blaulicht_shared::EngineState, active: &[u8]) -> String {
+    if active.is_empty() {
+        return "Active: none".to_string();
+    }
+    let names: Vec<String> = active
+        .iter()
+        .map(|id| components::item_name(state, blaulicht_shared::folder::FolderItem::Palette(*id)))
+        .collect();
+    format!("Active: {}", names.join(", "))
 }
 
 /// Width of one toolbar button so `count` of them fit in `available` (at most
@@ -1228,14 +1257,45 @@ pub(crate) fn undo_all_changes_event(changeset: &HashSet<FixtureSelector>) -> Op
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_selection_shortcut_allowed, sorted_changes, toolbar_button_width,
-        undo_all_changes_event,
+        active_palettes_summary, clear_selection_shortcut_allowed, palette_toggle_event,
+        sorted_changes, toolbar_button_width, undo_all_changes_event,
     };
     use crate::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
     use blaulicht_shared::{
-        scene::FixtureSelector, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+        palette::{Palette, PaletteKind},
+        scene::FixtureSelector,
+        ControlEvent, ControlEventMessage, EngineState, EventOriginator, FixtureProperty,
     };
     use std::{collections::HashSet, sync::Arc};
+
+    #[test]
+    fn palette_dialog_toggles_and_summarises_in_apply_order() {
+        assert_eq!(
+            format!("{:?}", palette_toggle_event(&[3, 1], 1)),
+            format!("{:?}", ControlEvent::UnassignPaletteFromSelection(1))
+        );
+        assert_eq!(
+            format!("{:?}", palette_toggle_event(&[3, 1], 2)),
+            format!("{:?}", ControlEvent::AssignPaletteToSelection(2))
+        );
+
+        let mut state = EngineState::default();
+        for (id, name) in [(1, "Red"), (3, "Floor")] {
+            state.palettes.insert(
+                id,
+                Palette {
+                    name: name.to_string(),
+                    kind: PaletteKind::Single(FixtureProperty::Alpha, 0),
+                    folder: None,
+                },
+            );
+        }
+        assert_eq!(active_palettes_summary(&state, &[]), "Active: none");
+        assert_eq!(
+            active_palettes_summary(&state, &[3, 1, 9]),
+            "Active: Floor, Red, #9"
+        );
+    }
 
     fn changes(entries: &[(u8, u8, FixtureProperty)]) -> HashSet<FixtureSelector> {
         entries

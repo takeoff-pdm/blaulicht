@@ -48,7 +48,7 @@ Target navigation (agreed 2026-09-27):
 |---|---|---|---|
 | 016 | [Folder hierarchy data model for groups, scenes and palettes](TICKETS/016-folders-data-model.done.md) | done | — |
 | 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.done.md) | done | 016, 006, 030 |
-| 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017, 030 |
+| 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.done.md) | done | 016, 006, 010, 017, 030 |
 | 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.done.md) | done | — |
 | 031 | [Folder follow-ups (ids, undo, order, names) and the unloadable Kuze showfile](TICKETS/031-folders-followups.done.md) | done | 016 |
 
@@ -98,6 +98,9 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - Setup › Animations: the template details form does not scroll, so long forms (audio modulation: section multipliers and below) run under the tab bar at 800x480. Already cut off on the old Animations page, a little less (found in 010).
 - Setup › Animations: the Starter Presets dialog is 520 px tall, so at 800x480 only one preset row shows between its filters and Close (unchanged since before 010).
 - In `--desktop` mode, loading a dock layout that lacks pages appends them to the first leaf with `push_to_first_leaf`, which also makes the last appended tab active, overriding the saved active tab (seen in 010).
+- Three scene/palette pickers outside 018's scope still show flat lists: the palette binding picker (`palette_binding_button` in `components/fixture_value_binding.rs`, used by the animation spec editor), the pointer-palette target picker (`render_pointer_editor` in `pages/setup/palettes.rs`) and the Scene Graph's "+ Add Scene" combo box (`pages/scene_graph.rs`, which also lists BLANK). `tree_picker_dialog` with `palette_tree_items` / `scene_tree_items` fits all three; the first two need the folders passed in (found in 018).
+- Programmer palette dialog: tapping a palette whose properties another active palette already covers is rejected by the engine with no feedback in the UI (same with the old Available list; found in 018).
+- Programmer scene column: when the focused scene's folder is collapsed, nothing shows which scene is focused (the folder row is not highlighted) (found in 018).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet
