@@ -47,7 +47,7 @@ Target navigation (agreed 2026-09-27):
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
 | 016 | [Folder hierarchy data model for groups, scenes and palettes](TICKETS/016-folders-data-model.done.md) | done | — |
-| 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.doing.md) | doing | 016, 006, 030 |
+| 017 | [Tree UI for group folders (Setup › Groups and Programmer)](TICKETS/017-folders-tree-ui-groups.done.md) | done | 016, 006, 030 |
 | 018 | [Tree UI for scene and palette folders](TICKETS/018-folders-tree-ui-scenes-palettes.planned.md) | planned | 016, 006, 010, 017, 030 |
 | 030 | [Reusable collapsible tree widget](TICKETS/030-tree-widget.done.md) | done | — |
 | 031 | [Folder follow-ups (ids, undo, order, names) and the unloadable Kuze showfile](TICKETS/031-folders-followups.done.md) | done | 016 |
@@ -91,7 +91,8 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
 - In `--desktop` mode, `NavigatePage` / `NavigateSubPage` don't bring the page's dock tab to the front (found in 005).
 - In `--desktop` mode, a dock pane in "Default (723 x 480)" render mode that is shorter than 480 px clips the sub-page tab bar (System, Setup); Dynamic mode shows it (found in 006).
-- Group and fixture tiles use `name.truncate(10)`, which panics when byte 10 is inside a multi-byte char (e.g. umlauts) (`group_tile`, `group_selection` in `fixtures_shared.rs`, found in 006).
+- Fixture tiles use `name.truncate(10)`, which panics when byte 10 is inside a multi-byte char (e.g. umlauts) (`group_selection` in `fixtures_shared.rs`, found in 006). The group tiles (`group_tile`) are gone since 017; the group trees truncate by width.
+- In `--desktop` mode, the Programmer in a "Default (723 x 480)" pane is narrower than the kiosk page, so its right column (masters, Scene Changes) is cut off at the pane edge; Dynamic mode fits. 017's wider group tree column (120 px instead of 90) makes the cut about 30 px larger; by the kiosk's ~10 px slack it was probably cut by ~20 px before, but that wasn't checked (found in 017).
 - Removing a scene change (`RemoveChange`, Programmer row X / Undo all) sets the property to 0 in the scene instead of restoring an earlier value (found in 011).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
