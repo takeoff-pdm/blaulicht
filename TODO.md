@@ -26,7 +26,7 @@ Target navigation (agreed 2026-09-27):
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 006 | [Setup page with Fixtures / Groups / Scenes sub-pages](TICKETS/006-setup-page-shell.planned.md) | planned | 005 |
+| 006 | [Setup page with Fixtures / Groups / Scenes sub-pages](TICKETS/006-setup-page-shell.doing.md) | doing | 005 |
 | 007 | [Fixture setup UX: add-fixture affordance, default names, bulk rename](TICKETS/007-fixture-setup-ux.planned.md) | planned | 006 |
 | 008 | [Fixture identify wizard](TICKETS/008-identify-wizard.planned.md) | planned | 006 |
 | 009 | [View preparation into Setup › Views, with a Test button](TICKETS/009-views-into-setup-with-test.planned.md) | planned | 006, 020 |
