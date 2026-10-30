@@ -37,7 +37,7 @@ Target navigation (agreed 2026-09-27):
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
 | 011 | [Programmer page: rename, clear selection, scene changes with undo-all](TICKETS/011-programmer-page.done.md) | done | 006 |
-| 012 | [Apply animation presets from the Programmer](TICKETS/012-programmer-animation-presets.planned.md) | planned | 011 |
+| 012 | [Apply animation presets from the Programmer](TICKETS/012-programmer-animation-presets.doing.md) | doing | 011 |
 | 013 | [Per-scene selection lock (freeze) in the Programmer](TICKETS/013-programmer-selection-lock.planned.md) | planned | 011 |
 | 014 | [Bug: pointer to a color palette shows a different color](TICKETS/014-palette-pointer-color-fix.planned.md) | planned | — |
 | 015 | [Apply only selected attributes of a compound palette](TICKETS/015-palette-partial-apply.planned.md) | planned | 011 |
