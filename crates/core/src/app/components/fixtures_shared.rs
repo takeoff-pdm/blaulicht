@@ -13,6 +13,7 @@ use crate::{
 use blaulicht_shared::{
     fixture::state::{FixtureState, ResolvedFixtureState},
     palette::Palette,
+    scene::BLANK_SCENE_ID,
     ControlEvent, ControlEventMessage, EngineGroups, EventOriginator, FixtureProperty, RGBColor,
 };
 use egui::{Align2, Color32, Context, FontId, Frame, Margin, Vec2, Widget};
@@ -27,6 +28,15 @@ pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
 
 /// Collapse state of the Programmer's group tree (kept for the session).
 const PROGRAMMER_GROUP_TREE: &str = "programmer_groups";
+/// Collapse state of the Programmer's scene tree (kept for the session).
+const PROGRAMMER_SCENE_TREE: &str = "programmer_scenes";
+/// Width of the Programmer's scene column: the old scene pager's 100 px.
+/// The Programmer row at 800x480 has no room to spare (a 108 px column
+/// already cut off the right column's "M. Speed"), so this is narrower than
+/// [`NARROW_TREE_WIDTH`]: an 18 px toggle and a 70 px minimum body leave
+/// 8 px of indentation, so every nested level indents 8 px and the guide
+/// lines and chevrons show the depth.
+const SCENE_COLUMN_WIDTH: f32 = 100.0;
 
 #[derive(Default, Clone, Copy)]
 pub struct DmxSimulator {
@@ -878,139 +888,63 @@ impl BlaulichtApp {
             });
     }
 
+    /// The Programmer's scene column: a narrow scene tree (folders and user
+    /// scenes; BLANK is never user-selectable). Tapping a scene focuses it;
+    /// tapping a folder opens or closes it, since this picker focuses exactly
+    /// one scene. Folders are managed in Setup › Scenes. `compact` (narrow
+    /// dynamic panes) puts the tree in a full-width strip on top.
     pub fn scene_overview(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
-        let panel_width = 100.0;
-        let panel_padding = 2.0;
+        let state = &dmx_engine.0;
+        let items = components::scene_tree_items(state, |id| id != BLANK_SCENE_ID);
+        let focus = state.current_scene_focus;
 
-        // The ephemeral BLANK scene is never user-selectable, so it must stay
-        // out of both the list and the pagination maths.
-        let number_of_items_total = dmx_engine.0.user_scenes().count();
-        const ITEMS_PER_PAGE: usize = 5;
-        let total_pages = number_of_items_total.div_ceil(ITEMS_PER_PAGE);
-        let last_page = total_pages.saturating_sub(1);
-        self.scene_page_index = self.scene_page_index.min(last_page);
+        let show_tree = |ui: &mut egui::Ui| {
+            ui.label(format!("Scenes: {}", state.user_scenes().count()));
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical()
+                .id_salt("programmer-scenes")
+                .show(ui, |ui| {
+                    components::narrow_tree(PROGRAMMER_SCENE_TREE, &items)
+                        .toggle_width(18.0)
+                        .min_body_width(70.0)
+                        .selected(Some(TreeKey::Leaf(focus)))
+                        .show(ui)
+                })
+                .inner
+        };
 
-        if compact {
+        let action = if compact {
             ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), 150.0),
                 egui::Layout::top_down(egui::Align::Min),
+                show_tree,
+            )
+            .inner
+        } else {
+            ui.allocate_ui_with_layout(
+                egui::vec2(SCENE_COLUMN_WIDTH, ui.available_height()), // fixed width, max height
+                egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    let page_button =
-                        ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
-                    let page_display = if total_pages == 0 {
-                        0
-                    } else {
-                        self.scene_page_index + 1
-                    };
-                    ui.horizontal_wrapped(|ui| {
-                        if components::button(ui, false, "◀", page_button)
-                            && self.scene_page_index > 0
-                        {
-                            self.scene_page_index -= 1;
-                        }
-                        if components::button(ui, false, "▶", page_button)
-                            && self.scene_page_index < last_page
-                        {
-                            self.scene_page_index += 1;
-                        }
-                        ui.label(format!("Page {page_display} / {total_pages}"));
-                        ui.label(format!("Scenes: {number_of_items_total}"));
-                    });
-                    ui.separator();
-                    ui.horizontal_wrapped(|ui| {
-                        let start = self.scene_page_index * ITEMS_PER_PAGE;
-                        for (scene_id, scene) in
-                            dmx_engine.0.user_scenes().skip(start).take(ITEMS_PER_PAGE)
-                        {
-                            let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
-                            let label = components::indexed_label(scene_id, &scene.name);
-                            if components::button(
-                                ui,
-                                is_selected,
-                                &label,
-                                ButtonSize::Medium.with_width(120.0).with_font_size(12.0),
-                            ) && !is_selected
-                            {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::SetSceneFocus(*scene_id),
-                                    ));
-                            }
-                        }
-                    });
+                    ui.set_width(SCENE_COLUMN_WIDTH);
+                    show_tree(ui)
                 },
-            );
-            return;
+            )
+            .inner
+        };
+
+        match action {
+            Some(TreeAction::SelectLeaf(scene_id)) if scene_id != focus => {
+                self.data
+                    .event_bus_connection
+                    .send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        ControlEvent::SetSceneFocus(scene_id),
+                    ));
+            }
+            Some(TreeAction::TapFolder(folder)) => {
+                components::toggle_folder(ui.ctx(), PROGRAMMER_SCENE_TREE, folder);
+            }
+            _ => {}
         }
-
-        ui.allocate_ui_with_layout(
-            egui::vec2(panel_width, ui.available_height()), // fixed width, max height
-            egui::Layout::top_down(egui::Align::Center),
-            |ui| {
-                ui.set_min_width(panel_width);
-
-                ui.vertical_centered(|ui| {
-                    let scene_panel_page_button_sizes =
-                        ButtonSize::Medium.with_width(ButtonSize::Medium.dim().0.x / 2.0);
-
-                    ui.horizontal(|ui| {
-                        if components::button(ui, false, "◀", scene_panel_page_button_sizes)
-                            && self.scene_page_index > 0
-                        {
-                            self.scene_page_index -= 1;
-                        }
-
-                        if components::button(ui, false, "▶", scene_panel_page_button_sizes)
-                            && self.scene_page_index < last_page
-                        {
-                            self.scene_page_index += 1;
-                        }
-                    });
-
-                    ui.add_space(5.0);
-
-                    let page_display = if total_pages == 0 {
-                        0
-                    } else {
-                        self.scene_page_index + 1
-                    };
-                    ui.label(format!("Page {} / {total_pages}", page_display));
-                    ui.label(format!("Scenes: {number_of_items_total}"));
-                });
-
-                ui.add_space(5.0);
-
-                let start = self.scene_page_index * ITEMS_PER_PAGE;
-                let page_items = dmx_engine.0.user_scenes().skip(start).take(ITEMS_PER_PAGE);
-
-                for (scene_id, scene) in page_items {
-                    let is_selected = dmx_engine.0.current_scene_focus == *scene_id;
-
-                    let label = components::indexed_label(scene_id, &scene.name);
-                    if components::button(
-                        ui,
-                        is_selected,
-                        &label,
-                        ButtonSize::Large
-                            .with_width(panel_width - 2.0 * panel_padding)
-                            .with_font_size(12.0),
-                    ) {
-                        // Toggle group selection
-                        if !is_selected {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::SetSceneFocus(*scene_id),
-                                ));
-                        };
-                    }
-
-                    ui.add_space(5.0);
-                }
-            },
-        );
     }
 }
