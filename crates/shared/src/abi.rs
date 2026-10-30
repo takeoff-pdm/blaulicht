@@ -19,7 +19,9 @@ use strum::EnumIter;
 // v15: MainUiEvent gained `NavigateSubPage`; AppSubPage gained `System_Screens`.
 // v16: AppPage::FixturesSetup renamed to `Setup` (same index); AppSubPage gained
 //      `Setup_Fixtures`, `Setup_Groups` and `Setup_Scenes`.
-pub const PLUGIN_ABI_VERSION: u32 = 16;
+// v17: `CreateFolder` carries the new folder's `id`, `Folder` gained `order`,
+//      ControlEvent gained `ReorderFolder` (ticket 031).
+pub const PLUGIN_ABI_VERSION: u32 = 17;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
