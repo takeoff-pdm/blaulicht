@@ -1,15 +1,39 @@
-//! Setup › Scenes: the scene list with new, clone, rename and delete.
+//! Setup › Scenes: the scene tree (scenes in folders) with new, clone,
+//! rename, delete and move.
+//!
+//! The selected scene is the engine's focused scene (`current_scene_focus`),
+//! the one the Programmer edits. A folder can be selected instead
+//! (`setup_scenes_ui`, a [`SetupFolderUi`]); Rename and Delete act on
+//! whichever is selected, and new scenes and folders go into the selected
+//! folder (the top level otherwise). Clone acts on the focused scene, and the
+//! clone lands next to it.
+//!
+//! Layout as in Setup › Groups: toolbar on top, then
+//! [`BlaulichtApp::setup_scene_tree`] on the left and the details of the
+//! selected scene or folder on the right. Every row has a "Move…" button that
+//! opens the folder picker. The ephemeral BLANK scene is not listed: it is
+//! never user-selectable and can't be moved into a folder.
 //!
 //! Scene *content* (changes, animations) is edited on the Programmer page
 //! (`pages/programmer.rs`): its Scene Changes panel and dialog, and the Scene
 //! Animations dialog.
 
+#[cfg(doc)]
+use crate::app::components::SetupFolderUi;
 use crate::app::{
-    components::{self, ButtonSize, Dialog, DEFAULT_NEW_SCENE_NAME},
+    components::{
+        self, folder_details, folder_path, scene_tree_items, ButtonSize, Dialog, FolderDialog,
+        Tree, TreeAction, TreeKey, DEFAULT_NEW_SCENE_NAME, SETUP_SCENE_TREE,
+    },
     page::PageRenderContext,
     BlaulichtApp,
 };
 use crate::dmx::EngineState;
+use blaulicht_shared::{
+    folder::{FolderItem, FolderKind},
+    scene::BLANK_SCENE_ID,
+    ControlEvent, ControlEventMessage, EventOriginator,
+};
 use egui::{Color32, Context, Frame, Key, Margin, RichText, TextBuffer};
 
 impl BlaulichtApp {
@@ -24,53 +48,155 @@ impl BlaulichtApp {
         self.render_clone_scene_dialog(ctx);
         self.render_rename_scene_dialog(ctx);
         self.render_delete_scene_dialog(ctx);
+        if let Some(event) = self.setup_scenes_ui.dialog.show(ctx, &dmx_engine.0) {
+            self.setup_scenes_ui.follow(ctx, SETUP_SCENE_TREE, &event);
+            self.data
+                .event_bus_connection
+                .send(ControlEventMessage::new(EventOriginator::Web, event));
+        }
+        self.setup_scenes_ui.drop_missing_folder(&dmx_engine.0);
 
-        ui.allocate_ui_with_layout(ui.available_size(), render_context.primary_layout(), |ui| {
-            // Ticket 018 replaces this list with a folder tree.
-            self.scene_overview(ui, dmx_engine, render_context.is_narrow_dynamic());
+        render_context.horizontal(ui, egui::Align::Min, |ui| {
+            self.scene_toolbar(ui, dmx_engine);
+        });
 
-            ui.separator();
+        ui.separator();
 
-            ui.vertical(|ui| {
-                render_context.horizontal(ui, egui::Align::Min, |ui| {
-                    self.scene_toolbar(ui, dmx_engine);
-                });
+        ui.allocate_ui_with_layout(
+            ui.available_size(),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                let tree_width = (ui.available_width() * 0.45).clamp(220.0, 380.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(tree_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(tree_width);
+                        self.setup_scene_tree(ui, dmx_engine);
+                    },
+                );
 
                 ui.separator();
 
-                Self::focused_scene_summary(ui, dmx_engine);
-            });
-        });
+                ui.vertical(|ui| match self.setup_scenes_ui.folder {
+                    Some(folder) => folder_details(ui, &dmx_engine.0, FolderKind::Scenes, folder),
+                    None => Self::focused_scene_summary(ui, dmx_engine),
+                });
+            },
+        );
     }
 
     fn scene_toolbar(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        let folder = self.setup_scenes_ui.folder;
+        let scene = focused_user_scene(dmx_engine);
+        let has_selection = folder.is_some() || scene.is_some();
+
         if components::button(ui, false, "Scene +", ButtonSize::Medium) {
             self.new_scene_dialog_open = true;
         }
 
-        if components::button(ui, false, "Clone Sc.", ButtonSize::Medium) {
+        if components::action_button(
+            ui,
+            folder.is_none() && scene.is_some(),
+            "Clone Sc.",
+            ButtonSize::Medium,
+            Some("Select a scene"),
+        ) {
             self.clone_scene_dialog_open = true;
         }
 
-        if components::button(ui, false, "Ren. Sc.", ButtonSize::Medium) {
-            if !dmx_engine.0.scenes.is_empty() {
-                self.rename_scene_name = dmx_engine.curr_scene().name.clone();
-            } else {
-                self.rename_scene_name.clear();
-            }
-            self.rename_scene_dialog_open = true;
+        if components::button(ui, false, "New Folder", ButtonSize::Medium) {
+            self.setup_scenes_ui.dialog = FolderDialog::create(FolderKind::Scenes, folder);
         }
 
-        if components::button(ui, false, "Del. Sc.", ButtonSize::Medium) {
-            self.delete_scene_dialog_open = true;
+        if components::action_button(
+            ui,
+            has_selection,
+            "Rename",
+            ButtonSize::Medium,
+            Some("Select a scene or folder"),
+        ) {
+            if let Some(folder) = folder {
+                self.setup_scenes_ui.dialog = FolderDialog::rename(&dmx_engine.0, folder);
+            } else if let Some((_, scene)) = scene {
+                self.rename_scene_name = scene.name.clone();
+                self.rename_scene_dialog_open = true;
+            }
+        }
+
+        if components::action_button(
+            ui,
+            has_selection,
+            "Delete",
+            ButtonSize::Medium,
+            Some("Select a scene or folder"),
+        ) {
+            if let Some(folder) = folder {
+                self.setup_scenes_ui.dialog = FolderDialog::delete(folder);
+            } else if scene.is_some() {
+                self.delete_scene_dialog_open = true;
+            }
         }
     }
 
-    /// Which scene the toolbar acts on: clone, rename and delete all target the
-    /// focused scene.
+    /// The tree of folders and scenes. Tapping a scene focuses it (for the
+    /// Programmer too); tapping a folder selects the folder; "Move…" opens
+    /// the folder picker for that row.
+    fn setup_scene_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        let state = &dmx_engine.0;
+        ui.label("Scenes:");
+        ui.add_space(8.0);
+
+        let items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
+        if items.is_empty() {
+            ui.label(RichText::new("No scenes yet").color(Color32::GRAY));
+            return;
+        }
+
+        let selected = match self.setup_scenes_ui.folder {
+            Some(folder) => TreeKey::Folder(folder),
+            None => TreeKey::Leaf(state.current_scene_focus),
+        };
+
+        let action = egui::ScrollArea::vertical()
+            .id_salt("setup-scenes")
+            .show(ui, |ui| {
+                Tree::new(SETUP_SCENE_TREE, &items)
+                    .selected(Some(selected))
+                    .with_move_button(true)
+                    .show(ui)
+            })
+            .inner;
+
+        match action {
+            Some(TreeAction::SelectLeaf(scene_id)) => {
+                self.setup_scenes_ui.folder = None;
+                if state.current_scene_focus != scene_id {
+                    self.data
+                        .event_bus_connection
+                        .send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::SetSceneFocus(scene_id),
+                        ));
+                }
+            }
+            Some(TreeAction::TapFolder(folder)) => {
+                self.setup_scenes_ui.folder = Some(folder);
+            }
+            Some(TreeAction::MoveRequested(key)) => {
+                let item = match key {
+                    TreeKey::Folder(id) => FolderItem::Folder(id),
+                    TreeKey::Leaf(id) => FolderItem::Scene(id),
+                };
+                self.setup_scenes_ui.dialog = FolderDialog::move_item(state, item);
+            }
+            None => {}
+        }
+    }
+
+    /// The focused scene, which clone, rename and delete act on.
     fn focused_scene_summary(ui: &mut egui::Ui, dmx_engine: &EngineState) {
-        let scene_id = dmx_engine.0.current_scene_focus;
-        let Some(scene) = dmx_engine.0.scenes.get(&scene_id) else {
+        let Some((scene_id, scene)) = focused_user_scene(dmx_engine) else {
             ui.label(RichText::new("No scene selected").color(Color32::GRAY));
             return;
         };
@@ -78,6 +204,11 @@ impl BlaulichtApp {
         ui.label(RichText::new(format!("Selected Scene: #{scene_id}")).size(12.0));
         ui.add_space(6.0);
         ui.label(RichText::new(&scene.name).size(18.0).strong());
+        ui.add_space(6.0);
+        ui.label(format!(
+            "In: {}",
+            folder_path(&dmx_engine.0.folders, scene.folder)
+        ));
         ui.add_space(6.0);
         ui.label(
             RichText::new("Clone, rename and delete act on the selected scene.")
@@ -166,7 +297,23 @@ impl BlaulichtApp {
 
                 if button_pressed {
                     let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
+                    let before: Vec<u8> = dmx_engine.0.scenes.keys().copied().collect();
                     dmx_engine.new_scene(self.new_scene_name.take());
+                    // New scenes go into the selected folder.
+                    let created = dmx_engine
+                        .0
+                        .scenes
+                        .keys()
+                        .copied()
+                        .find(|id| !before.contains(id));
+                    if let (Some(scene), Some(folder)) = (created, self.setup_scenes_ui.folder) {
+                        if let Err(err) = dmx_engine
+                            .0
+                            .move_to_folder(FolderItem::Scene(scene), Some(folder))
+                        {
+                            tracing::warn!("New scene {scene} stays at the top level: {err}");
+                        }
+                    }
                     self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
                     self.new_scene_dialog_open = false;
                 }
@@ -268,4 +415,13 @@ impl BlaulichtApp {
                 });
         }
     }
+}
+
+/// The focused scene, unless it is BLANK (not a user scene) or missing.
+fn focused_user_scene(dmx_engine: &EngineState) -> Option<(u8, &blaulicht_shared::scene::Scene)> {
+    let id = dmx_engine.0.current_scene_focus;
+    if id == BLANK_SCENE_ID {
+        return None;
+    }
+    dmx_engine.0.scenes.get(&id).map(|scene| (id, scene))
 }
