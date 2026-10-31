@@ -135,7 +135,7 @@ pub struct CollectedAudioSnapshot {
     pub source_status: AudioSourceStatus,
 }
 
-#[derive(Clone, Debug, PartialEq, EnumIter, Serialize)]
+#[derive(Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 pub enum LogLevel {
     Debug,
     Info,
