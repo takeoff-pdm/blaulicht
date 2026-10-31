@@ -582,8 +582,9 @@ mod engine_tests {
         cell::Cell,
         collections::HashSet,
         sync::{Arc, RwLockWriteGuard},
-        time::{Duration, Instant},
+        time::Duration,
     };
+    use web_time::Instant;
 
     const DESK: SessionId = SessionId::DESK;
     const REMOTE: SessionId = SessionId(1);

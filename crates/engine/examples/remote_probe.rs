@@ -6,6 +6,10 @@
 //! cargo run -p blaulicht-engine --example remote_probe -- 127.0.0.1:1234 60
 //! ```
 
+// Native only, so std::time's clocks are fine here (the engine's clippy.toml
+// bans them for code that also runs in a browser).
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
 use std::{
     collections::BTreeMap,
     time::{Duration, Instant},

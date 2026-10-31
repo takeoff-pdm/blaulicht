@@ -66,7 +66,7 @@ fn info_status(ui: &mut egui::Ui, key: &str, value: &str, color: Color32, note: 
 // SPECPERF-TEMP begin
 mod specperf {
     use std::sync::Mutex;
-    use std::time::Instant;
+    use web_time::Instant;
 
     pub struct Stats {
         pub window_start: Option<Instant>,
@@ -338,7 +338,7 @@ impl SpectrogramRing {
                 // SPECPERF-TEMP begin
                 {
                     let mut st = specperf::STATS.lock().unwrap();
-                    let now = std::time::Instant::now();
+                    let now = web_time::Instant::now();
                     if let Some(prev) = st.last_shift {
                         let gap = now.duration_since(prev).as_secs_f32() * 1000.0;
                         st.shift_gap_max_ms = st.shift_gap_max_ms.max(gap);
@@ -379,7 +379,7 @@ impl SpectrogramRing {
         width: usize,
         height: usize,
     ) {
-        let specperf_t0 = std::time::Instant::now(); // SPECPERF-TEMP
+        let specperf_t0 = web_time::Instant::now(); // SPECPERF-TEMP
         let changed = if self.spectrogram_ring_needs_reset(spec, width, height) {
             self.reset_spectrogram_ring_cache(spec, width, height);
             true
@@ -396,7 +396,7 @@ impl SpectrogramRing {
             self.spectrogram_texture_handle = Some(texture);
         } else if changed {
             if let Some(handle) = &mut self.spectrogram_texture_handle {
-                let specperf_up = std::time::Instant::now(); // SPECPERF-TEMP
+                let specperf_up = web_time::Instant::now(); // SPECPERF-TEMP
                 handle.set(
                     components::spectrogram_color_image(&self.spectrogram_image_buffer),
                     egui::TextureOptions::NEAREST,
@@ -412,7 +412,7 @@ impl SpectrogramRing {
         }
         // SPECPERF-TEMP begin
         {
-            let now = std::time::Instant::now();
+            let now = web_time::Instant::now();
             let mut st = specperf::STATS.lock().unwrap();
             st.update_us_max = st.update_us_max.max(specperf_t0.elapsed().as_micros());
             if let Some(prev) = st.last_frame {

@@ -3,6 +3,10 @@
 //! (autosave, `Quit`). SIGINT or SIGTERM saves the show and stops; another
 //! signal a second or more later stops without waiting for the save.
 
+// Native only, so std::time's clocks are fine here (the engine's clippy.toml
+// bans them for code that also runs in a browser).
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
 use std::time::{Duration, Instant};
 
 use blaulicht_engine::cli::EngineArgs;

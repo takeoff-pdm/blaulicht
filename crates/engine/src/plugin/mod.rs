@@ -10,8 +10,9 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 #[cfg(feature = "wasmtime")]
 use wasmtime::{Instance, Memory, Store, TypedFunc};

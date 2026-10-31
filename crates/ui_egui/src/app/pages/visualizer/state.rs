@@ -339,7 +339,7 @@ impl Default for VisualizerUiState {
                         key: key.clone(),
                         generation,
                     });
-                    let started = std::time::Instant::now();
+                    let started = web_time::Instant::now();
                     let result = crate::stage_assets::load_prepared_model(&path).map_err(|error| {
                         format!("Failed to prepare managed GLB {path:?}: {error}")
                     });

@@ -1022,7 +1022,7 @@ impl GlowRenderer {
         };
 
         unsafe { while self.gl.get_error() != glow::NO_ERROR {} }
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let result = {
             let Some(ImportedGpuAsset::Uploading(upload)) = self.imported_models.get_mut(&key)
             else {

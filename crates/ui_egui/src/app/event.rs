@@ -45,7 +45,7 @@ impl BlaulichtApp {
                 {
                     if concerns_desk {
                         self.recent_fixture_property
-                            .observe(&control_event.body(), std::time::Instant::now());
+                            .observe(&control_event.body(), web_time::Instant::now());
                     }
                 }
                 // Don't handle web to avoid infinite loopbacks.
@@ -53,7 +53,7 @@ impl BlaulichtApp {
                     let body = control_event.body();
                     if control_event.originator() == EventOriginator::Plugin && concerns_desk {
                         self.recent_fixture_property
-                            .observe(&body, std::time::Instant::now());
+                            .observe(&body, web_time::Instant::now());
                     }
                     if let ControlEvent::MainUi(main_ui_event) = body {
                         match main_ui_event {

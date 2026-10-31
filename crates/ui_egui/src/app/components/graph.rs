@@ -22,8 +22,8 @@ pub struct TimeSeriesGraph {
 
 impl TimeSeriesGraph {
     pub fn new(title: String, min_value: i32, max_value: i32, line_color: egui::Color32) -> Self {
-        let start_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let start_time = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
 
@@ -56,8 +56,8 @@ impl TimeSeriesGraph {
 
     /// Add a new data point to the time series
     pub fn add_data_point(&mut self, value: i32) {
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let current_time = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
         let relative_time = current_time - self.start_time;
@@ -79,8 +79,8 @@ impl TimeSeriesGraph {
 
     /// Update the graph with new data if enough time has passed
     pub fn update(&mut self, current_value: i32) {
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let current_time = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
         let elapsed = current_time.saturating_sub(self.last_update);
@@ -148,8 +148,8 @@ impl TimeSeriesGraph {
         }
 
         // Use real time for smooth scrolling, but convert to relative time for filtering
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let now = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
         let relative_now = now - self.start_time;

@@ -3,6 +3,13 @@
 //! only through an `EngineClient` (`blaulicht_engine::client::LocalClient`
 //! in the desk binary).
 #![warn(clippy::all, rust_2018_idioms)]
+// clippy.toml bans std::time's clocks (they panic in a browser). On native
+// `web_time` re-exports them, so the ban can only be checked in a wasm32
+// build.
+#![cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(clippy::disallowed_methods, clippy::disallowed_types)
+)]
 
 pub mod app;
 pub mod cli;

@@ -42,6 +42,10 @@ clap = { version = "4.5.56", default-features = false, features = ["derive"] }
 sha2 = "0.10"
 tempdir = "0.3.7"
 tracing = "0.1.44"
+# `Instant` / `SystemTime` that also work in a browser (std's panic on
+# wasm32-unknown-unknown); a re-export of std::time on native. clippy.toml
+# keeps std's out.
+web-time = "1"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

@@ -546,7 +546,8 @@ impl WireSystemMessage {
 pub mod serde_as {
     /// `Option<SystemTime>` as UNIX time in milliseconds (`None` = null).
     pub mod unix_millis {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+        use std::time::Duration;
+        use web_time::{SystemTime, UNIX_EPOCH};
 
         use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

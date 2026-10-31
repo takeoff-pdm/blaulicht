@@ -8,8 +8,8 @@ use std::{
         Arc, Mutex, RwLock,
     },
     time::Duration,
-    time::Instant,
 };
+use web_time::Instant;
 
 use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
 use blaulicht_shared::AnimationTickOutput;

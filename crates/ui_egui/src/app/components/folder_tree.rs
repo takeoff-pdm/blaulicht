@@ -29,8 +29,9 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     hash::Hash,
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use blaulicht_shared::{
     folder::{self, Folder, FolderId, FolderItem, FolderKind},

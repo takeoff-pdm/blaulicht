@@ -1,6 +1,7 @@
 //! [`Held`]: a delta-based knob's value while the operator turns it.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 /// How long a released knob keeps showing its value when the engine does not
 /// report it back (refused, or another operator changed it meanwhile).

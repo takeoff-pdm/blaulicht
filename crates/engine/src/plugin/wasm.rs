@@ -897,7 +897,7 @@ impl PluginManager {
                     plugin_id as u8,
                     bpm,
                     beat != 0,
-                    std::time::Instant::now(),
+                    web_time::Instant::now(),
                 );
             },
         )?;
@@ -913,7 +913,7 @@ impl PluginManager {
                     beat != 0,
                     (1..=4).contains(&position).then_some(position as u8),
                     device as u8,
-                    std::time::Instant::now(),
+                    web_time::Instant::now(),
                 );
             },
         )?;

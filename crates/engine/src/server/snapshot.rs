@@ -14,8 +14,9 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex, PoisonError, RwLock,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use crate::dmx::EngineState;
 

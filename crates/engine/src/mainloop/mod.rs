@@ -24,9 +24,10 @@ use std::{
         atomic::{AtomicU8, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 pub use supervisor::{supervisor_thread, SupervisorRequest};
+use web_time::Instant;
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);

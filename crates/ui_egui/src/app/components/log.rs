@@ -85,7 +85,7 @@ fn draw_log_row(ui: &mut egui::Ui, entry: &LogEntry, striped: bool) {
     let background = ui.painter().add(egui::Shape::Noop);
     let level_color = log_level_color(&entry.level);
     let message_color = log_message_color(ui, &entry.level);
-    let time: DateTime<Local> = entry.timestamp.into();
+    let time = entry.timestamp;
 
     let row = ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = LOG_COL_GAP;
@@ -187,7 +187,7 @@ pub struct LogWindow {
 
 #[derive(Clone, Debug)]
 pub struct LogEntry {
-    timestamp: std::time::SystemTime,
+    timestamp: DateTime<Local>,
     level: LogLevel,
     pub message: String,
     pub additional: Option<String>,
@@ -248,7 +248,7 @@ impl LogWindow {
         source: String,
     ) {
         let entry = LogEntry {
-            timestamp: std::time::SystemTime::now(),
+            timestamp: Local::now(),
             level,
             message,
             additional,

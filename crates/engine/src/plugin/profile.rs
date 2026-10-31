@@ -7,7 +7,8 @@
 //! breakdown once a second.
 
 use std::collections::BTreeMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 /// Time spent in one plugin (or animation instance) tick, split by phase.
 #[derive(Default, Clone, Copy)]

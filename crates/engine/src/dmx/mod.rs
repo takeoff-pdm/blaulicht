@@ -45,9 +45,10 @@ use std::{
     mem,
     net::{SocketAddr, UdpSocket},
     sync::{Arc, PoisonError, RwLockWriteGuard},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tracing::{debug, error, info, trace, warn};
+use web_time::Instant;
 
 // TODO: maybe fuse this together?
 
@@ -2616,10 +2617,8 @@ mod command_result_tests {
     use blaulicht_shared::{
         palette::PaletteKind, ControlEvent, ControlEventMessage, EventOriginator, HSVColor,
     };
-    use std::{
-        sync::Arc,
-        time::{Duration, Instant},
-    };
+    use std::{sync::Arc, time::Duration};
+    use web_time::Instant;
 
     fn results(client: &ClientConnection) -> Vec<CommandResult> {
         std::iter::from_fn(|| client.try_recv_system())

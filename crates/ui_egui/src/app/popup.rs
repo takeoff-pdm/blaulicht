@@ -4,7 +4,8 @@ use crate::app::{
 };
 use blaulicht_engine::msg::StageState;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 const DEFAULT_POPUP_LABEL_SIZE: f32 = 24.0;
 

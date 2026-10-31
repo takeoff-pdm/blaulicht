@@ -4,7 +4,8 @@ use std::io;
 use std::process::{Child, Command as StdCommand, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 pub struct Command {
     inner: StdCommand,

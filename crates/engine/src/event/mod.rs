@@ -280,7 +280,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    use web_time::Instant;
 
     fn run_in_background(mut bus: SystemEventBus<u32>) {
         std::thread::spawn(move || bus.run());

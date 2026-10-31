@@ -1387,7 +1387,7 @@ mod tests {
         CollectedAudioSnapshot, ControlEvent, ControlEventCollection, EventOriginator, LogLevel,
         TickInput,
     };
-    use std::time::Instant;
+    use web_time::Instant;
 
     fn log(message: &str) -> SystemMessage {
         SystemMessage::Log {

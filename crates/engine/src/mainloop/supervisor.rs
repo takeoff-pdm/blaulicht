@@ -15,8 +15,9 @@ use std::{
         Arc,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 /// What the supervisor thread does on request. The engine forwards the
 /// matching `HostCommand`s here (`DmxEngine::apply_host` runs on the main
@@ -333,7 +334,8 @@ pub fn supervisor_thread(
         }
 
         // Sleep until the next heartbeat, unless a request arrives first.
-        match requests.recv_deadline(next_heartbeat) {
+        // (A timeout, not `recv_deadline`: that takes a std `Instant`.)
+        match requests.recv_timeout(next_heartbeat.saturating_duration_since(Instant::now())) {
             Ok(request) => woken_by = Some(request),
             // A closed channel is handled by `try_recv` above.
             Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {}

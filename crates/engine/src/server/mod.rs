@@ -41,8 +41,9 @@ use std::{
         Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard,
     },
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use blaulicht_shared::{ControlEventMessage, EventOriginator};
 use tungstenite::{

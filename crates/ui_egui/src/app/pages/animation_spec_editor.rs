@@ -35,9 +35,9 @@ use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use std::{
     collections::BTreeMap,
     sync::atomic::{AtomicU64, Ordering},
-    time::Instant,
 };
 use strum::IntoEnumIterator;
+use web_time::Instant;
 
 static NEXT_WASM_EDITOR_INSTANCE: AtomicU64 = AtomicU64::new(1_u64 << 63);
 

@@ -459,10 +459,8 @@ impl<Ctx> ReplyHandlers<Ctx> {
 /// ```
 #[cfg(test)]
 pub(crate) mod testing {
-    use std::{
-        sync::Arc,
-        time::{Duration, Instant},
-    };
+    use std::{sync::Arc, time::Duration};
+    use web_time::Instant;
 
     use blaulicht_audio_engine::CollectorOutput;
     use blaulicht_shared::{

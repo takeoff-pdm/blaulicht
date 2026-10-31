@@ -26,8 +26,9 @@ use pages::{PaletteUI, ViewUI};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    time::{Duration, Instant, SystemTime},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime};
 
 mod app_navbar;
 mod commands;

@@ -1,0 +1,15 @@
+# std::time's clocks panic on wasm32-unknown-unknown, and this crate runs in
+# the browser as part of the web frontend (ticket 054). Use `web_time`
+# instead: on native it re-exports std::time, so these lints can only tell
+# the two apart in a wasm32 build. The crate root allows them on native;
+# check with `scripts/blenv build web` (or `make -C crates/web lint`).
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "panics in a browser; use web_time::Instant" },
+    { path = "std::time::Instant::elapsed", reason = "panics in a browser; use web_time::Instant" },
+    { path = "std::time::SystemTime::now", reason = "panics in a browser; use web_time::SystemTime" },
+    { path = "std::time::SystemTime::elapsed", reason = "panics in a browser; use web_time::SystemTime" },
+]
+disallowed-types = [
+    { path = "std::time::Instant", reason = "its clock panics in a browser; use web_time::Instant" },
+    { path = "std::time::SystemTime", reason = "its clock panics in a browser; use web_time::SystemTime" },
+]

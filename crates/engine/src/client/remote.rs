@@ -23,8 +23,9 @@ use std::{
         Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard,
     },
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use anyhow::Context;
 use blaulicht_audio_engine::{AudioSpectrogram, CollectorOutput, SignalCollectorParams};

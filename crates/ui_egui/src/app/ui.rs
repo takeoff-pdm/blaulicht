@@ -12,7 +12,8 @@ use blaulicht_engine::persistence::SaveStatus;
 // use cpal::traits::DeviceTrait;
 
 use egui::Context;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 const BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION: f32 = 0.90;
 

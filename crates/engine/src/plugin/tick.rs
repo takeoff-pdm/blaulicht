@@ -16,8 +16,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 const MAX_MIDI_EVENTS: usize = 100;
 const SERIAL_BUFFER_CAPACITY: usize = 1000 * 1024;

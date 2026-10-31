@@ -44,7 +44,8 @@ use crate::{
     msg::{AudioDeviceT, AudioInput, DummyInput},
 };
 use blaulicht_audio_engine::{noise::AudioSourceNoise, AudioSource, Frequency};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 #[cfg(feature = "audio")]
 type CaptureSource = blaulicht_audio_engine::audio_source::microphone::AudioSourceMicrophone;

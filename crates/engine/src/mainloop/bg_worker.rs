@@ -1,9 +1,5 @@
-use std::{
-    env, fs,
-    path::PathBuf,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{env, fs, path::PathBuf, sync::Arc, time::Duration};
+use web_time::Instant;
 
 use blaulicht_audio_engine::{
     create_spectrogram_image, SpectrogramDisplayOptions, SpectrogramImage,

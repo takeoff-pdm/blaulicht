@@ -36,6 +36,8 @@ map-range = "0.1.2"
 strum = { version = "0.27.2", features = ["derive"] }
 chrono = "0.4.42"
 tracing = "0.1.44"
+# See the engine's Cargo.toml: std::time's clocks panic in a browser.
+web-time = "1"
 clap = { version = "4.5.56", default-features = false, features = ["derive"] }
 
 # Egui

@@ -6,8 +6,9 @@ use std::{
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     sync::Arc,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 use blaulicht_shared::{
     fixture::state::FixtureState, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,

@@ -34,8 +34,9 @@ use std::{
         Arc, Mutex, PoisonError,
     },
     thread::JoinHandle,
-    time::{Duration, Instant, SystemTime},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime};
 
 use blaulicht_shared::{
     ControlEvent, SaveEngineState, ShowfileArtNetReceiver, ShowfileArtNetState,
@@ -815,8 +816,9 @@ fn clear_volatile_engine_state(engine: &mut SaveEngineState) {
 mod tests {
     use std::{
         path::{Path, PathBuf},
-        time::{Duration, Instant},
+        time::Duration,
     };
+    use web_time::Instant;
 
     use blaulicht_shared::{
         folder::{FolderItem, FolderKind},

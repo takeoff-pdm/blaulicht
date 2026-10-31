@@ -580,6 +580,7 @@ dependencies = [
  "tracing-subscriber",
  "tungstenite",
  "wasmtime",
+ "web-time",
 ]
 
 [[package]]
@@ -640,6 +641,7 @@ dependencies = [
  "three-d",
  "three-d-asset",
  "tracing",
+ "web-time",
 ]
 
 [[package]]
