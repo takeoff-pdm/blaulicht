@@ -976,13 +976,20 @@ impl DmxEngine {
             return (Some("No selected object(s)"), None);
         }
 
-        // Empties the fixture state buffer on selecion events.
-        if !requires_selection {
+        // Empties the fixture state buffer on selecion events. A scene
+        // master fader is not one: the Programmer sends M. Alpha / M. Speed
+        // while its attribute faders show the buffer.
+        let body = ev.body();
+        let keeps_buffer = matches!(
+            body,
+            ControlEvent::SetSceneMasterAlpha(..) | ControlEvent::SetSceneMasterSpeed(..)
+        );
+        if !requires_selection && !keeps_buffer {
             state.0.control_buffer.reset();
         }
 
         // Match event.
-        match ev.body() {
+        match body {
             ControlEvent::Transaction(t) => {
                 let snapshot = state.0.clone();
                 let live_owner = state.live_owner();
@@ -2582,6 +2589,38 @@ mod host_command_tests {
         assert_eq!(h.engine.round_trip(&h.remote, toggle), OK);
         assert!(own_animations(&h.remote).is_empty());
         assert_eq!(own_animations(&h.desk), vec![id]);
+    }
+
+    /// The Programmer's M. Alpha / M. Speed are events now; they must not
+    /// clear the attribute faders (the control buffer) the way selection
+    /// events do.
+    #[test]
+    fn scene_master_faders_keep_the_control_buffer() {
+        let mut h = two_selections();
+        let buffer = |client: &crate::client::LocalClient| {
+            client
+                .with_session(|_, me| format!("{:?}", me.control_buffer))
+                .unwrap()
+        };
+        assert_eq!(
+            h.engine
+                .round_trip(&h.desk, web(ControlEvent::SetColorHue(200))),
+            OK
+        );
+        let set = buffer(&h.desk);
+        assert_ne!(set, buffer(&h.remote), "the hue is in the desk's buffer");
+        for event in [
+            ControlEvent::SetSceneMasterAlpha(0, 40),
+            ControlEvent::SetSceneMasterSpeed(0, blaulicht_shared::AnimationSpeedModifier::_1),
+        ] {
+            assert_eq!(h.engine.round_trip(&h.desk, web(event)), OK);
+        }
+        assert_eq!(buffer(&h.desk), set);
+        assert_eq!(
+            h.desk
+                .with_show(|show| show.0.scenes[&0].sink.master_alpha_fader),
+            40
+        );
     }
 
     #[test]
