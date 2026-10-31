@@ -1,6 +1,6 @@
 use anyhow::Context;
-use blaulicht_core::app::BlaulichtApp;
-use blaulicht_core::cli::CliArgs;
+use blaulicht_ui_egui::app::BlaulichtApp;
+mod cli;
 use blaulicht_engine::audio::defs::AudioThreadControlSignal;
 use blaulicht_engine::client::LocalClient;
 use blaulicht_engine::event::SystemEventBus;
@@ -12,6 +12,7 @@ use blaulicht_engine::plugin::PluginManager;
 use blaulicht_engine::state::AppState;
 use blaulicht_engine::{config, mainloop, utils};
 use clap::Parser;
+use cli::CliArgs;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;

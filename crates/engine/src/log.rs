@@ -75,12 +75,10 @@ fn source_for_module_path(path: &str) -> Cow<'static, str> {
             ("routes", _) => "Web",
             _ => "Engine",
         },
-        // The desk binary, which still holds the egui app.
-        "blaulicht_core" => match module {
-            "app" => "UI",
-            // `main.rs` logs with the bare crate name.
-            _ => "Init",
-        },
+        // The egui frontend.
+        "blaulicht_ui_egui" => "UI",
+        // The desk binary's `main.rs` logs with its bare crate name.
+        "blaulicht_core" => "Init",
         "blaulicht_audio_engine" => "Audio",
         "blaulicht_shared" => "Engine",
         "" => "Unknown",
@@ -200,7 +198,10 @@ mod tests {
         assert_eq!(source_for_target("blaulicht_engine::plugin::udp"), "UDP");
         assert_eq!(source_for_target("blaulicht_engine::dmx"), "DMX");
         assert_eq!(source_for_target("blaulicht_engine::config"), "Config");
-        assert_eq!(source_for_target("blaulicht_core::app::pages::audio"), "UI");
+        assert_eq!(
+            source_for_target("blaulicht_ui_egui::app::pages::audio"),
+            "UI"
+        );
         assert_eq!(
             source_for_target("blaulicht_audio_engine::collector"),
             "Audio"

@@ -18,6 +18,7 @@ debug = true
 members = [
     "./crates/core",
     "./crates/engine",
+    "./crates/ui_egui",
     "./crates/shared",
     "./crates/plugin_framework",
     "./crates/audio_engine",

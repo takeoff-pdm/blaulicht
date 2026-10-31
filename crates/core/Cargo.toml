@@ -16,49 +16,21 @@ default = ["audio", "wayland", "wasmtime"] # ["wasmtime"]   # keep it on by defa
 wasmtime = ["blaulicht-engine/wasmtime"]
 audio = ["blaulicht-engine/audio"]
 audio-mock = ["blaulicht-engine/audio-mock"]
-wayland = ["eframe/wayland"]
-x11 = ["eframe/x11"]
+wayland = ["blaulicht-ui-egui/wayland"]
+x11 = ["blaulicht-ui-egui/x11"]
 dhat = ["dep:dhat", "blaulicht-engine/dhat"]
 
 [dependencies]
 blaulicht-engine = { path = "../engine", default-features = false }
-blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
-blaulicht-shared = { path = "../shared" }
-blaulicht-assets = { path = "../assets" }
+blaulicht-ui-egui = { path = "../ui_egui" }
 
-serde = { version = "1", features = ["derive"] }
 anyhow = "1.0.94"
-serde_json = "1.0.135"
 crossbeam-channel = "0.5.14"
-map-range = "0.1.2"
-strum = { version = "0.27.2", features = ["derive"] }
-chrono = "0.4.42"
-dhat = { version = "0.3.3", optional = true }
 clap = { version = "4.5.56", default-features = false, features = ["derive"] }
-tempdir = "0.3.7"
+dhat = { version = "0.3.3", optional = true }
 tracing = "0.1.44"
-
-# Egui
 egui = "0.34.1"
-egui_extras = { version = "0.34.1", features = ["svg"] }
-egui_dock = "0.19.1"
-eframe = { version = "0.34.1", default-features = false, features = [
-    "default_fonts", # Embed the default egui fonts.
-    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
-    #"persistence",   # Enable restoring app state when restarting the app.
-] }
-egui_plot = "0.35.0"
-egui-phosphor = "0.12.0"
-egui_code_editor = { version = "=0.2.24" }
-egui_glow = "0.34.1"
-egui-file-dialog = "0.13.0"
-egui-snarl = { version = "0.10", features = ["serde"] }
-image = { version = "0.25", default-features = false, features = ["bmp"] }
-bytemuck = "1.14.3"
-sysinfo = "0.30.13"
-three-d = { version = "0.19", default-features = false }
-three-d-asset = { version = "0.10", default-features = false, features = ["gltf", "png", "jpeg"] }
-fdg-sim = "0.9.1"
+eframe = { version = "0.34.1", default-features = false, features = ["default_fonts", "glow"] }
 
 
 [profile.dev.package.audioviz]
