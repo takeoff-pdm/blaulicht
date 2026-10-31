@@ -287,6 +287,8 @@ impl BlaulichtApp {
                             if state.0.scene_graphs.focused_graph == Some(graph_id) {
                                 state.0.scene_graphs.focused_graph = None;
                             }
+                            // Other operator sessions focused on it, too.
+                            state.repair_sessions();
                             self.scene_graph_ui_state.delete_graph_id = None;
                             self.scene_graph_ui_state.selected_node = None;
                             self.scene_graph_ui_state.synced = false;

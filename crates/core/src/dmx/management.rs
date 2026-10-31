@@ -123,12 +123,15 @@ impl EngineState {
         }
     }
 
+    /// Deletes a group. `DESK`'s selection and stack are cleared (as
+    /// before); every other session only loses the deleted group.
     pub fn delete_group(&mut self, id: u8) {
         self.0.groups.remove(&id);
         self.0.selection.clear();
         self.0.selection_stack.clear();
 
         self.purge_fixture_state();
+        self.repair_sessions();
     }
 
     fn purge_fixture_state(&mut self) {
@@ -381,9 +384,12 @@ impl EngineState {
             return false;
         }
 
+        // `DESK` starts over (as before); other sessions only lose the
+        // fixture.
         self.0.selection.clear();
         self.0.selection_stack.clear();
         self.purge_fixture_state();
+        self.repair_sessions();
 
         true
     }
@@ -463,22 +469,25 @@ impl EngineState {
                 .collect();
         }
 
-        move_engine_selection(
-            &mut self.0.selection,
-            source_group_id,
-            fixture_id,
-            target_group_id,
-            new_fixture_id,
-        );
-        for sel in self.0.selection_stack.iter_mut() {
+        let move_selection = |selection: &mut blaulicht_shared::EngineSelection| {
             move_engine_selection(
-                sel,
+                selection,
                 source_group_id,
                 fixture_id,
                 target_group_id,
                 new_fixture_id,
-            );
+            )
+        };
+        move_selection(&mut self.0.selection);
+        self.0.selection_stack.iter_mut().for_each(move_selection);
+        // Every other session follows the fixture the same way.
+        for session in self.remote_sessions_mut() {
+            move_selection(&mut session.selection);
+            session.selection_stack.iter_mut().for_each(move_selection);
         }
+        // `move_engine_selection` keeps the other filtered fixture ids, now
+        // read in the target group; drop those that don't exist there.
+        self.repair_sessions();
 
         Some(new_fixture_id)
     }
@@ -548,6 +557,13 @@ impl EngineState {
         swap_in_u8_set(&mut self.0.selection.fixtures_in_group, fid_a, fid_b);
         for sel in self.0.selection_stack.iter_mut() {
             swap_in_u8_set(&mut sel.fixtures_in_group, fid_a, fid_b);
+        }
+        // Every other session follows the swap the same way.
+        for session in self.remote_sessions_mut() {
+            swap_in_u8_set(&mut session.selection.fixtures_in_group, fid_a, fid_b);
+            for sel in session.selection_stack.iter_mut() {
+                swap_in_u8_set(&mut sel.fixtures_in_group, fid_a, fid_b);
+            }
         }
 
         true
@@ -781,7 +797,7 @@ mod tests {
 
     #[test]
     fn adding_fixture_does_not_reindex_running_animation_timers() {
-        let mut engine = EngineState(blaulicht_shared::EngineState::default());
+        let mut engine = EngineState(blaulicht_shared::EngineState::default(), Default::default());
         engine.0.groups.insert(
             0,
             FixtureGroup {
@@ -854,7 +870,7 @@ mod tests {
 
     #[test]
     fn moving_fixture_to_group_remaps_scene_state_and_selection() {
-        let mut engine = EngineState(blaulicht_shared::EngineState::default());
+        let mut engine = EngineState(blaulicht_shared::EngineState::default(), Default::default());
         engine.0.groups.insert(
             0,
             FixtureGroup {

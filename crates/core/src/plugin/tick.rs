@@ -214,7 +214,9 @@ impl PluginManager {
         //
         // Plugins get the plain `ControlEventMessage`s, exactly as before the
         // bus envelope existed: host commands are dropped and the envelope
-        // (client, session, seq) is stripped.
+        // (client, session, seq) is stripped. Plugins act for the desk
+        // session, so other sessions' selection, focus and control events are
+        // dropped before the envelope goes.
         let events = crate::hub::plugin_events(std::iter::from_fn(|| self.event_bus.try_recv()));
 
         //

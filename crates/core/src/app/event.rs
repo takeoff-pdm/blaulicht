@@ -1,4 +1,9 @@
-use crate::{app::BlaulichtApp, config, hub::BusBody, msg::SystemMessage};
+use crate::{
+    app::BlaulichtApp,
+    config,
+    hub::{session_scope, BusBody, SessionScope},
+    msg::SystemMessage,
+};
 use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
 use std::path::{Path, PathBuf};
 
@@ -28,24 +33,38 @@ impl BlaulichtApp {
             // messages per frame, letting the system queue fill up under log
             // bursts.
             let mut empty = 0;
-            match self.data.client.try_recv_bus().map(|message| message.body) {
+            let message = self.data.client.try_recv_bus();
+            // Other operator sessions' selection, focus and control events
+            // don't move this desk's jog target (`concerns_desk`) and mark
+            // the show dirty only if they edit it (`own_session`).
+            let session = self.data.client.session();
+            let (concerns_desk, own_session) = message.as_ref().map_or((false, false), |message| {
+                (
+                    message.concerns_session(session),
+                    message.session == session,
+                )
+            });
+            match message.map(|message| message.body) {
                 Some(BusBody::Control(control_event))
                     if control_event.originator() == EventOriginator::Web =>
                 {
-                    self.recent_fixture_property
-                        .observe(&control_event.body(), std::time::Instant::now());
-                    if control_event_marks_showfile_dirty(&control_event.body()) {
+                    let body = control_event.body();
+                    if concerns_desk {
+                        self.recent_fixture_property
+                            .observe(&body, std::time::Instant::now());
+                    }
+                    if control_event_marks_showfile_dirty(&body, own_session) {
                         self.mark_showfile_dirty();
                     }
                 }
                 // Don't handle web to avoid infinite loopbacks.
                 Some(BusBody::Control(control_event)) => {
                     let body = control_event.body();
-                    if control_event.originator() == EventOriginator::Plugin {
+                    if control_event.originator() == EventOriginator::Plugin && concerns_desk {
                         self.recent_fixture_property
                             .observe(&body, std::time::Instant::now());
                     }
-                    if control_event_marks_showfile_dirty(&body) {
+                    if control_event_marks_showfile_dirty(&body, own_session) {
                         self.mark_showfile_dirty();
                     }
                     if let ControlEvent::MainUi(main_ui_event) = body {
@@ -216,8 +235,17 @@ impl BlaulichtApp {
     }
 }
 
-fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
+/// `true` if `event` changes what the showfile saves. `own_session` is
+/// `false` for events from another operator session: those change only that
+/// session if they are [`SessionScope::Session`] (its selection or focus,
+/// which the showfile doesn't save), but their control events edit scenes
+/// like the desk's own.
+fn control_event_marks_showfile_dirty(event: &ControlEvent, own_session: bool) -> bool {
     match event {
+        ControlEvent::Transaction(events) => events
+            .iter()
+            .any(|event| control_event_marks_showfile_dirty(event, own_session)),
+        _ if !own_session && session_scope(event) == SessionScope::Session => false,
         ControlEvent::SelectGroup(_)
         | ControlEvent::DeSelectGroup(_)
         | ControlEvent::SelectFolder(_)
@@ -232,7 +260,6 @@ fn control_event_marks_showfile_dirty(event: &ControlEvent) -> bool {
         | ControlEvent::SetLiveMode(_)
         | ControlEvent::ToggleLiveMode
         | ControlEvent::MiscEvent { .. } => false,
-        ControlEvent::Transaction(events) => events.iter().any(control_event_marks_showfile_dirty),
         _ => true,
     }
 }
@@ -248,14 +275,16 @@ mod tests {
     #[test]
     fn selecting_a_folder_is_not_show_data_but_editing_folders_is() {
         assert!(!control_event_marks_showfile_dirty(
-            &ControlEvent::SelectFolder(0)
+            &ControlEvent::SelectFolder(0),
+            true
         ));
         // The Programmer's folder deselect and the SelectFolder rollback.
         assert!(!control_event_marks_showfile_dirty(
             &ControlEvent::Transaction(vec![
                 ControlEvent::DeSelectGroup(0),
                 ControlEvent::LimitSelectionToFixtureInCurrentGroup(1),
-            ])
+            ]),
+            true
         ));
         for event in [
             ControlEvent::CreateFolder {
@@ -272,8 +301,50 @@ mod tests {
             },
             ControlEvent::ReorderFolder(0, 2),
         ] {
-            assert!(control_event_marks_showfile_dirty(&event), "{event:?}");
+            assert!(
+                control_event_marks_showfile_dirty(&event, true),
+                "{event:?}"
+            );
         }
+    }
+
+    /// Another operator's focus changes only their session (the showfile
+    /// saves the desk's), but their control events edit the show.
+    #[test]
+    fn other_sessions_mark_the_show_dirty_only_when_they_edit_it() {
+        for event in [
+            ControlEvent::SetSceneFocus(1),
+            ControlEvent::SetFocusedSceneGraph(Some(0)),
+        ] {
+            assert!(
+                control_event_marks_showfile_dirty(&event, true),
+                "{event:?}"
+            );
+            assert!(
+                !control_event_marks_showfile_dirty(&event, false),
+                "{event:?}"
+            );
+        }
+        for event in [
+            ControlEvent::SetColor((1, 2, 3)),
+            ControlEvent::SetChannelOverride(0, 1, 255),
+            ControlEvent::Transaction(vec![
+                ControlEvent::SetSceneFocus(1),
+                ControlEvent::SetAlpha(9),
+            ]),
+        ] {
+            assert!(
+                control_event_marks_showfile_dirty(&event, false),
+                "{event:?}"
+            );
+        }
+        assert!(!control_event_marks_showfile_dirty(
+            &ControlEvent::Transaction(vec![
+                ControlEvent::SetSceneFocus(1),
+                ControlEvent::SelectGroup(0),
+            ]),
+            false
+        ));
     }
 
     #[test]

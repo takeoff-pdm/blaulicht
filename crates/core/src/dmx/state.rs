@@ -7,8 +7,9 @@ use blaulicht_shared::{
     PhaserKind, SyncMode,
 };
 use maplit::hashmap;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+
+use super::SessionStore;
 
 //
 // State.
@@ -16,8 +17,12 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 //
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineState(pub blaulicht_shared::EngineState);
+/// The engine state behind `AppState::dmx_engine`: the shared state that
+/// plugins and the showfile see (`.0`, including the `DESK` operator
+/// session), plus the side store of every other operator session (`.1`, see
+/// [`super::session`]), under the same lock.
+#[derive(Debug, Clone)]
+pub struct EngineState(pub blaulicht_shared::EngineState, pub(super) SessionStore);
 
 impl<'engine> EngineState {
     /// Cheap clone for read-only UI rendering: every scene except the
@@ -59,22 +64,25 @@ impl<'engine> EngineState {
             })
             .collect();
 
-        Self(blaulicht_shared::EngineState {
-            groups: self.0.groups.clone(),
-            animation_templates: self.0.animation_templates.clone(),
-            selection: self.0.selection.clone(),
-            selection_stack: self.0.selection_stack.clone(),
-            control_buffer: self.0.control_buffer.clone(),
-            views: self.0.views.clone(),
-            scenes,
-            current_scene_focus: self.0.current_scene_focus,
-            current_overlay_scenes: self.0.current_overlay_scenes.clone(),
-            overrides: self.0.overrides.clone(),
-            scene_graphs: self.0.scene_graphs.clone(),
-            palettes: self.0.palettes.clone(),
-            live_mode: self.0.live_mode,
-            folders: self.0.folders.clone(),
-        })
+        Self(
+            blaulicht_shared::EngineState {
+                groups: self.0.groups.clone(),
+                animation_templates: self.0.animation_templates.clone(),
+                selection: self.0.selection.clone(),
+                selection_stack: self.0.selection_stack.clone(),
+                control_buffer: self.0.control_buffer.clone(),
+                views: self.0.views.clone(),
+                scenes,
+                current_scene_focus: self.0.current_scene_focus,
+                current_overlay_scenes: self.0.current_overlay_scenes.clone(),
+                overrides: self.0.overrides.clone(),
+                scene_graphs: self.0.scene_graphs.clone(),
+                palettes: self.0.palettes.clone(),
+                live_mode: self.0.live_mode,
+                folders: self.0.folders.clone(),
+            },
+            self.1.clone(),
+        )
     }
 
     pub fn get_selection(&self) -> FixtureSelection {
@@ -240,18 +248,25 @@ impl<'engine> EngineState {
         let valid_scene_ids: HashSet<u8> = scenes.keys().copied().collect();
         other.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
-        *self = Self(blaulicht_shared::EngineState {
-            selection: EngineSelection::default(),
-            current_scene_focus,
-            scenes,
-            overrides,
-            live_mode: false,
-            ..other
-        });
+        let sessions = std::mem::take(&mut self.1);
+        *self = Self(
+            blaulicht_shared::EngineState {
+                selection: EngineSelection::default(),
+                current_scene_focus,
+                scenes,
+                overrides,
+                live_mode: false,
+                ..other
+            },
+            sessions,
+        );
 
         // BLANK is ephemeral: it is absent from every showfile and is rebuilt
         // here against the freshly loaded fixture patch.
         self.0.ensure_blank_scene();
+
+        // Connected operators stay connected, but start over in the new show.
+        self.reset_sessions();
     }
 
     pub fn groups(&self) -> &EngineGroups {
@@ -287,8 +302,15 @@ impl<'engine> EngineState {
         self.0.rename_scene(scene_id, name)
     }
 
+    /// Deletes a scene. `DESK`'s focus is repaired by
+    /// `blaulicht_shared::EngineState::delete_scene`, every other session's
+    /// here.
     pub fn delete_scene(&mut self, scene_id: u8) -> bool {
-        self.0.delete_scene(scene_id)
+        let deleted = self.0.delete_scene(scene_id);
+        if deleted {
+            self.repair_sessions();
+        }
+        deleted
     }
 }
 
@@ -432,7 +454,7 @@ impl Default for EngineState {
             folders: BTreeMap::new(),
         };
 
-        Self(state)
+        Self(state, SessionStore::new())
     }
 }
 

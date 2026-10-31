@@ -1,16 +1,21 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod management;
+mod session;
 mod state;
 
 use artnet_protocol::ArtCommand;
 use blaulicht_audio_engine::CollectorOutput;
 use serialport::SerialPort;
+pub use session::*;
 pub use state::*;
 pub mod animation;
 pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
-    hub::{BusBody, BusMessage, CommandOutcome, CommandResult, CreatedId, HostCommand, SystemHub},
+    hub::{
+        BusBody, BusMessage, CommandOutcome, CommandResult, CreatedId, HostCommand, SessionChange,
+        SystemHub,
+    },
     msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
@@ -398,14 +403,17 @@ impl DmxEngine {
         self.run_fixture_inits();
     }
 
-    /// Applies every queued bus message, then sends each sender its
-    /// [`CommandResult`].
+    /// Opens and closes the sessions the hub registered, applies every queued
+    /// bus message, then sends each sender its [`CommandResult`].
     fn apply_bus_messages(&mut self) {
         let mut messages = vec![];
         while let Some(message) = self.event_bus_connection.try_recv() {
             messages.push(message)
         }
-        if messages.is_empty() {
+        // After draining the bus, so every session these messages use is
+        // known (see `SystemHub::take_session_changes`).
+        let session_changes = self.hub.take_session_changes();
+        if messages.is_empty() && session_changes.is_empty() {
             return;
         }
 
@@ -413,8 +421,20 @@ impl DmxEngine {
         {
             let mut state = self.state_ref.dmx_engine.write().unwrap();
 
+            // Open first and close last, so a client that sends and then
+            // disconnects within one tick still gets its messages applied.
+            for change in &session_changes {
+                if let SessionChange::Opened(session) = *change {
+                    state.open_session(session);
+                }
+            }
             for message in messages {
                 results.extend(self.dispatch(&mut state, message));
+            }
+            for change in &session_changes {
+                if let SessionChange::Closed(session) = *change {
+                    state.close_session(session);
+                }
             }
 
             let integrity = state.0.validate_palette_mapping_integrity(false);
@@ -745,6 +765,11 @@ impl DmxEngine {
     /// events, the undo event) goes back on the bus with the original client,
     /// session and sequence number, as a `DmxEngine` event, so plugins see
     /// exactly what they saw before.
+    ///
+    /// Every message is applied with the sender's session swapped into the
+    /// `DESK` fields (see `dmx::session`), so selection, focus and control
+    /// buffer are the sender's. Messages from a session that is not open are
+    /// refused.
     pub fn dispatch(
         &self,
         state: &mut RwLockWriteGuard<'_, EngineState>,
@@ -756,11 +781,24 @@ impl DmxEngine {
             seq,
             body,
         } = message;
+        if matches!(&body, BusBody::Control(event) if event.originator() == EventOriginator::DmxEngine)
+        {
+            return None;
+        }
+        if !state.has_session(session) {
+            debug!("Unknown {session} ({client}, seq {seq})");
+            return Some(CommandResult {
+                client,
+                seq,
+                outcome: CommandOutcome::Refused("Unknown session".to_string()),
+            });
+        }
+        // Swapped outside `apply`, so a transaction's snapshot holds (and its
+        // rollback restores) the session it ran in. Swapped back below,
+        // before the lock is released.
+        state.swap_session(session);
         let outcome = match body {
             BusBody::Control(event) => {
-                if event.originator() == EventOriginator::DmxEngine {
-                    return None;
-                }
                 self.created.set(None);
                 let (refusal, rollback) = self.apply(state, event);
                 if let Some(rollback) = rollback {
@@ -783,6 +821,7 @@ impl DmxEngine {
             }
             BusBody::Host(command) => self.apply_host(state, command),
         };
+        state.swap_session(session);
         Some(CommandResult {
             client,
             seq,
@@ -790,7 +829,8 @@ impl DmxEngine {
         })
     }
 
-    /// Applies a host-only command.
+    /// Applies a host-only command, with the sender's session swapped in
+    /// (see [`Self::dispatch`]).
     fn apply_host(
         &self,
         _state: &mut RwLockWriteGuard<'_, EngineState>,
@@ -2245,7 +2285,7 @@ mod command_result_tests {
         let desk =
             ClientConnection::connect(ClientId::Desk, SessionId::DESK, &hub, &handle, &mirror);
         let remote_id = hub.allocate_client();
-        let remote = ClientConnection::connect(remote_id, SessionId(1), &hub, &handle, &mirror);
+        let remote = ClientConnection::connect_new_session(remote_id, &hub, &handle, &mirror);
         std::thread::spawn(move || bus.run());
 
         // An engine refusal: group 9 doesn't exist.
@@ -2282,7 +2322,7 @@ mod command_result_tests {
         };
         assert_eq!(
             (rollback.0, rollback.1, rollback.2),
-            (remote_id, SessionId(1), seq)
+            (remote_id, remote.session(), seq)
         );
         assert!(matches!(rollback.3, ControlEvent::DeSelectGroup(9)));
 

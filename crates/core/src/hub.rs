@@ -29,7 +29,7 @@ use std::{
     time::Duration,
 };
 
-use blaulicht_shared::ControlEventMessage;
+use blaulicht_shared::{ControlEvent, ControlEventMessage, CONTROLS_REQUIRING_SELECTION};
 use crossbeam_channel::{Receiver, Sender};
 use strum::EnumCount;
 
@@ -65,15 +65,100 @@ impl Display for ClientId {
     }
 }
 
-/// An operator session: selection, selection stack, control buffer and scene
-/// focus. The desk and every locally hosted plugin share [`SessionId::DESK`],
-/// whose state stays in the existing `EngineState` fields. Other sessions are
-/// added in 040.
+/// An operator session: selection, selection stack, control buffer, scene
+/// focus and focused scene graph. The desk and every locally hosted plugin
+/// share [`SessionId::DESK`], whose state stays in the existing `EngineState`
+/// fields. Other sessions are opened with [`SystemHub::open_session`] and
+/// live in the engine's side store (`dmx::session`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(pub u32);
 
 impl SessionId {
     pub const DESK: Self = Self(0);
+}
+
+impl Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            SessionId::DESK => write!(f, "desk session"),
+            SessionId(id) => write!(f, "session {id}"),
+        }
+    }
+}
+
+/// How a `ControlEvent` relates to the sender's operator session.
+///
+/// The engine applies every event with the sender's session swapped in. Other
+/// consumers use the scope to ignore other operators' events: plugins only
+/// see `DESK`'s session-scoped events ([`plugin_events`]), and the desk
+/// ignores other sessions' events for its jog target and, if they only change
+/// session state, for dirty marking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SessionScope {
+    /// Independent of the sender's session: show state, overrides, live mode,
+    /// plugin and UI events.
+    Global,
+    /// Changes only the sender's session: its selection, selection stack,
+    /// scene focus or focused scene graph.
+    Session,
+    /// Acts on the sender's selection and focused scene and writes its
+    /// control buffer: it edits show state on behalf of that session.
+    Control,
+}
+
+/// The [`SessionScope`] of `event`. A transaction takes the widest scope of
+/// its events (`Control` over `Session` over `Global`).
+pub fn session_scope(event: &ControlEvent) -> SessionScope {
+    match event {
+        // Selection, selection stack and focus.
+        ControlEvent::SelectGroup(_)
+        | ControlEvent::DeSelectGroup(_)
+        | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
+        | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
+        | ControlEvent::RemoveSelection
+        | ControlEvent::RemoveAllSelection
+        | ControlEvent::PushSelection
+        | ControlEvent::PopSelection
+        | ControlEvent::SelectFolder(_)
+        | ControlEvent::SetSceneFocus(_)
+        | ControlEvent::SetFocusedSceneGraph(_) => SessionScope::Session,
+        // Applied to the selection in the focused scene, through the control
+        // buffer.
+        CONTROLS_REQUIRING_SELECTION!() | ControlEvent::RemoveChange { .. } => {
+            SessionScope::Control
+        }
+        ControlEvent::Transaction(events) => events
+            .iter()
+            .map(session_scope)
+            .max()
+            .unwrap_or(SessionScope::Global),
+        // Live mode stays global here; 041 gives the preview an owner session.
+        ControlEvent::MiscEvent { .. }
+        | ControlEvent::SetOverlays(_)
+        | ControlEvent::RemoveOverlayScene(_)
+        | ControlEvent::AddOverlayScene(_)
+        | ControlEvent::SetLiveMode(_)
+        | ControlEvent::ToggleLiveMode
+        | ControlEvent::SetSceneMasterAlpha(_, _)
+        | ControlEvent::SetSceneMasterSpeed(_, _)
+        | ControlEvent::SetChannelOverride(_, _, _)
+        | ControlEvent::RemoveChannelOverride(_, _)
+        | ControlEvent::MainUi(_)
+        | ControlEvent::PluginUi(_, _)
+        | ControlEvent::AnimationPluginUi(_, _, _)
+        | ControlEvent::CreatePalette(_, _)
+        | ControlEvent::UpdatePalette(_, _)
+        | ControlEvent::DeletePalette(_)
+        | ControlEvent::RenamePalette(_, _)
+        | ControlEvent::UnassignPalette(_)
+        | ControlEvent::SetSceneGraphEnabled(_, _)
+        | ControlEvent::ToggleSceneGraphEnabled(_)
+        | ControlEvent::CreateFolder { .. }
+        | ControlEvent::RenameFolder(_, _)
+        | ControlEvent::DeleteFolder(_)
+        | ControlEvent::MoveToFolder { .. }
+        | ControlEvent::ReorderFolder(_, _) => SessionScope::Global,
+    }
 }
 
 /// Per-client sequence number of a sent message. The engine echoes it in the
@@ -143,6 +228,18 @@ impl BusMessage {
             BusBody::Host(_) => None,
         }
     }
+
+    /// `true` if a consumer acting for `session` should treat this message
+    /// as its own operator's: every message from `session` itself, and
+    /// messages from other sessions whose event is [`SessionScope::Global`].
+    /// Host commands count as global.
+    pub fn concerns_session(&self, session: SessionId) -> bool {
+        self.session == session
+            || match &self.body {
+                BusBody::Control(message) => session_scope(&message.body()) == SessionScope::Global,
+                BusBody::Host(_) => true,
+            }
+    }
 }
 
 impl Display for BusMessage {
@@ -154,9 +251,14 @@ impl Display for BusMessage {
 /// The events plugins receive in `TickInput`, in bus order: the
 /// `ControlEventMessage`s of every [`BusBody::Control`], with the envelope
 /// stripped. Host commands are dropped.
+///
+/// Plugins act for [`SessionId::DESK`], so other sessions' session-scoped
+/// events are dropped too ([`BusMessage::concerns_session`]): a remote
+/// operator's selection must not light up a controller's LEDs, for example.
 pub fn plugin_events(messages: impl IntoIterator<Item = BusMessage>) -> Vec<ControlEventMessage> {
     messages
         .into_iter()
+        .filter(|message| message.concerns_session(SessionId::DESK))
         .filter_map(BusMessage::into_plugin_event)
         .collect()
 }
@@ -306,6 +408,11 @@ struct HubInner {
     state: Mutex<HubState>,
     capacity: usize,
     next_remote: AtomicU32,
+    /// Next [`SessionId`] to open; 0 is [`SessionId::DESK`].
+    next_session: AtomicU32,
+    /// Sessions opened and closed since the engine last took them. Kept apart
+    /// from `state`, so logging never contends with it.
+    session_changes: Mutex<Vec<SessionChange>>,
     shutdown: AtomicBool,
 }
 
@@ -313,6 +420,12 @@ impl HubInner {
     fn lock(&self) -> MutexGuard<'_, HubState> {
         // Logging publishes here too, also from panicking threads.
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn lock_session_changes(&self) -> MutexGuard<'_, Vec<SessionChange>> {
+        self.session_changes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -354,6 +467,8 @@ impl SystemHub {
                 }),
                 capacity,
                 next_remote: AtomicU32::new(0),
+                next_session: AtomicU32::new(SessionId::DESK.0 + 1),
+                session_changes: Mutex::new(Vec::new()),
                 shutdown: AtomicBool::new(false),
             }),
         }
@@ -439,6 +554,30 @@ impl SystemHub {
         ClientId::Remote(self.inner.next_remote.fetch_add(1, Ordering::Relaxed))
     }
 
+    /// Opens a new operator session with a fresh [`SessionId`] (ids are never
+    /// reused). The engine creates its state (focused on `DESK`'s scene and
+    /// scene graph, with an empty selection) before it applies any bus
+    /// message sent after this returns. Dropping the handle closes the
+    /// session.
+    pub fn open_session(&self) -> SessionHandle {
+        let id = SessionId(self.inner.next_session.fetch_add(1, Ordering::Relaxed));
+        self.inner
+            .lock_session_changes()
+            .push(SessionChange::Opened(id));
+        SessionHandle {
+            id,
+            hub: Arc::clone(&self.inner),
+        }
+    }
+
+    /// Engine side: the sessions opened and closed since the last call, in
+    /// order. Take them *after* draining the bus: a session is registered
+    /// here before its first message is sent, so every session a drained
+    /// message uses is then either known already or in the returned list.
+    pub fn take_session_changes(&self) -> Vec<SessionChange> {
+        std::mem::take(&mut *self.inner.lock_session_changes())
+    }
+
     /// Asks the engine to stop. The supervisor checks this on every heartbeat;
     /// it no longer stops when nobody listens.
     pub fn shutdown(&self) {
@@ -500,6 +639,41 @@ impl Drop for HubSubscription {
 }
 
 //
+// Sessions.
+//
+
+/// A session opened or closed through the hub, for the engine to apply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionChange {
+    Opened(SessionId),
+    Closed(SessionId),
+}
+
+/// An open operator session, from [`SystemHub::open_session`]. Dropping it
+/// closes the session: on its next tick the engine applies the messages it
+/// has received, then drops the session's state. Messages from the session
+/// that arrive later are refused.
+#[must_use = "dropping the handle closes the session"]
+pub struct SessionHandle {
+    id: SessionId,
+    hub: Arc<HubInner>,
+}
+
+impl SessionHandle {
+    pub fn id(&self) -> SessionId {
+        self.id
+    }
+}
+
+impl Drop for SessionHandle {
+    fn drop(&mut self) {
+        self.hub
+            .lock_session_changes()
+            .push(SessionChange::Closed(self.id));
+    }
+}
+
+//
 // Client connection.
 //
 
@@ -515,6 +689,9 @@ pub struct ClientConnection {
     bus: SystemEventBusConnection<BusMessage>,
     system: HubSubscription,
     ui: FrontendUiPublisher,
+    /// The session this connection opened, if any; closed on drop, after
+    /// the bus connection.
+    _session: Option<SessionHandle>,
 }
 
 impl ClientConnection {
@@ -532,6 +709,24 @@ impl ClientConnection {
             bus: bus.connect(),
             system: hub.subscribe(id),
             ui: mirror.connect(id),
+            _session: None,
+        }
+    }
+
+    /// Like [`Self::connect`], but in a new operator session of its own
+    /// ([`SystemHub::open_session`]), which closes when the connection is
+    /// dropped. This is how a remote client attaches.
+    pub fn connect_new_session(
+        id: ClientId,
+        hub: &SystemHub,
+        bus: &EventBusHandle<BusMessage>,
+        mirror: &FrontendUiMirror,
+    ) -> Self {
+        let session = hub.open_session();
+        let connection = Self::connect(id, session.id(), hub, bus, mirror);
+        Self {
+            _session: Some(session),
+            ..connection
         }
     }
 
@@ -792,6 +987,183 @@ mod tests {
         assert!(!hub.is_subscribed(client));
         assert!(!mirror.is_connected(client));
         assert_eq!(bus.handle().connection_count(), 0);
+    }
+
+    /// The session-scoped events, written out: selection, focus and the
+    /// control-buffer events. Everything else is global.
+    #[test]
+    fn session_scoped_events_are_selection_focus_and_control_events() {
+        use blaulicht_shared::{
+            scene::FixtureSelection, AnimationSpeedModifier, FixtureProperty, MainUiEvent,
+        };
+
+        let session = [
+            ControlEvent::SelectGroup(0),
+            ControlEvent::DeSelectGroup(0),
+            ControlEvent::LimitSelectionToFixtureInCurrentGroup(0),
+            ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(0),
+            ControlEvent::RemoveSelection,
+            ControlEvent::RemoveAllSelection,
+            ControlEvent::PushSelection,
+            ControlEvent::PopSelection,
+            ControlEvent::SelectFolder(0),
+            ControlEvent::SetSceneFocus(0),
+            ControlEvent::SetFocusedSceneGraph(None),
+        ];
+        let control = [
+            ControlEvent::SetEnabled(true),
+            ControlEvent::SetAlpha(0),
+            ControlEvent::SetStrobeSpeed(0),
+            ControlEvent::SetFocus(0),
+            ControlEvent::SetTilt(0),
+            ControlEvent::SetPan(0),
+            ControlEvent::SetColor((0, 0, 0)),
+            ControlEvent::SetColorHue(0),
+            ControlEvent::SetColorSaturation(0),
+            ControlEvent::SetColorValue(0),
+            ControlEvent::AddToProperty(FixtureProperty::Alpha, 1),
+            ControlEvent::AddAnimation(0),
+            ControlEvent::RemoveAnimation(0),
+            ControlEvent::ResetAnimation(0),
+            ControlEvent::PauseAnimation(0),
+            ControlEvent::PlayAnimation(0),
+            ControlEvent::SetAnimationSpeed(0, AnimationSpeedModifier::from_index(0)),
+            ControlEvent::AssignPaletteToProperty(FixtureProperty::Alpha, 0),
+            ControlEvent::UnassignPaletteFromProperty(FixtureProperty::Alpha),
+            ControlEvent::AssignPaletteToSelection(0),
+            ControlEvent::UnassignPaletteFromSelection(0),
+            ControlEvent::RemoveChange {
+                selection: FixtureSelection { fixtures: vec![] },
+                property: FixtureProperty::Alpha,
+            },
+        ];
+        let global = [
+            ControlEvent::MiscEvent {
+                descriptor: 0,
+                value: 0,
+            },
+            ControlEvent::SetOverlays(vec![]),
+            ControlEvent::AddOverlayScene(0),
+            ControlEvent::RemoveOverlayScene(0),
+            ControlEvent::SetLiveMode(true),
+            ControlEvent::ToggleLiveMode,
+            ControlEvent::SetSceneMasterAlpha(0, 100),
+            ControlEvent::SetChannelOverride(0, 1, 255),
+            ControlEvent::RemoveChannelOverride(0, 1),
+            ControlEvent::MainUi(MainUiEvent::NumberpadAdjust { delta: 1 }),
+            ControlEvent::DeletePalette(0),
+            ControlEvent::ToggleSceneGraphEnabled(0),
+            ControlEvent::DeleteFolder(0),
+            ControlEvent::Transaction(vec![]),
+        ];
+        for event in &session {
+            assert_eq!(session_scope(event), SessionScope::Session, "{event:?}");
+        }
+        for event in &control {
+            assert_eq!(session_scope(event), SessionScope::Control, "{event:?}");
+        }
+        for event in &global {
+            assert_eq!(session_scope(event), SessionScope::Global, "{event:?}");
+        }
+
+        // A transaction takes its widest scope.
+        let transaction =
+            |events: Vec<ControlEvent>| session_scope(&ControlEvent::Transaction(events));
+        assert_eq!(
+            transaction(vec![
+                ControlEvent::SetChannelOverride(0, 1, 2),
+                ControlEvent::SelectGroup(0),
+            ]),
+            SessionScope::Session
+        );
+        assert_eq!(
+            transaction(vec![
+                ControlEvent::SelectGroup(0),
+                ControlEvent::SetAlpha(1),
+            ]),
+            SessionScope::Control
+        );
+    }
+
+    /// Plugins act for the desk session: another session's selection,
+    /// focus and control events don't reach them, its global events do.
+    #[test]
+    fn plugins_only_see_desk_session_events_and_global_ones() {
+        let remote = SessionId(3);
+        let message = |session, event| {
+            BusMessage::control(
+                ClientId::Remote(0),
+                session,
+                1,
+                ControlEventMessage::new(EventOriginator::Web, event),
+            )
+        };
+        let bus = vec![
+            message(remote, ControlEvent::SelectGroup(1)),
+            message(SessionId::DESK, ControlEvent::SelectGroup(2)),
+            message(remote, ControlEvent::SetColor((1, 2, 3))),
+            message(remote, ControlEvent::SetChannelOverride(0, 1, 9)),
+            message(
+                remote,
+                ControlEvent::Transaction(vec![ControlEvent::SetSceneFocus(1)]),
+            ),
+            message(SessionId::DESK, ControlEvent::SetSceneFocus(1)),
+        ];
+        assert!(!bus[0].concerns_session(SessionId::DESK));
+        assert!(bus[0].concerns_session(remote));
+        // The other way round, too.
+        assert!(!bus[1].concerns_session(remote));
+        assert!(bus[3].concerns_session(SessionId::DESK));
+
+        let seen: Vec<String> = plugin_events(bus)
+            .iter()
+            .map(|event| format!("{:?}", event.body()))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                "SelectGroup(2)",
+                "SetChannelOverride(0, 1, 9)",
+                "SetSceneFocus(1)"
+            ]
+        );
+    }
+
+    #[test]
+    fn sessions_open_and_close_in_order_with_fresh_ids() {
+        let hub = SystemHub::new();
+        let first = hub.open_session();
+        let second = hub.open_session();
+        assert_ne!(first.id(), SessionId::DESK);
+        assert!(second.id() > first.id());
+        let (first_id, second_id) = (first.id(), second.id());
+        drop(first);
+        assert_eq!(
+            hub.take_session_changes(),
+            vec![
+                SessionChange::Opened(first_id),
+                SessionChange::Opened(second_id),
+                SessionChange::Closed(first_id),
+            ]
+        );
+        assert!(hub.take_session_changes().is_empty());
+
+        // A client in a session of its own closes it when it drops.
+        let bus = crate::event::SystemEventBus::<BusMessage>::new();
+        let mirror = FrontendUiMirror::new();
+        let client = hub.allocate_client();
+        let connection =
+            ClientConnection::connect_new_session(client, &hub, &bus.handle(), &mirror);
+        let session = connection.session();
+        assert!(session > second_id);
+        drop(connection);
+        assert_eq!(
+            hub.take_session_changes(),
+            vec![
+                SessionChange::Opened(session),
+                SessionChange::Closed(session)
+            ]
+        );
     }
 
     /// Plugins must receive exactly the `ControlEventMessage`s they did before
