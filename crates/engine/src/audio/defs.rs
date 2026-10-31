@@ -5,7 +5,7 @@ const ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE: usize = ROLLING_AVERAGE_LOOP_ITERATION
 pub const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AudioThreadControlSignal {
     CONTINUE,
     ABORT,

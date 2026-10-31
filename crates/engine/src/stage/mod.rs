@@ -511,7 +511,7 @@ impl StageScene {
 
 /// Where a fixture stands: its position (metres) and rotation (degrees), as
 /// the visualizer places it ([`StagePatch::fixtures`]).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct FixturePlacement {
     pub group: u8,
     pub fixture: u8,
@@ -523,7 +523,7 @@ pub struct FixturePlacement {
 /// (`HostCommand::PatchStage`): only the parts that changed, so concurrent
 /// edits of other objects survive. Objects are added and removed by their
 /// own commands, because the engine allocates their ids.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct StagePatch {
     pub room: Option<StageRoom>,
     /// Existing objects with their new contents (name, flags, transform,

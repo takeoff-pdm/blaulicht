@@ -173,6 +173,14 @@ pub fn init_tracing(hub: SystemHub) {
         .try_init();
 }
 
+/// Runs `f` with tracing events going to `hub` (as the Logs page gets
+/// them), for tests that can't install the global subscriber.
+#[cfg(test)]
+pub(crate) fn with_hub_logging<R>(hub: SystemHub, f: impl FnOnce() -> R) -> R {
+    let subscriber = tracing_subscriber::registry().with(SystemOutLayer { hub });
+    tracing::subscriber::with_default(subscriber, f)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{source_for_target, target};
@@ -202,6 +210,7 @@ mod tests {
         assert_eq!(source_for_target("blaulicht_engine::plugin::udp"), "UDP");
         assert_eq!(source_for_target("blaulicht_engine::dmx"), "DMX");
         assert_eq!(source_for_target("blaulicht_engine::config"), "Config");
+        assert_eq!(source_for_target("blaulicht_engine::server"), "Web");
         assert_eq!(
             source_for_target("blaulicht_ui_egui::app::pages::audio"),
             "UI"

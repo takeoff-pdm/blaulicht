@@ -46,6 +46,11 @@ tracing = "0.1.44"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Remote clients (`server`, `client::RemoteClient`): sync websockets, no
+# async runtime; bincode (serde mode) and JSON on the wire.
+tungstenite = "0.24"
+bincode = { version = "2.0.1", features = ["serde"] }
+
 # Wasm
 wasmtime = { version = "31.0.0", optional = true, features = [ "all-arch" ] }
 rustc-demangle = { version = "0.1.26", optional = true }

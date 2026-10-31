@@ -35,15 +35,7 @@ pub(crate) struct SharedTickBuffers<'a> {
 }
 
 #[cfg(feature = "wasmtime")]
-/// FNV-1a over the serialized engine state, used only to detect "unchanged".
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
+use crate::server::snapshot::fnv1a;
 
 #[cfg(feature = "wasmtime")]
 /// Serializes the serial queue once, dropping the oldest entries if the result
@@ -226,6 +218,7 @@ impl PluginManager {
         //
         let mut profile_times = PluginPhaseTimes::default();
         let serialize_start = Instant::now();
+        let mut engine_state_digest = None;
         let engine_state_bytes = match app_state.as_ref() {
             Some(app)
                 if self.last_engine_sync.elapsed() >= WAIT_BETWEEN_ENGINE_SERIALIZE_UPDATES =>
@@ -243,6 +236,7 @@ impl PluginManager {
                 self.profiler
                     .record_engine_snapshot(bytes.len(), self.last_engine_digest != Some(digest));
                 self.last_engine_digest = Some(digest);
+                engine_state_digest = Some(digest);
                 Some(bytes)
             }
             _ => None,
@@ -539,6 +533,14 @@ impl PluginManager {
 
         if self.is_initial_tick {
             self.is_initial_tick = false;
+        }
+
+        // Remote clients get the same bytes (`server::snapshot`): moved there
+        // while one is connected, never copied.
+        if let (Some(app), Some(bytes), Some(digest)) =
+            (app_state.as_ref(), engine_state_bytes, engine_state_digest)
+        {
+            app.show_snapshots.offer(digest, bytes);
         }
 
         let elapsed = start.elapsed();

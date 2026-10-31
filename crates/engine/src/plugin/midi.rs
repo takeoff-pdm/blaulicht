@@ -9,7 +9,7 @@ use crate::hub::SystemHub;
 use crate::msg::MidiEvent;
 use crate::state::{AppState, MidiDeviceState};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum MidiError {
     DeviceNotFound,
     Other(String),

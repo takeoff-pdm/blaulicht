@@ -61,7 +61,7 @@ pub const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Whether the show has unsaved changes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SaveStatus {
     /// No showfile is open: there is nothing to save to.
     NoShowfile,
@@ -83,12 +83,14 @@ impl SaveStatus {
 }
 
 /// What [`SystemMessage::ShowfileStatus`] reports.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShowfileStatus {
     /// The open showfile.
     pub path: Option<PathBuf>,
     pub save: SaveStatus,
-    /// When the show was last written to `path`.
+    /// When the show was last written to `path`. On the wire as UNIX time in
+    /// milliseconds (`null` if never).
+    #[serde(with = "crate::server::protocol::serde_as::unix_millis")]
     pub saved_at: Option<SystemTime>,
 }
 

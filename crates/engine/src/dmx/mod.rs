@@ -20,8 +20,8 @@ pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
     hub::{
-        BusBody, BusMessage, CommandOutcome, CommandResult, CreatedId, HostCommand, SessionChange,
-        SessionId, SystemHub,
+        BusBody, BusMessage, ClientId, CommandOutcome, CommandResult, CreatedId, HostCommand,
+        SessionChange, SessionId, SystemHub,
     },
     msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
@@ -276,6 +276,10 @@ fn output_worker(
 }
 
 const SETUP_SECS: u64 = 10;
+
+/// Why a desk-only command (`HostCommand::is_desk_only`) from another client
+/// is refused.
+pub const DESK_ONLY_REFUSAL: &str = "Only the desk frontend can send this command";
 
 impl DmxEngine {
     pub fn start_setup(&mut self) {
@@ -832,6 +836,17 @@ impl DmxEngine {
                 client,
                 seq,
                 outcome: CommandOutcome::Refused("Unknown session".to_string()),
+            });
+        }
+        // The desk's own commands (its showfile section) from anyone else.
+        if matches!(&body, BusBody::Host(command) if command.is_desk_only())
+            && client != ClientId::Desk
+        {
+            debug!("Desk-only command from {client} (seq {seq})");
+            return Some(CommandResult {
+                client,
+                seq,
+                outcome: CommandOutcome::Refused(DESK_ONLY_REFUSAL.to_string()),
             });
         }
         // Showfile and lifecycle commands are the persistence service's: it

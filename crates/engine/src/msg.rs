@@ -26,13 +26,13 @@ pub struct WasmControlsConfig {
     pub y: u8,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DmxTickSpeeds {
     pub dmx_engine: Duration,
     pub dmx_write: Duration,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TickSpeeds {
     pub loop_total: Duration,
     pub plugins: Duration,
@@ -108,7 +108,9 @@ pub enum SystemMessage {
 }
 
 /// Engine startup stages, in the order they are shown.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::EnumIter, strum::EnumCount)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, strum::EnumIter, strum::EnumCount, Serialize, Deserialize,
+)]
 pub enum StartupStage {
     Config,
     Showfile,
@@ -131,7 +133,7 @@ impl StartupStage {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StageState {
     Pending,
     Running,
@@ -142,7 +144,7 @@ pub enum StageState {
     Restarting,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StageStatus {
     pub state: StageState,
     pub detail: Option<String>,
@@ -185,7 +187,7 @@ impl StageStatus {
 /// dedicated [`SystemMessage`] (e.g. [`SystemMessage::WasmLog`]).
 pub const TERMINAL_ONLY_LOG_TARGET: &str = "blaulicht::terminal_only";
 
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct WasmLogBody {
     pub plugin_id: u8,
     pub msg: Cow<'static, str>,

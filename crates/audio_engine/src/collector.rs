@@ -5,7 +5,7 @@
 //     spectrum::{config::StreamConfig, stream::Stream},
 // };
 use blaulicht_shared::CollectedAudioSnapshot;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{
     beat_tracker::{BeatDetection, BeatTracker},
@@ -207,7 +207,7 @@ impl CollectorScratch {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct SignalCollectorParams {
     pub volume: u8,
     pub gate: u8,
@@ -696,7 +696,7 @@ where
 // Spectrogram utils.
 //
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AudioBucket {
     pub volume: u8,
     pub freq_bound_lower: u64,

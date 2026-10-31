@@ -23,16 +23,19 @@ use crate::{
     frontend_ui::FrontendUiMirror,
     persistence::PersistenceLink,
     plugin::{midi::MidiError, serial::SerialError},
+    server::snapshot::ShowSnapshots,
     ui_ops::WasmUiOp,
 };
 
 pub const NUM_DMX_UNIVERSES: usize = 10;
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum DmxHealthState {
     Healthy,
     Error(String),
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DmxHealth {
     pub port: String,
     pub state: DmxHealthState,
@@ -74,13 +77,13 @@ pub enum MidiHealthError {
     NotFound { device_name: String },
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum MidiDeviceState {
     Error(MidiError),
     Open(usize), // Number of handles on the device
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MidiHealth {
     pub available_devices: Vec<String>,
     // pub errors: Vec<MidiHealthError>,
@@ -96,13 +99,13 @@ impl MidiHealth {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum SerialDeviceState {
     Error(SerialError),
     Open(usize),
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SerialHealth {
     pub devices: HashMap<String, SerialDeviceState>,
 }
@@ -116,6 +119,7 @@ impl SerialHealth {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppHealthState {
     pub dmx_universes_healthy: [DmxHealth; NUM_DMX_UNIVERSES],
     pub artnet_health_state: bool,
@@ -123,7 +127,18 @@ pub struct AppHealthState {
     pub serial_health: SerialHealth,
 }
 
-#[derive(Clone)]
+impl Default for AppHealthState {
+    fn default() -> Self {
+        Self {
+            dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
+            artnet_health_state: false,
+            midi_health: MidiHealth::default(),
+            serial_health: SerialHealth::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ArtNetReceiver {
     pub address: SocketAddr,
     pub enabled: bool,
@@ -233,7 +248,7 @@ impl ArtNetOutput {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PluginRuntimeKind {
     Unregistered,
     Normal,
@@ -292,6 +307,9 @@ pub struct AppState {
     /// The persistence service's link: the engine marks the show edited and
     /// forwards showfile and lifecycle commands through it.
     pub persistence: PersistenceLink,
+    /// The serialized show state for remote clients, handed over by the
+    /// plugin tick (`crate::server::snapshot`).
+    pub show_snapshots: ShowSnapshots,
 }
 
 pub struct DmxBuffer {
@@ -321,12 +339,7 @@ impl AppState {
 
         Self {
             plugins: RwLock::new(plugins_map),
-            health_data: RwLock::new(AppHealthState {
-                dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
-                artnet_health_state: false,
-                midi_health: MidiHealth::default(),
-                serial_health: SerialHealth::default(),
-            }),
+            health_data: RwLock::new(AppHealthState::default()),
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
             grand_master_percent: AtomicU8::new(100),
@@ -359,6 +372,7 @@ impl AppState {
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
             spawned_commands: Arc::new(Mutex::new(SpawnedCommandRegistry::new())),
             persistence: PersistenceLink::default(),
+            show_snapshots: ShowSnapshots::default(),
         }
     }
 
@@ -382,14 +396,14 @@ impl AppState {
 }
 
 const PLUGIN_LOG_LENGTH: usize = 1000;
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PluginState {
     pub path: Cow<'static, str>,
     pub flags: PluginFlags,
     pub logs: VecDeque<Cow<'static, str>>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PluginFlags {
     enabled: bool,
     has_error: bool,

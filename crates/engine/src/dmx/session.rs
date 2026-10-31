@@ -37,7 +37,7 @@ use super::EngineState;
 use crate::hub::SessionId;
 
 /// One operator's state, for every session except [`SessionId::DESK`].
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSession {
     pub selection: EngineSelection,
     pub selection_stack: VecDeque<EngineSelection>,
@@ -154,6 +154,17 @@ impl SessionView<'_> {
     /// of [`EngineState::get_selection`] (which reads the `DESK` fields).
     pub fn fixture_selection(&self, groups: &EngineGroups) -> FixtureSelection {
         super::state::resolve_selection(self.selection, groups)
+    }
+
+    /// An owned copy, for sending it to a remote client.
+    pub fn to_session(&self) -> OperatorSession {
+        OperatorSession {
+            selection: self.selection.clone(),
+            selection_stack: self.selection_stack.clone(),
+            control_buffer: self.control_buffer.clone(),
+            scene_focus: self.scene_focus,
+            focused_graph: self.focused_graph,
+        }
     }
 }
 
@@ -292,6 +303,33 @@ impl EngineState {
     /// The session whose focus the live preview renders, if any.
     pub fn live_owner(&self) -> Option<SessionId> {
         self.2.live_owner
+    }
+
+    //
+    // A remote client's copy (`client::RemoteClient`): the engine sends the
+    // shared state, the client's own session and the stage separately, and
+    // the client keeps them in an `EngineState` so frontends read it as they
+    // read a local engine.
+    //
+
+    /// Replaces the shared state (`.0`) with the one of a show snapshot.
+    pub fn set_mirrored_show(&mut self, state: blaulicht_shared::EngineState) {
+        self.0 = state;
+    }
+
+    /// Sets the one session a remote client's copy holds (its own) and the
+    /// live preview's owner.
+    pub fn set_mirrored_session(
+        &mut self,
+        id: SessionId,
+        session: OperatorSession,
+        live_owner: Option<SessionId>,
+    ) {
+        self.1.clear();
+        if id != SessionId::DESK {
+            self.1.insert(id, session);
+        }
+        self.2.live_owner = live_owner;
     }
 
     /// Makes `owner` the live preview's owner (`None` ends the preview) and

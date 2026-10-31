@@ -31,7 +31,12 @@ use audioviz::spectrum::config::StreamConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
+    /// The port remote clients connect to (`crate::server`), on every
+    /// network interface.
     pub port: u16,
+    /// Whether the engine accepts remote clients at all.
+    #[serde(default = "default_server_enabled")]
+    pub server_enabled: bool,
     pub dmx_out_devices: [String; 2],
     pub default_audio_device: Option<String>,
 
@@ -56,6 +61,10 @@ pub struct Config {
     pub last_open_showfile: Option<PathBuf>,
     #[serde(default)]
     pub plugin_state: HashMap<String, String>,
+}
+
+fn default_server_enabled() -> bool {
+    true
 }
 
 fn default_spectrogram_window_seconds() -> u64 {
@@ -329,6 +338,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 1234,
+            server_enabled: default_server_enabled(),
             dmx_out_devices: ["/dev/dmx_out0".to_string(), "/dev/dmx_out1".to_string()],
             default_audio_device: None,
 

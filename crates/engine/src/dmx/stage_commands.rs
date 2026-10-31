@@ -81,6 +81,22 @@ impl EngineState {
         self.reconcile_stage();
     }
 
+    /// Sets a remote client's copy of the stage (see
+    /// [`EngineState::set_mirrored_show`]) as the engine sent it.
+    pub fn set_mirrored_stage(
+        &mut self,
+        scene: StageScene,
+        revision: u64,
+        showfile: Option<PathBuf>,
+    ) {
+        self.3 = StageState {
+            scene: Arc::new(scene),
+            revision,
+            showfile,
+            placed: BTreeMap::new(),
+        };
+    }
+
     /// The show is saved as `showfile` from now on, with its model assets
     /// copied there: points the stage's assets at the copies in `relocated`
     /// (by asset id; the rest of the stage is kept, so an edit made while the

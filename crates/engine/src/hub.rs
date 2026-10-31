@@ -41,6 +41,7 @@ use blaulicht_shared::{
     CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{Receiver, Sender};
+use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 
 use crate::{
@@ -56,7 +57,7 @@ use crate::{
 //
 
 /// Who sent a bus message, and who receives its [`CommandResult`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ClientId {
     /// The native egui frontend running in the engine process.
     Desk,
@@ -82,7 +83,7 @@ impl Display for ClientId {
 /// share [`SessionId::DESK`], whose state stays in the existing `EngineState`
 /// fields. Other sessions are opened with [`SystemHub::open_session`] and
 /// live in the engine's side store (`dmx::session`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SessionId(pub u32);
 
 impl SessionId {
@@ -191,7 +192,10 @@ pub type CommandSeq = u64;
 ///
 /// Commands that act on a group, scene, fixture or template name it by id
 /// (never by the sender's focus), so a dialog acts on what it was opened for.
-#[derive(Clone, Debug)]
+///
+/// Serializable for remote clients (`crate::server`). Changing it changes
+/// the wire protocol: bump `server::protocol::PROTOCOL_VERSION`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HostCommand {
     /// Does nothing; the engine answers `Ok`. Lets a client check its command
     /// path end to end.
@@ -518,6 +522,9 @@ pub enum HostCommand {
     /// the loaded section).
     SetFrontendSection {
         generation: u64,
+        /// On the wire as JSON text: its showfile form uses serde features
+        /// bincode can't decode.
+        #[serde(with = "crate::server::protocol::serde_as::json_string")]
         section: ShowfileUiState,
     },
     /// Runs the shutdown hook (saves the show if `save`, resets the grand
@@ -530,7 +537,7 @@ pub enum HostCommand {
 }
 
 /// One audio analysis parameter ([`HostCommand::SetAudioParam`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AudioParam {
     Volume(u8),
     Gate(u8),
@@ -544,9 +551,12 @@ pub enum AudioParam {
 
 /// The contents of a model file in [`HostCommand::ImportStageModel`].
 /// Shared, so the bus copies a pointer, not the file, to each connection;
-/// `Debug` prints only the size.
-#[derive(Clone)]
-pub struct ModelBytes(pub Arc<[u8]>);
+/// `Debug` prints only the size. On the wire as a byte string (bincode: raw
+/// bytes; JSON: an array of numbers).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ModelBytes(
+    #[serde(with = "crate::server::protocol::serde_as::shared_bytes")] pub Arc<[u8]>,
+);
 
 impl fmt::Debug for ModelBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -556,7 +566,7 @@ impl fmt::Debug for ModelBytes {
 
 /// One editable parameter of a scene graph node
 /// ([`HostCommand::SetSceneGraphNode`]).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SceneGraphNodeParam {
     Name(String),
     /// 0..=100 percent (higher values are clamped).
@@ -570,7 +580,7 @@ pub enum SceneGraphNodeParam {
 
 /// One editable parameter of a scene graph edge
 /// ([`HostCommand::SetSceneGraphEdge`]).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SceneGraphEdgeParam {
     Condition(TransitionCondition),
     Priority(u8),
@@ -654,6 +664,13 @@ impl HostCommand {
 }
 
 impl HostCommand {
+    /// Commands only the desk frontend may send; the engine refuses them
+    /// from every other client. `SetFrontendSection` is the desk's own part
+    /// of the showfile (its screen layouts).
+    pub fn is_desk_only(&self) -> bool {
+        matches!(self, HostCommand::SetFrontendSection { .. })
+    }
+
     /// Whether the command can change the fixture patch, so fixtures
     /// attached to trusses need placing again (stage commands do that
     /// themselves).
@@ -675,7 +692,7 @@ impl HostCommand {
 /// timeout.
 pub const ANIMATION_EDITOR_KEEPALIVE: Duration = Duration::from_millis(100);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BusBody {
     /// Applied by the engine and forwarded to plugins unchanged.
     Control(ControlEventMessage),
@@ -697,7 +714,7 @@ impl From<HostCommand> for BusBody {
 
 /// A message on the event bus. Host-only: plugins receive only the
 /// `ControlEventMessage` inside a [`BusBody::Control`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BusMessage {
     pub client: ClientId,
     pub session: SessionId,
@@ -776,7 +793,7 @@ pub fn plugin_events(messages: impl IntoIterator<Item = BusMessage>) -> Vec<Cont
 
 /// An id the engine allocated while applying a command, so the sender (for
 /// example a dialog) learns it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CreatedId {
     Palette(u8),
     /// An animation template.
@@ -799,7 +816,7 @@ pub enum CreatedId {
     StageObject(u64),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandOutcome {
     Ok {
         created: Option<CreatedId>,
@@ -810,7 +827,7 @@ pub enum CommandOutcome {
 }
 
 /// The engine's reply to one bus message, sent to its client only.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandResult {
     pub client: ClientId,
     pub seq: CommandSeq,
@@ -903,6 +920,8 @@ impl Replay {
 
 struct Subscriber {
     client: ClientId,
+    /// Most messages this subscriber's queue holds.
+    capacity: usize,
     /// Unbounded channel; [`Subscriber::push`] enforces the capacity, so
     /// nothing is allocated up front.
     sender: Sender<SystemMessage>,
@@ -917,11 +936,11 @@ impl Subscriber {
     /// Queues `message`, first dropping the oldest queued message if the
     /// queue holds `capacity` messages. Never blocks. Returns `true` on this
     /// subscriber's first overflow.
-    fn push(&mut self, message: SystemMessage, capacity: usize) -> bool {
+    fn push(&mut self, message: SystemMessage) -> bool {
         let mut first_overflow = false;
         // Pushes are serialized by the hub lock; the reader only shrinks the
         // queue.
-        if self.sender.len() >= capacity {
+        if self.sender.len() >= self.capacity {
             let _ = self.oldest.try_recv();
             first_overflow = !std::mem::replace(&mut self.overflowed, true);
         }
@@ -940,6 +959,9 @@ struct HubState {
 struct HubInner {
     state: Mutex<HubState>,
     capacity: usize,
+    /// The most messages a replay can hold; no subscriber's queue is
+    /// smaller.
+    replay_len: usize,
     next_remote: AtomicU32,
     /// Next [`SessionId`] to open; 0 is [`SessionId::DESK`].
     next_session: AtomicU32,
@@ -1000,6 +1022,7 @@ impl SystemHub {
                     replay: Replay::new(log_replay_len),
                 }),
                 capacity,
+                replay_len: fixed_replay + log_replay_len,
                 next_remote: AtomicU32::new(0),
                 next_session: AtomicU32::new(SessionId::DESK.0 + 1),
                 session_changes: Mutex::new(Vec::new()),
@@ -1010,7 +1033,6 @@ impl SystemHub {
 
     /// Sends `message` to every subscriber and records it for the replay.
     pub fn publish(&self, message: SystemMessage) {
-        let capacity = self.inner.capacity;
         let overflowed: Vec<ClientId> = {
             let mut state = self.inner.lock();
             state.replay.record(&message);
@@ -1019,7 +1041,7 @@ impl SystemHub {
                 .values_mut()
                 .filter_map(|subscriber| {
                     subscriber
-                        .push(message.clone(), capacity)
+                        .push(message.clone())
                         .then_some(subscriber.client)
                 })
                 .collect()
@@ -1037,7 +1059,7 @@ impl SystemHub {
             for subscriber in state.subscribers.values_mut() {
                 if subscriber.client == client {
                     delivered = true;
-                    if subscriber.push(message.clone(), self.inner.capacity) {
+                    if subscriber.push(message.clone()) {
                         overflowed.push(client);
                     }
                 }
@@ -1050,6 +1072,16 @@ impl SystemHub {
     /// Subscribes `client`. The subscription first yields the replayable
     /// state, then every message published from now on.
     pub fn subscribe(&self, client: ClientId) -> HubSubscription {
+        self.subscribe_with_capacity(client, self.inner.capacity)
+    }
+
+    /// [`Self::subscribe`] with a queue of at most `capacity` messages
+    /// (raised to what a replay can hold, up to the hub's own capacity), for
+    /// example for a remote client.
+    pub fn subscribe_with_capacity(&self, client: ClientId, capacity: usize) -> HubSubscription {
+        let capacity = capacity
+            .max(self.inner.replay_len.min(self.inner.capacity))
+            .max(1);
         let (sender, receiver) = crossbeam_channel::unbounded();
         let mut state = self.inner.lock();
         for message in state.replay.messages() {
@@ -1061,6 +1093,7 @@ impl SystemHub {
             id,
             Subscriber {
                 client,
+                capacity,
                 sender,
                 oldest: receiver.clone(),
                 overflowed: false,
@@ -1264,6 +1297,28 @@ impl ClientConnection {
         }
     }
 
+    /// A remote client's connection: a fresh [`ClientId::Remote`] in a new
+    /// session of its own (see [`Self::connect_new_session`]), whose hub
+    /// queue holds at most `queue_capacity` messages.
+    pub fn connect_remote(
+        hub: &SystemHub,
+        bus: &EventBusHandle<BusMessage>,
+        mirror: &FrontendUiMirror,
+        queue_capacity: usize,
+    ) -> Self {
+        let id = hub.allocate_client();
+        let session = hub.open_session();
+        Self {
+            id,
+            session: session.id(),
+            next_seq: AtomicU64::new(1),
+            bus: bus.connect(),
+            system: hub.subscribe_with_capacity(id, queue_capacity),
+            ui: mirror.connect(id),
+            _session: Some(session),
+        }
+    }
+
     pub fn id(&self) -> ClientId {
         self.id
     }
@@ -1276,13 +1331,19 @@ impl ClientConnection {
     /// sequence number its [`CommandResult`] will carry.
     pub fn send_body(&self, body: BusBody) -> CommandSeq {
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.send_with_seq(seq, body);
+        seq
+    }
+
+    /// Sends `body` in this client's envelope under the sequence number the
+    /// client chose (a remote client numbers its own commands).
+    pub fn send_with_seq(&self, seq: CommandSeq, body: BusBody) {
         self.bus.send(BusMessage {
             client: self.id,
             session: self.session,
             seq,
             body,
         });
-        seq
     }
 
     /// Sends a `ControlEvent` (forwarded to plugins as well).
@@ -1304,6 +1365,11 @@ impl ClientConnection {
     /// this client.
     pub fn try_recv_system(&self) -> Option<SystemMessage> {
         self.system.try_recv()
+    }
+
+    /// System messages waiting in this client's hub queue.
+    pub fn queued_system(&self) -> usize {
+        self.system.len()
     }
 
     /// Publishes this frontend's view-state snapshot; cheap to call every

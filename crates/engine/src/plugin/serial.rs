@@ -59,7 +59,7 @@ fn drain_serial_lines(buffer: &mut Vec<u8>, device: u8) -> Vec<SerialReceived> {
     events
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SerialError {
     DeviceNotFound,
     Other(String),

@@ -2,6 +2,7 @@
 //! `blaulicht-headless`) go through [`Engine::start`] and
 //! [`EngineHandle::shutdown`].
 
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU8;
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use crate::mainloop::{self, SupervisorRequest};
 use crate::msg::{StageStatus, StartupStage, SystemMessage};
 use crate::persistence::{ExitRequest, PersistenceService, PersistenceThread};
 use crate::plugin::PluginManager;
+use crate::server::{Server, ServerHandle, ServerOptions};
 use crate::state::AppState;
 use crate::utils;
 
@@ -209,12 +211,43 @@ impl Engine {
                 .unwrap();
         });
 
+        //
+        // Remote clients.
+        //
+        let server = if cfg.server_enabled {
+            let bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, cfg.port));
+            match Server::start(
+                ServerOptions::new(bind),
+                Arc::clone(&app_state),
+                hub.clone(),
+                event_bus_handle.clone(),
+            ) {
+                Ok(server) => {
+                    info!(
+                        "Remote clients can connect to ws://{}/",
+                        server.local_addr()
+                    );
+                    Some(server)
+                }
+                Err(err) => {
+                    tracing::error!(
+                        "Remote clients can't connect: could not listen on {bind}: {err}"
+                    );
+                    None
+                }
+            }
+        } else {
+            info!("Remote clients are turned off (server_enabled = false)");
+            None
+        };
+
         Ok(Some(EngineHandle {
             hub,
             bus: event_bus_handle,
             app: app_state,
             persistence,
             desk,
+            server,
             config_file,
         }))
     }
@@ -228,6 +261,7 @@ pub struct EngineHandle {
     app: Arc<AppState>,
     persistence: PersistenceThread,
     desk: Option<LocalClient>,
+    server: Option<ServerHandle>,
     config_file: PathBuf,
 }
 
@@ -249,6 +283,12 @@ impl EngineHandle {
         &self.config_file
     }
 
+    /// Where remote clients connect (`crate::server`); `None` if the server
+    /// is turned off or could not listen.
+    pub fn server_addr(&self) -> Option<SocketAddr> {
+        self.server.as_ref().map(ServerHandle::local_addr)
+    }
+
     /// Set once a client's `HostCommand::Quit` / `Restart` ran the shutdown
     /// hook; the binary then calls [`EngineHandle::shutdown`] and exits.
     pub fn exit_request(&self) -> Option<ExitRequest> {
@@ -260,6 +300,10 @@ impl EngineHandle {
     /// and with it the main loop. Returns how the process should exit
     /// ([`ExitRequest::code`]); `None` means no client asked to quit.
     pub fn shutdown(self) -> Option<ExitRequest> {
+        // No remote commands from here on.
+        if let Some(server) = self.server {
+            server.stop();
+        }
         let exit = self.persistence.stop();
         self.hub.shutdown();
         exit

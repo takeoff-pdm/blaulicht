@@ -2,9 +2,10 @@
 //! session, send commands, get their results, and read the live streams.
 //!
 //! - [`EngineClient`] is that surface. Page code written against it runs the
-//!   same way in process ([`LocalClient`]) and, later, against a remote
-//!   engine (047): locally `with_show` is a read guard on the engine state, a
-//!   remote client would hand out an owned snapshot.
+//!   same way in process ([`LocalClient`]) and against a remote engine
+//!   ([`RemoteClient`], over the websocket protocol in
+//!   [`crate::server::protocol`]): locally `with_show` is a read guard on the
+//!   engine state, remotely on the client's copy of it.
 //! - [`LocalClient`] is the in-process implementation. It holds the engine's
 //!   `Arc<AppState>` privately, the client's [`ClientConnection`], and the
 //!   hub and bus handles (to attach more clients, see
@@ -38,6 +39,9 @@ use crate::{
     state::{AppHealthState, AppState, ArtNetReceiver, PluginRuntimeKind, PluginState},
     ui_ops::WasmUiOp,
 };
+
+mod remote;
+pub use remote::{RemoteClient, RemoteStats, DISCONNECTED};
 
 /// A frontend's connection to the engine.
 ///
@@ -611,6 +615,31 @@ pub(crate) mod testing {
 
         pub(crate) fn engine(&self) -> &DmxEngine {
             &self.engine
+        }
+
+        /// The websocket server for this engine, on `options.bind` (port 0
+        /// picks a free one).
+        pub(crate) fn start_server(
+            &self,
+            options: crate::server::ServerOptions,
+        ) -> crate::server::ServerHandle {
+            crate::server::Server::start(
+                options,
+                Arc::clone(&self.app),
+                self.hub.clone(),
+                self.bus.clone(),
+            )
+            .expect("server")
+        }
+
+        /// Ticks until `done` holds, and fails the test after a while.
+        pub(crate) fn tick_until(&mut self, what: &str, mut done: impl FnMut(&mut Self) -> bool) {
+            let deadline = Instant::now() + REPLY_TIMEOUT;
+            while !done(self) {
+                assert!(Instant::now() < deadline, "timed out waiting for {what}");
+                self.tick();
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
     }
 
