@@ -6,6 +6,7 @@ use crate::{
         },
         BlaulichtApp,
     },
+    client::EngineClient,
     state::DmxHealthState,
 };
 use egui::{Color32, Context, FontFamily, Label, RichText};
@@ -16,8 +17,15 @@ impl BlaulichtApp {
             return;
         }
 
-        let health_data = self.data.state.health_data.read().unwrap();
-        let health_state = &health_data.dmx_universes_healthy[universe_number];
+        // (port, healthy, error) of the universe's output.
+        let (port, healthy, error) = self.client.with_health(|health| {
+            let state = &health.dmx_universes_healthy[universe_number];
+            let error = match &state.state {
+                DmxHealthState::Error(err) => Some(err.clone()),
+                DmxHealthState::Healthy => None,
+            };
+            (state.port.clone(), state.is_healthy(), error)
+        });
 
         Dialog::new("DMX".to_string(), egui::vec2(500.0, 200.0))
             .with_backdrop()
@@ -31,25 +39,25 @@ impl BlaulichtApp {
                     render_dmx_or_artnet_health_box(
                         ui,
                         Label::new(
-                            RichText::new(&health_state.port)
+                            RichText::new(&port)
                                 .color(DMX_OR_ARTNET_HEALTH_LABEL_COLOR)
                                 .size(12.0),
                         ),
                         DMX_ICON,
                         28.0,
-                        health_state.is_healthy(),
+                        healthy,
                         false,
                         egui::vec2(100.0, 65.0),
                     );
 
-                    let label = match &health_state.state {
-                        DmxHealthState::Error(err) => Label::new(
+                    let label = match &error {
+                        Some(err) => Label::new(
                             RichText::new(err)
                                 .color(Color32::RED)
                                 .family(FontFamily::Monospace),
                         )
                         .wrap(),
-                        DmxHealthState::Healthy => Label::new("- No Error -"),
+                        None => Label::new("- No Error -"),
                     };
 
                     ui.add_sized([350.0, 20.0], label);

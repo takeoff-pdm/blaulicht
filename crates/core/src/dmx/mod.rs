@@ -5,6 +5,7 @@ mod session;
 mod setup_commands;
 mod stage_commands;
 mod state;
+mod system_commands;
 
 use artnet_protocol::ArtCommand;
 use blaulicht_audio_engine::CollectorOutput;
@@ -124,6 +125,9 @@ pub struct DmxEngine {
     /// Used to reconcile (add/remove) graph-driven overlays without clobbering
     /// manually-added ones. Runtime-only, not persisted.
     graph_overlay_scenes: Vec<u8>,
+    /// Where audio input and plugin reload commands are forwarded
+    /// (`with_supervisor`); `None` in a headless test engine.
+    supervisor: Option<Sender<crate::mainloop::SupervisorRequest>>,
 }
 
 #[derive(Clone, Copy)]
@@ -380,7 +384,25 @@ impl DmxEngine {
             scene_graph_runtime: SceneGraphRuntime::default(),
             animation_clock: animation::AnimationClockRuntime::default(),
             graph_overlay_scenes: Vec::new(),
+            supervisor: None,
         }
+    }
+
+    /// Forwards `HostCommand::SelectAudioInput` and `ReloadPlugins` to the
+    /// supervisor thread behind `supervisor`.
+    pub fn with_supervisor(
+        mut self,
+        supervisor: Sender<crate::mainloop::SupervisorRequest>,
+    ) -> Self {
+        self.set_supervisor(supervisor);
+        self
+    }
+
+    pub(crate) fn set_supervisor(
+        &mut self,
+        supervisor: Sender<crate::mainloop::SupervisorRequest>,
+    ) {
+        self.supervisor = Some(supervisor);
     }
 
     fn tick_internal(&mut self, audio_output: &CollectorOutput) {
@@ -1027,6 +1049,23 @@ impl DmxEngine {
                 state.import_stage_model_command(&file_name, &bytes.0)
             }
             HostCommand::RemoveStageAssets(ids) => state.remove_stage_assets_command(&ids),
+            HostCommand::SelectAudioInput { name } => self.select_audio_input_command(name),
+            HostCommand::SetAudioParam(param) => self.set_audio_param_command(param),
+            HostCommand::ReloadPlugins => self.reload_plugins_command(),
+            HostCommand::AddArtNetReceiver(address) => self.add_artnet_receiver_command(address),
+            HostCommand::RemoveArtNetReceiver(address) => {
+                self.remove_artnet_receiver_command(address)
+            }
+            HostCommand::SetArtNetReceiverEnabled {
+                address,
+                owner,
+                enabled,
+            } => self.set_artnet_receiver_enabled_command(address, owner, enabled),
+            HostCommand::SetArtNetReceiverUniverses {
+                address,
+                first,
+                last,
+            } => self.set_artnet_receiver_universes_command(address, first, last),
         }
     }
 

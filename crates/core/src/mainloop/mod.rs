@@ -26,7 +26,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-pub use supervisor::supervisor_thread;
+pub use supervisor::{supervisor_thread, SupervisorRequest};
 
 pub const DMX_TICK_TIME: Duration = Duration::from_millis(25);
 pub const PLUGINS_TICK_TIME: Duration = Duration::from_millis(12);
@@ -90,6 +90,8 @@ impl Drop for EngineInitializationGuard {
     }
 }
 
+// The engine's parts, handed over by the supervisor on every (re)start.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     input: AudioInput,
     system_out: SystemHub,
@@ -98,6 +100,7 @@ pub fn run(
     event_bus_plugins: SystemEventBusConnectionInst,
     event_bus_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
+    supervisor: crossbeam_channel::Sender<SupervisorRequest>,
 ) -> anyhow::Result<()> {
     let mut initialization_guard = EngineInitializationGuard::new(system_out.clone());
 
@@ -125,7 +128,8 @@ pub fn run(
         event_bus_dmx,
         system_out.clone(),
         config.dmx_out_devices.clone(),
-    );
+    )
+    .with_supervisor(supervisor);
     // TODO: add a command for starting + stopping setup.
     if config.run_setup_on_reload {
         dmx_engine.start_setup();
@@ -363,6 +367,9 @@ pub fn run(
 
         if spectrogram_time_of_last_tick.elapsed() >= spec_period {
             {
+                // `HostCommand::SetAudioParam` writes `audio_params` and sets
+                // `changed`; the collector's own changes (auto-calibration)
+                // flow back the other way.
                 let mut ui_params = app_state.audio_params.write().unwrap();
                 if ui_params.changed {
                     sig_collector.params = *ui_params;

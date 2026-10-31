@@ -423,6 +423,33 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
     }
 }
 
+/// The config the engine and the desk frontend share until the engine owns
+/// it alone (052), and the file it is written to.
+#[derive(Clone)]
+pub struct SharedConfig {
+    pub config: Arc<Mutex<Config>>,
+    pub path: PathBuf,
+}
+
+impl SharedConfig {
+    pub fn new(config: Config, path: PathBuf) -> Self {
+        Self {
+            config: Arc::new(Mutex::new(config)),
+            path,
+        }
+    }
+
+    /// Changes the config with `edit` and writes it to the file.
+    pub fn update(&self, edit: impl FnOnce(&mut Config)) -> Result<()> {
+        let mut config = self
+            .config
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        edit(&mut config);
+        write_config(self.path.clone(), config.clone()).map(|_| ())
+    }
+}
+
 pub fn write_config(file_path: PathBuf, config: Config) -> Result<Option<Config>> {
     // Either read or create a configuration file based on it's current existence
     let path = Path::new(&file_path);
@@ -575,6 +602,26 @@ mod tests {
         assert!(receivers[0].sends_universe(5));
         // Pre-range showfiles keep sending every universe.
         assert!(receivers[1].sends_all_universes());
+    }
+
+    #[test]
+    fn a_shared_config_update_is_written_to_its_file() {
+        let directory = TempDir::new("blaulicht-shared-config").unwrap();
+        let path = directory.path().join("config.toml");
+        let shared = SharedConfig::new(Config::default(), path.clone());
+        let desk_view = Arc::clone(&shared.config);
+        shared
+            .update(|config| config.default_audio_device = Some("Dummy: Noise".to_string()))
+            .unwrap();
+        assert_eq!(
+            desk_view.lock().unwrap().default_audio_device.as_deref(),
+            Some("Dummy: Noise")
+        );
+        let written: Config = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            written.default_audio_device.as_deref(),
+            Some("Dummy: Noise")
+        );
     }
 
     #[test]

@@ -1,22 +1,35 @@
 use crate::{
     audio::defs::AudioThreadControlSignal,
-    config::Config,
+    config::{Config, SharedConfig},
     event::SystemEventBusConnectionInst,
     hub::SystemHub,
     mainloop::{self, bg_worker},
     msg::{AudioInput, DummyInput, StageStatus, StartupStage, SystemMessage},
     state::AppState,
 };
-use crate::{log::target, msg::FromFrontend, utils};
-use crossbeam_channel::{Receiver, TryRecvError};
+use crate::{log::target, utils};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::{
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
+
+/// What the supervisor thread does on request. The engine forwards the
+/// matching `HostCommand`s here (`DmxEngine::apply_host` runs on the main
+/// loop thread, which the supervisor owns and restarts); the plugin watcher
+/// sends `ReloadPlugins` too. The supervisor wakes up for a request at once
+/// instead of waiting for its next heartbeat.
+pub enum SupervisorRequest {
+    /// Reload every plugin (and MIDI / UDP), if the engine is running.
+    ReloadPlugins,
+    /// Restart the main loop on `input` (`None`: [`DummyInput::Silence`])
+    /// and remember it as the config's `default_audio_device`.
+    SelectAudioInput(Option<AudioInput>),
+}
 
 pub fn signal_mainloop(
     audio_thread_control_signal: Arc<AtomicU8>,
@@ -48,11 +61,21 @@ fn send_stage(hub: &SystemHub, stage: StartupStage, status: StageStatus) {
     hub.publish(SystemMessage::StartupStage { stage, status });
 }
 
+/// Runs the engine: starts the main loop on the selected audio input,
+/// restarts it after a crash or an input change, publishes heartbeats and the
+/// audio device list, and serves [`SupervisorRequest`]s (`requests`;
+/// `request_sender` is handed to each main loop's `DmxEngine`).
+/// `initial_input` is the configured input, if it is available.
+// The engine's parts, set up once in `main`.
+#[allow(clippy::too_many_arguments)]
 pub fn supervisor_thread(
-    from_frontend: Receiver<FromFrontend>,
+    requests: Receiver<SupervisorRequest>,
+    request_sender: Sender<SupervisorRequest>,
+    initial_input: Option<AudioInput>,
     audio_thread_control_signal: Arc<AtomicU8>,
     hub: SystemHub,
     config: Config,
+    shared_config: SharedConfig,
     event_bus_connection_plugins: SystemEventBusConnectionInst,
     event_bus_connection_dmx: SystemEventBusConnectionInst,
     app_state: Arc<AppState>,
@@ -69,7 +92,8 @@ pub fn supervisor_thread(
 
     let heartbeat_delay = Duration::from_millis(1000);
 
-    let mut audio_device: Option<AudioInput> = None;
+    let mut auto_select_audio_device = initial_input.is_none();
+    let mut audio_device: Option<AudioInput> = initial_input;
     let mut device_changed = true;
     let mut audio_thread: Option<thread::JoinHandle<()>> = None;
 
@@ -82,8 +106,10 @@ pub fn supervisor_thread(
     let mut seq = 0;
 
     let mut is_initial_device_changed = true;
-    let mut auto_select_audio_device = true;
     let mut restarting_after_crash = false;
+    let mut next_heartbeat = Instant::now();
+    // A request that woke the supervisor up early.
+    let mut woken_by: Option<SupervisorRequest> = None;
 
     loop {
         // An explicit shutdown request: with a hub, "nobody listens" is no
@@ -99,11 +125,19 @@ pub fn supervisor_thread(
 
             break;
         }
-        hub.publish(SystemMessage::Heartbeat(seq));
-        seq += 1;
+        let now = Instant::now();
+        if now >= next_heartbeat {
+            hub.publish(SystemMessage::Heartbeat(seq));
+            seq += 1;
+            next_heartbeat = now + heartbeat_delay;
+        }
 
-        match from_frontend.try_recv() {
-            Ok(FromFrontend::Reload) => {
+        let request = match woken_by.take() {
+            Some(request) => Ok(request),
+            None => requests.try_recv(),
+        };
+        match request {
+            Ok(SupervisorRequest::ReloadPlugins) => {
                 tracing::info!("Supervisor got reload request");
 
                 if AudioThreadControlSignal::from(
@@ -117,8 +151,13 @@ pub fn supervisor_thread(
                     );
                 }
             }
-            Ok(FromFrontend::SelectInputDevice(dev)) => {
-                audio_device = Some(dev.unwrap_or(AudioInput::Dummy(DummyInput::Silence)));
+            Ok(SupervisorRequest::SelectAudioInput(input)) => {
+                let name = input.as_ref().map(AudioInput::name);
+                if let Err(err) = shared_config.update(|config| config.default_audio_device = name)
+                {
+                    tracing::error!("Failed to persist audio device selection: {err}");
+                }
+                audio_device = Some(input.unwrap_or(AudioInput::Dummy(DummyInput::Silence)));
                 device_changed = true;
                 auto_select_audio_device = false;
             }
@@ -151,7 +190,9 @@ pub fn supervisor_thread(
             let automatic_device = utils::default_input_device()
                 .or_else(|| devices.first().map(|(_, device)| device.clone()));
 
-            hub.publish(SystemMessage::AudioDevicesView(devices));
+            hub.publish(SystemMessage::AudioDevicesView(utils::input_device_names(
+                &devices,
+            )));
 
             match automatic_device {
                 Some(device) => {
@@ -195,23 +236,21 @@ pub fn supervisor_thread(
             device_changed = true;
         }
 
-        // Syncronize to config file.
-        if device_changed {
-            let mut audio = app_state.audio.write().unwrap();
-            audio.device_name = audio_device.as_ref().map(AudioInput::name);
-        }
-
-        // Keep the device list fresh so hot-plugged hardware can be picked.
-        if matches!(audio_device, None | Some(AudioInput::Dummy(_))) {
+        // Keep the device list fresh so hot-plugged hardware can be picked
+        // (a real device is busy, so the list is only refreshed when it
+        // changes).
+        if device_changed || matches!(audio_device, None | Some(AudioInput::Dummy(_))) {
             let devices = utils::get_input_devices_flat();
-            hub.publish(SystemMessage::AudioDevicesView(devices));
+            hub.publish(SystemMessage::AudioDevicesView(utils::input_device_names(
+                &devices,
+            )));
         }
         if device_changed {
             let audio_input_device = audio_device
                 .clone()
                 .unwrap_or(AudioInput::Dummy(DummyInput::Silence));
 
-            hub.publish(SystemMessage::AudioSelected(audio_input_device.clone()));
+            hub.publish(SystemMessage::AudioSelected(audio_input_device.name()));
 
             let sys = hub.clone();
             if let Some(handle) = audio_thread.take() {
@@ -232,6 +271,7 @@ pub fn supervisor_thread(
                 let config = config.clone();
                 let bus_connection_plugins = event_bus_connection_plugins.clone();
                 let bus_connection_dmx = event_bus_connection_dmx.clone();
+                let request_sender = request_sender.clone();
 
                 let app_state = Arc::clone(&app_state);
 
@@ -260,6 +300,7 @@ pub fn supervisor_thread(
                             bus_connection_plugins,
                             bus_connection_dmx,
                             Arc::clone(&app_state),
+                            request_sender,
                         )
                     }))
                     .unwrap_or_else(|_| Err(anyhow::anyhow!("Engine thread panicked")));
@@ -291,7 +332,12 @@ pub fn supervisor_thread(
             );
         }
 
-        thread::sleep(heartbeat_delay);
+        // Sleep until the next heartbeat, unless a request arrives first.
+        match requests.recv_deadline(next_heartbeat) {
+            Ok(request) => woken_by = Some(request),
+            // A closed channel is handled by `try_recv` above.
+            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {}
+        }
     }
 }
 

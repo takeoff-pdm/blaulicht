@@ -8,9 +8,6 @@ use crate::{
 use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "audio")]
-use cpal::traits::DeviceTrait;
-
 /// Logs page source for a plugin log line: the plugin's file stem, so each
 /// plugin can be filtered on its own.
 fn plugin_log_source(plugin_id: u8, plugin_path: Option<&str>) -> String {
@@ -153,28 +150,20 @@ impl BlaulichtApp {
                     SystemMessage::TickSpeeds(speeds) => {
                         self.tick_speeds = speeds;
                     }
-                    SystemMessage::AudioSelected(_device) => {
-                        // self.log_window.add_log(
-                        //     LogLevel::Info,
-                        //     format!("Audio device selected: {}", if device.is_some() { "Yes" } else { "No" }),
-                        //     "Audio".to_string(),
-                        // );
+                    SystemMessage::AudioSelected(name) => {
+                        self.selected_audio_input = Some(name);
                     }
                     SystemMessage::AudioDevicesView(items) => {
-                        // Check if number of devices changed.
-                        //
-                        if self.available_audio_devices.len() != items.len() {
+                        let names: Vec<String> =
+                            items.into_iter().map(|(_host, device)| device).collect();
+                        if self.available_audio_devices != names {
                             self.log_window.add_log(
                                 LogLevel::Debug,
-                                format!("Available audio devices updated: {} devices", items.len()),
+                                format!("Available audio devices updated: {} devices", names.len()),
                                 None,
                                 "Audio".to_string(),
                             );
-                            let items_str = items
-                                .into_iter()
-                                .filter_map(|(_, dev)| dev.name().ok())
-                                .collect();
-                            self.available_audio_devices = items_str;
+                            self.available_audio_devices = names;
                         }
                     }
                     SystemMessage::DMX(_dmx_msg) => {

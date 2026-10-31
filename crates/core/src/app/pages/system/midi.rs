@@ -3,6 +3,7 @@ use crate::{
         components::{self, ButtonSize, Dialog},
         BlaulichtApp,
     },
+    client::EngineClient,
     plugin::midi::MidiError,
     state::MidiDeviceState,
 };
@@ -14,15 +15,15 @@ impl BlaulichtApp {
             return;
         }
 
-        let health_data = self.data.state.health_data.read().unwrap();
-        let mut available_devices = health_data.midi_health.available_devices.clone();
-        let mut device_states: Vec<(String, MidiDeviceState)> = health_data
-            .midi_health
-            .devices
-            .iter()
-            .map(|(name, state)| (name.clone(), state.clone()))
-            .collect();
-        drop(health_data);
+        let (mut available_devices, mut device_states) = self.client.with_health(|health| {
+            let devices: Vec<(String, MidiDeviceState)> = health
+                .midi_health
+                .devices
+                .iter()
+                .map(|(name, state)| (name.clone(), state.clone()))
+                .collect();
+            (health.midi_health.available_devices.clone(), devices)
+        });
 
         available_devices.sort();
         device_states.sort_by(|a, b| a.0.cmp(&b.0));

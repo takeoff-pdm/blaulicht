@@ -1,5 +1,6 @@
 use crate::{
     app::BlaulichtApp,
+    client::EngineClient,
     state::{MidiDeviceState, SerialDeviceState},
 };
 use blaulicht_assets::icons;
@@ -139,46 +140,50 @@ impl BlaulichtApp {
     }
 
     pub fn render_health_indicators(&mut self, ui: &mut Ui) {
-        let artnet_receivers_enabled = {
-            let artnet_output = self.data.state.artnet_output.read().unwrap();
-            artnet_output
-                .receivers
-                .iter()
-                .any(|receiver| receiver.enabled)
-        };
+        let artnet_receivers_enabled = self
+            .client
+            .with_artnet_receivers(|receivers| receivers.iter().any(|receiver| receiver.enabled));
+        let plugins_broken = self
+            .client
+            .with_plugins(|plugins| plugins.values().any(|plugin| plugin.has_errored()));
+        // The hardware-backed DMX universes' health, then MIDI, serial and
+        // Art-Net online.
+        let (dmx_healthy, midi_online, serial_online, artnet_health_state) =
+            self.client.with_health(|health_data| {
+                let midi_has_error = health_data
+                    .midi_health
+                    .devices
+                    .values()
+                    .any(|state| matches!(state, MidiDeviceState::Error(_)));
+                let midi_active =
+                    health_data.midi_health.devices.values().any(
+                        |state| matches!(state, MidiDeviceState::Open(handles) if *handles > 0),
+                    );
 
-        let health_data = self.data.state.health_data.read().unwrap();
-        // Applied once the state locks are released.
+                let serial_has_error = health_data
+                    .serial_health
+                    .devices
+                    .values()
+                    .any(|state| matches!(state, SerialDeviceState::Error(_)));
+                let serial_active =
+                    health_data.serial_health.devices.values().any(
+                        |state| matches!(state, SerialDeviceState::Open(handles) if *handles > 0),
+                    );
+                let dmx_healthy: Vec<bool> = health_data
+                    .dmx_universes_healthy
+                    .iter()
+                    .take(2)
+                    .map(|port| port.is_healthy())
+                    .collect();
+                (
+                    dmx_healthy,
+                    midi_active && !midi_has_error,
+                    serial_active && !serial_has_error,
+                    health_data.artnet_health_state,
+                )
+            });
+        let artnet_online = artnet_health_state && artnet_receivers_enabled;
         let mut open_tab = None;
-
-        let midi_has_error = health_data
-            .midi_health
-            .devices
-            .values()
-            .any(|state| matches!(state, MidiDeviceState::Error(_)));
-        let midi_active = health_data
-            .midi_health
-            .devices
-            .values()
-            .any(|state| matches!(state, MidiDeviceState::Open(handles) if *handles > 0));
-        let midi_online = midi_active && !midi_has_error;
-
-        let serial_has_error = health_data
-            .serial_health
-            .devices
-            .values()
-            .any(|state| matches!(state, SerialDeviceState::Error(_)));
-        let serial_active = health_data
-            .serial_health
-            .devices
-            .values()
-            .any(|state| matches!(state, SerialDeviceState::Open(handles) if *handles > 0));
-        let serial_online = serial_active && !serial_has_error;
-
-        let artnet_online = health_data.artnet_health_state && artnet_receivers_enabled;
-
-        let plugins = self.data.state.plugins.read().unwrap();
-        let plugins_broken = plugins.iter().any(|p| p.1.has_errored());
 
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 3.0);
 
@@ -187,16 +192,14 @@ impl BlaulichtApp {
         let left_inset = 6.0;
 
         // DMX outputs (hardware-backed universes only)
-        for (universe_number, dmx_port_health) in
-            health_data.dmx_universes_healthy.iter().enumerate().take(2)
-        {
+        for (universe_number, dmx_port_healthy) in dmx_healthy.into_iter().enumerate() {
             let label = format!("DMX {universe_number}");
             if Self::render_compact_health_box(
                 ui,
                 &label,
                 DMX_ICON,
                 icon_size,
-                dmx_port_health.is_healthy(),
+                dmx_port_healthy,
                 true,
                 dimensions,
                 left_inset,
@@ -274,8 +277,6 @@ impl BlaulichtApp {
             open_tab = Some(AppSubPage::System_Screens);
         }
 
-        drop(plugins);
-        drop(health_data);
         if let Some(subpage) = open_tab {
             self.open_subpage(subpage);
         }

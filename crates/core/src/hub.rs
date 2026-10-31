@@ -22,6 +22,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     fmt::{self, Display},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex, MutexGuard, PoisonError,
@@ -437,6 +438,66 @@ pub enum HostCommand {
     /// Removes imported models (assets) and the objects that show them.
     /// Refused with "Model not found" (then nothing is removed).
     RemoveStageAssets(Vec<u64>),
+
+    //
+    // Audio. The audio input and the plugin reload are carried out by the
+    // supervisor thread (`mainloop::SupervisorRequest`), which owns and
+    // restarts the main loop; the engine checks and forwards them.
+    //
+    /// Runs the engine on the audio input named `name`: a device name from
+    /// `SystemMessage::AudioDevicesView` or a `DummyInput` name (`None`:
+    /// "Dummy: Silence"), and stores it as the config's
+    /// `default_audio_device`. The main loop restarts on the new input and
+    /// `SystemMessage::AudioSelected` follows. Refused with "Audio input not
+    /// found" (nothing changes) or "The engine supervisor is not running".
+    SelectAudioInput { name: Option<String> },
+    /// Sets one audio analysis parameter (the collector picks it up within
+    /// one spectrogram period).
+    SetAudioParam(AudioParam),
+
+    //
+    // System.
+    //
+    /// Reloads every plugin (and the MIDI and UDP managers) if the engine is
+    /// running; does nothing while it is starting or already reloading.
+    /// Refused with "The engine supervisor is not running".
+    ReloadPlugins,
+    /// Adds a user Art-Net receiver for all universes (saved in the
+    /// showfile). Refused with "Art-Net receiver must be IPv4" or "Art-Net
+    /// receiver <address> already exists".
+    AddArtNetReceiver(SocketAddr),
+    /// Removes a user Art-Net receiver. Refused with "Art-Net receiver not
+    /// found" (also for a plugin's receiver).
+    RemoveArtNetReceiver(SocketAddr),
+    /// Turns the receiver at `address` owned by `owner` (`None`: a user
+    /// receiver, `Some(plugin)`: a plugin's) on or off. Refused with
+    /// "Art-Net receiver not found".
+    SetArtNetReceiverEnabled {
+        address: SocketAddr,
+        owner: Option<u8>,
+        enabled: bool,
+    },
+    /// Limits a user Art-Net receiver to universes `first..=last` (clamped,
+    /// swapped if inverted). Refused with "Art-Net receiver not found" (also
+    /// for a plugin's receiver, whose range the plugin owns).
+    SetArtNetReceiverUniverses {
+        address: SocketAddr,
+        first: u8,
+        last: u8,
+    },
+}
+
+/// One audio analysis parameter ([`HostCommand::SetAudioParam`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AudioParam {
+    Volume(u8),
+    Gate(u8),
+    /// `None` (or `Some(0)`) turns the boost off.
+    Boost(Option<u8>),
+    AutoCalibrate(bool),
+    /// `Some(bpm)` bypasses tempo detection; refused with "BPM must be
+    /// positive" unless `bpm` is finite and above 0.
+    ManualBpm(Option<f32>),
 }
 
 /// The contents of a model file in [`HostCommand::ImportStageModel`].
@@ -516,14 +577,24 @@ impl HostCommand {
             | HostCommand::PatchStage(_)
             | HostCommand::RestoreStage { .. }
             | HostCommand::ImportStageModel { .. }
-            | HostCommand::RemoveStageAssets(_) => true,
+            | HostCommand::RemoveStageAssets(_)
+            | HostCommand::AddArtNetReceiver(_)
+            | HostCommand::RemoveArtNetReceiver(_)
+            | HostCommand::SetArtNetReceiverUniverses { .. } => true,
+            // User receivers are saved in the showfile; plugin receivers
+            // belong to their plugin.
+            HostCommand::SetArtNetReceiverEnabled { owner, .. } => owner.is_none(),
             // A copy into an editor instance is scratch state; the Apply
             // that copies it back sends `LoadSpecIntoAnimation` (Programmer)
             // or `UpdateAnimationTemplate` (Setup), which mark the show.
             // Initializing a fixture only changes its DMX output for a while.
-            // The grand master is not saved in the showfile.
+            // The grand master and the audio parameters are not saved in the
+            // showfile; the audio input is saved in the config.
             HostCommand::Ping
             | HostCommand::SetGrandMaster(_)
+            | HostCommand::SelectAudioInput { .. }
+            | HostCommand::SetAudioParam(_)
+            | HostCommand::ReloadPlugins
             | HostCommand::CloneAnimationInstanceState { .. }
             | HostCommand::KeepAnimationEditorAlive { .. }
             | HostCommand::InitFixtures(_) => false,
@@ -1275,6 +1346,39 @@ mod tests {
                 "log:kept 1",
                 "log:kept 2",
                 "log:live",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_late_subscriber_gets_the_latest_audio_devices_and_input() {
+        let hub = SystemHub::new();
+        let devices = |names: &[&str]| {
+            SystemMessage::AudioDevicesView(
+                names
+                    .iter()
+                    .map(|name| ("ALSA".to_string(), name.to_string()))
+                    .collect(),
+            )
+        };
+        hub.publish(devices(&["mic"]));
+        hub.publish(SystemMessage::AudioSelected("Dummy: Silence".to_string()));
+        hub.publish(devices(&["mic", "line in"]));
+        hub.publish(SystemMessage::AudioSelected("Dummy: Noise".to_string()));
+
+        let late = hub.subscribe(ClientId::Remote(0));
+        let replayed: Vec<String> = std::iter::from_fn(|| late.try_recv())
+            .map(|message| match message {
+                SystemMessage::AudioDevicesView(devices) => format!("devices:{devices:?}"),
+                SystemMessage::AudioSelected(name) => format!("selected:{name}"),
+                _ => "other".to_string(),
+            })
+            .collect();
+        assert_eq!(
+            replayed,
+            [
+                r#"devices:[("ALSA", "mic"), ("ALSA", "line in")]"#,
+                "selected:Dummy: Noise",
             ]
         );
     }

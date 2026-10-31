@@ -21,7 +21,6 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     frontend_ui::FrontendUiMirror,
-    msg::FromFrontend,
     plugin::{midi::MidiError, serial::SerialError},
     ui_ops::WasmUiOp,
 };
@@ -30,23 +29,12 @@ use crate::{
 /// [`crate::client::LocalClient`] (`BlaulichtApp::client`). Pages move off
 /// these fields onto the client page by page (043–052); then this goes away.
 pub struct AppStateWrapper {
-    pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
-
+    /// Shared with the engine's supervisor (`config::SharedConfig`), which
+    /// writes the audio input into it.
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
 
     pub state: Arc<AppState>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct AudioState {
-    pub device_name: Option<String>,
-}
-
-impl AudioState {
-    pub fn default() -> Self {
-        Self { device_name: None }
-    }
 }
 
 pub const NUM_DMX_UNIVERSES: usize = 10;
@@ -297,7 +285,6 @@ pub struct AppState {
     pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
     grand_master_percent: AtomicU8,
-    pub audio: RwLock<AudioState>,
     pub(crate) external_tempo: Mutex<crate::audio::external_tempo::ExternalTempo>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
     pub artnet_output: RwLock<ArtNetOutput>,
@@ -363,7 +350,6 @@ impl AppState {
             dmx_engine: RwLock::new(EngineState::default()),
             grand_master_percent: AtomicU8::new(100),
             dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
-            audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
             external_tempo: Mutex::new(Default::default()),
             audio_params: RwLock::new(SignalCollectorParams::default()),

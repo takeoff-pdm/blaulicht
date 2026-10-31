@@ -129,3 +129,27 @@ pub fn default_input_device() -> Option<AudioDeviceT> {
     #[cfg(not(feature = "audio"))]
     return Some(AudioDeviceT::default());
 }
+
+/// `(host name, device name)` of each device in `devices`, as published in
+/// [`crate::msg::SystemMessage::AudioDevicesView`].
+pub fn input_device_names(devices: &[(AudioHostT, AudioDeviceT)]) -> Vec<(String, String)> {
+    devices
+        .iter()
+        .map(|(host, device)| {
+            #[cfg(feature = "audio")]
+            let names = {
+                use cpal::traits::DeviceTrait;
+                (
+                    host.name().to_owned(),
+                    device.name().unwrap_or_else(|_| "unknown".to_owned()),
+                )
+            };
+            #[cfg(not(feature = "audio"))]
+            let names = {
+                let _ = host;
+                ("mock".to_owned(), device.name().unwrap_or_default())
+            };
+            names
+        })
+        .collect()
+}

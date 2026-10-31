@@ -66,8 +66,12 @@ pub enum SystemMessage {
     // LoopSpeed(Duration),
     // TickSpeed(Duration),
     // Audio.
-    AudioSelected(AudioInput),
-    AudioDevicesView(Vec<(AudioHostT, AudioDeviceT)>),
+    /// Name of the audio input the engine runs on (a device name or one of
+    /// the [`DummyInput`] names). Replayed to late subscribers.
+    AudioSelected(String),
+    /// Available audio input devices as `(host name, device name)`, without
+    /// the [`DummyInput`]s. Replayed to late subscribers.
+    AudioDevicesView(Vec<(String, String)>),
     // DMX.
     DMX(Box<[u8; 513]>),
     // Plugin state.
@@ -253,11 +257,4 @@ impl AudioInput {
             Self::Dummy(dummy) => dummy.name().to_owned(),
         }
     }
-}
-
-#[derive(Clone)]
-pub enum FromFrontend {
-    Reload,
-    /// `None` falls back to [`DummyInput::Silence`].
-    SelectInputDevice(Option<AudioInput>),
 }

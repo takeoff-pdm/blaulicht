@@ -1,15 +1,16 @@
 use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
-use crate::msg::{AudioInput, DummyInput, FromFrontend};
-use crate::{config, utils};
+use crate::client::EngineClient;
+use crate::hub::{AudioParam, HostCommand};
+use crate::msg::DummyInput;
 use blaulicht_audio_engine::{
     bin_rows, draw_markers, spectrogram_color, AudioSpectrogram, BeatDetection, BeatFrontEnd,
     BpmDetectStatus, CollectorOutput, SignalDebugData, SpectrogramDisplayOptions,
 };
 use blaulicht_shared::AudioSourceStatus;
 
-use egui::{vec2, Color32, FontId, Frame, Margin, RichText, Widget};
-use std::path::PathBuf;
+use egui::{vec2, Color32, ColorImage, FontId, Frame, Margin, RichText, TextureHandle, Widget};
+use std::cell::Cell;
 
 // TODO: include snapshot in graphs
 
@@ -114,7 +115,43 @@ mod specperf {
 }
 // SPECPERF-TEMP end
 
-impl BlaulichtApp {
+/// The Audio page's spectrogram texture, scrolled smoothly by appending the
+/// columns the engine added since the last frame.
+pub struct SpectrogramRing {
+    spectro_scroll_px_offset: f32,
+    /// Per-bin volume sums of the columns that have not yet advanced the
+    /// ring by a whole pixel; averaged into the next drawn pixel column.
+    spectro_pending_sum: Vec<u32>,
+    spectro_pending_count: u32,
+    spectro_pending_beat: bool,
+    spectro_pending_onset: bool,
+    spectrogram_image_buffer: ColorImage,
+    spectrogram_texture_handle: Option<TextureHandle>,
+    last_spectrogram_columns: Cell<usize>,
+    last_spectrogram_bucket_data_len: Cell<usize>,
+    last_spectrogram_max_columns: Cell<usize>,
+    last_spectrogram_snapshot_time: Cell<u64>,
+}
+
+impl Default for SpectrogramRing {
+    fn default() -> Self {
+        Self {
+            spectro_scroll_px_offset: 0.0,
+            spectro_pending_sum: Vec::new(),
+            spectro_pending_count: 0,
+            spectro_pending_beat: false,
+            spectro_pending_onset: false,
+            spectrogram_image_buffer: ColorImage::default(),
+            spectrogram_texture_handle: None,
+            last_spectrogram_columns: Cell::new(0),
+            last_spectrogram_bucket_data_len: Cell::new(0),
+            last_spectrogram_max_columns: Cell::new(0),
+            last_spectrogram_snapshot_time: Cell::new(0),
+        }
+    }
+}
+
+impl SpectrogramRing {
     fn reset_spectrogram_ring_cache(
         &mut self,
         spec: &AudioSpectrogram,
@@ -438,6 +475,12 @@ impl BlaulichtApp {
         }
         // SPECPERF-TEMP end
     }
+}
+
+impl BlaulichtApp {
+    fn set_audio_param(&mut self, param: AudioParam) {
+        self.send_command(HostCommand::SetAudioParam(param), |_, _| {});
+    }
 
     fn render_choose_audio_device_popup(
         &mut self,
@@ -471,13 +514,12 @@ impl BlaulichtApp {
     /// model) in three columns so everything fits on the 800x480 panel. The
     /// only control is the manual BPM override.
     fn render_audio_info_dialog(&mut self, ctx: &egui::Context) {
-        let debug_data = {
-            let spec = self.data.state.audio_spectrogram.read().unwrap();
+        let debug_data = self.client.with_spectrogram(|spec| {
             spec.columns
                 .back()
                 .map(|col| col.debug_data.clone())
                 .unwrap_or_default()
-        };
+        });
         let bpm_confidence_pct = (self.collector_snapshot.bpm_confidence * 100.0) as i32;
 
         let screen = ctx.content_rect();
@@ -546,7 +588,7 @@ impl BlaulichtApp {
 
     fn info_bands_column(&mut self, ui: &mut egui::Ui, debug_data: &SignalDebugData) {
         info_header(ui, "FREQUENCY BANDS");
-        let auto_weight = self.data.state.audio_params.read().unwrap().auto_weight;
+        let auto_weight = self.client.with_audio_params(|params| params.auto_weight);
         info_line(
             ui,
             &[
@@ -652,31 +694,34 @@ impl BlaulichtApp {
         ui.add_space(6.0);
         info_header(ui, "BEAT DETECTION");
 
-        let (mut manual_bpm_enabled, mut manual_bpm_value) = {
-            let params = self.data.state.audio_params.read().unwrap();
-            (params.manual_bpm.is_some(), params.manual_bpm.unwrap_or(120.0))
-        };
+        let (mut manual_bpm_enabled, mut manual_bpm_value) =
+            self.client.with_audio_params(|params| {
+                (
+                    params.manual_bpm.is_some(),
+                    params.manual_bpm.unwrap_or(120.0),
+                )
+            });
+        let mut manual_bpm = None;
         ui.horizontal(|ui| {
             if components::Switch::new(&mut manual_bpm_enabled)
                 .ui(ui)
                 .on_hover_text("Bypasses tempo detection and pins the beat scheduler.")
                 .changed()
             {
-                let mut params = self.data.state.audio_params.write().unwrap();
-                params.manual_bpm = manual_bpm_enabled.then_some(manual_bpm_value);
-                params.changed = true;
+                manual_bpm = Some(manual_bpm_enabled.then_some(manual_bpm_value));
             }
             ui.label("Manual BPM");
             if manual_bpm_enabled {
                 let before = manual_bpm_value;
                 self.manual_bpm_numberpad.ui(ui, &mut manual_bpm_value);
                 if (manual_bpm_value - before).abs() > f32::EPSILON {
-                    let mut params = self.data.state.audio_params.write().unwrap();
-                    params.manual_bpm = Some(manual_bpm_value);
-                    params.changed = true;
+                    manual_bpm = Some(Some(manual_bpm_value));
                 }
             }
         });
+        if let Some(bpm) = manual_bpm {
+            self.set_audio_param(AudioParam::ManualBpm(bpm));
+        }
 
         let (status_label, status_detail, status_color) = match debug_data.bpm_status {
             BpmDetectStatus::Detecting => (
@@ -943,8 +988,7 @@ impl BlaulichtApp {
                 egui::vec2(ui.available_width(), ui.available_height()),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
-                    let mut selected_device =
-                        self.data.state.audio.read().unwrap().device_name.clone();
+                    let mut selected_device = self.selected_audio_input.clone();
 
                     let selected_device_label =
                         selected_device.clone().unwrap_or_else(|| "N/A".to_string());
@@ -984,30 +1028,15 @@ impl BlaulichtApp {
                     self.render_choose_audio_device_popup(ctx, &mut selected_device);
 
                     if selected_device != before {
-                        let new_dev =
-                            selected_device
-                                .and_then(utils::input_from_name)
-                                .or_else(|| {
-                                    tracing::warn!("Selected audio device is no longer available");
-                                    None
-                                });
-                        if self
-                            .data
-                            .from_frontend_sender
-                            .send(FromFrontend::SelectInputDevice(new_dev.clone()))
-                            .is_err()
-                        {
-                            tracing::warn!("Audio control channel is closed");
-                        }
-
-                        let mut config_mut = self.data.config.lock().unwrap();
-
-                        config_mut.default_audio_device = new_dev.as_ref().map(AudioInput::name);
-
-                        let path = PathBuf::from(&self.data.config_path);
-                        if let Err(err) = config::write_config(path, config_mut.clone()) {
-                            tracing::error!("Failed to persist audio device selection: {err}");
-                        }
+                        // The engine resolves the name, restarts on it and
+                        // publishes `AudioSelected`; a vanished device is
+                        // refused (popup).
+                        self.send_command(
+                            HostCommand::SelectAudioInput {
+                                name: selected_device,
+                            },
+                            |_, _| {},
+                        );
                     }
 
                     // --- Live Spectrogram (show last 60s, no scrolling) ---
@@ -1019,47 +1048,48 @@ impl BlaulichtApp {
                     };
                     let spec_width = ui.available_width();
 
-                    // Hold the read guard instead of cloning the spectrogram:
-                    // a full 120 s window is thousands of 128-bin columns.
-                    let state = self.data.state.clone();
-                    let spec = state.audio_spectrogram.read().unwrap();
-                    let params = self.data.state.audio_params.read().unwrap();
-                    let mut volume_value = params.volume as f32;
-                    let mut gate_value = params.gate as f32;
-                    let mut boost_value = params.boost.unwrap_or(0) as f32;
-                    let mut auto_calibrate = params.auto_calibrate;
-                    // let mut filterbank_value = params.filterbank;
-                    // let mut use_dp_tracking = params.use_dynamic_programming_beat;
-                    drop(params);
+                    let (mut volume_value, mut gate_value, mut boost_value, mut auto_calibrate) =
+                        self.client.with_audio_params(|params| {
+                            (
+                                params.volume as f32,
+                                params.gate as f32,
+                                params.boost.unwrap_or(0) as f32,
+                                params.auto_calibrate,
+                            )
+                        });
 
-                    {
+                    // Draw from the engine's spectrogram in place: a full
+                    // 120 s window is thousands of 128-bin columns.
+                    let ring = &mut self.spectrogram_ring;
+                    let has_columns = self.client.with_spectrogram(|spec| {
                         if spec.columns.is_empty() {
-                            let (spec_resp, spec_painter) = ui.allocate_painter(
-                                egui::vec2(spec_width, spec_height),
-                                egui::Sense::hover(),
-                            );
-                            let spec_rect = spec_resp.rect;
-                            spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
-                            spec_painter.text(
-                                spec_rect.center_top() + egui::vec2(0.0, 6.0),
-                                egui::Align2::CENTER_TOP,
-                                "Waiting for audio…",
-                                egui::FontId::proportional(12.0),
-                                Color32::GRAY,
-                            );
-                        } else {
-                            self.update_spectrogram_ring_texture(
-                                ctx,
-                                &spec,
-                                spec_width as usize,
-                                spec_height as usize,
-                            );
-                            if let Some(texture) = self.spectrogram_texture_handle.as_ref() {
-                                ui.image(texture);
-                            }
+                            return false;
                         }
+                        ring.update_spectrogram_ring_texture(
+                            ctx,
+                            spec,
+                            spec_width as usize,
+                            spec_height as usize,
+                        );
+                        true
+                    });
+                    if !has_columns {
+                        let (spec_resp, spec_painter) = ui.allocate_painter(
+                            egui::vec2(spec_width, spec_height),
+                            egui::Sense::hover(),
+                        );
+                        let spec_rect = spec_resp.rect;
+                        spec_painter.rect_filled(spec_rect, 0.0, Color32::from_rgb(10, 10, 10));
+                        spec_painter.text(
+                            spec_rect.center_top() + egui::vec2(0.0, 6.0),
+                            egui::Align2::CENTER_TOP,
+                            "Waiting for audio…",
+                            egui::FontId::proportional(12.0),
+                            Color32::GRAY,
+                        );
+                    } else if let Some(texture) = ring.spectrogram_texture_handle.as_ref() {
+                        ui.image(texture);
                     }
-                    drop(spec);
 
                     {
                         ui.horizontal_wrapped(|ui| {
@@ -1072,9 +1102,7 @@ impl BlaulichtApp {
                                 )
                                 .changed()
                             {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                params.volume = volume_value as u8;
-                                params.changed = true;
+                                self.set_audio_param(AudioParam::Volume(volume_value as u8));
                             }
 
                             ui.add_space(8.0);
@@ -1083,9 +1111,7 @@ impl BlaulichtApp {
                                 .add(HFader::new(&mut gate_value, 0.0..=100.0).with_label("Gate"))
                                 .changed()
                             {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                params.gate = gate_value as u8;
-                                params.changed = true;
+                                self.set_audio_param(AudioParam::Gate(gate_value as u8));
                             }
 
                             ui.add_space(8.0);
@@ -1094,21 +1120,16 @@ impl BlaulichtApp {
                                 .add(HFader::new(&mut boost_value, 0.0..=255.0).with_label("Boost"))
                                 .changed()
                             {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                let v = boost_value as u8;
-                                params.boost = match v {
-                                    0 => None,
-                                    v => Some(v),
-                                };
-                                params.changed = true;
+                                let boost = boost_value as u8;
+                                self.set_audio_param(AudioParam::Boost(
+                                    (boost > 0).then_some(boost),
+                                ));
                             }
 
                             ui.add_space(8.0);
 
                             if ui.checkbox(&mut auto_calibrate, "Auto-calibrate").changed() {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                params.auto_calibrate = auto_calibrate;
-                                params.changed = true;
+                                self.set_audio_param(AudioParam::AutoCalibrate(auto_calibrate));
                             }
                         });
                     }

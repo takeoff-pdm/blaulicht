@@ -5,7 +5,8 @@ use blaulicht_core::cli::CliArgs;
 use blaulicht_core::client::LocalClient;
 use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::hub::{BusMessage, ClientId, SessionId, SystemHub};
-use blaulicht_core::msg::{FromFrontend, StageStatus, StartupStage, SystemMessage};
+use blaulicht_core::mainloop::SupervisorRequest;
+use blaulicht_core::msg::{StageStatus, StartupStage, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
 use blaulicht_core::{config, mainloop, utils};
@@ -13,7 +14,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicU8;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use tracing::info;
 use winit::event_loop::EventLoop;
@@ -67,7 +68,13 @@ fn main() -> anyhow::Result<()> {
     // Audio.
     //
 
-    let (from_frontend_sender, from_frontend_receiver) = crossbeam_channel::unbounded();
+    // Requests to the supervisor thread: from the engine (audio input and
+    // plugin reload commands) and from the plugin watcher.
+    let (supervisor_sender, supervisor_receiver) =
+        crossbeam_channel::unbounded::<SupervisorRequest>();
+    // The supervisor writes the selected audio input into it; the desk
+    // frontend still reads and writes it directly until 052.
+    let shared_config = config::SharedConfig::new(cfg.clone(), config_filepath.clone());
 
     let audio_thread_control_signal =
         Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE.into()));
@@ -76,21 +83,20 @@ fn main() -> anyhow::Result<()> {
     // Read config file.
     //
 
-    match cfg.default_audio_device {
-        None => {}
+    let initial_audio_input = match cfg.default_audio_device {
+        None => None,
         Some(ref name) => {
-            if let Some(dev) = utils::input_from_name(name.clone()) {
+            let input = utils::input_from_name(name.clone());
+            if input.is_some() {
                 info!("Using default audio device: <{name}> from configuration file.");
-                from_frontend_sender
-                    .send(FromFrontend::SelectInputDevice(Some(dev)))
-                    .unwrap();
             } else {
                 tracing::warn!(
                     "Configured audio device <{name}> is unavailable; selecting one automatically"
                 );
             }
+            input
         }
-    }
+    };
 
     //
     // Event bus.
@@ -128,13 +134,18 @@ fn main() -> anyhow::Result<()> {
         let hub = hub.clone();
         let audio_thread_control_signal = audio_thread_control_signal.clone();
         let cfg = cfg.clone();
+        let shared_config = shared_config.clone();
+        let supervisor_sender = supervisor_sender.clone();
         let app_state = Arc::clone(&app_state);
         thread::spawn(move || {
             mainloop::supervisor_thread(
-                from_frontend_receiver,
+                supervisor_receiver,
+                supervisor_sender,
+                initial_audio_input,
                 audio_thread_control_signal,
                 hub,
                 cfg,
+                shared_config,
                 event_bus_connection_mainloop,
                 event_bus_connection_dmx,
                 app_state,
@@ -145,17 +156,15 @@ fn main() -> anyhow::Result<()> {
     //
     // Filesystem plugin watcher.
     //
-    let from_frontend_sender_clone = from_frontend_sender.clone();
     let plugins = cfg.plugins.clone();
     thread::spawn(move || {
-        PluginManager::watch_plugins(from_frontend_sender_clone, &plugins)
+        PluginManager::watch_plugins(supervisor_sender, &plugins)
             .context("Failed to start plugin watcher")
             .unwrap();
     });
 
     let state_wrapper = AppStateWrapper {
-        from_frontend_sender,
-        config: Arc::new(Mutex::new(cfg.clone())),
+        config: Arc::clone(&shared_config.config),
         config_path: config_filepath.to_string_lossy().to_string(),
         state: Arc::clone(&app_state),
     };

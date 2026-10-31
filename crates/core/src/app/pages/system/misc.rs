@@ -5,12 +5,13 @@ use crate::{
         BlaulichtApp, GuardedLifecycleAction, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
-    msg::FromFrontend,
+    client::EngineClient,
+    hub::HostCommand,
     state::{ScreenId, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
-use std::{mem, path::Path, process::Command, time::Duration};
+use std::{path::Path, process::Command, time::Duration};
 
 impl BlaulichtApp {
     fn render_confirm_shutdown_dialog(&mut self, ctx: &Context) {
@@ -115,7 +116,7 @@ impl BlaulichtApp {
                 ui.spacing_mut().item_spacing = default_item_spacing;
                 ui.set_width(main_column_width);
                 ui.horizontal_wrapped(|ui| {
-                    let showfile = self.data.config.lock().unwrap().last_open_showfile.clone();
+                    let showfile = self.client.showfile_path();
 
                     ui.label("showfile:");
 
@@ -216,7 +217,7 @@ impl BlaulichtApp {
 
                     // --- Reload button ---
                     {
-                        let signal = *self.data.state.mainloop_state.read().unwrap();
+                        let signal = self.client.mainloop_state();
 
                         ui.label(format!("LOOP {:?}", signal));
 
@@ -235,19 +236,12 @@ impl BlaulichtApp {
                             button_size,
                             Some("The engine is already reloading or unavailable"),
                         ) {
-                            if self
-                                .data
-                                .from_frontend_sender
-                                .send(FromFrontend::Reload)
-                                .is_err()
-                            {
-                                tracing::warn!("Audio control channel is closed");
-                            }
-
-                            self.show_popup(PopupSpec::with_duration(
-                                Duration::from_secs(2),
-                                "Reload in progress...".to_string(),
-                            ));
+                            self.send_command(HostCommand::ReloadPlugins, |app, _| {
+                                app.show_popup(PopupSpec::with_duration(
+                                    Duration::from_secs(2),
+                                    "Reload in progress...".to_string(),
+                                ));
+                            });
                         }
                     }
                 });
@@ -300,8 +294,9 @@ impl BlaulichtApp {
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
             .show(ui, |ui| match tab {
                 AppSubPage::System_Dmx => {
-                    let health = self.data.state.health_data.read().unwrap();
-                    render_dmx_universe_rows(ui, &health.dmx_universes_healthy);
+                    self.client.with_health(|health| {
+                        render_dmx_universe_rows(ui, &health.dmx_universes_healthy)
+                    });
                 }
                 AppSubPage::System_ArtNet => {
                     self.render_artnet_management(ui);
@@ -309,8 +304,7 @@ impl BlaulichtApp {
                 AppSubPage::System_Plugins => {
                     self.render_plugin_management(ui, screen_id);
                 }
-                AppSubPage::System_Midi => {
-                    let health = self.data.state.health_data.read().unwrap();
+                AppSubPage::System_Midi => self.client.with_health(|health| {
                     if health.midi_health.available_devices.is_empty() {
                         ui.label("No MIDI inputs detected.");
                     }
@@ -323,9 +317,8 @@ impl BlaulichtApp {
                             .unwrap_or_else(|| "AVAILABLE".to_string());
                         ui.label(format!("{device}  {status}"));
                     }
-                }
-                AppSubPage::System_Serial => {
-                    let health = self.data.state.health_data.read().unwrap();
+                }),
+                AppSubPage::System_Serial => self.client.with_health(|health| {
                     if health.serial_health.devices.is_empty() {
                         ui.label("No serial devices opened by Blaulicht.");
                     }
@@ -334,7 +327,7 @@ impl BlaulichtApp {
                     for (name, state) in devices {
                         ui.label(format!("{name}  {state:?}"));
                     }
-                }
+                }),
                 AppSubPage::System_Screens => {
                     if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
                         self.add_external_screen();
@@ -370,9 +363,22 @@ impl BlaulichtApp {
     fn render_plugin_management(&mut self, ui: &mut egui::Ui, screen_id: ScreenId) {
         // The caller (`render_system_tab_content`) already wraps the tab in a
         // page-height scroll area, so the list is not scrolled separately here.
-        let plugins = self.data.state.plugins.read().unwrap();
+        // (id, path, errored, enabled) of each plugin, in the map's order.
+        let plugins: Vec<(u8, String, bool, bool)> = self.client.with_plugins(|plugins| {
+            plugins
+                .iter()
+                .map(|(id, plugin)| {
+                    (
+                        *id,
+                        plugin.path.to_string(),
+                        plugin.has_errored(),
+                        plugin.is_enabled(),
+                    )
+                })
+                .collect()
+        });
 
-        for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
+        for (i, (plugin_id, path_str, has_errored, is_enabled)) in plugins.into_iter().enumerate() {
             let box_size = egui::vec2(ui.available_width(), 42.0);
             ui.allocate_ui_with_layout(
                 box_size,
@@ -383,7 +389,7 @@ impl BlaulichtApp {
 
                     // State color and blinking logic
                     let mut show_border = true;
-                    let border_color = match (plugin.has_errored(), plugin.is_enabled()) {
+                    let border_color = match (has_errored, is_enabled) {
                         // Alive and healthy.
                         (false, true) => egui::Color32::from_rgb(0, 200, 0),
                         // Dead, crashed.
@@ -414,7 +420,6 @@ impl BlaulichtApp {
                     }
 
                     // Plugin name
-                    let path_str = plugin.path.to_string().to_string();
                     let path = Path::new(&path_str);
                     let basename = path.file_stem().unwrap().to_string_lossy();
                     // let basename = path.file_name().unwrap().to_string_lossy();
@@ -427,7 +432,7 @@ impl BlaulichtApp {
                         egui::Align2::LEFT_CENTER,
                         name,
                         egui::FontId::monospace(12.0),
-                        if plugin.has_errored() {
+                        if has_errored {
                             Color32::WHITE
                         } else {
                             egui::Color32::from_gray(90)
@@ -438,7 +443,7 @@ impl BlaulichtApp {
             ui.horizontal(|ui| {
                 // TODO: write a helper function for accessing this screen-specific
                 // state.
-                let visibility = self.view_state.plugin_open_state(*plugin_id);
+                let visibility = self.view_state.plugin_open_state(plugin_id);
 
                 let label = if visibility.open {
                     "Hide UI"
@@ -450,7 +455,7 @@ impl BlaulichtApp {
                     let entry = self
                         .view_state
                         .plugin_visibility
-                        .entry(*plugin_id)
+                        .entry(plugin_id)
                         .or_insert(PluginOpenState::CLOSED);
 
                     match visibility.open {
@@ -470,8 +475,6 @@ impl BlaulichtApp {
         }
 
         ui.separator();
-
-        mem::drop(plugins)
     }
 }
 

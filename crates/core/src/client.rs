@@ -18,6 +18,7 @@
 
 use std::{
     collections::{HashMap, VecDeque},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard, PoisonError, RwLockReadGuard},
 };
 
@@ -25,6 +26,7 @@ use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 
 use crate::{
+    audio::defs::AudioThreadControlSignal,
     dmx::{EngineState, SessionView},
     event::EventBusHandle,
     frontend_ui::FrontendUiSnapshot,
@@ -133,6 +135,15 @@ pub trait EngineClient {
 
     /// The grand master, 0..=100 percent (`HostCommand::SetGrandMaster`).
     fn grand_master_percent(&self) -> u8;
+
+    /// Whether the main loop is running, reloading, stopped or crashed.
+    fn mainloop_state(&self) -> AudioThreadControlSignal;
+
+    /// The open showfile, if any. (The engine keeps it next to the stage
+    /// until it owns the config, 052.)
+    fn showfile_path(&self) -> Option<PathBuf> {
+        self.with_show(|show| show.stage_showfile().map(Path::to_path_buf))
+    }
 
     /// Runs `f` on what each loaded plugin is (an animation plugin with its
     /// stable key and name, or a regular plugin), by plugin id.
@@ -343,6 +354,10 @@ impl EngineClient for LocalClient {
 
     fn grand_master_percent(&self) -> u8 {
         self.app.grand_master_percent()
+    }
+
+    fn mainloop_state(&self) -> AudioThreadControlSignal {
+        *read(&self.app.mainloop_state)
     }
 
     fn with_plugin_runtime_kinds<R>(
@@ -562,6 +577,16 @@ pub(crate) mod testing {
         /// Engine-side write access, for setting a test up.
         pub(crate) fn edit_show<R>(&self, f: impl FnOnce(&mut EngineState) -> R) -> R {
             f(&mut self.app.dmx_engine.write().unwrap())
+        }
+
+        /// Lets the engine forward supervisor requests (audio input, plugin
+        /// reload); the test reads them from the returned receiver.
+        pub(crate) fn connect_supervisor(
+            &mut self,
+        ) -> crossbeam_channel::Receiver<crate::mainloop::SupervisorRequest> {
+            let (sender, receiver) = crossbeam_channel::unbounded();
+            self.engine.set_supervisor(sender);
+            receiver
         }
 
         pub(crate) fn app(&self) -> &Arc<AppState> {
@@ -937,6 +962,15 @@ mod tests {
         );
         h.desk.with_spectrogram(|_| ());
         h.desk.with_audio_params(|_| ());
+        assert_eq!(
+            h.remote.mainloop_state(),
+            crate::audio::defs::AudioThreadControlSignal::ABORTED,
+            "no main loop runs in the test engine"
+        );
+        assert_eq!(h.remote.showfile_path(), None);
+        h.engine
+            .edit_show(|show| show.load_stage(Default::default(), Some("/shows/a.json".into())));
+        assert_eq!(h.remote.showfile_path(), Some("/shows/a.json".into()));
     }
 
     /// The view-state snapshot reaches the engine's mirror under the

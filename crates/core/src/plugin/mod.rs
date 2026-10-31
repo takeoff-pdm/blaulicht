@@ -22,7 +22,8 @@ use crate::{
     config::PluginConfig,
     event::SystemEventBusConnectionInst,
     hub::SystemHub,
-    msg::{FromFrontend, MidiEvent, StageStatus, StartupStage, SystemMessage},
+    mainloop::SupervisorRequest,
+    msg::{MidiEvent, StageStatus, StartupStage, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, wasm::AddrDescriptor},
     state::AppState,
 };
@@ -325,7 +326,7 @@ impl PluginManager {
     /// Associated method to start the watcher.
     /// Should be started in a main thread since the actual watcher instance is re-instantiated once a change occurs.
     pub fn watch_plugins(
-        from_frontend_sender: Sender<FromFrontend>,
+        supervisor: Sender<SupervisorRequest>,
         plugin_configuration_list: &[PluginConfig],
     ) -> anyhow::Result<!> {
         // Channel to receive events
@@ -370,8 +371,8 @@ impl PluginManager {
                             event.paths,
                             event.kind
                         );
-                        from_frontend_sender
-                            .send(FromFrontend::Reload)
+                        supervisor
+                            .send(SupervisorRequest::ReloadPlugins)
                             .with_context(|| "Failed to send reload request")?;
                     }
                 }

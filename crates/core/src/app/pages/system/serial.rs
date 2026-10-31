@@ -3,6 +3,7 @@ use crate::{
         components::{self, ButtonSize, Dialog},
         BlaulichtApp,
     },
+    client::EngineClient,
     state::SerialDeviceState,
 };
 use egui::{Color32, Context, FontFamily, Frame, Margin, RichText};
@@ -14,10 +15,9 @@ impl BlaulichtApp {
             return;
         }
 
-        let serial_health = {
-            let health_state = self.data.state.health_data.read().unwrap();
-            health_state.serial_health.clone()
-        };
+        let serial_health = self
+            .client
+            .with_health(|health| health.serial_health.clone());
 
         let mut devices: Vec<(String, SerialDeviceState)> = Vec::new();
 

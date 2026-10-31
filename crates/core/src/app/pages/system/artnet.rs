@@ -3,6 +3,8 @@ use crate::{
         components::{self, clickable, ButtonSize, Numberpad},
         BlaulichtApp,
     },
+    client::EngineClient,
+    hub::{CommandOutcome, HostCommand},
     state::ArtNetReceiver,
 };
 use egui::{Color32, FontId, Frame, Margin, RichText, ScrollArea, Widget};
@@ -54,30 +56,7 @@ impl BlaulichtApp {
                         match port_text.parse::<u16>() {
                             Ok(port) => match format!("{address}:{port}").parse::<SocketAddr>() {
                                 Ok(socket_addr) if socket_addr.is_ipv4() => {
-                                    let mut artnet_output =
-                                        self.data.state.artnet_output.write().unwrap();
-
-                                    if artnet_output
-                                        .receivers
-                                        .iter()
-                                        .any(|existing| existing.address == socket_addr)
-                                    {
-                                        error_message = Some(format!(
-                                            "ArtNet receiver {socket_addr} already exists."
-                                        ));
-                                    } else {
-                                        artnet_output
-                                            .receivers
-                                            .push(ArtNetReceiver::new(socket_addr));
-
-                                        tracing::info!(
-                                            target: crate::log::target::DMX,
-                                            "Added Art-Net receiver {socket_addr}"
-                                        );
-
-                                        self.system_ui_state.new_artnet_address.clear();
-                                        self.system_ui_state.new_artnet_port = "6454".to_string();
-                                    }
+                                    self.add_artnet_receiver(socket_addr);
                                 }
                                 Ok(_) => {
                                     error_message = Some(format!(
@@ -107,15 +86,7 @@ impl BlaulichtApp {
 
                 ui.add_space(10.0);
 
-                let receivers = {
-                    self.data
-                        .state
-                        .artnet_output
-                        .read()
-                        .unwrap()
-                        .receivers
-                        .clone()
-                };
+                let receivers = self.client.with_artnet_receivers(<[_]>::to_vec);
 
                 ui.label(RichText::new("Configured Outputs").strong());
 
@@ -125,10 +96,9 @@ impl BlaulichtApp {
                     let row_height = base_button.0.y.max(58.0);
 
                     artnet_receiver_scroll(ui, |ui| {
-                        for (receiver_index, receiver) in receivers.into_iter().enumerate() {
+                        for receiver in receivers {
                             self.render_artnet_receiver_row(
                                 ui,
-                                receiver_index,
                                 &receiver,
                                 input_font_size,
                                 row_height,
@@ -143,7 +113,6 @@ impl BlaulichtApp {
     fn render_artnet_receiver_row(
         &mut self,
         ui: &mut egui::Ui,
-        receiver_index: usize,
         receiver: &ArtNetReceiver,
         input_font_size: f32,
         row_height: f32,
@@ -254,44 +223,52 @@ impl BlaulichtApp {
                 );
             });
 
-        if toggle_changed || range_changed {
-            let mut output = self.data.state.artnet_output.write().unwrap();
-            if let Some(entry) = output.receivers.iter_mut().find(|entry| {
-                entry.address == receiver.address
-                    && entry.owner_plugin_id == receiver.owner_plugin_id
-                    && entry.handle == receiver.handle
-            }) {
-                entry.enabled = row_enabled;
-                if range_changed {
-                    entry.set_universe_range(first_universe, last_universe);
-                }
-            } else {
-                tracing::warn!("Art-Net receiver row {receiver_index} changed while editing");
-            }
+        if toggle_changed {
+            self.send_command(
+                HostCommand::SetArtNetReceiverEnabled {
+                    address: receiver.address,
+                    owner: owner_plugin_id,
+                    enabled: row_enabled,
+                },
+                |_, _| {},
+            );
+        }
+        if range_changed && !is_plugin_owned {
+            self.send_command(
+                HostCommand::SetArtNetReceiverUniverses {
+                    address: receiver.address,
+                    first: first_universe,
+                    last: last_universe,
+                },
+                |_, _| {},
+            );
         }
 
         if delete_clicked && !is_plugin_owned {
-            let removed = {
-                let mut output = self.data.state.artnet_output.write().unwrap();
-                output
-                    .receivers
-                    .iter()
-                    .position(|entry| {
-                        entry.address == receiver.address && entry.owner_plugin_id.is_none()
-                    })
-                    .map(|index| output.receivers.remove(index))
-            };
-            if removed.is_some() {
-                self.system_ui_state
-                    .artnet_universe_pads
-                    .remove(&receiver.address);
-                tracing::info!(
-                    target: crate::log::target::DMX,
-                    "Removed Art-Net receiver {}",
-                    receiver.address
-                );
-            }
+            let address = receiver.address;
+            self.send_command(HostCommand::RemoveArtNetReceiver(address), move |app, _| {
+                app.system_ui_state.artnet_universe_pads.remove(&address);
+            });
         }
+    }
+
+    /// Sends the new receiver; the form is cleared once the engine added it,
+    /// and a refusal (e.g. a duplicate) is shown under the form.
+    fn add_artnet_receiver(&mut self, address: SocketAddr) {
+        self.reply_handlers.send_then(
+            &self.client,
+            HostCommand::AddArtNetReceiver(address),
+            |app, outcome| match outcome {
+                CommandOutcome::Ok { .. } => {
+                    app.system_ui_state.new_artnet_address.clear();
+                    app.system_ui_state.new_artnet_port = "6454".to_string();
+                    app.system_ui_state.artnet_input_error = None;
+                }
+                CommandOutcome::Refused(why) => {
+                    app.system_ui_state.artnet_input_error = Some(format!("{why}."));
+                }
+            },
+        );
     }
 }
 
