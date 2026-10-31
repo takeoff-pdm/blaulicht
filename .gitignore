@@ -14,6 +14,7 @@ target_wasm
 ~
 .direnv
 blaulicht-*
+!crates/engine/src/bin/blaulicht-headless.rs
 *.tar.gz
 install/blaulicht
 *.codex
