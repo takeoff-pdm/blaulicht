@@ -22,6 +22,23 @@ use super::state::{
 };
 
 impl BlaulichtApp {
+    /// Selects `fixtures` in the visualizer's top-down editor and opens it, so
+    /// setup pages can point out where a group or fixture is.
+    pub(crate) fn show_fixtures_in_visualizer(
+        &mut self,
+        fixtures: impl IntoIterator<Item = (u8, u8)>,
+    ) {
+        let editor = &mut self.visualizer_ui_state.editor;
+        editor.selection = fixtures
+            .into_iter()
+            .map(|(gid, fid)| SelectionKey::Fixture(gid, fid))
+            .collect();
+        editor.mode = VisualizerMode::Edit;
+        editor.view = EditorView::Top;
+        editor.tool = EditorTool::Select;
+        self.navbar.navigate_to(blaulicht_shared::AppPage::Visualizer);
+    }
+
     pub fn visualizer_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -1239,42 +1256,68 @@ impl BlaulichtApp {
         }
     }
 
-    fn visualizer_editor_inspector(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Selection");
-            if let Ok(engine) = self.data.state.dmx_engine.read() {
-                for (gid, group) in &engine.0.groups {
+    fn visualizer_selection_list(&mut self, ui: &mut egui::Ui) {
+        let shift = ui.input(|input| input.modifiers.shift);
+        let mut clicked = None;
+        let selection = &self.visualizer_ui_state.editor.selection;
+        if let Ok(engine) = self.data.state.dmx_engine.read() {
+            for (gid, group) in &engine.0.groups {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong(&group.name);
                     for (fid, fixture) in &group.fixtures {
                         let key = SelectionKey::Fixture(*gid, *fid);
-                        let selected = self.visualizer_ui_state.editor.selection.contains(&key);
-                        if ui.selectable_label(selected, &fixture.name).clicked() {
-                            if !ui.input(|input| input.modifiers.shift) {
-                                self.visualizer_ui_state.editor.selection.clear();
-                            }
-                            if selected {
-                                self.visualizer_ui_state.editor.selection.remove(&key);
-                            } else {
-                                self.visualizer_ui_state.editor.selection.insert(key);
-                            }
+                        if ui
+                            .selectable_label(selection.contains(&key), &fixture.name)
+                            .clicked()
+                        {
+                            clicked = Some(key);
                         }
                     }
-                }
+                });
             }
-            for (id, object) in &self.visualizer_ui_state.stage.objects {
-                let key = SelectionKey::Object(*id);
-                let selected = self.visualizer_ui_state.editor.selection.contains(&key);
-                if ui.selectable_label(selected, &object.name).clicked() {
-                    if !ui.input(|input| input.modifiers.shift) {
-                        self.visualizer_ui_state.editor.selection.clear();
-                    }
-                    if selected {
-                        self.visualizer_ui_state.editor.selection.remove(&key);
-                    } else {
-                        self.visualizer_ui_state.editor.selection.insert(key);
+        }
+        if !self.visualizer_ui_state.stage.objects.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Objects");
+                for (id, object) in &self.visualizer_ui_state.stage.objects {
+                    let key = SelectionKey::Object(*id);
+                    if ui
+                        .selectable_label(selection.contains(&key), &object.name)
+                        .clicked()
+                    {
+                        clicked = Some(key);
                     }
                 }
+            });
+        }
+
+        if let Some(key) = clicked {
+            let selection = &mut self.visualizer_ui_state.editor.selection;
+            let was_selected = selection.contains(&key);
+            if !shift {
+                selection.clear();
             }
-        });
+            if was_selected {
+                selection.remove(&key);
+            } else {
+                selection.insert(key);
+            }
+        }
+    }
+
+    fn visualizer_editor_inspector(&mut self, ui: &mut egui::Ui) {
+        // One button per fixture would bury the viewport on large shows, so the
+        // list is collapsed by default and scrolls within a fixed height.
+        let selected_count = self.visualizer_ui_state.editor.selection.len();
+        egui::CollapsingHeader::new(format!("Selection ({selected_count} selected)"))
+            .id_salt("visualizer_selection_list")
+            .default_open(false)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(140.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| self.visualizer_selection_list(ui));
+            });
 
         let only = if self.visualizer_ui_state.editor.selection.len() == 1 {
             self.visualizer_ui_state
@@ -1291,7 +1334,17 @@ impl BlaulichtApp {
             Some(SelectionKey::Fixture(gid, fid)) => {
                 self.visualizer_fixture_inspector(ui, gid, fid)
             }
-            None => {}
+            // Keep the fixture inspector's row height so selecting a fixture
+            // does not shift the viewport out from under the pointer.
+            None => {
+                ui.horizontal(|ui| {
+                    ui.set_min_height(ui.spacing().interact_size.y);
+                    ui.weak(match self.visualizer_ui_state.editor.selection.len() {
+                        0 => "Nothing selected".to_string(),
+                        n => format!("{n} items selected"),
+                    });
+                });
+            }
         }
     }
 
@@ -1762,11 +1815,14 @@ impl BlaulichtApp {
                 );
                 let shift = ui.input(|input| input.modifiers.shift);
                 if let Some(hit) = hit {
-                    if !shift && !self.visualizer_ui_state.editor.selection.contains(&hit) {
+                    let was_selected = self.visualizer_ui_state.editor.selection.contains(&hit);
+                    if !shift && !was_selected {
                         self.visualizer_ui_state.editor.selection.clear();
                     }
                     self.visualizer_ui_state.editor.selection.insert(hit);
-                    if self.visualizer_ui_state.editor.tool != EditorTool::Select {
+                    // In Select mode, dragging an already-selected item moves
+                    // the selection; other drags still box-select.
+                    if self.visualizer_ui_state.editor.tool != EditorTool::Select || was_selected {
                         self.visualizer_ui_state.editor.drag_before =
                             Some(self.capture_visualizer_snapshot());
                         self.visualizer_ui_state.editor.drag_last_world = Some(to_world(pointer));
@@ -1808,7 +1864,9 @@ impl BlaulichtApp {
         if response.dragged_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
                 match self.visualizer_ui_state.editor.tool {
-                    EditorTool::Translate => {
+                    // Select only has `drag_last_world` set when the drag
+                    // started on an already-selected item.
+                    EditorTool::Translate | EditorTool::Select => {
                         if let Some(last) = self.visualizer_ui_state.editor.drag_last_world {
                             let world = to_world(pointer);
                             self.move_visualizer_selection(world[0] - last[0], world[1] - last[1]);
@@ -1825,7 +1883,6 @@ impl BlaulichtApp {
                             self.visualizer_ui_state.editor.drag_last_pointer = Some(pointer);
                         }
                     }
-                    EditorTool::Select => {}
                 }
             }
         }
@@ -2090,14 +2147,15 @@ impl BlaulichtApp {
                             .and_then(|group| group.fixtures.get_mut(&fid))
                         {
                             match tool {
-                                EditorTool::Translate => {
+                                // A Select drag can only move the selection.
+                                EditorTool::Translate | EditorTool::Select => {
                                     fixture.pos.x = snap(fixture.pos.x, position_step);
                                     fixture.pos.z = snap(fixture.pos.z, position_step);
                                 }
                                 EditorTool::Rotate => {
                                     fixture.rotation.y = snap(fixture.rotation.y, rotation_step);
                                 }
-                                EditorTool::Select | EditorTool::Scale => {}
+                                EditorTool::Scale => {}
                             }
                         }
                     }
@@ -2107,7 +2165,7 @@ impl BlaulichtApp {
                                 continue;
                             }
                             match tool {
-                                EditorTool::Translate => {
+                                EditorTool::Translate | EditorTool::Select => {
                                     object.transform.translation[0] =
                                         snap(object.transform.translation[0], position_step);
                                     object.transform.translation[2] =
@@ -2124,7 +2182,6 @@ impl BlaulichtApp {
                                         }
                                     }
                                 }
-                                EditorTool::Select => {}
                             }
                         }
                     }

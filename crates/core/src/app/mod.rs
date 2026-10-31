@@ -170,6 +170,9 @@ pub struct BlaulichtApp {
     last_beat_marker_snapshot_time: u64,
 
     band_energy_graphs: [TimeSeriesGraph; 3],
+    /// Learned beat model activations (beat, downbeat), in percent.
+    beat_model_graphs: [TimeSeriesGraph; 2],
+    last_beat_model_snapshot_time: u64,
     // bpm_graph: TimeSeriesGraph,
     // time_between_beats_graph: TimeSeriesGraph,
 
@@ -227,8 +230,6 @@ pub struct BlaulichtApp {
 
     set_audio_device_popup_open: bool,
     audio_info_dialog_open: bool,
-    bass_low_numberpad: Numberpad,
-    bass_high_numberpad: Numberpad,
     manual_bpm_numberpad: Numberpad,
 
     system_ui_state: SystemUI,
@@ -395,6 +396,21 @@ impl BlaulichtApp {
                 TimeSeriesGraph::new("Band High".to_string(), 0, 1000, Color32::BLUE)
                     .with_autoscale(),
             ],
+            last_beat_model_snapshot_time: 0,
+            beat_model_graphs: [
+                TimeSeriesGraph::new(
+                    "Beat %".to_string(),
+                    0,
+                    100,
+                    Color32::from_rgb(255, 120, 200),
+                ),
+                TimeSeriesGraph::new(
+                    "Downbeat %".to_string(),
+                    0,
+                    100,
+                    Color32::from_rgb(255, 200, 80),
+                ),
+            ],
             collector_snapshot: CollectedAudioSnapshot::default(),
             beat_marker_index: 0,
             beat_marker_has_beat: false,
@@ -450,14 +466,6 @@ impl BlaulichtApp {
             startup_progress: startup::StartupProgress::default(),
             set_audio_device_popup_open: false,
             audio_info_dialog_open: false,
-            bass_low_numberpad: Numberpad::new()
-                .dialog_title("Bass Low")
-                .field_width(140.0)
-                .range(0.0, 20_000.0),
-            bass_high_numberpad: Numberpad::new()
-                .dialog_title("Bass High")
-                .field_width(140.0)
-                .range(0.0, 20_000.0),
             manual_bpm_numberpad: Numberpad::new()
                 .dialog_title("Manual BPM")
                 .field_width(140.0)

@@ -1099,6 +1099,12 @@ impl BlaulichtApp {
 
                         ui.add_space(6.0);
 
+                        if components::button(ui, false, "Show in Visualizer", ButtonSize::Medium) {
+                            self.show_fixtures_in_visualizer([(gid, fid)]);
+                        }
+
+                        ui.add_space(6.0);
+
                         if components::button(ui, true, "Delete", ButtonSize::Medium) {
                             self.delete_fixture = Some((gid, fid));
                         }

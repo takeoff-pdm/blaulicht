@@ -3,6 +3,7 @@ use crate::{
     state::{ArtNetOutput, ArtNetReceiver},
 };
 use anyhow::{anyhow, Context, Result};
+use blaulicht_audio_engine::BeatDetection;
 use blaulicht_shared::{AppPage, EngineState, SaveEngineState, ShowfileArtNetState};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -46,6 +47,11 @@ pub struct Config {
     pub spectrogram_window_seconds: u64,
     #[serde(default = "default_spectrogram_refresh_hz")]
     pub spectrogram_refresh_hz: u32,
+    /// Beat and tempo detector: "legacy" (spectrum only), "tracker" (PCM
+    /// tracker, spectral-flux onsets) or "model" (PCM tracker, learned beat
+    /// model).
+    #[serde(default)]
+    pub beat_detection: BeatDetection,
     pub plugins: Vec<PluginConfig>,
     pub last_open_showfile: Option<PathBuf>,
     #[serde(default)]
@@ -375,6 +381,7 @@ impl Default for Config {
 
             spectrogram_window_seconds: default_spectrogram_window_seconds(),
             spectrogram_refresh_hz: default_spectrogram_refresh_hz(),
+            beat_detection: BeatDetection::default(),
             plugins: vec![PluginConfig {
                 file_path: "./plugins/hello_world.wasm".to_string(),
                 enabled: false,
@@ -477,6 +484,31 @@ mod tests {
 
         let position = &engine.groups[&0].fixtures[&0].pos;
         assert_eq!([position.x, position.y, position.z], [2.0, 4.0, 3.0]);
+    }
+
+    #[test]
+    fn beat_detection_defaults_to_tracker_and_parses_every_mode() {
+        let without = toml::to_string(&Config::default())
+            .unwrap()
+            .lines()
+            .filter(|line| !line.starts_with("beat_detection"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: Config = toml::from_str(&without).unwrap();
+        assert_eq!(parsed.beat_detection, BeatDetection::Tracker);
+
+        for (value, mode) in [
+            ("legacy", BeatDetection::Legacy),
+            ("tracker", BeatDetection::Tracker),
+            ("model", BeatDetection::Model),
+        ] {
+            let parsed: Config =
+                toml::from_str(&format!("beat_detection = \"{value}\"\n{without}")).unwrap();
+            assert_eq!(parsed.beat_detection, mode);
+        }
+        assert!(
+            toml::from_str::<Config>(&format!("beat_detection = \"modle\"\n{without}")).is_err()
+        );
     }
 
     #[test]

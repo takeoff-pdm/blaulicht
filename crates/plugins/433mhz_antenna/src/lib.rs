@@ -37,6 +37,9 @@ const WIZARD_NAME_TEXT_ID: u8 = 110;
 const WIZARD_RECORD_BASE_ID: u8 = 120;
 const WIZARD_SAVE_BUTTON_ID: u8 = 130;
 const WIZARD_CANCEL_BUTTON_ID: u8 = 131;
+const SERIAL_RESCAN_BUTTON_ID: u8 = 132;
+const SERIAL_PORT_COMBO_ID: u8 = 133;
+const SERIAL_BAUD_RATE: u32 = 115200;
 const VIEW_SELECT_BUTTON_BASE_ID: u8 = 150;
 const VIEW_SELECT_OPTION_BASE_ID: u8 = 200;
 const SPEED_SCENE_SELECT_BUTTON_BASE_ID: u8 = 230;
@@ -109,6 +112,14 @@ impl RemoteDefinition {
 struct PersistedState {
     remote_definitions: Vec<RemoteDefinition>,
     remote_enabled: Vec<bool>,
+}
+
+/// Per-machine settings, kept out of the showfile because port paths depend
+/// on the hardware.
+#[derive(Default, Serialize, Deserialize)]
+struct GlobalState {
+    #[serde(default)]
+    serial_port: Option<String>,
 }
 
 #[derive(Default, Clone)]
@@ -224,6 +235,10 @@ impl ViewInfo {
 
 pub struct SamplePlugin {
     conn: Option<SerialConnection>,
+    /// Receiver port picked in the UI; `None` leaves the receiver closed.
+    serial_port: Option<String>,
+    /// Ports offered by the host (DMX outputs are already filtered out).
+    available_ports: Vec<String>,
     remote_definitions: Vec<RemoteDefinition>,
     remote_enabled: Vec<bool>,
     log: VecDeque<String>,
@@ -250,6 +265,8 @@ impl Default for SamplePlugin {
 
         Self {
             conn: None,
+            serial_port: None,
+            available_ports: vec![],
             remote_definitions,
             remote_enabled,
             log: VecDeque::new(),
@@ -280,6 +297,77 @@ impl SamplePlugin {
         }) {
             bpf::save_plugin_state(bpf::PluginStateLocation::Showfile, &json);
         }
+    }
+
+    fn save_global_state(&self) {
+        if let Ok(json) = serde_json::to_string(&GlobalState {
+            serial_port: self.serial_port.clone(),
+        }) {
+            bpf::save_plugin_state(bpf::PluginStateLocation::Global, &json);
+        }
+    }
+
+    fn load_global_state(&mut self) {
+        if let Some(saved) = bpf::load_plugin_state(bpf::PluginStateLocation::Global)
+            .and_then(|json| serde_json::from_str::<GlobalState>(&json).ok())
+        {
+            self.serial_port = saved.serial_port;
+        }
+    }
+
+    fn rescan_ports(&mut self) {
+        self.available_ports = bpf::bl_enumerate_serial_devices_safe();
+    }
+
+    /// Opens the selected port, or leaves the receiver closed if none is set.
+    fn connect(&mut self) {
+        self.conn = None;
+        let Some(port_path) = self.serial_port.clone() else {
+            return;
+        };
+        println!("Open {port_path}...");
+        match SerialConnection::open(&port_path, SERIAL_BAUD_RATE) {
+            Ok(port) => {
+                self.conn = Some(port);
+                self.push_log(format!("Receiver connected on {port_path}"));
+            }
+            Err(error) => self.push_log(format!("Receiver unavailable: {error}")),
+        }
+    }
+
+    /// Combo box entries: "None", the host's ports, and the saved port if it
+    /// is currently missing. Returns the labels and the selected index.
+    fn port_options(&self) -> (Vec<String>, u8) {
+        let mut labels = vec!["None".to_string()];
+        labels.extend(self.available_ports.iter().cloned());
+        let mut selected = 0;
+        if let Some(port) = &self.serial_port {
+            match self.available_ports.iter().position(|p| p == port) {
+                Some(idx) => selected = idx + 1,
+                None => {
+                    labels.push(format!("{port} (missing)"));
+                    selected = labels.len() - 1;
+                }
+            }
+        }
+        (labels, selected.min(u8::MAX as usize) as u8)
+    }
+
+    fn select_port(&mut self, selected: u8) {
+        let port = match selected as usize {
+            0 => None,
+            idx => match self.available_ports.get(idx - 1) {
+                Some(port) => Some(port.clone()),
+                // The "(missing)" entry keeps the current choice.
+                None => return,
+            },
+        };
+        if port == self.serial_port {
+            return;
+        }
+        self.serial_port = port;
+        self.save_global_state();
+        self.connect();
     }
 
     fn load_state(&mut self) {
@@ -608,10 +696,15 @@ impl SamplePlugin {
         ui::begin();
 
         ui::label_styled("433 MHz remotes", 18, false);
-        ui::label(if self.conn.is_some() {
-            "Receiver connected"
-        } else {
-            "Receiver disconnected · connect /dev/ttyUSB0 and reload the plugin."
+        ui::begin_horizontal();
+        let (port_labels, selected_port) = self.port_options();
+        ui::combo_box("Receiver port", SERIAL_PORT_COMBO_ID, &port_labels, selected_port);
+        ui::button("Rescan", SERIAL_RESCAN_BUTTON_ID);
+        ui::end_horizontal();
+        ui::label(match (&self.serial_port, self.conn.is_some()) {
+            (None, _) => "No receiver port selected.",
+            (Some(_), true) => "Receiver connected",
+            (Some(_), false) => "Receiver disconnected · check the port and rescan.",
         });
         ui::separator();
         if self.remote_definitions.is_empty() {
@@ -779,6 +872,9 @@ impl SamplePlugin {
                 }
 
                 match ui_event {
+                    PluginUiEvent::ComboBox { id, selected } if id == SERIAL_PORT_COMBO_ID => {
+                        self.select_port(selected);
+                    }
                     PluginUiEvent::Switch { id, value } => {
                         let idx = id.saturating_sub(REMOTE_CHECKBOX_BASE_ID) as usize;
                         if id >= REMOTE_CHECKBOX_BASE_ID && idx < self.remote_enabled.len() {
@@ -822,6 +918,12 @@ impl SamplePlugin {
                         }
                         WIZARD_CANCEL_BUTTON_ID => {
                             self.wizard = None;
+                        }
+                        SERIAL_RESCAN_BUTTON_ID => {
+                            self.rescan_ports();
+                            if self.conn.is_none() {
+                                self.connect();
+                            }
                         }
                         _ if id >= WIZARD_RECORD_BASE_ID
                             && id < WIZARD_RECORD_BASE_ID + MAX_REMOTE_BUTTONS as u8 =>
@@ -956,15 +1058,9 @@ impl SamplePlugin {
 impl Plugin for SamplePlugin {
     fn initialize(&mut self, _input: TickInput) {
         self.load_state();
-        let port_path = "/dev/ttyUSB0";
-        println!("Open {port_path}...");
-        self.conn = match SerialConnection::open(&port_path, 115200) {
-            Ok(port) => Some(port),
-            Err(error) => {
-                self.push_log(format!("Receiver unavailable: {error}"));
-                None
-            }
-        };
+        self.load_global_state();
+        self.rescan_ports();
+        self.connect();
         println!("Antenna SERIAL plugin initialized");
     }
 

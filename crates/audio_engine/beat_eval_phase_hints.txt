@@ -1,0 +1,7 @@
+# Reference corrections for `beat_eval` on the cdj2000nxs-mp3 test set.
+# Each line is a file-name substring whose automatic reference phase lands on
+# the off-beat; verified by eye on spectrograms (`--plot-at-ms`), where the
+# kick's pitch sweep starts on the off-beat (cyan) ticks.
+BURNR - Everything You Need
+Christian Rogers - Evora
+1. Take Me To The Sky

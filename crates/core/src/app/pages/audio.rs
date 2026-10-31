@@ -3,12 +3,12 @@ use crate::app::{components, BlaulichtApp};
 use crate::msg::{AudioInput, DummyInput, FromFrontend};
 use crate::{config, utils};
 use blaulicht_audio_engine::{
-    bin_rows, draw_markers, AudioSpectrogram, BpmDetectStatus, CollectorOutput,
-    SpectrogramDisplayOptions,
+    bin_rows, draw_markers, spectrogram_color, AudioSpectrogram, BeatDetection, BeatFrontEnd,
+    BpmDetectStatus, CollectorOutput, SignalDebugData, SpectrogramDisplayOptions,
 };
+use blaulicht_shared::AudioSourceStatus;
 
 use egui::{vec2, Color32, FontId, Frame, Margin, RichText, Widget};
-use std::mem;
 use std::path::PathBuf;
 
 // TODO: include snapshot in graphs
@@ -17,30 +17,104 @@ const SPECTROGRAM_PAD_BOTTOM: usize = 20;
 const SPECTROGRAM_PAD_TOP: usize = 5;
 const SPECTROGRAM_PAD_LEFT: usize = 5;
 
-impl BlaulichtApp {
-    fn spectrogram_color(intensity: u8) -> Color32 {
-        let t = (intensity as f32 / 255.0).powf(0.5);
+const INFO_HEADER_COLOR: Color32 = Color32::from_rgb(120, 170, 255);
+const INFO_OK_COLOR: Color32 = Color32::from_rgb(120, 220, 140);
+const INFO_WARN_COLOR: Color32 = Color32::from_rgb(240, 200, 100);
+const INFO_BAD_COLOR: Color32 = Color32::from_rgb(240, 130, 130);
 
-        let (r, g, b) = if t < 0.2 {
-            let local_t = t / 0.2;
-            (local_t * 0.5, 0.0, local_t)
-        } else if t < 0.4 {
-            let local_t = (t - 0.2) / 0.2;
-            (0.5 - local_t * 0.5, 0.0, 1.0)
-        } else if t < 0.6 {
-            let local_t = (t - 0.4) / 0.2;
-            (0.0, local_t, 1.0)
-        } else if t < 0.8 {
-            let local_t = (t - 0.6) / 0.2;
-            (local_t, 1.0, 1.0 - local_t)
-        } else {
-            let local_t = (t - 0.8) / 0.2;
-            (1.0, 1.0 - local_t * 0.5, local_t * 0.3)
+fn info_header(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).strong().color(INFO_HEADER_COLOR));
+}
+
+fn info_hint(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).small().weak());
+}
+
+/// One compact line of `key value` pairs, keys dimmed, values in the normal
+/// text color; wraps when the column is narrow.
+fn info_line(ui: &mut egui::Ui, pairs: &[(&str, String)]) {
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let weak = ui.visuals().weak_text_color();
+    let strong = ui.visuals().text_color();
+    let mut job = egui::text::LayoutJob::default();
+    for (i, (key, value)) in pairs.iter().enumerate() {
+        let format = |color| egui::TextFormat {
+            font_id: font.clone(),
+            color,
+            ..Default::default()
         };
+        let sep = if i == 0 { "" } else { "   " };
+        job.append(&format!("{sep}{key} "), 0.0, format(weak));
+        job.append(value, 0.0, format(strong));
+    }
+    ui.label(job);
+}
 
-        Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+/// `key: VALUE [note]` with the value colored by its health.
+fn info_status(ui: &mut egui::Ui, key: &str, value: &str, color: Color32, note: Option<&str>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(format!("{key}:")).small().weak());
+        ui.label(RichText::new(value).strong().color(color));
+        if let Some(note) = note {
+            ui.label(RichText::new(note).small().color(color));
+        }
+    });
+}
+
+// SPECPERF-TEMP begin
+mod specperf {
+    use std::sync::Mutex;
+    use std::time::Instant;
+
+    pub struct Stats {
+        pub window_start: Option<Instant>,
+        pub last_frame: Option<Instant>,
+        pub frames: u32,
+        pub frame_gap_max_ms: f32,
+        pub cols: u32,
+        pub last_col_time: u64,
+        pub col_dt_min: u64,
+        pub col_dt_max: u64,
+        pub col_dt_over_30: u32,
+        pub frames_0_cols: u32,
+        pub frames_2plus_cols: u32,
+        pub max_cols_per_frame: u32,
+        pub shifts: u32,
+        pub px: u32,
+        pub last_shift: Option<Instant>,
+        pub shift_gap_max_ms: f32,
+        pub uploads: u32,
+        pub upload_us_total: u128,
+        pub upload_us_max: u128,
+        pub update_us_max: u128,
     }
 
+    pub static STATS: Mutex<Stats> = Mutex::new(Stats {
+        window_start: None,
+        last_frame: None,
+        frames: 0,
+        frame_gap_max_ms: 0.0,
+        cols: 0,
+        last_col_time: 0,
+        col_dt_min: u64::MAX,
+        col_dt_max: 0,
+        col_dt_over_30: 0,
+        frames_0_cols: 0,
+        frames_2plus_cols: 0,
+        max_cols_per_frame: 0,
+        shifts: 0,
+        px: 0,
+        last_shift: None,
+        shift_gap_max_ms: 0.0,
+        uploads: 0,
+        upload_us_total: 0,
+        upload_us_max: 0,
+        update_us_max: 0,
+    });
+}
+// SPECPERF-TEMP end
+
+impl BlaulichtApp {
     fn reset_spectrogram_ring_cache(
         &mut self,
         spec: &AudioSpectrogram,
@@ -164,7 +238,7 @@ impl BlaulichtApp {
         for bin_index in 0..bin_count {
             let (y_min, y_max) = bin_rows(SPECTROGRAM_PAD_TOP, height, bin_count, bin_index);
             let volume = (self.spectro_pending_sum[bin_index] / count) as u8;
-            let color = Self::spectrogram_color(volume);
+            let color = spectrogram_color(volume);
 
             for y in y_min..y_max {
                 let row_start = y * width + x_start;
@@ -199,13 +273,43 @@ impl BlaulichtApp {
         let pixels_per_column = data_width as f32 / spec.max_columns as f32;
         let mut changed = false;
 
+        let mut specperf_cols = 0u32; // SPECPERF-TEMP
         for column in spec.columns.iter().filter(|c| c.snapshot.time > last_time) {
+            // SPECPERF-TEMP begin
+            {
+                specperf_cols += 1;
+                let mut st = specperf::STATS.lock().unwrap();
+                if st.last_col_time != 0 {
+                    let dt = column.snapshot.time.saturating_sub(st.last_col_time);
+                    st.col_dt_min = st.col_dt_min.min(dt);
+                    st.col_dt_max = st.col_dt_max.max(dt);
+                    if dt > 30 {
+                        st.col_dt_over_30 += 1;
+                    }
+                }
+                st.last_col_time = column.snapshot.time;
+                st.cols += 1;
+            }
+            // SPECPERF-TEMP end
             self.accumulate_spectrogram_column(column);
             self.spectro_scroll_px_offset += pixels_per_column;
             let pixels_to_advance = self.spectro_scroll_px_offset.floor() as usize;
             if pixels_to_advance > 0 {
                 self.spectro_scroll_px_offset -= pixels_to_advance as f32;
                 let write_width = pixels_to_advance.min(data_width);
+                // SPECPERF-TEMP begin
+                {
+                    let mut st = specperf::STATS.lock().unwrap();
+                    let now = std::time::Instant::now();
+                    if let Some(prev) = st.last_shift {
+                        let gap = now.duration_since(prev).as_secs_f32() * 1000.0;
+                        st.shift_gap_max_ms = st.shift_gap_max_ms.max(gap);
+                    }
+                    st.last_shift = Some(now);
+                    st.shifts += 1;
+                    st.px += write_width as u32;
+                }
+                // SPECPERF-TEMP end
                 self.shift_spectrogram_ring_left(write_width);
                 self.flush_spectrogram_pending(width - write_width, width);
                 changed = true;
@@ -216,6 +320,17 @@ impl BlaulichtApp {
         }
 
         self.last_spectrogram_columns.set(spec.columns.len());
+        // SPECPERF-TEMP begin
+        {
+            let mut st = specperf::STATS.lock().unwrap();
+            if specperf_cols == 0 {
+                st.frames_0_cols += 1;
+            } else if specperf_cols >= 2 {
+                st.frames_2plus_cols += 1;
+            }
+            st.max_cols_per_frame = st.max_cols_per_frame.max(specperf_cols);
+        }
+        // SPECPERF-TEMP end
         changed
     }
 
@@ -226,6 +341,7 @@ impl BlaulichtApp {
         width: usize,
         height: usize,
     ) {
+        let specperf_t0 = std::time::Instant::now(); // SPECPERF-TEMP
         let changed = if self.spectrogram_ring_needs_reset(spec, width, height) {
             self.reset_spectrogram_ring_cache(spec, width, height);
             true
@@ -242,12 +358,85 @@ impl BlaulichtApp {
             self.spectrogram_texture_handle = Some(texture);
         } else if changed {
             if let Some(handle) = &mut self.spectrogram_texture_handle {
+                let specperf_up = std::time::Instant::now(); // SPECPERF-TEMP
                 handle.set(
                     self.spectrogram_image_buffer.clone(),
                     egui::TextureOptions::NEAREST,
                 );
+                // SPECPERF-TEMP begin
+                let us = specperf_up.elapsed().as_micros();
+                let mut st = specperf::STATS.lock().unwrap();
+                st.uploads += 1;
+                st.upload_us_total += us;
+                st.upload_us_max = st.upload_us_max.max(us);
+                // SPECPERF-TEMP end
             }
         }
+        // SPECPERF-TEMP begin
+        {
+            let now = std::time::Instant::now();
+            let mut st = specperf::STATS.lock().unwrap();
+            st.update_us_max = st.update_us_max.max(specperf_t0.elapsed().as_micros());
+            if let Some(prev) = st.last_frame {
+                let gap = now.duration_since(prev).as_secs_f32() * 1000.0;
+                st.frame_gap_max_ms = st.frame_gap_max_ms.max(gap);
+            }
+            st.last_frame = Some(now);
+            st.frames += 1;
+            let start = *st.window_start.get_or_insert(now);
+            let secs = now.duration_since(start).as_secs_f32();
+            if secs >= 2.0 {
+                tracing::info!(
+                    "SPECPERF secs={secs:.2} ppp={:.2} tex={}x{} max_columns={} cols_per_px={:.2} | ui_fps={:.1} frame_gap_max={:.1}ms update_max={}us | cols/s={:.1} col_dt=[{}..{}]ms col_dt>30ms={} frames_0cols={} frames_2+cols={} max_cols/frame={} | shifts/s={:.1} px/s={:.1} shift_gap_max={:.1}ms | uploads={} upload_avg={}us upload_max={}us",
+                    ctx.pixels_per_point(),
+                    width,
+                    height,
+                    spec.max_columns,
+                    spec.max_columns as f32 / width.saturating_sub(SPECTROGRAM_PAD_LEFT).max(1) as f32,
+                    st.frames as f32 / secs,
+                    st.frame_gap_max_ms,
+                    st.update_us_max,
+                    st.cols as f32 / secs,
+                    if st.col_dt_min == u64::MAX { 0 } else { st.col_dt_min },
+                    st.col_dt_max,
+                    st.col_dt_over_30,
+                    st.frames_0_cols,
+                    st.frames_2plus_cols,
+                    st.max_cols_per_frame,
+                    st.shifts as f32 / secs,
+                    st.px as f32 / secs,
+                    st.shift_gap_max_ms,
+                    st.uploads,
+                    st.upload_us_total / st.uploads.max(1) as u128,
+                    st.upload_us_max,
+                );
+                let last_col_time = st.last_col_time;
+                let last_shift = st.last_shift;
+                *st = specperf::Stats {
+                    window_start: Some(now),
+                    last_frame: Some(now),
+                    frames: 0,
+                    frame_gap_max_ms: 0.0,
+                    cols: 0,
+                    last_col_time,
+                    col_dt_min: u64::MAX,
+                    col_dt_max: 0,
+                    col_dt_over_30: 0,
+                    frames_0_cols: 0,
+                    frames_2plus_cols: 0,
+                    max_cols_per_frame: 0,
+                    shifts: 0,
+                    px: 0,
+                    last_shift,
+                    shift_gap_max_ms: 0.0,
+                    uploads: 0,
+                    upload_us_total: 0,
+                    upload_us_max: 0,
+                    update_us_max: 0,
+                };
+            }
+        }
+        // SPECPERF-TEMP end
     }
 
     fn render_choose_audio_device_popup(
@@ -277,6 +466,465 @@ impl BlaulichtApp {
         }
     }
 
+    /// Fullscreen, read-only audio analysis info (frequency bands, signal and
+    /// section state, beat detection, the PCM tracker and the learned beat
+    /// model) in three columns so everything fits on the 800x480 panel. The
+    /// only control is the manual BPM override.
+    fn render_audio_info_dialog(&mut self, ctx: &egui::Context) {
+        let debug_data = {
+            let spec = self.data.state.audio_spectrogram.read().unwrap();
+            spec.columns
+                .back()
+                .map(|col| col.debug_data.clone())
+                .unwrap_or_default()
+        };
+        let bpm_confidence_pct = (self.collector_snapshot.bpm_confidence * 100.0) as i32;
+
+        let screen = ctx.content_rect();
+        // The dialog frame adds 6/12 px inner margin and a 1 px stroke per side.
+        let size = (screen.size() - vec2(14.0, 26.0)).max(vec2(200.0, 200.0));
+        let mut close = false;
+        let response = components::Dialog::new("Audio Info".to_string(), size)
+            .with_backdrop()
+            .fixed_pos(screen.min.to_vec2())
+            .show(ctx, |ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("AUDIO ANALYSIS")
+                                .strong()
+                                .size(ButtonSize::Medium.dim().1 + 2.0)
+                                .color(INFO_HEADER_COLOR),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if components::button(ui, false, "Close", ButtonSize::Medium) {
+                                close = true;
+                            }
+                        });
+                    });
+                    ui.separator();
+
+                    let gap = 10.0;
+                    let height = ui.available_height();
+                    let total = (ui.available_width() - 2.0 * gap).max(300.0);
+                    let widths = [total / 3.0; 3];
+
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for (idx, width) in widths.into_iter().enumerate() {
+                            ui.allocate_ui_with_layout(
+                                vec2(width, height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.set_width(width);
+                                    egui::ScrollArea::vertical()
+                                        .id_salt(("audio_info_column", idx))
+                                        .max_height(height)
+                                        .auto_shrink([false, false])
+                                        .show(ui, |ui| {
+                                            ui.spacing_mut().item_spacing.y = 3.0;
+                                            match idx {
+                                                0 => self.info_bands_column(ui, &debug_data),
+                                                1 => self.info_signal_column(
+                                                    ui,
+                                                    &debug_data,
+                                                    bpm_confidence_pct,
+                                                ),
+                                                _ => self.info_tracker_column(ui, &debug_data),
+                                            }
+                                        });
+                                },
+                            );
+                        }
+                    });
+                });
+            });
+        if close || response.cancel_requested {
+            self.audio_info_dialog_open = false;
+        }
+    }
+
+    fn info_bands_column(&mut self, ui: &mut egui::Ui, debug_data: &SignalDebugData) {
+        info_header(ui, "FREQUENCY BANDS");
+        let auto_weight = self.data.state.audio_params.read().unwrap().auto_weight;
+        info_line(
+            ui,
+            &[
+                (
+                    "bass range",
+                    format!(
+                        "{:.0}-{:.0} Hz",
+                        debug_data.bass_range.start, debug_data.bass_range.end
+                    ),
+                ),
+                (
+                    "weights",
+                    if auto_weight { "auto" } else { "fixed" }.to_string(),
+                ),
+            ],
+        );
+        ui.add_space(2.0);
+
+        // Share the column between the three graphs, each with one metrics
+        // line underneath.
+        let metrics_height = 16.0;
+        let graph_height =
+            ((ui.available_height() - 3.0 * (metrics_height + 6.0)) / 3.0).clamp(40.0, 110.0);
+        for (idx, band) in self.band_energy_graphs.iter().enumerate() {
+            let (response, painter) = ui.allocate_painter(
+                vec2(ui.available_width(), graph_height),
+                egui::Sense::hover(),
+            );
+            band.draw(painter, response.rect);
+            info_line(
+                ui,
+                &[
+                    ("peak", format!("{:.2}", debug_data.band_onset_peakiness[idx])),
+                    ("period", format!("{:.2}", debug_data.band_onset_periodicity[idx])),
+                    ("trans", format!("{:.2}", debug_data.band_transient_strength[idx])),
+                    ("weight", format!("{:.2}", debug_data.band_weights[idx])),
+                ],
+            );
+            ui.add_space(3.0);
+        }
+    }
+
+    fn info_signal_column(
+        &mut self,
+        ui: &mut egui::Ui,
+        debug_data: &SignalDebugData,
+        bpm_confidence_pct: i32,
+    ) {
+        let snapshot = &self.collector_snapshot;
+
+        info_header(ui, "SIGNAL");
+        let source_color = match snapshot.source_status {
+            AudioSourceStatus::Active => INFO_OK_COLOR,
+            AudioSourceStatus::NoFrame => INFO_WARN_COLOR,
+            _ => INFO_BAD_COLOR,
+        };
+        info_status(
+            ui,
+            "Source",
+            &format!("{:?}", snapshot.source_status),
+            source_color,
+            Some(&format!("frame age {} ms", snapshot.frame_age_ms)),
+        );
+        let (section_label, section_color) = components::section_label(snapshot.section_state);
+        // Drop the state glyph: the proportional font has no glyph for it.
+        let section_label = section_label
+            .split_once(' ')
+            .map_or(section_label, |(_, label)| label);
+        info_status(ui, "Section", section_label, section_color, None);
+        info_line(
+            ui,
+            &[
+                ("volume", snapshot.volume.to_string()),
+                ("beat vol", snapshot.beat_volume.to_string()),
+            ],
+        );
+        info_line(
+            ui,
+            &[
+                ("bass", snapshot.bass.to_string()),
+                ("avg", snapshot.bass_avg.to_string()),
+                ("avg short", snapshot.bass_avg_short.to_string()),
+            ],
+        );
+        info_line(
+            ui,
+            &[
+                (
+                    "beat in bar",
+                    snapshot
+                        .beat_in_bar
+                        .map_or("-".to_string(), |beat| beat.to_string()),
+                ),
+                (
+                    "tempo source",
+                    snapshot.tempo_source.map_or("analyzer".to_string(), |(owner, device)| {
+                        format!("external {owner}/{device}")
+                    }),
+                ),
+            ],
+        );
+
+        ui.add_space(6.0);
+        info_header(ui, "BEAT DETECTION");
+
+        let (mut manual_bpm_enabled, mut manual_bpm_value) = {
+            let params = self.data.state.audio_params.read().unwrap();
+            (params.manual_bpm.is_some(), params.manual_bpm.unwrap_or(120.0))
+        };
+        ui.horizontal(|ui| {
+            if components::Switch::new(&mut manual_bpm_enabled)
+                .ui(ui)
+                .on_hover_text("Bypasses tempo detection and pins the beat scheduler.")
+                .changed()
+            {
+                let mut params = self.data.state.audio_params.write().unwrap();
+                params.manual_bpm = manual_bpm_enabled.then_some(manual_bpm_value);
+                params.changed = true;
+            }
+            ui.label("Manual BPM");
+            if manual_bpm_enabled {
+                let before = manual_bpm_value;
+                self.manual_bpm_numberpad.ui(ui, &mut manual_bpm_value);
+                if (manual_bpm_value - before).abs() > f32::EPSILON {
+                    let mut params = self.data.state.audio_params.write().unwrap();
+                    params.manual_bpm = Some(manual_bpm_value);
+                    params.changed = true;
+                }
+            }
+        });
+
+        let (status_label, status_detail, status_color) = match debug_data.bpm_status {
+            BpmDetectStatus::Detecting => (
+                "Detecting",
+                "Tempo is being estimated from onsets.".to_string(),
+                INFO_OK_COLOR,
+            ),
+            BpmDetectStatus::NoEnergy => (
+                "No energy",
+                "All bands below the noise floor, no audio to analyze.".to_string(),
+                INFO_BAD_COLOR,
+            ),
+            BpmDetectStatus::Warmup { have, need } => (
+                "Warming up",
+                format!(
+                    "Filling onset history: {have}/{need} (~{:.1}s left).",
+                    ((need.saturating_sub(have)) as f32
+                        * blaulicht_audio_engine::ONSET_SAMPLE_PERIOD_MS as f32)
+                        / 1000.0
+                ),
+                INFO_WARN_COLOR,
+            ),
+            BpmDetectStatus::FlatOnset => (
+                "Flat onset",
+                "Bass without transients (sustained tone), nothing periodic to lock onto."
+                    .to_string(),
+                INFO_WARN_COLOR,
+            ),
+            BpmDetectStatus::WeakPeriodicity {
+                strength,
+                threshold,
+            } => (
+                "Weak periodicity",
+                format!(
+                    "Periodicity {strength:.3} < {threshold:.3}, beat too irregular; \
+                     holding previous estimate."
+                ),
+                INFO_WARN_COLOR,
+            ),
+        };
+        info_status(ui, "Status", status_label, status_color, None);
+        info_hint(ui, &status_detail);
+        info_line(
+            ui,
+            &[
+                (
+                    "latched",
+                    if debug_data.bpm_estimate > 0.0 {
+                        format!("{:.1} BPM", debug_data.bpm_estimate)
+                    } else {
+                        "none yet".to_string()
+                    },
+                ),
+                ("conf", format!("{bpm_confidence_pct}%")),
+            ],
+        );
+
+        // --- Loop tempo worker ---
+        ui.add_space(6.0);
+        info_header(ui, "LOOP TEMPO WORKER");
+        let loop_data = debug_data.loop_tempo;
+        let loop_color = match loop_data.status {
+            blaulicht_audio_engine::LoopTempoStatus::Accepted => INFO_OK_COLOR,
+            blaulicht_audio_engine::LoopTempoStatus::Rejected
+            | blaulicht_audio_engine::LoopTempoStatus::WorkerStopped => INFO_BAD_COLOR,
+            blaulicht_audio_engine::LoopTempoStatus::WarmingUp
+            | blaulicht_audio_engine::LoopTempoStatus::Analyzing => INFO_WARN_COLOR,
+        };
+        info_status(
+            ui,
+            "Status",
+            &format!("{:?}", loop_data.status),
+            loop_color,
+            loop_data.fused.then_some("fused"),
+        );
+        let bpm_or_dash = |bpm: f32| {
+            if bpm > 0.0 {
+                format!("{bpm:.2}")
+            } else {
+                "-".to_string()
+            }
+        };
+        info_line(
+            ui,
+            &[
+                ("candidate", bpm_or_dash(loop_data.candidate_bpm)),
+                ("accepted", bpm_or_dash(loop_data.accepted_bpm)),
+            ],
+        );
+        info_line(
+            ui,
+            &[
+                (
+                    "score",
+                    format!("{:.3}/{:.3}", loop_data.score, loop_data.threshold),
+                ),
+                ("buffer", format!("{:.1}s", loop_data.buffered_seconds)),
+                ("age", format!("{}ms", loop_data.age_ms)),
+            ],
+        );
+    }
+
+    fn info_tracker_column(&mut self, ui: &mut egui::Ui, debug_data: &SignalDebugData) {
+        let tracker = &debug_data.beat_tracker;
+        info_header(ui, "BEAT TRACKER");
+        let (front_end_label, front_end_color) = match tracker.front_end {
+            BeatFrontEnd::Idle => ("idle", INFO_WARN_COLOR),
+            BeatFrontEnd::SpectralFlux => ("spectral flux", INFO_OK_COLOR),
+            BeatFrontEnd::Model => ("model", INFO_OK_COLOR),
+        };
+        let mode_mismatch =
+            tracker.mode == BeatDetection::Model && tracker.front_end == BeatFrontEnd::SpectralFlux;
+        let config_note = if mode_mismatch {
+            "model failed to load".to_string()
+        } else {
+            format!("config: {:?}", tracker.mode).to_lowercase()
+        };
+        info_status(
+            ui,
+            "Front end",
+            front_end_label,
+            if mode_mismatch {
+                INFO_BAD_COLOR
+            } else {
+                front_end_color
+            },
+            Some(&config_note),
+        );
+        if tracker.mode == BeatDetection::Legacy {
+            info_hint(ui, "Legacy mode: the spectrum estimator runs instead.");
+        } else {
+            info_line(
+                ui,
+                &[
+                    (
+                        "tempo",
+                        if tracker.tempo_bpm > 0.0 {
+                            format!("{:.2} BPM", tracker.tempo_bpm)
+                        } else {
+                            "-".to_string()
+                        },
+                    ),
+                    ("conf", format!("{:.0}%", tracker.tempo_confidence * 100.0)),
+                ],
+            );
+            info_line(
+                ui,
+                &[
+                    (
+                        "history",
+                        format!("{}/{}", tracker.history_frames, tracker.history_needed),
+                    ),
+                    (
+                        "manual",
+                        if tracker.manual_bpm { "yes" } else { "no" }.to_string(),
+                    ),
+                ],
+            );
+            info_line(
+                ui,
+                &[(
+                    "challenger",
+                    if tracker.challenger_bpm > 0.0 {
+                        format!(
+                            "{:.1} BPM, held {:.1}/{:.1}s",
+                            tracker.challenger_bpm,
+                            tracker.challenger_held_ms / 1000.0,
+                            tracker.switch_hold_ms / 1000.0
+                        )
+                    } else {
+                        "-".to_string()
+                    },
+                )],
+            );
+            info_line(
+                ui,
+                &[(
+                    "phase",
+                    if tracker.phase_locked {
+                        format!(
+                            "locked, rival {}/{} beats",
+                            tracker.phase_challenger_beats, tracker.phase_jump_beats
+                        )
+                    } else {
+                        "unlocked".to_string()
+                    },
+                )],
+            );
+            info_line(
+                ui,
+                &[
+                    ("next beat", format!("{:+.0} ms", tracker.next_beat_in_ms)),
+                    ("clock off", format!("{:.0} ms", tracker.clock_offset_ms)),
+                ],
+            );
+        }
+
+        let Some(model) = &tracker.model else {
+            return;
+        };
+        ui.add_space(6.0);
+        info_header(ui, "BEAT MODEL");
+        info_line(
+            ui,
+            &[
+                (
+                    "beat",
+                    format!("{:.2} / thr {:.2}", model.beat, model.beat_threshold),
+                ),
+                (
+                    "down",
+                    format!("{:.2} / thr {:.2}", model.downbeat, model.downbeat_threshold),
+                ),
+            ],
+        );
+        info_line(
+            ui,
+            &[
+                ("beats", model.beats.to_string()),
+                ("downbeats", model.downbeats.to_string()),
+                ("frames", model.frames.to_string()),
+            ],
+        );
+        info_line(
+            ui,
+            &[
+                (
+                    "net",
+                    format!(
+                        "{}ch x {} blocks, rf {} fr",
+                        model.channels, model.blocks, model.receptive_field_frames
+                    ),
+                ),
+                ("lead", format!("{:.0} ms", model.lead_ms)),
+            ],
+        );
+        ui.add_space(2.0);
+        // The activation graphs take what is left of the column.
+        let graph_height = ((ui.available_height() - 6.0) / 2.0).clamp(40.0, 110.0);
+        for graph in &self.beat_model_graphs {
+            let (response, painter) = ui.allocate_painter(
+                vec2(ui.available_width(), graph_height),
+                egui::Sense::hover(),
+            );
+            graph.draw(painter, response.rect);
+        }
+    }
+
     pub fn audio_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -284,490 +932,7 @@ impl BlaulichtApp {
         render_context: crate::app::page::PageRenderContext,
     ) {
         if self.audio_info_dialog_open {
-            let debug_data = {
-                let spec = self.data.state.audio_spectrogram.read().unwrap();
-                spec.columns
-                    .back()
-                    .map(|col| col.debug_data.clone())
-                    .unwrap_or_default()
-            };
-            let (
-                mut auto_weight,
-                mut bass_low_value,
-                mut bass_high_value,
-                mut drop_sensitivity_value,
-                mut drop_bass_min_value,
-                mut drop_bass_avg_min_value,
-                mut drop_require_both,
-                mut drop_sustain_value,
-                mut drop_breakdown_hold_value,
-                mut breakdown_sensitivity_value,
-            ) = {
-                let params = self.data.state.audio_params.read().unwrap();
-                (
-                    params.auto_weight,
-                    params.bass_freq_low,
-                    params.bass_freq_high,
-                    params.drop_sensitivity as f32,
-                    params.drop_bass_min as f32,
-                    params.drop_bass_avg_min as f32,
-                    params.drop_require_both,
-                    params.drop_sustain_ms as f32,
-                    params.drop_breakdown_hold_ms as f32,
-                    params.breakdown_sensitivity as f32,
-                )
-            };
-            let (
-                mut breakdown_on_low_bpm,
-                mut breakdown_conf_min_value,
-                mut drop_use_peakiness,
-                mut drop_peakiness_min_value,
-            ) = {
-                let params = self.data.state.audio_params.read().unwrap();
-                (
-                    params.breakdown_on_low_bpm,
-                    params.breakdown_bpm_confidence_min as f32,
-                    params.drop_use_peakiness,
-                    params.drop_peakiness_min as f32,
-                )
-            };
-            let bpm_confidence_pct = (self.collector_snapshot.bpm_confidence * 100.0) as i32;
-
-            let header_color = Color32::from_rgb(120, 170, 255);
-
-            let r = ctx.screen_rect();
-            components::Dialog::new("Info".to_string(), egui::vec2(r.width() / 2.0, r.height()))
-                // .moveable()
-                .with_backdrop()
-                .fixed_pos(egui::vec2(r.width() - 420.0, 0.0))
-                .anchor_right()
-                .show(ctx, |ui| {
-                    if components::button(ui, false, "Info", ButtonSize::Medium) {
-                        self.audio_info_dialog_open = !self.audio_info_dialog_open;
-                    }
-
-                    ui.label(
-                        RichText::new("FREQUENCY BANDS")
-                            .strong()
-                            .color(header_color),
-                    );
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.label("Auto Weight");
-                        if components::Switch::new(&mut auto_weight).ui(ui).changed() {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.auto_weight = auto_weight;
-                            params.changed = true;
-                        }
-                    });
-
-                    ui.add_space(6.0);
-
-                    ui.horizontal(|ui| {
-                        let bass_low_before = bass_low_value;
-                        let bass_high_before = bass_high_value;
-
-                        ui.label(RichText::new("Bass Low (Hz)").size(ButtonSize::Medium.dim().1));
-                        self.bass_low_numberpad.ui(ui, &mut bass_low_value);
-
-                        ui.add_space(40.0);
-
-                        ui.label(RichText::new("Bass High (Hz)").size(ButtonSize::Medium.dim().1));
-                        self.bass_high_numberpad.ui(ui, &mut bass_high_value);
-
-                        if bass_low_value > bass_high_value {
-                            mem::swap(&mut bass_low_value, &mut bass_high_value);
-                        }
-
-                        if bass_low_value != bass_low_before || bass_high_value != bass_high_before
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.bass_freq_low = bass_low_value;
-                            params.bass_freq_high = bass_high_value;
-                            params.changed = true;
-                        }
-                    });
-
-                    ui.add_space(8.0);
-
-                    for (idx, band) in self.band_energy_graphs.iter().enumerate() {
-                        let graph_height = 100.0;
-                        let metrics_width = 140.0;
-                        let graph_width = (ui.available_width() - metrics_width - 12.0).max(140.0);
-
-                        ui.horizontal(|ui| {
-                            let (response, painter) = ui.allocate_painter(
-                                egui::vec2(graph_width, graph_height),
-                                egui::Sense::hover(),
-                            );
-                            band.draw(painter, response.rect);
-
-                            ui.add_space(8.0);
-
-                            ui.vertical(|ui| {
-                                ui.set_width(metrics_width);
-                                ui.label(format!(
-                                    "Peakiness: {:.2}",
-                                    debug_data.band_onset_peakiness[idx]
-                                ));
-                                ui.label(format!(
-                                    "Periodicity: {:.2}",
-                                    debug_data.band_onset_periodicity[idx]
-                                ));
-                                ui.label(format!(
-                                    "Trans. Stre: {:.2}",
-                                    debug_data.band_transient_strength[idx]
-                                ));
-                                ui.label(format!("Weight: {:.2}", debug_data.band_weights[idx]));
-                            });
-                        });
-                    }
-
-                    ui.add_space(12.0);
-
-                    ui.label(RichText::new("DROP DETECTION").strong().color(header_color));
-                    ui.separator();
-
-                    // --- Trigger ---
-                    ui.label(
-                        RichText::new(
-                            "Trigger — how easily a quiet \u{2192} sudden-bass arms a drop",
-                        )
-                        .small()
-                        .weak(),
-                    );
-                    ui.add_space(2.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut drop_sensitivity_value, 0.0..=100.0)
-                                .with_label("Drop Sensitivity"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.drop_sensitivity = drop_sensitivity_value as u8;
-                        params.changed = true;
-                    }
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if components::Switch::new(&mut drop_use_peakiness)
-                            .ui(ui)
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.drop_use_peakiness = drop_use_peakiness;
-                            params.changed = true;
-                        }
-                        ui.label("Also arm drop on bass peakiness");
-                    });
-                    if drop_use_peakiness {
-                        ui.add_space(2.0);
-                        if ui
-                            .add(
-                                HFader::new(&mut drop_peakiness_min_value, 0.0..=20.0)
-                                    .with_label("Min Bass Peakiness"),
-                            )
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.drop_peakiness_min = drop_peakiness_min_value as u8;
-                            params.changed = true;
-                        }
-                    }
-
-                    ui.add_space(10.0);
-
-                    // --- Presence gates ---
-                    ui.label(
-                        RichText::new("Bass gates — levels that count as \"bass present\"")
-                            .small()
-                            .weak(),
-                    );
-                    ui.add_space(2.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut drop_bass_min_value, 0.0..=255.0)
-                                .with_label("Min Bass (instant)"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.drop_bass_min = drop_bass_min_value as u8;
-                        params.changed = true;
-                    }
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut drop_bass_avg_min_value, 0.0..=255.0)
-                                .with_label("Min Bass Avg"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.drop_bass_avg_min = drop_bass_avg_min_value as u8;
-                        params.changed = true;
-                    }
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if components::Switch::new(&mut drop_require_both)
-                            .ui(ui)
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.drop_require_both = drop_require_both;
-                            params.changed = true;
-                        }
-                        ui.label(if drop_require_both {
-                            "Both gates required"
-                        } else {
-                            "Either gate is enough"
-                        });
-                    });
-
-                    ui.add_space(10.0);
-
-                    // --- Timing ---
-                    ui.label(
-                        RichText::new("Timing — hold to confirm a drop / silence to fall back")
-                            .small()
-                            .weak(),
-                    );
-                    ui.add_space(2.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut drop_sustain_value, 0.0..=2000.0)
-                                .with_label("Drop Sustain (ms)"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.drop_sustain_ms = drop_sustain_value as u16;
-                        params.changed = true;
-                    }
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut breakdown_sensitivity_value, 0.0..=255.0)
-                                .with_label("Bass Avg Short Gate"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.breakdown_sensitivity = breakdown_sensitivity_value as u8;
-                        params.changed = true;
-                    }
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            HFader::new(&mut drop_breakdown_hold_value, 0.0..=5000.0)
-                                .with_label("Breakdown Hold (ms)"),
-                        )
-                        .changed()
-                    {
-                        let mut params = self.data.state.audio_params.write().unwrap();
-                        params.drop_breakdown_hold_ms = drop_breakdown_hold_value as u16;
-                        params.changed = true;
-                    }
-
-                    ui.add_space(10.0);
-
-                    // --- Rhythm confidence ---
-                    ui.label(
-                        RichText::new(format!("Rhythm — BPM confidence: {bpm_confidence_pct}%"))
-                            .small()
-                            .weak(),
-                    );
-                    ui.add_space(2.0);
-                    ui.horizontal(|ui| {
-                        if components::Switch::new(&mut breakdown_on_low_bpm)
-                            .ui(ui)
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.breakdown_on_low_bpm = breakdown_on_low_bpm;
-                            params.changed = true;
-                        }
-                        ui.label("Breakdown on weak rhythm");
-                    });
-                    if breakdown_on_low_bpm {
-                        ui.add_space(2.0);
-                        if ui
-                            .add(
-                                HFader::new(&mut breakdown_conf_min_value, 0.0..=100.0)
-                                    .with_label("Min Rhythm Conf (%)"),
-                            )
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.breakdown_bpm_confidence_min = breakdown_conf_min_value as u8;
-                            params.changed = true;
-                        }
-                    }
-
-                    // --- Beat-detection diagnostics (bottom of popup) ---
-                    // Surfaces which gating-chain element the tempo estimator is
-                    // currently stuck on, so it's clear when to expect a BPM.
-                    ui.add_space(12.0);
-                    ui.separator();
-                    ui.label(RichText::new("BEAT DETECTION").strong().color(header_color));
-                    ui.add_space(4.0);
-
-                    let (mut manual_bpm_enabled, mut manual_bpm_value) = {
-                        let params = self.data.state.audio_params.read().unwrap();
-                        let v = params.manual_bpm.unwrap_or(120.0);
-                        (params.manual_bpm.is_some(), v)
-                    };
-                    ui.horizontal(|ui| {
-                        if components::Switch::new(&mut manual_bpm_enabled)
-                            .ui(ui)
-                            .changed()
-                        {
-                            let mut params = self.data.state.audio_params.write().unwrap();
-                            params.manual_bpm = if manual_bpm_enabled {
-                                Some(manual_bpm_value)
-                            } else {
-                                None
-                            };
-                            params.changed = true;
-                        }
-                        ui.label(RichText::new("Manual BPM").size(ButtonSize::Medium.dim().1));
-                        if manual_bpm_enabled {
-                            let before = manual_bpm_value;
-                            self.manual_bpm_numberpad.ui(ui, &mut manual_bpm_value);
-                            if (manual_bpm_value - before).abs() > f32::EPSILON {
-                                let mut params = self.data.state.audio_params.write().unwrap();
-                                params.manual_bpm = Some(manual_bpm_value);
-                                params.changed = true;
-                            }
-                        }
-                    });
-                    ui.label(
-                        RichText::new("Bypasses tempo detection and pins the beat scheduler.")
-                            .small()
-                            .weak(),
-                    );
-                    ui.add_space(6.0);
-
-                    let ok_color = Color32::from_rgb(120, 220, 140);
-                    let warn_color = Color32::from_rgb(240, 200, 100);
-                    let bad_color = Color32::from_rgb(240, 130, 130);
-
-                    let (status_label, status_detail, status_color) = match debug_data.bpm_status {
-                        BpmDetectStatus::Detecting => (
-                            "Detecting".to_string(),
-                            "Tempo is being estimated from onsets.".to_string(),
-                            ok_color,
-                        ),
-                        BpmDetectStatus::NoEnergy => (
-                            "No energy".to_string(),
-                            "All bands below the noise floor — no audio to analyze.".to_string(),
-                            bad_color,
-                        ),
-                        BpmDetectStatus::Warmup { have, need } => (
-                            "Warming up".to_string(),
-                            format!(
-                                "Filling onset history: {have}/{need} samples (~{:.1}s left).",
-                                ((need.saturating_sub(have)) as f32
-                                    * blaulicht_audio_engine::ONSET_SAMPLE_PERIOD_MS as f32)
-                                    / 1000.0
-                            ),
-                            warn_color,
-                        ),
-                        BpmDetectStatus::FlatOnset => (
-                            "Flat onset".to_string(),
-                            "Bass is present but has no transients (sustained tone) — \
-                             nothing periodic to lock onto."
-                                .to_string(),
-                            warn_color,
-                        ),
-                        BpmDetectStatus::WeakPeriodicity {
-                            strength,
-                            threshold,
-                        } => (
-                            "Weak periodicity".to_string(),
-                            format!(
-                                "Periodicity {strength:.3} below threshold {threshold:.3} — \
-                                 beat too irregular; holding previous estimate."
-                            ),
-                            warn_color,
-                        ),
-                    };
-
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Status:").small().weak());
-                        ui.label(RichText::new(status_label).strong().color(status_color));
-                    });
-                    ui.label(RichText::new(status_detail).small().weak());
-                    ui.add_space(2.0);
-                    ui.label(
-                        RichText::new(if debug_data.bpm_estimate > 0.0 {
-                            format!(
-                                "Latched BPM: {:.1}  •  confidence {bpm_confidence_pct}%",
-                                debug_data.bpm_estimate
-                            )
-                        } else {
-                            format!(
-                                "Latched BPM: — (none yet)  •  confidence {bpm_confidence_pct}%"
-                            )
-                        })
-                        .small()
-                        .weak(),
-                    );
-
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new("LOOP TEMPO WORKER")
-                            .strong()
-                            .color(header_color),
-                    );
-                    let loop_data = debug_data.loop_tempo;
-                    let loop_color = match loop_data.status {
-                        blaulicht_audio_engine::LoopTempoStatus::Accepted => ok_color,
-                        blaulicht_audio_engine::LoopTempoStatus::Rejected
-                        | blaulicht_audio_engine::LoopTempoStatus::WorkerStopped => bad_color,
-                        blaulicht_audio_engine::LoopTempoStatus::WarmingUp
-                        | blaulicht_audio_engine::LoopTempoStatus::Analyzing => warn_color,
-                    };
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Status:").small().weak());
-                        ui.label(
-                            RichText::new(format!("{:?}", loop_data.status))
-                                .strong()
-                                .color(loop_color),
-                        );
-                        if loop_data.fused {
-                            ui.label(RichText::new("fused").small().color(ok_color));
-                        }
-                    });
-                    ui.label(
-                        RichText::new(format!(
-                            "Candidate: {}  •  accepted: {}  •  score {:.3}/{:.3}",
-                            if loop_data.candidate_bpm > 0.0 {
-                                format!("{:.2} BPM", loop_data.candidate_bpm)
-                            } else {
-                                "—".to_string()
-                            },
-                            if loop_data.accepted_bpm > 0.0 {
-                                format!("{:.2} BPM", loop_data.accepted_bpm)
-                            } else {
-                                "—".to_string()
-                            },
-                            loop_data.score,
-                            loop_data.threshold,
-                        ))
-                        .small()
-                        .weak(),
-                    );
-                    ui.label(
-                        RichText::new(format!(
-                            "Buffer: {:.1}s  •  result age: {}ms",
-                            loop_data.buffered_seconds, loop_data.age_ms
-                        ))
-                        .small()
-                        .weak(),
-                    );
-                });
+            self.render_audio_info_dialog(ctx);
         }
 
         ui.horizontal(|ui| {

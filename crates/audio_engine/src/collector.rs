@@ -8,6 +8,7 @@ use blaulicht_shared::CollectedAudioSnapshot;
 use serde::Serialize;
 // use cpal::{traits::DeviceTrait, Device};
 use crate::{
+    beat_tracker::{BeatDetection, BeatTracker},
     AudioSource, Frequency, Signal, BASS_FRAMES, LONG_HISTORIC_FRAMES, ONSET_SAMPLE_PERIOD_MS,
     ROLLING_AVERAGE_FRAMES, ROLLING_AVERAGE_VOLUME_SAMPLE_SIZE,
 };
@@ -118,6 +119,13 @@ pub struct CollectorScratch {
     pub(crate) section_active_accum_ms: usize,
     pub(crate) section_prev_bass_hit: bool,
     pub(crate) section_drop_confirm_started_ms: Option<usize>,
+
+    /// PCM tempo/beat tracker; in charge of BPM and beats once the source
+    /// provides PCM (see `AudioSource::drain_samples`).
+    pub(crate) beat_tracker: BeatTracker,
+    pub(crate) pcm_scratch: Vec<f32>,
+    /// Frames since the per-band periodicity readout was last refreshed.
+    pub(crate) periodicity_age: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -192,6 +200,9 @@ impl CollectorScratch {
             section_active_accum_ms: 0,
             section_prev_bass_hit: false,
             section_drop_confirm_started_ms: None,
+            beat_tracker: BeatTracker::default(),
+            pcm_scratch: Vec::new(),
+            periodicity_age: 0,
         }
     }
 }
@@ -297,6 +308,9 @@ where
     pub scratch: CollectorScratch,
     pub outputs: [CollectorOutputSpec; NUM_OUTPUTS],
     pub output_event_cursors: [AudioEventCursor; NUM_OUTPUTS],
+    /// PCM drained from the source this tick, kept for secondary analyzers.
+    captured_samples: Vec<f32>,
+    beat_detection: BeatDetection,
 }
 
 impl<const NUM_OUTPUTS: usize, SourceT> SignalCollector<NUM_OUTPUTS, SourceT>
@@ -307,6 +321,23 @@ where
     /// scheduler, published snapshot, and next live-estimator update coherent.
     pub fn apply_tempo_estimate(&mut self, bpm: f32, confidence: f32) {
         if !bpm.is_finite() || bpm <= 0.0 || !confidence.is_finite() {
+            return;
+        }
+        if self.scratch.beat_tracker.is_active() {
+            // The tracker only adopts a hint close to its own tempo, so a
+            // disagreeing secondary estimate cannot break its lock.
+            self.scratch.beat_tracker.apply_tempo_hint(bpm);
+            let Some(tempo) = self.scratch.beat_tracker.tempo() else {
+                return;
+            };
+            let interval = 60_000.0 / tempo.bpm;
+            self.scratch.bpm_estimate = tempo.bpm;
+            self.scratch.beat_interval_ms = interval;
+            self.scratch.bpm_confidence_ema = confidence.clamp(0.0, 1.0);
+            self.current.bpm = tempo.bpm;
+            self.current.time_between_beats_millis =
+                interval.round().clamp(1.0, u16::MAX as f32) as u16;
+            self.current.bpm_confidence = self.scratch.bpm_confidence_ema;
             return;
         }
         let interval = 60_000.0 / bpm;
@@ -410,7 +441,21 @@ where
             outputs,
             output_event_cursors: [AudioEventCursor::default(); NUM_OUTPUTS],
             audio_source,
+            captured_samples: Vec::new(),
+            beat_detection: BeatDetection::default(),
         })
+    }
+
+    pub fn beat_detection(&self) -> BeatDetection {
+        self.beat_detection
+    }
+
+    /// Choose how beats and tempo are detected. Switching restarts tracking.
+    pub fn set_beat_detection(&mut self, mode: BeatDetection) {
+        if mode != self.beat_detection {
+            self.beat_detection = mode;
+            self.scratch.beat_tracker.reset();
+        }
     }
 
     fn calibrate(&mut self, now: usize) {
@@ -496,6 +541,41 @@ where
         true
     }
 
+    /// Move the PCM captured since the last call into `output`, for
+    /// secondary analyzers. The collector drains the source itself, so call
+    /// this instead of `audio_source.drain_samples`.
+    pub fn drain_samples(&mut self, output: &mut Vec<f32>) {
+        output.append(&mut self.captured_samples);
+    }
+
+    fn feed_beat_tracker(&mut self, now: usize) {
+        self.scratch.pcm_scratch.clear();
+        self.audio_source
+            .drain_samples(&mut self.scratch.pcm_scratch);
+        if self.scratch.pcm_scratch.is_empty() {
+            return;
+        }
+        let Some(sample_rate) = self.audio_source.sample_rate() else {
+            return;
+        };
+        // In legacy mode the tracker never activates, so `signals.rs` keeps
+        // its spectrum-only estimator; the PCM still reaches other analyzers.
+        if self.beat_detection != BeatDetection::Legacy {
+            // Re-applied every call: `clear()` rebuilds the tracker.
+            let tracker = &mut self.scratch.beat_tracker;
+            tracker.set_use_model(self.beat_detection == BeatDetection::Model);
+            tracker.push(&self.scratch.pcm_scratch, sample_rate, now as f64);
+        }
+        // Bounded in case nobody drains: keep the newest 10 s.
+        self.captured_samples
+            .extend_from_slice(&self.scratch.pcm_scratch);
+        let cap = sample_rate as usize * 10;
+        if self.captured_samples.len() > cap {
+            let excess = self.captured_samples.len() - cap;
+            self.captured_samples.drain(..excess);
+        }
+    }
+
     pub fn clear(&mut self) {
         // self.freqs = vec![];
         self.scratch = CollectorScratch::new(self.scratch_params, 0);
@@ -521,6 +601,7 @@ where
         }
 
         let has_new_frame = self.get_frequencies(now);
+        self.feed_beat_tracker(now);
 
         if !has_new_frame {
             self.current.source_status = blaulicht_shared::AudioSourceStatus::NoFrame;
@@ -542,6 +623,7 @@ where
                 self.scratch.bpm_confidence_ema = 0.0;
                 self.scratch.beat_scheduler_initialized = false;
                 self.scratch.beat_needs_sync = true;
+                self.scratch.beat_tracker.reset();
                 self.scratch.onset_history.clear();
                 for history in &mut self.scratch.band_onset_history {
                     history.clear();
@@ -660,6 +742,8 @@ pub struct SignalDebugData {
     pub bpm_estimate: f32,
     /// Independent complete-loop estimator state populated by the core worker.
     pub loop_tempo: LoopTempoDebugData,
+    /// PCM beat tracker / learned beat model internals.
+    pub beat_tracker: crate::BeatTrackerDebugData,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -967,6 +1051,152 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    /// Kick sweeps at a fixed tempo as PCM, plus a static bass-heavy spectrum
+    /// so the bass gate stays open.
+    struct PcmSourceForTest {
+        rate: u32,
+        bpm: f32,
+        produced: usize,
+        pending: Vec<f32>,
+        freqs: Vec<Frequency>,
+    }
+
+    impl AudioSource for PcmSourceForTest {
+        fn get_freq_buffer_size(&self) -> usize {
+            self.freqs.len()
+        }
+
+        fn get_frequencies(&mut self, now: usize) -> (&[Frequency], bool) {
+            let target = now * self.rate as usize / 1000;
+            let block = self.rate as usize / 100;
+            let period = (60.0 / self.bpm * self.rate as f32) as usize;
+            let mut has_new = false;
+            while self.produced + block <= target {
+                for i in self.produced..self.produced + block {
+                    let x = (i % period) as f32 / self.rate as f32;
+                    let phase = 50.0 * x + 350.0 / 30.0 * (1.0 - (-x * 30.0).exp());
+                    self.pending
+                        .push(0.6 * (-x * 12.0).exp() * (2.0 * std::f32::consts::PI * phase).sin());
+                }
+                self.produced += block;
+                has_new = true;
+            }
+            (&self.freqs, has_new)
+        }
+
+        fn sample_rate(&self) -> Option<u32> {
+            Some(self.rate)
+        }
+
+        fn drain_samples(&mut self, output: &mut Vec<f32>) {
+            output.append(&mut self.pending);
+        }
+    }
+
+    #[test]
+    fn pcm_source_drives_tracker_and_passes_samples_on() {
+        let source = PcmSourceForTest {
+            rate: 44_100,
+            bpm: 132.0,
+            produced: 0,
+            pending: Vec::new(),
+            freqs: vec![
+                Frequency {
+                    volume: 1.0,
+                    freq: 60.0,
+                    position: 0.0,
+                };
+                4
+            ],
+        };
+        let mut collector = SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            source,
+            0,
+        )
+        .unwrap();
+
+        let mut drained = Vec::new();
+        let mut beats_after_warmup = 0;
+        let mut last_beat_id = 0;
+        for now in 0..15_000u64 {
+            collector.tick(now).unwrap();
+            collector.drain_samples(&mut drained);
+            if collector.current.beat_event_id != last_beat_id {
+                last_beat_id = collector.current.beat_event_id;
+                if now >= 10_000 {
+                    beats_after_warmup += 1;
+                }
+            }
+        }
+
+        assert!(collector.scratch.beat_tracker.is_active());
+        assert!(
+            (collector.current.bpm - 132.0).abs() < 0.5,
+            "{}",
+            collector.current.bpm
+        );
+        // 5 s at 132 BPM is 11 beats.
+        assert!(
+            (10..=12).contains(&beats_after_warmup),
+            "{beats_after_warmup}"
+        );
+        // Secondary analyzers still receive every captured sample.
+        assert_eq!(drained.len(), 14_990 * 441 / 10);
+    }
+
+    fn pcm_test_collector() -> SignalCollector<1, PcmSourceForTest> {
+        let source = PcmSourceForTest {
+            rate: 44_100,
+            bpm: 132.0,
+            produced: 0,
+            pending: Vec::new(),
+            freqs: vec![
+                Frequency {
+                    volume: 1.0,
+                    freq: 60.0,
+                    position: 0.0,
+                };
+                4
+            ],
+        };
+        SignalCollector::new(
+            SignalCollectorParams::default(),
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            source,
+            0,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn legacy_detection_keeps_tracker_idle_but_passes_samples_on() {
+        let mut collector = pcm_test_collector();
+        collector.set_beat_detection(BeatDetection::Legacy);
+        let mut drained = Vec::new();
+        for now in 0..2_000u64 {
+            collector.tick(now).unwrap();
+            collector.drain_samples(&mut drained);
+        }
+        assert!(!collector.scratch.beat_tracker.is_active());
+        assert_eq!(drained.len(), 1_990 * 441 / 10);
+    }
+
+    #[test]
+    fn model_detection_survives_clear() {
+        let mut collector = pcm_test_collector();
+        collector.set_beat_detection(BeatDetection::Model);
+        collector.tick(0).unwrap();
+        collector.clear();
+        for now in 1..100u64 {
+            collector.tick(now).unwrap();
+        }
+        assert!(collector.scratch.beat_tracker.uses_model());
     }
 
     #[derive(Default)]

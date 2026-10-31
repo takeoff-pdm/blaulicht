@@ -83,6 +83,37 @@ Target navigation (agreed 2026-09-27):
 | 028 | [Plugin list: kind tags, no Show UI for animation plugins](TICKETS/028-plugin-list-ux.planned.md) | planned | — |
 | 029 | [Plugins can open/close their own UI and navigate pages](TICKETS/029-plugin-self-ui-control.planned.md) | planned | 005 |
 
+### E9 — Console UI
+
+Design system: [Blaulicht Console](https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) (Console direction, navy palette; chosen 2026-10-30).
+
+| # | Ticket | Status | Depends on |
+|---|---|---|---|
+| 032 | [UI tokens, density and theme foundation](TICKETS/032-ui-tokens-density.planned.md) | planned | — |
+| 033 | [Core components: Button variants, ListRow, Chip, Status](TICKETS/033-ui-core-components.planned.md) | planned | 032 |
+| 034 | [Sheets, context menus, toasts and engine refusal feedback](TICKETS/034-ui-overlays-feedback.planned.md) | planned | 032, 033 |
+| 035 | [Shell: page header with action overflow, nav rail and tab bar](TICKETS/035-ui-shell-header-nav.planned.md) | planned | 032, 033 |
+| 036 | [Programmer in the Console layout](TICKETS/036-ui-programmer-redesign.planned.md) | planned | 033, 034, 035 |
+| 037 | [Setup tabs as master–detail in the Console style](TICKETS/037-ui-setup-master-detail.planned.md) | planned | 033, 034, 035 |
+| 038 | [Remaining pages in the Console style](TICKETS/038-ui-remaining-pages.planned.md) | planned | 033, 034, 035 |
+
+### E10 — Decouple engine and frontends
+
+Headless core, with the native UI as one frontend among several. Model and order: [`TICKETS/decouple/README.md`](TICKETS/decouple/README.md).
+
+| # | Ticket | Status | Depends on |
+|---|---|---|---|
+| 039 | [Move view state out of AppState](TICKETS/decouple/039-view-state-out-of-appstate.planned.md) | planned | — |
+| 040 | [Operator sessions in the engine](TICKETS/decouple/040-operator-sessions.planned.md) | planned | — |
+| 041 | [Live mode becomes a live preview in show state](TICKETS/decouple/041-live-preview-show-state.planned.md) | planned | 040 |
+| 042 | [EngineClient trait and Programmer as the pilot](TICKETS/decouple/042-engine-client-programmer-pilot.planned.md) | planned | 040, 041 |
+| 043 | [Setup pages onto EngineClient](TICKETS/decouple/043-commands-setup-pages.planned.md) | planned | 042 |
+| 044 | [Performance, View, Scene graph and Visualizer pages onto EngineClient](TICKETS/decouple/044-commands-performance-visualizer.planned.md) | planned | 042 |
+| 045 | [System and Audio pages onto EngineClient](TICKETS/decouple/045-commands-system-audio.planned.md) | planned | 042 |
+| 046 | [Engine crate without egui, and a headless binary](TICKETS/decouple/046-engine-crate-headless.planned.md) | planned | 039, 043, 044, 045 |
+| 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.planned.md) | planned | 046 |
+| 048 | [Web frontend](TICKETS/decouple/048-web-frontend.planned.md) | planned | 047 |
+
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
 Items marked `→ TICKET NNN` are covered by that ticket.

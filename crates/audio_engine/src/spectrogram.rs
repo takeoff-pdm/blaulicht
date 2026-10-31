@@ -140,11 +140,12 @@ fn downsample(columns_data: &[CollectorOutput], pixels_per_column: f32) -> Vec<C
 /// Height in pixels of the onset marker drawn in the bottom padding.
 const ONSET_MARKER_HEIGHT: usize = 4;
 
-/// Mix the beat marker colour over a spectrogram pixel.
+/// Mix the beat marker colour over a spectrogram pixel. Cyan stays distinct
+/// from the warm colour map without dominating it.
 fn blend_beat_marker(under: Color32) -> Color32 {
-    const ALPHA: u32 = 160;
+    const ALPHA: u32 = 80;
     let mix = |u: u8, m: u8| ((u as u32 * (255 - ALPHA) + m as u32 * ALPHA) / 255) as u8;
-    Color32::from_rgb(mix(under.r(), 255), mix(under.g(), 40), mix(under.b(), 40))
+    Color32::from_rgb(mix(under.r(), 90), mix(under.g(), 210), mix(under.b(), 255))
 }
 
 /// Pixel rows `[y_min, y_max)` covered by `bin_index` when `bin_count` bins
@@ -258,7 +259,7 @@ fn draw_averaged_columns(
 
 /// Overlay beat and onset markers on the pixel columns `x_start..x_end`.
 ///
-/// A beat is a translucent red line blended over the spectrum so the data
+/// A beat is a translucent cyan line blended over the spectrum so the data
 /// underneath stays readable; with many collector columns per pixel a beat
 /// marks a whole pixel column, and opaque lines would hide a large share of
 /// the image at dense tempos. An onset is a short magenta bar in the bottom
@@ -659,33 +660,30 @@ pub fn create_spectrogram_image_with_freqs(
     image
 }
 
-// Classic spectrogram: black -> purple -> blue -> cyan -> green -> yellow -> red -> white
-fn spectrogram_color(intensity: u8) -> Color32 {
-    let t = (intensity as f32 / 255.0).powf(0.5); // Gamma correction
+/// Inferno colour map stops (matplotlib), dark to bright.
+const INFERNO: [(u8, u8, u8); 11] = [
+    (0, 0, 4),
+    (22, 11, 57),
+    (66, 10, 104),
+    (106, 23, 110),
+    (147, 38, 103),
+    (188, 55, 84),
+    (221, 81, 58),
+    (243, 120, 25),
+    (252, 165, 10),
+    (246, 215, 70),
+    (252, 255, 164),
+];
 
-    let (r, g, b) = if t < 0.2 {
-        // Black to Purple
-        let local_t = t / 0.2;
-        (local_t * 0.5, 0.0, local_t)
-    } else if t < 0.4 {
-        // Purple to Blue
-        let local_t = (t - 0.2) / 0.2;
-        (0.5 - local_t * 0.5, 0.0, 1.0)
-    } else if t < 0.6 {
-        // Blue to Cyan/Green
-        let local_t = (t - 0.4) / 0.2;
-        (0.0, local_t, 1.0)
-    } else if t < 0.8 {
-        // Cyan to Yellow
-        let local_t = (t - 0.6) / 0.2;
-        (local_t, 1.0, 1.0 - local_t)
-    } else {
-        // Yellow to Red to White
-        let local_t = (t - 0.8) / 0.2;
-        (1.0, 1.0 - local_t * 0.5, local_t * 0.3)
-    };
-
-    Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+/// Maps a bin intensity onto the inferno colour map. The mild gamma lifts
+/// quiet detail without washing the noise floor into a saturated haze.
+pub fn spectrogram_color(intensity: u8) -> Color32 {
+    let t = (intensity as f32 / 255.0).powf(0.7) * (INFERNO.len() - 1) as f32;
+    let index = (t as usize).min(INFERNO.len() - 2);
+    let frac = t - index as f32;
+    let (a, b) = (INFERNO[index], INFERNO[index + 1]);
+    let lerp = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * frac).round() as u8;
+    Color32::from_rgb(lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
 }
 
 #[cfg(test)]
@@ -727,11 +725,22 @@ mod tests {
     #[test]
     fn beat_marker_keeps_the_spectrum_visible() {
         let over_black = blend_beat_marker(Color32::BLACK);
-        let over_cyan = blend_beat_marker(Color32::from_rgb(0, 255, 255));
-        assert!(over_black.r() > 150 && over_black.g() < 40);
+        let over_orange = blend_beat_marker(Color32::from_rgb(243, 120, 25));
+        assert!(over_black.b() > over_black.r() && over_black.b() < 128);
         // The colour underneath still shows through.
-        assert!(over_cyan.g() > over_black.g() && over_cyan.b() > over_black.b());
-        assert!(over_cyan.r() > 150);
+        assert!(over_orange.r() > over_black.r() + 100);
+        assert!(over_orange.g() > over_black.g());
+    }
+
+    #[test]
+    fn spectrogram_color_spans_the_colour_map() {
+        assert_eq!(spectrogram_color(0), Color32::from_rgb(0, 0, 4));
+        assert_eq!(spectrogram_color(255), Color32::from_rgb(252, 255, 164));
+        let luminance = |c: Color32| c.r() as u32 * 3 + c.g() as u32 * 6 + c.b() as u32;
+        for i in 0..255u8 {
+            // Allow for per-channel rounding.
+            assert!(luminance(spectrogram_color(i)) <= luminance(spectrogram_color(i + 1)) + 4);
+        }
     }
 
     #[test]

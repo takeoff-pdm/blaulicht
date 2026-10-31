@@ -1,0 +1,16 @@
+[package]
+name = "blaulicht-audio-features"
+version = "0.1.0"
+edition = "2021"
+description = "Streaming log-mel front end shared by the live engine and model training"
+
+[dependencies]
+rustfft = "6.4.1"
+
+# audio-features binary
+anyhow = "1.0.100"
+clap = { version = "4.5.21", features = ["derive"] }
+
+[[bin]]
+name = "audio-features"
+path = "src/main.rs"

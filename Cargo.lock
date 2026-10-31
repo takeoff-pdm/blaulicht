@@ -518,6 +518,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "audioviz",
+ "blaulicht-audio-features",
  "blaulicht-shared",
  "clap",
  "cpal 0.15.3",
@@ -538,8 +539,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "blaulicht-audio-features"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rustfft",
+]
+
+[[package]]
 name = "blaulicht-core"
-version = "0.28.0"
+version = "0.30.0"
 dependencies = [
  "anyhow",
  "artnet_protocol",
@@ -607,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "blaulicht-shared"
-version = "0.28.0"
+version = "0.30.0"
 dependencies = [
  "bincode",
  "color_space",

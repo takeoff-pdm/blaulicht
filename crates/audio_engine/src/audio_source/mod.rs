@@ -6,6 +6,9 @@ pub mod file;
 #[cfg(feature = "stream_in")]
 pub mod microphone;
 
+#[cfg(feature = "stream_in")]
+pub mod stream_frames;
+
 #[cfg(feature = "noise")]
 pub mod noise;
 

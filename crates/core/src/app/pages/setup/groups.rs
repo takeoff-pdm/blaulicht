@@ -226,9 +226,15 @@ impl BlaulichtApp {
             });
 
         ui.add_space(6.0);
-        if components::button(ui, false, "Edit Fixtures", ButtonSize::Medium) {
-            self.open_subpage(AppSubPage::Setup_Fixtures);
-        }
+        ui.horizontal(|ui| {
+            if components::button(ui, false, "Edit Fixtures", ButtonSize::Medium) {
+                self.open_subpage(AppSubPage::Setup_Fixtures);
+            }
+            if components::button(ui, false, "Show in Visualizer", ButtonSize::Medium) {
+                let fixtures: Vec<_> = group.fixtures.keys().map(|fid| (group_id, *fid)).collect();
+                self.show_fixtures_in_visualizer(fixtures);
+            }
+        });
     }
 
     fn render_delete_group_dialog(&mut self, ctx: &Context) {

@@ -237,12 +237,9 @@ const SILENCE_BEAT_MULTIPLIER: f32 = 2.0;
 // toward a plausible tempo without overriding strong evidence elsewhere.
 // Standard Davies & Plumbley weighting; librosa uses a log-normal variant.
 const TEMPO_PRIOR_CENTER_BPM: f32 = 120.0;
-// Minimum weighted autocorrelation peak to accept a new BPM estimate. The
-// weighted score includes a tempo prior, so quiet or heavily layered tracks
-// can have a stable rhythm below the old 0.01 cutoff. 0.008 retains the
-// confidence gate while admitting those tracks without accepting near-zero
-// correlation noise.
-const BPM_CONFIDENCE_THRESHOLD: f32 = 0.008;
+// Minimum normalized autocorrelation at the chosen lag to accept a new BPM
+// estimate; below it the previous estimate is held.
+const BPM_CONFIDENCE_THRESHOLD: f32 = 0.1;
 const MIN_BPM: f32 = 80.0;
 const MAX_BPM: f32 = 200.0;
 const MID_FREQ_HIGH: f32 = 2000.0;
@@ -268,9 +265,6 @@ const ACTIVE_BEAT_DIRECT_MS: usize = 5000;
 // Bass-onset (log-flux) threshold at sensitivity 0; scales toward 0 as
 // sensitivity rises so a louder jump is required when less sensitive.
 const DROP_ONSET_THRESH_MAX: f32 = 0.5;
-// Raw autocorrelation-peak strength treated as "fully confident" when
-// normalizing BPM confidence to 0..1 for display/use.
-const BPM_CONFIDENCE_REF: f32 = 0.05;
 // EMA smoothing for the (normalized) BPM confidence signal.
 const BPM_CONFIDENCE_ALPHA: f32 = 0.05;
 
@@ -412,6 +406,13 @@ where
 
     pub fn bass(&mut self, now: usize, has_new_frame: bool) -> anyhow::Result<()> {
         let mut onset_peak = false;
+        // With PCM available the dedicated tracker owns tempo and beats; the
+        // spectrum-based estimator below is the fallback for PCM-less sources.
+        let tracker_active = self.scratch.beat_tracker.is_active();
+        self.scratch
+            .beat_tracker
+            .set_manual_bpm(self.params.manual_bpm);
+        let tracker_onset = tracker_active && self.scratch.beat_tracker.take_onset();
         let mut bass_sig = self.current.bass;
         let mut bass_moving_average = self.current.bass_avg as f64;
 
@@ -529,14 +530,23 @@ where
             // clearer periodic content contribute more to the BPM input signal.
             let mut band_onset_peakiness = [0.0_f32; 3];
             let mut band_onset_periodicity = [0.0_f32; 3];
-            if bpm_gate_open {
-                let period_for_periodicity =
-                    self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
+            // These only feed the readout (and drop peakiness) once the tracker
+            // is in charge, so refresh them every few frames instead of
+            // running three autocorrelations per frame.
+            let refresh_periodicity = !tracker_active || self.scratch.periodicity_age == 0;
+            if tracker_active {
+                self.scratch.periodicity_age = (self.scratch.periodicity_age + 1) % 10;
+            }
+            if bpm_gate_open && refresh_periodicity {
+                let period_for_periodicity = self.scratch.onset_sample_period_ema_ms.max(1.0);
                 for (idx, history) in self.scratch.band_onset_history.iter_mut().enumerate() {
                     band_onset_peakiness[idx] = Self::onset_peakiness(history.make_contiguous());
                     band_onset_periodicity[idx] =
                         Self::onset_periodicity(history.make_contiguous(), period_for_periodicity);
                 }
+            } else if bpm_gate_open {
+                band_onset_peakiness = self.scratch.last_band_onset_peakiness;
+                band_onset_periodicity = self.scratch.last_band_onset_periodicity;
             }
 
             let band_weights = if self.params.auto_weight {
@@ -591,7 +601,22 @@ where
                 self.scratch.onset_sample_period_ema_ms = self.scratch.onset_sample_period_ema_ms
                     + 0.02 * (elapsed_f - self.scratch.onset_sample_period_ema_ms);
                 self.scratch.last_onset_sample_time = now;
-                if bpm_gate_open {
+                if bpm_gate_open && tracker_active {
+                    for idx in 0..3 {
+                        let history = &mut self.scratch.band_onset_history[idx];
+                        history.push_back(band_onsets[idx]);
+                        if history.len() > ONSET_HISTORY_FRAMES {
+                            history.pop_front();
+                        }
+                    }
+                    onset_peak = tracker_onset;
+                    self.scratch.bpm_detect_status = self.scratch.beat_tracker.status();
+                    bpm_from_onset = self
+                        .scratch
+                        .beat_tracker
+                        .tempo()
+                        .map(|tempo| (tempo.bpm, tempo.confidence));
+                } else if bpm_gate_open {
                     self.scratch.onset_history.push_back(flux);
                     if self.scratch.onset_history.len() > ONSET_HISTORY_FRAMES {
                         self.scratch.onset_history.pop_front();
@@ -604,8 +629,9 @@ where
                         }
                     }
 
-                    let actual_period =
-                        self.scratch.onset_sample_period_ema_ms.round().max(1.0) as usize;
+                    // Fractional: frames arrive at the capture block rate
+                    // (e.g. 21.33 ms), and rounding to whole ms skews BPM.
+                    let actual_period = self.scratch.onset_sample_period_ema_ms.max(1.0);
                     let history = self.scratch.onset_history.make_contiguous();
                     let (estimate, status) = Self::estimate_bpm_from_onset(history, actual_period);
                     bpm_from_onset = estimate;
@@ -613,7 +639,8 @@ where
                     let (mean, threshold) = Self::onset_threshold(history);
                     onset_peak = self.scratch.onset_ema > threshold
                         && (mean == 0.0 || self.scratch.onset_ema > mean * 1.2);
-
+                }
+                if bpm_gate_open {
                     if onset_peak {
                         for idx in 0..3 {
                             let rise = self.scratch.band_energy_rise_ema[idx];
@@ -632,14 +659,17 @@ where
                 // periodicity pulls it toward 0; a strong autocorrelation peak
                 // toward 1.
                 let conf_target = match bpm_from_onset {
-                    Some((_, raw)) => (raw / BPM_CONFIDENCE_REF).clamp(0.0, 1.0),
+                    Some((_, correlation)) => correlation.clamp(0.0, 1.0),
                     None => 0.0,
                 };
                 self.scratch.bpm_confidence_ema +=
                     BPM_CONFIDENCE_ALPHA * (conf_target - self.scratch.bpm_confidence_ema);
             }
 
-            if let Some((new_bpm, _conf)) = bpm_from_onset {
+            if let Some((new_bpm, _conf)) = bpm_from_onset.filter(|_| tracker_active) {
+                // The tracker smooths and gates internally.
+                self.scratch.bpm_estimate = new_bpm;
+            } else if let Some((new_bpm, _conf)) = bpm_from_onset {
                 let new_bpm = new_bpm.clamp(MIN_BPM, MAX_BPM);
                 if self.scratch.bpm_estimate <= 0.0 {
                     self.scratch.bpm_estimate = new_bpm;
@@ -656,7 +686,7 @@ where
 
             if self.scratch.bpm_estimate > 0.0 {
                 self.scratch.beat_interval_ms = 60000.0 / self.scratch.bpm_estimate;
-                if !self.scratch.beat_scheduler_initialized {
+                if !self.scratch.beat_scheduler_initialized && !tracker_active {
                     // A tempo can lock several seconds after startup. Anchor at lock time
                     // instead of replaying every beat between process start and now.
                     self.scratch.beat_marker_ms = now as f64;
@@ -704,7 +734,11 @@ where
             );
         }
 
-        self.schedule_beat(now, onset_peak);
+        if tracker_active {
+            self.schedule_tracked_beat(now, tracker_onset);
+        } else {
+            self.schedule_beat(now, onset_peak);
+        }
 
         if has_new_frame {
             let bpm_f32 = self.scratch.bpm_estimate;
@@ -724,6 +758,10 @@ where
                 bpm_status: self.scratch.bpm_detect_status,
                 bpm_estimate: self.scratch.bpm_estimate,
                 loop_tempo: self.debug_data.loop_tempo,
+                beat_tracker: {
+                    let mode = self.beat_detection();
+                    self.scratch.beat_tracker.debug_data(mode, now as f64)
+                },
             };
 
             self.send_signals(&[
@@ -742,6 +780,22 @@ where
         }
 
         Ok(())
+    }
+
+    /// Publish the tracker's predicted beats, muted once the bass gate has
+    /// been closed for a while (same rule as the fallback scheduler).
+    fn schedule_tracked_beat(&mut self, now: usize, onset: bool) {
+        if onset {
+            self.scratch.actual_onset_peak = true;
+        }
+        if !self.scratch.beat_tracker.poll_beat(now as f64) {
+            return;
+        }
+        let silence_threshold = (SILENCE_BEAT_MULTIPLIER * self.scratch.beat_interval_ms) as usize;
+        if now.saturating_sub(self.scratch.last_bass_gate_open_time) < silence_threshold {
+            self.scratch.is_on_beat = true;
+            self.scratch.time_of_last_bpm_marker = now;
+        }
     }
 
     fn schedule_beat(&mut self, now: usize, onset_peak: bool) {
@@ -904,18 +958,14 @@ where
         normalized
     }
 
-    fn onset_periodicity(history: &[f32], sample_period_ms: usize) -> f32 {
+    fn onset_periodicity(history: &[f32], sample_period_ms: f32) -> f32 {
         let n = history.len();
-        if n < 2 || sample_period_ms == 0 {
+        if n < 2 || sample_period_ms <= 0.0 {
             return 0.0;
         }
 
-        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms as f32)
-            .round()
-            .max(1.0) as usize;
-        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms as f32)
-            .round()
-            .max(1.0) as usize;
+        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms).round().max(1.0) as usize;
+        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms).round().max(1.0) as usize;
 
         if min_lag >= max_lag || n < max_lag * 2 {
             return 0.0;
@@ -980,19 +1030,15 @@ where
     /// element is currently active, for the audio-page diagnostics readout.
     fn estimate_bpm_from_onset(
         history: &[f32],
-        sample_period_ms: usize,
+        sample_period_ms: f32,
     ) -> (Option<(f32, f32)>, BpmDetectStatus) {
         let n = history.len();
-        if sample_period_ms == 0 {
+        if sample_period_ms <= 0.0 {
             return (None, BpmDetectStatus::Warmup { have: n, need: 0 });
         }
 
-        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms as f32)
-            .round()
-            .max(1.0) as usize;
-        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms as f32)
-            .round()
-            .max(1.0) as usize;
+        let min_lag = ((60_000.0 / MAX_BPM) / sample_period_ms).round().max(1.0) as usize;
+        let max_lag = ((60_000.0 / MIN_BPM) / sample_period_ms).round().max(1.0) as usize;
 
         // Need at least two full periods of the slowest tempo before the
         // autocorrelation has anything to lock onto.
@@ -1016,7 +1062,7 @@ where
         // Rayleigh tempo prior: nudges ambiguous lags toward TEMPO_PRIOR_CENTER_BPM
         // without overriding strong evidence at other tempos. Davies & Plumbley 2007.
         // σ in lag-space puts the prior's mode at the center BPM.
-        let sigma_lag = (60_000.0 / TEMPO_PRIOR_CENTER_BPM) / sample_period_ms as f32;
+        let sigma_lag = (60_000.0 / TEMPO_PRIOR_CENTER_BPM) / sample_period_ms;
         let sigma_sq = sigma_lag * sigma_lag;
 
         // Normalize each lag's correlation by (pairs * variance) so longer lags (which
@@ -1025,6 +1071,7 @@ where
         let mut corrs = Vec::with_capacity(max_lag - min_lag + 1);
         let mut best_lag = min_lag;
         let mut best_weighted = f32::NEG_INFINITY;
+        let mut best_normalized = 0.0_f32;
         for lag in min_lag..=max_lag {
             let pairs = n - lag;
             let mut corr = 0.0_f32;
@@ -1040,27 +1087,19 @@ where
             corrs.push(weighted);
             if weighted > best_weighted {
                 best_weighted = weighted;
+                best_normalized = normalized;
                 best_lag = lag;
             }
         }
 
-        if !best_weighted.is_finite() || best_weighted <= 0.0 {
+        // Confidence gate on the plain normalized correlation of the winning
+        // lag. Gating the prior-weighted score instead made the threshold
+        // depend on the frame period and rejected clearly rhythmic tracks.
+        if !best_weighted.is_finite() || best_normalized < BPM_CONFIDENCE_THRESHOLD {
             return (
                 None,
                 BpmDetectStatus::WeakPeriodicity {
-                    strength: best_weighted.max(0.0),
-                    threshold: BPM_CONFIDENCE_THRESHOLD,
-                },
-            );
-        }
-
-        // Confidence gate: if the winning peak is too weak, the signal lacks
-        // clear periodicity — return None to hold the previous BPM estimate.
-        if best_weighted < BPM_CONFIDENCE_THRESHOLD {
-            return (
-                None,
-                BpmDetectStatus::WeakPeriodicity {
-                    strength: best_weighted,
+                    strength: best_normalized.max(0.0),
                     threshold: BPM_CONFIDENCE_THRESHOLD,
                 },
             );
@@ -1084,15 +1123,15 @@ where
             best_lag as f32
         };
 
-        let period_ms = refined_lag * sample_period_ms as f32;
+        let period_ms = refined_lag * sample_period_ms;
         if period_ms <= 0.0 {
             return (None, BpmDetectStatus::FlatOnset);
         }
         let bpm = 60_000.0 / period_ms;
         if bpm.is_finite() && bpm > 0.0 {
-            // Second element is the winning autocorrelation-peak strength, used as
-            // a periodicity-confidence measure.
-            (Some((bpm, best_weighted)), BpmDetectStatus::Detecting)
+            // Second element is the winning lag's normalized correlation, used
+            // as a periodicity-confidence measure.
+            (Some((bpm, best_normalized)), BpmDetectStatus::Detecting)
         } else {
             (None, BpmDetectStatus::FlatOnset)
         }

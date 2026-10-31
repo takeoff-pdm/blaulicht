@@ -15,7 +15,15 @@
             ps.stupidartnet
         ]);
 
-        libraries = with pkgs;[
+        isLinux = pkgs.stdenv.isLinux;
+
+        libraries = with pkgs; [
+            libclang
+            clang
+            clangStdenv
+            openssl
+            mpv
+        ] ++ pkgs.lib.optionals isLinux [
             udev
             wayland
             libxkbcommon
@@ -23,28 +31,30 @@
             libGL
             alsa-lib
             xorg.libxcb
-            wayland
             xorg.libX11
             xorg.libXcursor
             xorg.libXi
             xorg.libXrandr
             vulkan-loader
-            libclang
-            clang
             pkgs.stdenv.cc.cc.lib
-            clangStdenv
-            openssl
             glibc.dev
-            gcc 
+            gcc
             mold
             dbus
-            mpv
         ];
 
         packages = with pkgs; [
+            pkg-config
+            libclang
+            clang
+            clangStdenv
+            openssl
+            pkgs.binaryen
+            mpv
+            pythonEnv
+        ] ++ pkgs.lib.optionals isLinux [
             libGL
             udev
-            pkg-config
             alsa-lib
             mold
             xorg.libxcb
@@ -56,16 +66,9 @@
             xorg.libXrandr
             vulkan-loader
             vulkan-tools
-            libclang
-            clang
-            clangStdenv
             pkgs.stdenv.cc.cc.lib
-            openssl
-            pkgs.binaryen
             dbus
-            mpv
-            pythonEnv
-            linuxPackages.perf 
+            perf
         ];
       in
       {

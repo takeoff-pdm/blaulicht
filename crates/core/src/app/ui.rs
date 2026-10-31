@@ -189,6 +189,29 @@ impl eframe::App for BlaulichtApp {
             for (i, value) in audio_output.debug_data.band_energies.iter().enumerate() {
                 self.band_energy_graphs[i].update(*value as i32);
             }
+            // Peak activation over every column since the last frame, so a
+            // beat that lands between two UI frames still shows up.
+            let mut model_peak: Option<(f32, f32)> = None;
+            for column in audio_data
+                .columns
+                .iter()
+                .filter(|c| c.snapshot.time > self.last_beat_model_snapshot_time)
+            {
+                if let Some(model) = &column.debug_data.beat_tracker.model {
+                    let (beat, downbeat) = model_peak.unwrap_or_default();
+                    model_peak = Some((
+                        beat.max(model.beat_peak),
+                        downbeat.max(model.downbeat_peak),
+                    ));
+                }
+            }
+            if let Some(last) = audio_data.columns.back() {
+                self.last_beat_model_snapshot_time = last.snapshot.time;
+            }
+            if let Some((beat, downbeat)) = model_peak {
+                self.beat_model_graphs[0].update((beat * 100.0).round() as i32);
+                self.beat_model_graphs[1].update((downbeat * 100.0).round() as i32);
+            }
         }
 
         // Loop & plugin tick speed over time.

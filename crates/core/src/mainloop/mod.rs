@@ -117,9 +117,27 @@ pub fn run(
     )));
 
     //
+    // DMX Engine.
+    // Opened before the plugins so the DMX outputs claim their serial ports
+    // first.
+    //
+    initialization_guard.begin(StartupStage::DmxEngine, "");
+    let dmx_appstate = Arc::clone(&app_state);
+    let mut dmx_engine =
+        DmxEngine::new(dmx_appstate, event_bus_dmx, config.dmx_out_devices.clone());
+    // TODO: add a command for starting + stopping setup.
+    if config.run_setup_on_reload {
+        dmx_engine.start_setup();
+    }
+    initialization_guard.finish(StartupStage::DmxEngine, StageStatus::ok(""));
+
+    //
     // Serial.
     //
-    let serial_manager = Arc::new(Mutex::new(SerialManager::new(Arc::clone(&app_state))));
+    let serial_manager = Arc::new(Mutex::new(
+        SerialManager::new(Arc::clone(&app_state))
+            .with_reserved_ports(config.dmx_out_devices.iter().cloned()),
+    ));
 
     //
     // UDP.
@@ -154,19 +172,6 @@ pub fn run(
         .init()
         .map_err(|e| anyhow!("Failed to init plugin manager: {e}"))?;
     initialization_guard.current_stage = None;
-
-    //
-    // DMX Engine.
-    //
-    initialization_guard.begin(StartupStage::DmxEngine, "");
-    let dmx_appstate = Arc::clone(&app_state);
-    let mut dmx_engine =
-        DmxEngine::new(dmx_appstate, event_bus_dmx, config.dmx_out_devices.clone());
-    // TODO: add a command for starting + stopping setup.
-    if config.run_setup_on_reload {
-        dmx_engine.start_setup();
-    }
-    initialization_guard.finish(StartupStage::DmxEngine, StageStatus::ok(""));
 
     //
     // Audio signal collector.
@@ -215,6 +220,8 @@ pub fn run(
         0,
     )
     .with_context(|| "Failed to create signal collector")?;
+    sig_collector.set_beat_detection(config.beat_detection);
+    tracing::info!("beat detection: {:?}", config.beat_detection);
     initialization_guard.finish(StartupStage::Audio, audio_status);
     let mut loop_tempo = LoopTempoRuntime::default();
     let mut captured_samples = Vec::new();
@@ -291,9 +298,7 @@ pub fn run(
             .with_context(|| "Failed to tick audio input")?;
         captured_samples.clear();
         let sample_rate = AudioSource::sample_rate(&sig_collector.audio_source);
-        sig_collector
-            .audio_source
-            .drain_samples(&mut captured_samples);
+        sig_collector.drain_samples(&mut captured_samples);
         let live_bpm = sig_collector.current.bpm;
         let live_confidence = sig_collector.current.bpm_confidence;
         if let Some(fused) = loop_tempo.update(

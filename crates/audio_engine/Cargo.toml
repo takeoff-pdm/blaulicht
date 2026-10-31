@@ -20,6 +20,7 @@ noise = ["dep:rand"]
 [dependencies]
 log = "0.4"
 rustfft = "6.4.1"
+blaulicht-audio-features = { path = "../audio_features" }
 
 # stream_in, file
 # audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }

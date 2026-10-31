@@ -2,6 +2,7 @@ use blaulicht_shared::SerialReceived;
 use serialport::{available_ports, ErrorKind as SerialPortErrorKind, SerialPort};
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error};
@@ -10,6 +11,38 @@ use tracing::{debug, error};
 use crate::state::{AppState, SerialDeviceState};
 
 const PORT_TIMEOUT: Duration = Duration::from_millis(3);
+
+/// Directories searched for symlinks to serial ports. `serialport` only
+/// reports kernel names (`/dev/ttyUSB0`), which can change across replugs,
+/// while udev rules add stable names here (`/dev/antenna`, by-id links).
+const SYMLINK_DIRS: &[&str] = &["/dev", "/dev/serial/by-id"];
+
+/// Returns the symlinks in `dirs` that resolve to one of `ports`, sorted.
+fn symlinks_to_ports(ports: &[String], dirs: &[&str]) -> Vec<String> {
+    let targets: Vec<PathBuf> = ports
+        .iter()
+        .filter_map(|port| std::fs::canonicalize(port).ok())
+        .collect();
+    if targets.is_empty() {
+        return Vec::new();
+    }
+
+    let mut links: Vec<String> = dirs
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
+        .map(|entry| entry.path())
+        // `/dev/stdin` and friends point into `/proc/self` and resolve to
+        // whatever the engine's stdio is attached to.
+        .filter(|path| std::fs::read_link(path).is_ok_and(|target| !target.starts_with("/proc")))
+        .filter(|path| std::fs::canonicalize(path).is_ok_and(|target| targets.contains(&target)))
+        .filter_map(|path| path.to_str().map(str::to_string))
+        .collect();
+    links.sort();
+    links
+}
 
 fn drain_serial_lines(buffer: &mut Vec<u8>, device: u8) -> Vec<SerialReceived> {
     let mut events = Vec::new();
@@ -42,6 +75,8 @@ impl fmt::Display for SerialError {
 }
 
 pub struct SerialManager {
+    /// Ports owned by the DMX engine. Plugins can neither list nor open them.
+    reserved_ports: Vec<String>,
     connection_map: HashMap<String, SerialDeviceHandle>,
     device_id_counter: u8,
     app_state: Arc<AppState>,
@@ -68,6 +103,7 @@ impl SerialManager {
         // let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 
         Self {
+            reserved_ports: Vec::new(),
             device_id_counter: 0,
             connection_map: HashMap::new(),
             app_state,
@@ -78,15 +114,52 @@ impl SerialManager {
         }
     }
 
+    /// Reserves `ports` (e.g. the DMX outputs from the config) for the host.
+    pub fn with_reserved_ports(mut self, ports: impl IntoIterator<Item = String>) -> Self {
+        self.reserved_ports = ports.into_iter().collect();
+        self
+    }
+
+    /// Whether `port_path` resolves to the same device as a reserved port.
+    /// Compares canonical paths, so `/dev/dmx_out_1` also covers `/dev/ttyUSB0`.
+    fn is_reserved(&self, port_path: &str) -> bool {
+        let canonical = |path: &str| std::fs::canonicalize(path).ok();
+        let target = canonical(port_path);
+        self.reserved_ports.iter().any(|reserved| {
+            reserved == port_path || (target.is_some() && canonical(reserved) == target)
+        })
+    }
+
+    /// Lists the serial ports plugins may open: stable symlinks such as
+    /// `/dev/antenna` or `/dev/serial/by-id/...` first, then kernel names.
     pub fn enumerate_devices(&self) -> Result<Vec<String>, SerialError> {
-        let ports = available_ports().map_err(|e| SerialError::Other(e.to_string()))?;
-        let device_names: Vec<String> = ports.into_iter().map(|p| p.port_name).collect();
+        let ports: Vec<String> = available_ports()
+            .map_err(|e| SerialError::Other(e.to_string()))?
+            .into_iter()
+            .map(|p| p.port_name)
+            .collect();
+
+        let mut device_names = symlinks_to_ports(&ports, SYMLINK_DIRS);
+        device_names.extend(ports);
+        device_names.retain(|name| !self.is_reserved(name));
 
         Ok(device_names)
     }
 
     pub fn request_device(&mut self, port_path: &str, baud_rate: u32) -> Option<u8> {
-        // TODO: would normally check that this is not used by one of the DMX interfaces.
+        if self.is_reserved(port_path) {
+            error!("Refusing serial port '{port_path}': it is a DMX output");
+            {
+                let mut health_state = self.app_state.health_data.write().unwrap();
+                health_state.serial_health.devices.insert(
+                    port_path.to_string(),
+                    SerialDeviceState::Error(SerialError::Other(
+                        "Reserved for DMX output".to_string(),
+                    )),
+                );
+            }
+            return None;
+        }
 
         // Check if there is already a handle for this device.
         if let Some(device_id) = self.connection_map.get(port_path).map(|dev| dev.device_id) {
@@ -240,5 +313,35 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].body, b"second");
         assert!(buffer.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_to_ports_finds_aliases_of_listed_ports_only() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!("bl_serial_links_{}", std::process::id()));
+        let by_id = root.join("serial").join("by-id");
+        std::fs::create_dir_all(&by_id).unwrap();
+        let tty = root.join("ttyUSB0");
+        let other = root.join("ttyUSB1");
+        std::fs::write(&tty, b"").unwrap();
+        std::fs::write(&other, b"").unwrap();
+        symlink(&tty, root.join("antenna")).unwrap();
+        symlink("../../ttyUSB0", by_id.join("usb-CP2102-if00")).unwrap();
+        symlink(&other, root.join("unlisted")).unwrap();
+        symlink(root.join("gone"), root.join("dangling")).unwrap();
+
+        let dirs = [root.to_str().unwrap(), by_id.to_str().unwrap()];
+        let links = symlinks_to_ports(&[tty.to_str().unwrap().to_string()], &dirs);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(
+            links,
+            vec![
+                root.join("antenna").to_str().unwrap().to_string(),
+                by_id.join("usb-CP2102-if00").to_str().unwrap().to_string(),
+            ]
+        );
     }
 }

@@ -30,7 +30,7 @@ fn log_level_color(from: &LogLevel) -> egui::Color32 {
 const LOG_FONT_SIZE: f32 = 12.0;
 const LOG_TIME_COL_WIDTH: f32 = 60.0;
 const LOG_LEVEL_COL_WIDTH: f32 = 48.0;
-const LOG_SOURCE_COL_WIDTH: f32 = 118.0;
+const LOG_SOURCE_COL_WIDTH: f32 = 84.0;
 const LOG_COL_GAP: f32 = 8.0;
 
 fn log_level_label(level: &LogLevel) -> &'static str {
@@ -128,7 +128,10 @@ fn draw_log_row(ui: &mut egui::Ui, entry: &LogEntry, striped: bool) {
             .on_hover_text(&entry.source);
         });
 
-        let message_width = ui.available_width();
+        // Keep wrapped text clear of the (floating) vertical scroll bar.
+        let scroll = &ui.spacing().scroll;
+        let bar_reserve = scroll.bar_inner_margin + scroll.bar_width + scroll.bar_outer_margin;
+        let message_width = (ui.available_width() - bar_reserve).max(0.0);
         log_column(ui, message_width, |ui| {
             ui.add(
                 egui::Label::new(
@@ -412,7 +415,6 @@ impl LogWindow {
 
         let scroll_output = egui::ScrollArea::vertical()
             .max_height(ui.available_height())
-            .max_width(ctx.screen_rect().width() - 100.0)
             .auto_shrink([false, false])
             .stick_to_bottom(self.auto_scroll)
             .show(ui, |ui| {

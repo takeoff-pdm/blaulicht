@@ -89,8 +89,8 @@ pub enum StartupStage {
     Config,
     Showfile,
     Audio,
-    Plugins,
     DmxEngine,
+    Plugins,
     MainLoop,
 }
 
