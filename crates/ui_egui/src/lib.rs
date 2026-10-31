@@ -6,6 +6,8 @@
 
 pub mod app;
 pub mod cli;
+// `eframe::run_native` / `NativeOptions` don't exist on wasm32 (048).
+#[cfg(not(target_arch = "wasm32"))]
 pub mod desk;
 #[cfg(feature = "visualizer")]
 pub mod stage_assets;
