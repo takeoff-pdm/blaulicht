@@ -23,7 +23,7 @@ dhat = ["dep:dhat", "blaulicht-engine/dhat"]
 
 [dependencies]
 blaulicht-engine = { path = "../engine", default-features = false }
-blaulicht-ui-egui = { path = "../ui_egui" }
+blaulicht-ui-egui = { path = "../ui_egui", default-features = false, features = ["visualizer", "file-dialog", "plugin-popout"] }
 
 anyhow = "1.0.94"
 clap = { version = "4.5.56", default-features = false, features = ["derive"] }

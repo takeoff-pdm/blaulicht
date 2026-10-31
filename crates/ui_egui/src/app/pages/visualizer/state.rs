@@ -166,6 +166,7 @@ pub struct VisualizerUiState {
     /// The part of `fixture_drafts` already sent.
     pub(super) fixture_drafts_sent: BTreeMap<(u8, u8), Pose>,
     pub(super) editor: EditorState,
+    #[cfg(feature = "file-dialog")]
     pub(super) import_dialog: Option<egui_file_dialog::FileDialog>,
     /// A model being read and checked off the UI thread: its file name and
     /// contents, for `HostCommand::ImportStageModel`.
@@ -368,6 +369,7 @@ impl Default for VisualizerUiState {
             fixture_drafts: BTreeMap::new(),
             fixture_drafts_sent: BTreeMap::new(),
             editor: EditorState::default(),
+            #[cfg(feature = "file-dialog")]
             import_dialog: None,
             import_receiver: None,
             import_reply: None,

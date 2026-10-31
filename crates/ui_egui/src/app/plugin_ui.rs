@@ -87,7 +87,8 @@ impl BlaulichtApp {
             }
 
             let title = plugin_ui_title(&self.client, plugin_id);
-            let popped_out = self.view_state.is_popped_out(plugin_id);
+            let popped_out =
+                cfg!(feature = "plugin-popout") && self.view_state.is_popped_out(plugin_id);
             let maximize_requested = popped_out && self.view_state.take_maximize_request(plugin_id);
             let client = &self.client;
             let tabs_selected = &mut self.view_state.plugin_tabs_selected;
@@ -158,12 +159,14 @@ impl BlaulichtApp {
                     .default_size([560.0, 400.0])
                     .resizable(true)
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| {
-                            if plugin_action(ui, "Pop out", true) {
-                                pop_toggled = true;
-                            }
-                        });
-                        ui.separator();
+                        if cfg!(feature = "plugin-popout") {
+                            ui.horizontal(|ui| {
+                                if plugin_action(ui, "Pop out", true) {
+                                    pop_toggled = true;
+                                }
+                            });
+                            ui.separator();
+                        }
 
                         egui::ScrollArea::both()
                             .auto_shrink([false, false])

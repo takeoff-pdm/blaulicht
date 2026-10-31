@@ -18,6 +18,8 @@ pub struct PageRenderContext {
     pub(crate) mode: blaulicht_engine::config::PageRenderMode,
     pub(crate) size: egui::Vec2,
     pub(crate) width_class: PageWidthClass,
+    /// Only the visualizer reads it.
+    #[cfg_attr(not(feature = "visualizer"), allow(dead_code))]
     pub(crate) short: bool,
 }
 

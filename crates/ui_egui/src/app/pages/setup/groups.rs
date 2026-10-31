@@ -231,7 +231,9 @@ impl BlaulichtApp {
             if components::button(ui, false, "Edit Fixtures", ButtonSize::Medium) {
                 self.open_subpage(AppSubPage::Setup_Fixtures);
             }
-            if components::button(ui, false, "Show in Visualizer", ButtonSize::Medium) {
+            if cfg!(feature = "visualizer")
+                && components::button(ui, false, "Show in Visualizer", ButtonSize::Medium)
+            {
                 let fixtures: Vec<_> = group.fixtures.keys().map(|fid| (group_id, *fid)).collect();
                 self.show_fixtures_in_visualizer(fixtures);
             }

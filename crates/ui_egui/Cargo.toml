@@ -8,7 +8,17 @@ rust-version = "1.76"
 description = "The native egui frontend (desk) of Blaulicht, built on the engine's EngineClient."
 
 [features]
-default = []
+# Wayland by default, like the desk binary; binaries pick the platform with
+# default-features = false.
+default = ["visualizer", "file-dialog", "plugin-popout", "wayland"]
+# The 3D visualizer and stage editor (three-d, glow). Without it the page
+# shows a notice.
+visualizer = ["dep:three-d", "dep:three-d-asset", "dep:egui_glow", "dep:image", "dep:bytemuck"]
+# Native file dialogs: showfile Load / Save As and the visualizer's model
+# import.
+file-dialog = ["dep:egui-file-dialog", "dep:sysinfo"]
+# Plugin UI windows that pop out into their own native viewport.
+plugin-popout = []
 wayland = ["eframe/wayland"]
 x11 = ["eframe/x11"]
 
@@ -40,14 +50,14 @@ eframe = { version = "0.34.1", default-features = false, features = [
 egui_plot = "0.35.0"
 egui-phosphor = "0.12.0"
 egui_code_editor = { version = "=0.2.24" }
-egui_glow = "0.34.1"
-egui-file-dialog = "0.13.0"
+egui_glow = { version = "0.34.1", optional = true }
+egui-file-dialog = { version = "0.13.0", optional = true }
 egui-snarl = { version = "0.10", features = ["serde"] }
-image = { version = "0.25", default-features = false, features = ["bmp"] }
-bytemuck = "1.14.3"
-sysinfo = "0.30.13"
-three-d = { version = "0.19", default-features = false }
-three-d-asset = { version = "0.10", default-features = false, features = ["gltf", "png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["bmp"], optional = true }
+bytemuck = { version = "1.14.3", optional = true }
+sysinfo = { version = "0.30.13", optional = true }
+three-d = { version = "0.19", default-features = false, optional = true }
+three-d-asset = { version = "0.10", default-features = false, features = ["gltf", "png", "jpeg"], optional = true }
 fdg-sim = "0.9.1"
 
 [dev-dependencies]

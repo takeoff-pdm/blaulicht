@@ -7,6 +7,10 @@ mod setup;
 mod system;
 mod view;
 mod view_perf;
+#[cfg(feature = "visualizer")]
+mod visualizer;
+#[cfg(not(feature = "visualizer"))]
+#[path = "visualizer_disabled.rs"]
 mod visualizer;
 
 pub use animation_spec_editor::*;

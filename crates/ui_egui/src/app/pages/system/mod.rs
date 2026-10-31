@@ -1,10 +1,11 @@
-use crate::app::{components::Numberpad, ui::FileDialogOpenOrigin};
+use crate::app::components::Numberpad;
 use blaulicht_engine::state::NUM_DMX_UNIVERSES;
-use egui_file_dialog::FileDialog;
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 
 pub mod artnet;
 pub mod dmx;
+#[cfg(feature = "file-dialog")]
+pub mod file_dialog;
 pub mod health;
 pub mod midi;
 pub mod misc;
@@ -14,10 +15,12 @@ pub mod showfile;
 pub mod speed;
 
 pub struct SystemUI {
-    open_file_dialog: Option<FileDialog>,
+    #[cfg(feature = "file-dialog")]
+    open_file_dialog: Option<egui_file_dialog::FileDialog>,
     pending_load_file: Option<PathBuf>,
     close_showfile_confirm_open: bool,
-    file_dialog_open_origin: FileDialogOpenOrigin,
+    #[cfg(feature = "file-dialog")]
+    file_dialog_open_origin: file_dialog::FileDialogOpenOrigin,
     reload_dialog_open: bool,
     confirm_shutdown_open: bool,
     pub debug_open: bool,
@@ -35,10 +38,12 @@ pub struct SystemUI {
 impl Default for SystemUI {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "file-dialog")]
             open_file_dialog: None,
             pending_load_file: None,
             close_showfile_confirm_open: false,
-            file_dialog_open_origin: FileDialogOpenOrigin::Load,
+            #[cfg(feature = "file-dialog")]
+            file_dialog_open_origin: file_dialog::FileDialogOpenOrigin::Load,
             reload_dialog_open: false,
             confirm_shutdown_open: false,
             debug_open: false,

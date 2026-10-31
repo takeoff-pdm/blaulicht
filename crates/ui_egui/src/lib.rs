@@ -7,4 +7,5 @@
 pub mod app;
 pub mod cli;
 pub mod desk;
+#[cfg(feature = "visualizer")]
 pub mod stage_assets;

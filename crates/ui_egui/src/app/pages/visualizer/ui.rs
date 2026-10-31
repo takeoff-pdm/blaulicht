@@ -958,6 +958,7 @@ impl BlaulichtApp {
                     }
                 });
             });
+            #[cfg(feature = "file-dialog")]
             let showfile = self
                 .client
                 .with_show(|show| show.showfile().map(|path| path.to_path_buf()));
@@ -966,6 +967,7 @@ impl BlaulichtApp {
                     .visualizer_ui_state
                     .import_reply
                     .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
+            #[cfg(feature = "file-dialog")]
             if ui
                 .add_enabled(
                     showfile.is_some() && !importing,
@@ -1128,6 +1130,9 @@ impl BlaulichtApp {
     /// then its contents go to the engine (`HostCommand::ImportStageModel`),
     /// which stores it next to the showfile.
     fn visualizer_import_dialog(&mut self, ctx: &Context) {
+        #[cfg(not(feature = "file-dialog"))]
+        let _ = ctx;
+        #[cfg(feature = "file-dialog")]
         if let Some(mut dialog) = self.visualizer_ui_state.import_dialog.take() {
             dialog.update(ctx);
             if let Some(source) = dialog.take_picked() {

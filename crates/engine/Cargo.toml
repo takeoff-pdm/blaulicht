@@ -10,8 +10,9 @@ description = "The Blaulicht engine: DMX, plugins, audio bridge, show state and 
 [features]
 default = ["audio", "wasmtime"]
 wasmtime = ["dep:rustc-demangle", "dep:wasmtime"]
-audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in", "blaulicht-audio-engine/noise"]
-audio-mock = ["blaulicht-audio-engine/noise"]
+audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in"]
+# No real audio input, only the dummy inputs (which every build has).
+audio-mock = []
 dhat = ["dep:dhat"]
 
 [dependencies]
@@ -20,7 +21,8 @@ dhat = ["dep:dhat"]
 audioviz = { version = "0.6.0", features = ["serde"], optional = true }
 audio_thread_priority = "0.34.0"
 cpal = { version = "0.15.3", optional = true }
-blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
+# `noise`: the dummy inputs ("Dummy: Noise", "Dummy: Silence") are always there.
+blaulicht-audio-engine = { path = "../audio_engine/", default-features = false, features = ["noise"] }
 
 # Default
 serde = { version = "1", features = ["derive"] }

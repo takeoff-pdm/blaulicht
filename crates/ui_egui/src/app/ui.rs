@@ -16,11 +16,6 @@ use std::time::{Duration, Instant};
 
 const BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION: f32 = 0.90;
 
-pub enum FileDialogOpenOrigin {
-    Save,
-    Load,
-}
-
 impl Drop for BlaulichtApp {
     fn drop(&mut self) {
         // let mut consumers = self.data.to_frontend_consumers.lock().unwrap();

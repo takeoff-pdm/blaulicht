@@ -1072,7 +1072,14 @@ impl BlaulichtApp {
 
                         ui.add_space(6.0);
 
-                        if components::button(ui, false, "Show in Visualizer", ButtonSize::Medium) {
+                        if cfg!(feature = "visualizer")
+                            && components::button(
+                                ui,
+                                false,
+                                "Show in Visualizer",
+                                ButtonSize::Medium,
+                            )
+                        {
                             self.show_fixtures_in_visualizer([(gid, fid)]);
                         }
 

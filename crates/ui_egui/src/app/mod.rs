@@ -128,9 +128,12 @@ impl ExternalScreen {
 
 pub struct BlaulichtApp {
     desktop_mode: bool,
+    /// Where the file dialogs start (`--showfile-home`).
+    #[cfg_attr(not(feature = "file-dialog"), allow(dead_code))]
     showfile_home: Option<PathBuf>,
     /// The config file's folder: where the file dialogs start without a
     /// showfile or `showfile_home`.
+    #[cfg_attr(not(feature = "file-dialog"), allow(dead_code))]
     config_dir: Option<PathBuf>,
     navbar: Navbar,
 
