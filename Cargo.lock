@@ -558,6 +558,7 @@ dependencies = [
  "crossbeam-channel",
  "dhat",
  "itertools 0.14.0",
+ "js-sys",
  "libc",
  "mach",
  "maplit",
@@ -579,7 +580,9 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tungstenite",
+ "wasm-bindgen",
  "wasmtime",
+ "web-sys",
  "web-time",
 ]
 

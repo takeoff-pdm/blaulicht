@@ -26,7 +26,7 @@ use super::{
 use crate::{
     client::{
         testing::{small_rig, TestEngine},
-        EngineClient, RemoteClient, ReplyHandlers, DISCONNECTED,
+        EngineClient, RemoteClient, RemoteStatus, ReplyHandlers, DISCONNECTED,
     },
     config::ShowfileUiState,
     dmx::DESK_ONLY_REFUSAL,
@@ -111,7 +111,7 @@ fn a_remote_client_works_in_its_own_session_and_cleans_up_on_disconnect() {
     let mut remote = connect(&mut engine, &server, &[Stream::Dmx]);
 
     assert_ne!(remote.session(), SessionId::DESK);
-    assert_eq!(remote.engine_version(), env!("CARGO_PKG_VERSION"));
+    assert_eq!(remote.engine_version(), Some(env!("CARGO_PKG_VERSION")));
     let clients = server.clients();
     assert_eq!(clients.len(), 1);
     assert_eq!(
@@ -478,6 +478,7 @@ fn waiting_commands_fail_when_the_connection_drops() {
     let mut engine = TestEngine::start(small_rig);
     let server = engine.start_server(loopback());
     let remote = connect(&mut engine, &server, &[]);
+    assert_eq!(remote.status(), RemoteStatus::Connected);
 
     #[derive(Default)]
     struct Dialog {
@@ -502,6 +503,7 @@ fn waiting_commands_fail_when_the_connection_drops() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
+    assert!(matches!(remote.status(), RemoteStatus::Disconnected(_)));
     let results = remote.take_results();
     ReplyHandlers::dispatch(&mut dialog, |dialog| &mut dialog.handlers, &results);
     assert_eq!(dialog.error.as_deref(), Some(DISCONNECTED));
@@ -514,6 +516,36 @@ fn waiting_commands_fail_when_the_connection_drops() {
         (results[0].seq, &results[0].outcome),
         (late, &CommandOutcome::Refused(DISCONNECTED.to_string()))
     );
+}
+
+/// A remote client times its commands' round trips, and `reconnect` opens a
+/// new connection to the same engine, in a new session, with the same
+/// streams.
+#[test]
+fn a_remote_client_times_round_trips_and_reconnects_in_a_new_session() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    let remote = connect(&mut engine, &server, &[Stream::Status]);
+    assert_eq!(remote.stats().round_trips, 0);
+
+    assert_eq!(round_trip(&mut engine, &remote, HostCommand::Ping), OK);
+    assert_eq!(round_trip(&mut engine, &remote, HostCommand::Ping), OK);
+    let stats = remote.stats();
+    assert_eq!(stats.round_trips, 2);
+    assert_eq!(stats.recent_round_trips.len(), 2);
+    assert!(stats
+        .recent_round_trips
+        .iter()
+        .all(|rtt| *rtt < Duration::from_secs(5)));
+
+    let again = remote.reconnect().expect("reconnect");
+    engine.tick_until("the new session", |_| {
+        again.with_session(|_, _| ()).is_some()
+    });
+    assert_ne!(again.session(), remote.session());
+    assert_ne!(again.client(), remote.client());
+    assert_eq!(again.streams(), vec![Stream::Status]);
+    assert_eq!(server.clients().len(), 2);
 }
 
 /// Every message type survives both encodings where a Rust client reads it,

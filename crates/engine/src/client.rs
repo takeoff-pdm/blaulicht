@@ -41,7 +41,7 @@ use crate::{
 };
 
 mod remote;
-pub use remote::{RemoteClient, RemoteStats, DISCONNECTED};
+pub use remote::{RemoteClient, RemoteStats, RemoteStatus, DISCONNECTED};
 
 /// A frontend's connection to the engine.
 ///

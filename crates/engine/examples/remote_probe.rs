@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
         "connected to {addr} as {} in {} (engine {})",
         client.client(),
         client.session(),
-        client.engine_version()
+        client.engine_version().unwrap_or("?")
     );
     if client.wait_for_snapshot(Duration::from_secs(10)) {
         let (groups, scenes) = client.with_show(|show| (show.0.groups.len(), show.0.scenes.len()));

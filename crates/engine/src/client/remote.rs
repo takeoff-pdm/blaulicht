@@ -1,36 +1,38 @@
 //! [`RemoteClient`]: the [`EngineClient`] for an engine in another process,
 //! over the websocket protocol ([`crate::server::protocol`], bincode).
 //!
-//! An I/O thread owns the socket. It applies what the engine sends to a copy
-//! of the engine state (an [`EngineState`] built from the show, stage and
-//! session snapshots) and to the latest value of each stream, and writes the
-//! client's commands. Readers run their closures on that copy, under a read
-//! lock that only the I/O thread ever writes, so a frontend reads a remote
-//! engine exactly as it reads a local one; the state lags the engine by up
-//! to a show snapshot interval.
+//! What the engine sends is applied to a copy of the engine state (an
+//! [`EngineState`] built from the show, stage and session snapshots) and to
+//! the latest value of each stream. Readers run their closures on that copy,
+//! under a read lock that only the transport ever writes, so a frontend reads
+//! a remote engine exactly as it reads a local one; the state lags the engine
+//! by up to a show snapshot interval.
+//!
+//! Two transports share that state (`RemoteState`):
+//! - **native** ([`RemoteClient::connect`]): a TCP socket with `tungstenite`,
+//!   owned by an I/O thread. Connecting blocks until the engine's `Welcome`.
+//! - **browser** ([`RemoteClient::connect_web`], wasm32 only): the browser's
+//!   `WebSocket`. It returns at once; the handshake runs in the socket's
+//!   callbacks, and [`RemoteClient::status`] is `Connecting` until `Welcome`.
+//!   Commands sent meanwhile wait and go out after `Hello`.
 //!
 //! Commands get their results as with a local client. When the connection
 //! drops, every command still waiting (and every command sent afterwards)
 //! gets `Refused(DISCONNECTED)`, so [`super::ReplyHandlers`] never keeps a
-//! closure forever.
+//! closure forever. A connection is never reopened:
+//! [`RemoteClient::reconnect`] makes a new client (a new session).
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
-    io::ErrorKind,
-    net::{TcpStream, ToSocketAddrs},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard,
+        Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard,
     },
-    thread::{self, JoinHandle},
     time::Duration,
 };
 use web_time::Instant;
 
-use anyhow::Context;
 use blaulicht_audio_engine::{AudioSpectrogram, CollectorOutput, SignalCollectorParams};
-use crossbeam_channel::{Receiver, Sender};
-use tungstenite::{Message, WebSocket};
 
 use super::EngineClient;
 use crate::{
@@ -42,21 +44,32 @@ use crate::{
         SUBSCRIBER_CAPACITY,
     },
     msg::{SystemMessage, TERMINAL_ONLY_LOG_TARGET},
-    server::protocol::{
-        ClientMessage, Encoding, EngineStatus, Frame, ServerMessage, SpectrogramUpdate, Stream,
-        PROTOCOL_VERSION,
-    },
+    server::protocol::{ClientMessage, EngineStatus, ServerMessage, SpectrogramUpdate, Stream},
     state::{AppHealthState, ArtNetReceiver, PluginRuntimeKind, PluginState, NUM_DMX_UNIVERSES},
     ui_ops::WasmUiOp,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(target_arch = "wasm32")]
+mod web;
+
+#[cfg(not(target_arch = "wasm32"))]
+use native::Transport;
+#[cfg(target_arch = "wasm32")]
+use web::Transport;
+
 /// Why a command fails when the connection to the engine is gone.
 pub const DISCONNECTED: &str = "Disconnected from the engine";
 
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long the I/O thread sleeps when there was nothing to do.
-const IDLE_SLEEP: Duration = Duration::from_millis(2);
+/// The session a browser client reports before the engine's `Welcome`
+/// named its real one. No engine session has this id, so
+/// [`EngineClient::with_session`] is `None` until then.
+const UNKNOWN_SESSION: SessionId = SessionId(u32::MAX);
+/// The client id a browser client reports before `Welcome`.
+const UNKNOWN_CLIENT: ClientId = ClientId::Remote(u32::MAX);
+/// How many recent command round trips [`RemoteStats`] keeps.
+const ROUND_TRIP_SAMPLES: usize = 128;
 
 /// What a [`RemoteClient`] received so far, for diagnostics.
 #[derive(Clone, Debug, Default)]
@@ -67,6 +80,28 @@ pub struct RemoteStats {
     pub by_kind: BTreeMap<&'static str, (u64, u64)>,
     /// The size of the last show snapshot.
     pub last_show_bytes: usize,
+    /// Results received, and the time from sending each command to its
+    /// result for the most recent ones (oldest first).
+    pub round_trips: u64,
+    pub recent_round_trips: VecDeque<Duration>,
+}
+
+/// Where a [`RemoteClient`]'s connection stands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemoteStatus {
+    /// Waiting for the engine's `Welcome` (browser transport only).
+    Connecting,
+    Connected,
+    /// The connection is gone, and why. It is not reopened.
+    Disconnected(String),
+}
+
+/// What the engine said in its `Welcome`.
+#[derive(Clone, Debug)]
+struct Welcome {
+    client: ClientId,
+    session: SessionId,
+    engine_version: String,
 }
 
 /// Messages and results waiting for the frontend.
@@ -75,8 +110,8 @@ struct Inbox {
     system: VecDeque<SystemMessage>,
     results: Vec<CommandResult>,
     bus: VecDeque<BusMessage>,
-    /// Commands sent whose result hasn't arrived.
-    pending: BTreeSet<CommandSeq>,
+    /// Commands sent whose result hasn't arrived, and when they were sent.
+    pending: BTreeMap<CommandSeq, Instant>,
     overflowed: bool,
 }
 
@@ -98,9 +133,10 @@ impl Inbox {
     }
 }
 
-/// What the I/O thread writes and the frontend reads.
+/// What the transport writes and the frontend reads.
 struct RemoteState {
-    client: ClientId,
+    /// Set once, from the engine's `Welcome`.
+    welcome: OnceLock<Welcome>,
     show: RwLock<EngineState>,
     show_digest: Mutex<Option<u64>>,
     session_received: AtomicBool,
@@ -111,8 +147,9 @@ struct RemoteState {
     plugin_ui_ops: RwLock<HashMap<u8, Vec<WasmUiOp>>>,
     editor_ui_ops: RwLock<HashMap<u64, Vec<WasmUiOp>>>,
     status: RwLock<EngineStatus>,
+    /// `false` once the connection is gone.
     connected: AtomicBool,
-    stop: AtomicBool,
+    disconnect_reason: Mutex<Option<String>>,
     stats: Mutex<RemoteStats>,
 }
 
@@ -129,9 +166,9 @@ fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
 }
 
 impl RemoteState {
-    fn new(client: ClientId) -> Self {
+    fn new() -> Self {
         Self {
-            client,
+            welcome: OnceLock::new(),
             show: RwLock::new(EngineState::default()),
             show_digest: Mutex::new(None),
             session_received: AtomicBool::new(false),
@@ -143,14 +180,18 @@ impl RemoteState {
             editor_ui_ops: RwLock::default(),
             status: RwLock::default(),
             connected: AtomicBool::new(true),
-            stop: AtomicBool::new(false),
+            disconnect_reason: Mutex::new(None),
             stats: Mutex::default(),
         }
     }
 
+    fn client(&self) -> ClientId {
+        self.welcome.get().map_or(UNKNOWN_CLIENT, |w| w.client)
+    }
+
     fn refused(&self, seq: CommandSeq) -> CommandResult {
         CommandResult {
-            client: self.client,
+            client: self.client(),
             seq,
             outcome: CommandOutcome::Refused(DISCONNECTED.to_string()),
         }
@@ -158,13 +199,16 @@ impl RemoteState {
 
     /// The connection is gone: every waiting command fails.
     fn disconnect(&self, reason: &str) {
-        self.connected.store(false, Ordering::SeqCst);
+        if !self.connected.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        lock(&self.disconnect_reason).get_or_insert_with(|| reason.to_string());
         let mut inbox = lock(&self.inbox);
         let pending = std::mem::take(&mut inbox.pending);
-        let results: Vec<_> = pending.into_iter().map(|seq| self.refused(seq)).collect();
+        let results: Vec<_> = pending.into_keys().map(|seq| self.refused(seq)).collect();
         inbox.results.extend(results);
         drop(inbox);
-        tracing::info!("Remote client {}: disconnected ({reason})", self.client);
+        tracing::info!("Remote client {}: disconnected ({reason})", self.client());
     }
 
     fn count(&self, kind: &'static str, bytes: usize) {
@@ -210,8 +254,17 @@ impl RemoteState {
             }
             ServerMessage::Result(result) => {
                 let mut inbox = lock(&self.inbox);
-                inbox.pending.remove(&result.seq);
+                let sent = inbox.pending.remove(&result.seq);
                 inbox.results.push(result);
+                drop(inbox);
+                if let Some(sent) = sent {
+                    let mut stats = lock(&self.stats);
+                    stats.round_trips += 1;
+                    if stats.recent_round_trips.len() >= ROUND_TRIP_SAMPLES {
+                        stats.recent_round_trips.pop_front();
+                    }
+                    stats.recent_round_trips.push_back(sent.elapsed());
+                }
             }
             ServerMessage::Bus(message) => {
                 let mut inbox = lock(&self.inbox);
@@ -274,107 +327,40 @@ fn kind(message: &ServerMessage) -> &'static str {
     }
 }
 
-fn into_message(frame: Frame) -> Message {
-    match frame {
-        Frame::Binary(bytes) => Message::Binary(bytes),
-        Frame::Text(text) => Message::Text(text),
-    }
-}
-
 /// An [`EngineClient`] for an engine in another process (or this one, over
-/// loopback), connected with [`RemoteClient::connect`].
+/// loopback), connected with [`RemoteClient::connect`] (native) or
+/// [`RemoteClient::connect_web`] (in a browser).
 ///
 /// Before the first snapshots arrive, the show is empty and
-/// [`EngineClient::with_session`] is `None`; [`Self::wait_for_snapshot`]
-/// waits for them. Dropping the client closes the connection, which closes
-/// its session on the engine.
+/// [`EngineClient::with_session`] is `None`. Dropping the client closes the
+/// connection, which closes its session on the engine.
 pub struct RemoteClient {
-    client: ClientId,
-    session: SessionId,
-    engine_version: String,
     next_seq: AtomicU64,
-    outgoing: Sender<ClientMessage>,
     state: Arc<RemoteState>,
+    /// The streams it receives (for [`Self::reconnect`]).
+    streams: Mutex<Vec<Stream>>,
     last_ui: Option<BTreeSet<u8>>,
-    io: Option<JoinHandle<()>>,
+    transport: Transport,
 }
 
 impl RemoteClient {
-    /// Connects to the engine's server at `addr` (`"host:port"`), in a new
-    /// operator session, receiving `streams` (see [`Stream`]). Fails if the
-    /// engine can't be reached or rejects the client (for example another
-    /// [`PROTOCOL_VERSION`]).
-    pub fn connect(addr: impl ToSocketAddrs, streams: &[Stream]) -> anyhow::Result<Self> {
-        let addr = addr
-            .to_socket_addrs()?
-            .next()
-            .context("No address to connect to")?;
-        let stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)
-            .with_context(|| format!("Could not connect to {addr}"))?;
-        stream.set_nodelay(true)?;
-        stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
-        stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
-        let url = format!("ws://{addr}/");
-        let (mut ws, _) = tungstenite::client::client_with_config(
-            url.as_str(),
-            stream,
-            Some(crate::server::websocket_config()),
-        )
-        .map_err(|err| anyhow::anyhow!("Websocket handshake with {addr} failed: {err}"))?;
-
-        let hello = Encoding::Bincode.encode(&ClientMessage::Hello {
-            protocol_version: PROTOCOL_VERSION,
-            streams: streams.to_vec(),
-        })?;
-        ws.send(into_message(hello))?;
-        let welcome = loop {
-            match ws.read()? {
-                Message::Binary(bytes) => {
-                    break Encoding::decode::<ServerMessage>(&Frame::Binary(bytes))?
-                }
-                Message::Close(_) => anyhow::bail!("The engine closed the connection"),
-                _ => continue,
-            }
-        };
-        let (client, session, engine_version) = match welcome {
-            ServerMessage::Welcome {
-                client,
-                session,
-                engine_version,
-                ..
-            } => (client, session, engine_version),
-            ServerMessage::Rejected { reason, .. } => {
-                anyhow::bail!("The engine rejected the connection: {reason}")
-            }
-            _ => anyhow::bail!("The engine did not answer Hello"),
-        };
-        ws.get_mut().set_read_timeout(None)?;
-        ws.get_mut().set_write_timeout(None)?;
-        ws.get_mut().set_nonblocking(true)?;
-
-        let state = Arc::new(RemoteState::new(client));
-        let (outgoing, receiver) = crossbeam_channel::unbounded();
-        let io = {
-            let state = Arc::clone(&state);
-            thread::Builder::new()
-                .name(format!("remote-client-{client}"))
-                .spawn(move || io_loop(ws, &state, &receiver))?
-        };
-        Ok(Self {
-            client,
-            session,
-            engine_version,
+    fn with_transport(state: Arc<RemoteState>, streams: &[Stream], transport: Transport) -> Self {
+        Self {
             next_seq: AtomicU64::new(1),
-            outgoing,
             state,
+            streams: Mutex::new(streams.to_vec()),
             last_ui: None,
-            io: Some(io),
-        })
+            transport,
+        }
     }
 
-    /// The engine's version (`CARGO_PKG_VERSION` of its build).
-    pub fn engine_version(&self) -> &str {
-        &self.engine_version
+    /// The engine's version (`CARGO_PKG_VERSION` of its build); `None` until
+    /// it answered.
+    pub fn engine_version(&self) -> Option<&str> {
+        self.state
+            .welcome
+            .get()
+            .map(|welcome| welcome.engine_version.as_str())
     }
 
     /// `false` once the connection is gone (it is not reopened).
@@ -382,11 +368,29 @@ impl RemoteClient {
         self.state.connected.load(Ordering::SeqCst)
     }
 
+    /// Where the connection stands.
+    pub fn status(&self) -> RemoteStatus {
+        if !self.is_connected() {
+            let reason = lock(&self.state.disconnect_reason).clone();
+            RemoteStatus::Disconnected(reason.unwrap_or_else(|| DISCONNECTED.to_string()))
+        } else if self.state.welcome.get().is_none() {
+            RemoteStatus::Connecting
+        } else {
+            RemoteStatus::Connected
+        }
+    }
+
     /// Replaces the streams this client receives.
     pub fn subscribe(&self, streams: &[Stream]) {
-        let _ = self.outgoing.send(ClientMessage::Subscribe {
+        *lock(&self.streams) = streams.to_vec();
+        self.transport.send(ClientMessage::Subscribe {
             streams: streams.to_vec(),
         });
+    }
+
+    /// The streams this client receives.
+    pub fn streams(&self) -> Vec<Stream> {
+        lock(&self.streams).clone()
     }
 
     /// The digest of the last show snapshot, if one arrived.
@@ -394,19 +398,9 @@ impl RemoteClient {
         *lock(&self.state.show_digest)
     }
 
-    /// Waits until the first show and session snapshots arrived (`true`), or
-    /// `timeout` passed or the connection dropped (`false`).
-    pub fn wait_for_snapshot(&self, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
-        loop {
-            if self.show_digest().is_some() && self.state.session_received.load(Ordering::Relaxed) {
-                return true;
-            }
-            if Instant::now() >= deadline || !self.is_connected() {
-                return false;
-            }
-            thread::sleep(Duration::from_millis(2));
-        }
+    /// Whether the first show and session snapshots arrived.
+    pub fn has_snapshot(&self) -> bool {
+        self.show_digest().is_some() && self.state.session_received.load(Ordering::Relaxed)
     }
 
     /// What arrived so far.
@@ -415,93 +409,16 @@ impl RemoteClient {
     }
 }
 
-impl Drop for RemoteClient {
-    fn drop(&mut self) {
-        self.state.stop.store(true, Ordering::SeqCst);
-        if let Some(io) = self.io.take() {
-            let _ = io.join();
-        }
-    }
-}
-
-fn io_loop(mut ws: WebSocket<TcpStream>, state: &RemoteState, outgoing: &Receiver<ClientMessage>) {
-    let reason = loop {
-        if state.stop.load(Ordering::SeqCst) {
-            let _ = ws.close(None);
-            let _ = ws.flush();
-            break "closed by the client".to_string();
-        }
-        let mut busy = false;
-        let mut ended = None;
-        loop {
-            match ws.read() {
-                Ok(Message::Binary(bytes)) => {
-                    busy = true;
-                    let len = bytes.len();
-                    match Encoding::decode::<ServerMessage>(&Frame::Binary(bytes)) {
-                        Ok(message) => {
-                            state.count(kind(&message), len);
-                            state.apply(message);
-                        }
-                        Err(err) => tracing::warn!("Remote client: bad message: {err:#}"),
-                    }
-                }
-                Ok(Message::Close(_)) => {
-                    let _ = ws.flush();
-                    ended = Some("closed by the engine".to_string());
-                    break;
-                }
-                Ok(_) => {}
-                Err(tungstenite::Error::Io(err)) if err.kind() == ErrorKind::WouldBlock => break,
-                Err(err) => {
-                    ended = Some(format!("connection lost ({err})"));
-                    break;
-                }
-            }
-        }
-        if let Some(reason) = ended {
-            break reason;
-        }
-        while let Ok(message) = outgoing.try_recv() {
-            busy = true;
-            let frame = match Encoding::Bincode.encode(&message) {
-                Ok(frame) => frame,
-                Err(err) => {
-                    tracing::warn!("Remote client: could not encode a message: {err:#}");
-                    continue;
-                }
-            };
-            match ws.write(into_message(frame)) {
-                Ok(()) => {}
-                Err(tungstenite::Error::Io(err)) if err.kind() == ErrorKind::WouldBlock => {}
-                Err(err) => {
-                    ended = Some(format!("connection lost ({err})"));
-                    break;
-                }
-            }
-        }
-        if let Some(reason) = ended {
-            break reason;
-        }
-        match ws.flush() {
-            Ok(()) => {}
-            Err(tungstenite::Error::Io(err)) if err.kind() == ErrorKind::WouldBlock => {}
-            Err(err) => break format!("connection lost ({err})"),
-        }
-        if !busy {
-            thread::sleep(IDLE_SLEEP);
-        }
-    };
-    state.disconnect(&reason);
-}
-
 impl EngineClient for RemoteClient {
     fn client(&self) -> ClientId {
-        self.client
+        self.state.client()
     }
 
     fn session(&self) -> SessionId {
-        self.session
+        self.state
+            .welcome
+            .get()
+            .map_or(UNKNOWN_SESSION, |welcome| welcome.session)
     }
 
     fn with_show<R>(&self, f: impl FnOnce(&EngineState) -> R) -> R {
@@ -515,12 +432,9 @@ impl EngineClient for RemoteClient {
         // pending or this sees the disconnect.
         let mut inbox = lock(&self.state.inbox);
         let sent = self.state.connected.load(Ordering::SeqCst)
-            && self
-                .outgoing
-                .send(ClientMessage::Command { seq, body })
-                .is_ok();
+            && self.transport.send(ClientMessage::Command { seq, body });
         if sent {
-            inbox.pending.insert(seq);
+            inbox.pending.insert(seq, Instant::now());
         } else {
             let refused = self.state.refused(seq);
             inbox.results.push(refused);
@@ -595,7 +509,7 @@ impl EngineClient for RemoteClient {
         if self.last_ui.as_ref() == Some(&snapshot.open_plugins) {
             return;
         }
-        let _ = self.outgoing.send(ClientMessage::PublishUi {
+        self.transport.send(ClientMessage::PublishUi {
             open_plugins: snapshot.open_plugins.clone(),
         });
         self.last_ui = Some(snapshot.open_plugins);
