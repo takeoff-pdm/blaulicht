@@ -30,8 +30,13 @@ use std::{
 };
 
 use blaulicht_shared::{
-    fixture::state::Fixture, folder::FolderId, scene::FixtureSelection, AnimationPreset,
-    AnimationSpec, ControlEvent, ControlEventMessage, CONTROLS_REQUIRING_SELECTION,
+    fixture::state::Fixture,
+    folder::FolderId,
+    scene::FixtureSelection,
+    scene_graph::{GraphId, NodeId, TransitionCondition},
+    view::ViewSceneMasters,
+    AnimationPreset, AnimationSpec, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
+    CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{Receiver, Sender};
 use strum::EnumCount;
@@ -305,6 +310,119 @@ pub enum HostCommand {
     UpdateAnimationTemplate { id: u8, spec: AnimationSpec },
     /// Deletes template `id` and removes it from every scene.
     DeleteAnimationTemplate(u8),
+
+    //
+    // View Performance.
+    //
+    /// Sets the grand master (0..=100 percent; higher values are clamped).
+    SetGrandMaster(u8),
+
+    //
+    // View.
+    //
+    /// Creates a view named `name` (trimmed) that captures the current
+    /// overlay stack. Answers `CreatedId::View`; refused with "Name is
+    /// empty" or "View limit reached".
+    CreateView { name: String },
+    /// Deletes a view. Refused with "View not found" or "At least one view
+    /// must remain".
+    DeleteView(u8),
+    /// Appends scene `scene` to view `view`'s overlays (nothing changes if it
+    /// is already one). Refused with "View not found" or "Scene not found"
+    /// (also for `BLANK`).
+    AddViewOverlay { view: u8, scene: u8 },
+    /// Removes scene `scene` from view `view`'s overlays, with its masters.
+    /// Refused with "View not found".
+    RemoveViewOverlay { view: u8, scene: u8 },
+    /// Sets the masters view `view` gives overlay `scene` when applied.
+    /// Refused with "View not found" or "Scene is not an overlay of this
+    /// view".
+    SetViewSceneMasters {
+        view: u8,
+        scene: u8,
+        masters: ViewSceneMasters,
+    },
+
+    //
+    // Scene graph. Each edits one part of one graph, so the engine's own
+    // per-tick changes (the active node, countdowns, the runtime clock)
+    // survive an edit.
+    //
+    /// Creates a scene graph named `name` (as given) and focuses it in the
+    /// sender's session. Answers `CreatedId::SceneGraph`; refused with
+    /// "Scene graph limit reached".
+    CreateSceneGraph { name: String },
+    /// Deletes a scene graph; every session focused on it loses its focus.
+    /// Refused with "Scene graph not found".
+    DeleteSceneGraph(GraphId),
+    /// Adds a default node to `graph` at canvas position (`x`, `y`). Answers
+    /// `CreatedId::SceneGraphNode`; refused with "Scene graph not found" or
+    /// "Node limit reached".
+    AddSceneGraphNode { graph: GraphId, x: f32, y: f32 },
+    /// Removes a node and its edges (and the active node, if it is that).
+    /// Refused with "Scene graph not found" or "Node not found".
+    RemoveSceneGraphNode { graph: GraphId, node: NodeId },
+    /// Moves nodes of `graph` to canvas positions `(node, x, y)` (clamped to
+    /// the canvas). Refused with "Scene graph not found" or "Node not found"
+    /// (then nothing moves).
+    MoveSceneGraphNodes {
+        graph: GraphId,
+        positions: Vec<(NodeId, f32, f32)>,
+    },
+    /// Adds a `Manual` edge `from` -> `to` (nothing changes if there is one).
+    /// Refused with "Scene graph not found" or "Node not found".
+    ConnectSceneGraphNodes {
+        graph: GraphId,
+        from: NodeId,
+        to: NodeId,
+    },
+    /// Removes the edge `from` -> `to`. Refused with "Scene graph not found"
+    /// or "Edge not found".
+    DisconnectSceneGraphNodes {
+        graph: GraphId,
+        from: NodeId,
+        to: NodeId,
+    },
+    /// Sets one parameter of a node. Refused with "Scene graph not found",
+    /// "Node not found" or, for `AddScene`, "Scene not found".
+    SetSceneGraphNode {
+        graph: GraphId,
+        node: NodeId,
+        param: SceneGraphNodeParam,
+    },
+    /// Sets one parameter of the edge `from` -> `to`. Refused with "Scene
+    /// graph not found" or "Edge not found".
+    SetSceneGraphEdge {
+        graph: GraphId,
+        from: NodeId,
+        to: NodeId,
+        param: SceneGraphEdgeParam,
+    },
+    /// Makes `node` the active node of `graph` ("Set as Start"). Refused
+    /// with "Scene graph not found" or "Node not found".
+    SetSceneGraphStart { graph: GraphId, node: NodeId },
+}
+
+/// One editable parameter of a scene graph node
+/// ([`HostCommand::SetSceneGraphNode`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum SceneGraphNodeParam {
+    Name(String),
+    /// 0..=100 percent (higher values are clamped).
+    MasterAlpha(u8),
+    MasterSpeed(AnimationSpeedModifier),
+    /// Appends a scene (nothing changes if the node already has it).
+    AddScene(u8),
+    /// Removes a scene (nothing changes if the node doesn't have it).
+    RemoveScene(u8),
+}
+
+/// One editable parameter of a scene graph edge
+/// ([`HostCommand::SetSceneGraphEdge`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum SceneGraphEdgeParam {
+    Condition(TransitionCondition),
+    Priority(u8),
 }
 
 impl HostCommand {
@@ -329,12 +447,29 @@ impl HostCommand {
             | HostCommand::MoveFixtureToGroup { .. }
             | HostCommand::CreateAnimationTemplate(_)
             | HostCommand::UpdateAnimationTemplate { .. }
-            | HostCommand::DeleteAnimationTemplate(_) => true,
+            | HostCommand::DeleteAnimationTemplate(_)
+            | HostCommand::CreateView { .. }
+            | HostCommand::DeleteView(_)
+            | HostCommand::AddViewOverlay { .. }
+            | HostCommand::RemoveViewOverlay { .. }
+            | HostCommand::SetViewSceneMasters { .. }
+            | HostCommand::CreateSceneGraph { .. }
+            | HostCommand::DeleteSceneGraph(_)
+            | HostCommand::AddSceneGraphNode { .. }
+            | HostCommand::RemoveSceneGraphNode { .. }
+            | HostCommand::MoveSceneGraphNodes { .. }
+            | HostCommand::ConnectSceneGraphNodes { .. }
+            | HostCommand::DisconnectSceneGraphNodes { .. }
+            | HostCommand::SetSceneGraphNode { .. }
+            | HostCommand::SetSceneGraphEdge { .. }
+            | HostCommand::SetSceneGraphStart { .. } => true,
             // A copy into an editor instance is scratch state; the Apply
             // that copies it back sends `LoadSpecIntoAnimation` (Programmer)
             // or `UpdateAnimationTemplate` (Setup), which mark the show.
             // Initializing a fixture only changes its DMX output for a while.
+            // The grand master is not saved in the showfile.
             HostCommand::Ping
+            | HostCommand::SetGrandMaster(_)
             | HostCommand::CloneAnimationInstanceState { .. }
             | HostCommand::KeepAnimationEditorAlive { .. }
             | HostCommand::InitFixtures(_) => false,
@@ -459,6 +594,13 @@ pub enum CreatedId {
     Fixture {
         group: u8,
         fixture: u8,
+    },
+    View(u8),
+    SceneGraph(GraphId),
+    /// A node's id in its graph.
+    SceneGraphNode {
+        graph: GraphId,
+        node: NodeId,
     },
 }
 

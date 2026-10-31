@@ -2,12 +2,12 @@ use crate::app::{
     components::{self, Dialog},
     BlaulichtApp,
 };
+use crate::client::EngineClient;
+use crate::dmx::SCENE_GRAPH_CANVAS_HALF_EXTENT as CANVAS_HALF_EXTENT;
+use crate::hub::{CommandSeq, HostCommand, SceneGraphEdgeParam, SceneGraphNodeParam};
 use blaulicht_shared::{
-    scene_graph::{
-        GraphId, NodeId, SceneEdge, SceneGraph, SceneGraphNode, SceneGraphState,
-        TransitionCondition,
-    },
-    AnimationSpeedModifier,
+    scene_graph::{GraphId, NodeId, SceneGraph, TransitionCondition},
+    AnimationSpeedModifier, ControlEvent,
 };
 use egui::{Color32, Context, Painter, Pos2, Rect, Stroke, Style, Ui, Vec2};
 use egui_snarl::{
@@ -17,9 +17,7 @@ use egui_snarl::{
 use fdg_sim::{
     glam::Vec3, Dimensions, ForceGraph, ForceGraphHelper, Simulation, SimulationParameters,
 };
-use std::collections::BTreeMap;
-
-const CANVAS_HALF_EXTENT: f32 = 1500.0;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SnarlNode {
@@ -35,6 +33,20 @@ pub struct SceneGraphUI {
     pub add_graph_open: bool,
     last_synced_graph: Option<GraphId>,
     synced: bool,
+    /// The snarl node of each engine node of the synced graph.
+    snarl_ids: BTreeMap<NodeId, egui_snarl::NodeId>,
+    /// Where each node was when the snarl was last synced from the engine,
+    /// or last sent to it. A snarl position that differs is an operator's
+    /// drag; an engine position that differs is someone else's move.
+    seen_pos: BTreeMap<NodeId, Pos2>,
+    /// The edges `(from, to)` as last synced from the engine, or sent to it.
+    seen_edges: BTreeSet<(NodeId, NodeId)>,
+    /// The last move / connect / disconnect sent, until its reply arrives.
+    /// The snarl is not synced from the engine meanwhile, so it doesn't
+    /// jump back to what the engine had before it applied the edit.
+    edit_reply: Option<CommandSeq>,
+    /// The selected node's name while it is being typed (graph, node, text).
+    name_edit: Option<(GraphId, NodeId, String)>,
     recenter_view: bool,
     zoom_level: f32,
     last_canvas_size: Vec2,
@@ -56,6 +68,11 @@ impl Default for SceneGraphUI {
             add_graph_open: false,
             last_synced_graph: None,
             synced: false,
+            snarl_ids: BTreeMap::new(),
+            seen_pos: BTreeMap::new(),
+            seen_edges: BTreeSet::new(),
+            edit_reply: None,
+            name_edit: None,
             recenter_view: false,
             zoom_level: 1.0,
             last_canvas_size: Vec2::ZERO,
@@ -66,8 +83,174 @@ impl Default for SceneGraphUI {
     }
 }
 
+/// Where a node is drawn: its position, or a row slot for a node that was
+/// never placed (`0, 0`).
+fn display_pos(index: usize, pos_x: f32, pos_y: f32) -> Pos2 {
+    if pos_x == 0.0 && pos_y == 0.0 {
+        Pos2::new(200.0 * index as f32, 100.0)
+    } else {
+        Pos2::new(pos_x, pos_y)
+    }
+}
+
+impl SceneGraphUI {
+    /// Brings the snarl in line with the engine's `graph` (`graph_id`), and
+    /// returns the commands for what the operator changed on the snarl since
+    /// the last sync: wires connected or removed, and nodes dropped at a new
+    /// position (only once `pointer_down` is over, so a drag sends one
+    /// move). While `waiting` for the reply to such a command, nothing is
+    /// taken from the engine.
+    fn sync(
+        &mut self,
+        graph_id: GraphId,
+        graph: &SceneGraph,
+        pointer_down: bool,
+        waiting: bool,
+    ) -> Vec<HostCommand> {
+        if self.last_synced_graph != Some(graph_id) {
+            self.synced = false;
+            self.selected_node = None;
+            self.last_synced_graph = Some(graph_id);
+        }
+        if !self.synced {
+            self.rebuild(graph_id, graph);
+            return Vec::new();
+        }
+
+        let commands = self.operator_edits(graph_id, pointer_down);
+        if !commands.is_empty() || waiting {
+            return commands;
+        }
+        self.take_engine_changes(graph_id, graph);
+        Vec::new()
+    }
+
+    fn rebuild(&mut self, graph_id: GraphId, graph: &SceneGraph) {
+        self.snarl = Snarl::new();
+        self.snarl_ids.clear();
+        self.seen_pos.clear();
+        self.seen_edges.clear();
+        self.take_engine_changes(graph_id, graph);
+        self.synced = true;
+        self.recenter_view = true;
+    }
+
+    /// The snarl's wires as engine edges.
+    fn snarl_edges(&self) -> BTreeSet<(NodeId, NodeId)> {
+        self.snarl
+            .wires()
+            .filter_map(|(out_pin, in_pin)| {
+                let from = self.snarl.get_node(out_pin.node)?.node_id;
+                let to = self.snarl.get_node(in_pin.node)?.node_id;
+                Some((from, to))
+            })
+            .collect()
+    }
+
+    fn operator_edits(&mut self, graph: GraphId, pointer_down: bool) -> Vec<HostCommand> {
+        let mut commands = Vec::new();
+        let edges = self.snarl_edges();
+        for &(from, to) in edges.difference(&self.seen_edges) {
+            commands.push(HostCommand::ConnectSceneGraphNodes { graph, from, to });
+        }
+        for &(from, to) in self.seen_edges.difference(&edges) {
+            commands.push(HostCommand::DisconnectSceneGraphNodes { graph, from, to });
+        }
+        self.seen_edges = edges;
+
+        if !pointer_down {
+            let mut positions = Vec::new();
+            for (&node, &snarl_id) in &self.snarl_ids {
+                let Some(info) = self.snarl.get_node_info(snarl_id) else {
+                    continue;
+                };
+                if self.seen_pos.get(&node) != Some(&info.pos) {
+                    positions.push((node, info.pos.x, info.pos.y));
+                    self.seen_pos.insert(node, info.pos);
+                }
+            }
+            if !positions.is_empty() {
+                commands.push(HostCommand::MoveSceneGraphNodes { graph, positions });
+            }
+        }
+        commands
+    }
+
+    fn take_engine_changes(&mut self, graph_id: GraphId, graph: &SceneGraph) {
+        // Nodes added or removed (by this frontend's commands, or another's).
+        let gone: Vec<NodeId> = self
+            .snarl_ids
+            .keys()
+            .filter(|node| !graph.nodes.contains_key(node))
+            .copied()
+            .collect();
+        for node in gone {
+            if let Some(snarl_id) = self.snarl_ids.remove(&node) {
+                self.snarl.remove_node(snarl_id);
+            }
+            self.seen_pos.remove(&node);
+            self.seen_edges
+                .retain(|&(from, to)| from != node && to != node);
+            if self.selected_node == Some(node) {
+                self.selected_node = None;
+            }
+        }
+        for (index, (&node_id, node)) in graph.nodes.iter().enumerate() {
+            let pos = display_pos(index, node.pos_x, node.pos_y);
+            match self.snarl_ids.get(&node_id) {
+                None => {
+                    let snarl_id = self.snarl.insert_node(pos, SnarlNode { node_id, graph_id });
+                    self.snarl_ids.insert(node_id, snarl_id);
+                }
+                // Moved elsewhere (auto layout, another frontend).
+                Some(&snarl_id) if self.seen_pos.get(&node_id) != Some(&pos) => {
+                    if let Some(info) = self.snarl.get_node_info_mut(snarl_id) {
+                        info.pos = pos;
+                    }
+                }
+                Some(_) => {}
+            }
+            self.seen_pos.insert(node_id, pos);
+        }
+
+        let edges: BTreeSet<(NodeId, NodeId)> = graph
+            .edges
+            .iter()
+            .map(|edge| (edge.from, edge.to))
+            .collect();
+        if edges != self.seen_edges {
+            let wired = self.snarl_edges();
+            let pins = |ids: &BTreeMap<NodeId, egui_snarl::NodeId>, from, to| {
+                Some((
+                    OutPinId {
+                        node: *ids.get(&from)?,
+                        output: 0,
+                    },
+                    InPinId {
+                        node: *ids.get(&to)?,
+                        input: 0,
+                    },
+                ))
+            };
+            for &(from, to) in wired.difference(&edges) {
+                if let Some((out_pin, in_pin)) = pins(&self.snarl_ids, from, to) {
+                    self.snarl.disconnect(out_pin, in_pin);
+                }
+            }
+            for &(from, to) in edges.difference(&wired) {
+                if let Some((out_pin, in_pin)) = pins(&self.snarl_ids, from, to) {
+                    self.snarl.connect(out_pin, in_pin);
+                }
+            }
+            self.seen_edges = edges;
+        }
+    }
+}
+
 pub struct SceneGraphViewer<'a> {
-    pub state: &'a mut SceneGraphState,
+    /// The engine's graph as read this frame. The viewer only changes the
+    /// snarl; `SceneGraphUI::sync` turns those changes into commands.
+    pub graph: &'a SceneGraph,
     pub graph_id: GraphId,
     pub selected_node: &'a mut Option<NodeId>,
     pub recenter_view: bool,
@@ -81,9 +264,9 @@ pub struct SceneGraphViewer<'a> {
 #[allow(refining_impl_trait)]
 impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
     fn title(&mut self, node: &SnarlNode) -> String {
-        let graph = self.state.graphs.get(&node.graph_id);
-        graph
-            .and_then(|g| g.nodes.get(&node.node_id))
+        self.graph
+            .nodes
+            .get(&node.node_id)
             .map(|n| n.name.clone())
             .unwrap_or_else(|| "???".to_string())
     }
@@ -98,10 +281,7 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
 
     fn show_input(&mut self, pin: &InPin, _ui: &mut Ui, snarl: &mut Snarl<SnarlNode>) -> PinInfo {
         let snarl_node = snarl.get_node(pin.id.node);
-        let graph = self.state.graphs.get(&self.graph_id);
-        let is_active = graph.map_or(false, |g| {
-            snarl_node.map_or(false, |n| g.active_node == Some(n.node_id))
-        });
+        let is_active = snarl_node.is_some_and(|n| self.graph.active_node == Some(n.node_id));
 
         // Indicate the active node purely via the pin fill color. Adding/removing
         // an extra in-node widget here changes the pin's size and egui's auto-id
@@ -140,11 +320,7 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         let node_id = snarl_node.node_id;
 
         let is_selected = *self.selected_node == Some(node_id);
-        let is_active = self
-            .state
-            .graphs
-            .get(&self.graph_id)
-            .map_or(false, |g| g.active_node == Some(node_id));
+        let is_active = self.graph.active_node == Some(node_id);
         let label = self.title(&snarl[node].clone());
 
         // Keep both rows present so transitions never resize nodes or move their pins.
@@ -170,33 +346,9 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<SnarlNode>) {
-        let from_node = &snarl[from.id.node];
-        let to_node = &snarl[to.id.node];
-
-        if from_node.graph_id != to_node.graph_id {
-            return;
+        if snarl[from.id.node].graph_id == snarl[to.id.node].graph_id {
+            snarl.connect(from.id, to.id);
         }
-
-        let graph_id = from_node.graph_id;
-        let from_id = from_node.node_id;
-        let to_id = to_node.node_id;
-
-        if let Some(graph) = self.state.graphs.get_mut(&graph_id) {
-            let already_exists = graph
-                .edges
-                .iter()
-                .any(|e| e.from == from_id && e.to == to_id);
-            if !already_exists {
-                graph.edges.push(SceneEdge {
-                    from: from_id,
-                    to: to_id,
-                    condition: TransitionCondition::Manual,
-                    priority: 0,
-                });
-            }
-        }
-
-        snarl.connect(from.id, to.id);
     }
 
     fn current_transform(
@@ -256,20 +408,18 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
     }
 
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<SnarlNode>) {
-        let from_node = &snarl[from.id.node];
-        let to_node = &snarl[to.id.node];
-        let graph_id = from_node.graph_id;
-        let from_id = from_node.node_id;
-        let to_id = to_node.node_id;
-
-        if let Some(graph) = self.state.graphs.get_mut(&graph_id) {
-            graph
-                .edges
-                .retain(|e| !(e.from == from_id && e.to == to_id));
-        }
-
         snarl.disconnect(from.id, to.id);
     }
+}
+
+/// What the page draws, read from the engine once per frame.
+struct GraphSnapshot {
+    /// Every graph's id and name.
+    graphs: Vec<(GraphId, String)>,
+    /// This session's focused graph, if it exists.
+    focused: Option<(GraphId, SceneGraph)>,
+    countdown_ms: Option<u64>,
+    scene_names: BTreeMap<u8, String>,
 }
 
 impl BlaulichtApp {
@@ -282,16 +432,11 @@ impl BlaulichtApp {
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         if ui.button("Confirm").clicked() {
-                            let mut state = self.data.state.dmx_engine.write().unwrap();
-                            state.0.scene_graphs.graphs.remove(&graph_id);
-                            if state.0.scene_graphs.focused_graph == Some(graph_id) {
-                                state.0.scene_graphs.focused_graph = None;
-                            }
-                            // Other operator sessions focused on it, too.
-                            state.repair_sessions();
+                            self.send_command(HostCommand::DeleteSceneGraph(graph_id), |app, _| {
+                                app.scene_graph_ui_state.selected_node = None;
+                                app.scene_graph_ui_state.synced = false;
+                            });
                             self.scene_graph_ui_state.delete_graph_id = None;
-                            self.scene_graph_ui_state.selected_node = None;
-                            self.scene_graph_ui_state.synced = false;
                         }
                         if ui.button("Cancel").clicked() {
                             self.scene_graph_ui_state.delete_graph_id = None;
@@ -309,17 +454,19 @@ impl BlaulichtApp {
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         if ui.button("Confirm").clicked() {
-                            let mut state = self.data.state.dmx_engine.write().unwrap();
-                            if let Some(graph) = state.0.scene_graphs.graphs.get_mut(&graph_id) {
-                                graph.nodes.remove(&node_id);
-                                graph.edges.retain(|e| e.from != node_id && e.to != node_id);
-                                if graph.active_node == Some(node_id) {
-                                    graph.active_node = None;
-                                }
-                            }
+                            self.send_command(
+                                HostCommand::RemoveSceneGraphNode {
+                                    graph: graph_id,
+                                    node: node_id,
+                                },
+                                move |app, _| {
+                                    let ui_state = &mut app.scene_graph_ui_state;
+                                    if ui_state.selected_node == Some(node_id) {
+                                        ui_state.selected_node = None;
+                                    }
+                                },
+                            );
                             self.scene_graph_ui_state.delete_node = None;
-                            self.scene_graph_ui_state.selected_node = None;
-                            self.scene_graph_ui_state.synced = false;
                         }
                         if ui.button("Cancel").clicked() {
                             self.scene_graph_ui_state.delete_node = None;
@@ -336,37 +483,57 @@ impl BlaulichtApp {
         render_context: crate::app::page::PageRenderContext,
     ) {
         self.render_scene_graph_delete_dialogs(ctx);
-        let (original, scenes) = {
-            let state = self.data.state.dmx_engine.read().unwrap();
-            (state.0.scene_graphs.clone(), state.0.scenes.clone())
+        let snapshot = self.client.with_session(|show, me| {
+            let graphs = &show.0.scene_graphs;
+            GraphSnapshot {
+                graphs: graphs
+                    .graphs
+                    .iter()
+                    .map(|(id, graph)| (*id, graph.name.clone()))
+                    .collect(),
+                focused: me
+                    .focused_graph
+                    .and_then(|id| Some((id, graphs.graphs.get(&id)?.clone()))),
+                countdown_ms: me
+                    .focused_graph
+                    .and_then(|id| graphs.active_countdowns.get(&id).copied()),
+                scene_names: show
+                    .0
+                    .scenes
+                    .iter()
+                    .map(|(id, scene)| (*id, scene.name.clone()))
+                    .collect(),
+            }
+        });
+        let Some(snapshot) = snapshot else {
+            ui.label("Not connected.");
+            return;
         };
-        let mut edited = original.clone();
-        self.render_scene_graph(ui, render_context, &mut edited, &scenes);
-        if edited != original {
-            let mut state = self.data.state.dmx_engine.write().unwrap();
-            merge_scene_graph_edits(&mut state.0.scene_graphs, &original, edited);
-        }
+        self.render_scene_graph(ui, render_context, snapshot);
     }
 
     fn render_scene_graph(
         &mut self,
         ui: &mut Ui,
         render_context: crate::app::page::PageRenderContext,
-        state: &mut SceneGraphState,
-        scenes: &BTreeMap<u8, blaulicht_shared::scene::Scene>,
+        snapshot: GraphSnapshot,
     ) {
+        let GraphSnapshot {
+            graphs,
+            focused,
+            countdown_ms: active_countdown_ms,
+            scene_names,
+        } = snapshot;
+
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             ui.label("Graphs:");
 
-            let graph_ids: Vec<_> = state.graphs.keys().copied().collect();
-            let focused = state.focused_graph;
-            for &gid in &graph_ids {
-                let Some(graph) = state.graphs.get(&gid) else {
-                    continue;
-                };
-                let selected = focused == Some(gid);
-                if ui.selectable_label(selected, &graph.name).clicked() {
-                    state.focused_graph = Some(gid);
+            let focused_id = focused.as_ref().map(|(id, _)| *id);
+            for (gid, name) in &graphs {
+                let selected = focused_id == Some(*gid);
+                if ui.selectable_label(selected, name).clicked() && !selected {
+                    self.client
+                        .send_event(ControlEvent::SetFocusedSceneGraph(Some(*gid)));
                     self.scene_graph_ui_state.selected_node = None;
                 }
             }
@@ -379,103 +546,54 @@ impl BlaulichtApp {
             if self.scene_graph_ui_state.add_graph_open {
                 ui.text_edit_singleline(&mut self.scene_graph_ui_state.new_graph_name);
                 if ui.button("Create").clicked() {
-                    let new_id = (0..=u8::MAX).find(|id| !state.graphs.contains_key(id));
-                    if let Some(new_id) = new_id {
-                        let mut graph = SceneGraph::default();
-                        graph.name = self.scene_graph_ui_state.new_graph_name.clone();
-                        state.graphs.insert(new_id, graph);
-                        state.focused_graph = Some(new_id);
-                    }
+                    // The engine focuses the new graph for this session.
+                    let name = self.scene_graph_ui_state.new_graph_name.clone();
+                    self.send_command(HostCommand::CreateSceneGraph { name }, |_, _| {});
                     self.scene_graph_ui_state.add_graph_open = false;
                 }
             }
         });
 
-        let Some(graph_id) = state.focused_graph else {
+        let Some((graph_id, graph)) = focused else {
             ui.label("Select or create a graph.");
             return;
         };
 
-        if !state.graphs.contains_key(&graph_id) {
-            state.focused_graph = None;
-            return;
-        }
-
-        // Resync snarl if the focused graph changed.
-        if self.scene_graph_ui_state.last_synced_graph != Some(graph_id) {
-            self.scene_graph_ui_state.synced = false;
-            self.scene_graph_ui_state.selected_node = None;
-            self.scene_graph_ui_state.last_synced_graph = Some(graph_id);
-        }
-
-        // Sync snarl from engine state if needed.
-        if !self.scene_graph_ui_state.synced {
-            self.scene_graph_ui_state.snarl = Snarl::new();
-            let Some(graph) = state.graphs.get(&graph_id) else {
-                self.scene_graph_ui_state.synced = false;
-                self.scene_graph_ui_state.selected_node = None;
-                return;
-            };
-
-            let mut node_to_snarl: BTreeMap<NodeId, egui_snarl::NodeId> = BTreeMap::new();
-            for (i, (&node_id, node)) in graph.nodes.iter().enumerate() {
-                let pos = if node.pos_x == 0.0 && node.pos_y == 0.0 {
-                    Pos2::new(200.0 * i as f32, 100.0)
-                } else {
-                    Pos2::new(node.pos_x, node.pos_y)
-                };
-                let snarl_id = self
-                    .scene_graph_ui_state
-                    .snarl
-                    .insert_node(pos, SnarlNode { node_id, graph_id });
-                node_to_snarl.insert(node_id, snarl_id);
-            }
-
-            for edge in &graph.edges {
-                if let (Some(&from_snarl), Some(&to_snarl)) =
-                    (node_to_snarl.get(&edge.from), node_to_snarl.get(&edge.to))
-                {
-                    self.scene_graph_ui_state.snarl.connect(
-                        OutPinId {
-                            node: from_snarl,
-                            output: 0,
-                        },
-                        InPinId {
-                            node: to_snarl,
-                            input: 0,
-                        },
-                    );
-                }
-            }
-
-            self.scene_graph_ui_state.synced = true;
-            self.scene_graph_ui_state.recenter_view = true;
+        // Sync the snarl with the engine, and send what the operator changed
+        // on it (wires, dropped nodes).
+        let pointer_down = ui.input(|input| input.pointer.any_down());
+        let waiting = self
+            .scene_graph_ui_state
+            .edit_reply
+            .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
+        let edits = self
+            .scene_graph_ui_state
+            .sync(graph_id, &graph, pointer_down, waiting);
+        for edit in edits {
+            let seq = self.send_command(edit, |_, _| {});
+            self.scene_graph_ui_state.edit_reply = Some(seq);
         }
 
         // Controls bar.
         let current_section = self.collector_snapshot.section_state;
         let mut do_auto_layout = false;
         render_context.horizontal(ui, egui::Align::Min, |ui| {
-            let Some(graph) = state.graphs.get_mut(&graph_id) else {
-                self.scene_graph_ui_state.selected_node = None;
-                self.scene_graph_ui_state.synced = false;
-                return;
-            };
-            ui.checkbox(&mut graph.enabled, "Enabled");
+            let mut enabled = graph.enabled;
+            if ui.checkbox(&mut enabled, "Enabled").changed() {
+                self.client
+                    .send_event(ControlEvent::SetSceneGraphEnabled(graph_id, enabled));
+            }
 
             if ui.button("Add Node").clicked() {
-                let new_id = (0..=u8::MAX).find(|id| !graph.nodes.contains_key(id));
-                if let Some(new_id) = new_id {
-                    graph.nodes.insert(new_id, SceneGraphNode::default());
-                    let node_count = self.scene_graph_ui_state.snarl.node_ids().count();
-                    self.scene_graph_ui_state.snarl.insert_node(
-                        Pos2::new(200.0 * node_count as f32, 100.0),
-                        SnarlNode {
-                            node_id: new_id,
-                            graph_id,
-                        },
-                    );
-                }
+                let node_count = graph.nodes.len();
+                self.send_command(
+                    HostCommand::AddSceneGraphNode {
+                        graph: graph_id,
+                        x: 200.0 * node_count as f32,
+                        y: 100.0,
+                    },
+                    |_, _| {},
+                );
             }
 
             if ui.button("Auto Layout").clicked() {
@@ -512,48 +630,29 @@ impl BlaulichtApp {
             }
         });
 
+        // The new positions go to the engine with the next sync, like a drag.
         if do_auto_layout {
-            if let Some(graph) = state.graphs.get_mut(&graph_id) {
-                auto_layout_graph(graph, &mut self.scene_graph_ui_state.snarl);
-                self.scene_graph_ui_state.recenter_view = true;
-            }
-        }
-
-        if !state.graphs.contains_key(&graph_id) {
-            return;
+            auto_layout_graph(&graph, &mut self.scene_graph_ui_state.snarl);
+            self.scene_graph_ui_state.recenter_view = true;
         }
 
         ui.separator();
 
-        // Persist snarl positions back to scene graph nodes (captures user drags), clamped to canvas.
-        let snarl_updates: Vec<(egui_snarl::NodeId, SnarlNode, Pos2)> = self
-            .scene_graph_ui_state
-            .snarl
-            .nodes_pos_ids()
-            .map(|(id, pos, n)| {
-                let clamped = Pos2::new(
-                    pos.x.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
-                    pos.y.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+        // Keep nodes on the canvas while they are dragged.
+        let snarl = &mut self.scene_graph_ui_state.snarl;
+        let snarl_ids: Vec<egui_snarl::NodeId> = snarl.node_ids().map(|(id, _)| id).collect();
+        for snarl_id in snarl_ids {
+            if let Some(info) = snarl.get_node_info_mut(snarl_id) {
+                info.pos = Pos2::new(
+                    info.pos.x.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+                    info.pos.y.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
                 );
-                (id, n.clone(), clamped)
-            })
-            .collect();
-        for (snarl_id, snarl_node, clamped) in &snarl_updates {
-            if let Some(info) = self.scene_graph_ui_state.snarl.get_node_info_mut(*snarl_id) {
-                info.pos = *clamped;
-            }
-            if let Some(graph) = state.graphs.get_mut(&snarl_node.graph_id) {
-                if let Some(node) = graph.nodes.get_mut(&snarl_node.node_id) {
-                    node.pos_x = clamped.x;
-                    node.pos_y = clamped.y;
-                }
             }
         }
 
         // Use a vertical split in narrow dynamic tiles so both workspaces remain usable.
         let pending_zoom_override =
             std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
-        let active_countdown_ms = state.active_countdowns.get(&graph_id).copied();
         let available = ui.available_size_before_wrap().max(egui::vec2(1.0, 1.0));
         let (workspace_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
         let gap = ui.spacing().item_spacing.x;
@@ -619,7 +718,7 @@ impl BlaulichtApp {
 
         // Left: snarl graph.
         let mut viewer = SceneGraphViewer {
-            state,
+            graph: &graph,
             graph_id,
             selected_node: &mut self.scene_graph_ui_state.selected_node,
             recenter_view,
@@ -640,33 +739,39 @@ impl BlaulichtApp {
         let Some(selected_node_id) = self.scene_graph_ui_state.selected_node else {
             return;
         };
-
-        let node_exists = state
-            .graphs
-            .get(&graph_id)
-            .map_or(false, |g| g.nodes.contains_key(&selected_node_id));
-        if !node_exists {
-            self.scene_graph_ui_state.selected_node = None;
-            return;
-        }
-
-        let Some(graph) = state.graphs.get_mut(&graph_id) else {
-            return;
-        };
-
-        let Some(scene_node) = graph.nodes.get_mut(&selected_node_id) else {
+        let Some(scene_node) = graph.nodes.get(&selected_node_id) else {
             self.scene_graph_ui_state.selected_node = None;
             return;
         };
 
         let ui = &mut editor_ui;
+        let mut commands: Vec<HostCommand> = Vec::new();
+        let node_param = |param| HostCommand::SetSceneGraphNode {
+            graph: graph_id,
+            node: selected_node_id,
+            param,
+        };
 
-        ui.heading(&scene_node.name.clone());
+        // The name being typed is kept here until the field loses focus, so
+        // keystrokes the engine hasn't applied yet don't get lost.
+        let name_edit = &mut self.scene_graph_ui_state.name_edit;
+        let mut name = match name_edit {
+            Some((g, n, text)) if *g == graph_id && *n == selected_node_id => text.clone(),
+            _ => scene_node.name.clone(),
+        };
+
+        ui.heading(&name);
         ui.separator();
 
         ui.horizontal(|ui| {
             ui.label("Name:");
-            ui.text_edit_singleline(&mut scene_node.name);
+            let response = ui.text_edit_singleline(&mut name);
+            if response.changed() {
+                commands.push(node_param(SceneGraphNodeParam::Name(name.clone())));
+            }
+            *name_edit = response
+                .has_focus()
+                .then(|| (graph_id, selected_node_id, name.clone()));
         });
 
         ui.add_space(4.0);
@@ -678,7 +783,7 @@ impl BlaulichtApp {
                 .add(egui::Slider::new(&mut alpha, 0.0..=100.0).suffix("%"))
                 .changed()
             {
-                scene_node.master_alpha = alpha as u8;
+                commands.push(node_param(SceneGraphNodeParam::MasterAlpha(alpha as u8)));
             }
         });
 
@@ -694,44 +799,37 @@ impl BlaulichtApp {
                     }
                 });
             if idx != speed_idx {
-                scene_node.master_speed = AnimationSpeedModifier::from_index(idx);
+                commands.push(node_param(SceneGraphNodeParam::MasterSpeed(
+                    AnimationSpeedModifier::from_index(idx),
+                )));
             }
         });
 
         ui.add_space(8.0);
         ui.label("Scenes:");
-        let mut to_remove = None;
-        for (i, scene_id) in scene_node.scenes.iter().enumerate() {
+        for scene_id in &scene_node.scenes {
             ui.horizontal(|ui| {
-                let name = scenes
+                let name = scene_names
                     .get(scene_id)
-                    .map(|s| s.name.as_str())
+                    .map(|s| s.as_str())
                     .unwrap_or("???");
                 ui.label(format!("  {} (ID {})", name, scene_id));
                 if ui.small_button("x").clicked() {
-                    to_remove = Some(i);
+                    commands.push(node_param(SceneGraphNodeParam::RemoveScene(*scene_id)));
                 }
             });
         }
-        if let Some(i) = to_remove {
-            scene_node.scenes.remove(i);
-        }
 
-        let mut add_scene_id: Option<u8> = None;
         egui::ComboBox::from_id_salt("node_add_scene")
             .selected_text("+ Add Scene")
             .show_ui(ui, |ui| {
-                for (id, scene) in scenes.iter() {
-                    if !scene_node.scenes.contains(id)
-                        && ui.selectable_label(false, &scene.name).clicked()
+                for (id, name) in scene_names.iter() {
+                    if !scene_node.scenes.contains(id) && ui.selectable_label(false, name).clicked()
                     {
-                        add_scene_id = Some(*id);
+                        commands.push(node_param(SceneGraphNodeParam::AddScene(*id)));
                     }
                 }
             });
-        if let Some(id) = add_scene_id {
-            scene_node.scenes.push(id);
-        }
 
         ui.add_space(12.0);
         ui.separator();
@@ -739,7 +837,10 @@ impl BlaulichtApp {
         // Node actions.
         ui.horizontal(|ui| {
             if ui.button("Set as Start").clicked() {
-                graph.active_node = Some(selected_node_id);
+                commands.push(HostCommand::SetSceneGraphStart {
+                    graph: graph_id,
+                    node: selected_node_id,
+                });
             }
             if ui.button("Delete Node").clicked() {
                 self.scene_graph_ui_state.delete_node = Some((graph_id, selected_node_id));
@@ -750,9 +851,7 @@ impl BlaulichtApp {
         let outgoing_edges: Vec<_> = graph
             .edges
             .iter()
-            .enumerate()
-            .filter(|(_, e)| e.from == selected_node_id)
-            .map(|(i, e)| (i, e.to, e.priority))
+            .filter(|e| e.from == selected_node_id)
             .collect();
 
         if !outgoing_edges.is_empty() {
@@ -760,17 +859,22 @@ impl BlaulichtApp {
             ui.separator();
             ui.label("Outgoing Edges:");
 
-            for (edge_idx, to_id, _priority) in &outgoing_edges {
+            for edge in outgoing_edges {
+                let to_id = edge.to;
                 let to_name = graph
                     .nodes
-                    .get(to_id)
+                    .get(&to_id)
                     .map(|n| n.name.as_str())
                     .unwrap_or("???");
+                let edge_param = |param| HostCommand::SetSceneGraphEdge {
+                    graph: graph_id,
+                    from: selected_node_id,
+                    to: to_id,
+                    param,
+                };
 
                 ui.group(|ui| {
                     ui.label(format!("-> {}", to_name));
-
-                    let edge = &mut graph.edges[*edge_idx];
 
                     let mut condition_idx = match &edge.condition {
                         TransitionCondition::Manual => 0,
@@ -784,7 +888,7 @@ impl BlaulichtApp {
                     };
 
                     let prev = condition_idx;
-                    egui::ComboBox::from_id_salt(format!("edge_cond_{}", edge_idx))
+                    egui::ComboBox::from_id_salt(("edge_cond", to_id))
                         .selected_text(match condition_idx {
                             0 => "Manual",
                             1 => "After Duration",
@@ -805,8 +909,9 @@ impl BlaulichtApp {
                             ui.selectable_value(&mut condition_idx, 6, "On Enter Breakdown");
                         });
 
+                    let mut condition = edge.condition.clone();
                     if condition_idx != prev {
-                        edge.condition = match condition_idx {
+                        condition = match condition_idx {
                             1 => TransitionCondition::AfterDuration(1000),
                             2 => TransitionCondition::AfterBeats(4),
                             3 => TransitionCondition::OnBeatDrop,
@@ -815,11 +920,14 @@ impl BlaulichtApp {
                             6 => TransitionCondition::OnEnterBreakdown,
                             _ => TransitionCondition::Manual,
                         };
+                        commands.push(edge_param(SceneGraphEdgeParam::Condition(
+                            condition.clone(),
+                        )));
                     }
 
-                    match &mut edge.condition {
+                    match condition {
                         TransitionCondition::AfterDuration(ms) => {
-                            let mut secs = *ms as f32 / 1000.0;
+                            let mut secs = ms as f32 / 1000.0;
                             if ui
                                 .add(
                                     egui::Slider::new(&mut secs, 0.1..=30.0)
@@ -828,16 +936,20 @@ impl BlaulichtApp {
                                 )
                                 .changed()
                             {
-                                *ms = (secs * 1000.0) as u64;
+                                commands.push(edge_param(SceneGraphEdgeParam::Condition(
+                                    TransitionCondition::AfterDuration((secs * 1000.0) as u64),
+                                )));
                             }
                         }
                         TransitionCondition::AfterBeats(n) => {
-                            let mut beats = *n as i32;
+                            let mut beats = n as i32;
                             if ui
                                 .add(egui::Slider::new(&mut beats, 1..=64).suffix(" beats"))
                                 .changed()
                             {
-                                *n = beats as u32;
+                                commands.push(edge_param(SceneGraphEdgeParam::Condition(
+                                    TransitionCondition::AfterBeats(beats as u32),
+                                )));
                             }
                         }
                         _ => {}
@@ -845,58 +957,29 @@ impl BlaulichtApp {
 
                     ui.horizontal(|ui| {
                         ui.label("Priority:");
+                        // DragValue keeps the dragged value itself, so the
+                        // engine's one-tick delay loses no movement.
                         let mut p = edge.priority as i32;
                         if ui
                             .add(egui::DragValue::new(&mut p).range(0..=255))
                             .changed()
                         {
-                            edge.priority = p as u8;
+                            commands.push(edge_param(SceneGraphEdgeParam::Priority(p as u8)));
                         }
                     });
                 });
             }
         }
-    }
-}
 
-/// Apply UI edits only when the corresponding graph was not concurrently edited.
-/// Engine transitions and countdowns must survive rendering a stale snapshot.
-fn merge_scene_graph_edits(
-    current: &mut SceneGraphState,
-    original: &SceneGraphState,
-    edited: SceneGraphState,
-) {
-    if edited.focused_graph != original.focused_graph
-        && current.focused_graph == original.focused_graph
-    {
-        current.focused_graph = edited.focused_graph;
-    }
-    for (id, mut graph) in edited.graphs {
-        let before = original.graphs.get(&id);
-        if before == Some(&graph) {
-            continue;
-        }
-        match (before, current.graphs.get(&id)) {
-            (None, None) => {
-                current.graphs.insert(id, graph);
-            }
-            (Some(before), Some(live)) => {
-                let mut comparable = live.clone();
-                comparable.active_node = before.active_node;
-                if &comparable != before {
-                    continue;
-                }
-                if graph.active_node == before.active_node {
-                    graph.active_node = live.active_node;
-                }
-                current.graphs.insert(id, graph);
-            }
-            _ => {} // A removed or concurrently changed graph must not be resurrected.
+        for command in commands {
+            self.client.send(command);
         }
     }
 }
 
-fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
+/// Lays the graph out with a force simulation and moves the snarl's nodes
+/// there; the next sync sends the new positions.
+fn auto_layout_graph(graph: &SceneGraph, snarl: &mut Snarl<SnarlNode>) {
     if graph.nodes.is_empty() {
         return;
     }
@@ -932,13 +1015,6 @@ fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
     }
 
     let clamp = |v: f32| v.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT);
-    for (node_id, loc) in &positions {
-        if let Some(node) = graph.nodes.get_mut(node_id) {
-            node.pos_x = clamp(loc.x * scale);
-            node.pos_y = clamp(loc.y * scale);
-        }
-    }
-
     for (snarl_id, _, snarl_node) in snarl
         .nodes_pos_ids()
         .map(|(id, p, n)| (id, p, n.clone()))
@@ -955,14 +1031,13 @@ fn auto_layout_graph(graph: &mut SceneGraph, snarl: &mut Snarl<SnarlNode>) {
 #[cfg(test)]
 mod edit_tests {
     use super::*;
+    use blaulicht_shared::scene_graph::{SceneEdge, SceneGraphNode};
 
     #[test]
     fn countdown_does_not_change_header_bounds_and_fit_contains_nodes() {
         let ctx = Context::default();
-        let mut state = SceneGraphState::default();
         let mut graph = SceneGraph::default();
         graph.nodes.insert(0, SceneGraphNode::default());
-        state.graphs.insert(0, graph);
         let mut snarl = Snarl::new();
         let node = snarl.insert_node(
             Pos2::new(220.0, 100.0),
@@ -975,9 +1050,9 @@ mod edit_tests {
         let mut zoom = 1.0;
         let mut sizes = Vec::new();
         for active in [None, Some(0), None] {
-            state.graphs.get_mut(&0).unwrap().active_node = active;
+            graph.active_node = active;
             let mut viewer = SceneGraphViewer {
-                state: &mut state,
+                graph: &graph,
                 graph_id: 0,
                 selected_node: &mut selected,
                 recenter_view: true,
@@ -1006,35 +1081,155 @@ mod edit_tests {
         );
     }
 
-    #[test]
-    fn rendering_edits_preserve_engine_transitions_and_countdowns() {
-        let mut original = SceneGraphState::default();
-        original.graphs.insert(0, SceneGraph::default());
-        let mut edited = original.clone();
-        edited.graphs.get_mut(&0).unwrap().name = "Edited".into();
-        let mut current = original.clone();
-        current.graphs.get_mut(&0).unwrap().active_node = Some(2);
-        current.active_countdowns.insert(0, 123);
-        merge_scene_graph_edits(&mut current, &original, edited);
-        assert_eq!(current.graphs[&0].name, "Edited");
-        assert_eq!(current.graphs[&0].active_node, Some(2));
-        assert_eq!(current.active_countdowns[&0], 123);
+    fn node_at(x: f32, y: f32) -> SceneGraphNode {
+        SceneGraphNode {
+            pos_x: x,
+            pos_y: y,
+            ..SceneGraphNode::default()
+        }
+    }
+
+    fn edge(from: NodeId, to: NodeId) -> SceneEdge {
+        SceneEdge {
+            from,
+            to,
+            condition: TransitionCondition::Manual,
+            priority: 0,
+        }
+    }
+
+    /// Nodes 0 and 1, with an edge 0 -> 1.
+    fn two_nodes() -> SceneGraph {
+        let mut graph = SceneGraph::default();
+        graph.nodes.insert(0, node_at(10.0, 20.0));
+        graph.nodes.insert(1, node_at(300.0, 20.0));
+        graph.edges.push(edge(0, 1));
+        graph
+    }
+
+    fn snarl_pos(ui: &SceneGraphUI, node: NodeId) -> Pos2 {
+        ui.snarl.get_node_info(ui.snarl_ids[&node]).unwrap().pos
+    }
+
+    fn pins(ui: &SceneGraphUI, from: NodeId, to: NodeId) -> (OutPinId, InPinId) {
+        (
+            OutPinId {
+                node: ui.snarl_ids[&from],
+                output: 0,
+            },
+            InPinId {
+                node: ui.snarl_ids[&to],
+                input: 0,
+            },
+        )
     }
 
     #[test]
-    fn rendering_cannot_restore_a_deleted_or_replaced_graph() {
-        let mut original = SceneGraphState::default();
-        original.graphs.insert(0, SceneGraph::default());
-        let mut edited = original.clone();
-        edited.graphs.get_mut(&0).unwrap().enabled = true;
-        let mut current = SceneGraphState::default();
-        merge_scene_graph_edits(&mut current, &original, edited.clone());
-        assert!(current.graphs.is_empty());
-        let mut replacement = SceneGraph::default();
-        replacement.name = "Loaded showfile".into();
-        current.graphs.insert(0, replacement);
-        merge_scene_graph_edits(&mut current, &original, edited);
-        assert_eq!(current.graphs[&0].name, "Loaded showfile");
-        assert!(!current.graphs[&0].enabled);
+    fn the_snarl_shows_the_engine_graph() {
+        let mut ui = SceneGraphUI::default();
+        let mut graph = two_nodes();
+        assert!(ui.sync(0, &graph, false, false).is_empty());
+        assert_eq!(snarl_pos(&ui, 1), Pos2::new(300.0, 20.0));
+        assert_eq!(ui.snarl_edges(), BTreeSet::from([(0, 1)]));
+
+        // Another frontend adds a node, moves one, rewires and removes one.
+        graph.nodes.insert(2, node_at(0.0, 400.0));
+        graph.nodes.get_mut(&0).unwrap().pos_x = 50.0;
+        graph.edges = vec![edge(1, 2)];
+        assert!(ui.sync(0, &graph, false, false).is_empty());
+        assert_eq!(snarl_pos(&ui, 0), Pos2::new(50.0, 20.0));
+        assert_eq!(snarl_pos(&ui, 2), Pos2::new(0.0, 400.0));
+        assert_eq!(ui.snarl_edges(), BTreeSet::from([(1, 2)]));
+
+        ui.selected_node = Some(1);
+        graph.nodes.remove(&1);
+        graph.edges.clear();
+        assert!(ui.sync(0, &graph, false, false).is_empty());
+        assert_eq!(ui.snarl.node_ids().count(), 2);
+        assert_eq!(ui.selected_node, None);
+        assert!(ui.snarl_edges().is_empty());
+    }
+
+    #[test]
+    fn a_drag_is_sent_once_when_it_ends() {
+        let mut ui = SceneGraphUI::default();
+        let graph = two_nodes();
+        ui.sync(0, &graph, false, false);
+        let snarl_id = ui.snarl_ids[&1];
+        ui.snarl.get_node_info_mut(snarl_id).unwrap().pos = Pos2::new(320.0, 40.0);
+
+        // Still dragging: nothing is sent, and the engine doesn't pull it back.
+        assert!(ui.sync(0, &graph, true, false).is_empty());
+        assert_eq!(snarl_pos(&ui, 1), Pos2::new(320.0, 40.0));
+
+        // Dropped: one move.
+        let sent = ui.sync(0, &graph, false, false);
+        assert!(
+            matches!(&sent[..], [HostCommand::MoveSceneGraphNodes { graph: 0, positions }]
+                if positions == &vec![(1, 320.0, 40.0)]),
+            "{sent:?}"
+        );
+        // Until the reply, the engine's old position doesn't pull it back.
+        assert!(ui.sync(0, &graph, false, true).is_empty());
+        assert_eq!(snarl_pos(&ui, 1), Pos2::new(320.0, 40.0));
+
+        // The engine applied it: nothing more to send or change.
+        let mut moved = graph.clone();
+        *moved.nodes.get_mut(&1).unwrap() = node_at(320.0, 40.0);
+        assert!(ui.sync(0, &moved, false, false).is_empty());
+        assert_eq!(snarl_pos(&ui, 1), Pos2::new(320.0, 40.0));
+    }
+
+    #[test]
+    fn wires_become_connect_and_disconnect_commands() {
+        let mut ui = SceneGraphUI::default();
+        let graph = two_nodes();
+        ui.sync(0, &graph, false, false);
+
+        let (out_pin, in_pin) = pins(&ui, 0, 1);
+        ui.snarl.disconnect(out_pin, in_pin);
+        let (out_pin, in_pin) = pins(&ui, 1, 0);
+        ui.snarl.connect(out_pin, in_pin);
+        let sent = ui.sync(0, &graph, false, false);
+        assert!(
+            matches!(
+                &sent[..],
+                [
+                    HostCommand::ConnectSceneGraphNodes {
+                        graph: 0,
+                        from: 1,
+                        to: 0
+                    },
+                    HostCommand::DisconnectSceneGraphNodes {
+                        graph: 0,
+                        from: 0,
+                        to: 1
+                    },
+                ]
+            ),
+            "{sent:?}"
+        );
+        // Waiting for the reply: the wires stay as the operator left them.
+        assert!(ui.sync(0, &graph, false, true).is_empty());
+        assert_eq!(ui.snarl_edges(), BTreeSet::from([(1, 0)]));
+        // A refused edit: the engine's edges come back.
+        assert!(ui.sync(0, &graph, false, false).is_empty());
+        assert_eq!(ui.snarl_edges(), BTreeSet::from([(0, 1)]));
+    }
+
+    #[test]
+    fn another_graph_rebuilds_the_snarl() {
+        let mut ui = SceneGraphUI::default();
+        ui.sync(0, &two_nodes(), false, false);
+        ui.selected_node = Some(0);
+        let mut other = SceneGraph::default();
+        other.nodes.insert(5, node_at(0.0, 0.0));
+        assert!(ui.sync(1, &other, false, false).is_empty());
+        assert_eq!(ui.selected_node, None);
+        assert_eq!(ui.snarl.node_ids().count(), 1);
+        // A node that was never placed gets a slot, and is not moved there
+        // in the engine just by being shown.
+        assert_eq!(snarl_pos(&ui, 5), Pos2::new(0.0, 100.0));
+        assert!(ui.sync(1, &other, false, false).is_empty());
     }
 }

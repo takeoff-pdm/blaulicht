@@ -1,11 +1,13 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod management;
+mod performance_commands;
 mod session;
 mod setup_commands;
 mod state;
 
 use artnet_protocol::ArtCommand;
 use blaulicht_audio_engine::CollectorOutput;
+pub use performance_commands::SCENE_GRAPH_CANVAS_HALF_EXTENT;
 use serialport::SerialPort;
 pub use session::*;
 pub use state::*;
@@ -941,6 +943,52 @@ impl DmxEngine {
                 state.delete_animation(id);
                 OK
             }
+            HostCommand::SetGrandMaster(percent) => {
+                self.state_ref.set_grand_master_percent(percent);
+                OK
+            }
+            HostCommand::CreateView { name } => state.create_view_command(&name),
+            HostCommand::DeleteView(view) => state.delete_view_command(view),
+            HostCommand::AddViewOverlay { view, scene } => {
+                state.add_view_overlay_command(view, scene)
+            }
+            HostCommand::RemoveViewOverlay { view, scene } => {
+                state.remove_view_overlay_command(view, scene)
+            }
+            HostCommand::SetViewSceneMasters {
+                view,
+                scene,
+                masters,
+            } => state.set_view_scene_masters_command(view, scene, masters),
+            HostCommand::CreateSceneGraph { name } => state.create_scene_graph_command(name),
+            HostCommand::DeleteSceneGraph(graph) => state.delete_scene_graph_command(graph),
+            HostCommand::AddSceneGraphNode { graph, x, y } => {
+                state.add_scene_graph_node_command(graph, x, y)
+            }
+            HostCommand::RemoveSceneGraphNode { graph, node } => {
+                state.remove_scene_graph_node_command(graph, node)
+            }
+            HostCommand::MoveSceneGraphNodes { graph, positions } => {
+                state.move_scene_graph_nodes_command(graph, &positions)
+            }
+            HostCommand::ConnectSceneGraphNodes { graph, from, to } => {
+                state.connect_scene_graph_nodes_command(graph, from, to)
+            }
+            HostCommand::DisconnectSceneGraphNodes { graph, from, to } => {
+                state.disconnect_scene_graph_nodes_command(graph, from, to)
+            }
+            HostCommand::SetSceneGraphNode { graph, node, param } => {
+                state.set_scene_graph_node_command(graph, node, param)
+            }
+            HostCommand::SetSceneGraphEdge {
+                graph,
+                from,
+                to,
+                param,
+            } => state.set_scene_graph_edge_command(graph, from, to, param),
+            HostCommand::SetSceneGraphStart { graph, node } => {
+                state.set_scene_graph_start_command(graph, node)
+            }
         }
     }
 
@@ -1041,7 +1089,11 @@ impl DmxEngine {
         let body = ev.body();
         let keeps_buffer = matches!(
             body,
-            ControlEvent::SetSceneMasterAlpha(..) | ControlEvent::SetSceneMasterSpeed(..)
+            ControlEvent::SetSceneMasterAlpha(..)
+                | ControlEvent::SetSceneMasterSpeed(..)
+                // The Scene graph page focuses and enables graphs.
+                | ControlEvent::SetFocusedSceneGraph(..)
+                | ControlEvent::SetSceneGraphEnabled(..)
         );
         if !requires_selection && !keeps_buffer {
             state.0.control_buffer.reset();

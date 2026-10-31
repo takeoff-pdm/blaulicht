@@ -1,15 +1,17 @@
 use crate::client::EngineClient;
 use crate::{
     app::{
-        components::{self, ButtonSize, Dialog, Knob, Pagination, SpeedKnob},
+        components::{self, ButtonSize, Dialog, Held, Knob, Pagination, SpeedKnob},
         BlaulichtApp,
     },
-    dmx::EngineState,
+    hub::{CommandSeq, CreatedId, HostCommand},
 };
 use blaulicht_shared::{
-    scene::BLANK_SCENE_ID, view::View, ControlEvent, ControlEventMessage, EventOriginator,
+    scene::BLANK_SCENE_ID, view::View, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
+    EventOriginator,
 };
 use egui::{Context, FontId, Frame, Key, Margin, RichText, TextEdit, Vec2};
+use std::collections::BTreeMap;
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
@@ -26,6 +28,13 @@ pub struct ViewUI {
     overlay_picker_open: bool,
     // For both overlay and base
     scene_picker_view_id: Option<u8>,
+    /// A scene row's Alpha knob while it is turned, keyed by (view, scene).
+    alpha_held: Held<f32, (u8, u8)>,
+    /// A scene row's Speed knob while it is turned, keyed by (view, scene).
+    speed_held: Held<AnimationSpeedModifier, (u8, u8)>,
+    /// The Create View command waiting for its reply (the dialog closes on
+    /// success).
+    create_reply: Option<CommandSeq>,
 }
 
 impl Default for ViewUI {
@@ -39,6 +48,9 @@ impl Default for ViewUI {
             new_view_name: DEFAULT_NEW_VIEW_NAME.to_string(),
             overlay_picker_open: false,
             scene_picker_view_id: None,
+            alpha_held: Held::default(),
+            speed_held: Held::default(),
+            create_reply: None,
         }
     }
 }
@@ -60,40 +72,10 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         let confirm = components::button(ui, false, "Confirm", ButtonSize::Large);
                         if confirm {
-                            let mut engine = self.data.state.dmx_engine.write().unwrap();
-
-                            if engine.0.views.len() > 1 {
-                                engine.0.views.remove(&view_id);
-                                // let total_views = engine.0.views.len();
-                                let total_pages = self.view_ui_state.pagination.pages();
-
-                                let mut target_page = self.view_ui_state.pagination.current_page();
-                                if total_pages == 0 {
-                                    target_page = 0;
-                                } else if target_page >= total_pages {
-                                    target_page = total_pages - 1;
-                                }
-
-                                let next = engine
-                                    .0
-                                    .views
-                                    .iter()
-                                    .skip(
-                                        target_page
-                                            * self.view_ui_state.pagination.items_per_page(),
-                                    )
-                                    .map(|(id, _)| *id)
-                                    .next()
-                                    .or_else(|| engine.0.views.keys().next().copied());
-                                drop(engine);
-
-                                self.view_ui_state.selected_view_id = next;
-
-                                // self.view_ui_state.current_page = target_page;
-                            } else {
-                                drop(engine);
-                            }
-
+                            let current_page = self.view_ui_state.pagination.current_page();
+                            self.send_command(HostCommand::DeleteView(view_id), move |app, _| {
+                                app.select_view_after_delete(current_page);
+                            });
                             self.view_ui_state.delete_view_open = false;
                             self.view_ui_state.delete_view_id = None;
                         }
@@ -107,6 +89,23 @@ impl BlaulichtApp {
         }
     }
 
+    /// After a view was deleted: select the first view of the page that was
+    /// shown (or of the last page, if that one is gone now).
+    fn select_view_after_delete(&mut self, current_page: usize) {
+        let pagination = &self.view_ui_state.pagination;
+        let total_pages = pagination.pages();
+        let target_page = current_page.min(total_pages.saturating_sub(1));
+        let per_page = pagination.items_per_page();
+        self.view_ui_state.selected_view_id = self.client.with_show(|show| {
+            let views = &show.0.views;
+            views
+                .keys()
+                .nth(target_page * per_page)
+                .or_else(|| views.keys().next())
+                .copied()
+        });
+    }
+
     pub fn render_overlay_picker_dialog(&mut self, ctx: &Context) {
         if !self.view_ui_state.overlay_picker_open {
             return;
@@ -117,18 +116,20 @@ impl BlaulichtApp {
             return;
         };
 
-        let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().clone() };
-        let Some(view_snapshot) = engine_snapshot.0.views.get(&view_id) else {
+        // Scenes in folders; only folders with a scene left to add.
+        let available_scenes = self.client.with_show(|show| {
+            let view = show.0.views.get(&view_id)?;
+            Some(components::prune_empty_folders(
+                components::scene_tree_items(&show.0, |scene_id| {
+                    scene_id != BLANK_SCENE_ID && !view.overlays.contains(&scene_id)
+                }),
+            ))
+        });
+        let Some(available_scenes) = available_scenes else {
             self.view_ui_state.overlay_picker_open = false;
             self.view_ui_state.scene_picker_view_id = None;
             return;
         };
-
-        // Scenes in folders; only folders with a scene left to add.
-        let available_scenes = components::prune_empty_folders(components::scene_tree_items(
-            &engine_snapshot.0,
-            |scene_id| scene_id != BLANK_SCENE_ID && !view_snapshot.overlays.contains(&scene_id),
-        ));
 
         let picked = components::tree_picker_dialog(
             ctx,
@@ -142,12 +143,13 @@ impl BlaulichtApp {
 
         if let Some(new_id) = picked {
             self.view_ui_state.scene_picker_view_id = None;
-            let mut engine = self.data.state.dmx_engine.write().unwrap();
-            if let Some(view) = engine.0.views.get_mut(&view_id) {
-                if !view.overlays.contains(&new_id) {
-                    view.overlays.push(new_id);
-                }
-            }
+            self.send_command(
+                HostCommand::AddViewOverlay {
+                    view: view_id,
+                    scene: new_id,
+                },
+                |_, _| {},
+            );
 
             self.view_ui_state.overlay_picker_open = false;
         }
@@ -182,45 +184,37 @@ impl BlaulichtApp {
                         }
                     });
 
-                    if button_pressed {
-                        let mut engine = self.data.state.dmx_engine.write().unwrap();
-
-                        let mut new_name = self.view_ui_state.new_view_name.trim().to_string();
-                        if new_name.is_empty() {
-                            new_name = DEFAULT_NEW_VIEW_NAME.to_string();
+                    let waiting = self
+                        .view_ui_state
+                        .create_reply
+                        .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
+                    if button_pressed && !waiting {
+                        let mut name = self.view_ui_state.new_view_name.trim().to_string();
+                        if name.is_empty() {
+                            name = DEFAULT_NEW_VIEW_NAME.to_string();
                         }
-
-                        // A view captures what is playing, which is the
-                        // overlay stack -- the base slot belongs to BLANK.
-                        let overlays = engine.0.current_overlay_scenes.clone();
-                        let new_id = (0..=u8::MAX)
-                            .find(|candidate| !engine.0.views.contains_key(candidate))
-                            .expect("view id overflow");
-
-                        engine
-                            .0
-                            .views
-                            .insert(new_id, View::new(new_name.clone(), overlays));
-
-                        drop(engine);
-
-                        self.view_ui_state.selected_view_id = Some(new_id);
-                        // TODO: can we focus this?
-                        // self.view_ui_state.current_page = new_page;
-                        self.view_ui_state.new_view_name = DEFAULT_NEW_VIEW_NAME.to_string();
-                        self.view_ui_state.add_view_open = false;
+                        // The engine captures the overlay stack (what is
+                        // playing) into the new view.
+                        let seq =
+                            self.send_command(HostCommand::CreateView { name }, |app, created| {
+                                if let Some(CreatedId::View(id)) = created {
+                                    app.view_ui_state.selected_view_id = Some(id);
+                                }
+                                // TODO: can we focus this?
+                                app.view_ui_state.new_view_name = DEFAULT_NEW_VIEW_NAME.to_string();
+                                app.view_ui_state.add_view_open = false;
+                            });
+                        self.view_ui_state.create_reply = Some(seq);
                     }
                 });
         }
     }
 
-    fn view_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
-        // TODO: can we do this without the allocation?
-        let raw_items: Vec<_> = dmx_engine.0.views.iter().collect();
+    fn view_pagination(&mut self, ui: &mut egui::Ui, views: &[(u8, String)], compact: bool) {
         let paginated_views = self
             .view_ui_state
             .pagination
-            .prepare_current_page_items(&raw_items);
+            .prepare_current_page_items(views);
 
         let panel_padding = 2.0;
 
@@ -231,10 +225,10 @@ impl BlaulichtApp {
         self.view_ui_state
             .pagination
             .ui_responsive(ui, compact, |ui| {
-                for (id, view) in paginated_views {
-                    let id = **id;
+                for (id, name) in paginated_views {
+                    let id = *id;
 
-                    let label = components::indexed_label(id, &view.name);
+                    let label = components::indexed_label(id, name);
                     let is_selected = selected_view_id == Some(id);
                     if components::button(
                         ui,
@@ -261,7 +255,7 @@ impl BlaulichtApp {
     }
 
     /// One scene line of the view editor: name, master alpha / speed knobs and a
-    /// trailing button. Knob edits write straight into the view definition.
+    /// trailing button. Knob edits are sent as the view's masters for the scene.
     /// Returns whether the trailing button was pressed.
     #[allow(clippy::too_many_arguments)]
     fn scene_row(
@@ -274,7 +268,9 @@ impl BlaulichtApp {
         button_label: &str,
         button_selected: bool,
     ) -> bool {
-        let mut masters = view_snapshot.masters_for(scene_id);
+        let key = (view_id, scene_id);
+        let engine_masters = view_snapshot.masters_for(scene_id);
+        let mut masters = engine_masters;
         let mut pressed = false;
         let mut changed = false;
 
@@ -289,31 +285,40 @@ impl BlaulichtApp {
                 },
             );
 
-            let mut alpha = masters.master_alpha as f32;
-            if ui
-                .add(Knob::new(&mut alpha, 0.0..=100.0).with_label("Alpha"))
-                .changed()
-            {
+            let held = &mut self.view_ui_state.alpha_held;
+            let mut alpha = held.shown(key, engine_masters.master_alpha as f32);
+            masters.master_alpha = alpha.round() as u8;
+            let response = ui.add(Knob::new(&mut alpha, 0.0..=100.0).with_label("Alpha"));
+            if response.changed() {
+                held.hold(key, alpha);
                 masters.master_alpha = alpha.round() as u8;
                 changed = true;
             }
+            held.settle_row(response.dragged(), key, |value| {
+                value.round() as u8 == engine_masters.master_alpha
+            });
 
-            if ui
-                .add(SpeedKnob::new(&mut masters.master_speed).with_label("Speed"))
-                .changed()
-            {
+            let held = &mut self.view_ui_state.speed_held;
+            masters.master_speed = held.shown(key, engine_masters.master_speed);
+            let response = ui.add(SpeedKnob::new(&mut masters.master_speed).with_label("Speed"));
+            if response.changed() {
+                held.hold(key, masters.master_speed);
                 changed = true;
             }
+            held.settle_row(response.dragged(), key, |value| {
+                value == engine_masters.master_speed
+            });
 
             ui.add_space(4.0);
             pressed = components::button(ui, button_selected, button_label, ButtonSize::Medium);
         });
 
         if changed {
-            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-            if let Some(view) = dmx_engine.0.views.get_mut(&view_id) {
-                view.masters.insert(scene_id, masters);
-            }
+            self.client.send(HostCommand::SetViewSceneMasters {
+                view: view_id,
+                scene: scene_id,
+                masters,
+            });
         }
 
         pressed
@@ -333,8 +338,36 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()),
             render_context.primary_layout(),
             |ui| {
-                let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-                self.view_pagination(ui, &dmx_engine, render_context.is_narrow_dynamic());
+                let selected_view_id = self.view_ui_state.selected_view_id;
+                let (views, view_snapshot, scene_names, available_overlay_count) =
+                    self.client.with_show(|show| {
+                        let views: Vec<(u8, String)> = show
+                            .0
+                            .views
+                            .iter()
+                            .map(|(id, view)| (*id, view.name.clone()))
+                            .collect();
+                        let view_snapshot =
+                            selected_view_id.and_then(|id| show.0.views.get(&id).cloned());
+                        let scene_names: BTreeMap<u8, String> = show
+                            .0
+                            .scenes
+                            .iter()
+                            .map(|(id, scene)| (*id, scene.name.clone()))
+                            .collect();
+                        let available_overlay_count = view_snapshot.as_ref().map_or(0, |view| {
+                            show.0
+                                .scenes
+                                .keys()
+                                .filter(|scene_id| {
+                                    **scene_id != BLANK_SCENE_ID
+                                        && !view.overlays.contains(scene_id)
+                                })
+                                .count()
+                        });
+                        (views, view_snapshot, scene_names, available_overlay_count)
+                    });
+                self.view_pagination(ui, &views, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -349,8 +382,8 @@ impl BlaulichtApp {
                                 self.view_ui_state.add_view_open = true;
                             }
 
-                            let can_delete = self.view_ui_state.selected_view_id.is_some()
-                                && dmx_engine.0.views.len() > 1;
+                            let can_delete =
+                                self.view_ui_state.selected_view_id.is_some() && views.len() > 1;
                             if components::action_button(
                                 ui,
                                 can_delete,
@@ -376,7 +409,7 @@ impl BlaulichtApp {
                             return;
                         };
 
-                        let Some(view_snapshot) = dmx_engine.0.views.get(&view_id).cloned() else {
+                        let Some(view_snapshot) = view_snapshot else {
                             self.view_ui_state.scene_picker_view_id = None;
                             self.view_ui_state.overlay_picker_open = false;
                             ui.heading("View Details");
@@ -415,11 +448,9 @@ impl BlaulichtApp {
                                 ui.add_space(4.0);
 
                                 let scene_name = |scene_id: u8| -> String {
-                                    dmx_engine
-                                        .0
-                                        .scenes
+                                    scene_names
                                         .get(&scene_id)
-                                        .map(|scene| scene.name.clone())
+                                        .cloned()
                                         .unwrap_or_else(|| "Unknown".to_string())
                                 };
 
@@ -427,15 +458,6 @@ impl BlaulichtApp {
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new("Overlay Scenes").strong());
 
-                                    let available_overlay_count = dmx_engine
-                                        .0
-                                        .scenes
-                                        .keys()
-                                        .filter(|scene_id| {
-                                            **scene_id != BLANK_SCENE_ID
-                                                && !view_snapshot.overlays.contains(scene_id)
-                                        })
-                                        .count();
                                     let add_enabled = available_overlay_count > 0;
 
                                     if components::button(
@@ -464,13 +486,13 @@ impl BlaulichtApp {
                                             false,
                                         );
                                         if remove {
-                                            let mut dmx_engine =
-                                                self.data.state.dmx_engine.write().unwrap();
-                                            if let Some(view) = dmx_engine.0.views.get_mut(&view_id)
-                                            {
-                                                view.overlays.retain(|id| *id != overlay_id);
-                                                view.prune_masters();
-                                            }
+                                            self.send_command(
+                                                HostCommand::RemoveViewOverlay {
+                                                    view: view_id,
+                                                    scene: overlay_id,
+                                                },
+                                                |_, _| {},
+                                            );
                                         }
                                     }
                                 }

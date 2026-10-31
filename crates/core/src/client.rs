@@ -131,6 +131,9 @@ pub trait EngineClient {
     /// Runs `f` on the configured plugins, by plugin id.
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R;
 
+    /// The grand master, 0..=100 percent (`HostCommand::SetGrandMaster`).
+    fn grand_master_percent(&self) -> u8;
+
     /// Runs `f` on what each loaded plugin is (an animation plugin with its
     /// stable key and name, or a regular plugin), by plugin id.
     fn with_plugin_runtime_kinds<R>(
@@ -336,6 +339,10 @@ impl EngineClient for LocalClient {
 
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R {
         f(&read(&self.app.plugins))
+    }
+
+    fn grand_master_percent(&self) -> u8 {
+        self.app.grand_master_percent()
     }
 
     fn with_plugin_runtime_kinds<R>(

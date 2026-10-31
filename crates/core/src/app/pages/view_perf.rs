@@ -3,10 +3,10 @@ use crate::app::{
     BlaulichtApp,
 };
 use crate::client::EngineClient;
+use crate::hub::HostCommand;
 use blaulicht_shared::{
-    folder::FolderId,
-    scene::{Scene, BLANK_SCENE_ID},
-    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator,
+    folder::FolderId, scene::BLANK_SCENE_ID, AnimationSpeedModifier, ControlEvent,
+    ControlEventMessage, EventOriginator,
 };
 use egui::{Color32, Context, Margin, Pos2};
 
@@ -16,6 +16,17 @@ const VIEWS_PER_PAGE: usize = 5;
 #[derive(Default)]
 pub struct ViewPerfUI {
     overlay_picker_open: bool,
+}
+
+/// What one scene card shows, copied out of the engine state.
+struct SceneCard {
+    id: u8,
+    name: String,
+    master_alpha: u8,
+    master_speed: AnimationSpeedModifier,
+    /// False for the exclusive live-mode card: that scene is the render
+    /// base, not an overlay, so there is nothing to remove.
+    removable: bool,
 }
 
 const VIEW_PERFORMANCE_SCENE_WIDTH: f32 = 128.0;
@@ -39,14 +50,8 @@ impl BlaulichtApp {
         painter.circle_filled(pos, radius, color);
     }
 
-    /// `removable` is false for the exclusive live-mode card: that scene is
-    /// the render base, not an overlay, so there is nothing to remove.
-    fn render_scene_performance(
-        &mut self,
-        ui: &mut egui::Ui,
-        scene: (u8, &Scene),
-        removable: bool,
-    ) {
+    fn render_scene_performance(&mut self, ui: &mut egui::Ui, scene: &SceneCard) {
+        let removable = scene.removable;
         egui::Frame::NONE
             .fill(ui.visuals().widgets.active.bg_fill)
             .inner_margin(Margin::symmetric(5, 5))
@@ -57,10 +62,10 @@ impl BlaulichtApp {
                 ui.vertical_centered(|ui| {
                     ui.set_width(ui.available_width());
 
-                    let label = format!("{} ({})", &scene.1.name, scene.0);
+                    let label = format!("{} ({})", scene.name, scene.id);
                     ui.label(label);
 
-                    let master_alpha = scene.1.sink.master_alpha_fader;
+                    let master_alpha = scene.master_alpha;
                     Self::draw_circle(ui, master_alpha > 0);
 
                     ui.add_space(5.0);
@@ -68,18 +73,18 @@ impl BlaulichtApp {
                     ui.columns(3, |columns| {
                         columns[0].vertical_centered(|ui| {
                             ui.add_space(5.0);
-                            let mut master_alpha = scene.1.sink.master_alpha_fader as f32;
+                            let mut master_alpha = scene.master_alpha as f32;
                             if ui.add(Knob::new(&mut master_alpha, 0.0..=100.0)).changed() {
                                 self.client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
-                                    ControlEvent::SetSceneMasterAlpha(scene.0, master_alpha as u8),
+                                    ControlEvent::SetSceneMasterAlpha(scene.id, master_alpha as u8),
                                 ));
                             }
                         });
 
                         columns[1].vertical_centered(|ui| {
-                            let rst_enabled = scene.1.sink.master_alpha_fader != 100
-                                || scene.1.sink.master_speed != AnimationSpeedModifier::_1;
+                            let rst_enabled = scene.master_alpha != 100
+                                || scene.master_speed != AnimationSpeedModifier::_1;
 
                             if components::action_button(
                                 ui,
@@ -92,17 +97,17 @@ impl BlaulichtApp {
                                     EventOriginator::Web,
                                     ControlEvent::Transaction(vec![
                                         ControlEvent::SetSceneMasterSpeed(
-                                            scene.0,
+                                            scene.id,
                                             AnimationSpeedModifier::_1,
                                         ),
-                                        ControlEvent::SetSceneMasterAlpha(scene.0, 100),
+                                        ControlEvent::SetSceneMasterAlpha(scene.id, 100),
                                     ]),
                                 ));
                             }
 
                             ui.add_space(5.0);
 
-                            let is_off = scene.1.sink.master_alpha_fader == 0;
+                            let is_off = scene.master_alpha == 0;
 
                             if components::button(
                                 ui,
@@ -112,7 +117,7 @@ impl BlaulichtApp {
                             ) {
                                 self.client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
-                                    ControlEvent::SetSceneMasterAlpha(scene.0, 0),
+                                    ControlEvent::SetSceneMasterAlpha(scene.id, 0),
                                 ));
                             }
 
@@ -127,18 +132,18 @@ impl BlaulichtApp {
                             ) {
                                 self.client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
-                                    ControlEvent::RemoveOverlayScene(scene.0),
+                                    ControlEvent::RemoveOverlayScene(scene.id),
                                 ));
                             }
                         });
 
                         columns[2].vertical_centered(|ui| {
                             ui.add_space(5.0);
-                            let mut speed = scene.1.sink.master_speed;
+                            let mut speed = scene.master_speed;
                             if ui.add(SpeedKnob::new(&mut speed)).changed() {
                                 self.client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
-                                    ControlEvent::SetSceneMasterSpeed(scene.0, speed),
+                                    ControlEvent::SetSceneMasterSpeed(scene.id, speed),
                                 ));
                             }
                         });
@@ -189,16 +194,46 @@ impl BlaulichtApp {
         ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
-        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-        let live_mode = dmx_engine.0.live_mode;
-        let current_overlays = dmx_engine.0.current_overlay_scenes.clone();
-        let available_overlay_scenes =
-            components::prune_empty_folders(components::scene_tree_items(&dmx_engine.0, |id| {
-                id != BLANK_SCENE_ID && !current_overlays.contains(&id)
-            }));
+        // Live mode is exclusive: only the scene being previewed (the preview
+        // owner's focus, which need not be this frontend's) renders, and it
+        // occupies the base slot rather than the overlay stack.
+        let (live_mode, cards, available_overlay_scenes) = self.client.with_show(|show| {
+            let live_mode = show.0.live_mode;
+            let shown: Vec<(u8, bool)> = if live_mode {
+                vec![(show.render_base_scene(), false)]
+            } else {
+                show.0
+                    .current_overlay_scenes
+                    .iter()
+                    .map(|id| (*id, true))
+                    .collect()
+            };
+            let cards: Vec<SceneCard> = shown
+                .into_iter()
+                .filter_map(|(id, removable)| {
+                    let scene = show.get_scene(id)?;
+                    Some(SceneCard {
+                        id,
+                        name: scene.name.clone(),
+                        master_alpha: scene.sink.master_alpha_fader,
+                        master_speed: scene.sink.master_speed,
+                        removable,
+                    })
+                })
+                .collect();
+            let overlays = &show.0.current_overlay_scenes;
+            let available =
+                components::prune_empty_folders(components::scene_tree_items(&show.0, |id| {
+                    id != BLANK_SCENE_ID && !overlays.contains(&id)
+                }));
+            (live_mode, cards, available)
+        });
+        let grand_master = self.client.grand_master_percent();
 
-        let groups = dmx_engine.groups();
-        self.render_dmx_simulation_dialog(ctx, groups);
+        if self.dmx_simulator.open {
+            let groups = self.client.with_show(|show| show.groups().clone());
+            self.render_dmx_simulation_dialog(ctx, &groups);
+        }
 
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
@@ -218,15 +253,16 @@ impl BlaulichtApp {
 
                     components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
                     ui.label("Grand master");
-                    let mut grand_master = self.data.state.grand_master_percent() as i32;
+                    let mut grand_master_value = grand_master as i32;
                     if ui
                         .add_sized(
                             [180.0, 20.0],
-                            egui::Slider::new(&mut grand_master, 0..=100).suffix("%"),
+                            egui::Slider::new(&mut grand_master_value, 0..=100).suffix("%"),
                         )
                         .changed()
                     {
-                        self.data.state.set_grand_master_percent(grand_master as u8);
+                        self.client
+                            .send(HostCommand::SetGrandMaster(grand_master_value as u8));
                     }
                     if components::action_button(
                         ui,
@@ -235,12 +271,14 @@ impl BlaulichtApp {
                         ButtonSize::Medium,
                         Some("Grand master is already at 100%"),
                     ) {
-                        self.data.state.set_grand_master_percent(100);
+                        self.client.send(HostCommand::SetGrandMaster(100));
                     }
                     if components::button(ui, grand_master == 0, "BLACKOUT", ButtonSize::Medium) {
-                        self.data
-                            .state
-                            .set_grand_master_percent(if grand_master == 0 { 100 } else { 0 });
+                        self.client.send(HostCommand::SetGrandMaster(if grand_master == 0 {
+                            100
+                        } else {
+                            0
+                        }));
                     }
                 });
 
@@ -256,22 +294,6 @@ impl BlaulichtApp {
                 }
 
                 ui.separator();
-
-                // Boolean values indicate whether the scene can be removed.
-                // Live mode is exclusive: only the scene being previewed (the
-                // preview owner's focus, which need not be this frontend's)
-                // renders, and it occupies the base slot rather than the
-                // overlay stack.
-                let scenes: Vec<(u8, bool)> = if live_mode {
-                    vec![(dmx_engine.render_base_scene(), false)]
-                } else {
-                    dmx_engine
-                        .0
-                        .current_overlay_scenes
-                        .iter()
-                        .map(|s| (*s, true))
-                        .collect()
-                };
 
                 // 1. Define your card width (adjust to match your frame content)
                 let padding = 10.0;
@@ -301,26 +323,18 @@ impl BlaulichtApp {
                                         if !render_context.is_dynamic() {
                                             ui.set_min_width(500.0);
                                         }
-                                        for (i, (id, removable)) in scenes.iter().enumerate() {
+                                        for (i, card) in cards.iter().enumerate() {
                                             if i > 0 && i % cols == 0 {
                                                 ui.end_row();
                                             }
-
-                                            let Some(scene_data) = dmx_engine.get_scene(*id) else {
-                                                continue;
-                                            };
 
                                             // Key each card's widget ids on its
                                             // scene rather than its position in
                                             // the list -- live mode changes that
                                             // list's length, and positional ids
                                             // would migrate between cards.
-                                            ui.push_id(*id, |ui| {
-                                                self.render_scene_performance(
-                                                    ui,
-                                                    (*id, scene_data),
-                                                    *removable,
-                                                );
+                                            ui.push_id(card.id, |ui| {
+                                                self.render_scene_performance(ui, card);
                                             });
                                         }
                                     });
