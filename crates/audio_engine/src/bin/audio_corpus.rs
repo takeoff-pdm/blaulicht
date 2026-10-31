@@ -8,9 +8,9 @@ use std::{
 use blaulicht_audio_engine::{
     create_spectrogram_image, file::AudioSourceSoundfile, AudioSpectrogram, BpmDetectStatus,
     CollectorOutputSpec, LoopTempoEstimator, SignalCollector, SpectrogramDisplayOptions,
+    SpectrogramImage,
 };
 use clap::Parser;
-use egui::{Color32, ColorImage};
 
 const FREQ_BUFFER_SIZE: usize = 2048;
 const BIN_COUNT: usize = 128;
@@ -53,7 +53,7 @@ fn collect_files(path: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
 fn render_spectrogram(spec: &AudioSpectrogram, path: &Path) -> anyhow::Result<()> {
     let width = 1200usize;
     let height = 360usize;
-    let mut image = ColorImage::new([width, height], vec![Color32::BLACK; width * height]);
+    let mut image = SpectrogramImage::new(width, height);
     create_spectrogram_image(
         spec,
         width,
@@ -64,11 +64,8 @@ fn render_spectrogram(spec: &AudioSpectrogram, path: &Path) -> anyhow::Result<()
         &mut image,
     );
 
-    let mut output = image::RgbImage::new(width as u32, height as u32);
-    for (x, y, pixel) in output.enumerate_pixels_mut() {
-        let source = image.pixels[y as usize * width + x as usize];
-        *pixel = image::Rgb([source.r(), source.g(), source.b()]);
-    }
+    let output = image::RgbImage::from_raw(width as u32, height as u32, image.rgb_bytes())
+        .ok_or_else(|| anyhow::anyhow!("spectrogram image has the wrong size"))?;
     output.save(path)?;
     Ok(())
 }

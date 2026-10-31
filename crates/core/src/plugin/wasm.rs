@@ -8,7 +8,6 @@ use blaulicht_shared::LogLevel;
 use blaulicht_shared::MainUiEvent;
 use blaulicht_shared::PluginStateLocation;
 
-use egui::ahash::HashMapExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::u8;

@@ -5,13 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use blaulicht_audio_engine::SpectrogramDisplayOptions;
-use egui::ColorImage;
+use blaulicht_audio_engine::{
+    create_spectrogram_image, SpectrogramDisplayOptions, SpectrogramImage,
+};
 use tracing::{info, warn};
 
 use crate::state::AppState;
-
-// use crate::{app::components::SpectrogramDisplayOptions, state::AppState};
 
 const BG_WORKER_TICK_DURATION: Duration = Duration::from_millis(16); // 60fps
 
@@ -43,7 +42,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
     };
 
     let dim = (480, 100);
-    let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
+    let mut image = SpectrogramImage::default();
 
     // panic!("HESSEN");
 
@@ -59,8 +58,7 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 (*s).clone()
             };
 
-            let mut image = ColorImage::default();
-            crate::app::components::create_spectrogram_image(
+            create_spectrogram_image(
                 &spec,
                 dim.0 as usize,
                 dim.1 as usize,
@@ -71,11 +69,8 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 &mut image,
             );
 
-            for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-                let source_pixel = image.pixels[y as usize * image.width() + x as usize];
-
-                *pixel = image::Rgb([source_pixel.r(), source_pixel.g(), source_pixel.b()]);
-            }
+            let imgbuf = image::RgbImage::from_raw(dim.0, dim.1, image.rgb_bytes())
+                .expect("spectrogram image has the requested size");
 
             let path = dir.join(format!("{count}.bmp"));
             if let Err(err) = imgbuf.save_with_format(&path, image::ImageFormat::Bmp) {

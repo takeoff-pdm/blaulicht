@@ -524,7 +524,6 @@ dependencies = [
  "cpal 0.15.3",
  "criterion",
  "crossbeam-channel",
- "egui",
  "image",
  "itertools 0.14.0",
  "kdam",

@@ -1,8 +1,8 @@
 use blaulicht_audio_engine::{
     create_spectrogram_image, AudioSpectrogram, CollectorOutput, SpectrogramDisplayOptions,
+    SpectrogramImage,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
-use egui::ColorImage;
 use std::time::Duration;
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -12,7 +12,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         spec.push_data(CollectorOutput::default());
     }
 
-    let mut image = ColorImage::default();
+    let mut image = SpectrogramImage::default();
 
     c.bench_function("Render spectrogram once", |b| {
         let width = 1800;

@@ -1,6 +1,5 @@
 use crate::{AudioBucket, CollectorOutput};
 use blaulicht_shared::CollectedAudioSnapshot;
-use egui::{Color32, ColorImage};
 use std::{collections::VecDeque, time::Duration};
 
 /// Rolling buffer of recent spectra for a live spectrogram.
@@ -68,6 +67,53 @@ impl AudioSpectrogram {
             .last()
             .unwrap_or(&CollectorOutput::default())
             .clone()
+    }
+}
+
+/// A plain row-major RGBA image (straight alpha, one `[r, g, b, a]` per pixel).
+/// Every pixel the spectrogram draws is opaque. Frontends convert it into their
+/// own texture type.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SpectrogramImage {
+    pub width: usize,
+    pub height: usize,
+    /// `width * height` pixels, row by row from the top.
+    pub pixels: Vec<[u8; 4]>,
+}
+
+impl SpectrogramImage {
+    pub const BLACK: [u8; 4] = [0, 0, 0, 255];
+    const MAGENTA: [u8; 4] = [255, 0, 255, 255];
+    const LIGHT_GRAY: [u8; 4] = [220, 220, 220, 255];
+    const DARK_GRAY: [u8; 4] = [96, 96, 96, 255];
+
+    /// A black image of the given size.
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
+            pixels: vec![Self::BLACK; width.saturating_mul(height)],
+        }
+    }
+
+    fn from_pixels(width: usize, height: usize, pixels: Vec<[u8; 4]>) -> Self {
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    pub fn size(&self) -> [usize; 2] {
+        [self.width, self.height]
+    }
+
+    /// The pixels as packed RGB bytes, alpha dropped (for BMP dumps).
+    pub fn rgb_bytes(&self) -> Vec<u8> {
+        self.pixels
+            .iter()
+            .flat_map(|&[r, g, b, _]| [r, g, b])
+            .collect()
     }
 }
 
@@ -142,10 +188,11 @@ const ONSET_MARKER_HEIGHT: usize = 4;
 
 /// Mix the beat marker colour over a spectrogram pixel. Cyan stays distinct
 /// from the warm colour map without dominating it.
-fn blend_beat_marker(under: Color32) -> Color32 {
+fn blend_beat_marker(under: [u8; 4]) -> [u8; 4] {
     const ALPHA: u32 = 80;
     let mix = |u: u8, m: u8| ((u as u32 * (255 - ALPHA) + m as u32 * ALPHA) / 255) as u8;
-    Color32::from_rgb(mix(under.r(), 90), mix(under.g(), 210), mix(under.b(), 255))
+    let [r, g, b, _] = under;
+    [mix(r, 90), mix(g, 210), mix(b, 255), 255]
 }
 
 /// Pixel rows `[y_min, y_max)` covered by `bin_index` when `bin_count` bins
@@ -167,7 +214,7 @@ pub fn bin_rows(
 
 #[allow(clippy::too_many_arguments)]
 fn draw_column(
-    image_buffer: &mut ColorImage,
+    image_buffer: &mut SpectrogramImage,
     width: usize,
     height_outer: usize,
     height: usize,
@@ -207,7 +254,7 @@ fn draw_column(
 
 #[allow(clippy::too_many_arguments)]
 fn draw_averaged_columns(
-    image_buffer: &mut ColorImage,
+    image_buffer: &mut SpectrogramImage,
     width: usize,
     height_outer: usize,
     height: usize,
@@ -266,7 +313,7 @@ fn draw_averaged_columns(
 /// padding.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_markers(
-    image_buffer: &mut ColorImage,
+    image_buffer: &mut SpectrogramImage,
     width: usize,
     height_outer: usize,
     height: usize,
@@ -292,7 +339,7 @@ pub fn draw_markers(
         let y_start = y_end.saturating_sub(ONSET_MARKER_HEIGHT);
         for y in y_start..y_end {
             for x in x_start..x_end {
-                image_buffer.pixels[y * width + x] = Color32::MAGENTA;
+                image_buffer.pixels[y * width + x] = SpectrogramImage::MAGENTA;
             }
         }
     }
@@ -303,20 +350,14 @@ pub fn create_spectrogram_image(
     width: usize,
     height_outer: usize,
     options: &SpectrogramDisplayOptions,
-    image_buffer: &mut ColorImage,
+    image_buffer: &mut SpectrogramImage,
 ) {
-    // let image = egui::ColorImage::new([width, height_outer], pixels);
-
-    if image_buffer.size != [width, height_outer] {
+    if image_buffer.size() != [width, height_outer] {
         log::debug!("Spectrogram image re-allocated");
-        let pixels = vec![Color32::BLACK; width * height_outer];
-        *image_buffer = egui::ColorImage::new([width, height_outer], pixels);
+        *image_buffer = SpectrogramImage::new(width, height_outer);
     }
 
-    image_buffer
-        .pixels
-        .iter_mut()
-        .for_each(|p| *p = Color32::BLACK);
+    image_buffer.pixels.fill(SpectrogramImage::BLACK);
 
     let pad_btm = 20;
     let pad_top = 5;
@@ -325,8 +366,6 @@ pub fn create_spectrogram_image(
     let Some(height) = height_outer.checked_sub(pad_btm + pad_top) else {
         return;
     };
-    // let mut pixels = vec![Color32::BLACK; width * height_outer];
-
     let total_cols = spec.max_columns;
 
     let Some(avail_width) = width.checked_sub(pad_left) else {
@@ -433,10 +472,6 @@ pub fn create_spectrogram_image(
             );
         }
     }
-
-    // let image = egui::ColorImage::new([width, height_outer], pixels);
-    // // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
-    // image
 }
 
 // Create texture once when data changes (not every frame!)
@@ -445,26 +480,23 @@ pub fn create_spectrogram_image_with_freqs(
     width: usize,
     height_outer: usize,
     _options: &SpectrogramDisplayOptions,
-) -> egui::ColorImage {
+) -> SpectrogramImage {
     let pad_btm = 20;
     let pad_top = 5;
     let pad_left = 5;
 
     let Some(height) = height_outer.checked_sub(pad_btm + pad_top) else {
-        return egui::ColorImage::new(
-            [width, height_outer],
-            vec![Color32::BLACK; width.saturating_mul(height_outer)],
-        );
+        return SpectrogramImage::new(width, height_outer);
     };
-    let mut pixels = vec![Color32::BLACK; width.saturating_mul(height_outer)];
+    let mut pixels = vec![SpectrogramImage::BLACK; width.saturating_mul(height_outer)];
 
     let total_cols = spec.max_columns;
 
     let Some(avail_width) = width.checked_sub(pad_left) else {
-        return egui::ColorImage::new([width, height_outer], pixels);
+        return SpectrogramImage::from_pixels(width, height_outer, pixels);
     };
     if height == 0 || avail_width == 0 || total_cols == 0 || spec.columns.is_empty() {
-        return egui::ColorImage::new([width, height_outer], pixels);
+        return SpectrogramImage::from_pixels(width, height_outer, pixels);
     }
     let pixels_per_column = avail_width as f32 / total_cols as f32;
 
@@ -472,7 +504,7 @@ pub fn create_spectrogram_image_with_freqs(
     let columns_data = downsample(chunks_cont, pixels_per_column);
 
     if columns_data.is_empty() {
-        return egui::ColorImage::new([width, height_outer], pixels);
+        return SpectrogramImage::from_pixels(width, height_outer, pixels);
     }
     let pixels_per_column = (avail_width as f32 / columns_data.len() as f32).floor() as usize;
 
@@ -486,21 +518,19 @@ pub fn create_spectrogram_image_with_freqs(
     let bin_count_per_column = if let Some(first) = iter.peek() {
         first.current_audio_colunn.len()
     } else {
-        let image = egui::ColorImage::new([width, height_outer], pixels);
-        return image;
+        return SpectrogramImage::from_pixels(width, height_outer, pixels);
     };
 
     for column in &mut iter {
         if column.current_audio_colunn.len() != bin_count_per_column {
-            let image = egui::ColorImage::new([width, height_outer], pixels);
-            return image;
+            return SpectrogramImage::from_pixels(width, height_outer, pixels);
         }
     }
 
     let bucket_height = height as f32 / bin_count_per_column as f32;
 
     if bucket_height < 1.0 {
-        return egui::ColorImage::new([width, height_outer], pixels);
+        return SpectrogramImage::from_pixels(width, height_outer, pixels);
     }
 
     let _bucket_height = bucket_height.floor() as usize;
@@ -584,9 +614,9 @@ pub fn create_spectrogram_image_with_freqs(
             let x_max = pad_left;
 
             let color = if is_black {
-                Color32::LIGHT_GRAY
+                SpectrogramImage::LIGHT_GRAY
             } else {
-                Color32::DARK_GRAY
+                SpectrogramImage::DARK_GRAY
             };
 
             for x in x_min..x_max {
@@ -655,9 +685,7 @@ pub fn create_spectrogram_image_with_freqs(
     //     }
     // }
 
-    let image = egui::ColorImage::new([width, height_outer], pixels);
-    // ctx.load_texture("spectrogram", image, egui::TextureOptions::NEAREST)
-    image
+    SpectrogramImage::from_pixels(width, height_outer, pixels)
 }
 
 /// Inferno colour map stops (matplotlib), dark to bright.
@@ -677,13 +705,13 @@ const INFERNO: [(u8, u8, u8); 11] = [
 
 /// Maps a bin intensity onto the inferno colour map. The mild gamma lifts
 /// quiet detail without washing the noise floor into a saturated haze.
-pub fn spectrogram_color(intensity: u8) -> Color32 {
+pub fn spectrogram_color(intensity: u8) -> [u8; 4] {
     let t = (intensity as f32 / 255.0).powf(0.7) * (INFERNO.len() - 1) as f32;
     let index = (t as usize).min(INFERNO.len() - 2);
     let frac = t - index as f32;
     let (a, b) = (INFERNO[index], INFERNO[index + 1]);
     let lerp = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * frac).round() as u8;
-    Color32::from_rgb(lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
+    [lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2), 255]
 }
 
 #[cfg(test)]
@@ -724,19 +752,19 @@ mod tests {
 
     #[test]
     fn beat_marker_keeps_the_spectrum_visible() {
-        let over_black = blend_beat_marker(Color32::BLACK);
-        let over_orange = blend_beat_marker(Color32::from_rgb(243, 120, 25));
-        assert!(over_black.b() > over_black.r() && over_black.b() < 128);
+        let over_black = blend_beat_marker(SpectrogramImage::BLACK);
+        let over_orange = blend_beat_marker([243, 120, 25, 255]);
+        assert!(over_black[2] > over_black[0] && over_black[2] < 128);
         // The colour underneath still shows through.
-        assert!(over_orange.r() > over_black.r() + 100);
-        assert!(over_orange.g() > over_black.g());
+        assert!(over_orange[0] > over_black[0] + 100);
+        assert!(over_orange[1] > over_black[1]);
     }
 
     #[test]
     fn spectrogram_color_spans_the_colour_map() {
-        assert_eq!(spectrogram_color(0), Color32::from_rgb(0, 0, 4));
-        assert_eq!(spectrogram_color(255), Color32::from_rgb(252, 255, 164));
-        let luminance = |c: Color32| c.r() as u32 * 3 + c.g() as u32 * 6 + c.b() as u32;
+        assert_eq!(spectrogram_color(0), [0, 0, 4, 255]);
+        assert_eq!(spectrogram_color(255), [252, 255, 164, 255]);
+        let luminance = |[r, g, b, _]: [u8; 4]| r as u32 * 3 + g as u32 * 6 + b as u32;
         for i in 0..255u8 {
             // Allow for per-channel rounding.
             assert!(luminance(spectrogram_color(i)) <= luminance(spectrogram_color(i + 1)) + 4);
@@ -762,7 +790,7 @@ mod tests {
     #[test]
     fn spectrogram_image_handles_wide_single_onset_column() {
         let spec = spectrogram_with_onset_column();
-        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+        let mut image = SpectrogramImage::new(1, 1);
 
         create_spectrogram_image(
             &spec,
@@ -774,7 +802,7 @@ mod tests {
             &mut image,
         );
 
-        assert_eq!(image.size, [723, 160]);
+        assert_eq!(image.size(), [723, 160]);
     }
 
     #[test]
@@ -782,7 +810,7 @@ mod tests {
         let spec = spectrogram_with_onset_column();
 
         for (width, height) in [(0, 0), (4, 160), (10, 24), (10, 25)] {
-            let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+            let mut image = SpectrogramImage::new(1, 1);
 
             create_spectrogram_image(
                 &spec,
@@ -794,14 +822,14 @@ mod tests {
                 &mut image,
             );
 
-            assert_eq!(image.size, [width, height]);
+            assert_eq!(image.size(), [width, height]);
         }
     }
 
     #[test]
     fn spectrogram_image_spreads_downsampled_columns_to_right_edge() {
         let spec = spectrogram_with_columns(1000, 900);
-        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+        let mut image = SpectrogramImage::new(1, 1);
 
         create_spectrogram_image(
             &spec,
@@ -813,14 +841,14 @@ mod tests {
             &mut image,
         );
 
-        let right_edge_data_pixel = image.pixels[10 * image.width() + image.width() - 1];
-        assert_ne!(right_edge_data_pixel, Color32::BLACK);
+        let right_edge_data_pixel = image.pixels[10 * image.width + image.width - 1];
+        assert_ne!(right_edge_data_pixel, SpectrogramImage::BLACK);
     }
 
     #[test]
     fn spectrogram_image_right_aligns_partial_window() {
         let spec = spectrogram_with_columns(10, 1);
-        let mut image = ColorImage::new([1, 1], vec![Color32::BLACK]);
+        let mut image = SpectrogramImage::new(1, 1);
 
         create_spectrogram_image(
             &spec,
@@ -832,9 +860,9 @@ mod tests {
             &mut image,
         );
 
-        let left_data_pixel = image.pixels[10 * image.width() + 5];
-        let right_edge_data_pixel = image.pixels[10 * image.width() + image.width() - 1];
-        assert_eq!(left_data_pixel, Color32::BLACK);
-        assert_ne!(right_edge_data_pixel, Color32::BLACK);
+        let left_data_pixel = image.pixels[10 * image.width + 5];
+        let right_edge_data_pixel = image.pixels[10 * image.width + image.width - 1];
+        assert_eq!(left_data_pixel, SpectrogramImage::BLACK);
+        assert_ne!(right_edge_data_pixel, SpectrogramImage::BLACK);
     }
 }

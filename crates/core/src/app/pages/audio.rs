@@ -4,12 +4,13 @@ use crate::client::EngineClient;
 use crate::hub::{AudioParam, HostCommand};
 use crate::msg::DummyInput;
 use blaulicht_audio_engine::{
-    bin_rows, draw_markers, spectrogram_color, AudioSpectrogram, BeatDetection, BeatFrontEnd,
-    BpmDetectStatus, CollectorOutput, SignalDebugData, SpectrogramDisplayOptions,
+    bin_rows, create_spectrogram_image, draw_markers, spectrogram_color, AudioSpectrogram,
+    BeatDetection, BeatFrontEnd, BpmDetectStatus, CollectorOutput, SignalDebugData,
+    SpectrogramDisplayOptions, SpectrogramImage,
 };
 use blaulicht_shared::AudioSourceStatus;
 
-use egui::{vec2, Color32, ColorImage, FontId, Frame, Margin, RichText, TextureHandle, Widget};
+use egui::{vec2, Color32, FontId, Frame, Margin, RichText, TextureHandle, Widget};
 use std::cell::Cell;
 
 // TODO: include snapshot in graphs
@@ -125,7 +126,7 @@ pub struct SpectrogramRing {
     spectro_pending_count: u32,
     spectro_pending_beat: bool,
     spectro_pending_onset: bool,
-    spectrogram_image_buffer: ColorImage,
+    spectrogram_image_buffer: SpectrogramImage,
     spectrogram_texture_handle: Option<TextureHandle>,
     last_spectrogram_columns: Cell<usize>,
     last_spectrogram_bucket_data_len: Cell<usize>,
@@ -141,7 +142,7 @@ impl Default for SpectrogramRing {
             spectro_pending_count: 0,
             spectro_pending_beat: false,
             spectro_pending_onset: false,
-            spectrogram_image_buffer: ColorImage::default(),
+            spectrogram_image_buffer: SpectrogramImage::default(),
             spectrogram_texture_handle: None,
             last_spectrogram_columns: Cell::new(0),
             last_spectrogram_bucket_data_len: Cell::new(0),
@@ -158,7 +159,7 @@ impl SpectrogramRing {
         width: usize,
         height: usize,
     ) {
-        components::create_spectrogram_image(
+        create_spectrogram_image(
             spec,
             width,
             height,
@@ -195,7 +196,7 @@ impl SpectrogramRing {
             .unwrap_or(0);
         let current_time = spec.columns.back().map(|c| c.snapshot.time).unwrap_or(0);
 
-        self.spectrogram_image_buffer.size != [width, height]
+        self.spectrogram_image_buffer.size() != [width, height]
             || self.last_spectrogram_max_columns.get() != spec.max_columns
             || self.last_spectrogram_bucket_data_len.get() != current_bucket_count
             || spec.columns.len() < self.last_spectrogram_columns.get()
@@ -203,7 +204,7 @@ impl SpectrogramRing {
     }
 
     fn shift_spectrogram_ring_left(&mut self, pixels: usize) {
-        let [width, height] = self.spectrogram_image_buffer.size;
+        let [width, height] = self.spectrogram_image_buffer.size();
         let data_width = width.saturating_sub(SPECTROGRAM_PAD_LEFT);
         let pixels = pixels.min(data_width);
 
@@ -219,7 +220,7 @@ impl SpectrogramRing {
             if pixels < data_width {
                 row.copy_within(SPECTROGRAM_PAD_LEFT + pixels..width, SPECTROGRAM_PAD_LEFT);
             }
-            row[width - pixels..width].fill(Color32::BLACK);
+            row[width - pixels..width].fill(SpectrogramImage::BLACK);
         }
     }
 
@@ -252,7 +253,7 @@ impl SpectrogramRing {
 
     /// Draw the averaged pending columns into `x_start..x_end` and clear them.
     fn flush_spectrogram_pending(&mut self, x_start: usize, x_end: usize) {
-        let [width, height_outer] = self.spectrogram_image_buffer.size;
+        let [width, height_outer] = self.spectrogram_image_buffer.size();
         let Some(height) = height_outer.checked_sub(SPECTROGRAM_PAD_BOTTOM + SPECTROGRAM_PAD_TOP)
         else {
             self.clear_spectrogram_pending();
@@ -268,7 +269,7 @@ impl SpectrogramRing {
 
         for x in x_start..x_end {
             for y in 0..height_outer {
-                self.spectrogram_image_buffer.pixels[y * width + x] = Color32::BLACK;
+                self.spectrogram_image_buffer.pixels[y * width + x] = SpectrogramImage::BLACK;
             }
         }
 
@@ -301,7 +302,7 @@ impl SpectrogramRing {
 
     fn advance_spectrogram_ring(&mut self, spec: &AudioSpectrogram) -> bool {
         let last_time = self.last_spectrogram_snapshot_time.get();
-        let [width, _] = self.spectrogram_image_buffer.size;
+        let [width, _] = self.spectrogram_image_buffer.size();
         let data_width = width.saturating_sub(SPECTROGRAM_PAD_LEFT);
         if data_width == 0 || spec.max_columns == 0 {
             return false;
@@ -389,7 +390,7 @@ impl SpectrogramRing {
         if self.spectrogram_texture_handle.is_none() {
             let texture = ctx.load_texture(
                 "spectrogram",
-                self.spectrogram_image_buffer.clone(),
+                components::spectrogram_color_image(&self.spectrogram_image_buffer),
                 egui::TextureOptions::NEAREST,
             );
             self.spectrogram_texture_handle = Some(texture);
@@ -397,7 +398,7 @@ impl SpectrogramRing {
             if let Some(handle) = &mut self.spectrogram_texture_handle {
                 let specperf_up = std::time::Instant::now(); // SPECPERF-TEMP
                 handle.set(
-                    self.spectrogram_image_buffer.clone(),
+                    components::spectrogram_color_image(&self.spectrogram_image_buffer),
                     egui::TextureOptions::NEAREST,
                 );
                 // SPECPERF-TEMP begin

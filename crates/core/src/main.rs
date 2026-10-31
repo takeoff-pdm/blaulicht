@@ -18,7 +18,6 @@ use std::sync::atomic::AtomicU8;
 use std::sync::Arc;
 use std::thread;
 use tracing::info;
-use winit::event_loop::EventLoop;
 
 #[cfg(feature = "dhat")]
 #[global_allocator]

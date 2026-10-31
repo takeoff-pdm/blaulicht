@@ -7,10 +7,9 @@ use std::{
 
 use blaulicht_audio_engine::{
     create_spectrogram_image, file::AudioSourceSoundfile, AudioSpectrogram, CollectorOutputSpec,
-    LoopTempoEstimator, SignalCollector, SpectrogramDisplayOptions,
+    LoopTempoEstimator, SignalCollector, SpectrogramDisplayOptions, SpectrogramImage,
 };
 use clap::{Parser, Subcommand, ValueEnum};
-use egui::{ColorImage, Rgba};
 use kdam::{tqdm, BarExt};
 
 const FREQ_BUFFER_SIZE: usize = 2048;
@@ -251,9 +250,7 @@ fn csv_escape(value: &str) -> String {
 
 fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_base: &Path) {
     let dim = (700, 200);
-    let mut imgbuf = image::ImageBuffer::new(dim.0, dim.1);
-
-    let mut image = ColorImage::filled([0, 0], Rgba::BLACK.into());
+    let mut image = SpectrogramImage::default();
 
     create_spectrogram_image(
         &spec,
@@ -265,10 +262,8 @@ fn render_spec(spec: AudioSpectrogram, count: usize, song_path: &Path, output_ba
         &mut image,
     );
 
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let source_pixel = image.pixels[y as usize * image.width() + x as usize];
-        *pixel = image::Rgb([source_pixel.r(), source_pixel.g(), source_pixel.b()]);
-    }
+    let imgbuf = image::RgbImage::from_raw(dim.0, dim.1, image.rgb_bytes())
+        .expect("spectrogram image has the requested size");
 
     let song_name = song_path
         .file_name()
