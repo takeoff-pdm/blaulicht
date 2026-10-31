@@ -107,7 +107,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 049 | [Engine event hub: client ids, envelopes, replies and broadcast](TICKETS/decouple/049-engine-event-hub.done.md) | done | — |
 | 040 | [Operator sessions in the engine](TICKETS/decouple/040-operator-sessions.done.md) | done | 049 |
 | 041 | [Live preview owned by a session](TICKETS/decouple/041-live-preview-show-state.done.md) | done | 040 |
-| 042 | [EngineClient trait and LocalClient](TICKETS/decouple/042-engine-client.doing.md) | doing | 049, 040, 041 |
+| 042 | [EngineClient trait and LocalClient](TICKETS/decouple/042-engine-client.done.md) | done | 049, 040, 041 |
 | 050 | [Programmer onto EngineClient](TICKETS/decouple/050-programmer-onto-client.planned.md) | planned | 042 |
 | 043 | [Setup pages onto EngineClient](TICKETS/decouple/043-commands-setup-pages.planned.md) | planned | 042 |
 | 044 | [Performance, View and Scene graph pages onto EngineClient](TICKETS/decouple/044-commands-performance-view-graph.planned.md) | planned | 042 |
