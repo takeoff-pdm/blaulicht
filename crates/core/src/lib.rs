@@ -9,6 +9,7 @@ pub mod config;
 pub mod dmx;
 pub mod event;
 pub mod frontend_ui;
+pub mod hub;
 pub mod log;
 pub mod mainloop;
 pub mod msg;

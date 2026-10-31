@@ -16,9 +16,12 @@ use std::{
 #[cfg(feature = "wasmtime")]
 use wasmtime::{Instance, Memory, Store, TypedFunc};
 
+#[cfg(feature = "wasmtime")]
+use crate::plugin::wasm::PluginStoreData;
 use crate::{
     config::PluginConfig,
     event::SystemEventBusConnectionInst,
+    hub::SystemHub,
     msg::{FromFrontend, MidiEvent, StageStatus, StartupStage, SystemMessage},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, wasm::AddrDescriptor},
     state::AppState,
@@ -41,7 +44,7 @@ pub struct PluginManager {
     plugins: HashMap<u8, Plugin>,
     animation_instance_ids: HashMap<u8, HashSet<u64>>,
     // Channels.
-    system_out: Sender<SystemMessage>,
+    hub: SystemHub,
     to_midi_devices: Sender<MidiEvent>,
     from_midi_manager: Receiver<MidiEvent>,
 
@@ -70,7 +73,7 @@ pub struct PluginWasmState {}
 #[cfg(feature = "wasmtime")]
 pub struct PluginWasmState {
     memory: Memory,
-    store: Store<()>,
+    store: Store<PluginStoreData>,
     instance: Instance,
 }
 
@@ -167,7 +170,7 @@ impl PluginManager {
         plugin_config: Vec<PluginConfig>,
         to_midi_manager: Sender<MidiEvent>,
         from_midi_manager: Receiver<MidiEvent>,
-        system_out: Sender<SystemMessage>,
+        hub: SystemHub,
         midi_manager_ref: Arc<Mutex<MidiManager>>,
         serial_manager_ref: Arc<Mutex<SerialManager>>,
         udp_manager_ref: Arc<Mutex<UdpManager>>,
@@ -183,7 +186,7 @@ impl PluginManager {
             animation_instance_ids: HashMap::new(),
             to_midi_devices: to_midi_manager,
             from_midi_manager,
-            system_out,
+            hub,
             midi_manager_ref,
             serial_manager_ref,
             udp_manager_ref,
@@ -251,7 +254,7 @@ impl PluginManager {
     }
 
     fn send_plugin_stage(&self, status: StageStatus) {
-        let _ = self.system_out.send(SystemMessage::StartupStage {
+        self.hub.publish(SystemMessage::StartupStage {
             stage: StartupStage::Plugins,
             status,
         });
@@ -430,7 +433,7 @@ mod recovery_tests {
             })
             .collect();
         let state = Arc::new(AppState::new(&configs));
-        let (system_out, _messages) = crossbeam_channel::unbounded();
+        let system_out = crate::hub::SystemHub::new();
         let (midi_tx, midi_rx) = crossbeam_channel::unbounded();
         let (plugin_tx, plugin_rx) = crossbeam_channel::unbounded();
         let midi = Arc::new(Mutex::new(MidiManager::new(
@@ -439,7 +442,7 @@ mod recovery_tests {
             state.clone(),
             system_out.clone(),
         )));
-        let mut bus = crate::event::SystemEventBus::new();
+        let bus = crate::event::SystemEventBus::new();
         let manager = PluginManager::new(
             configs,
             midi_tx,
@@ -482,7 +485,7 @@ mod recovery_tests {
             })
             .collect();
         let state = Arc::new(AppState::new(&configs));
-        let (system_out, _messages) = crossbeam_channel::unbounded();
+        let system_out = crate::hub::SystemHub::new();
         let (midi_tx, midi_rx) = crossbeam_channel::unbounded();
         let (plugin_tx, plugin_rx) = crossbeam_channel::unbounded();
         let midi = Arc::new(Mutex::new(MidiManager::new(
@@ -491,7 +494,7 @@ mod recovery_tests {
             state.clone(),
             system_out.clone(),
         )));
-        let mut bus = crate::event::SystemEventBus::new();
+        let bus = crate::event::SystemEventBus::new();
         let mut manager = PluginManager::new(
             configs,
             midi_tx,

@@ -83,7 +83,7 @@ impl BlaulichtApp {
     fn apply_group_folder_event(&mut self, ctx: &Context, event: ControlEvent) {
         self.setup_groups_ui.follow(ctx, SETUP_GROUP_TREE, &event);
         self.data
-            .event_bus_connection
+            .client
             .send(ControlEventMessage::new(EventOriginator::Web, event));
     }
 

@@ -152,9 +152,8 @@ pub struct BlaulichtApp {
     external_screens: Vec<ExternalScreen>,
     plugin_ui_visible_tabs: HashSet<(ScreenId, u8)>,
     /// Plugin window state; frontend-owned, published to the engine through
-    /// `desk_ui`.
+    /// the desk's client connection (`data.client`).
     view_state: view_state::NativeViewState,
-    desk_ui: crate::frontend_ui::FrontendUiPublisher,
 
     // Example stuff:
     // label: String,
@@ -350,7 +349,6 @@ pub struct BlaulichtApp {
 impl BlaulichtApp {
     fn new_default(
         data: AppStateWrapper,
-        desk_ui: crate::frontend_ui::FrontendUiPublisher,
         desktop_mode: bool,
         showfile_home: Option<PathBuf>,
     ) -> Self {
@@ -364,7 +362,6 @@ impl BlaulichtApp {
             external_screens: vec![],
             plugin_ui_visible_tabs: HashSet::new(),
             view_state: view_state::NativeViewState::default(),
-            desk_ui,
             // Example stuff:
             volume_graph: TimeSeriesGraph::new(
                 "Volume".to_string(),

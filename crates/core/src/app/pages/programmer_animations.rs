@@ -194,7 +194,7 @@ impl BlaulichtApp {
 
     fn send_animation_event(&self, event: ControlEvent) {
         self.data
-            .event_bus_connection
+            .client
             .send(ControlEventMessage::new(EventOriginator::Web, event));
     }
 
@@ -761,8 +761,13 @@ mod tests {
     #[test]
     fn applying_and_removing_a_preset_goes_through_the_engine() {
         let state = Arc::new(AppState::new(&[]));
-        let mut bus = SystemEventBus::new();
-        let engine = DmxEngine::new(state.clone(), bus.new_connection(), Default::default());
+        let bus = SystemEventBus::new();
+        let engine = DmxEngine::new(
+            state.clone(),
+            bus.new_connection(),
+            crate::hub::SystemHub::new(),
+            Default::default(),
+        );
         let send = |event: ControlEvent| {
             let mut guard = state.dmx_engine.write().unwrap();
             engine.apply(

@@ -51,7 +51,7 @@ impl BlaulichtApp {
         if let Some(event) = self.setup_scenes_ui.dialog.show(ctx, &dmx_engine.0) {
             self.setup_scenes_ui.follow(ctx, SETUP_SCENE_TREE, &event);
             self.data
-                .event_bus_connection
+                .client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
         self.setup_scenes_ui.drop_missing_folder(&dmx_engine.0);
@@ -172,12 +172,10 @@ impl BlaulichtApp {
             Some(TreeAction::SelectLeaf(scene_id)) => {
                 self.setup_scenes_ui.folder = None;
                 if state.current_scene_focus != scene_id {
-                    self.data
-                        .event_bus_connection
-                        .send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            ControlEvent::SetSceneFocus(scene_id),
-                        ));
+                    self.data.client.send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        ControlEvent::SetSceneFocus(scene_id),
+                    ));
                 }
             }
             Some(TreeAction::TapFolder(folder)) => {

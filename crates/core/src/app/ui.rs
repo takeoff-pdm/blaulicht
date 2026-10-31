@@ -33,13 +33,12 @@ impl BlaulichtApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         state: AppStateWrapper,
-        desk_ui: crate::frontend_ui::FrontendUiPublisher,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
         external_screens: Vec<(usize, usize)>,
     ) -> Self {
-        let mut app = Self::new_default(state, desk_ui, desktop_mode, showfile_home);
+        let mut app = Self::new_default(state, desktop_mode, showfile_home);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 

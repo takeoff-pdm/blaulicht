@@ -20,11 +20,9 @@ impl BlaulichtApp {
         // self.current_page = page_change.clone();
 
         // Send event to notify plugins.
-        self.data
-            .event_bus_connection
-            .send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::MainUi(MainUiEvent::NavigatePage(page_change)),
-            ));
+        self.data.client.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::MainUi(MainUiEvent::NavigatePage(page_change)),
+        ));
     }
 }

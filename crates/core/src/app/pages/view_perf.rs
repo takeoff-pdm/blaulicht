@@ -69,15 +69,10 @@ impl BlaulichtApp {
                             ui.add_space(5.0);
                             let mut master_alpha = scene.1.sink.master_alpha_fader as f32;
                             if ui.add(Knob::new(&mut master_alpha, 0.0..=100.0)).changed() {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::SetSceneMasterAlpha(
-                                            scene.0,
-                                            master_alpha as u8,
-                                        ),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetSceneMasterAlpha(scene.0, master_alpha as u8),
+                                ));
                             }
                         });
 
@@ -92,18 +87,16 @@ impl BlaulichtApp {
                                 ButtonSize::Small.with_width(34.0),
                                 Some("Scene level and speed are already at their defaults"),
                             ) {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::Transaction(vec![
-                                            ControlEvent::SetSceneMasterSpeed(
-                                                scene.0,
-                                                AnimationSpeedModifier::_1,
-                                            ),
-                                            ControlEvent::SetSceneMasterAlpha(scene.0, 100),
-                                        ]),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::Transaction(vec![
+                                        ControlEvent::SetSceneMasterSpeed(
+                                            scene.0,
+                                            AnimationSpeedModifier::_1,
+                                        ),
+                                        ControlEvent::SetSceneMasterAlpha(scene.0, 100),
+                                    ]),
+                                ));
                             }
 
                             ui.add_space(5.0);
@@ -116,12 +109,10 @@ impl BlaulichtApp {
                                 "OFF",
                                 ButtonSize::Small.with_width(34.0),
                             ) {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::SetSceneMasterAlpha(scene.0, 0),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetSceneMasterAlpha(scene.0, 0),
+                                ));
                             }
 
                             ui.add_space(5.0);
@@ -133,12 +124,10 @@ impl BlaulichtApp {
                                 ButtonSize::Small.with_width(34.0),
                                 Some("The live preview scene is not an overlay"),
                             ) {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::RemoveOverlayScene(scene.0),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::RemoveOverlayScene(scene.0),
+                                ));
                             }
                         });
 
@@ -146,12 +135,10 @@ impl BlaulichtApp {
                             ui.add_space(5.0);
                             let mut speed = scene.1.sink.master_speed;
                             if ui.add(SpeedKnob::new(&mut speed)).changed() {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::SetSceneMasterSpeed(scene.0, speed),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetSceneMasterSpeed(scene.0, speed),
+                                ));
                             }
                         });
                     });
@@ -188,12 +175,10 @@ impl BlaulichtApp {
             "No more scenes to add",
             &mut self.view_perf_ui_state.overlay_picker_open,
         ) {
-            self.data
-                .event_bus_connection
-                .send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::AddOverlayScene(scene_id),
-                ));
+            self.data.client.send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::AddOverlayScene(scene_id),
+            ));
         }
     }
 

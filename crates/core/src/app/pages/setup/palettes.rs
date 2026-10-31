@@ -382,13 +382,10 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Medium) {
                         if let Some(id) = self.palette_ui_state.delete_palette_id {
-                            let _ = self
-                                .data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::DeletePalette(id),
-                                ));
+                            let _ = self.data.client.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::DeletePalette(id),
+                            ));
                         }
                         self.palette_ui_state.delete_dialog_open = false;
                         self.palette_ui_state.delete_palette_id = None;
@@ -426,7 +423,7 @@ impl BlaulichtApp {
             self.setup_palettes_ui
                 .follow(ctx, SETUP_PALETTE_TREE, &event);
             self.data
-                .event_bus_connection
+                .client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
         self.setup_palettes_ui.drop_missing_folder(state);
@@ -600,12 +597,10 @@ impl BlaulichtApp {
         ui.add_space(12.0);
 
         if components::button(ui, false, "Unassign", ButtonSize::Medium) {
-            self.data
-                .event_bus_connection
-                .send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::UnassignPalette(id),
-                ));
+            self.data.client.send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::UnassignPalette(id),
+            ));
         }
         ui.label(
             RichText::new("Unassign removes it from every fixture in every scene.")
@@ -614,12 +609,10 @@ impl BlaulichtApp {
         );
 
         if let Some(new_color) = color_update {
-            self.data
-                .event_bus_connection
-                .send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
-                ));
+            self.data.client.send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
+            ));
         }
     }
 
@@ -994,7 +987,7 @@ impl BlaulichtApp {
                     ControlEvent::CreatePalette(name, kind),
                 );
                 self.data
-                    .event_bus_connection
+                    .client
                     .send(ControlEventMessage::new(EventOriginator::Web, event));
                 self.palette_ui_state.create_dialog_open = false;
             }
@@ -1079,18 +1072,14 @@ impl BlaulichtApp {
         if should_save {
             let name = self.palette_ui_state.new_name.clone();
             if let Some(kind) = self.palette_ui_state.build_palette_kind() {
-                self.data
-                    .event_bus_connection
-                    .send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::RenamePalette(palette_id, name),
-                    ));
-                self.data
-                    .event_bus_connection
-                    .send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::UpdatePalette(palette_id, kind),
-                    ));
+                self.data.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::RenamePalette(palette_id, name),
+                ));
+                self.data.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::UpdatePalette(palette_id, kind),
+                ));
                 self.palette_ui_state.edit_dialog_open = false;
             }
         }

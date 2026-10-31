@@ -12,13 +12,13 @@
 use std::borrow::Cow;
 
 use blaulicht_shared::LogLevel;
-use crossbeam_channel::Sender;
 use tracing::{Event, Level, Subscriber};
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::layer::{Context as TraceContext, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
+use crate::hub::SystemHub;
 use crate::msg::{SystemMessage, TERMINAL_ONLY_LOG_TARGET};
 
 /// Explicit tracing targets. Use them only where the call site's module does
@@ -86,9 +86,9 @@ fn source_for_module_path(path: &str) -> Cow<'static, str> {
     Cow::Borrowed(source)
 }
 
-/// Forwards tracing events to the UI log window.
+/// Forwards tracing events to the hub (the Logs page of every frontend).
 struct SystemOutLayer {
-    system_out: Sender<SystemMessage>,
+    hub: SystemHub,
 }
 
 #[derive(Default)]
@@ -149,8 +149,7 @@ where
             None => metadata.target().to_string(),
         };
 
-        // The UI receiver may already be gone during shutdown.
-        let _ = self.system_out.send(SystemMessage::Log {
+        self.hub.publish(SystemMessage::Log {
             message,
             level,
             source: source_for_target(metadata.target()),
@@ -158,16 +157,16 @@ where
     }
 }
 
-/// Installs the global subscriber: terminal output plus the UI log window.
-/// `RUST_LOG` overrides the default `info` filter for both.
-pub fn init_tracing(system_out: Sender<SystemMessage>) {
+/// Installs the global subscriber: terminal output plus the hub's log
+/// messages. `RUST_LOG` overrides the default `info` filter for both.
+pub fn init_tracing(hub: SystemHub) {
     let _ = tracing_log::LogTracer::init();
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let _ = tracing_subscriber::registry()
         .with(env_filter)
         .with(tracing_subscriber::fmt::layer())
-        .with(SystemOutLayer { system_out })
+        .with(SystemOutLayer { hub })
         .try_init();
 }
 

@@ -98,12 +98,10 @@ impl BlaulichtApp {
         }
         self.navbar.select_subpage(subpage);
         // Web originator: notifies plugins without looping back into the UI.
-        self.data
-            .event_bus_connection
-            .send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::MainUi(MainUiEvent::NavigateSubPage(subpage)),
-            ));
+        self.data.client.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::MainUi(MainUiEvent::NavigateSubPage(subpage)),
+        ));
     }
 
     /// Renders `page` with its sub-page tab bar along the bottom edge and calls

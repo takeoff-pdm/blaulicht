@@ -63,7 +63,7 @@ impl BlaulichtApp {
         };
         if let Some(event) = self.recent_fixture_property.adjust(delta, Instant::now()) {
             self.data
-                .event_bus_connection
+                .client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
     }

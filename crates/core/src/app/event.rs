@@ -1,6 +1,5 @@
-use crate::{app::BlaulichtApp, config, msg::SystemMessage};
+use crate::{app::BlaulichtApp, config, hub::BusBody, msg::SystemMessage};
 use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
-use crossbeam_channel::TryRecvError;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "audio")]
@@ -26,11 +25,13 @@ impl BlaulichtApp {
         loop {
             // Reset per iteration: break only when BOTH channels are empty in
             // the same pass. The old cross-iteration counter stopped after ~3
-            // messages per frame, letting the unbounded system channel grow
-            // without limit under log bursts.
+            // messages per frame, letting the system queue fill up under log
+            // bursts.
             let mut empty = 0;
-            match self.data.event_bus_connection.try_recv() {
-                Some(control_event) if control_event.originator() == EventOriginator::Web => {
+            match self.data.client.try_recv_bus().map(|message| message.body) {
+                Some(BusBody::Control(control_event))
+                    if control_event.originator() == EventOriginator::Web =>
+                {
                     self.recent_fixture_property
                         .observe(&control_event.body(), std::time::Instant::now());
                     if control_event_marks_showfile_dirty(&control_event.body()) {
@@ -38,7 +39,7 @@ impl BlaulichtApp {
                     }
                 }
                 // Don't handle web to avoid infinite loopbacks.
-                Some(control_event) if control_event.originator() != EventOriginator::Web => {
+                Some(BusBody::Control(control_event)) => {
                     let body = control_event.body();
                     if control_event.originator() == EventOriginator::Plugin {
                         self.recent_fixture_property
@@ -89,13 +90,16 @@ impl BlaulichtApp {
                         }
                     }
                 }
-                _ => {
+                // Host commands are applied by the engine; the desk only sees
+                // its reply (`SystemMessage::CommandResult`).
+                Some(BusBody::Host(_)) => {}
+                None => {
                     empty += 1;
                 }
             }
 
-            match self.data.system_message_receiver.try_recv() {
-                Ok(sys) => match sys {
+            match self.data.client.try_recv_system() {
+                Some(sys) => match sys {
                     SystemMessage::Heartbeat(_) => {
                         self.last_heartbeat_frame = self.frame_count;
                     }
@@ -178,6 +182,11 @@ impl BlaulichtApp {
                     SystemMessage::DeskRequest(request) => {
                         self.view_state.apply_desk_request(request);
                     }
+                    SystemMessage::CommandResult(_result) => {
+                        // Replies to the desk's own commands. Nothing waits
+                        // for them yet (refusals are only logged by the
+                        // engine); dialogs and refusal feedback (034) will.
+                    }
                     SystemMessage::PluginAlert {
                         plugin_id: _plugin_id,
                         label,
@@ -189,12 +198,8 @@ impl BlaulichtApp {
                         ));
                     }
                 },
-                Err(TryRecvError::Empty) => {
+                None => {
                     empty += 1;
-                }
-                Err(TryRecvError::Disconnected) => {
-                    tracing::warn!("System message channel disconnected");
-                    break;
                 }
             }
 

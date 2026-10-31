@@ -212,10 +212,10 @@ impl PluginManager {
         //
         // Collect recent events.
         //
-        let mut events = vec![];
-        while let Some(event) = self.event_bus.try_recv() {
-            events.push(event);
-        }
+        // Plugins get the plain `ControlEventMessage`s, exactly as before the
+        // bus envelope existed: host commands are dropped and the envelope
+        // (client, session, seq) is stripped.
+        let events = crate::hub::plugin_events(std::iter::from_fn(|| self.event_bus.try_recv()));
 
         //
         // Buffers that are identical for every plugin this tick. Building them

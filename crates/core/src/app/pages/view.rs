@@ -398,14 +398,12 @@ impl BlaulichtApp {
                                                 "Apply",
                                                 ButtonSize::Medium,
                                             ) {
-                                                self.data.event_bus_connection.send(
-                                                    ControlEventMessage::new(
-                                                        EventOriginator::Web,
-                                                        ControlEvent::Transaction(
-                                                            view_snapshot.apply_events(),
-                                                        ),
+                                                self.data.client.send(ControlEventMessage::new(
+                                                    EventOriginator::Web,
+                                                    ControlEvent::Transaction(
+                                                        view_snapshot.apply_events(),
                                                     ),
-                                                );
+                                                ));
                                             }
                                         },
                                     );

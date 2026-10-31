@@ -7,7 +7,7 @@ use crate::{
         BlaulichtApp, Selection,
     },
     dmx::EngineState,
-    event::SystemEventBusConnectionInst,
+    hub::ClientConnection,
     state::{DmxBuffer, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
@@ -571,7 +571,7 @@ impl BlaulichtApp {
                         };
                         if let Some(msg) = msg {
                             self.data
-                                .event_bus_connection
+                                .client
                                 .send(ControlEventMessage::new(EventOriginator::Web, msg));
                         }
                     },
@@ -643,9 +643,10 @@ impl BlaulichtApp {
                                             )
                                         };
 
-                                        self.data.event_bus_connection.send(
-                                            ControlEventMessage::new(EventOriginator::Web, msg),
-                                        );
+                                        self.data.client.send(ControlEventMessage::new(
+                                            EventOriginator::Web,
+                                            msg,
+                                        ));
                                     }
 
                                     ui.add_space(2.0);
@@ -706,7 +707,7 @@ impl BlaulichtApp {
                 &buf,
                 &dmx_engine.0.palettes,
                 &frozen_props,
-                self.data.event_bus_connection.clone(),
+                &self.data.client,
                 animations.as_slice(),
             );
         }
@@ -717,7 +718,7 @@ impl BlaulichtApp {
         buf: &FixtureState,
         palettes: &BTreeMap<u8, Palette>,
         frozen_props: &HashSet<FixtureProperty>,
-        event_bus_connection: SystemEventBusConnectionInst,
+        client: &ClientConnection,
         _animations: &[u8],
     ) {
         let resolved = buf.resolve(palettes);
@@ -742,7 +743,7 @@ impl BlaulichtApp {
                                     .add(HFader::new(&mut value, range).with_label(label))
                                     .changed()
                                 {
-                                    event_bus_connection.send(ControlEventMessage::new(
+                                    client.send(ControlEventMessage::new(
                                         EventOriginator::Web,
                                         build_event(value),
                                     ));
@@ -877,7 +878,7 @@ impl BlaulichtApp {
                                     RGBColor::from(tup),
                                     b_color
                                 );
-                                event_bus_connection.send(ControlEventMessage::new(
+                                client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
                                     ControlEvent::SetColor(tup),
                                 ));
@@ -934,12 +935,10 @@ impl BlaulichtApp {
 
         match action {
             Some(TreeAction::SelectLeaf(scene_id)) if scene_id != focus => {
-                self.data
-                    .event_bus_connection
-                    .send(ControlEventMessage::new(
-                        EventOriginator::Web,
-                        ControlEvent::SetSceneFocus(scene_id),
-                    ));
+                self.data.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::SetSceneFocus(scene_id),
+                ));
             }
             Some(TreeAction::TapFolder(folder)) => {
                 components::toggle_folder(ui.ctx(), PROGRAMMER_SCENE_TREE, folder);

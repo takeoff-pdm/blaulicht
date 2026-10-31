@@ -82,8 +82,11 @@ pub enum SystemMessage {
         duration_ms: u32,
     },
     /// A plugin asked the desk frontend for something only it can do (open or
-    /// maximize a plugin window). Host-only, never sent to plugins.
+    /// maximize a plugin window). Sent to the desk client only. Host-only,
+    /// never sent to plugins.
     DeskRequest(crate::frontend_ui::DeskRequest),
+    /// The engine's reply to one bus message, sent to its client only.
+    CommandResult(crate::hub::CommandResult),
 }
 
 /// Engine startup stages, in the order they are shown.

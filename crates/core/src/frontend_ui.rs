@@ -7,11 +7,14 @@
 //! small [`FrontendUiSnapshot`] by message. Frontends never lock the mirror:
 //! they only hold a [`FrontendUiPublisher`], whose updates the engine applies
 //! when it next reads the mirror. Dropping the publisher disconnects the
-//! frontend and clears its entries.
+//! frontend and clears its entries. Frontends are keyed by their
+//! [`ClientId`]; a frontend's publisher lives in its
+//! [`ClientConnection`](crate::hub::ClientConnection), so it connects and
+//! disconnects with the client.
 //!
 //! Requests from plugins (open a plugin window, maximize it) go to the desk
-//! frontend only, as a host-only [`DeskRequest`] on the system message
-//! channel, which only the desk reads.
+//! frontend only, as a host-only [`DeskRequest`] addressed to the desk
+//! client's hub subscription.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
@@ -19,17 +22,8 @@ use std::sync::Mutex;
 use blaulicht_shared::{ControlEvent, ExternalScreenInfo, MainUiEvent};
 use crossbeam_channel::{Receiver, Sender};
 
+use crate::hub::{ClientId, SystemHub};
 use crate::msg::SystemMessage;
-
-/// Identifies a frontend attached to the engine. Only the desk exists for now;
-/// 049 replaces this with its `ClientId`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FrontendId(pub u32);
-
-impl FrontendId {
-    /// The native egui frontend running in the engine process.
-    pub const DESK: Self = Self(0);
-}
 
 /// The part of a frontend's view state that the engine and plugins may read.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -41,18 +35,18 @@ pub struct FrontendUiSnapshot {
 }
 
 enum MirrorUpdate {
-    Connected(FrontendId),
-    Snapshot(FrontendId, FrontendUiSnapshot),
-    Disconnected(FrontendId),
+    Connected(ClientId),
+    Snapshot(ClientId, FrontendUiSnapshot),
+    Disconnected(ClientId),
 }
 
 /// Read-only (for frontends) mirror of every connected frontend's
-/// [`FrontendUiSnapshot`], keyed by [`FrontendId`]. Lives in
+/// [`FrontendUiSnapshot`], keyed by [`ClientId`]. Lives in
 /// [`AppState`](crate::state::AppState).
 pub struct FrontendUiMirror {
     sender: Sender<MirrorUpdate>,
     receiver: Receiver<MirrorUpdate>,
-    frontends: Mutex<BTreeMap<FrontendId, FrontendUiSnapshot>>,
+    frontends: Mutex<BTreeMap<ClientId, FrontendUiSnapshot>>,
 }
 
 impl Default for FrontendUiMirror {
@@ -74,7 +68,7 @@ impl FrontendUiMirror {
     /// Attach a frontend. It counts as connected (with an empty snapshot)
     /// until the returned publisher is dropped. Connecting the same id twice
     /// is not supported: the first publisher's drop would disconnect both.
-    pub fn connect(&self, id: FrontendId) -> FrontendUiPublisher {
+    pub fn connect(&self, id: ClientId) -> FrontendUiPublisher {
         let _ = self.sender.send(MirrorUpdate::Connected(id));
         FrontendUiPublisher {
             id,
@@ -84,7 +78,7 @@ impl FrontendUiMirror {
     }
 
     /// Apply pending updates, then read the current state.
-    fn read<R>(&self, f: impl FnOnce(&BTreeMap<FrontendId, FrontendUiSnapshot>) -> R) -> R {
+    fn read<R>(&self, f: impl FnOnce(&BTreeMap<ClientId, FrontendUiSnapshot>) -> R) -> R {
         let mut frontends = self.frontends.lock().unwrap();
         while let Ok(update) = self.receiver.try_recv() {
             match update {
@@ -106,12 +100,12 @@ impl FrontendUiMirror {
         f(&frontends)
     }
 
-    pub fn is_connected(&self, id: FrontendId) -> bool {
+    pub fn is_connected(&self, id: ClientId) -> bool {
         self.read(|frontends| frontends.contains_key(&id))
     }
 
     pub fn desk_connected(&self) -> bool {
-        self.is_connected(FrontendId::DESK)
+        self.is_connected(ClientId::Desk)
     }
 
     /// `true` if the plugin's UI is open in any frontend.
@@ -127,7 +121,7 @@ impl FrontendUiMirror {
     pub fn desk_external_screens(&self) -> Vec<ExternalScreenInfo> {
         self.read(|frontends| {
             frontends
-                .get(&FrontendId::DESK)
+                .get(&ClientId::Desk)
                 .map(|snapshot| snapshot.external_screens.clone())
                 .unwrap_or_default()
         })
@@ -137,13 +131,13 @@ impl FrontendUiMirror {
 /// A frontend's handle for publishing its [`FrontendUiSnapshot`]. Dropping it
 /// disconnects the frontend.
 pub struct FrontendUiPublisher {
-    id: FrontendId,
+    id: ClientId,
     sender: Sender<MirrorUpdate>,
     last: Option<FrontendUiSnapshot>,
 }
 
 impl FrontendUiPublisher {
-    pub fn id(&self) -> FrontendId {
+    pub fn id(&self) -> ClientId {
         self.id
     }
 
@@ -177,18 +171,14 @@ pub enum DeskRequest {
     MaximizePluginUi { plugin_id: u8 },
 }
 
-/// Send `request` to the desk frontend, or drop it with a debug log if no desk
-/// is connected. Returns whether it was sent.
-pub fn send_desk_request(
-    mirror: &FrontendUiMirror,
-    system_out: &Sender<SystemMessage>,
-    request: DeskRequest,
-) -> bool {
-    if !mirror.desk_connected() {
+/// Send `request` to the desk client's hub subscription, or drop it with a
+/// debug log if no desk is connected. Returns whether it was sent.
+pub fn send_desk_request(hub: &SystemHub, request: DeskRequest) -> bool {
+    let sent = hub.publish_to(ClientId::Desk, SystemMessage::DeskRequest(request));
+    if !sent {
         tracing::debug!("No desk frontend connected; dropping {request:?}");
-        return false;
     }
-    system_out.send(SystemMessage::DeskRequest(request)).is_ok()
+    sent
 }
 
 /// Desk requests carried by a plugin-sent event (`SetPluginUIOpen`, also
@@ -217,19 +207,16 @@ pub fn desk_requests_in_plugin_event(event: &ControlEvent) -> Vec<DeskRequest> {
 }
 
 /// Route the desk requests in a plugin-sent event to the desk frontend.
-pub fn route_plugin_event_to_desk(
-    mirror: &FrontendUiMirror,
-    system_out: &Sender<SystemMessage>,
-    event: &ControlEvent,
-) {
+pub fn route_plugin_event_to_desk(hub: &SystemHub, event: &ControlEvent) {
     for request in desk_requests_in_plugin_event(event) {
-        send_desk_request(mirror, system_out, request);
+        send_desk_request(hub, request);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hub::HubSubscription;
 
     fn screen(index: u32, owner: Option<u8>) -> ExternalScreenInfo {
         ExternalScreenInfo {
@@ -249,9 +236,8 @@ mod tests {
         }
     }
 
-    fn desk_requests(receiver: &Receiver<SystemMessage>) -> Vec<DeskRequest> {
-        receiver
-            .try_iter()
+    fn desk_requests(subscription: &HubSubscription) -> Vec<DeskRequest> {
+        std::iter::from_fn(|| subscription.try_recv())
             .filter_map(|message| match message {
                 SystemMessage::DeskRequest(request) => Some(request),
                 _ => None,
@@ -262,8 +248,8 @@ mod tests {
     #[test]
     fn plugin_is_open_if_open_in_any_frontend() {
         let mirror = FrontendUiMirror::new();
-        let mut desk = mirror.connect(FrontendId::DESK);
-        let mut remote = mirror.connect(FrontendId(7));
+        let mut desk = mirror.connect(ClientId::Desk);
+        let mut remote = mirror.connect(ClientId::Remote(7));
 
         assert!(!mirror.is_plugin_open(1));
         remote.publish(snapshot(&[1], vec![]));
@@ -281,15 +267,15 @@ mod tests {
     #[test]
     fn disconnect_clears_the_frontends_entries() {
         let mirror = FrontendUiMirror::new();
-        let mut desk = mirror.connect(FrontendId::DESK);
-        let mut remote = mirror.connect(FrontendId(7));
+        let mut desk = mirror.connect(ClientId::Desk);
+        let mut remote = mirror.connect(ClientId::Remote(7));
         desk.publish(snapshot(&[1], vec![screen(0, None)]));
         remote.publish(snapshot(&[2], vec![]));
         assert!(mirror.is_plugin_open(2));
 
         drop(remote);
         assert!(!mirror.is_plugin_open(2));
-        assert!(!mirror.is_connected(FrontendId(7)));
+        assert!(!mirror.is_connected(ClientId::Remote(7)));
         assert!(mirror.is_plugin_open(1));
 
         drop(desk);
@@ -302,8 +288,8 @@ mod tests {
     fn external_screens_are_the_desks_only() {
         let mirror = FrontendUiMirror::new();
         assert!(mirror.desk_external_screens().is_empty());
-        let mut desk = mirror.connect(FrontendId::DESK);
-        let mut remote = mirror.connect(FrontendId(7));
+        let mut desk = mirror.connect(ClientId::Desk);
+        let mut remote = mirror.connect(ClientId::Remote(7));
         remote.publish(snapshot(&[], vec![screen(0, None), screen(1, None)]));
         assert!(mirror.desk_external_screens().is_empty());
         desk.publish(snapshot(&[], vec![screen(0, Some(3))]));
@@ -313,7 +299,7 @@ mod tests {
     #[test]
     fn connecting_counts_before_the_first_snapshot_and_unchanged_snapshots_are_not_resent() {
         let mirror = FrontendUiMirror::new();
-        let mut desk = mirror.connect(FrontendId::DESK);
+        let mut desk = mirror.connect(ClientId::Desk);
         assert!(mirror.desk_connected());
 
         desk.publish(snapshot(&[1], vec![]));
@@ -326,21 +312,19 @@ mod tests {
 
     #[test]
     fn plugin_set_open_requests_go_to_the_desk() {
-        let mirror = FrontendUiMirror::new();
-        let (system_out, system_in) = crossbeam_channel::unbounded();
-        let _desk = mirror.connect(FrontendId::DESK);
+        let hub = SystemHub::new();
+        let desk = hub.subscribe(ClientId::Desk);
+        let remote = hub.subscribe(ClientId::Remote(7));
 
         route_plugin_event_to_desk(
-            &mirror,
-            &system_out,
+            &hub,
             &ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
                 plugin_id: 4,
                 open: true,
             }),
         );
         route_plugin_event_to_desk(
-            &mirror,
-            &system_out,
+            &hub,
             &ControlEvent::Transaction(vec![
                 ControlEvent::SelectGroup(0),
                 ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
@@ -349,10 +333,10 @@ mod tests {
                 }),
             ]),
         );
-        route_plugin_event_to_desk(&mirror, &system_out, &ControlEvent::SelectGroup(0));
+        route_plugin_event_to_desk(&hub, &ControlEvent::SelectGroup(0));
 
         assert_eq!(
-            desk_requests(&system_in),
+            desk_requests(&desk),
             vec![
                 DeskRequest::SetPluginUiOpen {
                     plugin_id: 4,
@@ -364,44 +348,48 @@ mod tests {
                 },
             ]
         );
+        // Other frontends don't get desk requests.
+        assert!(desk_requests(&remote).is_empty());
     }
 
     #[test]
     fn maximize_goes_to_the_desk() {
-        let mirror = FrontendUiMirror::new();
-        let (system_out, system_in) = crossbeam_channel::unbounded();
-        let _desk = mirror.connect(FrontendId::DESK);
+        let hub = SystemHub::new();
+        let desk = hub.subscribe(ClientId::Desk);
         assert!(send_desk_request(
-            &mirror,
-            &system_out,
+            &hub,
             DeskRequest::MaximizePluginUi { plugin_id: 2 }
         ));
         assert_eq!(
-            desk_requests(&system_in),
+            desk_requests(&desk),
             vec![DeskRequest::MaximizePluginUi { plugin_id: 2 }]
         );
     }
 
     #[test]
     fn requests_without_a_desk_are_dropped() {
-        let mirror = FrontendUiMirror::new();
-        let (system_out, system_in) = crossbeam_channel::unbounded();
+        let hub = SystemHub::new();
         // Another frontend does not receive desk requests.
-        let _remote = mirror.connect(FrontendId(7));
+        let remote = hub.subscribe(ClientId::Remote(7));
 
         assert!(!send_desk_request(
-            &mirror,
-            &system_out,
+            &hub,
             DeskRequest::MaximizePluginUi { plugin_id: 2 }
         ));
         route_plugin_event_to_desk(
-            &mirror,
-            &system_out,
+            &hub,
             &ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
                 plugin_id: 4,
                 open: true,
             }),
         );
-        assert!(desk_requests(&system_in).is_empty());
+        assert!(desk_requests(&remote).is_empty());
+
+        // A desk that disconnected gets nothing either.
+        drop(hub.subscribe(ClientId::Desk));
+        assert!(!send_desk_request(
+            &hub,
+            DeskRequest::MaximizePluginUi { plugin_id: 2 }
+        ));
     }
 }

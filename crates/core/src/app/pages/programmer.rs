@@ -49,12 +49,10 @@ impl BlaulichtApp {
         let scope = ui.scope(|ui| components::button(ui, live_mode, "LIVE", size));
 
         if scope.inner {
-            self.data
-                .event_bus_connection
-                .send(ControlEventMessage::new(
-                    EventOriginator::Web,
-                    ControlEvent::ToggleLiveMode,
-                ));
+            self.data.client.send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::ToggleLiveMode,
+            ));
         }
 
         if live_mode {
@@ -177,7 +175,7 @@ impl BlaulichtApp {
                                     ControlEvent::SelectGroup(curr_group),
                                 ];
 
-                                self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
+                                self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
                                     ControlEvent::Transaction(instr)));
                                 }
                             }
@@ -231,7 +229,7 @@ impl BlaulichtApp {
                                             instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id));
                                         }
 
-                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
+                                        self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
                                     }
                                     else {
@@ -248,10 +246,10 @@ impl BlaulichtApp {
                                             }
                                         }
 
-                                        self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web,
+                                        self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
 
-                                        // self.data.event_bus_connection.send(ControlEventMessage::new(EventOriginator::Web, 
+                                        // self.data.client.send(ControlEventMessage::new(EventOriginator::Web, 
                                         //     ControlEvent::Transaction(vec![
                                         //         ControlEvent::RemoveAllSelection,
                                         //         ControlEvent::SelectGroup(curr_group),
@@ -415,7 +413,7 @@ impl BlaulichtApp {
                                                                                 ControlEvent::PopSelection,
                                                                             );
 
-                                                                            self.data.event_bus_connection.send(
+                                                                            self.data.client.send(
                                                                                 ControlEventMessage::new(
                                                                                     EventOriginator::Web,
                                                                                     ControlEvent::Transaction(
@@ -462,12 +460,10 @@ impl BlaulichtApp {
 
     /// Sends `RemoveAllSelection`.
     fn clear_selection(&self) {
-        self.data
-            .event_bus_connection
-            .send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::RemoveAllSelection,
-            ));
+        self.data.client.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::RemoveAllSelection,
+        ));
     }
 
     /// The toolbar's Clear button; disabled while nothing is selected.
@@ -503,17 +499,15 @@ impl BlaulichtApp {
     /// Removes one change (fixture property) from the focused scene.
     fn remove_scene_change(&self, change: FixtureSelector) {
         let FixtureSelector { gid, fid, property } = change;
-        self.data
-            .event_bus_connection
-            .send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::RemoveChange {
-                    selection: FixtureSelection {
-                        fixtures: vec![(gid, fid)],
-                    },
-                    property,
+        self.data.client.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::RemoveChange {
+                selection: FixtureSelection {
+                    fixtures: vec![(gid, fid)],
                 },
-            ));
+                property,
+            },
+        ));
     }
 
     /// The Scene Changes panel in the right column: the focused scene's
@@ -751,7 +745,7 @@ impl BlaulichtApp {
                 ) {
                     if let Some(event) = undo_all_changes_event(&scene.sink.changeset) {
                         self.data
-                            .event_bus_connection
+                            .client
                             .send(ControlEventMessage::new(EventOriginator::Web, event));
                     }
                     self.programmer_ui_state.undo_all_changes_confirm_open = false;
@@ -862,14 +856,12 @@ impl BlaulichtApp {
                                 target,
                             );
                         }
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::Transaction(vec![
-                                    ControlEvent::LoadSpecIntoAnimation(*anim_id, spec),
-                                ]),
-                            ));
+                        self.data.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::Transaction(vec![ControlEvent::LoadSpecIntoAnimation(
+                                *anim_id, spec,
+                            )]),
+                        ));
                     }
 
                     if components::button(ui, true, "Close", ButtonSize::Medium) {
@@ -922,14 +914,10 @@ impl BlaulichtApp {
 
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::Transaction(
-                                    selection_instructions.into_iter().collect(),
-                                ),
-                            ));
+                        self.data.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::Transaction(selection_instructions.into_iter().collect()),
+                        ));
                     }
 
                     let (label, enabled, event) = match animation.enabled {
@@ -944,14 +932,10 @@ impl BlaulichtApp {
                         selection_instructions.push_back(event);
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::Transaction(
-                                    selection_instructions.into_iter().collect(),
-                                ),
-                            ));
+                        self.data.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::Transaction(selection_instructions.into_iter().collect()),
+                        ));
                     }
 
                     // This is a discrete multiplier. Using the continuous
@@ -969,14 +953,10 @@ impl BlaulichtApp {
                             .push_back(ControlEvent::SetAnimationSpeed(*animation_id, speed));
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::Transaction(
-                                    selection_instructions.into_iter().collect(),
-                                ),
-                            ));
+                        self.data.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::Transaction(selection_instructions.into_iter().collect()),
+                        ));
                     }
 
                     if components::button(ui, false, "Edit", ButtonSize::Medium) {
@@ -1099,12 +1079,10 @@ impl BlaulichtApp {
                 if state.palettes.is_empty() {
                     ui.label("No palettes. Create them in Setup › Palettes.");
                 } else if let Some(id) = palette_assignment_tree(ui, &items, &active) {
-                    self.data
-                        .event_bus_connection
-                        .send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            palette_toggle_event(&active, id),
-                        ));
+                    self.data.client.send(ControlEventMessage::new(
+                        EventOriginator::Web,
+                        palette_toggle_event(&active, id),
+                    ));
                 }
 
                 ui.add_space(12.0);
@@ -1348,8 +1326,13 @@ mod tests {
     #[test]
     fn undo_all_empties_the_focused_scene_and_keeps_the_others() {
         let state = Arc::new(AppState::new(&[]));
-        let mut bus = SystemEventBus::new();
-        let engine = DmxEngine::new(state.clone(), bus.new_connection(), Default::default());
+        let bus = SystemEventBus::new();
+        let engine = DmxEngine::new(
+            state.clone(),
+            bus.new_connection(),
+            crate::hub::SystemHub::new(),
+            Default::default(),
+        );
 
         let focused_changes = changes(&[
             (0, 0, FixtureProperty::Alpha),

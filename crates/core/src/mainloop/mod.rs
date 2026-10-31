@@ -7,6 +7,7 @@ use crate::{
     config::Config,
     dmx::DmxEngine,
     event::SystemEventBusConnectionInst,
+    hub::SystemHub,
     mainloop::supervisor::complete_reload,
     msg::{AudioInput, DmxTickSpeeds, StageStatus, StartupStage, SystemMessage, TickSpeeds},
     plugin::{midi::MidiManager, serial::SerialManager, udp::UdpManager, PluginManager},
@@ -18,7 +19,6 @@ use blaulicht_audio_engine::{
     AudioEventCursor, AudioSource, CollectorOutputSpec, CollectorScratchParameters,
     SignalCollector, SignalCollectorParams,
 };
-use crossbeam_channel::Sender;
 use std::{
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -36,24 +36,23 @@ const SYSTEM_MESSAGE_SPEED: Duration = Duration::from_millis(100);
 /// (an early `?` return or a panic) marks the running stage as failed and
 /// still releases the init popup.
 struct EngineInitializationGuard {
-    system_out: Sender<SystemMessage>,
+    hub: SystemHub,
     current_stage: Option<StartupStage>,
     completed: bool,
 }
 
 impl EngineInitializationGuard {
-    fn new(system_out: Sender<SystemMessage>) -> Self {
+    fn new(hub: SystemHub) -> Self {
         Self {
-            system_out,
+            hub,
             current_stage: None,
             completed: false,
         }
     }
 
     fn send(&self, stage: StartupStage, status: StageStatus) {
-        let _ = self
-            .system_out
-            .send(SystemMessage::StartupStage { stage, status });
+        self.hub
+            .publish(SystemMessage::StartupStage { stage, status });
     }
 
     fn begin(&mut self, stage: StartupStage, detail: impl Into<String>) {
@@ -69,9 +68,8 @@ impl EngineInitializationGuard {
     }
 
     fn complete(&mut self) {
-        let _ = self
-            .system_out
-            .send(SystemMessage::EngineInitializationComplete);
+        self.hub
+            .publish(SystemMessage::EngineInitializationComplete);
         self.completed = true;
     }
 }
@@ -87,15 +85,14 @@ impl Drop for EngineInitializationGuard {
                 StageStatus::failed("engine stopped during init, see Logs"),
             );
         }
-        let _ = self
-            .system_out
-            .send(SystemMessage::EngineInitializationComplete);
+        self.hub
+            .publish(SystemMessage::EngineInitializationComplete);
     }
 }
 
 pub fn run(
     input: AudioInput,
-    system_out: Sender<SystemMessage>,
+    system_out: SystemHub,
     thread_control_signal: Arc<AtomicU8>,
     config: Config,
     event_bus_plugins: SystemEventBusConnectionInst,
@@ -123,8 +120,12 @@ pub fn run(
     //
     initialization_guard.begin(StartupStage::DmxEngine, "");
     let dmx_appstate = Arc::clone(&app_state);
-    let mut dmx_engine =
-        DmxEngine::new(dmx_appstate, event_bus_dmx, config.dmx_out_devices.clone());
+    let mut dmx_engine = DmxEngine::new(
+        dmx_appstate,
+        event_bus_dmx,
+        system_out.clone(),
+        config.dmx_out_devices.clone(),
+    );
     // TODO: add a command for starting + stopping setup.
     if config.run_setup_on_reload {
         dmx_engine.start_setup();
@@ -408,8 +409,8 @@ pub fn run(
 mod tests {
     use super::*;
 
-    fn drain(rx: &crossbeam_channel::Receiver<SystemMessage>) -> Vec<String> {
-        rx.try_iter()
+    fn drain(rx: &crate::hub::HubSubscription) -> Vec<String> {
+        std::iter::from_fn(|| rx.try_recv())
             .map(|msg| match msg {
                 SystemMessage::StartupStage { stage, status } => {
                     format!("{stage:?}:{:?}", status.state)
@@ -422,7 +423,8 @@ mod tests {
 
     #[test]
     fn dropped_guard_fails_the_running_stage() {
-        let (tx, rx) = crossbeam_channel::unbounded();
+        let tx = SystemHub::new();
+        let rx = tx.subscribe(crate::hub::ClientId::Desk);
         {
             let mut guard = EngineInitializationGuard::new(tx);
             guard.begin(StartupStage::DmxEngine, "");
@@ -443,7 +445,8 @@ mod tests {
 
     #[test]
     fn completed_guard_sends_nothing_on_drop() {
-        let (tx, rx) = crossbeam_channel::unbounded();
+        let tx = SystemHub::new();
+        let rx = tx.subscribe(crate::hub::ClientId::Desk);
         {
             let mut guard = EngineInitializationGuard::new(tx);
             guard.begin(StartupStage::Audio, "");
@@ -455,7 +458,8 @@ mod tests {
 
     #[test]
     fn dropped_guard_without_stage_only_completes() {
-        let (tx, rx) = crossbeam_channel::unbounded();
+        let tx = SystemHub::new();
+        let rx = tx.subscribe(crate::hub::ClientId::Desk);
         drop(EngineInitializationGuard::new(tx));
         assert_eq!(drain(&rx), ["complete"]);
     }

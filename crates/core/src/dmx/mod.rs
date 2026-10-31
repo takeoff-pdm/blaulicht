@@ -10,7 +10,8 @@ pub mod animation;
 pub mod scene;
 use crate::{
     event::SystemEventBusConnectionInst,
-    msg::DmxTickSpeeds,
+    hub::{BusBody, BusMessage, CommandOutcome, CommandResult, CreatedId, HostCommand, SystemHub},
+    msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
@@ -25,6 +26,7 @@ use blaulicht_shared::{
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
+    cell::Cell,
     collections::{BTreeMap, HashMap, HashSet},
     io::ErrorKind,
     mem,
@@ -82,6 +84,11 @@ pub struct DmxEngine {
     dmx_previous: [u8; 513], // Starting at 1
     // TODO: add more, internal state.
     event_bus_connection: SystemEventBusConnectionInst,
+    /// Replies ([`CommandResult`]) go to the sender's hub subscription.
+    hub: SystemHub,
+    /// Set by `apply` when it allocates an id (e.g. `CreatePalette`), so the
+    /// reply can carry it. Reset before each bus message.
+    created: Cell<Option<CreatedId>>,
 
     // This is not part of state_ref since this is only a cache
     // animation_base_times: BTreeMap<u8, f64>,
@@ -288,6 +295,7 @@ impl DmxEngine {
     pub fn new(
         state_ref: Arc<AppState>,
         event_bus_connection: SystemEventBusConnectionInst,
+        hub: SystemHub,
         universe_dmx_out_devices: [String; 2],
     ) -> Self {
         let mut health_state = state_ref.health_data.write().unwrap();
@@ -345,6 +353,8 @@ impl DmxEngine {
             state_ref,
             dmx_previous: [0; 513],
             event_bus_connection,
+            hub,
+            created: Cell::new(None),
             // animation_base_times: BTreeMap::new(),
             start_time: Instant::now(),
             output_tx,
@@ -375,37 +385,7 @@ impl DmxEngine {
             return;
         }
 
-        // Read back events.
-        let mut events = vec![];
-        while let Some(ev) = self.event_bus_connection.try_recv() {
-            events.push(ev)
-        }
-
-        {
-            if !events.is_empty() {
-                let mut state = self.state_ref.dmx_engine.write().unwrap();
-
-                for ev in events {
-                    let (msg, event) = self.apply(&mut state, ev);
-
-                    if let Some(msg) = msg {
-                        debug!("{msg}");
-                    }
-
-                    if let Some(ev) = event {
-                        self.event_bus_connection
-                            .send(ControlEventMessage::new(EventOriginator::DmxEngine, ev));
-                    }
-                }
-
-                let integrity = state.0.validate_palette_mapping_integrity(false);
-                debug_assert!(
-                    integrity.is_ok(),
-                    "palette mapping integrity violated after applying events: {:?}",
-                    integrity
-                );
-            }
-        }
+        self.apply_bus_messages();
 
         // Scene graph activations can write scene speed/alpha controls, so they
         // must be applied before this frame's animation phase is evaluated.
@@ -416,6 +396,39 @@ impl DmxEngine {
 
         self.render_universes();
         self.run_fixture_inits();
+    }
+
+    /// Applies every queued bus message, then sends each sender its
+    /// [`CommandResult`].
+    fn apply_bus_messages(&mut self) {
+        let mut messages = vec![];
+        while let Some(message) = self.event_bus_connection.try_recv() {
+            messages.push(message)
+        }
+        if messages.is_empty() {
+            return;
+        }
+
+        let mut results = Vec::with_capacity(messages.len());
+        {
+            let mut state = self.state_ref.dmx_engine.write().unwrap();
+
+            for message in messages {
+                results.extend(self.dispatch(&mut state, message));
+            }
+
+            let integrity = state.0.validate_palette_mapping_integrity(false);
+            debug_assert!(
+                integrity.is_ok(),
+                "palette mapping integrity violated after applying events: {:?}",
+                integrity
+            );
+        }
+        // Outside the engine lock.
+        for result in results {
+            self.hub
+                .publish_to(result.client, SystemMessage::CommandResult(result));
+        }
     }
 
     /// Runs the `setup` routine of every fixture with a pending or active
@@ -725,6 +738,67 @@ impl DmxEngine {
         }
 
         mem::drop(state);
+    }
+
+    /// Applies one bus message and returns the reply for its sender. The
+    /// engine's own rollback notices get no reply. A rollback (or, for folder
+    /// events, the undo event) goes back on the bus with the original client,
+    /// session and sequence number, as a `DmxEngine` event, so plugins see
+    /// exactly what they saw before.
+    pub fn dispatch(
+        &self,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
+        message: BusMessage,
+    ) -> Option<CommandResult> {
+        let BusMessage {
+            client,
+            session,
+            seq,
+            body,
+        } = message;
+        let outcome = match body {
+            BusBody::Control(event) => {
+                if event.originator() == EventOriginator::DmxEngine {
+                    return None;
+                }
+                self.created.set(None);
+                let (refusal, rollback) = self.apply(state, event);
+                if let Some(rollback) = rollback {
+                    self.event_bus_connection.send(BusMessage::control(
+                        client,
+                        session,
+                        seq,
+                        ControlEventMessage::new(EventOriginator::DmxEngine, rollback),
+                    ));
+                }
+                match refusal {
+                    Some(reason) => {
+                        debug!("{reason} ({client}, seq {seq})");
+                        CommandOutcome::Refused(reason.to_string())
+                    }
+                    None => CommandOutcome::Ok {
+                        created: self.created.take(),
+                    },
+                }
+            }
+            BusBody::Host(command) => self.apply_host(state, command),
+        };
+        Some(CommandResult {
+            client,
+            seq,
+            outcome,
+        })
+    }
+
+    /// Applies a host-only command.
+    fn apply_host(
+        &self,
+        _state: &mut RwLockWriteGuard<'_, EngineState>,
+        command: HostCommand,
+    ) -> CommandOutcome {
+        match command {
+            HostCommand::Ping => CommandOutcome::Ok { created: None },
+        }
     }
 
     pub fn apply(
@@ -1120,6 +1194,7 @@ impl DmxEngine {
                                 folder: None,
                             },
                         );
+                        self.created.set(Some(CreatedId::Palette(id)));
                         (None, None)
                     }
                     None => (Some("Max palettes reached"), None),
@@ -1887,7 +1962,7 @@ mod artnet_scale_tests {
 #[cfg(test)]
 mod folder_event_tests {
     use super::DmxEngine;
-    use crate::{event::SystemEventBus, state::AppState};
+    use crate::{event::SystemEventBus, hub::SystemHub, state::AppState};
     use blaulicht_shared::{
         fixture::{
             light::Light,
@@ -1920,10 +1995,11 @@ mod folder_event_tests {
     impl Harness {
         fn new() -> Self {
             let app = Arc::new(AppState::new(&[]));
-            let mut bus = SystemEventBus::new();
+            let bus = SystemEventBus::new();
             let engine = DmxEngine::new(
                 Arc::clone(&app),
                 bus.new_connection(),
+                SystemHub::new(),
                 [String::new(), String::new()],
             );
 
@@ -2101,5 +2177,147 @@ mod folder_event_tests {
         h.round_trip(ControlEvent::SelectFolder(top));
         assert_eq!(h.snapshot().group_ids, HashSet::from([3]));
         assert_eq!(h.snapshot().fixtures_in_group, HashSet::from([1, 4]));
+    }
+}
+
+/// Bus messages through the real `DmxEngine`: replies go to their sender
+/// only, refusals included, and rollbacks keep the sender's envelope.
+#[cfg(test)]
+mod command_result_tests {
+    use super::DmxEngine;
+    use crate::{
+        event::SystemEventBus,
+        frontend_ui::FrontendUiMirror,
+        hub::{
+            BusBody, BusMessage, ClientConnection, ClientId, CommandOutcome, CommandResult,
+            CreatedId, HostCommand, SessionId, SystemHub,
+        },
+        msg::SystemMessage,
+        state::AppState,
+    };
+    use blaulicht_shared::{
+        palette::PaletteKind, ControlEvent, ControlEventMessage, EventOriginator, HSVColor,
+    };
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+
+    fn results(client: &ClientConnection) -> Vec<CommandResult> {
+        std::iter::from_fn(|| client.try_recv_system())
+            .filter_map(|message| match message {
+                SystemMessage::CommandResult(result) => Some(result),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Ticks the engine's bus processing until `client` got `count` replies.
+    fn wait_for_results(
+        engine: &mut DmxEngine,
+        client: &ClientConnection,
+        count: usize,
+    ) -> Vec<CommandResult> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut got = Vec::new();
+        while got.len() < count {
+            assert!(Instant::now() < deadline, "only got {got:?}");
+            engine.apply_bus_messages();
+            got.extend(results(client));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        got
+    }
+
+    #[test]
+    fn replies_reach_only_their_sender_and_rollbacks_keep_the_envelope() {
+        let app = Arc::new(AppState::new(&[]));
+        let hub = SystemHub::new();
+        let mut bus = SystemEventBus::<BusMessage>::new();
+        let handle = bus.handle();
+        let mut engine = DmxEngine::new(
+            Arc::clone(&app),
+            handle.connect(),
+            hub.clone(),
+            [String::new(), String::new()],
+        );
+        let mirror = FrontendUiMirror::new();
+        let desk =
+            ClientConnection::connect(ClientId::Desk, SessionId::DESK, &hub, &handle, &mirror);
+        let remote_id = hub.allocate_client();
+        let remote = ClientConnection::connect(remote_id, SessionId(1), &hub, &handle, &mirror);
+        std::thread::spawn(move || bus.run());
+
+        // An engine refusal: group 9 doesn't exist.
+        let seq = remote.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::SelectGroup(9),
+        ));
+        assert_eq!(
+            wait_for_results(&mut engine, &remote, 1),
+            vec![CommandResult {
+                client: remote_id,
+                seq,
+                outcome: CommandOutcome::Refused("Illegal group".to_string()),
+            }]
+        );
+
+        // The desk got no reply, but sees the rollback on the bus with the
+        // remote's envelope and the engine as originator.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let rollback = loop {
+            assert!(Instant::now() < deadline, "no rollback on the bus");
+            match desk.try_recv_bus() {
+                Some(BusMessage {
+                    body: BusBody::Control(event),
+                    client,
+                    session,
+                    seq: rollback_seq,
+                }) if event.originator() == EventOriginator::DmxEngine => {
+                    break (client, session, rollback_seq, event.body())
+                }
+                Some(_) => {}
+                None => std::thread::sleep(Duration::from_millis(1)),
+            }
+        };
+        assert_eq!(
+            (rollback.0, rollback.1, rollback.2),
+            (remote_id, SessionId(1), seq)
+        );
+        assert!(matches!(rollback.3, ControlEvent::DeSelectGroup(9)));
+
+        // A created id, and a host command.
+        let create = desk.send(ControlEventMessage::new(
+            EventOriginator::Web,
+            ControlEvent::CreatePalette("Red".to_string(), PaletteKind::Color(HSVColor::default())),
+        ));
+        let ping = desk.send_host(HostCommand::Ping);
+        assert_eq!(
+            wait_for_results(&mut engine, &desk, 2),
+            vec![
+                CommandResult {
+                    client: ClientId::Desk,
+                    seq: create,
+                    outcome: CommandOutcome::Ok {
+                        created: Some(CreatedId::Palette(0)),
+                    },
+                },
+                CommandResult {
+                    client: ClientId::Desk,
+                    seq: ping,
+                    outcome: CommandOutcome::Ok { created: None },
+                },
+            ]
+        );
+        assert!(app.dmx_engine.read().unwrap().0.palettes.contains_key(&0));
+
+        // The engine's own rollback notice got no reply, and nothing leaked
+        // to the other client.
+        for _ in 0..20 {
+            engine.apply_bus_messages();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(results(&remote).is_empty());
+        assert!(results(&desk).is_empty());
     }
 }

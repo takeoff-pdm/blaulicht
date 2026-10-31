@@ -201,16 +201,14 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, true, "Add", ButtonSize::Medium) {
-                        self.data
-                            .event_bus_connection
-                            .send(ControlEventMessage::new(
-                                EventOriginator::Web,
-                                ControlEvent::SetChannelOverride(
-                                    self.add_dmx_override_uni,
-                                    self.add_dmx_override_chan,
-                                    self.add_dmx_override_value,
-                                ),
-                            ));
+                        self.data.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            ControlEvent::SetChannelOverride(
+                                self.add_dmx_override_uni,
+                                self.add_dmx_override_chan,
+                                self.add_dmx_override_value,
+                            ),
+                        ));
                         self.add_dmx_override_open = false;
                         self.close_dmx_override_numberpads();
                     }
@@ -281,31 +279,24 @@ impl BlaulichtApp {
                                 .add(HFader::new(&mut value, 0.0..=255.0).with_label("Value"))
                                 .changed()
                             {
-                                self.data
-                                    .event_bus_connection
-                                    .send(ControlEventMessage::new(
-                                        EventOriginator::Web,
-                                        ControlEvent::SetChannelOverride(
-                                            *universe as u16,
-                                            *chan as u16,
-                                            value as u8,
-                                        ),
-                                    ));
+                                self.data.client.send(ControlEventMessage::new(
+                                    EventOriginator::Web,
+                                    ControlEvent::SetChannelOverride(
+                                        *universe as u16,
+                                        *chan as u16,
+                                        value as u8,
+                                    ),
+                                ));
                             }
                         };
 
                         ui.add_space(50.0);
 
                         if components::button(ui, false, "Delete", ButtonSize::Medium) {
-                            self.data
-                                .event_bus_connection
-                                .send(ControlEventMessage::new(
-                                    EventOriginator::Web,
-                                    ControlEvent::RemoveChannelOverride(
-                                        *universe as u16,
-                                        *chan as u16,
-                                    ),
-                                ));
+                            self.data.client.send(ControlEventMessage::new(
+                                EventOriginator::Web,
+                                ControlEvent::RemoveChannelOverride(*universe as u16, *chan as u16),
+                            ));
                         }
                     },
                 );

@@ -22,6 +22,8 @@ use wasmtime::*;
 
 use crate::command::Command;
 use crate::frontend_ui::{self, DeskRequest};
+#[cfg(feature = "wasmtime")]
+use crate::hub::{BusMessage, ClientId, CommandSeq, SessionId};
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::msg::TERMINAL_ONLY_LOG_TARGET;
@@ -371,7 +373,7 @@ impl PluginManager {
             let plugin_name = plugin.file_path.to_string();
 
             enabled_index += 1;
-            let _ = self.system_out.send(SystemMessage::StartupStage {
+            self.hub.publish(SystemMessage::StartupStage {
                 stage: crate::msg::StartupStage::Plugins,
                 status: crate::msg::StageStatus::running(format!(
                     "{enabled_index}/{enabled_total} · {}",
@@ -388,7 +390,7 @@ impl PluginManager {
                     .with_context(|| "failed to create wasm module")?;
                 modules.insert(plugin_name.clone(), module.clone());
 
-                let mut store = Store::new(&engine, ());
+                let mut store = Store::new(&engine, PluginStoreData::new(plugin_id as u8));
 
                 // instantiate the module
                 let instance = linker
@@ -474,12 +476,15 @@ impl PluginManager {
         Ok(())
     }
 
-    fn provide_host_functions(&mut self, linker: &mut Linker<()>) -> anyhow::Result<()> {
+    fn provide_host_functions(
+        &mut self,
+        linker: &mut Linker<PluginStoreData>,
+    ) -> anyhow::Result<()> {
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_register_plugin_kind",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   kind: i32,
                   key_ptr: i32,
@@ -490,7 +495,7 @@ impl PluginManager {
                 else {
                     return;
                 };
-                let read_string = |caller: &Caller<'_, ()>, ptr: i32, len: i32| {
+                let read_string = |caller: &Caller<'_, PluginStoreData>, ptr: i32, len: i32| {
                     let mut bytes = vec![0; len.max(0) as usize];
                     memory.read(caller, ptr.max(0) as usize, &mut bytes).ok()?;
                     String::from_utf8(bytes).ok()
@@ -548,7 +553,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "udp",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   target_addr_pointer: i32,
                   target_addr_len: i32,
                   byte_arr_pointer: i32,
@@ -587,7 +592,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "sys",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   _plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -608,7 +613,7 @@ impl PluginManager {
                         tracing::error!("{action}: {err}");
                     };
 
-                let write_stdout_to_guest = |caller: &mut Caller<'_, ()>,
+                let write_stdout_to_guest = |caller: &mut Caller<'_, PluginStoreData>,
                                              stdout_bytes: &[u8]|
                  -> bool {
                     let capacity = output_str_capacity.max(0) as usize;
@@ -696,7 +701,11 @@ impl PluginManager {
         linker.func_wrap(
             "blaulicht",
             "command_spawn",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, cmd_ptr: i32, cmd_len: i32| -> u32 {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  plugin_id: i32,
+                  cmd_ptr: i32,
+                  cmd_len: i32|
+                  -> u32 {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -751,7 +760,7 @@ impl PluginManager {
         linker.func_wrap(
             "blaulicht",
             "command_poll",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   handle: u32,
                   output_ptr: i32,
                   output_capacity: i32|
@@ -811,11 +820,11 @@ impl PluginManager {
             },
         )?;
 
-        let so = self.system_out.clone();
+        let so = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "log",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -840,23 +849,21 @@ impl PluginManager {
 
                 tracing::debug!("{received_string}");
 
-                so.send(SystemMessage::WasmLog(WasmLogBody {
+                so.publish(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: received_string.into(),
                     additional: None,
                     level,
-                }))
-                .expect("failed to send log message");
+                }));
             },
         )?;
 
         let event_bus = self.event_bus.clone();
-        let state_ref = Arc::clone(&self.state_ref);
-        let system_out = self.system_out.clone();
+        let hub = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_send_event",
-            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -874,15 +881,11 @@ impl PluginManager {
                         return;
                     }
                 };
-                // Requests only the desk can act on (`SetPluginUIOpen`) go to it
-                // over the host-only system channel; the event itself still goes
-                // on the bus so other plugins see it as before.
-                frontend_ui::route_plugin_event_to_desk(
-                    &state_ref.frontend_ui,
-                    &system_out,
-                    &event,
-                );
-                event_bus.send(ControlEventMessage::new(EventOriginator::Plugin, event));
+                // Requests only the desk can act on (`SetPluginUIOpen`) go to the
+                // desk client's hub subscription; the event itself still goes on
+                // the bus so other plugins see it as before.
+                frontend_ui::route_plugin_event_to_desk(&hub, &event);
+                event_bus.send(caller.data_mut().envelope(event));
             },
         )?;
 
@@ -943,25 +946,23 @@ impl PluginManager {
             i32::from(state_ref.frontend_ui.is_plugin_open(plugin_id as u8))
         })?;
 
-        let state_ref = Arc::clone(&self.state_ref);
-        let system_out = self.system_out.clone();
+        let hub = self.hub.clone();
         linker.func_wrap::<_, ()>("blaulicht", "ui_maximize_screen", move |plugin_id: i32| {
             // View state belongs to the desk frontend: ask it, or drop the
             // request (with a debug log) when no desk is connected.
             frontend_ui::send_desk_request(
-                &state_ref.frontend_ui,
-                &system_out,
+                &hub,
                 DeskRequest::MaximizePluginUi {
                     plugin_id: plugin_id as u8,
                 },
             );
         })?;
 
-        let system_out = self.system_out.clone();
+        let system_out = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_alert",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -978,13 +979,11 @@ impl PluginManager {
 
                 let label = String::from_utf8_lossy(&buffer).to_string();
 
-                system_out
-                    .send(SystemMessage::PluginAlert {
-                        plugin_id: plugin_id as u8,
-                        label,
-                        duration_ms: duration_ms.max(1),
-                    })
-                    .expect("failed to send plugin alert");
+                system_out.publish(SystemMessage::PluginAlert {
+                    plugin_id: plugin_id as u8,
+                    label,
+                    duration_ms: duration_ms.max(1),
+                });
             },
         )?;
 
@@ -992,7 +991,10 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "ui_list_external_screens",
-            move |mut caller: Caller<'_, ()>, _plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  _plugin_id: i32,
+                  buffer_ptr: i32,
+                  buffer_len: i32| {
                 let screens = state_ref.frontend_ui.desk_external_screens();
                 let json = serde_json::to_string(&screens).unwrap_or_else(|_| "[]".to_string());
                 let json_bytes = json.as_bytes();
@@ -1019,7 +1021,10 @@ impl PluginManager {
         linker.func_wrap::<_, i32>(
             "blaulicht",
             "ui_create_external_screen",
-            move |plugin_id: i32, width: i32, height: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  plugin_id: i32,
+                  width: i32,
+                  height: i32| {
                 if width <= 0 || height <= 0 {
                     tracing::warn!(
                         "Refusing to create external screen with invalid size {width}x{height}"
@@ -1033,14 +1038,13 @@ impl PluginManager {
                     return 0;
                 }
 
-                event_bus.send(ControlEventMessage::new(
-                    EventOriginator::Plugin,
-                    ControlEvent::MainUi(MainUiEvent::CreateOwnedExternalScreen {
+                event_bus.send(caller.data_mut().envelope(ControlEvent::MainUi(
+                    MainUiEvent::CreateOwnedExternalScreen {
                         owner_plugin_id: plugin_id as u8,
                         width: width as u32,
                         height: height as u32,
-                    }),
-                ));
+                    },
+                )));
                 1
             },
         )?;
@@ -1050,7 +1054,7 @@ impl PluginManager {
         linker.func_wrap::<_, i32>(
             "blaulicht",
             "ui_remove_external_screen",
-            move |plugin_id: i32, _index: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>, plugin_id: i32, _index: i32| {
                 let owner_plugin_id = plugin_id as u8;
                 if !state_ref.frontend_ui.desk_connected() {
                     tracing::debug!(
@@ -1071,12 +1075,9 @@ impl PluginManager {
                     return 0;
                 }
 
-                event_bus.send(ControlEventMessage::new(
-                    EventOriginator::Plugin,
-                    ControlEvent::MainUi(MainUiEvent::RemoveOwnedExternalScreen {
-                        owner_plugin_id,
-                    }),
-                ));
+                event_bus.send(caller.data_mut().envelope(ControlEvent::MainUi(
+                    MainUiEvent::RemoveOwnedExternalScreen { owner_plugin_id },
+                )));
                 1
             },
         )?;
@@ -1085,7 +1086,10 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_label",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -1108,7 +1112,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_label_styled",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1140,7 +1144,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_set_max_width",
-            move |_caller: Caller<'_, ()>, plugin_id: i32, width: i32| {
+            move |_caller: Caller<'_, PluginStoreData>, plugin_id: i32, width: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
@@ -1152,7 +1156,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_set_min_width",
-            move |_caller: Caller<'_, ()>, plugin_id: i32, width: i32| {
+            move |_caller: Caller<'_, PluginStoreData>, plugin_id: i32, width: i32| {
                 let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
                 map.entry(plugin_id as u8)
                     .or_default()
@@ -1172,7 +1176,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_button",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1202,7 +1206,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_button_styled",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1234,7 +1238,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_combo_box",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   label_ptr: i32,
                   label_len: i32,
@@ -1281,7 +1285,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_checkbox",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1314,7 +1318,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_switch",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1347,7 +1351,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_slider",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1388,7 +1392,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_hfader",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   str_pointer: i32,
                   str_len: i32,
@@ -1429,7 +1433,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_text_edit",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   label_ptr: i32,
                   label_len: i32,
@@ -1469,7 +1473,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_text_edit_multiline",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   label_ptr: i32,
                   label_len: i32,
@@ -1645,7 +1649,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_painter_text",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   x: i32,
                   y: i32,
@@ -1828,7 +1832,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_frame_styled",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   id: i32,
                   ptr: i32,
@@ -1864,7 +1868,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_frame_styled_border",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   id: i32,
                   title_ptr: i32,
@@ -1913,7 +1917,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_collapsing",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   id: i32,
                   ptr: i32,
@@ -1962,7 +1966,7 @@ impl PluginManager {
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "ui_begin_tab",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   tabs_id: i32,
                   tab_id: i32,
@@ -2021,11 +2025,14 @@ impl PluginManager {
             },
         )?;
 
-        let so = self.system_out.clone();
+        let so = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_report_panic",
-            move |mut caller: Caller<'_, ()>, plugin_id: i32, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  plugin_id: i32,
+                  str_pointer: i32,
+                  str_len: i32| {
                 let backtrace = WasmBacktrace::capture(&caller);
                 let memory = caller
                     .get_export("memory")
@@ -2050,13 +2057,12 @@ impl PluginManager {
 
                 let additional = (!backtrace.frames().is_empty()).then(|| backtrace.to_string());
 
-                so.send(SystemMessage::WasmLog(WasmLogBody {
+                so.publish(SystemMessage::WasmLog(WasmLogBody {
                     plugin_id: plugin_id as u8,
                     msg: msg.into(),
                     additional,
                     level: LogLevel::Err,
-                }))
-                .expect("failed to send log message");
+                }));
             },
         )?;
 
@@ -2076,7 +2082,7 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_open_midi_device",
-            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>, str_pointer: i32, str_len: i32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -2100,7 +2106,7 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_enumerate_midi_devices",
-            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>, buffer_ptr: i32, buffer_len: i32| {
                 let midi_manager = midi_manager.lock().unwrap();
                 let devices = midi_manager
                     .enumerate_devices()
@@ -2153,7 +2159,10 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_open_serial_device",
-            move |mut caller: Caller<'_, ()>, str_pointer: i32, str_len: i32, baud_rate: u32| {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  str_pointer: i32,
+                  str_len: i32,
+                  baud_rate: u32| {
                 let memory = caller
                     .get_export("memory")
                     .and_then(|export| export.into_memory())
@@ -2179,7 +2188,7 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_enumerate_serial_devices",
-            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| {
+            move |mut caller: Caller<'_, PluginStoreData>, buffer_ptr: i32, buffer_len: i32| {
                 let serial_manager = serial_manager.lock().unwrap();
                 let devices = serial_manager
                     .enumerate_devices()
@@ -2213,11 +2222,11 @@ impl PluginManager {
         //
 
         let state_ref = Arc::clone(&self.state_ref);
-        let so = self.system_out.clone();
+        let so = self.hub.clone();
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_artnet_register_receiver",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   addr_ptr: i32,
                   addr_len: i32|
@@ -2302,7 +2311,10 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_artnet_enumerate_receivers",
-            move |mut caller: Caller<'_, ()>, buffer_ptr: i32, buffer_len: i32| -> u32 {
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  buffer_ptr: i32,
+                  buffer_len: i32|
+                  -> u32 {
                 let infos: Vec<ArtNetReceiverInfo> = {
                     let artnet_output = state_ref.artnet_output.read().unwrap();
                     artnet_output
@@ -2344,11 +2356,11 @@ impl PluginManager {
         let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
         let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
         let state_ref_for_save = Arc::clone(&self.state_ref);
-        let system_out = self.system_out.clone();
+        let system_out = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_save_plugin_state",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   location: i32,
                   data_ptr: i32,
@@ -2406,15 +2418,21 @@ impl PluginManager {
                     encoded
                 };
 
-                system_out
-                    .send(SystemMessage::SavePluginState {
-                        plugin_name,
+                // The desk writes global state to config.toml (until 052 moves
+                // that into the engine); nobody else should.
+                let delivered = system_out.publish_to(
+                    ClientId::Desk,
+                    SystemMessage::SavePluginState {
+                        plugin_name: plugin_name.clone(),
                         state_data,
                         location,
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::error!("Failed to send save plugin state message: {}", e);
-                    });
+                    },
+                );
+                if !delivered && location == PluginStateLocation::Global {
+                    tracing::warn!(
+                        "No desk frontend connected; global state of {plugin_name} is not written to config.toml"
+                    );
+                }
             },
         )?;
 
@@ -2424,7 +2442,7 @@ impl PluginManager {
         linker.func_wrap::<_, u32>(
             "blaulicht",
             "bl_load_plugin_state",
-            move |mut caller: Caller<'_, ()>,
+            move |mut caller: Caller<'_, PluginStoreData>,
                   plugin_id: i32,
                   location: i32,
                   buffer_ptr: i32,
@@ -2479,6 +2497,39 @@ impl PluginManager {
     }
 }
 
+/// Data in each plugin's wasmtime `Store`, so host functions know which
+/// plugin calls them (the host imports don't all pass a plugin id).
+#[cfg(feature = "wasmtime")]
+pub(crate) struct PluginStoreData {
+    plugin_id: u8,
+    next_seq: CommandSeq,
+}
+
+#[cfg(feature = "wasmtime")]
+impl PluginStoreData {
+    pub(crate) fn new(plugin_id: u8) -> Self {
+        Self {
+            plugin_id,
+            next_seq: 1,
+        }
+    }
+
+    /// The bus envelope for an event this plugin sends: the plugin's
+    /// [`ClientId`], the shared desk session and its next sequence number.
+    /// Plugins see the event as a plain `ControlEventMessage` from
+    /// `EventOriginator::Plugin`, as before.
+    pub(crate) fn envelope(&mut self, event: ControlEvent) -> BusMessage {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        BusMessage::control(
+            ClientId::Plugin(self.plugin_id),
+            SessionId::DESK,
+            seq,
+            ControlEventMessage::new(EventOriginator::Plugin, event),
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AddrDescriptor {
     start_addr: i32,
@@ -2502,7 +2553,7 @@ impl AddrDescriptor {
     }
 
     #[cfg(feature = "wasmtime")]
-    fn validate(&self, memory: &Memory, store: &Store<()>) -> anyhow::Result<()> {
+    fn validate(&self, memory: &Memory, store: &Store<PluginStoreData>) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.start_addr >= 0 && self.length_start_addr >= 0,
             "WASM buffer address is negative: {self:?}"
@@ -2687,6 +2738,29 @@ impl Plugin {
         addrs.validate(&self.wasm_state.memory, &self.wasm_state.store)?;
         self.udp_buffers = addrs;
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "wasmtime"))]
+mod plugin_envelope_tests {
+    use super::PluginStoreData;
+    use crate::hub::{ClientId, SessionId};
+    use blaulicht_shared::{ControlEvent, EventOriginator};
+
+    #[test]
+    fn plugin_events_carry_the_plugin_client_and_the_desk_session() {
+        let mut data = PluginStoreData::new(4);
+        let first = data.envelope(ControlEvent::SelectGroup(1));
+        let second = data.envelope(ControlEvent::SelectGroup(2));
+        assert_eq!(
+            (first.client, first.session, first.seq),
+            (ClientId::Plugin(4), SessionId::DESK, 1)
+        );
+        assert_eq!(second.seq, 2);
+        // Plugins still see a plain plugin-originated event.
+        let event = first.plugin_event().unwrap();
+        assert_eq!(event.originator(), EventOriginator::Plugin);
+        assert!(matches!(event.body(), ControlEvent::SelectGroup(1)));
     }
 }
 

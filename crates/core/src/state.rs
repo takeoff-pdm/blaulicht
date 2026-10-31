@@ -13,7 +13,6 @@ use std::{
 
 use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
 use blaulicht_shared::AnimationTickOutput;
-use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,28 +20,25 @@ use crate::{
     command::SpawnedCommandRegistry,
     config::{Config, PluginConfig},
     dmx::EngineState,
-    event::SystemEventBusConnectionInst,
     frontend_ui::FrontendUiMirror,
-    msg::{FromFrontend, SystemMessage},
+    hub::ClientConnection,
+    msg::FromFrontend,
     plugin::{midi::MidiError, serial::SerialError},
     ui_ops::WasmUiOp,
 };
 
-#[derive(Clone)]
 pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
 
-    pub system_message_receiver: Receiver<SystemMessage>,
-    pub system_message_sender: Sender<SystemMessage>,
-
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
-    pub event_bus_connection: SystemEventBusConnectionInst,
+    /// The desk's connection to the engine: sends commands in its envelope,
+    /// receives bus traffic, system messages and replies, and publishes its
+    /// view-state snapshot.
+    pub client: ClientConnection,
 
     pub state: Arc<AppState>,
 }
-
-const APP_LOG_LENGTH: usize = 1000;
 
 #[derive(Serialize, Deserialize)]
 pub struct AudioState {
@@ -299,7 +295,6 @@ pub struct WasmAnimationEditorRequest {
 }
 
 pub struct AppState {
-    pub logs: Mutex<VecDeque<Cow<'static, str>>>,
     pub plugins: RwLock<HashMap<u8, PluginState>>,
     pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
@@ -362,7 +357,6 @@ impl AppState {
             .collect();
 
         Self {
-            logs: Mutex::new(VecDeque::with_capacity(APP_LOG_LENGTH)),
             plugins: RwLock::new(plugins_map),
             health_data: RwLock::new(AppHealthState {
                 dmx_universes_healthy: array::from_fn(|_| DmxHealth::default()),
@@ -430,19 +424,6 @@ impl AppState {
             .lock()
             .map(|mut pending| std::mem::take(&mut *pending))
             .unwrap_or_default()
-    }
-
-    pub fn log(&self, msg: Cow<'static, str>) {
-        // TODO: is this the right place to log to stdout?
-        tracing::info!("{msg}");
-        let mut logs = self.logs.lock().unwrap();
-        logs.push_back(msg);
-        if logs.len() == logs.capacity() {
-            // If the buffer is full, remove 1/4 of its first contents.
-            for _ in 0..(logs.capacity() / 4) {
-                logs.pop_front();
-            }
-        }
     }
 
     pub fn log_plugin(&self, plugin_key: u8, msg: Cow<'static, str>) {

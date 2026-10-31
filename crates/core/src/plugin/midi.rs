@@ -5,7 +5,8 @@ use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
 // use wmidi::MidiMessage;
 
-use crate::msg::{MidiEvent, SystemMessage};
+use crate::hub::SystemHub;
+use crate::msg::MidiEvent;
 use crate::state::{AppState, MidiDeviceState};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -34,7 +35,7 @@ pub struct MidiManager {
 
     app_state: Arc<AppState>,
 
-    system_message_sender: Sender<SystemMessage>,
+    system_message_sender: SystemHub,
 }
 
 struct MidiDeviceHandle {
@@ -49,7 +50,7 @@ impl MidiManager {
         midi_out_receiver: Receiver<MidiEvent>,
         to_plugins_sender: Sender<MidiEvent>,
         app_state: Arc<AppState>,
-        system_message_sender: Sender<SystemMessage>,
+        system_message_sender: SystemHub,
     ) -> Self {
         let (midi_in_sender, midi_in_receiver) = crossbeam_channel::bounded(100);
 

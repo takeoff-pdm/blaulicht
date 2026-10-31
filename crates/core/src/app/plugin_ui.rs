@@ -325,7 +325,7 @@ pub(crate) fn render_plugin_ops(
             Op::Button { label, id } => {
                 if plugin_action(ui, label, true) {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -334,7 +334,7 @@ pub(crate) fn render_plugin_ops(
                 let clicked = plugin_action(ui, label, *enabled);
                 if *enabled && clicked {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -375,7 +375,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         selected: current,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -387,7 +387,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         checked: c,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -404,7 +404,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         value: state,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
@@ -423,7 +423,7 @@ pub(crate) fn render_plugin_ops(
                     .changed()
                 {
                     let evt = route_event(PluginUiEvent::Slider { id: *id, value: v });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -448,7 +448,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         value: new_value,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
@@ -463,7 +463,7 @@ pub(crate) fn render_plugin_ops(
                 });
                 if let Some(text) = response.inner {
                     let evt = route_event(PluginUiEvent::Text { id: *id, text });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -476,7 +476,7 @@ pub(crate) fn render_plugin_ops(
                     plugin_text_edit(ui, plugin_id, animation_instance, *id, text, true)
                 {
                     let evt = route_event(PluginUiEvent::Text { id: *id, text });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -492,7 +492,7 @@ pub(crate) fn render_plugin_ops(
                         b,
                         a,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
@@ -706,7 +706,7 @@ pub(crate) fn render_plugin_ops(
                         tabs_id: *id,
                         tab_id: current,
                     });
-                    data.event_bus_connection
+                    data.client
                         .send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
@@ -803,7 +803,7 @@ pub(crate) fn render_plugin_ops(
                             x: (local_pos.x * scale_x) as i32,
                             y: (local_pos.y * scale_y) as i32,
                         });
-                        data.event_bus_connection
+                        data.client
                             .send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
@@ -811,7 +811,7 @@ pub(crate) fn render_plugin_ops(
                 if resp.drag_started() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let origin = pos - resp.total_drag_delta().unwrap_or_default() - rect.min;
-                        data.event_bus_connection.send(ControlEventMessage::new(
+                        data.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragStart {
                                 id: *id,
@@ -824,7 +824,7 @@ pub(crate) fn render_plugin_ops(
                 if resp.drag_stopped() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let local = pos - rect.min;
-                        data.event_bus_connection.send(ControlEventMessage::new(
+                        data.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragEnd {
                                 id: *id,
@@ -845,7 +845,7 @@ pub(crate) fn render_plugin_ops(
                             dx: (delta.x * scale_x) as i32,
                             dy: (delta.y * scale_y) as i32,
                         });
-                        data.event_bus_connection
+                        data.client
                             .send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
@@ -862,7 +862,7 @@ pub(crate) fn render_plugin_ops(
                                 y: (local_pos.y * scale_y) as i32,
                                 delta: zoom - 1.0,
                             });
-                            data.event_bus_connection
+                            data.client
                                 .send(ControlEventMessage::new(EventOriginator::Web, evt));
                         }
                     }

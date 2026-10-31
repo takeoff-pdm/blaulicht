@@ -521,7 +521,7 @@ impl BlaulichtApp {
             open_plugins: self.view_state.open_plugins(),
             external_screens: self.external_screen_infos(),
         };
-        self.desk_ui.publish(snapshot);
+        self.data.client.publish_ui(snapshot);
     }
 
     fn reset_external_screen_plugin_ui_tracking(&mut self) {

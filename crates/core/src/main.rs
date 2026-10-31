@@ -3,7 +3,7 @@ use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::frontend_ui::FrontendId;
+use blaulicht_core::hub::{BusMessage, ClientConnection, ClientId, SessionId, SystemHub};
 use blaulicht_core::msg::{FromFrontend, StageStatus, StartupStage, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
@@ -32,8 +32,10 @@ fn main() -> anyhow::Result<()> {
         None => PathBuf::from_str("./config.toml").unwrap(),
     };
 
-    let (system_out, app_system_receiver) = crossbeam_channel::unbounded();
-    blaulicht_core::log::init_tracing(system_out.clone());
+    // Every system message (logs, startup stages, heartbeats, ...) goes
+    // through the hub; frontends subscribe to it.
+    let hub = SystemHub::new();
+    blaulicht_core::log::init_tracing(hub.clone());
 
     let cfg = config::read_config(config_filepath.clone())?;
     let Some(cfg) = cfg else {
@@ -45,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let send_stage = |stage, status| {
-        let _ = system_out.send(SystemMessage::StartupStage { stage, status });
+        hub.publish(SystemMessage::StartupStage { stage, status });
     };
     send_stage(
         StartupStage::Config,
@@ -93,11 +95,12 @@ fn main() -> anyhow::Result<()> {
     // Event bus.
     //
 
-    let mut event_bus = SystemEventBus::new();
+    let mut event_bus = SystemEventBus::<BusMessage>::new();
+    // Adds connections while the bus runs (frontends attaching later).
+    let event_bus_handle = event_bus.handle();
 
-    let event_bus_connection_mainloop = event_bus.new_connection();
-    let event_bus_connection_websocket = event_bus.new_connection();
-    let event_bus_connection_dmx = event_bus.new_connection();
+    let event_bus_connection_mainloop = event_bus_handle.connect();
+    let event_bus_connection_dmx = event_bus_handle.connect();
 
     thread::spawn(move || {
         event_bus.run();
@@ -106,7 +109,14 @@ fn main() -> anyhow::Result<()> {
     let app_state = Arc::new(AppState::new(&cfg.plugins));
     // Attach the desk frontend before the engine starts, so plugin requests
     // sent during startup (e.g. creating an owned external screen) reach it.
-    let desk_ui = app_state.frontend_ui.connect(FrontendId::DESK);
+    // Its hub subscription replays the startup stages and logs sent so far.
+    let desk = ClientConnection::connect(
+        ClientId::Desk,
+        SessionId::DESK,
+        &hub,
+        &event_bus_handle,
+        &app_state.frontend_ui,
+    );
     {
         let mut global_state = app_state.plugin_state_storage_global.lock().unwrap();
         *global_state = cfg.plugin_state.clone();
@@ -114,7 +124,7 @@ fn main() -> anyhow::Result<()> {
 
     {
         // Audio recording and analysis thread.
-        let system_out = system_out.clone();
+        let hub = hub.clone();
         let audio_thread_control_signal = audio_thread_control_signal.clone();
         let cfg = cfg.clone();
         let app_state = Arc::clone(&app_state);
@@ -122,7 +132,7 @@ fn main() -> anyhow::Result<()> {
             mainloop::supervisor_thread(
                 from_frontend_receiver,
                 audio_thread_control_signal,
-                system_out,
+                hub,
                 cfg,
                 event_bus_connection_mainloop,
                 event_bus_connection_dmx,
@@ -146,10 +156,8 @@ fn main() -> anyhow::Result<()> {
         from_frontend_sender,
         config: Arc::new(Mutex::new(cfg.clone())),
         config_path: config_filepath.to_string_lossy().to_string(),
-        event_bus_connection: event_bus_connection_websocket,
+        client: desk,
         state: Arc::clone(&app_state),
-        system_message_receiver: app_system_receiver,
-        system_message_sender: system_out.clone(),
     };
     // let data = Data::new(state_wrapper);
 
@@ -224,7 +232,6 @@ fn main() -> anyhow::Result<()> {
             Ok(Box::new(BlaulichtApp::new(
                 cc,
                 state_wrapper,
-                desk_ui,
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home.clone(),
@@ -234,7 +241,9 @@ fn main() -> anyhow::Result<()> {
     )
     .unwrap();
 
-    // system_out.send(SystemMessage::AudioSelected(()));
+    // The desk closed: stop the engine. (It no longer stops by itself when
+    // nobody listens to system messages.)
+    hub.shutdown();
 
     Ok(())
 }

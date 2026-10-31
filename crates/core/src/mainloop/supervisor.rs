@@ -2,12 +2,13 @@ use crate::{
     audio::defs::AudioThreadControlSignal,
     config::Config,
     event::SystemEventBusConnectionInst,
+    hub::SystemHub,
     mainloop::{self, bg_worker},
     msg::{AudioInput, DummyInput, StageStatus, StartupStage, SystemMessage},
     state::AppState,
 };
 use crate::{log::target, msg::FromFrontend, utils};
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, TryRecvError};
 use std::{
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -43,14 +44,14 @@ pub(super) fn complete_reload(signal: &AtomicU8, app_state: &AppState) {
     }
 }
 
-fn send_stage(system_out: &Sender<SystemMessage>, stage: StartupStage, status: StageStatus) {
-    let _ = system_out.send(SystemMessage::StartupStage { stage, status });
+fn send_stage(hub: &SystemHub, stage: StartupStage, status: StageStatus) {
+    hub.publish(SystemMessage::StartupStage { stage, status });
 }
 
 pub fn supervisor_thread(
     from_frontend: Receiver<FromFrontend>,
     audio_thread_control_signal: Arc<AtomicU8>,
-    system_out: Sender<SystemMessage>,
+    hub: SystemHub,
     config: Config,
     event_bus_connection_plugins: SystemEventBusConnectionInst,
     event_bus_connection_dmx: SystemEventBusConnectionInst,
@@ -85,7 +86,9 @@ pub fn supervisor_thread(
     let mut restarting_after_crash = false;
 
     loop {
-        if system_out.send(SystemMessage::Heartbeat(seq)).is_err() {
+        // An explicit shutdown request: with a hub, "nobody listens" is no
+        // longer observable (and a headless engine has no listener anyway).
+        if hub.is_shut_down() {
             tracing::warn!("Supervisor shutting down");
 
             signal_mainloop(
@@ -95,7 +98,8 @@ pub fn supervisor_thread(
             );
 
             break;
-        };
+        }
+        hub.publish(SystemMessage::Heartbeat(seq));
         seq += 1;
 
         match from_frontend.try_recv() {
@@ -139,7 +143,7 @@ pub fn supervisor_thread(
         if auto_select_audio_device && audio_device.is_none() {
             auto_select_audio_device = false;
             send_stage(
-                &system_out,
+                &hub,
                 StartupStage::Audio,
                 StageStatus::running("selecting device"),
             );
@@ -147,13 +151,7 @@ pub fn supervisor_thread(
             let automatic_device = utils::default_input_device()
                 .or_else(|| devices.first().map(|(_, device)| device.clone()));
 
-            if system_out
-                .send(SystemMessage::AudioDevicesView(devices))
-                .is_err()
-            {
-                tracing::info!("System channel closed; supervisor shutting down");
-                break;
-            }
+            hub.publish(SystemMessage::AudioDevicesView(devices));
 
             match automatic_device {
                 Some(device) => {
@@ -179,7 +177,7 @@ pub fn supervisor_thread(
         {
             restarting_after_crash = true;
             send_stage(
-                &system_out,
+                &hub,
                 StartupStage::MainLoop,
                 StageStatus::restarting("restarting after crash"),
             );
@@ -188,7 +186,7 @@ pub fn supervisor_thread(
                 StartupStage::Plugins,
                 StartupStage::DmxEngine,
             ] {
-                send_stage(&system_out, stage, StageStatus::PENDING);
+                send_stage(&hub, stage, StageStatus::PENDING);
             }
             if !is_initial_device_changed {
                 thread::sleep(Duration::from_secs(2));
@@ -206,39 +204,16 @@ pub fn supervisor_thread(
         // Keep the device list fresh so hot-plugged hardware can be picked.
         if matches!(audio_device, None | Some(AudioInput::Dummy(_))) {
             let devices = utils::get_input_devices_flat();
-
-            if system_out
-                .send(SystemMessage::AudioDevicesView(devices))
-                .is_err()
-            {
-                tracing::info!("System channel closed; supervisor shutting down");
-                signal_mainloop(
-                    Arc::clone(&audio_thread_control_signal),
-                    Arc::clone(&app_state),
-                    AudioThreadControlSignal::ABORTED,
-                );
-                break;
-            }
+            hub.publish(SystemMessage::AudioDevicesView(devices));
         }
         if device_changed {
             let audio_input_device = audio_device
                 .clone()
                 .unwrap_or(AudioInput::Dummy(DummyInput::Silence));
 
-            if system_out
-                .send(SystemMessage::AudioSelected(audio_input_device.clone()))
-                .is_err()
-            {
-                tracing::info!("System channel closed; supervisor shutting down");
-                signal_mainloop(
-                    Arc::clone(&audio_thread_control_signal),
-                    Arc::clone(&app_state),
-                    AudioThreadControlSignal::ABORTED,
-                );
-                break;
-            }
+            hub.publish(SystemMessage::AudioSelected(audio_input_device.clone()));
 
-            let sys = system_out.clone();
+            let sys = hub.clone();
             if let Some(handle) = audio_thread.take() {
                 signal_mainloop(
                     Arc::clone(&audio_thread_control_signal),
