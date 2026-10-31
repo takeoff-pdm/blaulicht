@@ -215,6 +215,9 @@ impl KorgSubSystem {
 
             // The faders/knobs drive whatever is actually rendering: the
             // overlay stack, or the single scene being previewed in live mode.
+            // Plugins only see the desk session: if another operator owns the
+            // preview, `live_mode` is set but the rendered scene is that
+            // operator's focus, not `current_scene_focus`.
             self.scenes = if dmx.live_mode {
                 vec![dmx.current_scene_focus]
             } else {

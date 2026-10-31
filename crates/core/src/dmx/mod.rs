@@ -14,7 +14,7 @@ use crate::{
     event::SystemEventBusConnectionInst,
     hub::{
         BusBody, BusMessage, CommandOutcome, CommandResult, CreatedId, HostCommand, SessionChange,
-        SystemHub,
+        SessionId, SystemHub,
     },
     msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
@@ -577,12 +577,12 @@ impl DmxEngine {
 
         // Node controls are write-through shortcuts. Apply them once on activation;
         // they remain until another node or a manual control replaces them.
-        apply_scene_graph_node_controls(&mut state.0, &activated_nodes);
+        let base = state.render_base_scene();
+        apply_scene_graph_node_controls(&mut state.0, base, &activated_nodes);
 
         // Reflect the scenes of every enabled graph's active node into the normal
         // overlay list, so they show up in the performance view and render through
         // the standard overlay path (no separate scene-graph render path).
-        let base = state.0.render_base_scene();
         let mut new_graph_scenes: Vec<u8> = state
             .0
             .scene_graphs
@@ -613,7 +613,7 @@ impl DmxEngine {
     fn render_universes(&mut self) {
         let state = self.state_ref.dmx_engine.read().unwrap();
         let palettes = &state.0.palettes;
-        let base_scene_id = state.0.render_base_scene();
+        let base_scene_id = state.render_base_scene();
         let Some(base_scene) = state.0.scenes.get(&base_scene_id) else {
             // `curr_scene()` would unwrap here and take the DMX thread with it.
             warn!("Skipping render: base scene {base_scene_id} is missing");
@@ -866,6 +866,7 @@ impl DmxEngine {
         match ev.body() {
             ControlEvent::Transaction(t) => {
                 let snapshot = state.0.clone();
+                let live_owner = state.live_owner();
                 for t_ev in t {
                     // debug!("Apply transaction: {:?}", &ev);
 
@@ -875,6 +876,9 @@ impl DmxEngine {
                     if err.is_some() {
                         error!("Error during transaction: {err:?}");
                         state.0 = snapshot;
+                        // `live_mode` came back with the snapshot; its owner
+                        // lives outside `.0`.
+                        state.2.live_owner = live_owner;
                         return (err, rollback);
                     }
                 }
@@ -1107,13 +1111,17 @@ impl DmxEngine {
                 state.0.current_scene_focus = id;
                 (None, None)
             }
+            // The sender takes the preview over, even from another session;
+            // turning it off ends it for everyone (there is one rig).
             ControlEvent::SetLiveMode(enabled) => {
-                Self::set_live_mode(&mut state.0, enabled);
+                let owner = enabled.then(|| state.applying_session());
+                Self::set_live_mode(state, owner);
                 (None, None)
             }
             ControlEvent::ToggleLiveMode => {
-                let enabled = !state.0.live_mode;
-                Self::set_live_mode(&mut state.0, enabled);
+                let sender = state.applying_session();
+                let owner = (state.live_owner() != Some(sender)).then_some(sender);
+                Self::set_live_mode(state, owner);
                 (None, None)
             }
             ControlEvent::RemoveOverlayScene(scene_id) => {
@@ -1764,24 +1772,22 @@ impl DmxEngine {
 }
 
 impl DmxEngine {
-    /// Enters or leaves exclusive programming mode.
+    /// Enters or leaves exclusive programming mode: `owner` is the session
+    /// whose focus becomes the base layer, `None` leaves live mode.
     ///
-    /// On the `false -> true` edge the focused scene's enabled animations are
-    /// restarted, so the operator sees the scene from the top. Leaving live
-    /// mode only clears the flag: `current_overlay_scenes` was never touched,
-    /// so the rig comes back exactly as it was.
-    fn set_live_mode(state: &mut blaulicht_shared::EngineState, enabled: bool) {
-        if state.live_mode == enabled {
+    /// Whenever the preview gets a new owner, the owner's focused scene (the
+    /// new base layer) restarts its enabled animations, so the operator sees
+    /// the scene from the top. Leaving live mode only clears the owner:
+    /// `current_overlay_scenes` was never touched, so the rig comes back
+    /// exactly as it was.
+    fn set_live_mode(state: &mut EngineState, owner: Option<SessionId>) {
+        if !state.set_live_owner(owner) {
             return;
         }
-        state.live_mode = enabled;
-
-        if !enabled {
+        let Some(focus) = owner.and_then(|owner| state.scene_focus_of(owner)) else {
             return;
-        }
-
-        let focus = state.current_scene_focus;
-        let Some(scene) = state.scenes.get_mut(&focus) else {
+        };
+        let Some(scene) = state.0.scenes.get_mut(&focus) else {
             return;
         };
         for anim_set in scene.sink.active_animations.values_mut() {
@@ -1799,11 +1805,13 @@ fn apply_grand_master(alpha: u8, percent: u8) -> u8 {
     ((alpha as u16 * percent.min(100) as u16) / 100) as u8
 }
 
+/// Applies the activated nodes' scene controls to every scene except `base`,
+/// the rendered base layer.
 fn apply_scene_graph_node_controls(
     state: &mut blaulicht_shared::EngineState,
+    base: u8,
     activated_nodes: &[(u8, u8)],
 ) {
-    let base = state.render_base_scene();
     for (graph_id, node_id) in activated_nodes {
         let Some(node) = state
             .scene_graphs
@@ -1827,6 +1835,7 @@ fn apply_scene_graph_node_controls(
 mod grand_master_tests {
     use super::{apply_grand_master, apply_scene_graph_node_controls};
     use blaulicht_shared::{
+        scene::BLANK_SCENE_ID,
         scene_graph::{SceneGraph, SceneGraphNode},
         AnimationSpeedModifier,
     };
@@ -1866,7 +1875,7 @@ mod grand_master_tests {
             },
         );
 
-        apply_scene_graph_node_controls(&mut state, &[(1, 7)]);
+        apply_scene_graph_node_controls(&mut state, BLANK_SCENE_ID, &[(1, 7)]);
         assert_eq!(state.scenes[&1].sink.master_alpha_fader, 42);
         assert_eq!(
             state.scenes[&1].sink.master_speed,
@@ -1874,7 +1883,7 @@ mod grand_master_tests {
         );
 
         state.scenes.get_mut(&1).unwrap().sink.master_alpha_fader = 73;
-        apply_scene_graph_node_controls(&mut state, &[]);
+        apply_scene_graph_node_controls(&mut state, BLANK_SCENE_ID, &[]);
         assert_eq!(state.scenes[&1].sink.master_alpha_fader, 73);
     }
 }

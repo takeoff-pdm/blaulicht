@@ -132,7 +132,9 @@ pub fn session_scope(event: &ControlEvent) -> SessionScope {
             .map(session_scope)
             .max()
             .unwrap_or(SessionScope::Global),
-        // Live mode stays global here; 041 gives the preview an owner session.
+        // Live mode is global: there is one rig. The sender becomes the
+        // preview's owner (`EngineState::live_owner`), but every session sees
+        // the overlays suppressed.
         ControlEvent::MiscEvent { .. }
         | ControlEvent::SetOverlays(_)
         | ControlEvent::RemoveOverlayScene(_)

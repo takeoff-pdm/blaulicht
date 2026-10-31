@@ -257,11 +257,12 @@ impl BlaulichtApp {
                 ui.separator();
 
                 // Boolean values indicate whether the scene can be removed.
-                // Live mode is exclusive: only the scene being programmed
+                // Live mode is exclusive: only the scene being previewed (the
+                // preview owner's focus, which need not be this frontend's)
                 // renders, and it occupies the base slot rather than the
                 // overlay stack.
                 let scenes: Vec<(u8, bool)> = if live_mode {
-                    vec![(dmx_engine.0.current_scene_focus, false)]
+                    vec![(dmx_engine.render_base_scene(), false)]
                 } else {
                     dmx_engine
                         .0

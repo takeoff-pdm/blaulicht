@@ -44,9 +44,16 @@ impl BlaulichtApp {
     /// a scene can be built mid-set without disturbing the rig. On, the
     /// selected scene takes the base slot and every overlay is suppressed,
     /// giving a real-time preview of what is being programmed.
-    fn live_mode_toggle(&mut self, ui: &mut egui::Ui, live_mode: bool, size: ButtonSize) {
+    ///
+    /// There is one rig, so one preview: the button is "on" when this
+    /// frontend's session owns the preview, and the red dot shows whenever
+    /// any session previews (overlays are suppressed for everyone).
+    fn live_mode_toggle(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, size: ButtonSize) {
+        let owned = dmx_engine.live_owner() == Some(self.data.client.session());
+        let any = dmx_engine.0.live_mode;
+
         // Scoped so the painter below can anchor the dot to the button's rect.
-        let scope = ui.scope(|ui| components::button(ui, live_mode, "LIVE", size));
+        let scope = ui.scope(|ui| components::button(ui, owned, "LIVE", size));
 
         if scope.inner {
             self.data.client.send(ControlEventMessage::new(
@@ -55,7 +62,7 @@ impl BlaulichtApp {
             ));
         }
 
-        if live_mode {
+        if any {
             const RADIUS: f32 = 4.0;
             let rect = scope.response.rect;
             ui.painter().circle_filled(
@@ -65,10 +72,16 @@ impl BlaulichtApp {
             );
         }
 
-        scope.response.on_hover_text(if live_mode {
-            "Exclusive preview: only the selected scene renders. Click to return to the live rig."
-        } else {
-            "Edits go to the selected scene without affecting output. Click to preview it live."
+        scope.response.on_hover_text(match (owned, any) {
+            (true, _) => {
+                "Exclusive preview: only the selected scene renders. Click to return to the live rig."
+            }
+            (false, true) => {
+                "Another operator is previewing their scene; overlays are suppressed. Click to preview yours instead."
+            }
+            (false, false) => {
+                "Edits go to the selected scene without affecting output. Click to preview it live."
+            }
         });
     }
 
@@ -268,7 +281,7 @@ impl BlaulichtApp {
                                 ),
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    self.live_mode_toggle(ui, dmx_engine.0.live_mode, button_size);
+                                    self.live_mode_toggle(ui, &dmx_engine, button_size);
                                 },
                             );
                         });

@@ -797,7 +797,11 @@ mod tests {
 
     #[test]
     fn adding_fixture_does_not_reindex_running_animation_timers() {
-        let mut engine = EngineState(blaulicht_shared::EngineState::default(), Default::default());
+        let mut engine = EngineState(
+            blaulicht_shared::EngineState::default(),
+            Default::default(),
+            Default::default(),
+        );
         engine.0.groups.insert(
             0,
             FixtureGroup {
@@ -870,7 +874,11 @@ mod tests {
 
     #[test]
     fn moving_fixture_to_group_remaps_scene_state_and_selection() {
-        let mut engine = EngineState(blaulicht_shared::EngineState::default(), Default::default());
+        let mut engine = EngineState(
+            blaulicht_shared::EngineState::default(),
+            Default::default(),
+            Default::default(),
+        );
         engine.0.groups.insert(
             0,
             FixtureGroup {

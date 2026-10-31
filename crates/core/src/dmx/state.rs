@@ -9,7 +9,7 @@ use blaulicht_shared::{
 use maplit::hashmap;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use super::SessionStore;
+use super::{SessionMeta, SessionStore};
 
 //
 // State.
@@ -20,9 +20,14 @@ use super::SessionStore;
 /// The engine state behind `AppState::dmx_engine`: the shared state that
 /// plugins and the showfile see (`.0`, including the `DESK` operator
 /// session), plus the side store of every other operator session (`.1`, see
-/// [`super::session`]), under the same lock.
+/// [`super::session`]) and the bookkeeping that spans sessions, such as the
+/// live preview's owner (`.2`), under the same lock.
 #[derive(Debug, Clone)]
-pub struct EngineState(pub blaulicht_shared::EngineState, pub(super) SessionStore);
+pub struct EngineState(
+    pub blaulicht_shared::EngineState,
+    pub(super) SessionStore,
+    pub(super) SessionMeta,
+);
 
 impl<'engine> EngineState {
     /// Cheap clone for read-only UI rendering: every scene except the
@@ -82,6 +87,7 @@ impl<'engine> EngineState {
                 folders: self.0.folders.clone(),
             },
             self.1.clone(),
+            self.2,
         )
     }
 
@@ -249,6 +255,10 @@ impl<'engine> EngineState {
         other.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
         let sessions = std::mem::take(&mut self.1);
+        let meta = SessionMeta {
+            live_owner: None,
+            ..self.2
+        };
         *self = Self(
             blaulicht_shared::EngineState {
                 selection: EngineSelection::default(),
@@ -259,6 +269,7 @@ impl<'engine> EngineState {
                 ..other
             },
             sessions,
+            meta,
         );
 
         // BLANK is ephemeral: it is absent from every showfile and is rebuilt
@@ -304,11 +315,20 @@ impl<'engine> EngineState {
 
     /// Deletes a scene. `DESK`'s focus is repaired by
     /// `blaulicht_shared::EngineState::delete_scene`, every other session's
-    /// here.
+    /// here. Deleting the scene the live preview's owner is focused on ends
+    /// the preview, rather than letting the rig jump to whatever scene the
+    /// owner's focus moves to.
     pub fn delete_scene(&mut self, scene_id: u8) -> bool {
+        let previewed = self
+            .live_owner()
+            .and_then(|owner| self.scene_focus_of(owner))
+            == Some(scene_id);
         let deleted = self.0.delete_scene(scene_id);
         if deleted {
             self.repair_sessions();
+            if previewed {
+                self.set_live_owner(None);
+            }
         }
         deleted
     }
@@ -454,7 +474,7 @@ impl Default for EngineState {
             folders: BTreeMap::new(),
         };
 
-        Self(state, SessionStore::new())
+        Self(state, SessionStore::new(), SessionMeta::default())
     }
 }
 
@@ -554,7 +574,7 @@ mod blank_scene_load_tests {
         let blank = engine.0.scenes.get(&BLANK_SCENE_ID).expect("BLANK missing");
         assert_eq!(blank.name, BLANK_SCENE_NAME);
         assert!(blank.sink.fixture_states.contains_key(&(0, 0)));
-        assert_eq!(engine.0.render_base_scene(), BLANK_SCENE_ID);
+        assert_eq!(engine.render_base_scene(), BLANK_SCENE_ID);
         assert!(!engine.0.live_mode);
     }
 

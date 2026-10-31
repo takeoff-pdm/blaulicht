@@ -91,8 +91,15 @@ pub struct EngineState {
     #[serde(default)]
     pub palettes: BTreeMap<u8, Palette>,
 
-    /// Programming mode: render only `current_scene_focus` and suppress every
-    /// overlay, so the operator sees the scene they are editing in isolation.
+    /// Programming mode: render only the previewing operator's focused scene
+    /// and suppress every overlay, so the operator sees the scene they are
+    /// editing in isolation.
+    ///
+    /// The host keeps the preview's owner (an operator session) and sets this
+    /// flag to "someone is previewing". Plugins only see the desk operator's
+    /// session (`current_scene_focus`), so with a second operator previewing,
+    /// `live_mode` is `true` while the rendered scene is that operator's
+    /// focus, not `current_scene_focus`.
     ///
     /// Runtime-only and always `false` at boot. Persistence is governed by
     /// `SaveEngineState`, which has no such field, so this stays `default`
@@ -111,14 +118,17 @@ impl EngineState {
     ///
     /// Normally the ephemeral `BLANK` scene, so that the operator's selection
     /// never influences output: everything that plays lives in
-    /// `current_overlay_scenes`. In live mode the focused scene takes the base
-    /// slot instead, giving a real-time preview of what is being programmed.
+    /// `current_overlay_scenes`. In live mode the previewing operator's focused
+    /// scene (`live_focus`) takes the base slot instead, giving a real-time
+    /// preview of what is being programmed. The host passes the preview
+    /// owner's focus, which is `current_scene_focus` only when the desk owns
+    /// the preview.
     ///
     /// This is the single source of truth for the base layer; no other code may
-    /// recompute it from `live_mode` / `current_scene_focus`.
-    pub fn render_base_scene(&self) -> u8 {
-        if self.live_mode && self.scenes.contains_key(&self.current_scene_focus) {
-            self.current_scene_focus
+    /// recompute it from `live_mode` and a focus.
+    pub fn render_base_scene(&self, live_focus: u8) -> u8 {
+        if self.live_mode && self.scenes.contains_key(&live_focus) {
+            live_focus
         } else {
             BLANK_SCENE_ID
         }
@@ -1532,11 +1542,12 @@ mod blank_scene_tests {
         state.current_scene_focus = 1;
         state.current_overlay_scenes = vec![0];
 
-        assert_eq!(state.render_base_scene(), BLANK_SCENE_ID);
+        assert_eq!(state.render_base_scene(1), BLANK_SCENE_ID);
         assert_eq!(state.rendered_overlays(), &[0]);
 
         state.live_mode = true;
-        assert_eq!(state.render_base_scene(), 1);
+        assert_eq!(state.render_base_scene(1), 1);
+        assert_eq!(state.render_base_scene(0), 0);
         // Live mode is exclusive, but the overlay list itself survives so that
         // leaving live mode restores the rig exactly.
         assert!(state.rendered_overlays().is_empty());
@@ -1550,8 +1561,7 @@ mod blank_scene_tests {
     fn live_mode_falls_back_to_blank_when_focus_is_gone() {
         let mut state = engine_with(&[0]);
         state.live_mode = true;
-        state.current_scene_focus = 9;
-        assert_eq!(state.render_base_scene(), BLANK_SCENE_ID);
+        assert_eq!(state.render_base_scene(9), BLANK_SCENE_ID);
     }
 
     #[test]
