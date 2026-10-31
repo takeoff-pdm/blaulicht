@@ -6,10 +6,13 @@
 | Depends on | 048 (and the maintainer's decision recorded there) |
 | ABI / showfile | none |
 
-**Touches:** decided in 048
+**Touches:** `crates/ui_egui` (wasm cfg gates, `web_time`, enum client), `crates/engine` (wasm-gated deps, `RemoteClient` browser transport, static file serving), a web entry point, blenv/tooling
 
 ## Problem
 The goal of the epic: a web version running alongside the native UI on the device.
+
+## Decision (2026-11-01)
+The maintainer chose **slim A** from 048: egui compiled to wasm, served by the engine, no visualizer on the web yet. Estimate about 7 days (rows 1–12 in 048's Notes). Full A (visualizer, native-only gating) and Svelte were not chosen.
 
 ## Scope
 - Build the option chosen in 048, served by the engine's HTTP server on the configured port, with at least
