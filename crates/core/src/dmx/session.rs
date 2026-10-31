@@ -223,6 +223,27 @@ impl EngineState {
         self.session(id).map(|session| session.scene_focus)
     }
 
+    /// A [`Self::clone_for_ui`] snapshot as session `id` sees the show: its
+    /// selection, stack, control buffer, scene focus and focused graph are in
+    /// the `DESK` fields, so `selection()`, `get_selection()`, `curr_scene()`
+    /// and `.0.current_scene_focus` read `id`'s (its focused scene is the
+    /// one kept whole). Lookups by id ([`Self::session`], `live_owner()`)
+    /// stay correct. `None` if `id` is not open.
+    ///
+    /// For pages that draw from one snapshot per frame; like
+    /// `clone_for_ui`, it must not be mutated.
+    pub fn clone_for_session(&self, id: SessionId) -> Option<Self> {
+        let focus = self.scene_focus_of(id)?;
+        let mut snapshot = self.clone_keeping_scene(focus);
+        let swapped_in = snapshot.2.swapped_in;
+        if id != swapped_in {
+            // Back to `DESK` first (a no-op outside `dispatch`), then `id`.
+            snapshot.swap_session(swapped_in);
+            snapshot.swap_session(id);
+        }
+        Some(snapshot)
+    }
+
     /// Every open session except [`SessionId::DESK`].
     pub fn remote_sessions(&self) -> impl Iterator<Item = (SessionId, &OperatorSession)> {
         self.1.iter().map(|(id, session)| (*id, session))

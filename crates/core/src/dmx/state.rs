@@ -70,8 +70,12 @@ impl<'engine> EngineState {
     /// The returned `EngineState` must not be mutated — non-focused scenes
     /// have lost their state.
     pub fn clone_for_ui(&self) -> Self {
-        let curr_id = self.0.current_scene_focus;
+        self.clone_keeping_scene(self.0.current_scene_focus)
+    }
 
+    /// [`Self::clone_for_ui`], keeping scene `curr_id` whole instead of the
+    /// `DESK` focus.
+    pub(super) fn clone_keeping_scene(&self, curr_id: u8) -> Self {
         let scenes = self
             .0
             .scenes

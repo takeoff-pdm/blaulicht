@@ -8,7 +8,7 @@ use crate::{
     },
     client::{EngineClient, LocalClient},
     dmx::EngineState,
-    state::{DmxBuffer, NUM_DMX_UNIVERSES},
+    state::NUM_DMX_UNIVERSES,
 };
 use blaulicht_shared::{
     fixture::state::{FixtureState, ResolvedFixtureState},
@@ -18,10 +18,7 @@ use blaulicht_shared::{
 };
 use egui::{Align2, Color32, Context, FontId, Frame, Margin, Vec2, Widget};
 use map_range::MapRange;
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::RwLockReadGuard,
-};
+use std::collections::{BTreeMap, HashSet};
 
 pub const DEFAULT_NEW_SCENE_NAME: &str = "My Scene";
 pub const DEFAULT_NEW_GROUP_NAME: &str = "My Group";
@@ -51,7 +48,7 @@ impl DmxSimulator {
         &mut self,
         ui: &mut egui::Ui,
         groups: &EngineGroups,
-        dmx: RwLockReadGuard<'_, DmxBuffer>,
+        dmx: &[u8; 513],
         universe_no: usize,
     ) {
         ui.vertical(|ui| {
@@ -72,7 +69,7 @@ impl DmxSimulator {
     fn render_mapped_ui(
         ui: &mut egui::Ui,
         groups: &EngineGroups,
-        dmx: RwLockReadGuard<'_, DmxBuffer>,
+        dmx: &[u8; 513],
         universe_no: usize,
     ) {
         struct FixtureVisual {
@@ -93,9 +90,7 @@ impl DmxSimulator {
                     continue;
                 }
 
-                let state = fixture
-                    .state_from_dmx(&dmx.dmx_buffer)
-                    .resolve(&empty_palettes);
+                let state = fixture.state_from_dmx(dmx).resolve(&empty_palettes);
                 fixtures.push(FixtureVisual {
                     group_id: *group_id,
                     fixture_id: *fixture_id,
@@ -237,14 +232,14 @@ impl DmxSimulator {
             });
     }
 
-    fn render_dmx(ui: &mut egui::Ui, dmx: RwLockReadGuard<'_, DmxBuffer>) {
-        let len = dmx.dmx_buffer.len() as f32;
+    fn render_dmx(ui: &mut egui::Ui, dmx: &[u8; 513]) {
+        let len = dmx.len() as f32;
         let dimensions = len.sqrt() as usize + 1;
 
         let base_height = 16.0;
         let padding = 1.0;
         let dim_pixels = dimensions as f32 * (base_height + padding);
-        let dmx_buffer = dmx.dmx_buffer;
+        let dmx_buffer = dmx;
 
         ui.horizontal(|ui| {
             // Remove spacing in this container
@@ -334,8 +329,9 @@ impl BlaulichtApp {
                 ui.separator();
 
                 let universe = simulator.universe.min(NUM_DMX_UNIVERSES - 1);
-                let dmx_buffer = self.data.state.dmx_universes[universe].read().unwrap();
-                simulator.simulate_dmx(ui, groups, dmx_buffer, universe);
+                self.client.with_dmx_universe(universe, |dmx| {
+                    simulator.simulate_dmx(ui, groups, dmx, universe)
+                });
             });
     }
 
@@ -477,16 +473,11 @@ impl BlaulichtApp {
         (group_result, fixture_result, changed)
     }
 
-    pub fn fixture_selection(
-        &mut self,
-        groups: &EngineGroups,
-        ui: &mut egui::Ui,
-        // selection: &EngineSelection,
-        // total_fixtures: &[(u8, u8, Selection)],
-        // highlight_fixtures: &HashSet<u8>,
-    ) {
-        let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-
+    /// The Programmer's group tree, the selected groups' fixtures and the
+    /// attribute faders, drawn from `dmx_engine` (the page's snapshot as this
+    /// client's session sees it, see `EngineState::clone_for_session`).
+    pub fn fixture_selection(&mut self, dmx_engine: &EngineState, ui: &mut egui::Ui) {
+        let groups = dmx_engine.groups();
         let selection = dmx_engine.selection();
 
         let highlight_fixtures = &selection.fixtures_in_group;

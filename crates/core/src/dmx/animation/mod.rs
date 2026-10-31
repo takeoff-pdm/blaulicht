@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod phaser;
+pub mod templates;
 
 use crate::dmx::DmxEngine;
 use audio::{AudioModulationContribution, AudioModulationRuntime};

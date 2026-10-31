@@ -511,7 +511,7 @@ impl BlaulichtApp {
                                         if let Some(value_changed) = self
                                             .animation_ui_state
                                             .edit_state
-                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.data, &self.client, &mut self.view_state.plugin_tabs_selected, &dmx_engine.get_selection().fixtures, panel_max)
+                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.client, &mut self.view_state.plugin_tabs_selected, &dmx_engine.get_selection().fixtures, panel_max)
                                         {
                                             if let AnimationSpecBody::WasmPlugin(wasm) =
                                                 &value_changed.body

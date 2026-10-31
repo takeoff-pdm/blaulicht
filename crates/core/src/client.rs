@@ -33,7 +33,7 @@ use crate::{
         SessionId, SystemHub, SUBSCRIBER_CAPACITY,
     },
     msg::{SystemMessage, TERMINAL_ONLY_LOG_TARGET},
-    state::{AppHealthState, AppState, ArtNetReceiver, PluginState},
+    state::{AppHealthState, AppState, ArtNetReceiver, PluginRuntimeKind, PluginState},
     ui_ops::WasmUiOp,
 };
 
@@ -130,6 +130,20 @@ pub trait EngineClient {
 
     /// Runs `f` on the configured plugins, by plugin id.
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R;
+
+    /// Runs `f` on what each loaded plugin is (an animation plugin with its
+    /// stable key and name, or a regular plugin), by plugin id.
+    fn with_plugin_runtime_kinds<R>(
+        &self,
+        f: impl FnOnce(&HashMap<u8, PluginRuntimeKind>) -> R,
+    ) -> R;
+
+    /// Runs `f` on the latest editor UI ops of every WASM animation editor
+    /// instance (see `HostCommand::KeepAnimationEditorAlive`), by instance id.
+    fn with_animation_editor_ui_ops<R>(
+        &self,
+        f: impl FnOnce(&HashMap<u64, Vec<WasmUiOp>>) -> R,
+    ) -> R;
 
     //
     // View state.
@@ -322,6 +336,20 @@ impl EngineClient for LocalClient {
 
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R {
         f(&read(&self.app.plugins))
+    }
+
+    fn with_plugin_runtime_kinds<R>(
+        &self,
+        f: impl FnOnce(&HashMap<u8, PluginRuntimeKind>) -> R,
+    ) -> R {
+        f(&read(&self.app.plugin_runtime_kinds))
+    }
+
+    fn with_animation_editor_ui_ops<R>(
+        &self,
+        f: impl FnOnce(&HashMap<u64, Vec<WasmUiOp>>) -> R,
+    ) -> R {
+        f(&read(&self.app.wasm_animation_ui_ops))
     }
 
     fn publish_ui(&mut self, snapshot: FrontendUiSnapshot) {

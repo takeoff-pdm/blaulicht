@@ -13,6 +13,7 @@ use crate::{
         },
         BlaulichtApp,
     },
+    client::EngineClient,
     dmx::animation::{
         audio::{
             self, AudioModulationRuntime, AudioModulationSample, MAX_FRAME_AGE_MS,
@@ -20,6 +21,7 @@ use crate::{
         },
         phaser,
     },
+    hub::{HostCommand, ANIMATION_EDITOR_KEEPALIVE},
 };
 use blaulicht_shared::{
     fixture::value::FixtureValue, palette::Palette, AnimationSpec, AnimationSpecBody,
@@ -45,12 +47,8 @@ impl BlaulichtApp {
     /// from, so the band readout matches what the layer actually sees.
     pub(crate) fn live_audio_for_preview(&self) -> blaulicht_audio_engine::CollectorOutput {
         let current_audio_colunn = self
-            .data
-            .state
-            .audio_spectrogram
-            .read()
-            .ok()
-            .and_then(|spectrogram| {
+            .client
+            .with_spectrogram(|spectrogram| {
                 spectrogram
                     .columns
                     .back()
@@ -98,6 +96,16 @@ pub struct AnimationEditState {
     /// Bottom-right corner of the visible panel, captured by the caller: nested layouts make
     /// `available_height`/`available_width` meaningless by the time the plugin UI is rendered.
     wasm_ui_panel_max: egui::Pos2,
+    /// The last `KeepAnimationEditorAlive` sent for this editor.
+    wasm_editor_keepalive: Option<EditorKeepalive>,
+}
+
+/// When an editor last sent `KeepAnimationEditorAlive`, and for which plugin
+/// and fixtures (a change resends at once).
+struct EditorKeepalive {
+    sent: Instant,
+    plugin_key: String,
+    fixtures: Vec<(u8, u8)>,
 }
 
 impl Default for AnimationEditState {
@@ -164,6 +172,7 @@ impl Default for AnimationEditState {
             mod_preview_sample: None,
             wasm_editor_instance_id: NEXT_WASM_EDITOR_INSTANCE.fetch_add(1, Ordering::Relaxed),
             wasm_ui_panel_max: egui::Pos2::ZERO,
+            wasm_editor_keepalive: None,
         }
     }
 }
@@ -200,7 +209,6 @@ impl AnimationEditState {
         ctx: &egui::Context,
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
-        data: &crate::state::AppStateWrapper,
         client: &crate::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         wasm_fixtures: &[(u8, u8)],
@@ -231,7 +239,7 @@ impl AnimationEditState {
                     }
                 }
                 AnimationSpecBody::WasmPlugin(_) => {
-                    self.anim_wasm_ui(ui, data, client, plugin_tabs_selected, wasm_fixtures)
+                    self.anim_wasm_ui(ui, client, plugin_tabs_selected, wasm_fixtures)
                 }
             }
 
@@ -255,7 +263,6 @@ impl AnimationEditState {
     fn anim_wasm_ui(
         &mut self,
         ui: &mut egui::Ui,
-        data: &crate::state::AppStateWrapper,
         client: &crate::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         fixtures: &[(u8, u8)],
@@ -272,20 +279,18 @@ impl AnimationEditState {
         let AnimationSpecBody::WasmPlugin(ref mut wasm) = self.working_state.body else {
             return;
         };
-        let registered: Vec<(u8, String, String)> = data
-            .state
-            .plugin_runtime_kinds
-            .read()
-            .unwrap()
-            .iter()
-            .filter_map(|(id, kind)| match kind {
-                crate::state::PluginRuntimeKind::Animation {
-                    stable_key,
-                    display_name,
-                } => Some((*id, stable_key.clone(), display_name.clone())),
-                _ => None,
-            })
-            .collect();
+        let registered: Vec<(u8, String, String)> = client.with_plugin_runtime_kinds(|kinds| {
+            kinds
+                .iter()
+                .filter_map(|(id, kind)| match kind {
+                    crate::state::PluginRuntimeKind::Animation {
+                        stable_key,
+                        display_name,
+                    } => Some((*id, stable_key.clone(), display_name.clone())),
+                    _ => None,
+                })
+                .collect()
+        });
 
         egui::ComboBox::from_label("Animation plugin")
             .selected_text(
@@ -309,26 +314,28 @@ impl AnimationEditState {
             .iter()
             .find(|(_, key, _)| key == &wasm.plugin_key)
         {
-            data.state
-                .wasm_animation_editor_requests
-                .write()
-                .unwrap()
-                .insert(
-                    self.wasm_editor_instance_id,
-                    crate::state::WasmAnimationEditorRequest {
-                        plugin_key: wasm.plugin_key.clone(),
-                        instance_id: self.wasm_editor_instance_id,
-                        fixtures: fixtures.to_vec(),
-                        last_seen: Instant::now(),
-                    },
-                );
-            let ops = data
-                .state
-                .wasm_animation_ui_ops
-                .read()
-                .unwrap()
-                .get(&self.wasm_editor_instance_id)
-                .cloned();
+            let resend = match &self.wasm_editor_keepalive {
+                Some(last) => {
+                    last.sent.elapsed() >= ANIMATION_EDITOR_KEEPALIVE
+                        || last.plugin_key != wasm.plugin_key
+                        || last.fixtures.as_slice() != fixtures
+                }
+                None => true,
+            };
+            if resend {
+                client.send(HostCommand::KeepAnimationEditorAlive {
+                    plugin_key: wasm.plugin_key.clone(),
+                    instance_id: self.wasm_editor_instance_id,
+                    fixtures: fixtures.to_vec(),
+                });
+                self.wasm_editor_keepalive = Some(EditorKeepalive {
+                    sent: Instant::now(),
+                    plugin_key: wasm.plugin_key.clone(),
+                    fixtures: fixtures.to_vec(),
+                });
+            }
+            let instance_id = self.wasm_editor_instance_id;
+            let ops = client.with_animation_editor_ui_ops(|ops| ops.get(&instance_id).cloned());
             if let Some(ops) = ops {
                 ui.separator();
                 // Plugin editor UIs are arbitrarily tall; keep them scrollable and leave room for

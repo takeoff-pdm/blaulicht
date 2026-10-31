@@ -112,7 +112,11 @@ impl BlaulichtApp {
                 }
                 // Host commands are applied by the engine; the desk only sees
                 // its reply (`SystemMessage::CommandResult`).
-                Some(BusBody::Host(_)) => {}
+                Some(BusBody::Host(command)) => {
+                    if command.edits_show() {
+                        self.mark_showfile_dirty();
+                    }
+                }
                 None => {
                     empty += 1;
                 }

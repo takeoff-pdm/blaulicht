@@ -10,13 +10,17 @@ use crate::{
     },
     client::EngineClient,
     dmx::EngineState,
+    hub::HostCommand,
 };
 use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, Scene},
-    ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
 };
 use egui::{Color32, Context, RichText};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    time::{Duration, Instant},
+};
 
 /// Buttons in the Programmer toolbar, LIVE included.
 const TOOLBAR_BUTTONS: usize = 7;
@@ -35,6 +39,54 @@ pub struct ProgrammerUi {
     pub undo_all_changes_confirm_open: bool,
     /// The Animations dialog: presets and templates for the selection.
     pub animation_presets: AnimationPresetsUi,
+    /// The focused scene's M. Alpha while it is being turned.
+    pub master_alpha_held: Held<f32>,
+    /// The focused scene's M. Speed while it is being turned.
+    pub master_speed_held: Held<AnimationSpeedModifier>,
+}
+
+/// How long a released knob keeps showing its value when the engine does not
+/// report it back (refused, or another operator changed it meanwhile).
+const HOLD_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// A knob's value for one scene while the operator turns it, until the
+/// engine reports it back. The engine applies a sent value on its next tick,
+/// so drawing the engine's value would jump back for a frame, and a knob
+/// that adds drag deltas to the drawn value would lose movement.
+pub struct Held<T>(Option<(u8, T, Instant)>);
+
+impl<T> Default for Held<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<T: Copy> Held<T> {
+    /// The value to draw for `scene`: the held one, or the engine's.
+    fn shown(&self, scene: u8, engine: T) -> T {
+        match self.0 {
+            Some((held_scene, value, _)) if held_scene == scene => value,
+            _ => engine,
+        }
+    }
+
+    /// The operator set `value` on `scene` (and it was sent).
+    fn hold(&mut self, scene: u8, value: T) {
+        self.0 = Some((scene, value, Instant::now()));
+    }
+
+    /// Lets go once the knob is no longer dragged and the engine shows the
+    /// held value (`applied`), when the focus moved to another scene, or
+    /// [`HOLD_TIMEOUT`] after the last change.
+    fn settle(&mut self, dragging: bool, scene: u8, applied: impl FnOnce(T) -> bool) {
+        let Some((held_scene, value, since)) = self.0 else {
+            return;
+        };
+        if held_scene != scene || (!dragging && (applied(value) || since.elapsed() >= HOLD_TIMEOUT))
+        {
+            self.0 = None;
+        }
+    }
 }
 
 impl BlaulichtApp {
@@ -92,7 +144,13 @@ impl BlaulichtApp {
         ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
-        let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
+        // One snapshot per frame, as this client's session sees the show:
+        // `selection()`, `get_selection()` and `curr_scene()` are its own.
+        let session = self.client.session();
+        let dmx_engine = self.client.with_show(|show| {
+            show.clone_for_session(session)
+                .unwrap_or_else(|| show.clone_for_ui())
+        });
         let groups = dmx_engine.groups();
 
         self.clear_selection_shortcut(ctx, &dmx_engine);
@@ -293,7 +351,7 @@ impl BlaulichtApp {
                             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
                             egui::Layout::left_to_right(egui::Align::Min),
                             |ui| {
-                                self.fixture_selection(groups, ui);
+                                self.fixture_selection(&dmx_engine, ui);
 
                                 ui.separator();
 
@@ -308,29 +366,42 @@ impl BlaulichtApp {
                                                 egui::Layout::left_to_right(egui::Align::Center),
                                                 |ui| {
                                                 ui.add_space(22.5);
-                                                let mut dmx_engine_mut = self.data.state.dmx_engine.write().unwrap();
-                                                let scene = dmx_engine_mut.curr_scene_mut();
+                                                let scene_id = dmx_engine.0.current_scene_focus;
+                                                let sink = &scene.sink;
 
-                                                let mut master_alpha = scene.sink.master_alpha_fader as f32;
-                                                if ui
-                                                    .add(Knob::new(&mut master_alpha, 0.0..=100.0).with_label("M. Alpha"))
-                                                    .changed()
-                                                {
-                                                    scene.sink.master_alpha_fader = master_alpha as u8;
+                                                let held = &mut self.programmer_ui_state.master_alpha_held;
+                                                let mut master_alpha =
+                                                    held.shown(scene_id, sink.master_alpha_fader as f32);
+                                                let response = ui.add(
+                                                    Knob::new(&mut master_alpha, 0.0..=100.0).with_label("M. Alpha"),
+                                                );
+                                                if response.changed() {
+                                                    held.hold(scene_id, master_alpha);
+                                                    self.client.send_event(ControlEvent::SetSceneMasterAlpha(
+                                                        scene_id,
+                                                        master_alpha as u8,
+                                                    ));
                                                 }
+                                                held.settle(response.dragged(), scene_id, |value| {
+                                                    value as u8 == sink.master_alpha_fader
+                                                });
 
                                                 ui.add_space(25.0);
 
-                                                let mut speed = scene.sink.master_speed;
-                                                if ui
-                                                    .add(
-                                                        SpeedKnob::new(&mut speed)
-                                                            .with_label("M. Speed")
-                                                    )
-                                                    .changed()
-                                                {
-                                                    scene.sink.master_speed = speed;
+                                                let held = &mut self.programmer_ui_state.master_speed_held;
+                                                let mut speed = held.shown(scene_id, sink.master_speed);
+                                                let response = ui.add(
+                                                    SpeedKnob::new(&mut speed).with_label("M. Speed"),
+                                                );
+                                                if response.changed() {
+                                                    held.hold(scene_id, speed);
+                                                    self.client.send_event(ControlEvent::SetSceneMasterSpeed(
+                                                        scene_id, speed,
+                                                    ));
                                                 }
+                                                held.settle(response.dragged(), scene_id, |value| {
+                                                    value == sink.master_speed
+                                                });
                                             });
 
                                             ui.separator();
@@ -822,14 +893,14 @@ impl BlaulichtApp {
                                 *anim_id,
                                 &fixtures,
                             );
-                            crate::plugin::wasm::clone_animation_instance_state(
-                                &self.data.state,
-                                &wasm.plugin_key,
+                            self.client.send(HostCommand::CloneAnimationInstanceState {
+                                plugin_key: wasm.plugin_key.clone(),
                                 source,
-                                self.programmer_ui_state
+                                target: self
+                                    .programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
-                            );
+                            });
                         }
 
                         self.programmer_ui_state
@@ -844,7 +915,6 @@ impl BlaulichtApp {
                             ctx,
                             &dmx_engine.0.palettes,
                             &live_audio,
-                            &self.data,
                             &self.client,
                             &mut self.view_state.plugin_tabs_selected,
                             &selec.fixtures,
@@ -861,14 +931,14 @@ impl BlaulichtApp {
                                 *anim_id,
                                 &fixtures,
                             );
-                            crate::plugin::wasm::clone_animation_instance_state(
-                                &self.data.state,
-                                &wasm.plugin_key,
-                                self.programmer_ui_state
+                            self.client.send(HostCommand::CloneAnimationInstanceState {
+                                plugin_key: wasm.plugin_key.clone(),
+                                source: self
+                                    .programmer_ui_state
                                     .scene_overview_animation_edit
                                     .wasm_editor_instance_id,
                                 target,
-                            );
+                            });
                         }
                         self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
@@ -1251,7 +1321,7 @@ pub(crate) fn undo_all_changes_event(changeset: &HashSet<FixtureSelector>) -> Op
 mod tests {
     use super::{
         active_palettes_summary, clear_selection_shortcut_allowed, palette_toggle_event,
-        sorted_changes, toolbar_button_width, undo_all_changes_event,
+        sorted_changes, toolbar_button_width, undo_all_changes_event, Held,
     };
     use crate::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
     use blaulicht_shared::{
@@ -1412,5 +1482,30 @@ mod tests {
         // Wide panes keep the usual width.
         assert_eq!(toolbar_button_width(2000.0, 8.0, 7), 90.0);
         assert_eq!(toolbar_button_width(100.0, 8.0, 7), 60.0);
+    }
+
+    #[test]
+    fn a_turned_knob_shows_its_value_until_the_engine_has_it() {
+        let mut held = Held::<f32>::default();
+        assert_eq!(held.shown(0, 10.0), 10.0);
+
+        held.hold(0, 42.0);
+        // Still dragging: kept even once the engine caught up.
+        held.settle(true, 0, |value| value as u8 == 42);
+        assert_eq!(held.shown(0, 42.0), 42.0);
+        // Another scene draws its own value.
+        assert_eq!(held.shown(1, 7.0), 7.0);
+
+        // Released, but the engine still has the old value: kept.
+        held.settle(false, 0, |value| value as u8 == 10);
+        assert_eq!(held.shown(0, 10.0), 42.0);
+        // The engine reports it back: let go.
+        held.settle(false, 0, |value| value as u8 == 42);
+        assert_eq!(held.shown(0, 10.0), 10.0);
+
+        // A focus change lets go too.
+        held.hold(0, 42.0);
+        held.settle(true, 1, |_| false);
+        assert_eq!(held.shown(0, 10.0), 10.0);
     }
 }

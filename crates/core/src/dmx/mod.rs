@@ -10,6 +10,7 @@ pub use session::*;
 pub use state::*;
 pub mod animation;
 pub mod scene;
+
 use crate::{
     event::SystemEventBusConnectionInst,
     hub::{
@@ -19,6 +20,7 @@ use crate::{
     msg::{DmxTickSpeeds, SystemMessage},
     state::{AppState, DmxHealth, NUM_DMX_UNIVERSES},
 };
+use animation::templates;
 use blaulicht_shared::{
     fixture::{
         state::{FixtureState, MergeStrategy, ResolvedFixtureState},
@@ -26,8 +28,8 @@ use blaulicht_shared::{
     },
     scene::{FixtureSelection, FixtureSelector, BLANK_SCENE_ID},
     scene_graph::{AudioConditions, SceneGraphRuntime},
-    ActiveAnimation, AnimationSpecBody, ControlEvent, ControlEventMessage, EventOriginator,
-    FixtureProperty, CONTROLS_REQUIRING_SELECTION,
+    ActiveAnimation, AnimationPreset, AnimationSpecBody, ControlEvent, ControlEventMessage,
+    EventOriginator, FixtureProperty, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
@@ -36,7 +38,7 @@ use std::{
     io::ErrorKind,
     mem,
     net::{SocketAddr, UdpSocket},
-    sync::{Arc, RwLockWriteGuard},
+    sync::{Arc, PoisonError, RwLockWriteGuard},
     time::{Duration, Instant},
 };
 use tracing::{debug, error, info, trace, warn};
@@ -833,11 +835,128 @@ impl DmxEngine {
     /// (see [`Self::dispatch`]).
     fn apply_host(
         &self,
-        _state: &mut RwLockWriteGuard<'_, EngineState>,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
         command: HostCommand,
     ) -> CommandOutcome {
+        const OK: CommandOutcome = CommandOutcome::Ok { created: None };
         match command {
-            HostCommand::Ping => CommandOutcome::Ok { created: None },
+            HostCommand::Ping => OK,
+            HostCommand::ToggleAnimationPreset(preset) => {
+                self.toggle_animation_preset(state, preset)
+            }
+            HostCommand::SaveAnimationAsTemplate {
+                selection,
+                animation_id,
+                name,
+            } => self.save_animation_as_template(state, &selection, animation_id, &name),
+            HostCommand::CloneAnimationInstanceState {
+                plugin_key,
+                source,
+                target,
+            } => {
+                crate::plugin::wasm::clone_animation_instance_state(
+                    &self.state_ref,
+                    &plugin_key,
+                    source,
+                    target,
+                );
+                OK
+            }
+            HostCommand::KeepAnimationEditorAlive {
+                plugin_key,
+                instance_id,
+                fixtures,
+            } => {
+                self.state_ref
+                    .wasm_animation_editor_requests
+                    .write()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(
+                        instance_id,
+                        crate::state::WasmAnimationEditorRequest {
+                            plugin_key,
+                            instance_id,
+                            fixtures,
+                            last_seen: Instant::now(),
+                        },
+                    );
+                OK
+            }
+        }
+    }
+
+    /// [`HostCommand::ToggleAnimationPreset`], in the sender's session.
+    fn toggle_animation_preset(
+        &self,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
+        preset: AnimationPreset,
+    ) -> CommandOutcome {
+        let existing = templates::preset_template_id(&state.0.animation_templates, preset);
+        let Some(id) = templates::ensure_preset_template(&mut state.0.animation_templates, preset)
+        else {
+            return CommandOutcome::Refused(templates::ANIMATION_LIMIT_REACHED.to_string());
+        };
+        let active = templates::selection_animations(state.curr_scene(), &state.get_selection())
+            .is_some_and(|animations| animations.contains_key(&id));
+        let event = templates::toggle_animation_event(id, active);
+        let (refusal, _rollback) =
+            self.apply(state, ControlEventMessage::new(EventOriginator::Web, event));
+        match refusal {
+            Some(reason) => CommandOutcome::Refused(reason.to_string()),
+            None => CommandOutcome::Ok {
+                created: existing
+                    .is_none()
+                    .then_some(CreatedId::AnimationTemplate(id)),
+            },
+        }
+    }
+
+    /// [`HostCommand::SaveAnimationAsTemplate`], in the sender's session.
+    fn save_animation_as_template(
+        &self,
+        state: &mut RwLockWriteGuard<'_, EngineState>,
+        selection: &FixtureSelection,
+        animation_id: u8,
+        name: &str,
+    ) -> CommandOutcome {
+        let scene_id = state.0.current_scene_focus;
+        let Some(spec) = templates::selection_animations(state.curr_scene(), selection)
+            .and_then(|animations| animations.get(&animation_id))
+            .map(|animation| animation.spec_cloned.clone())
+        else {
+            return CommandOutcome::Refused("Animation not found".to_string());
+        };
+        let wasm_key = match &spec.body {
+            AnimationSpecBody::WasmPlugin(wasm) => Some(wasm.plugin_key.clone()),
+            _ => None,
+        };
+        let Some(new_id) =
+            templates::save_as_template(&mut state.0.animation_templates, spec, name)
+        else {
+            return CommandOutcome::Refused(templates::ANIMATION_LIMIT_REACHED.to_string());
+        };
+
+        // A WASM animation keeps its plugin state per instance; the template
+        // gets a copy, as when the Animations page saves its editor state.
+        if let Some(plugin_key) = wasm_key {
+            let fixtures = selection.sorted().fixtures;
+            let source = crate::plugin::tick::stable_animation_instance_id(
+                &plugin_key,
+                scene_id,
+                animation_id,
+                &fixtures,
+            );
+            let target = crate::plugin::tick::stable_animation_template_id(&plugin_key, new_id);
+            crate::plugin::wasm::clone_animation_instance_state(
+                &self.state_ref,
+                &plugin_key,
+                source,
+                target,
+            );
+        }
+
+        CommandOutcome::Ok {
+            created: Some(CreatedId::AnimationTemplate(new_id)),
         }
     }
 
@@ -2368,5 +2487,269 @@ mod command_result_tests {
         }
         assert!(results(&remote).is_empty());
         assert!(results(&desk).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod host_command_tests {
+    use super::templates::{selection_animations, ANIMATION_LIMIT_REACHED};
+    use crate::{
+        client::{
+            testing::{small_rig, TwoClients},
+            EngineClient,
+        },
+        hub::{CommandOutcome, CreatedId, HostCommand},
+    };
+    use blaulicht_shared::{
+        scene::FixtureSelection, AnimationPreset, AnimationSpec, AnimationTemplate, ControlEvent,
+        ControlEventMessage, EventOriginator,
+    };
+
+    const OK: CommandOutcome = CommandOutcome::Ok { created: None };
+
+    fn web(event: ControlEvent) -> ControlEventMessage {
+        ControlEventMessage::new(EventOriginator::Web, event)
+    }
+
+    /// The desk selects group 0 in scene 0; the remote selects fixture 1 of
+    /// group 1 in scene 1.
+    fn two_selections() -> TwoClients {
+        let mut h = TwoClients::start(small_rig);
+        assert_eq!(
+            h.engine
+                .round_trip(&h.desk, web(ControlEvent::SelectGroup(0))),
+            OK
+        );
+        for event in [
+            ControlEvent::SetSceneFocus(1),
+            ControlEvent::SelectGroup(1),
+            ControlEvent::LimitSelectionToFixtureInCurrentGroup(1),
+        ] {
+            assert_eq!(h.engine.round_trip(&h.remote, web(event)), OK);
+        }
+        h
+    }
+
+    /// The animations on the client's selection in its focused scene.
+    fn own_animations(client: &impl EngineClient) -> Vec<u8> {
+        client
+            .with_session(|show, me| {
+                let selection = me.fixture_selection(&show.0.groups);
+                show.get_scene(me.scene_focus)
+                    .and_then(|scene| selection_animations(scene, &selection))
+                    .map(|animations| animations.keys().copied().collect())
+                    .unwrap_or_default()
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn a_preset_toggles_on_the_senders_selection_and_focus() {
+        let mut h = two_selections();
+        let toggle = HostCommand::ToggleAnimationPreset(AnimationPreset::KickFlash);
+        assert!(toggle.edits_show());
+
+        // The first tap creates the template and applies it.
+        let CommandOutcome::Ok {
+            created: Some(CreatedId::AnimationTemplate(id)),
+        } = h.engine.round_trip(&h.remote, toggle.clone())
+        else {
+            panic!("the template is created");
+        };
+        h.desk.with_show(|show| {
+            assert_eq!(show.0.animation_templates[&id].spec.name, "Kick Flash");
+            let scene = &show.0.scenes[&1];
+            let selection = FixtureSelection {
+                fixtures: vec![(1, 1)],
+            };
+            let animation = &selection_animations(scene, &selection).unwrap()[&id];
+            assert!(animation.enabled, "an applied preset runs");
+            assert!(show.0.scenes[&0].sink.active_animations.is_empty());
+        });
+        assert_eq!(own_animations(&h.remote), vec![id]);
+        assert!(own_animations(&h.desk).is_empty());
+
+        // The desk reuses the template, on its own selection.
+        let templates = h.desk.with_show(|show| show.0.animation_templates.len());
+        assert_eq!(h.engine.round_trip(&h.desk, toggle.clone()), OK);
+        assert_eq!(own_animations(&h.desk), vec![id]);
+        assert_eq!(
+            h.desk.with_show(|show| show.0.animation_templates.len()),
+            templates
+        );
+
+        // A second tap removes it again, for that session only.
+        assert_eq!(h.engine.round_trip(&h.remote, toggle), OK);
+        assert!(own_animations(&h.remote).is_empty());
+        assert_eq!(own_animations(&h.desk), vec![id]);
+    }
+
+    #[test]
+    fn a_preset_is_refused_when_every_template_id_is_taken() {
+        let mut h = two_selections();
+        h.engine.edit_show(|show| {
+            for id in 0..=u8::MAX {
+                let mut spec = AnimationSpec::empty();
+                spec.name = "Full".to_string();
+                show.0
+                    .animation_templates
+                    .insert(id, AnimationTemplate { spec });
+            }
+        });
+        assert_eq!(
+            h.engine.round_trip(
+                &h.remote,
+                HostCommand::ToggleAnimationPreset(AnimationPreset::HueDrift)
+            ),
+            CommandOutcome::Refused(ANIMATION_LIMIT_REACHED.to_string())
+        );
+        assert!(own_animations(&h.remote).is_empty());
+    }
+
+    #[test]
+    fn a_preset_without_selection_is_refused() {
+        let mut h = TwoClients::start(small_rig);
+        let CommandOutcome::Refused(_) = h.engine.round_trip(
+            &h.remote,
+            HostCommand::ToggleAnimationPreset(AnimationPreset::KickFlash),
+        ) else {
+            panic!("nothing is selected");
+        };
+    }
+
+    #[test]
+    fn saving_an_animation_reads_the_senders_focused_scene() {
+        let mut h = two_selections();
+        let CommandOutcome::Ok {
+            created: Some(CreatedId::AnimationTemplate(preset_id)),
+        } = h.engine.round_trip(
+            &h.remote,
+            HostCommand::ToggleAnimationPreset(AnimationPreset::TempoSweep),
+        )
+        else {
+            panic!("the template is created");
+        };
+        let save = HostCommand::SaveAnimationAsTemplate {
+            selection: FixtureSelection {
+                fixtures: vec![(1, 1)],
+            },
+            animation_id: preset_id,
+            name: "  My Sweep ".to_string(),
+        };
+        assert!(save.edits_show());
+
+        // The desk's focus (scene 0) has no such animation.
+        assert_eq!(
+            h.engine.round_trip(&h.desk, save.clone()),
+            CommandOutcome::Refused("Animation not found".to_string())
+        );
+
+        let CommandOutcome::Ok {
+            created: Some(CreatedId::AnimationTemplate(saved_id)),
+        } = h.engine.round_trip(&h.remote, save)
+        else {
+            panic!("the template is saved");
+        };
+        assert_ne!(saved_id, preset_id);
+        h.desk.with_show(|show| {
+            let saved = &show.0.animation_templates[&saved_id].spec;
+            assert_eq!(saved.name, "My Sweep");
+            assert_eq!(
+                saved.property,
+                show.0.animation_templates[&preset_id].spec.property
+            );
+        });
+    }
+
+    #[test]
+    fn cloning_animation_state_copies_it_and_restarts_the_target() {
+        let mut h = TwoClients::start(small_rig);
+        let key = "animation_plugin::sparkle";
+        h.engine.app().plugin_state_storage.lock().unwrap().insert(
+            key.to_string(),
+            r#"{"version":1,"animation_instances":{"7":"saved"}}"#.to_string(),
+        );
+        let clone = HostCommand::CloneAnimationInstanceState {
+            plugin_key: "sparkle".to_string(),
+            source: 7,
+            target: 9,
+        };
+        assert!(!clone.edits_show());
+        assert_eq!(h.engine.round_trip(&h.remote, clone), OK);
+
+        let stored = h.engine.app().plugin_state_storage.lock().unwrap()[key].clone();
+        let stored: serde_json::Value = serde_json::from_str(&stored).unwrap();
+        assert_eq!(stored["animation_instances"]["7"], "saved");
+        assert_eq!(stored["animation_instances"]["9"], "saved");
+        assert!(h
+            .engine
+            .app()
+            .wasm_animation_instances_to_reset
+            .lock()
+            .unwrap()
+            .contains(&9));
+    }
+
+    #[test]
+    fn an_editor_keepalive_registers_the_editor() {
+        let mut h = TwoClients::start(small_rig);
+        let keepalive = HostCommand::KeepAnimationEditorAlive {
+            plugin_key: "sparkle".to_string(),
+            instance_id: 42,
+            fixtures: vec![(0, 1), (2, 0)],
+        };
+        assert!(!keepalive.edits_show());
+        assert_eq!(h.engine.round_trip(&h.remote, keepalive), OK);
+
+        let requests = h
+            .engine
+            .app()
+            .wasm_animation_editor_requests
+            .read()
+            .unwrap();
+        let request = &requests[&42];
+        assert_eq!(request.plugin_key, "sparkle");
+        assert_eq!(request.instance_id, 42);
+        assert_eq!(request.fixtures, vec![(0, 1), (2, 0)]);
+    }
+
+    /// The Programmer draws from `clone_for_session`: the sender's selection
+    /// and focused scene in the `DESK` accessors.
+    #[test]
+    fn a_session_snapshot_reads_that_sessions_fields() {
+        let h = two_selections();
+        let session = h.remote.session();
+        let (remote, desk) = h.desk.with_show(|show| {
+            (
+                show.clone_for_session(session).unwrap(),
+                show.clone_for_session(crate::hub::SessionId::DESK).unwrap(),
+            )
+        });
+        assert_eq!(remote.0.current_scene_focus, 1);
+        assert_eq!(remote.curr_scene().name, "A");
+        assert_eq!(
+            remote
+                .selection()
+                .group_ids
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert_eq!(remote.get_selection().fixtures, vec![(1, 1)]);
+        let desk_in_remote = remote.session(crate::hub::SessionId::DESK).unwrap();
+        assert_eq!(desk_in_remote.scene_focus, 0);
+        assert_eq!(remote.session(session).unwrap().scene_focus, 1);
+
+        assert_eq!(desk.0.current_scene_focus, 0);
+        assert_eq!(
+            desk.selection()
+                .group_ids
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+        assert_eq!(desk.session(session).unwrap().scene_focus, 1);
     }
 }

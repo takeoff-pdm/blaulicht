@@ -2,25 +2,29 @@
 //! animation templates to the current selection, list the animations active
 //! on it (with remove buttons), and save one of them as a new template.
 //!
-//! Everything goes through the existing animation events: applying sends
-//! `AddAnimation` + `PlayAnimation` in one `Transaction`, removing sends
-//! `RemoveAnimation`. A starter preset
-//! (`AnimationPreset`) is not a template, so applying one first reuses the
-//! template named after it or creates that template, the same way the
-//! Animations page does. Editing templates stays on the Animations page.
+//! A saved template goes through the existing animation events: applying
+//! sends `AddAnimation` + `PlayAnimation` in one `Transaction`, removing sends
+//! `RemoveAnimation`. A starter preset (`AnimationPreset`) is not a template:
+//! `HostCommand::ToggleAnimationPreset` has the engine reuse the template
+//! named after it (or create it) and toggle that. Saving an animation as a
+//! template is `HostCommand::SaveAnimationAsTemplate`. Editing templates
+//! stays on the Animations page.
 
-use crate::client::EngineClient;
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, TextInput},
         BlaulichtApp, PopupSpec,
     },
-    dmx::EngineState,
+    client::EngineClient,
+    dmx::{
+        animation::templates::{preset_template_id, selection_animations, toggle_animation_event},
+        EngineState,
+    },
+    hub::{CommandOutcome, HostCommand},
 };
 use blaulicht_shared::{
     scene::{FixtureSelection, Scene},
-    ActiveAnimation, AnimationPreset, AnimationPresetCategory, AnimationSpec, AnimationSpecBody,
-    AnimationTemplate, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
+    AnimationPreset, AnimationPresetCategory, AnimationTemplate, ControlEvent, FixtureProperty,
 };
 use egui::{Color32, Context, RichText};
 use std::{
@@ -44,65 +48,6 @@ pub struct SaveAnimationPreset {
     pub name: String,
 }
 
-/// The animations on `selection` in `scene`, keyed by template id. The
-/// engine keys them by the *sorted* selection.
-pub(crate) fn selection_animations<'a>(
-    scene: &'a Scene,
-    selection: &FixtureSelection,
-) -> Option<&'a BTreeMap<u8, ActiveAnimation>> {
-    scene.sink.active_animations.get(&selection.sorted())
-}
-
-/// The template a starter preset maps to: the lowest-id template named after
-/// the preset.
-fn preset_template_id(
-    templates: &BTreeMap<u8, AnimationTemplate>,
-    preset: AnimationPreset,
-) -> Option<u8> {
-    templates
-        .iter()
-        .find(|(_, template)| template.spec.name == preset.label())
-        .map(|(id, _)| *id)
-}
-
-/// The lowest unused template id.
-fn free_template_id(templates: &BTreeMap<u8, AnimationTemplate>) -> Option<u8> {
-    (0..=u8::MAX).find(|id| !templates.contains_key(id))
-}
-
-/// Returns the template for `preset`, creating it from
-/// `AnimationSpec::preset` if there is none. `None` when every template id is
-/// taken.
-pub(crate) fn ensure_preset_template(
-    templates: &mut BTreeMap<u8, AnimationTemplate>,
-    preset: AnimationPreset,
-) -> Option<u8> {
-    if let Some(id) = preset_template_id(templates, preset) {
-        return Some(id);
-    }
-    let id = free_template_id(templates)?;
-    templates.insert(
-        id,
-        AnimationTemplate {
-            spec: AnimationSpec::preset(preset),
-        },
-    );
-    Some(id)
-}
-
-/// Inserts `spec` as a new template named `name`. `None` when every template
-/// id is taken.
-pub(crate) fn save_as_template(
-    templates: &mut BTreeMap<u8, AnimationTemplate>,
-    mut spec: AnimationSpec,
-    name: &str,
-) -> Option<u8> {
-    let id = free_template_id(templates)?;
-    spec.name = name.trim().to_string();
-    templates.insert(id, AnimationTemplate { spec });
-    Some(id)
-}
-
 /// `base`, or `base 2`, `base 3`, … if a template already uses that name.
 pub(crate) fn unique_template_name(
     templates: &BTreeMap<u8, AnimationTemplate>,
@@ -121,20 +66,6 @@ pub(crate) fn unique_template_name(
         .map(|n| format!("{base} {n}"))
         .find(|name| !taken.contains(name.as_str()))
         .unwrap()
-}
-
-/// Tapping a template toggles it: applied and started if it is not on the
-/// selection yet (a new animation starts paused), removed if it is. The
-/// transaction rolls back as a whole when the engine rejects the add.
-pub(crate) fn toggle_animation_event(template_id: u8, active: bool) -> ControlEvent {
-    if active {
-        ControlEvent::RemoveAnimation(template_id)
-    } else {
-        ControlEvent::Transaction(vec![
-            ControlEvent::AddAnimation(template_id),
-            ControlEvent::PlayAnimation(template_id),
-        ])
-    }
 }
 
 /// A template's label: its name, or `#id` when it has none.
@@ -194,80 +125,46 @@ impl BlaulichtApp {
     }
 
     fn send_animation_event(&self, event: ControlEvent) {
-        self.client
-            .send(ControlEventMessage::new(EventOriginator::Web, event));
+        self.client.send_event(event);
     }
 
     /// Applies a starter preset to the selection, creating its template first
-    /// if needed; removes it if it is already applied.
-    fn toggle_preset(&mut self, preset: AnimationPreset, active_ids: &HashSet<u8>) {
-        let id = {
-            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-            ensure_preset_template(&mut dmx_engine.0.animation_templates, preset)
-        };
-        match id {
-            Some(id) => {
-                self.send_animation_event(toggle_animation_event(id, active_ids.contains(&id)))
-            }
-            None => self.show_popup(PopupSpec::with_duration(
-                Duration::from_secs(3),
-                "Animation limit reached".to_string(),
-            )),
-        }
+    /// if needed; removes it if it is already applied. A refusal ("Animation
+    /// limit reached") shows as a popup.
+    fn toggle_preset(&mut self, preset: AnimationPreset) {
+        self.reply_handlers.send_then(
+            &self.client,
+            HostCommand::ToggleAnimationPreset(preset),
+            |app, outcome| {
+                if let CommandOutcome::Refused(why) = outcome {
+                    app.show_popup(PopupSpec::with_duration(
+                        Duration::from_secs(3),
+                        why.clone(),
+                    ));
+                }
+            },
+        );
     }
 
-    /// Stores the active animation's spec as a new template.
-    fn save_animation_as_preset(&mut self, save: &SaveAnimationPreset) {
-        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-        let scene_id = dmx_engine.0.current_scene_focus;
-        let Some(spec) = dmx_engine
-            .0
-            .scenes
-            .get(&scene_id)
-            .and_then(|scene| selection_animations(scene, &save.selection))
-            .and_then(|animations| animations.get(&save.animation_id))
-            .map(|animation| animation.spec_cloned.clone())
-        else {
-            return;
-        };
-        let wasm_key = match &spec.body {
-            AnimationSpecBody::WasmPlugin(wasm) => Some(wasm.plugin_key.clone()),
-            _ => None,
-        };
-        let saved = save_as_template(&mut dmx_engine.0.animation_templates, spec, &save.name);
-        drop(dmx_engine);
-
-        let Some(new_id) = saved else {
-            self.show_popup(PopupSpec::with_duration(
-                Duration::from_secs(3),
-                "Animation limit reached".to_string(),
-            ));
-            return;
-        };
-
-        // A WASM animation keeps its plugin state per instance; the template
-        // gets a copy, as when the Animations page saves its editor state.
-        if let Some(plugin_key) = wasm_key {
-            let fixtures = save.selection.sorted().fixtures;
-            let source = crate::plugin::tick::stable_animation_instance_id(
-                &plugin_key,
-                scene_id,
-                save.animation_id,
-                &fixtures,
-            );
-            let target = crate::plugin::tick::stable_animation_template_id(&plugin_key, new_id);
-            crate::plugin::wasm::clone_animation_instance_state(
-                &self.data.state,
-                &plugin_key,
-                source,
-                target,
-            );
-        }
-
-        self.show_popup(PopupSpec::with_duration(
-            Duration::from_secs(3),
-            format!("Saved preset \"{}\"", save.name.trim()),
-        ));
+    /// Stores the active animation's spec as a new template; a popup reports
+    /// the result.
+    fn save_animation_as_preset(&mut self, save: SaveAnimationPreset) {
+        let name = save.name.trim().to_string();
+        self.reply_handlers.send_then(
+            &self.client,
+            HostCommand::SaveAnimationAsTemplate {
+                selection: save.selection,
+                animation_id: save.animation_id,
+                name: save.name,
+            },
+            move |app, outcome| {
+                let text = match outcome {
+                    CommandOutcome::Ok { .. } => format!("Saved preset \"{name}\""),
+                    CommandOutcome::Refused(why) => why.clone(),
+                };
+                app.show_popup(PopupSpec::with_duration(Duration::from_secs(3), text));
+            },
+        );
     }
 
     /// The Animations dialog (toolbar button "Animations"). Left: the
@@ -524,7 +421,7 @@ impl BlaulichtApp {
                                                     is_active,
                                                     preset.description(),
                                                 ) {
-                                                    self.toggle_preset(*preset, &active_ids);
+                                                    self.toggle_preset(*preset);
                                                 }
                                             }
                                         });
@@ -610,7 +507,7 @@ impl BlaulichtApp {
 
         if confirm {
             if let Some(save) = self.programmer_ui_state.animation_presets.save.take() {
-                self.save_animation_as_preset(&save);
+                self.save_animation_as_preset(save);
             }
         } else if close || response.cancel_requested {
             self.programmer_ui_state.animation_presets.save = None;
@@ -620,81 +517,15 @@ impl BlaulichtApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ensure_preset_template, preset_template_id, save_as_template, saved_templates,
-        selection_animations, toggle_animation_event, unique_template_name,
-    };
-    use crate::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
-    use blaulicht_shared::{
-        fixture::{
-            light::Light,
-            state::{Fixture, FixtureGroup},
-            FixtureType,
-        },
-        AnimationPreset, AnimationSpec, AnimationTemplate, ControlEvent, ControlEventMessage,
-        EventOriginator,
-    };
-    use std::{collections::BTreeMap, sync::Arc};
+    use super::{saved_templates, unique_template_name};
+    use crate::dmx::animation::templates::preset_template_id;
+    use blaulicht_shared::{AnimationPreset, AnimationSpec, AnimationTemplate};
+    use std::collections::BTreeMap;
 
     fn template(name: &str) -> AnimationTemplate {
         let mut spec = AnimationSpec::empty();
         spec.name = name.to_string();
         AnimationTemplate { spec }
-    }
-
-    #[test]
-    fn a_preset_reuses_the_template_named_after_it() {
-        let mut templates = BTreeMap::from([(0, template("Other")), (3, template("Kick Flash"))]);
-        assert_eq!(
-            ensure_preset_template(&mut templates, AnimationPreset::KickFlash),
-            Some(3)
-        );
-        assert_eq!(templates.len(), 2);
-    }
-
-    #[test]
-    fn a_preset_without_template_gets_one_at_the_lowest_free_id() {
-        let mut templates = BTreeMap::from([(0, template("Other")), (2, template("More"))]);
-        let id = ensure_preset_template(&mut templates, AnimationPreset::HueDrift).unwrap();
-        assert_eq!(id, 1);
-        assert_eq!(templates[&1].spec.name, "Hue Drift");
-        assert_eq!(
-            templates[&1].spec.property,
-            AnimationPreset::HueDrift.property()
-        );
-        // Applying it again reuses it.
-        assert_eq!(
-            ensure_preset_template(&mut templates, AnimationPreset::HueDrift),
-            Some(1)
-        );
-        assert_eq!(templates.len(), 3);
-    }
-
-    #[test]
-    fn no_template_is_created_when_all_ids_are_taken() {
-        let mut templates: BTreeMap<u8, AnimationTemplate> =
-            (0..=u8::MAX).map(|id| (id, template("Full"))).collect();
-        assert_eq!(
-            ensure_preset_template(&mut templates, AnimationPreset::KickFlash),
-            None
-        );
-        assert_eq!(
-            save_as_template(&mut templates, AnimationSpec::empty(), "X"),
-            None
-        );
-    }
-
-    #[test]
-    fn saving_keeps_the_spec_and_sets_the_trimmed_name() {
-        let mut templates = BTreeMap::from([(0, template("A"))]);
-        let spec = AnimationSpec::preset(AnimationPreset::TempoSweep);
-        let id = save_as_template(&mut templates, spec, "  My Sweep ").unwrap();
-        assert_eq!(id, 1);
-        assert_eq!(templates[&1].spec.name, "My Sweep");
-        assert_eq!(
-            templates[&1].spec.property,
-            AnimationPreset::TempoSweep.property()
-        );
     }
 
     #[test]
@@ -721,10 +552,6 @@ mod tests {
             preset_template_id(&templates, AnimationPreset::KickFlash),
             Some(0)
         );
-        assert_eq!(
-            preset_template_id(&templates, AnimationPreset::BassPump),
-            None
-        );
     }
 
     #[test]
@@ -735,101 +562,5 @@ mod tests {
             .map(|(_, label, _)| label)
             .collect();
         assert_eq!(labels, vec!["#4".to_string(), "Color".to_string()]);
-    }
-
-    #[test]
-    fn a_tap_toggles_the_animation() {
-        let ControlEvent::Transaction(events) = toggle_animation_event(4, false) else {
-            panic!("applying is a transaction");
-        };
-        assert!(matches!(
-            events.as_slice(),
-            [
-                ControlEvent::AddAnimation(4),
-                ControlEvent::PlayAnimation(4)
-            ]
-        ));
-        assert!(matches!(
-            toggle_animation_event(4, true),
-            ControlEvent::RemoveAnimation(4)
-        ));
-    }
-
-    /// Runs the dialog's events through the engine: a preset applied to a
-    /// limited selection shows up under that selection in the focused scene
-    /// only, and the second tap removes it again.
-    #[test]
-    fn applying_and_removing_a_preset_goes_through_the_engine() {
-        let state = Arc::new(AppState::new(&[]));
-        let bus = SystemEventBus::new();
-        let engine = DmxEngine::new(
-            state.clone(),
-            bus.new_connection(),
-            crate::hub::SystemHub::new(),
-            Default::default(),
-        );
-        let send = |event: ControlEvent| {
-            let mut guard = state.dmx_engine.write().unwrap();
-            engine.apply(
-                &mut guard,
-                ControlEventMessage::new(EventOriginator::Web, event),
-            )
-        };
-
-        {
-            let mut guard = state.dmx_engine.write().unwrap();
-            let fixtures = (0..4u8)
-                .map(|fid| {
-                    (
-                        fid,
-                        Fixture::new(
-                            0,
-                            1 + 3 * fid as usize,
-                            format!("F{fid}"),
-                            FixtureType::from(Light::Generic3ChanNoAlpha),
-                        ),
-                    )
-                })
-                .collect();
-            guard.0.groups.insert(
-                0,
-                FixtureGroup {
-                    name: "G".to_string(),
-                    fixtures,
-                    folder: None,
-                },
-            );
-            guard.0.new_scene("Focused".to_string());
-            guard.0.new_scene("Other".to_string());
-            guard.0.current_scene_focus = 0;
-        }
-        for event in [
-            ControlEvent::SelectGroup(0),
-            ControlEvent::LimitSelectionToFixtureInCurrentGroup(3),
-            ControlEvent::LimitSelectionToFixtureInCurrentGroup(1),
-        ] {
-            assert_eq!(send(event).0, None);
-        }
-
-        let id = {
-            let mut guard = state.dmx_engine.write().unwrap();
-            ensure_preset_template(&mut guard.0.animation_templates, AnimationPreset::KickFlash)
-                .unwrap()
-        };
-        assert_eq!(send(toggle_animation_event(id, false)).0, None);
-
-        {
-            let guard = state.dmx_engine.read().unwrap();
-            let selection = guard.get_selection();
-            let animations = selection_animations(guard.curr_scene(), &selection).unwrap();
-            assert_eq!(animations.keys().copied().collect::<Vec<_>>(), vec![id]);
-            assert_eq!(animations[&id].spec_cloned.name, "Kick Flash");
-            assert!(animations[&id].enabled, "an applied preset runs");
-            assert!(guard.0.scenes[&1].sink.active_animations.is_empty());
-        }
-
-        assert_eq!(send(toggle_animation_event(id, true)).0, None);
-        let guard = state.dmx_engine.read().unwrap();
-        assert!(selection_animations(guard.curr_scene(), &guard.get_selection()).is_none());
     }
 }

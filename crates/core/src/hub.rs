@@ -29,7 +29,10 @@ use std::{
     time::Duration,
 };
 
-use blaulicht_shared::{ControlEvent, ControlEventMessage, CONTROLS_REQUIRING_SELECTION};
+use blaulicht_shared::{
+    scene::FixtureSelection, AnimationPreset, ControlEvent, ControlEventMessage,
+    CONTROLS_REQUIRING_SELECTION,
+};
 use crossbeam_channel::{Receiver, Sender};
 use strum::EnumCount;
 
@@ -180,7 +183,66 @@ pub enum HostCommand {
     /// Does nothing; the engine answers `Ok`. Lets a client check its command
     /// path end to end.
     Ping,
+    /// Applies a starter preset to the sender's selection in its focused
+    /// scene, or removes it if it is already on it. The preset's template
+    /// (the lowest-id template named after it) is created first if there is
+    /// none, and reported as `CreatedId::AnimationTemplate`. Refused with
+    /// "Animation limit reached" when every template id is taken, or with the
+    /// engine's reason when it rejects the add (the template stays).
+    ToggleAnimationPreset(AnimationPreset),
+    /// Saves the animation `animation_id` on `selection` in the sender's
+    /// focused scene as a new template named `name` (trimmed), copying a WASM
+    /// animation's plugin state to the template. Answers
+    /// `CreatedId::AnimationTemplate`; refused with "Animation not found" or
+    /// "Animation limit reached".
+    SaveAnimationAsTemplate {
+        selection: FixtureSelection,
+        animation_id: u8,
+        name: String,
+    },
+    /// Copies the persisted state of WASM animation instance `source` of
+    /// plugin `plugin_key` to instance `target` (for example from a scene's
+    /// animation to an editor, and back on Apply). `target` restarts with it.
+    /// Does nothing if `source` has no state.
+    CloneAnimationInstanceState {
+        plugin_key: String,
+        source: u64,
+        target: u64,
+    },
+    /// Keeps a WASM animation editor ticking: the plugin `plugin_key` runs
+    /// editor instance `instance_id` on `fixtures` and publishes its editor
+    /// UI. The engine drops a request it hasn't heard of for 250 ms, so an
+    /// open editor resends it (`ANIMATION_EDITOR_KEEPALIVE`).
+    KeepAnimationEditorAlive {
+        plugin_key: String,
+        instance_id: u64,
+        fixtures: Vec<(u8, u8)>,
+    },
 }
+
+impl HostCommand {
+    /// Whether applying the command changes what the showfile saves, so a
+    /// frontend that sees it on the bus marks the show unsaved (as it does
+    /// for `ControlEvent`s).
+    pub fn edits_show(&self) -> bool {
+        match self {
+            HostCommand::ToggleAnimationPreset(_) | HostCommand::SaveAnimationAsTemplate { .. } => {
+                true
+            }
+            // A copy into an editor instance is scratch state; the Apply
+            // that copies it back sends `LoadSpecIntoAnimation`, which marks
+            // the show.
+            HostCommand::Ping
+            | HostCommand::CloneAnimationInstanceState { .. }
+            | HostCommand::KeepAnimationEditorAlive { .. } => false,
+        }
+    }
+}
+
+/// How often an open WASM animation editor resends
+/// [`HostCommand::KeepAnimationEditorAlive`]; well below the engine's 250 ms
+/// timeout.
+pub const ANIMATION_EDITOR_KEEPALIVE: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug)]
 pub enum BusBody {
@@ -286,6 +348,8 @@ pub fn plugin_events(messages: impl IntoIterator<Item = BusMessage>) -> Vec<Cont
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CreatedId {
     Palette(u8),
+    /// An animation template.
+    AnimationTemplate(u8),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

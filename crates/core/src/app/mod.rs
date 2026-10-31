@@ -626,6 +626,8 @@ impl BlaulichtApp {
                 scene_changes_dialog_open: false,
                 undo_all_changes_confirm_open: false,
                 animation_presets: Default::default(),
+                master_alpha_held: Default::default(),
+                master_speed_held: Default::default(),
             },
             system_ui_state: SystemUI::default(),
             dmx_simulator: DmxSimulator::default(),
