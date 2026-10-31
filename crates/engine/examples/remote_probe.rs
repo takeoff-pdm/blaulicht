@@ -57,7 +57,10 @@ fn main() -> anyhow::Result<()> {
                 shows.push((frames, bytes));
             }
         }
-        line += &format!("  (last show {:.1} KB)", stats.last_show_bytes as f64 / 1024.0);
+        line += &format!(
+            "  (last show {:.1} KB)",
+            stats.last_show_bytes as f64 / 1024.0
+        );
         println!("{line}");
         last = stats.by_kind;
         if !client.is_connected() {
