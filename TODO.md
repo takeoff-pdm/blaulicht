@@ -111,7 +111,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 050 | [Programmer onto EngineClient](TICKETS/decouple/050-programmer-onto-client.done.md) | done | 042 |
 | 043 | [Setup pages onto EngineClient](TICKETS/decouple/043-commands-setup-pages.done.md) | done | 042 |
 | 044 | [Performance, View and Scene graph pages onto EngineClient](TICKETS/decouple/044-commands-performance-view-graph.done.md) | done | 042 |
-| 051 | [Visualizer onto EngineClient; stage geometry becomes show state](TICKETS/decouple/051-visualizer-stage-into-engine.planned.md) | planned | 042 |
+| 051 | [Visualizer onto EngineClient; stage geometry becomes show state](TICKETS/decouple/051-visualizer-stage-into-engine.doing.md) | doing | 042 |
 | 045 | [Audio, Art-Net and System pages onto EngineClient](TICKETS/decouple/045-commands-audio-artnet-system.planned.md) | planned | 042, 039 |
 | 052 | [Engine owns showfile, config and lifecycle](TICKETS/decouple/052-engine-owns-persistence.planned.md) | planned | 049, 042, 051, 043, 044, 045, 050 |
 | 046 | [Remove egui from engine-side code](TICKETS/decouple/046-egui-out-of-engine-code.planned.md) | planned | — |
