@@ -2,11 +2,11 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
 };
-use crate::client::{EngineClient, LocalClient};
-use crate::config::ShowfileUiState;
-use crate::hub::{CommandOutcome, HostCommand};
-use crate::persistence::SaveStatus;
-use crate::state::ScreenId;
+use blaulicht_engine::client::{EngineClient, LocalClient};
+use blaulicht_engine::config::ShowfileUiState;
+use blaulicht_engine::hub::{CommandOutcome, HostCommand};
+use blaulicht_engine::persistence::SaveStatus;
+use blaulicht_engine::state::ScreenId;
 
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;
@@ -240,7 +240,7 @@ impl BlaulichtApp {
             self.animation_time += 0.016; // 16ms ~= 60fps
 
             let render_context = crate::app::page::PageRenderContext::new(
-                crate::config::PageRenderMode::Default,
+                blaulicht_engine::config::PageRenderMode::Default,
                 ui.available_size(),
             );
             self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN, render_context);

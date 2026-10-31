@@ -2,9 +2,9 @@ use crate::app::{
     components::{self, Dialog},
     BlaulichtApp,
 };
-use crate::client::EngineClient;
-use crate::dmx::SCENE_GRAPH_CANVAS_HALF_EXTENT as CANVAS_HALF_EXTENT;
-use crate::hub::{CommandSeq, HostCommand, SceneGraphEdgeParam, SceneGraphNodeParam};
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::dmx::SCENE_GRAPH_CANVAS_HALF_EXTENT as CANVAS_HALF_EXTENT;
+use blaulicht_engine::hub::{CommandSeq, HostCommand, SceneGraphEdgeParam, SceneGraphNodeParam};
 use blaulicht_shared::{
     scene_graph::{GraphId, NodeId, SceneGraph, TransitionCondition},
     AnimationSpeedModifier, ControlEvent,

@@ -115,6 +115,19 @@ impl SpectrogramImage {
             .flat_map(|&[r, g, b, _]| [r, g, b])
             .collect()
     }
+
+    /// Writes the image as a BMP file (debug dumps), so callers need no
+    /// image crate of their own.
+    pub fn save_bmp(&self, path: &std::path::Path) -> std::io::Result<()> {
+        let buffer =
+            image::RgbImage::from_raw(self.width as u32, self.height as u32, self.rgb_bytes())
+                .ok_or_else(|| {
+                    std::io::Error::other("spectrogram image has the wrong pixel count")
+                })?;
+        buffer
+            .save_with_format(path, image::ImageFormat::Bmp)
+            .map_err(std::io::Error::other)
+    }
 }
 
 pub struct SpectrogramDisplayOptions {

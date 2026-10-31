@@ -26,8 +26,8 @@ pub(crate) use palettes::palette_kind_label;
 pub use palettes::PaletteUI;
 
 use crate::app::{page::PageRenderContext, BlaulichtApp};
-use crate::client::EngineClient;
-use crate::hub::{CreatedId, HostCommand};
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::hub::{CreatedId, HostCommand};
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::Context;
 

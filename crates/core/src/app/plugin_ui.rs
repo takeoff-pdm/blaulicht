@@ -1,6 +1,6 @@
 use crate::app::{components, view_state::PluginTabSelections, BlaulichtApp};
-use crate::client::{EngineClient, LocalClient};
-use crate::state::ScreenId;
+use blaulicht_engine::client::{EngineClient, LocalClient};
+use blaulicht_engine::state::ScreenId;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, PluginUiEvent};
 use egui::Context;
 use strum::IntoEnumIterator;
@@ -28,7 +28,7 @@ impl BlaulichtApp {
         self.client.with_plugin_runtime_kinds(|kinds| {
             matches!(
                 kinds.get(&plugin_id),
-                Some(crate::state::PluginRuntimeKind::Animation { .. })
+                Some(blaulicht_engine::state::PluginRuntimeKind::Animation { .. })
             )
         })
     }
@@ -61,7 +61,7 @@ impl BlaulichtApp {
     pub fn render_plugin_ui(&mut self, ctx: &Context, canvas_screen_id: ScreenId) {
         let visibility_map = self.view_state.plugin_visibility.clone();
         // Copies of the ops of the windows open on this screen only.
-        let ops_map: std::collections::HashMap<u8, Vec<crate::ui_ops::WasmUiOp>> =
+        let ops_map: std::collections::HashMap<u8, Vec<blaulicht_engine::ui_ops::WasmUiOp>> =
             self.client.with_plugin_ui_ops(|ops| {
                 visibility_map
                     .iter()
@@ -273,14 +273,14 @@ fn plugin_text_edit(
 /// op list.
 pub(crate) fn render_plugin_ops(
     ui: &mut egui::Ui,
-    ops: &[crate::ui_ops::WasmUiOp],
+    ops: &[blaulicht_engine::ui_ops::WasmUiOp],
     idx: &mut usize,
     client: &LocalClient,
     plugin_id: u8,
     animation_instance: Option<u64>,
     tabs_selected: &mut PluginTabSelections,
 ) {
-    use crate::ui_ops::WasmUiOp as Op;
+    use blaulicht_engine::ui_ops::WasmUiOp as Op;
     let route_event = |event| match animation_instance {
         Some(instance) => ControlEvent::AnimationPluginUi(event, plugin_id, instance),
         None => ControlEvent::PluginUi(event, plugin_id),

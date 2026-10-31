@@ -6,9 +6,9 @@ use std::{
 
 use egui::{Id, Pos2};
 
-use crate::hub::CommandSeq;
-use crate::stage::StageScene;
 use crate::stage_assets::PreparedStageModel;
+use blaulicht_engine::hub::CommandSeq;
+use blaulicht_engine::stage::StageScene;
 
 use super::constants::{DEFAULT_ROOM_DEPTH, DEFAULT_ROOM_WIDTH};
 use super::data::{Pose, RenderSceneSnapshot};

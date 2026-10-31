@@ -1,16 +1,16 @@
 use anyhow::Context;
 use blaulicht_core::app::BlaulichtApp;
-use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
-use blaulicht_core::client::LocalClient;
-use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::hub::{BusMessage, ClientId, SessionId, SystemHub};
-use blaulicht_core::mainloop::SupervisorRequest;
-use blaulicht_core::msg::{StageStatus, StartupStage, SystemMessage};
-use blaulicht_core::persistence::{ExitRequest, PersistenceService};
-use blaulicht_core::plugin::PluginManager;
-use blaulicht_core::state::AppState;
-use blaulicht_core::{config, mainloop, utils};
+use blaulicht_engine::audio::defs::AudioThreadControlSignal;
+use blaulicht_engine::client::LocalClient;
+use blaulicht_engine::event::SystemEventBus;
+use blaulicht_engine::hub::{BusMessage, ClientId, SessionId, SystemHub};
+use blaulicht_engine::mainloop::SupervisorRequest;
+use blaulicht_engine::msg::{StageStatus, StartupStage, SystemMessage};
+use blaulicht_engine::persistence::{ExitRequest, PersistenceService};
+use blaulicht_engine::plugin::PluginManager;
+use blaulicht_engine::state::AppState;
+use blaulicht_engine::{config, mainloop, utils};
 use clap::Parser;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     // Every system message (logs, startup stages, heartbeats, ...) goes
     // through the hub; frontends subscribe to it.
     let hub = SystemHub::new();
-    blaulicht_core::log::init_tracing(hub.clone());
+    blaulicht_engine::log::init_tracing(hub.clone());
 
     let cfg = config::read_config(config_filepath.clone())?;
     let Some(cfg) = cfg else {

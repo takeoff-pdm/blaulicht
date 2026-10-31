@@ -1,9 +1,9 @@
-use crate::{
-    app::BlaulichtApp,
+use crate::app::BlaulichtApp;
+use blaulicht_assets::icons;
+use blaulicht_engine::{
     client::EngineClient,
     state::{MidiDeviceState, SerialDeviceState},
 };
-use blaulicht_assets::icons;
 use blaulicht_shared::AppSubPage;
 use egui::{Color32, Frame, Label, Margin, RichText, Ui, Vec2};
 

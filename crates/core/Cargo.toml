@@ -13,55 +13,30 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 [features]
 default = ["audio", "wayland", "wasmtime"] # ["wasmtime"]   # keep it on by default
-wasmtime = ["dep:rustc-demangle", "dep:wasmtime"]
-audio = ["dep:audioviz", "dep:cpal", "blaulicht-audio-engine/stream_in", "blaulicht-audio-engine/noise"]
-audio-mock = ["blaulicht-audio-engine/noise"]
+wasmtime = ["blaulicht-engine/wasmtime"]
+audio = ["blaulicht-engine/audio"]
+audio-mock = ["blaulicht-engine/audio-mock"]
 wayland = ["eframe/wayland"]
 x11 = ["eframe/x11"]
-dhat = ["dep:dhat"]
+dhat = ["dep:dhat", "blaulicht-engine/dhat"]
 
 [dependencies]
-
-# Audio
-audioviz = { version = "0.6.0", features = ["serde"], optional = true }
-audio_thread_priority = "0.34.0"
-# audioviz = { path = "../../../audioviz/", features = ["serde"], optional = true }
-cpal = { version = "0.15.3", optional = true }
+blaulicht-engine = { path = "../engine", default-features = false }
 blaulicht-audio-engine = { path = "../audio_engine/", default-features = false }
-
-
-# Default
-serde = { version = "1", features = ["derive"] }
-spin_sleep = "1.2.1"
-anyhow = "1.0.94"
-toml = "0.8.19"
-serde_json = "1.0.135"
-crossbeam-channel = "0.5.14"
-itertools = "0.14.0"
-rand = "0.9.2"
-thread-priority = "1.2.0"
 blaulicht-shared = { path = "../shared" }
 blaulicht-assets = { path = "../assets" }
-maplit = "1.0.2"
+
+serde = { version = "1", features = ["derive"] }
+anyhow = "1.0.94"
+serde_json = "1.0.135"
+crossbeam-channel = "0.5.14"
 map-range = "0.1.2"
 strum = { version = "0.27.2", features = ["derive"] }
-# noise = "0.12.0"
 chrono = "0.4.42"
-artnet_protocol = "0.4.4"
 dhat = { version = "0.3.3", optional = true }
 clap = { version = "4.5.56", default-features = false, features = ["derive"] }
-
-# Wasm
-wasmtime = { version = "31.0.0", optional = true, features = [ "all-arch" ] }
-rustc-demangle = { version = "0.1.26", optional = true }
-notify = "7.0.0"
-
-# Midi
-midir = "0.10.1"
-
-# DMX
-serialport = "4.7.3"
-# enttecopendmx = "0.1.1"
+tempdir = "0.3.7"
+tracing = "0.1.44"
 
 # Egui
 egui = "0.34.1"
@@ -73,7 +48,6 @@ eframe = { version = "0.34.1", default-features = false, features = [
     #"persistence",   # Enable restoring app state when restarting the app.
 ] }
 egui_plot = "0.35.0"
-# egui_file = "0.30.0"
 egui-phosphor = "0.12.0"
 egui_code_editor = { version = "=0.2.24" }
 egui_glow = "0.34.1"
@@ -82,22 +56,10 @@ egui-snarl = { version = "0.10", features = ["serde"] }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 bytemuck = "1.14.3"
 sysinfo = "0.30.13"
-sha2 = "0.10"
 three-d = { version = "0.19", default-features = false }
 three-d-asset = { version = "0.10", default-features = false, features = ["gltf", "png", "jpeg"] }
-
-
-tempdir = "0.3.7"
-tracing = "0.1.44"
-tracing-log = "0.2"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-winit = "0.30.13"
 fdg-sim = "0.9.1"
 
-
-[target.'cfg(target_os = "macos")'.dependencies]
-mach = "0.3"
-libc = "0.2"
 
 [profile.dev.package.audioviz]
 opt-level = 0

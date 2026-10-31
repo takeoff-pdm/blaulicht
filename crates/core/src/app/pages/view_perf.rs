@@ -2,8 +2,8 @@ use crate::app::{
     components::{self, ButtonSize, Knob, SpeedKnob, TreeItem},
     BlaulichtApp,
 };
-use crate::client::EngineClient;
-use crate::hub::HostCommand;
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::hub::HostCommand;
 use blaulicht_shared::{
     folder::FolderId, scene::BLANK_SCENE_ID, AnimationSpeedModifier, ControlEvent,
     ControlEventMessage, EventOriginator,

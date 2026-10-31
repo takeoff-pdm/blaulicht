@@ -10,7 +10,7 @@
 //! folder picker. Assigning a palette to a selection is done in the
 //! Programmer (`render_palette_assignment_dialog` in `pages/programmer.rs`).
 
-use crate::client::EngineClient;
+use blaulicht_engine::client::EngineClient;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 

@@ -1,11 +1,10 @@
-use crate::{
-    app::{
-        components::{
-            self, ButtonSize, Dialog, HFader, TreeAction, TreeKey, NARROW_TREE_WIDTH,
-            SETUP_GROUP_TREE,
-        },
-        BlaulichtApp, Selection,
+use crate::app::{
+    components::{
+        self, ButtonSize, Dialog, HFader, TreeAction, TreeKey, NARROW_TREE_WIDTH, SETUP_GROUP_TREE,
     },
+    BlaulichtApp, Selection,
+};
+use blaulicht_engine::{
     client::{EngineClient, LocalClient},
     dmx::EngineState,
     state::NUM_DMX_UNIVERSES,

@@ -5,14 +5,14 @@
 //! templates, and the Programmer's Scene Animations dialog, which edits an
 //! applied animation.
 
-use crate::{
-    app::{
-        components::{
-            self, palette_binding_button, ButtonSize, HFader, Numberpad, PaletteBindingAction,
-            PaletteBindingState,
-        },
-        BlaulichtApp,
+use crate::app::{
+    components::{
+        self, palette_binding_button, ButtonSize, HFader, Numberpad, PaletteBindingAction,
+        PaletteBindingState,
     },
+    BlaulichtApp,
+};
+use blaulicht_engine::{
     client::EngineClient,
     dmx::animation::{
         audio::{
@@ -209,7 +209,7 @@ impl AnimationEditState {
         ctx: &egui::Context,
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
-        client: &crate::client::LocalClient,
+        client: &blaulicht_engine::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         wasm_fixtures: &[(u8, u8)],
         panel_max: egui::Pos2,
@@ -263,7 +263,7 @@ impl AnimationEditState {
     fn anim_wasm_ui(
         &mut self,
         ui: &mut egui::Ui,
-        client: &crate::client::LocalClient,
+        client: &blaulicht_engine::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         fixtures: &[(u8, u8)],
     ) {
@@ -283,7 +283,7 @@ impl AnimationEditState {
             kinds
                 .iter()
                 .filter_map(|(id, kind)| match kind {
-                    crate::state::PluginRuntimeKind::Animation {
+                    blaulicht_engine::state::PluginRuntimeKind::Animation {
                         stable_key,
                         display_name,
                     } => Some((*id, stable_key.clone(), display_name.clone())),

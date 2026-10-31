@@ -8,15 +8,13 @@
 //! Applying templates and presets to a selection lives in the Programmer
 //! (`pages/programmer_animations.rs`), which does not call into this module.
 
-use crate::{
-    app::{
-        components::{self, button, ButtonSize, Dialog, Pagination},
-        pages::AnimationEditState,
-        BlaulichtApp,
-    },
-    client::EngineClient,
-    hub::HostCommand,
-    plugin::tick::stable_animation_template_id,
+use crate::app::{
+    components::{self, button, ButtonSize, Dialog, Pagination},
+    pages::AnimationEditState,
+    BlaulichtApp,
+};
+use blaulicht_engine::{
+    client::EngineClient, hub::HostCommand, plugin::stable_animation_template_id,
 };
 use blaulicht_shared::{
     AnimationPresetCategory, AnimationSpec, AnimationSpecBody, AnimationSpecBodyKind,

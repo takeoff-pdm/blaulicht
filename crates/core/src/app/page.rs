@@ -1,6 +1,6 @@
 use crate::app::{components, BlaulichtApp};
-use crate::client::EngineClient;
-use crate::state::ScreenId;
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::state::ScreenId;
 use blaulicht_shared::{
     AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
 };
@@ -15,14 +15,14 @@ pub(crate) enum PageWidthClass {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageRenderContext {
-    pub(crate) mode: crate::config::PageRenderMode,
+    pub(crate) mode: blaulicht_engine::config::PageRenderMode,
     pub(crate) size: egui::Vec2,
     pub(crate) width_class: PageWidthClass,
     pub(crate) short: bool,
 }
 
 impl PageRenderContext {
-    pub(crate) fn new(mode: crate::config::PageRenderMode, size: egui::Vec2) -> Self {
+    pub(crate) fn new(mode: blaulicht_engine::config::PageRenderMode, size: egui::Vec2) -> Self {
         let width = finite_dimension(size.x);
         let height = finite_dimension(size.y);
         let width_class = if width < 720.0 {
@@ -41,7 +41,7 @@ impl PageRenderContext {
     }
 
     pub(crate) fn is_dynamic(self) -> bool {
-        self.mode == crate::config::PageRenderMode::Dynamic
+        self.mode == blaulicht_engine::config::PageRenderMode::Dynamic
     }
 
     pub(crate) fn is_narrow_dynamic(self) -> bool {
@@ -187,7 +187,7 @@ mod tests {
     fn responsive_classes_are_stable_at_boundaries() {
         assert_eq!(
             PageRenderContext::new(
-                crate::config::PageRenderMode::Dynamic,
+                blaulicht_engine::config::PageRenderMode::Dynamic,
                 egui::vec2(719.0, 480.0)
             )
             .width_class,
@@ -195,7 +195,7 @@ mod tests {
         );
         assert_eq!(
             PageRenderContext::new(
-                crate::config::PageRenderMode::Dynamic,
+                blaulicht_engine::config::PageRenderMode::Dynamic,
                 egui::vec2(720.0, 480.0)
             )
             .width_class,
@@ -203,7 +203,7 @@ mod tests {
         );
         assert_eq!(
             PageRenderContext::new(
-                crate::config::PageRenderMode::Dynamic,
+                blaulicht_engine::config::PageRenderMode::Dynamic,
                 egui::vec2(1_200.0, 480.0)
             )
             .width_class,
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn invalid_dimensions_are_sanitized() {
         let context = PageRenderContext::new(
-            crate::config::PageRenderMode::Dynamic,
+            blaulicht_engine::config::PageRenderMode::Dynamic,
             egui::vec2(f32::NAN, f32::INFINITY),
         );
         assert_eq!(context.size, egui::vec2(1.0, 1.0));
@@ -235,7 +235,7 @@ mod tests {
         let _ = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let render_context = PageRenderContext::new(
-                    crate::config::PageRenderMode::Default,
+                    blaulicht_engine::config::PageRenderMode::Default,
                     ui.available_size(),
                 );
                 let row = render_context.horizontal(ui, egui::Align::Min, |ui| {

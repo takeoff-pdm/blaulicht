@@ -1,11 +1,11 @@
-use crate::stage::{
+use blaulicht_engine::stage::{
     TrussPart, TrussProfile, TrussSpec, TRUSS_CHORD_DIAMETER_M, TRUSS_LENGTH_STEP_M,
     TRUSS_PROFILE_SIZE_M,
 };
 
 use super::math::{mat4_mul, mat4_scale, mat4_translation, Vec3};
 
-pub(super) use crate::stage::geometry::{
+pub(super) use blaulicht_engine::stage::geometry::{
     nearest_mount, truss_bounds, truss_branches, world_branches, world_endpoints, TrussBranch,
 };
 
@@ -164,7 +164,7 @@ fn tube(start: Vec3, end: Vec3, radius: f32) -> TrussPrimitive {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stage::geometry::truss_endpoints;
+    use blaulicht_engine::stage::geometry::truss_endpoints;
 
     #[test]
     fn generated_profiles_are_finite_and_have_expected_endpoints() {

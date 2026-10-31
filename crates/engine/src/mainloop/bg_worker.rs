@@ -69,11 +69,8 @@ pub fn spawn_bg_worker(app_state: Arc<AppState>) {
                 &mut image,
             );
 
-            let imgbuf = image::RgbImage::from_raw(dim.0, dim.1, image.rgb_bytes())
-                .expect("spectrogram image has the requested size");
-
             let path = dir.join(format!("{count}.bmp"));
-            if let Err(err) = imgbuf.save_with_format(&path, image::ImageFormat::Bmp) {
+            if let Err(err) = image.save_bmp(&path) {
                 warn!(
                     "Failed to write spectrogram frame {}: {err}",
                     path.display()

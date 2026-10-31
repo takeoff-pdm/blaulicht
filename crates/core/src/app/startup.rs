@@ -1,8 +1,8 @@
-//! Startup stage checklist fed by [`SystemMessage::StartupStage`](crate::msg::SystemMessage).
+//! Startup stage checklist fed by [`SystemMessage::StartupStage`](blaulicht_engine::msg::SystemMessage).
 
 use strum::{EnumCount, IntoEnumIterator};
 
-use crate::msg::{StageState, StageStatus, StartupStage};
+use blaulicht_engine::msg::{StageState, StageStatus, StartupStage};
 
 /// What the navbar status indicator shows once the init popup is gone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

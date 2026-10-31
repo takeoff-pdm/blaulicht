@@ -64,19 +64,22 @@ fn source_for_module_path(path: &str) -> Cow<'static, str> {
     let submodule = segments.next().unwrap_or_default();
 
     let source = match krate {
-        "blaulicht_core" => match (module, submodule) {
+        "blaulicht_engine" => match (module, submodule) {
             ("plugin", "midi") => "MIDI",
             ("plugin", "udp") => "UDP",
             ("plugin", "serial") => "Serial",
             ("plugin", _) => "Plugin",
             ("dmx", _) => "DMX",
             ("audio", _) => "Audio",
-            ("app", _) => "UI",
             ("config", _) => "Config",
             ("routes", _) => "Web",
-            // `main.rs` logs with the bare crate name.
-            ("", _) => "Init",
             _ => "Engine",
+        },
+        // The desk binary, which still holds the egui app.
+        "blaulicht_core" => match module {
+            "app" => "UI",
+            // `main.rs` logs with the bare crate name.
+            _ => "Init",
         },
         "blaulicht_audio_engine" => "Audio",
         "blaulicht_shared" => "Engine",
@@ -182,16 +185,21 @@ mod tests {
     }
 
     #[test]
-    fn core_module_paths_map_to_subsystems() {
+    fn our_module_paths_map_to_subsystems() {
         assert_eq!(source_for_target("blaulicht_core"), "Init");
         assert_eq!(
-            source_for_target("blaulicht_core::mainloop::supervisor"),
+            source_for_target("blaulicht_engine::mainloop::supervisor"),
             "Engine"
         );
-        assert_eq!(source_for_target("blaulicht_core::plugin::wasm"), "Plugin");
-        assert_eq!(source_for_target("blaulicht_core::plugin::midi"), "MIDI");
-        assert_eq!(source_for_target("blaulicht_core::plugin::udp"), "UDP");
-        assert_eq!(source_for_target("blaulicht_core::dmx"), "DMX");
+        assert_eq!(source_for_target("blaulicht_engine::persistence"), "Engine");
+        assert_eq!(
+            source_for_target("blaulicht_engine::plugin::wasm"),
+            "Plugin"
+        );
+        assert_eq!(source_for_target("blaulicht_engine::plugin::midi"), "MIDI");
+        assert_eq!(source_for_target("blaulicht_engine::plugin::udp"), "UDP");
+        assert_eq!(source_for_target("blaulicht_engine::dmx"), "DMX");
+        assert_eq!(source_for_target("blaulicht_engine::config"), "Config");
         assert_eq!(source_for_target("blaulicht_core::app::pages::audio"), "UI");
         assert_eq!(
             source_for_target("blaulicht_audio_engine::collector"),

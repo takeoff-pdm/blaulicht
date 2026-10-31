@@ -1,14 +1,9 @@
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog},
-        pages::health::{
-            render_dmx_or_artnet_health_box, DMX_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR,
-        },
-        BlaulichtApp,
-    },
-    client::EngineClient,
-    state::DmxHealthState,
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    pages::health::{render_dmx_or_artnet_health_box, DMX_ICON, DMX_OR_ARTNET_HEALTH_LABEL_COLOR},
+    BlaulichtApp,
 };
+use blaulicht_engine::{client::EngineClient, state::DmxHealthState};
 use egui::{Color32, Context, FontFamily, Label, RichText};
 
 impl BlaulichtApp {

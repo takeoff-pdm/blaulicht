@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 
 use super::BlaulichtApp;
-use crate::client::EngineClient;
+use blaulicht_engine::client::EngineClient;
 
 const RECENT_PROPERTY_WINDOW: Duration = Duration::from_secs(5);
 

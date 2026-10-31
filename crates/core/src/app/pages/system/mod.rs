@@ -1,7 +1,5 @@
-use crate::{
-    app::{components::Numberpad, ui::FileDialogOpenOrigin},
-    state::NUM_DMX_UNIVERSES,
-};
+use crate::app::{components::Numberpad, ui::FileDialogOpenOrigin};
+use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 use egui_file_dialog::FileDialog;
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 

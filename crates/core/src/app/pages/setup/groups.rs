@@ -21,9 +21,9 @@ use crate::app::{
     page::PageRenderContext,
     BlaulichtApp,
 };
-use crate::client::EngineClient;
-use crate::dmx::EngineState;
-use crate::hub::HostCommand;
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::dmx::EngineState;
+use blaulicht_engine::hub::HostCommand;
 use blaulicht_shared::{
     folder::{FolderId, FolderItem, FolderKind},
     AppSubPage, ControlEvent, ControlEventMessage, EngineGroups, EventOriginator,

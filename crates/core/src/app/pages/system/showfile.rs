@@ -1,13 +1,9 @@
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog},
-        ui::FileDialogOpenOrigin,
-        BlaulichtApp, PopupSpec,
-    },
-    client::EngineClient,
-    hub::HostCommand,
-    persistence::SaveStatus,
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    ui::FileDialogOpenOrigin,
+    BlaulichtApp, PopupSpec,
 };
+use blaulicht_engine::{client::EngineClient, hub::HostCommand, persistence::SaveStatus};
 use egui::{Context, FontFamily, FontId, Ui};
 use egui_file_dialog::{FileDialog, Filter};
 use egui_phosphor::regular as ph;

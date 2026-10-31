@@ -1,13 +1,13 @@
 use crate::app::components::{ButtonSize, HFader};
 use crate::app::{components, BlaulichtApp};
-use crate::client::EngineClient;
-use crate::hub::{AudioParam, HostCommand};
-use crate::msg::DummyInput;
 use blaulicht_audio_engine::{
     bin_rows, create_spectrogram_image, draw_markers, spectrogram_color, AudioSpectrogram,
     BeatDetection, BeatFrontEnd, BpmDetectStatus, CollectorOutput, SignalDebugData,
     SpectrogramDisplayOptions, SpectrogramImage,
 };
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::hub::{AudioParam, HostCommand};
+use blaulicht_engine::msg::DummyInput;
 use blaulicht_shared::AudioSourceStatus;
 
 use egui::{vec2, Color32, FontId, Frame, Margin, RichText, TextureHandle, Widget};

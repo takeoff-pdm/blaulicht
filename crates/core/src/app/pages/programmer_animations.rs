@@ -10,11 +10,11 @@
 //! template is `HostCommand::SaveAnimationAsTemplate`. Editing templates
 //! stays on the Animations page.
 
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog, TextInput},
-        BlaulichtApp, PopupSpec,
-    },
+use crate::app::{
+    components::{self, ButtonSize, Dialog, TextInput},
+    BlaulichtApp, PopupSpec,
+};
+use blaulicht_engine::{
     client::EngineClient,
     dmx::{
         animation::templates::{preset_template_id, selection_animations, toggle_animation_event},
@@ -518,7 +518,7 @@ impl BlaulichtApp {
 #[cfg(test)]
 mod tests {
     use super::{saved_templates, unique_template_name};
-    use crate::dmx::animation::templates::preset_template_id;
+    use blaulicht_engine::dmx::animation::templates::preset_template_id;
     use blaulicht_shared::{AnimationPreset, AnimationSpec, AnimationTemplate};
     use std::collections::BTreeMap;
 

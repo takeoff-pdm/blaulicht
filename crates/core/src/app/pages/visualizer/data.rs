@@ -6,9 +6,9 @@ use blaulicht_shared::{
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use crate::dmx::EngineState;
-use crate::stage::{geometry::attachment_pose, StageObjectKind, StageScene};
 use crate::stage_assets::PreparedStageModel;
+use blaulicht_engine::dmx::EngineState;
+use blaulicht_engine::stage::{geometry::attachment_pose, StageObjectKind, StageScene};
 
 use super::constants::{BASE_SIZE, HEAD_SIZE, PAN_JOINT_HEIGHT, YOKE_HEIGHT};
 use super::math::{
@@ -38,7 +38,7 @@ pub(super) struct RenderStageObject {
     pub(super) color: [f32; 3],
     pub(super) model_key: Option<String>,
     pub(super) prepared_model: Option<Arc<PreparedStageModel>>,
-    pub(super) truss: Option<crate::stage::TrussSpec>,
+    pub(super) truss: Option<blaulicht_engine::stage::TrussSpec>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

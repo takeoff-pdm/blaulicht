@@ -2,7 +2,7 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     BlaulichtApp, PopupSpec,
 };
-use crate::msg::StageState;
+use blaulicht_engine::msg::StageState;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 use std::time::{Duration, Instant};
 

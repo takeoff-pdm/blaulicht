@@ -1,12 +1,8 @@
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog},
-        BlaulichtApp,
-    },
-    client::EngineClient,
-    plugin::midi::MidiError,
-    state::MidiDeviceState,
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    BlaulichtApp,
 };
+use blaulicht_engine::{client::EngineClient, plugin::midi::MidiError, state::MidiDeviceState};
 use egui::{Color32, Context, FontId, Frame, Label, Margin, RichText};
 
 impl BlaulichtApp {

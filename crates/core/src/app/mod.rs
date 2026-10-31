@@ -1,15 +1,15 @@
-use crate::{
-    app::{
-        components::{
-            DmxSimulator, LogWindow, Navbar, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
-            DEFAULT_NEW_SCENE_NAME,
-        },
-        external_screen::Pane,
-        pages::{
-            AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI, ProgrammerUi,
-            SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
-        },
+use crate::app::{
+    components::{
+        DmxSimulator, LogWindow, Navbar, Numberpad, TimeSeriesGraph, DEFAULT_NEW_GROUP_NAME,
+        DEFAULT_NEW_SCENE_NAME,
     },
+    external_screen::Pane,
+    pages::{
+        AddFixtureIncrementAxis, AddFixtureKind, AnimationEditState, AnimationUI, ProgrammerUi,
+        SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
+    },
+};
+use blaulicht_engine::{
     client::{LocalClient, ReplyHandlers},
     config::ShowfileUiState,
     msg::TickSpeeds,
@@ -292,7 +292,7 @@ pub struct BlaulichtApp {
     /// The Setup dialog command (batch add, rename, create) whose reply is
     /// still on its way; the dialog's OK waits for it (see
     /// `setup_reply_pending`).
-    setup_reply: Option<crate::hub::CommandSeq>,
+    setup_reply: Option<blaulicht_engine::hub::CommandSeq>,
     move_fixture_group_dialog_open: bool,
     new_group_name: String,
     /// Setup › Groups: selected folder and the open folder dialog.
@@ -419,7 +419,7 @@ impl BlaulichtApp {
             loop_speed_graph: TimeSeriesGraph::new(
                 "Loop (ms)".to_string(),
                 0,
-                crate::mainloop::DMX_TICK_TIME.as_millis() as i32,
+                blaulicht_engine::mainloop::DMX_TICK_TIME.as_millis() as i32,
                 egui::Color32::from_rgb(0, 200, 255),
             )
             .with_autoscale(),

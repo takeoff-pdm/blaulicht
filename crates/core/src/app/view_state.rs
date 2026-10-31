@@ -1,12 +1,12 @@
 //! View state owned by the native (desk) frontend: which plugin UIs are open
 //! and where, pop-out and maximize state, and plugin tab selection. The engine
 //! only sees the part it needs through the
-//! [`FrontendUiMirror`](crate::frontend_ui::FrontendUiMirror).
+//! [`FrontendUiMirror`](blaulicht_engine::frontend_ui::FrontendUiMirror).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::frontend_ui::DeskRequest;
-use crate::state::ScreenId;
+use blaulicht_engine::frontend_ui::DeskRequest;
+use blaulicht_engine::state::ScreenId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PluginOpenState {

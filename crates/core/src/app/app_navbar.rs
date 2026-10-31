@@ -2,7 +2,7 @@ use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainU
 use egui::Context;
 
 use crate::app::{components::NavbarStatus, BlaulichtApp};
-use crate::client::EngineClient;
+use blaulicht_engine::client::EngineClient;
 
 impl BlaulichtApp {
     pub fn show_navbar(&mut self, ctx: &Context) {

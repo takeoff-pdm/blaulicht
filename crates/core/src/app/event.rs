@@ -1,5 +1,5 @@
-use crate::{
-    app::BlaulichtApp,
+use crate::app::BlaulichtApp;
+use blaulicht_engine::{
     client::{EngineClient, ReplyHandlers},
     hub::BusBody,
     msg::SystemMessage,

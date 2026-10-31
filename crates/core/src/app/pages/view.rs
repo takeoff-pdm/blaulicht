@@ -1,11 +1,9 @@
-use crate::client::EngineClient;
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog, Held, Knob, Pagination, SpeedKnob},
-        BlaulichtApp,
-    },
-    hub::{CommandSeq, CreatedId, HostCommand},
+use crate::app::{
+    components::{self, ButtonSize, Dialog, Held, Knob, Pagination, SpeedKnob},
+    BlaulichtApp,
 };
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand};
 use blaulicht_shared::{
     scene::BLANK_SCENE_ID, view::View, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
     EventOriginator,

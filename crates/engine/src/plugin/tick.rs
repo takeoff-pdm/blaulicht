@@ -95,7 +95,7 @@ fn decode_animation_output(output: &[u8]) -> anyhow::Result<AnimationTickOutput>
     .map_err(|_| anyhow::anyhow!("Invalid animation output from WASM plugin"))
 }
 
-pub(crate) fn stable_animation_instance_id(
+pub fn stable_animation_instance_id(
     plugin_key: &str,
     scene_id: u8,
     animation_id: u8,
@@ -119,7 +119,7 @@ pub(crate) fn stable_animation_instance_id(
     hash.max(1)
 }
 
-pub(crate) fn stable_animation_template_id(plugin_key: &str, animation_id: u8) -> u64 {
+pub fn stable_animation_template_id(plugin_key: &str, animation_id: u8) -> u64 {
     stable_animation_instance_id(plugin_key, u8::MAX, animation_id, &[])
 }
 

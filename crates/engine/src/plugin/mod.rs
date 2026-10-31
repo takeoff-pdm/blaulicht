@@ -35,6 +35,10 @@ pub(crate) mod tick;
 pub mod udp;
 pub(crate) mod wasm;
 
+/// Stable ids of animation instances and templates in plugin state storage
+/// (frontends name them in `HostCommand::CloneAnimationInstanceState`).
+pub use tick::{stable_animation_instance_id, stable_animation_template_id};
+
 pub struct PluginManager {
     // true if TODO
     has_crashed: bool,

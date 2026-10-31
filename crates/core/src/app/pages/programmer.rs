@@ -2,16 +2,12 @@
 //! and fixture selection, fixture attributes, palettes, animations and the
 //! focused scene's changes.
 
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog, Held, Knob, SpeedKnob},
-        pages::{palette_kind_label, AnimationEditState, AnimationPresetsUi},
-        BlaulichtApp,
-    },
-    client::EngineClient,
-    dmx::EngineState,
-    hub::HostCommand,
+use crate::app::{
+    components::{self, ButtonSize, Dialog, Held, Knob, SpeedKnob},
+    pages::{palette_kind_label, AnimationEditState, AnimationPresetsUi},
+    BlaulichtApp,
 };
+use blaulicht_engine::{client::EngineClient, dmx::EngineState, hub::HostCommand};
 use blaulicht_shared::{
     scene::{FixtureSelection, FixtureSelector, Scene},
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EventOriginator, FixtureProperty,
@@ -840,7 +836,7 @@ impl BlaulichtApp {
                         {
                             let mut fixtures = selec.fixtures.clone();
                             fixtures.sort_unstable();
-                            let source = crate::plugin::tick::stable_animation_instance_id(
+                            let source = blaulicht_engine::plugin::stable_animation_instance_id(
                                 &wasm.plugin_key,
                                 dmx_engine.0.current_scene_focus,
                                 *anim_id,
@@ -878,7 +874,7 @@ impl BlaulichtApp {
                         if let blaulicht_shared::AnimationSpecBody::WasmPlugin(wasm) = &spec.body {
                             let mut fixtures = selec.fixtures.clone();
                             fixtures.sort_unstable();
-                            let target = crate::plugin::tick::stable_animation_instance_id(
+                            let target = blaulicht_engine::plugin::stable_animation_instance_id(
                                 &wasm.plugin_key,
                                 dmx_engine.0.current_scene_focus,
                                 *anim_id,
@@ -1276,7 +1272,7 @@ mod tests {
         active_palettes_summary, clear_selection_shortcut_allowed, palette_toggle_event,
         sorted_changes, toolbar_button_width, undo_all_changes_event,
     };
-    use crate::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
+    use blaulicht_engine::{dmx::DmxEngine, event::SystemEventBus, state::AppState};
     use blaulicht_shared::{
         palette::{Palette, PaletteKind},
         scene::FixtureSelector,
@@ -1367,7 +1363,7 @@ mod tests {
         let engine = DmxEngine::new(
             state.clone(),
             bus.new_connection(),
-            crate::hub::SystemHub::new(),
+            blaulicht_engine::hub::SystemHub::new(),
             Default::default(),
         );
 

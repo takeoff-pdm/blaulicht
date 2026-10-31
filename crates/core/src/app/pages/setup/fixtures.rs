@@ -9,10 +9,10 @@ use crate::app::{
     page::PageRenderContext,
     BlaulichtApp,
 };
-use crate::client::EngineClient;
-use crate::dmx::EngineState;
-use crate::hub::{CreatedId, HostCommand};
-use crate::state::NUM_DMX_UNIVERSES;
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::dmx::EngineState;
+use blaulicht_engine::hub::{CreatedId, HostCommand};
+use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;

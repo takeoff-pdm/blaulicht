@@ -1,11 +1,8 @@
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog},
-        BlaulichtApp,
-    },
-    client::EngineClient,
-    state::SerialDeviceState,
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    BlaulichtApp,
 };
+use blaulicht_engine::{client::EngineClient, state::SerialDeviceState};
 use egui::{Color32, Context, FontFamily, Frame, Margin, RichText};
 use egui_extras::{Column, TableBuilder};
 

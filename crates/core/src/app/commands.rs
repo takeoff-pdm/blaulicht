@@ -2,7 +2,7 @@
 //! a follow-up once the engine has applied the command.
 
 use crate::app::{BlaulichtApp, PopupButtonSpec, PopupSpec};
-use crate::hub::{CommandOutcome, CommandSeq, CreatedId, HostCommand};
+use blaulicht_engine::hub::{CommandOutcome, CommandSeq, CreatedId, HostCommand};
 use std::time::Duration;
 
 impl BlaulichtApp {

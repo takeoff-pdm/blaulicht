@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use crate::{
-    app::{page::PageRenderContext, view_state::PluginOpenState, BlaulichtApp, ExternalScreen},
+use crate::app::{
+    page::PageRenderContext, view_state::PluginOpenState, BlaulichtApp, ExternalScreen,
+};
+use blaulicht_engine::{
     client::EngineClient,
     config::{
         PageRenderMode, ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab,

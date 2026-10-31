@@ -5,13 +5,13 @@ use egui_glow::CallbackFn;
 
 use crate::app::page::PageRenderContext;
 use crate::app::BlaulichtApp;
-use crate::client::EngineClient;
-use crate::hub::{CommandSeq, CreatedId, HostCommand, ModelBytes};
-use crate::stage::{
+use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand, ModelBytes};
+use blaulicht_engine::stage::{
     FixturePlacement, FixtureTrussAttachment, StageObject, StageObjectKind, StagePatch,
     TrussConnection, TrussEndpointRef, TrussPart, TrussProfile, TrussSpec,
 };
-use crate::state::{ScreenId, NUM_DMX_UNIVERSES};
+use blaulicht_engine::state::{ScreenId, NUM_DMX_UNIVERSES};
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
 use super::data::{collect_fixtures, fixture_pose, Pose, RenderSceneSnapshot};
@@ -1228,7 +1228,7 @@ impl BlaulichtApp {
             {
                 continue;
             }
-            let path = match crate::stage_assets::resolve_asset(&showfile, &asset) {
+            let path = match blaulicht_engine::stage_assets::resolve_asset(&showfile, &asset) {
                 Ok(path) => path,
                 Err(error) => {
                     let error = error.to_string();
@@ -1701,8 +1701,9 @@ impl BlaulichtApp {
                         egui::StrokeKind::Inside,
                     );
                 } else {
-                    let outer_width =
-                        (crate::stage::TRUSS_PROFILE_SIZE_M * pixels_per_meter).clamp(5.0, 18.0);
+                    let outer_width = (blaulicht_engine::stage::TRUSS_PROFILE_SIZE_M
+                        * pixels_per_meter)
+                        .clamp(5.0, 18.0);
                     for branch in super::truss::world_branches(spec, &object.transform) {
                         let points = [
                             to_screen(branch.start.x, branch.start.z),
@@ -2289,7 +2290,7 @@ fn hit_test_top(
     pointer: Pos2,
     pixels_per_meter: f32,
     fixtures: &[((u8, u8), String, [f32; 2])],
-    stage: &crate::stage::StageScene,
+    stage: &blaulicht_engine::stage::StageScene,
     to_screen: &impl Fn(f32, f32) -> Pos2,
 ) -> Option<SelectionKey> {
     for (id, object) in stage.objects.iter().rev() {
@@ -2450,7 +2451,7 @@ fn project_selected_truss_endpoints(
 fn hit_test_projected(
     pointer: Pos2,
     items: &[(SelectionKey, Pos2)],
-    stage: &crate::stage::StageScene,
+    stage: &blaulicht_engine::stage::StageScene,
 ) -> Option<SelectionKey> {
     items
         .iter()

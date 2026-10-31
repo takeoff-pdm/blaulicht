@@ -1,9 +1,9 @@
-use crate::{
-    app::{
-        components::{self, ButtonSize, Dialog},
-        view_state::PluginOpenState,
-        BlaulichtApp, GuardedLifecycleAction, PopupSpec,
-    },
+use crate::app::{
+    components::{self, ButtonSize, Dialog},
+    view_state::PluginOpenState,
+    BlaulichtApp, GuardedLifecycleAction, PopupSpec,
+};
+use blaulicht_engine::{
     audio::defs::AudioThreadControlSignal,
     client::EngineClient,
     hub::HostCommand,
@@ -121,7 +121,7 @@ impl BlaulichtApp {
 
                     let name = showfile
                         .as_deref()
-                        .map(crate::config::showfile_display_name)
+                        .map(blaulicht_engine::config::showfile_display_name)
                         .unwrap_or_else(|| "N/A".to_string());
                     let name_label = ui.label(
                         egui::RichText::new(name)
@@ -130,7 +130,7 @@ impl BlaulichtApp {
                     );
                     if let Some(path) = &showfile {
                         name_label.on_hover_text(
-                            crate::config::absolute_showfile_path(path)
+                            blaulicht_engine::config::absolute_showfile_path(path)
                                 .to_string_lossy()
                                 .into_owned(),
                         );
@@ -477,7 +477,7 @@ impl BlaulichtApp {
     }
 }
 
-fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth]) {
+fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[blaulicht_engine::state::DmxHealth]) {
     for (universe, state) in states.iter().enumerate() {
         ui.group(|ui| {
             ui.strong(format!("Universe {universe}"));
@@ -489,10 +489,10 @@ fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth
             };
             ui.label(format!("Port: {port}"));
             match &state.state {
-                crate::state::DmxHealthState::Healthy => {
+                blaulicht_engine::state::DmxHealthState::Healthy => {
                     ui.colored_label(Color32::LIGHT_GREEN, "ONLINE");
                 }
-                crate::state::DmxHealthState::Error(error) => {
+                blaulicht_engine::state::DmxHealthState::Error(error) => {
                     ui.colored_label(Color32::LIGHT_RED, error);
                 }
             }
@@ -504,7 +504,7 @@ fn render_dmx_universe_rows(ui: &mut egui::Ui, states: &[crate::state::DmxHealth
 #[cfg(test)]
 mod system_layout_tests {
     use super::render_dmx_universe_rows;
-    use crate::state::{DmxHealth, NUM_DMX_UNIVERSES};
+    use blaulicht_engine::state::{DmxHealth, NUM_DMX_UNIVERSES};
 
     #[test]
     fn ten_dmx_universes_scroll_vertically_without_horizontal_overflow() {
