@@ -29,6 +29,7 @@ use std::{
 };
 
 mod app_navbar;
+mod commands;
 pub mod components;
 mod debug;
 mod event;

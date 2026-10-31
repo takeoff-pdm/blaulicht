@@ -25,12 +25,11 @@ pub use fixtures::{AddFixtureIncrementAxis, AddFixtureKind};
 pub(crate) use palettes::palette_kind_label;
 pub use palettes::PaletteUI;
 
-use crate::app::{page::PageRenderContext, BlaulichtApp, PopupButtonSpec, PopupSpec};
+use crate::app::{page::PageRenderContext, BlaulichtApp};
 use crate::client::EngineClient;
-use crate::hub::{CommandOutcome, CreatedId, HostCommand};
+use crate::hub::{CreatedId, HostCommand};
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::Context;
-use std::time::Duration;
 
 impl BlaulichtApp {
     pub fn setup_ui(
@@ -68,21 +67,16 @@ impl BlaulichtApp {
 }
 
 impl BlaulichtApp {
-    /// Sends a Setup command. `on_ok` runs once the engine has applied it
-    /// (with the id it created, if any); a refusal shows as a popup. Dialogs
-    /// that close only on success close in `on_ok`, and wait for the reply
-    /// before sending again ([`Self::setup_reply_pending`]).
+    /// Sends a Setup command ([`Self::send_command`]: `on_ok` runs once the
+    /// engine has applied it, a refusal shows as a popup). Dialogs that close
+    /// only on success close in `on_ok`, and wait for the reply before
+    /// sending again ([`Self::setup_reply_pending`]).
     fn send_setup_command(
         &mut self,
         command: HostCommand,
         on_ok: impl FnOnce(&mut Self, Option<CreatedId>) + 'static,
     ) {
-        let seq = self
-            .reply_handlers
-            .send_then(&self.client, command, move |app, outcome| match outcome {
-                CommandOutcome::Ok { created } => on_ok(app, *created),
-                CommandOutcome::Refused(why) => app.show_setup_refusal(why.clone()),
-            });
+        let seq = self.send_command(command, on_ok);
         self.setup_reply = Some(seq);
     }
 
@@ -90,16 +84,5 @@ impl BlaulichtApp {
     fn setup_reply_pending(&self) -> bool {
         self.setup_reply
             .is_some_and(|seq| self.reply_handlers.is_waiting(seq))
-    }
-
-    fn show_setup_refusal(&mut self, why: String) {
-        self.show_popup(PopupSpec {
-            label: why,
-            label_size: Some(18.0),
-            lifetime_duration: Duration::from_secs(5),
-            button: Some(PopupButtonSpec {
-                label: "OK".to_string(),
-            }),
-        });
     }
 }
