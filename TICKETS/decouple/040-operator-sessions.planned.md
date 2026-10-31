@@ -3,61 +3,69 @@
 | | |
 |---|---|
 | Epic | E10 Decouple |
-| Depends on | none |
-| ABI / showfile | none intended (see Scope); showfile shape unchanged |
+| Depends on | 049 |
+| ABI / showfile | none: `DESK` stays mirrored in `EngineState`, and the session id travels in 049's host-only envelope |
 
-**Touches:** `crates/shared/src/state/engine.rs`, `crates/shared/src/event.rs`, `crates/core/src/dmx/mod.rs`, `crates/core/src/dmx/state.rs`, `crates/core/src/plugin/tick.rs`, `crates/core/src/plugin/wasm.rs`, `crates/core/src/config.rs`, `crates/core/src/app/**` (readers of the moved fields)
+**Touches:** `crates/core/src/dmx/mod.rs`, `crates/core/src/dmx/state.rs`, `crates/core/src/dmx/management.rs`, `crates/shared/src/folder.rs` (only if a helper is needed), `crates/shared/src/state/engine.rs`, `crates/core/src/plugin/tick.rs`, `crates/core/src/app/event.rs`
 
 ## Problem
-`ControlEvent`s are stateful: `SetColor((r,g,b))` has no target. The engine applies it to `EngineState.selection`
-and writes it into `current_scene_focus`. Those fields, along with `selection_stack` and `control_buffer`, sit in
-the shared show state, so every client would share one selection. MIDI and plugin controllers (`midi_all/korg.rs`,
-`midi_all/legacy`, `console`, `ddj_*`) depend on this protocol and have no UI of their own to keep a selection in.
-
-Fix it the way web servers do: keep this state in an engine-side session, one per client.
+`ControlEvent`s are stateful: `SetColor((r,g,b))` has no target. The engine applies it to
+`EngineState.selection` and writes it into `current_scene_focus`. Those fields, `selection_stack`,
+`control_buffer` and `scene_graphs.focused_graph` belong to one operator. MIDI and plugin controllers (korg,
+legacy, console, ddj) depend on this protocol.
 
 ## Scope
-- Add `SessionId` (with `SessionId::DESK`) and `OperatorSession { selection, selection_stack, control_buffer,
-  scene_focus }`, plus a session store owned by the engine.
-- `ControlEventMessage` gets a `session: SessionId`. The UI and all plugins send `DESK` for now. Plugins call
-  `bl_send_event` with a bare `ControlEvent` and the host wraps it (`wasm.rs:875`), so the plugin ABI doesn't
-  change.
-- `apply` (`dmx/mod.rs:730`), `apply_on_selection_and_scene` (`:1225`) and every other engine reader resolve
-  selection and focus against the message's session.
-- **Plugin ABI stays as it is:** plugins receive a serialized `EngineState` (`tick.rs:234`) and read
-  `selection` / `current_scene_focus` (about 25 sites across console, ddj, korg, midilight, player, inspector).
-  Keep those fields in the shared struct, and have the host fill them from the plugin's session in the copy it
-  serializes. Document on each field that it is a projection of the caller's session, and add a debug assertion
-  that the engine's canonical copy holds only defaults. Removing the fields from `EngineState` is a later ABI
-  cleanup; add it to the `TODO.md` Inbox.
-- **Showfile:** `SaveEngineState.current_scene_focus` stays. Load seeds the `DESK` session's focus; save writes it.
-- Move the native UI's ~70 readers of `.selection` and the `current_scene_focus` readers onto the `DESK` session.
-  This is mechanical; don't restructure pages here.
-- Tests: two sessions with different selections each apply `SetColor` and change only their own fixtures; the
-  selection stack and focus are per session.
+- **Session store:** `OperatorSession { selection, selection_stack, control_buffer, scene_focus,
+  focused_graph }` for every session except `DESK`. Keep it in the core wrapper (`EngineStateRef`,
+  `dmx/state.rs`) under the same lock as `EngineState`, **not** in the shared struct.
+- **`DESK` stays in the existing `EngineState` fields.** Plugins (who get the serialized state at
+  `tick.rs:234`), the showfile (`SaveEngineState.current_scene_focus`, `scene_graphs.focused_graph`) and the
+  ~57 UI reader lines don't change.
+- **Swap in when applying an event:** for an event from session S ≠ `DESK`, the engine swaps S's fields into
+  `state.0` before `apply` and back afterwards. Do the swap *outside* the transaction snapshot
+  (`dmx/mod.rs:753`, `:762`), so a transaction rolls back the session it ran in. All existing readers and
+  writers (dmx/mod.rs, management.rs, folder.rs `SelectFolder`) then become session-aware without being
+  rewritten. `control_buffer.reset()` (`dmx/mod.rs:747`) then resets only the sender's buffer.
+- **Repair every session after structural changes.** After any event that deletes or changes groups, fixtures
+  or scenes, prune the side-store sessions: drop missing groups and fixtures from the selection and stack, and
+  reset focus to a valid scene, the same way `delete_scene` already repairs `DESK` (`engine.rs:224–231`). Patch
+  moves and swaps in `management.rs` (`:466–475`, `:548–549`) then end up pruning instead of moving for
+  non-desk sessions. That is acceptable; document it.
+- **Filter session-scoped events by session where they're consumed:**
+  - Plugins' `TickInput` gets only `DESK` events plus global ones. Otherwise a remote client's selection would
+    light up the korg's LEDs (`korg.rs:304–318`).
+  - The native UI's `handle_events` (jog target `recent_fixture_property`, dirty marking) ignores
+    session-scoped events from other sessions (`app/event.rs:34–46`, `:214–231`).
+  - Which events count as session-scoped: selection, focus and the control-buffer events. Write the list in
+    code, with a test.
+- **Session lifecycle:** create and drop sessions through the hub (049). New sessions start with focus on
+  `DESK`'s focus and an empty selection.
+- **Tests:**
+  - Two sessions select different groups, and `SetColor` changes only each one's own fixtures.
+  - Stack and focus are per session.
+  - Deleting a group prunes a remote session's selection.
+  - Deleting a scene repairs a remote session's focus.
+  - A transaction from a remote session rolls back only that session.
 
 ## Out of scope
-- `live_mode` (041).
-- Remote clients creating sessions (047).
+- Live preview (041).
+- UI code (042+).
 
 ## Key code
-- `EngineState` — `crates/shared/src/state/engine.rs:55`
-- `ControlEventMessage` / `EventOriginator` — `crates/shared/src/event.rs:18`, `:60`
-- Engine `apply` and `SelectGroup` handling — `crates/core/src/dmx/mod.rs:730`, `:800`
+- `apply` — `crates/core/src/dmx/mod.rs:730`; control buffer reset `:747`; transaction `:753`
+- `SelectGroup` — `crates/core/src/dmx/mod.rs:800`; `SetSceneFocus` `:993`; `RemoveChange` `:927`
 - `apply_on_selection_and_scene` — `crates/core/src/dmx/mod.rs:1225`
-- Plugin state serialization — `crates/core/src/plugin/tick.rs:234`, `:332`
-- Showfile focus — `crates/shared/src/state/save.rs:78`
+- Patch edits — `crates/core/src/dmx/management.rs:128`, `:384`, `:466`, `:548`
+- Folder selection — `crates/shared/src/folder.rs:399–420`, rollback `:489–502`
+- `delete_scene` / `clone_scene` — `crates/shared/src/state/engine.rs:175`, `:224`
 
 ## Acceptance criteria
-- [ ] Two sessions can hold different selections and focus at the same time, covered by unit tests.
-- [ ] Selecting a group on a MIDI controller (or with the `console` plugin) still highlights it on the native UI.
-- [ ] Plugins still see the selection, unchanged, without being rebuilt.
-- [ ] An existing showfile loads with the same focused scene as before.
+- [ ] All tests above pass.
+- [ ] Single-operator behaviour is unchanged, including korg and console selection showing on the native UI.
+- [ ] Plugins load without being rebuilt.
 
 ## Verification
-- `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
-- Load a scratch copy of an existing showfile and confirm with `python3 scripts/blctl.py state` that it booted the
-  real show and the focus survived.
-- UI: screenshot after a plugin-driven group selection.
+- `cargo clippy --workspace --all-targets --all-features`, `cargo fmt`, `cargo test --workspace --all-features`.
+- blenv: load a scratch copy of a showfile, select via `blctl event`, then check the Programmer page.
 
 ## Notes

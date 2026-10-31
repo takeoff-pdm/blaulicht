@@ -99,20 +99,26 @@ Design system: [Blaulicht Console](https://claude.ai/artifact/ChF4HkbnuyT8byciza
 
 ### E10 — Decouple engine and frontends
 
-Headless core, with the native UI as one frontend among several. Model and order: [`TICKETS/decouple/README.md`](TICKETS/decouple/README.md).
+Headless core, with the native UI as one frontend among several. Model, rules and order: [`TICKETS/decouple/README.md`](TICKETS/decouple/README.md). Rows are in suggested order.
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
 | 039 | [Move view state out of AppState](TICKETS/decouple/039-view-state-out-of-appstate.planned.md) | planned | — |
-| 040 | [Operator sessions in the engine](TICKETS/decouple/040-operator-sessions.planned.md) | planned | — |
-| 041 | [Live mode becomes a live preview in show state](TICKETS/decouple/041-live-preview-show-state.planned.md) | planned | 040 |
-| 042 | [EngineClient trait and Programmer as the pilot](TICKETS/decouple/042-engine-client-programmer-pilot.planned.md) | planned | 040, 041 |
+| 049 | [Engine event hub: client ids, envelopes, replies and broadcast](TICKETS/decouple/049-engine-event-hub.planned.md) | planned | — |
+| 040 | [Operator sessions in the engine](TICKETS/decouple/040-operator-sessions.planned.md) | planned | 049 |
+| 041 | [Live preview owned by a session](TICKETS/decouple/041-live-preview-show-state.planned.md) | planned | 040 |
+| 042 | [EngineClient trait and LocalClient](TICKETS/decouple/042-engine-client.planned.md) | planned | 049, 040, 041 |
+| 050 | [Programmer onto EngineClient](TICKETS/decouple/050-programmer-onto-client.planned.md) | planned | 042 |
 | 043 | [Setup pages onto EngineClient](TICKETS/decouple/043-commands-setup-pages.planned.md) | planned | 042 |
-| 044 | [Performance, View, Scene graph and Visualizer pages onto EngineClient](TICKETS/decouple/044-commands-performance-visualizer.planned.md) | planned | 042 |
-| 045 | [System and Audio pages onto EngineClient](TICKETS/decouple/045-commands-system-audio.planned.md) | planned | 042 |
-| 046 | [Engine crate without egui, and a headless binary](TICKETS/decouple/046-engine-crate-headless.planned.md) | planned | 039, 043, 044, 045 |
-| 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.planned.md) | planned | 046 |
-| 048 | [Web frontend](TICKETS/decouple/048-web-frontend.planned.md) | planned | 047 |
+| 044 | [Performance, View and Scene graph pages onto EngineClient](TICKETS/decouple/044-commands-performance-view-graph.planned.md) | planned | 042 |
+| 051 | [Visualizer onto EngineClient; stage geometry becomes show state](TICKETS/decouple/051-visualizer-stage-into-engine.planned.md) | planned | 042 |
+| 045 | [Audio, Art-Net and System pages onto EngineClient](TICKETS/decouple/045-commands-audio-artnet-system.planned.md) | planned | 042, 039 |
+| 052 | [Engine owns showfile, config and lifecycle](TICKETS/decouple/052-engine-owns-persistence.planned.md) | planned | 049, 042, 051, 043, 044, 045, 050 |
+| 046 | [Remove egui from engine-side code](TICKETS/decouple/046-egui-out-of-engine-code.planned.md) | planned | — |
+| 053 | [Engine crate, egui crate and a headless binary](TICKETS/decouple/053-crate-split-headless.planned.md) | planned | 039, 046, 050, 043, 044, 051, 045, 052 |
+| 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.planned.md) | planned | 053 |
+| 048 | [Web frontend spike: egui on wasm or Svelte](TICKETS/decouple/048-web-frontend-spike.planned.md) | planned | 047 |
+| 054 | [Web frontend](TICKETS/decouple/054-web-frontend.planned.md) | planned | 048 |
 
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.

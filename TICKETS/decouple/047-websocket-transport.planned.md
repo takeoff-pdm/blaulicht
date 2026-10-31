@@ -3,47 +3,52 @@
 | | |
 |---|---|
 | Epic | E10 Decouple |
-| Depends on | 046 |
-| ABI / showfile | none; config gets a listen port (`port` already exists in `config.toml`) |
+| Depends on | 053 |
+| ABI / showfile | none; `port` from `config.toml` becomes the listen port |
 
-**Touches:** `crates/engine/src/server/` (new), `crates/core/src/routes/` (old actix code, delete or replace), `crates/shared/src/` (wire types)
+**Touches:** new `crates/engine/src/server/`, `crates/engine/src/client.rs` (`RemoteClient`), `crates/shared/src/` (wire types), `crates/core/src/routes/` (delete)
 
 ## Problem
-Remote frontends need a way to attach to the engine. The old actix/websocket code in `routes/` is commented out
-and predates the current state model.
+Remote frontends need a way to attach. `routes/` is 539 lines of commented-out actix code, and `port = 1234`
+(`config.rs:34`, `config.toml:1`) is read nowhere. There is no async runtime in the tree.
 
 ## Scope
-- A websocket server in the engine, enabled in both binaries (it can be turned off in config):
-  - **On connect:** the client gets a new `SessionId` and a full show snapshot (`EngineState` is already
-    `Serialize` + bincode `Encode`).
-  - **After that:** a versioned stream of changes. Starting with "new snapshot after every applied command,
-    rate-limited" is acceptable if it is simple and correct; write the decision in Notes.
-  - **Commands from the client:** `ControlEvent`s tagged with the client's session. Bincode on the wire, JSON
-    optional for debugging.
-  - **Live streams the client subscribes to, throttled:** DMX buffers, spectrogram, tick speeds, logs, plugin UI
-    ops.
-  - Plugin UI interaction (`WasmUiOp` button, slider and similar events) routed back to the plugin.
-- `RemoteClient` implements `EngineClient` on top of this, so the egui pages can run against it. This is
-  tested in 048.
-- Sessions are dropped when a client disconnects.
-- Authentication: none for now (local network only, like today). Add it to the Inbox as a follow-up.
+- A websocket server on the engine side: `tungstenite` (sync) with one thread per client, matching the
+  crossbeam design. It is on by default in both binaries and can be turned off in config.
+- Protocol:
+  - **Handshake:** `PROTOCOL_VERSION` (separate from the plugin ABI, but bumped whenever `ControlEvent`,
+    `HostCommand` or a stream type changes). The client gets a `ClientId` and a new `SessionId`.
+  - **Show state:** reuse the bincode bytes and the FNV digest that the plugin tick already produces
+    (`plugin/tick.rs:227–244`). Send them when the digest changes, at most 10 Hz. Note the 1 MiB limit
+    (`abi.rs:222`) as a known ceiling, and per-section deltas as a follow-up (OUTDOOR's engine section is about
+    1.3 MB as JSON).
+  - **Session snapshot:** sent after every change in that session.
+  - **Commands:** `BusBody` from the client, wrapped by the server into a `BusMessage` with that client's ids.
+    `CommandResult`s come back to that client.
+  - **Streams the client subscribes to, throttled:** DMX buffers, spectrogram, health, tick speeds, logs and
+    startup stages (with replay), and plugin UI ops.
+    - `WasmUiOp` moves to shared and derives `Serialize` / `Encode` (`ui_ops.rs:1`).
+    - Plugin UI interaction already flows as `ControlEvent::PluginUi` / `AnimationPluginUi`
+      (`plugin_ui.rs:303`), so a remote client sends the same events.
+  - **Encoding:** bincode, and JSON as well (serde already derives it). JSON is needed if the web frontend
+    isn't Rust.
+- `RemoteClient` implements `EngineClient` over this protocol.
+- When a client disconnects, its session and its desk-frontend entries are dropped (040, 039).
+- Authentication: none for now (local network). Add it to the `TODO.md` Inbox.
 
 ## Out of scope
-- Latency hiding or optimistic updates. Correct is enough; only the local frontend has to be fast.
-- A web UI (048).
-
-## Key code
-- Old routes — `crates/core/src/routes/{ws,api,html}.rs`
-- Websocket event bus connection — `crates/core/src/main.rs:~98`
+- Latency hiding, the web UI itself (048, 054).
 
 ## Acceptance criteria
-- [ ] A test client connects, receives the snapshot, sends `SelectGroup` + `SetColor` in its own session, and the
-      DMX output changes while the native UI's selection does not.
-- [ ] Disconnecting cleans up the session.
-- [ ] The native UI's frame time is not affected by a connected remote client.
+- [ ] Integration test over loopback: a client connects, gets the snapshot, sends `SelectGroup` + `SetColor` in
+      its own session, the DMX output changes and the desk session's selection does not; disconnecting cleans up
+      the session.
+- [ ] Logs reach both the native UI and a remote client.
+- [ ] A stalled client doesn't block the engine or grow its memory without bound.
+- [ ] With a remote client connected, the native UI's frame time is unchanged; snapshot size and rate with a large
+      showfile are recorded in Notes.
 
 ## Verification
-- `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features` (including an
-  integration test with an in-process client over loopback).
+- `cargo clippy --workspace --all-targets --all-features`, `cargo fmt`, `cargo test --workspace --all-features`.
 
 ## Notes
