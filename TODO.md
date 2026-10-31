@@ -103,7 +103,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 039 | [Move view state out of AppState](TICKETS/decouple/039-view-state-out-of-appstate.doing.md) | doing | — |
+| 039 | [Move view state out of AppState](TICKETS/decouple/039-view-state-out-of-appstate.done.md) | done | — |
 | 049 | [Engine event hub: client ids, envelopes, replies and broadcast](TICKETS/decouple/049-engine-event-hub.planned.md) | planned | — |
 | 040 | [Operator sessions in the engine](TICKETS/decouple/040-operator-sessions.planned.md) | planned | 049 |
 | 041 | [Live preview owned by a session](TICKETS/decouple/041-live-preview-show-state.planned.md) | planned | 040 |
