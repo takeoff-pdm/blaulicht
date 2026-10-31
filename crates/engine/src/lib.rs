@@ -21,7 +21,6 @@ pub mod mainloop;
 pub mod msg;
 pub mod persistence;
 pub mod plugin;
-pub mod routes;
 pub mod stage;
 pub mod stage_assets;
 pub mod state;

@@ -72,7 +72,7 @@ fn source_for_module_path(path: &str) -> Cow<'static, str> {
             ("dmx", _) => "DMX",
             ("audio", _) => "Audio",
             ("config", _) => "Config",
-            ("routes", _) => "Web",
+            ("server", _) => "Web",
             // Startup and shutdown (`Engine::start`).
             ("lifecycle", _) => "Init",
             _ => "Engine",
