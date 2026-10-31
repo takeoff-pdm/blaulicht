@@ -31,7 +31,7 @@ pub fn run(client: LocalClient, args: UiArgs, config_dir: Option<PathBuf>) -> ef
         Box::new(move |cc| {
             Ok(Box::new(BlaulichtApp::new(
                 cc,
-                client,
+                client.into(),
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home,

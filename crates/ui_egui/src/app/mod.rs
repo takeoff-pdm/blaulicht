@@ -9,11 +9,9 @@ use crate::app::{
         SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
     },
 };
+use crate::client::AppClient;
 use blaulicht_engine::{
-    client::{LocalClient, ReplyHandlers},
-    config::ShowfileUiState,
-    msg::TickSpeeds,
-    persistence::SaveStatus,
+    client::ReplyHandlers, config::ShowfileUiState, msg::TickSpeeds, persistence::SaveStatus,
     state::NUM_DMX_UNIVERSES,
 };
 use blaulicht_shared::fixture::dimmer::Dimmer;
@@ -179,11 +177,13 @@ pub struct BlaulichtApp {
     /// The Audio page's smooth-scrolling spectrogram texture.
     spectrogram_ring: pages::SpectrogramRing,
 
-    /// The desk's connection to the engine (`ClientId::Desk`,
-    /// `SessionId::DESK`): read show state and sessions, send commands, take
-    /// their results, read the live streams, publish view state. Use it
-    /// through the `EngineClient` trait.
-    client: LocalClient,
+    /// The connection to the engine: the desk's in-process client
+    /// (`ClientId::Desk`, `SessionId::DESK`), or a remote client in a
+    /// session of its own (the web frontend). Read show state and sessions,
+    /// send commands, take their results, read the live streams, publish
+    /// view state. Use it through the `EngineClient` trait;
+    /// `AppClient::is_remote` tells the two apart.
+    client: AppClient,
     /// Closures waiting for the results of the desk's commands; run by
     /// `handle_events` (`ReplyHandlers::send_then`).
     reply_handlers: ReplyHandlers<BlaulichtApp>,
@@ -341,7 +341,7 @@ pub struct BlaulichtApp {
 
 impl BlaulichtApp {
     fn new_default(
-        client: LocalClient,
+        client: AppClient,
         desktop_mode: bool,
         showfile_home: Option<PathBuf>,
         config_dir: Option<PathBuf>,

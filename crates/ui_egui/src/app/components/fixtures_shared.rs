@@ -4,11 +4,7 @@ use crate::app::{
     },
     BlaulichtApp, Selection,
 };
-use blaulicht_engine::{
-    client::{EngineClient, LocalClient},
-    dmx::EngineState,
-    state::NUM_DMX_UNIVERSES,
-};
+use blaulicht_engine::{client::EngineClient, dmx::EngineState, state::NUM_DMX_UNIVERSES};
 use blaulicht_shared::{
     fixture::state::{FixtureState, ResolvedFixtureState},
     palette::Palette,
@@ -707,7 +703,7 @@ impl BlaulichtApp {
         buf: &FixtureState,
         palettes: &BTreeMap<u8, Palette>,
         frozen_props: &HashSet<FixtureProperty>,
-        client: &LocalClient,
+        client: &impl EngineClient,
         _animations: &[u8],
     ) {
         let resolved = buf.resolve(palettes);

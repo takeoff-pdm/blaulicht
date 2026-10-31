@@ -1,6 +1,6 @@
 use crate::app::view_state::ScreenId;
 use crate::app::{components, view_state::PluginTabSelections, BlaulichtApp};
-use blaulicht_engine::client::{EngineClient, LocalClient};
+use blaulicht_engine::client::EngineClient;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, PluginUiEvent};
 use egui::Context;
 use strum::IntoEnumIterator;
@@ -278,7 +278,7 @@ pub(crate) fn render_plugin_ops(
     ui: &mut egui::Ui,
     ops: &[blaulicht_engine::ui_ops::WasmUiOp],
     idx: &mut usize,
-    client: &LocalClient,
+    client: &impl EngineClient,
     plugin_id: u8,
     animation_instance: Option<u64>,
     tabs_selected: &mut PluginTabSelections,

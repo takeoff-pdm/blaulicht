@@ -209,7 +209,7 @@ impl AnimationEditState {
         ctx: &egui::Context,
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
-        client: &blaulicht_engine::client::LocalClient,
+        client: &impl blaulicht_engine::client::EngineClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         wasm_fixtures: &[(u8, u8)],
         panel_max: egui::Pos2,
@@ -263,7 +263,7 @@ impl AnimationEditState {
     fn anim_wasm_ui(
         &mut self,
         ui: &mut egui::Ui,
-        client: &blaulicht_engine::client::LocalClient,
+        client: &impl blaulicht_engine::client::EngineClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         fixtures: &[(u8, u8)],
     ) {

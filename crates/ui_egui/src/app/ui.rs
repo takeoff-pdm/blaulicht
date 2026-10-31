@@ -3,7 +3,8 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
 };
-use blaulicht_engine::client::{EngineClient, LocalClient};
+use crate::client::AppClient;
+use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::config::ShowfileUiState;
 use blaulicht_engine::hub::{CommandOutcome, HostCommand};
 use blaulicht_engine::persistence::SaveStatus;
@@ -32,7 +33,7 @@ impl BlaulichtApp {
     /// showfile and no `showfile_home`.
     pub fn new(
         cc: &eframe::CreationContext<'_>,
-        client: LocalClient,
+        client: AppClient,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
