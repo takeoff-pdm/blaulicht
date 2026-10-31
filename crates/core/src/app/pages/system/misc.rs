@@ -81,7 +81,7 @@ impl BlaulichtApp {
         self.render_screens_dialog(ctx);
 
         self.subpage_ui(ui, AppPage::System, |app, ui, subpage| match subpage {
-            AppSubPage::System_System => app.render_system_general(ui, ctx, render_context),
+            AppSubPage::System_System => app.render_system_general(ui, render_context),
             other => app.render_system_tab_content(ui, screen_id, other),
         });
     }
@@ -90,7 +90,6 @@ impl BlaulichtApp {
     fn render_system_general(
         &mut self,
         ui: &mut egui::Ui,
-        ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
         let button_size = ButtonSize::Medium.with_width(110.0);
@@ -137,8 +136,8 @@ impl BlaulichtApp {
                         );
                     }
 
-                    if let Some(saved_at) = self.last_save_time {
-                        let ago = saved_at.elapsed().as_secs();
+                    if let Some(saved_at) = self.saved_at {
+                        let ago = saved_at.elapsed().unwrap_or_default().as_secs();
                         let label = if ago < 5 {
                             "just now".to_string()
                         } else if ago < 60 {
@@ -188,11 +187,11 @@ impl BlaulichtApp {
 
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Quit", button_size) {
-                        self.request_guarded_lifecycle(GuardedLifecycleAction::Quit, ctx);
+                        self.request_guarded_lifecycle(GuardedLifecycleAction::Quit);
                     }
 
                     if components::button(ui, false, "Restart", button_size) {
-                        self.request_guarded_lifecycle(GuardedLifecycleAction::Restart, ctx);
+                        self.request_guarded_lifecycle(GuardedLifecycleAction::Restart);
                     }
 
                     if components::button(ui, false, "Shutdown", button_size) {

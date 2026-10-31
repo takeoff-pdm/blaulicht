@@ -12,7 +12,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    sync::{Arc, Mutex, RwLockWriteGuard},
+    sync::{Arc, Mutex},
 };
 use tracing::debug;
 
@@ -88,14 +88,10 @@ pub struct CoreShowfile {
     pub ui: Option<ShowfileUiState>,
 }
 
-/// What a loaded showfile holds for the desk frontend. The stage goes into
-/// the engine (`dmx::EngineState::load_stage`).
-#[derive(Debug, Clone, Default)]
-pub struct LoadedShowfileState {
-    pub ui: Option<ShowfileUiState>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// The desk frontend's part of the showfile (its main screen and external
+/// screen layouts). The engine stores it, saves it and hands it back on load
+/// (`SystemMessage::ShowLoaded`), but never interprets it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShowfileUiState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub main_screen_desktop_mode: Option<ShowfileExternalScreen>,
@@ -103,7 +99,7 @@ pub struct ShowfileUiState {
     pub external_screens: Vec<ShowfileExternalScreen>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShowfileExternalScreen {
     pub width: f32,
     pub height: f32,
@@ -116,7 +112,7 @@ pub struct ShowfileExternalScreen {
     pub layout: ShowfileDockNode,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ShowfileDockNode {
     Leaf {
         tabs: Vec<ShowfileDockTab>,
@@ -154,121 +150,118 @@ pub enum PageRenderMode {
     Dynamic,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ShowfileDockSplitAxis {
     Horizontal,
     Vertical,
 }
 
-pub fn read_showfile(
-    file: PathBuf,
-    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
-    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
-    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
-) -> Option<LoadedShowfileState> {
-    match read_showfile_logic(file.clone(), dmx, artnet_output, plugin_state_storage) {
-        Ok(loaded_state) => {
-            tracing::info!(
-                "Loaded showfile {}",
-                absolute_showfile_path(&file).display()
-            );
-            Some(loaded_state)
-        }
-        Err(e) => {
-            tracing::error!("Failed to read showfile {}: {e}", file.display());
-            None
+/// A showfile read from disk and parsed, not yet in the engine
+/// ([`install_showfile`]). Parsing takes no lock, so the engine keeps running
+/// while a file is read.
+pub struct ParsedShowfile {
+    engine: EngineState,
+    /// Older showfiles stored the render base as the focused scene.
+    migrate_legacy_base_scene: bool,
+    artnet: ShowfileArtNetState,
+    plugin_state: HashMap<String, String>,
+    stage: StageScene,
+    /// The desk frontend's section, if the file has one.
+    pub ui: Option<ShowfileUiState>,
+}
+
+impl ParsedShowfile {
+    /// A new, empty show (closing a showfile).
+    pub fn empty() -> Self {
+        Self {
+            engine: EngineState::default(),
+            migrate_legacy_base_scene: false,
+            artnet: ShowfileArtNetState::default(),
+            plugin_state: HashMap::new(),
+            stage: StageScene::default(),
+            ui: None,
         }
     }
 }
 
-fn read_showfile_logic(
-    file: PathBuf,
-    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
-    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
-    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
-) -> anyhow::Result<LoadedShowfileState> {
+/// Reads and parses the showfile at `file`: the current format, or the
+/// deprecated bare engine state (which has no receivers, plugin state, stage
+/// or UI section).
+pub fn parse_showfile(file: &Path) -> anyhow::Result<ParsedShowfile> {
     debug!("Attempting to read showfile from {file:?}...");
 
-    let string = fs::read_to_string(&file)?;
+    let string = fs::read_to_string(file)?;
 
     match serde_json::from_str::<CoreShowfile>(&string) {
         Ok(showfile) => {
             let legacy_coordinates = showfile.format_version == LEGACY_SHOWFILE_VERSION;
             let legacy_base_scene = showfile.format_version < BLANK_BASE_SHOWFILE_VERSION;
-            let mut core_engine: EngineState = showfile
+            let mut engine: EngineState = showfile
                 .engine
                 .try_into()
                 .map_err(|e| anyhow!("{e}"))
                 .with_context(|| "Failed to parse engine state")?;
             if legacy_coordinates {
-                migrate_legacy_fixture_coordinates(&mut core_engine);
+                migrate_legacy_fixture_coordinates(&mut engine);
             }
-
-            let mut storage = plugin_state_storage.lock().unwrap();
-            *storage = showfile.plugin_state;
-
-            // Preserve plugin-owned receivers across showfile load — they belong to the
-            // plugin lifecycle, not the showfile.
-            let preserved: Vec<ArtNetReceiver> = artnet_output
-                .receivers
-                .iter()
-                .filter(|r| r.owner_plugin_id.is_some())
-                .cloned()
-                .collect();
-            artnet_output.receivers = preserved
-                .into_iter()
-                .chain(showfile.artnet.receivers.into_iter().map(|receiver| {
-                    let mut entry = ArtNetReceiver::user(receiver.address, receiver.enabled);
-                    if let Some((first, last)) = receiver.universes {
-                        entry.set_universe_range(first, last);
-                    }
-                    entry
-                }))
-                .collect();
-
-            dmx.load_showfile(core_engine, legacy_base_scene);
-            dmx.load_stage(showfile.stage, Some(file));
-
-            Ok(LoadedShowfileState { ui: showfile.ui })
+            Ok(ParsedShowfile {
+                engine,
+                migrate_legacy_base_scene: legacy_base_scene,
+                artnet: showfile.artnet,
+                plugin_state: showfile.plugin_state,
+                stage: showfile.stage,
+                ui: showfile.ui,
+            })
         }
         Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
             Ok(deprecated) => {
-                let mut core_format: EngineState = deprecated
+                let mut engine: EngineState = deprecated
                     .try_into()
                     .map_err(|e| anyhow!("{e}"))
                     .with_context(|| "Failed to parse deprecated engine state")?;
-                migrate_legacy_fixture_coordinates(&mut core_format);
-
-                {
-                    let mut storage = plugin_state_storage.lock().unwrap();
-                    storage.clear();
-                }
-
-                // Deprecated showfile format has no receivers — drop user-created ones
-                // but keep plugin-owned receivers, which live outside the showfile.
-                artnet_output
-                    .receivers
-                    .retain(|r| r.owner_plugin_id.is_some());
-                dmx.load_showfile(core_format, true);
-                dmx.load_stage(StageScene::default(), Some(file));
-
-                Ok(LoadedShowfileState::default())
+                migrate_legacy_fixture_coordinates(&mut engine);
+                Ok(ParsedShowfile {
+                    engine,
+                    migrate_legacy_base_scene: true,
+                    ..ParsedShowfile::empty()
+                })
             }
             Err(_) => Err(anyhow!(showfile_err)),
         },
     }
 }
 
-pub fn read_showfile_ui_state(file: PathBuf) -> anyhow::Result<LoadedShowfileState> {
-    let string = fs::read_to_string(&file)?;
+/// Puts a parsed show into the engine: show state, stage (with `file` as the
+/// open showfile, `None` for a new show), user Art-Net receivers and the
+/// per-show plugin state. Plugin-owned receivers stay: they belong to the
+/// plugin lifecycle, not the showfile. Returns the frontend section.
+pub fn install_showfile(
+    showfile: ParsedShowfile,
+    file: Option<PathBuf>,
+    dmx: &mut dmx::EngineState,
+    artnet_output: &mut ArtNetOutput,
+    plugin_state_storage: &Mutex<HashMap<String, String>>,
+) -> Option<ShowfileUiState> {
+    *plugin_state_storage
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = showfile.plugin_state;
 
-    match serde_json::from_str::<CoreShowfile>(&string) {
-        Ok(showfile) => Ok(LoadedShowfileState { ui: showfile.ui }),
-        Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
-            Ok(_) => Ok(LoadedShowfileState::default()),
-            Err(_) => Err(anyhow!(showfile_err)),
-        },
-    }
+    artnet_output
+        .receivers
+        .retain(|receiver| receiver.owner_plugin_id.is_some());
+    artnet_output
+        .receivers
+        .extend(showfile.artnet.receivers.into_iter().map(|receiver| {
+            let mut entry = ArtNetReceiver::user(receiver.address, receiver.enabled);
+            if let Some((first, last)) = receiver.universes {
+                entry.set_universe_range(first, last);
+            }
+            entry
+        }));
+
+    dmx.load_showfile(showfile.engine, showfile.migrate_legacy_base_scene);
+    dmx.load_stage(showfile.stage, file);
+    showfile.ui
 }
 
 fn migrate_legacy_fixture_coordinates(engine: &mut EngineState) {
@@ -330,25 +323,6 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
         let _ = fs::remove_file(&temporary);
     }
     result
-}
-
-pub fn close_showfile(
-    dmx: &mut RwLockWriteGuard<'_, dmx::EngineState>,
-    artnet_output: &mut RwLockWriteGuard<'_, ArtNetOutput>,
-    plugin_state_storage: &Arc<Mutex<HashMap<String, String>>>,
-) {
-    debug!("Closing showfile...");
-
-    let mut storage = plugin_state_storage.lock().unwrap();
-    *storage = HashMap::new();
-
-    // Drop user-created receivers; plugin-owned receivers live outside the showfile.
-    artnet_output
-        .receivers
-        .retain(|r| r.owner_plugin_id.is_some());
-
-    dmx.load_showfile(EngineState::default(), false);
-    dmx.load_stage(StageScene::default(), None);
 }
 
 impl Default for Config {
@@ -423,8 +397,11 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
     }
 }
 
-/// The config the engine and the desk frontend share until the engine owns
-/// it alone (052), and the file it is written to.
+/// The engine's config and the file it is written to. Only engine-side code
+/// writes it: the supervisor (`default_audio_device`) and the persistence
+/// service (`last_open_showfile`, global plugin state). Its lock is a leaf:
+/// never take it while holding another lock (above all the `dmx_engine`
+/// lock), and take no other lock while holding it.
 #[derive(Clone)]
 pub struct SharedConfig {
     pub config: Arc<Mutex<Config>>,
@@ -553,8 +530,6 @@ mod tests {
 
     #[test]
     fn loading_a_showfile_restores_receiver_universe_ranges() {
-        use std::sync::RwLock;
-
         let directory = TempDir::new("blaulicht-artnet-range").unwrap();
         let path = directory.path().join("show.json");
         let showfile = CoreShowfile {
@@ -580,18 +555,18 @@ mod tests {
         };
         fs::write(&path, serde_json::to_vec(&showfile).unwrap()).unwrap();
 
-        let dmx = RwLock::new(dmx::EngineState::default());
-        let artnet = RwLock::new(ArtNetOutput::default());
-        let plugin_state = Arc::new(Mutex::new(HashMap::new()));
-        read_showfile_logic(
-            path,
-            &mut dmx.write().unwrap(),
-            &mut artnet.write().unwrap(),
+        let mut dmx = dmx::EngineState::default();
+        let mut artnet = ArtNetOutput::default();
+        let plugin_state = Mutex::new(HashMap::new());
+        install_showfile(
+            parse_showfile(&path).unwrap(),
+            Some(path),
+            &mut dmx,
+            &mut artnet,
             &plugin_state,
-        )
-        .unwrap();
+        );
 
-        let receivers = &artnet.read().unwrap().receivers;
+        let receivers = &artnet.receivers;
         assert_eq!(receivers.len(), 2);
         // Inverted bounds are normalised on load.
         assert_eq!(
@@ -626,8 +601,6 @@ mod tests {
 
     #[test]
     fn a_loaded_showfile_hands_its_stage_to_the_engine() {
-        use std::sync::RwLock;
-
         let directory = TempDir::new("blaulicht-stage-load").unwrap();
         let path = directory.path().join("show.json");
         let mut stage = StageScene::default();
@@ -645,30 +618,29 @@ mod tests {
         };
         fs::write(&path, serde_json::to_vec(&showfile).unwrap()).unwrap();
 
-        let dmx = RwLock::new(dmx::EngineState::default());
-        let artnet = RwLock::new(ArtNetOutput::default());
-        let plugin_state = Arc::new(Mutex::new(HashMap::new()));
-        read_showfile_logic(
-            path.clone(),
-            &mut dmx.write().unwrap(),
-            &mut artnet.write().unwrap(),
-            &plugin_state,
-        )
-        .unwrap();
-        {
-            let dmx = dmx.read().unwrap();
-            assert_eq!(dmx.stage().objects, stage.objects);
-            assert_eq!(dmx.stage_showfile(), Some(path.as_path()));
-        }
-
-        close_showfile(
-            &mut dmx.write().unwrap(),
-            &mut artnet.write().unwrap(),
+        let mut dmx = dmx::EngineState::default();
+        let mut artnet = ArtNetOutput::default();
+        let plugin_state = Mutex::new(HashMap::new());
+        install_showfile(
+            parse_showfile(&path).unwrap(),
+            Some(path.clone()),
+            &mut dmx,
+            &mut artnet,
             &plugin_state,
         );
-        let dmx = dmx.read().unwrap();
+        assert_eq!(dmx.stage().objects, stage.objects);
+        assert_eq!(dmx.showfile(), Some(path.as_path()));
+
+        // Closing installs an empty show without a showfile.
+        install_showfile(
+            ParsedShowfile::empty(),
+            None,
+            &mut dmx,
+            &mut artnet,
+            &plugin_state,
+        );
         assert!(dmx.stage().objects.is_empty());
-        assert_eq!(dmx.stage_showfile(), None);
+        assert_eq!(dmx.showfile(), None);
     }
 
     #[test]

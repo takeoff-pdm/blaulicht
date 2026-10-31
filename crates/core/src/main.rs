@@ -7,8 +7,9 @@ use blaulicht_core::event::SystemEventBus;
 use blaulicht_core::hub::{BusMessage, ClientId, SessionId, SystemHub};
 use blaulicht_core::mainloop::SupervisorRequest;
 use blaulicht_core::msg::{StageStatus, StartupStage, SystemMessage};
+use blaulicht_core::persistence::{ExitRequest, PersistenceService};
 use blaulicht_core::plugin::PluginManager;
-use blaulicht_core::state::{AppState, AppStateWrapper};
+use blaulicht_core::state::AppState;
 use blaulicht_core::{config, mainloop, utils};
 use clap::Parser;
 use std::path::PathBuf;
@@ -72,8 +73,9 @@ fn main() -> anyhow::Result<()> {
     // plugin reload commands) and from the plugin watcher.
     let (supervisor_sender, supervisor_receiver) =
         crossbeam_channel::unbounded::<SupervisorRequest>();
-    // The supervisor writes the selected audio input into it; the desk
-    // frontend still reads and writes it directly until 052.
+    // The engine's config: the supervisor writes the selected audio input
+    // into it, the persistence service the open showfile and the global
+    // plugin state.
     let shared_config = config::SharedConfig::new(cfg.clone(), config_filepath.clone());
 
     let audio_thread_control_signal =
@@ -129,6 +131,34 @@ fn main() -> anyhow::Result<()> {
         *global_state = cfg.plugin_state.clone();
     }
 
+    // The persistence service loads the startup showfile before the engine
+    // starts (so plugins find its state when they initialize), then saves,
+    // loads and autosaves on its own thread.
+    let mut persistence =
+        PersistenceService::new(Arc::clone(&app_state), hub.clone(), shared_config.clone());
+    if let Some(showfile) = &cfg.last_open_showfile {
+        let name = showfile
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        send_stage(StartupStage::Showfile, StageStatus::running(name.clone()));
+        let loaded = persistence.open_startup(Some(showfile.clone()));
+        send_stage(
+            StartupStage::Showfile,
+            match loaded {
+                Ok(()) => StageStatus::ok(name),
+                Err(_) => StageStatus::failed(format!("{name}: could not load, see Logs")),
+            },
+        );
+    } else {
+        // A new, empty show (still announced, so frontends start in step).
+        let _ = persistence.open_startup(None);
+        send_stage(StartupStage::Showfile, StageStatus::ok("none"));
+    }
+    let persistence = persistence
+        .spawn()
+        .context("Failed to start the persistence service")?;
+
     {
         // Audio recording and analysis thread.
         let hub = hub.clone();
@@ -163,63 +193,6 @@ fn main() -> anyhow::Result<()> {
             .unwrap();
     });
 
-    let state_wrapper = AppStateWrapper {
-        config: Arc::clone(&shared_config.config),
-        config_path: config_filepath.to_string_lossy().to_string(),
-        state: Arc::clone(&app_state),
-    };
-    // let data = Data::new(state_wrapper);
-
-    // thread::spawn(|| {
-    // let server = HttpServer::new(move || {
-    //     App::new()
-    //         .app_data(data.clone())
-    //         .service(Files::new("/assets", "./web/dist/assets/"))
-    //         // HTML endpoints
-    //         .service(routes::get_index)
-    //         .service(routes::get_dash)
-    //         .service(routes::get_state)
-    //         // API endpoints
-    //         .route("/api/ws", web::get().to(routes::ws_handler))
-    //         .route("/api/ws/sink", web::get().to(routes::binary_ws_handler))
-    // })
-    // .bind(("0.0.0.0", cfg.port))
-    // .with_context(|| "could not start webserver")?;
-
-    // info!("Blaulicht is running on `http://localhost:{}`", cfg.port,);
-
-    // server
-    //     .run()
-    //     .await
-    //     .with_context(|| "Could not start webserver")?;
-
-    // info!("Blaulicht is shutting down...");
-
-    if let Some(showfile) = cfg.last_open_showfile {
-        let name = showfile
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        send_stage(StartupStage::Showfile, StageStatus::running(name.clone()));
-        let mut dmx = app_state.dmx_engine.write().unwrap();
-        let mut artnet = app_state.artnet_output.write().unwrap();
-        let loaded = config::read_showfile(
-            showfile.clone(),
-            &mut dmx,
-            &mut artnet,
-            &app_state.plugin_state_storage,
-        );
-        send_stage(
-            StartupStage::Showfile,
-            match loaded {
-                Some(_) => StageStatus::ok(name),
-                None => StageStatus::failed(format!("{name}: could not load, see Logs")),
-            },
-        );
-    } else {
-        send_stage(StartupStage::Showfile, StageStatus::ok("none"));
-    }
-
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 480.0])
@@ -240,20 +213,25 @@ fn main() -> anyhow::Result<()> {
         Box::new(|cc| {
             Ok(Box::new(BlaulichtApp::new(
                 cc,
-                state_wrapper,
                 desk,
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home.clone(),
+                config_filepath.parent().map(|dir| dir.to_path_buf()),
                 args.external_screens,
             )))
         }),
     )
     .unwrap();
 
-    // The desk closed: stop the engine. (It no longer stops by itself when
-    // nobody listens to system messages.)
+    // The desk closed (after `HostCommand::Quit` / `Restart`, or its window
+    // was closed): let the persistence service finish, then stop the engine.
+    // (It no longer stops by itself when nobody listens to system messages.)
+    let exit = persistence.stop();
     hub.shutdown();
+    if let Some(exit @ ExitRequest::Restart) = exit {
+        std::process::exit(exit.code());
+    }
 
     Ok(())
 }

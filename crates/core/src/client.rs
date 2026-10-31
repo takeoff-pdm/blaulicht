@@ -139,10 +139,9 @@ pub trait EngineClient {
     /// Whether the main loop is running, reloading, stopped or crashed.
     fn mainloop_state(&self) -> AudioThreadControlSignal;
 
-    /// The open showfile, if any. (The engine keeps it next to the stage
-    /// until it owns the config, 052.)
+    /// The open showfile, if any (the engine's `EngineState::showfile`).
     fn showfile_path(&self) -> Option<PathBuf> {
-        self.with_show(|show| show.stage_showfile().map(Path::to_path_buf))
+        self.with_show(|show| show.showfile().map(Path::to_path_buf))
     }
 
     /// Runs `f` on what each loaded plugin is (an animation plugin with its
@@ -591,6 +590,23 @@ pub(crate) mod testing {
 
         pub(crate) fn app(&self) -> &Arc<AppState> {
             &self.app
+        }
+
+        /// A persistence service for this engine (not running: the test
+        /// steps it), writing its config to `config_path`.
+        pub(crate) fn persistence(
+            &self,
+            config_path: std::path::PathBuf,
+        ) -> crate::persistence::PersistenceService {
+            crate::persistence::PersistenceService::new(
+                Arc::clone(&self.app),
+                self.hub.clone(),
+                crate::config::SharedConfig::new(crate::config::Config::default(), config_path),
+            )
+        }
+
+        pub(crate) fn hub(&self) -> &SystemHub {
+            &self.hub
         }
 
         pub(crate) fn engine(&self) -> &DmxEngine {

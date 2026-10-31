@@ -11,8 +11,10 @@ use crate::{
         },
     },
     client::{LocalClient, ReplyHandlers},
+    config::ShowfileUiState,
     msg::TickSpeeds,
-    state::{AppStateWrapper, ScreenId, NUM_DMX_UNIVERSES},
+    persistence::SaveStatus,
+    state::{ScreenId, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
@@ -24,7 +26,7 @@ use pages::{PaletteUI, ViewUI};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 mod app_navbar;
@@ -72,26 +74,6 @@ pub struct PopupSpec {
     // Auto-close duration
     pub lifetime_duration: Duration,
     pub button: Option<PopupButtonSpec>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ShowfileSaveStatus {
-    NoShowfile,
-    Clean,
-    Dirty,
-    Saving,
-    Failed(String),
-}
-
-struct SaveCompletion {
-    hash: u64,
-    manual: bool,
-    result: Result<(), String>,
-}
-
-struct DirtyCheckCompletion {
-    revision: u64,
-    result: Result<u64, String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,6 +129,9 @@ impl ExternalScreen {
 pub struct BlaulichtApp {
     desktop_mode: bool,
     showfile_home: Option<PathBuf>,
+    /// The config file's folder: where the file dialogs start without a
+    /// showfile or `showfile_home`.
+    config_dir: Option<PathBuf>,
     navbar: Navbar,
 
     main_screen_desktop_mode: ExternalScreen,
@@ -189,9 +174,6 @@ pub struct BlaulichtApp {
     /// The Audio page's smooth-scrolling spectrogram texture.
     spectrogram_ring: pages::SpectrogramRing,
 
-    /// Legacy direct access to engine state; pages move onto `client` in
-    /// 043–052.
-    pub data: AppStateWrapper,
     /// The desk's connection to the engine (`ClientId::Desk`,
     /// `SessionId::DESK`): read show state and sessions, send commands, take
     /// their results, read the live streams, publish view state. Use it
@@ -331,21 +313,19 @@ pub struct BlaulichtApp {
     scene_graph_ui_state: SceneGraphUI,
     palette_ui_state: PaletteUI,
 
-    last_autosave_check: Instant,
-    last_dirty_check: Instant,
-    dirty_check_in_flight: bool,
-    dirty_revision: u64,
-    dirty_check_sender: crossbeam_channel::Sender<DirtyCheckCompletion>,
-    dirty_check_receiver: crossbeam_channel::Receiver<DirtyCheckCompletion>,
-    last_autosave_hash: u64,
-    last_save_time: Option<Instant>,
-    save_status: ShowfileSaveStatus,
-    save_in_flight: bool,
-    save_pending: bool,
-    save_completion_sender: crossbeam_channel::Sender<SaveCompletion>,
-    save_completion_receiver: crossbeam_channel::Receiver<SaveCompletion>,
+    /// Whether the show has unsaved changes, and when it was last saved
+    /// (`SystemMessage::ShowfileStatus`; the engine saves and autosaves).
+    save_status: SaveStatus,
+    saved_at: Option<SystemTime>,
+    /// The show the engine last announced (`SystemMessage::ShowLoaded`); 0
+    /// until the first.
+    show_generation: u64,
+    /// The screen layouts last sent with `HostCommand::SetFrontendSection`.
+    published_frontend_section: Option<ShowfileUiState>,
     pending_lifecycle_action: Option<GuardedLifecycleAction>,
-    lifecycle_action_after_save: Option<GuardedLifecycleAction>,
+    /// The engine ran its shutdown hook (`SystemMessage::Exiting`): close
+    /// the window.
+    exit_requested: bool,
     allow_close_once: bool,
     /// Accumulated relative numberpad adjustment received from plugins this
     /// frame (see `MainUiEvent::NumberpadAdjust`). Published to the egui
@@ -356,16 +336,15 @@ pub struct BlaulichtApp {
 
 impl BlaulichtApp {
     fn new_default(
-        data: AppStateWrapper,
         client: LocalClient,
         desktop_mode: bool,
         showfile_home: Option<PathBuf>,
+        config_dir: Option<PathBuf>,
     ) -> Self {
-        let (save_completion_sender, save_completion_receiver) = crossbeam_channel::unbounded();
-        let (dirty_check_sender, dirty_check_receiver) = crossbeam_channel::unbounded();
         Self {
             desktop_mode,
             showfile_home,
+            config_dir,
             navbar: Navbar::new(AppPage::Logs),
             main_screen_desktop_mode: ExternalScreen::default(),
             external_screens: vec![],
@@ -434,7 +413,6 @@ impl BlaulichtApp {
             frame_count: 0,
             animation_time: 0.0,
             spectrogram_ring: pages::SpectrogramRing::default(),
-            data,
             client,
             reply_handlers: ReplyHandlers::default(),
             tick_speeds: TickSpeeds::default(),
@@ -621,21 +599,12 @@ impl BlaulichtApp {
             },
             system_ui_state: SystemUI::default(),
             dmx_simulator: DmxSimulator::default(),
-            last_autosave_check: Instant::now(),
-            last_dirty_check: Instant::now(),
-            dirty_check_in_flight: false,
-            dirty_revision: 0,
-            dirty_check_sender,
-            dirty_check_receiver,
-            last_autosave_hash: 0,
-            last_save_time: None,
-            save_status: ShowfileSaveStatus::NoShowfile,
-            save_in_flight: false,
-            save_pending: false,
-            save_completion_sender,
-            save_completion_receiver,
+            save_status: SaveStatus::NoShowfile,
+            saved_at: None,
+            show_generation: 0,
+            published_frontend_section: None,
             pending_lifecycle_action: None,
-            lifecycle_action_after_save: None,
+            exit_requested: false,
             allow_close_once: false,
             pending_numberpad_delta: 0,
             recent_fixture_property: jog::RecentFixtureProperty::default(),

@@ -2,15 +2,16 @@ use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
         ui::FileDialogOpenOrigin,
-        BlaulichtApp, PopupSpec, ShowfileSaveStatus,
+        BlaulichtApp, PopupSpec,
     },
     client::EngineClient,
-    config,
+    hub::HostCommand,
+    persistence::SaveStatus,
 };
 use egui::{Context, FontFamily, FontId, Ui};
 use egui_file_dialog::{FileDialog, Filter};
 use egui_phosphor::regular as ph;
-use std::{collections::HashSet, mem, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashSet, path::PathBuf, time::Duration};
 use sysinfo::Disks;
 
 fn places_quick_access_entries(showfile_home: Option<PathBuf>) -> Vec<(String, PathBuf)> {
@@ -58,58 +59,32 @@ fn places_quick_access_entries(showfile_home: Option<PathBuf>) -> Vec<(String, P
 }
 
 impl BlaulichtApp {
+    /// Closes the showfile: the engine starts a new, empty show
+    /// (`SystemMessage::ShowLoaded` resets the view state).
     fn close_showfile(&mut self) {
-        self.data.state.set_grand_master_percent(100);
-        let mut conf = self.data.config.lock().unwrap();
-        conf.last_open_showfile = None;
-        let path = PathBuf::from(&self.data.config_path);
-        if let Err(err) = config::write_config(path, conf.clone()) {
-            tracing::error!("Failed to persist closed showfile config: {err}");
-        }
-        drop(conf);
-
-        let mut dmx = self.data.state.dmx_engine.write().unwrap();
-        let mut artnet = self.data.state.artnet_output.write().unwrap();
-        config::close_showfile(&mut dmx, &mut artnet, &self.data.state.plugin_state_storage);
-        drop(artnet);
-        drop(dmx);
-        self.visualizer_ui_state.reset_stage_view();
-        self.reset_save_tracking();
+        self.send_command(HostCommand::CloseShowfile, |_, _| {});
     }
 
     fn load_showfile_path(&mut self, file: PathBuf) {
-        self.data.state.set_grand_master_percent(100);
-        let mut config = self.data.config.lock().unwrap();
-        let mut dmx = self.data.state.dmx_engine.write().unwrap();
-        let mut artnet = self.data.state.artnet_output.write().unwrap();
-        let loaded_state = config::read_showfile(
-            file.clone(),
-            &mut dmx,
-            &mut artnet,
-            &self.data.state.plugin_state_storage,
-        );
-        mem::drop(artnet);
-        mem::drop(dmx);
+        self.send_command(HostCommand::LoadShowfile(file), |app, _| {
+            app.show_popup(PopupSpec::with_duration(
+                Duration::from_secs(2),
+                "Loaded Showfile".to_string(),
+            ));
+        });
+    }
 
-        config.last_open_showfile = Some(file.clone());
-        let config_path = PathBuf::from(&self.data.config_path);
-        if let Err(err) = config::write_config(config_path, config.clone()) {
-            tracing::error!("Failed to persist loaded showfile config: {err}");
-        }
-
-        mem::drop(config);
-
-        self.visualizer_ui_state.reset_stage_view();
-        if let Some(loaded_state) = loaded_state {
-            if let Some(ui_state) = loaded_state.ui {
-                self.apply_showfile_ui_state(ui_state);
-            }
-        }
-        self.reset_save_tracking();
-        self.show_popup(PopupSpec::with_duration(
-            Duration::from_secs(2),
-            "Loaded Showfile".to_string(),
-        ));
+    /// Where the file dialogs start: `showfile_home`, else the open
+    /// showfile's folder, else the config's.
+    fn showfile_dialog_dir(&self) -> Option<PathBuf> {
+        let last_dir = self
+            .client
+            .showfile_path()
+            .and_then(|path| path.parent().map(|path| path.to_path_buf()));
+        self.showfile_home
+            .clone()
+            .or(last_dir)
+            .or_else(|| self.config_dir.clone())
     }
 
     fn render_pending_showfile_load_dialog(&mut self, ctx: &Context) {
@@ -123,13 +98,8 @@ impl BlaulichtApp {
                 ui.label("Loading this showfile will replace the current show.");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    let needs_guard = matches!(
-                        self.save_status,
-                        ShowfileSaveStatus::Dirty
-                            | ShowfileSaveStatus::Saving
-                            | ShowfileSaveStatus::Failed(_)
-                    );
-                    let saving = matches!(self.save_status, ShowfileSaveStatus::Saving);
+                    let needs_guard = self.save_status.has_unsaved_changes();
+                    let saving = matches!(self.save_status, SaveStatus::Saving);
                     if needs_guard
                         && components::action_button(
                             ui,
@@ -139,7 +109,7 @@ impl BlaulichtApp {
                             Some("A save is already in progress"),
                         )
                     {
-                        self.request_showfile_save(true);
+                        self.request_showfile_save();
                     }
                     let load_label = if needs_guard {
                         "Discard & Load"
@@ -177,13 +147,8 @@ impl BlaulichtApp {
                 ui.label("Close the current showfile? Unsaved changes will be lost.");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    let needs_guard = matches!(
-                        self.save_status,
-                        ShowfileSaveStatus::Dirty
-                            | ShowfileSaveStatus::Saving
-                            | ShowfileSaveStatus::Failed(_)
-                    );
-                    let saving = matches!(self.save_status, ShowfileSaveStatus::Saving);
+                    let needs_guard = self.save_status.has_unsaved_changes();
+                    let saving = matches!(self.save_status, SaveStatus::Saving);
                     if needs_guard
                         && components::action_button(
                             ui,
@@ -193,7 +158,7 @@ impl BlaulichtApp {
                             Some("A save is already in progress"),
                         )
                     {
-                        self.request_showfile_save(true);
+                        self.request_showfile_save();
                     }
                     let close_label = if needs_guard {
                         "Discard & Close"
@@ -224,26 +189,13 @@ impl BlaulichtApp {
     // TODO: i need to remove this
     //
     pub fn save_showfile(&mut self) {
-        self.request_showfile_save(true);
+        self.request_showfile_save();
     }
 
     pub fn render_showfile_buttons(&mut self, ui: &mut Ui, button_size: ButtonSize) {
         ui.horizontal(|ui| {
             if components::button(ui, false, "Load Showfile", button_size) {
-                let config = self.data.config.lock().unwrap();
-                let last_dir = config
-                    .last_open_showfile
-                    .as_ref()
-                    .and_then(|path| path.parent())
-                    .map(|path| path.to_path_buf());
-                let config_dir = PathBuf::from_str(&self.data.config_path)
-                    .ok()
-                    .and_then(|path| path.parent().map(|p| p.to_path_buf()));
-                let preferred_dir = self
-                    .showfile_home
-                    .clone()
-                    .or(last_dir.clone())
-                    .or(config_dir.clone());
+                let preferred_dir = self.showfile_dialog_dir();
                 let places_entries = places_quick_access_entries(self.showfile_home.clone());
 
                 let mut dialog = FileDialog::new()
@@ -301,20 +253,7 @@ impl BlaulichtApp {
             }
 
             if components::button(ui, false, "Save to Showfile", button_size) {
-                let config = self.data.config.lock().unwrap();
-                let last_dir = config
-                    .last_open_showfile
-                    .as_ref()
-                    .and_then(|path| path.parent())
-                    .map(|path| path.to_path_buf());
-                let config_dir = PathBuf::from_str(&self.data.config_path)
-                    .ok()
-                    .and_then(|path| path.parent().map(|p| p.to_path_buf()));
-                let preferred_dir = self
-                    .showfile_home
-                    .clone()
-                    .or(last_dir.clone())
-                    .or(config_dir.clone());
+                let preferred_dir = self.showfile_dialog_dir();
                 let places_entries = places_quick_access_entries(self.showfile_home.clone());
 
                 let mut dialog = FileDialog::new()
@@ -371,36 +310,21 @@ impl BlaulichtApp {
                 self.system_ui_state.file_dialog_open_origin = FileDialogOpenOrigin::Save;
             }
 
-            {
-                let conf = self.data.config.lock().unwrap();
-                let button_enabled = conf.last_open_showfile.is_some();
-                if components::action_button(
-                    ui,
-                    button_enabled,
-                    "Close Showfile",
-                    button_size,
-                    Some("No showfile is currently open"),
-                ) {
-                    self.system_ui_state.close_showfile_confirm_open = true;
-                }
+            let showfile_open = self.client.showfile_path().is_some();
+            if components::action_button(
+                ui,
+                showfile_open,
+                "Close Showfile",
+                button_size,
+                Some("No showfile is currently open"),
+            ) {
+                self.system_ui_state.close_showfile_confirm_open = true;
             }
-
-            let (label, allowed) = match &self
-                .data
-                .config
-                .lock()
-                .unwrap()
-                .last_open_showfile
-                .is_some()
-            {
-                true => ("Save Showfile", true),
-                false => ("Save Showfile", false),
-            };
 
             if components::action_button(
                 ui,
-                allowed,
-                label,
+                showfile_open,
+                "Save Showfile",
                 button_size,
                 Some("Open or create a showfile before saving"),
             ) {
@@ -468,65 +392,21 @@ impl BlaulichtApp {
         }
 
         if let Some(file) = picked {
-            let config = self.data.config.lock().unwrap();
-
             self.system_ui_state.open_file_dialog = None;
 
             match self.system_ui_state.file_dialog_open_origin {
+                // The engine copies the stage's model assets next to the new
+                // file, saves there and makes it the open showfile.
                 FileDialogOpenOrigin::Save => {
-                    // let dmx = self.data.state.dmx_engine.read().unwrap();
-                    // let serialized = postcard::to_allocvec(&dmx.clone()).unwrap();
-                    // std::fs::write(file, serialized).unwrap();
-
-                    let previous_showfile = config.last_open_showfile.clone();
-                    mem::drop(config);
-                    let mut stage = self.client.with_show(|show| show.stage().clone());
-                    if let Some(previous_showfile) = previous_showfile {
-                        match crate::stage_assets::copy_assets_for_save_as(
-                            &stage,
-                            &previous_showfile,
-                            &file,
-                        ) {
-                            Ok(relocated) => stage = relocated,
-                            Err(error) => {
-                                self.show_popup(PopupSpec::with_duration(
-                                    Duration::from_secs(4),
-                                    format!("Failed to copy stage assets: {error}"),
-                                ));
-                                return;
-                            }
-                        }
-                    }
-                    // The save below reads the stage back at once, so this
-                    // can't wait for a command (until 052 moves saving into
-                    // the engine).
-                    self.data
-                        .state
-                        .dmx_engine
-                        .write()
-                        .unwrap()
-                        .relocate_stage(stage, file.to_path_buf());
-                    let mut config = self.data.config.lock().unwrap();
-                    config.last_open_showfile = Some(file.to_path_buf());
-                    //
-                    // let config_path = PathBuf::from_str(&self.data.config_path).unwrap();
-                    // config::write_config(config_path, config.clone()).unwrap();
-                    //
-                    // self.data
-                    //     .system_message_sender
-                    //     .send(SystemMessage::Log(
-                    //         format!("Saved showfile to {file:?}"),
-                    //         LogLevel::Info,
-                    //     ))
-                    //     .unwrap();
-
-                    mem::drop(config);
-
-                    self.save_showfile();
+                    self.send_command(HostCommand::SaveShowfileAs(file), |app, _| {
+                        app.show_popup(PopupSpec::with_duration(
+                            Duration::from_secs(2),
+                            "Saved Showfile".to_string(),
+                        ));
+                    });
                 }
                 FileDialogOpenOrigin::Load => {
-                    mem::drop(config);
-                    self.system_ui_state.pending_load_file = Some(file.to_path_buf());
+                    self.system_ui_state.pending_load_file = Some(file);
                 }
             }
         }

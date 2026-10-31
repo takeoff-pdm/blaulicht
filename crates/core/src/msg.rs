@@ -1,5 +1,5 @@
 use blaulicht_audio_engine::Signal;
-use blaulicht_shared::{LogLevel, PluginStateLocation};
+use blaulicht_shared::LogLevel;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, time::Duration};
 
@@ -74,12 +74,6 @@ pub enum SystemMessage {
     AudioDevicesView(Vec<(String, String)>),
     // DMX.
     DMX(Box<[u8; 513]>),
-    // Plugin state.
-    SavePluginState {
-        plugin_name: String,
-        state_data: String,
-        location: PluginStateLocation,
-    },
     PluginAlert {
         plugin_id: u8,
         label: String,
@@ -91,6 +85,26 @@ pub enum SystemMessage {
     DeskRequest(crate::frontend_ui::DeskRequest),
     /// The engine's reply to one bus message, sent to its client only.
     CommandResult(crate::hub::CommandResult),
+    /// The engine loaded another show (a showfile, or a new empty show when
+    /// one was closed). Ids from the previous show mean nothing now:
+    /// frontends drop view state that holds them. `frontend_section` is the
+    /// desk frontend's section of the loaded showfile, if it has one; the
+    /// desk applies it and publishes its section for `generation`
+    /// (`HostCommand::SetFrontendSection`). The latest is replayed.
+    ShowLoaded {
+        generation: u64,
+        frontend_section: Option<crate::config::ShowfileUiState>,
+    },
+    /// The open showfile and whether the show has unsaved changes, published
+    /// by the persistence service whenever it changes. The latest is
+    /// replayed.
+    ShowfileStatus(crate::persistence::ShowfileStatus),
+    /// The engine ran its shutdown hook for `HostCommand::Quit` or `Restart`
+    /// and the process is about to exit; the native frontend closes its
+    /// window so `main` can finish.
+    Exiting {
+        restart: bool,
+    },
 }
 
 /// Engine startup stages, in the order they are shown.

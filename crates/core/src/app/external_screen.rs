@@ -456,7 +456,8 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
             )
             .clicked()
         {
-            self.app.mark_showfile_dirty();
+            // Saved with the layouts the desk publishes at the end of the
+            // frame; the engine marks the show edited.
             ui.close();
         }
         if ui
@@ -467,7 +468,6 @@ impl<'bl, 'ct> egui_dock::TabViewer for TabViewer<'bl, 'ct> {
             )
             .clicked()
         {
-            self.app.mark_showfile_dirty();
             ui.close();
         }
     }
@@ -644,14 +644,8 @@ impl BlaulichtApp {
 
     fn plugin_ui_tab_ids(&self) -> Vec<u8> {
         let mut plugin_ids: Vec<u8> = self
-            .data
-            .state
-            .plugins
-            .read()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect();
+            .client
+            .with_plugins(|plugins| plugins.keys().copied().collect());
         plugin_ids.sort_unstable();
         plugin_ids
     }

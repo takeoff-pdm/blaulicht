@@ -834,6 +834,33 @@ impl DmxEngine {
                 outcome: CommandOutcome::Refused("Unknown session".to_string()),
             });
         }
+        // Showfile and lifecycle commands are the persistence service's: it
+        // does their file IO on its own thread and answers them itself.
+        let body = match body {
+            BusBody::Host(command) => {
+                match self.state_ref.persistence.forward(client, seq, command) {
+                    Ok(None) => return None,
+                    Ok(Some(outcome)) => {
+                        return Some(CommandResult {
+                            client,
+                            seq,
+                            outcome,
+                        })
+                    }
+                    Err(command) => BusBody::Host(command),
+                }
+            }
+            body => body,
+        };
+        // Whether the showfile saves what the message changes. The showfile
+        // holds `DESK`'s selection and focus, not other sessions'.
+        let edits_show = match &body {
+            BusBody::Control(event) => crate::persistence::control_event_marks_showfile_dirty(
+                &event.body(),
+                session == SessionId::DESK,
+            ),
+            BusBody::Host(command) => command.edits_show(),
+        };
         // Swapped outside `apply`, so a transaction's snapshot holds (and its
         // rollback restores) the session it ran in. Swapped back below,
         // before the lock is released.
@@ -870,6 +897,9 @@ impl DmxEngine {
             }
         };
         state.swap_session(session);
+        if edits_show && matches!(outcome, CommandOutcome::Ok { .. }) {
+            self.state_ref.persistence.mark_edited();
+        }
         Some(CommandResult {
             client,
             seq,
@@ -1066,6 +1096,16 @@ impl DmxEngine {
                 first,
                 last,
             } => self.set_artnet_receiver_universes_command(address, first, last),
+            // `dispatch` forwards these to the persistence service.
+            HostCommand::SaveShowfile
+            | HostCommand::SaveShowfileAs(_)
+            | HostCommand::LoadShowfile(_)
+            | HostCommand::CloseShowfile
+            | HostCommand::SetFrontendSection { .. }
+            | HostCommand::Quit { .. }
+            | HostCommand::Restart { .. } => {
+                CommandOutcome::Refused("Not an engine command".to_string())
+            }
         }
     }
 

@@ -18,24 +18,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     audio::defs::AudioThreadControlSignal,
     command::SpawnedCommandRegistry,
-    config::{Config, PluginConfig},
+    config::PluginConfig,
     dmx::EngineState,
     frontend_ui::FrontendUiMirror,
+    persistence::PersistenceLink,
     plugin::{midi::MidiError, serial::SerialError},
     ui_ops::WasmUiOp,
 };
-
-/// What the desk frontend still reaches directly, besides its
-/// [`crate::client::LocalClient`] (`BlaulichtApp::client`). Pages move off
-/// these fields onto the client page by page (043–052); then this goes away.
-pub struct AppStateWrapper {
-    /// Shared with the engine's supervisor (`config::SharedConfig`), which
-    /// writes the audio input into it.
-    pub config: Arc<Mutex<Config>>,
-    pub config_path: String,
-
-    pub state: Arc<AppState>,
-}
 
 pub const NUM_DMX_UNIVERSES: usize = 10;
 
@@ -311,6 +300,9 @@ pub struct AppState {
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
     pub spawned_commands: Arc<Mutex<SpawnedCommandRegistry>>,
+    /// The persistence service's link: the engine marks the show edited and
+    /// forwards showfile and lifecycle commands through it.
+    pub persistence: PersistenceLink,
 }
 
 pub struct DmxBuffer {
@@ -377,6 +369,7 @@ impl AppState {
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
             spawned_commands: Arc::new(Mutex::new(SpawnedCommandRegistry::new())),
+            persistence: PersistenceLink::default(),
         }
     }
 

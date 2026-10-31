@@ -23,6 +23,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     fmt::{self, Display},
     net::SocketAddr,
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex, MutexGuard, PoisonError,
@@ -43,6 +44,7 @@ use crossbeam_channel::{Receiver, Sender};
 use strum::EnumCount;
 
 use crate::{
+    config::ShowfileUiState,
     event::{EventBusHandle, SystemEventBusConnection},
     frontend_ui::{FrontendUiMirror, FrontendUiPublisher, FrontendUiSnapshot},
     msg::{StageStatus, StartupStage, SystemMessage, TERMINAL_ONLY_LOG_TARGET},
@@ -100,9 +102,10 @@ impl Display for SessionId {
 ///
 /// The engine applies every event with the sender's session swapped in. Other
 /// consumers use the scope to ignore other operators' events: plugins only
-/// see `DESK`'s session-scoped events ([`plugin_events`]), and the desk
-/// ignores other sessions' events for its jog target and, if they only change
-/// session state, for dirty marking.
+/// see `DESK`'s session-scoped events ([`plugin_events`]), the desk ignores
+/// other sessions' events for its jog target, and the engine doesn't mark
+/// the show edited for other sessions' events that only change session state
+/// (`persistence::control_event_marks_showfile_dirty`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SessionScope {
     /// Independent of the sender's session: show state, overrides, live mode,
@@ -485,6 +488,45 @@ pub enum HostCommand {
         first: u8,
         last: u8,
     },
+
+    //
+    // Showfile and lifecycle. Carried out by the persistence service
+    // (`crate::persistence`) on its own thread, so file IO never runs under
+    // the engine lock; it answers them itself, once done.
+    //
+    /// Saves the show to the open showfile (nothing is written if it is
+    /// unchanged). Refused with "No showfile is open" or "Save failed: <why>".
+    SaveShowfile,
+    /// Saves the show as `path`, which becomes the open showfile (also in the
+    /// config), copying the stage's model assets next to it. Refused with
+    /// "Failed to copy stage assets: <why>" or "Save failed: <why>".
+    SaveShowfileAs(PathBuf),
+    /// Replaces the show with the showfile at `path`, which becomes the open
+    /// showfile (also in the config), and resets the grand master.
+    /// `SystemMessage::ShowLoaded` follows. Refused with "Could not load
+    /// <file>: <why>" (then nothing changes).
+    LoadShowfile(PathBuf),
+    /// Closes the showfile: the show becomes a new, empty show without one,
+    /// and the grand master is reset. `SystemMessage::ShowLoaded` follows.
+    CloseShowfile,
+    /// The desk frontend's section of the showfile (its screen layouts),
+    /// which the engine saves with the show and hands back on load. Send it
+    /// when it changed, for the `generation` of the last
+    /// `SystemMessage::ShowLoaded` the frontend applied; a section for
+    /// another generation is ignored. A changed section marks the show
+    /// edited, except the first one for a generation (the frontend's form of
+    /// the loaded section).
+    SetFrontendSection {
+        generation: u64,
+        section: ShowfileUiState,
+    },
+    /// Runs the shutdown hook (saves the show if `save`, resets the grand
+    /// master) and lets the process exit (`SystemMessage::Exiting`). Refused
+    /// with "Save failed: <why>" (then nothing else happens).
+    Quit { save: bool },
+    /// As [`HostCommand::Quit`], then the process exits with code 42 (its
+    /// launcher starts it again).
+    Restart { save: bool },
 }
 
 /// One audio analysis parameter ([`HostCommand::SetAudioParam`]).
@@ -535,9 +577,9 @@ pub enum SceneGraphEdgeParam {
 }
 
 impl HostCommand {
-    /// Whether applying the command changes what the showfile saves, so a
-    /// frontend that sees it on the bus marks the show unsaved (as it does
-    /// for `ControlEvent`s).
+    /// Whether applying the command changes what the showfile saves: the
+    /// engine marks the show edited when it applies one
+    /// (`crate::persistence`), whichever client sent it.
     pub fn edits_show(&self) -> bool {
         match self {
             HostCommand::ToggleAnimationPreset(_)
@@ -589,8 +631,17 @@ impl HostCommand {
             // or `UpdateAnimationTemplate` (Setup), which mark the show.
             // Initializing a fixture only changes its DMX output for a while.
             // The grand master and the audio parameters are not saved in the
-            // showfile; the audio input is saved in the config.
+            // showfile; the audio input is saved in the config. The showfile
+            // commands are the persistence service's; it tracks the frontend
+            // section itself.
             HostCommand::Ping
+            | HostCommand::SaveShowfile
+            | HostCommand::SaveShowfileAs(_)
+            | HostCommand::LoadShowfile(_)
+            | HostCommand::CloseShowfile
+            | HostCommand::SetFrontendSection { .. }
+            | HostCommand::Quit { .. }
+            | HostCommand::Restart { .. }
             | HostCommand::SetGrandMaster(_)
             | HostCommand::SelectAudioInput { .. }
             | HostCommand::SetAudioParam(_)
@@ -785,6 +836,8 @@ struct Replay {
     initialization_complete: bool,
     audio_devices: Option<SystemMessage>,
     audio_selected: Option<SystemMessage>,
+    show_loaded: Option<SystemMessage>,
+    showfile_status: Option<SystemMessage>,
     logs: VecDeque<SystemMessage>,
     log_capacity: usize,
 }
@@ -796,6 +849,8 @@ impl Replay {
             initialization_complete: false,
             audio_devices: None,
             audio_selected: None,
+            show_loaded: None,
+            showfile_status: None,
             logs: VecDeque::with_capacity(log_capacity),
             log_capacity,
         }
@@ -809,6 +864,8 @@ impl Replay {
             SystemMessage::EngineInitializationComplete => self.initialization_complete = true,
             SystemMessage::AudioDevicesView(_) => self.audio_devices = Some(message.clone()),
             SystemMessage::AudioSelected(_) => self.audio_selected = Some(message.clone()),
+            SystemMessage::ShowLoaded { .. } => self.show_loaded = Some(message.clone()),
+            SystemMessage::ShowfileStatus(_) => self.showfile_status = Some(message.clone()),
             SystemMessage::Log { .. } | SystemMessage::WasmLog(_) => {
                 if self.log_capacity == 0 {
                     return;
@@ -838,6 +895,8 @@ impl Replay {
             )
             .chain(self.audio_devices.clone())
             .chain(self.audio_selected.clone())
+            .chain(self.show_loaded.clone())
+            .chain(self.showfile_status.clone())
             .chain(self.logs.iter().cloned())
     }
 }
@@ -929,8 +988,9 @@ impl SystemHub {
     /// so a replay always fits into a fresh queue).
     pub fn with_capacity(subscriber_capacity: usize, log_replay_len: usize) -> Self {
         let capacity = subscriber_capacity.max(1);
-        // Room for the stages, the init flag and the two audio messages.
-        let fixed_replay = StartupStage::COUNT + 3;
+        // Room for the stages, the init flag, the two audio messages and the
+        // two showfile messages.
+        let fixed_replay = StartupStage::COUNT + 5;
         let log_replay_len = log_replay_len.min(capacity.saturating_sub(fixed_replay));
         Self {
             inner: Arc::new(HubInner {

@@ -1,12 +1,11 @@
 use crate::{
     app::BlaulichtApp,
     client::{EngineClient, ReplyHandlers},
-    config,
-    hub::{session_scope, BusBody, SessionScope},
+    hub::BusBody,
     msg::SystemMessage,
 };
-use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
-use std::path::{Path, PathBuf};
+use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent};
+use std::path::Path;
 
 /// Logs page source for a plugin log line: the plugin's file stem, so each
 /// plugin can be filtered on its own.
@@ -19,8 +18,9 @@ fn plugin_log_source(plugin_id: u8, plugin_path: Option<&str>) -> String {
 
 impl BlaulichtApp {
     fn plugin_log_source(&self, plugin_id: u8) -> String {
-        let plugins = self.data.state.plugins.read().unwrap();
-        plugin_log_source(plugin_id, plugins.get(&plugin_id).map(|p| p.path.as_ref()))
+        self.client.with_plugins(|plugins| {
+            plugin_log_source(plugin_id, plugins.get(&plugin_id).map(|p| p.path.as_ref()))
+        })
     }
 
     pub(crate) fn handle_events(&mut self) {
@@ -33,26 +33,19 @@ impl BlaulichtApp {
             let mut empty = 0;
             let message = self.client.try_recv_bus();
             // Other operator sessions' selection, focus and control events
-            // don't move this desk's jog target (`concerns_desk`) and mark
-            // the show dirty only if they edit it (`own_session`).
+            // don't move this desk's jog target. (The engine marks the show
+            // edited; the desk learns it from `ShowfileStatus`.)
             let session = self.client.session();
-            let (concerns_desk, own_session) = message.as_ref().map_or((false, false), |message| {
-                (
-                    message.concerns_session(session),
-                    message.session == session,
-                )
-            });
+            let concerns_desk = message
+                .as_ref()
+                .is_some_and(|message| message.concerns_session(session));
             match message.map(|message| message.body) {
                 Some(BusBody::Control(control_event))
                     if control_event.originator() == EventOriginator::Web =>
                 {
-                    let body = control_event.body();
                     if concerns_desk {
                         self.recent_fixture_property
-                            .observe(&body, std::time::Instant::now());
-                    }
-                    if control_event_marks_showfile_dirty(&body, own_session) {
-                        self.mark_showfile_dirty();
+                            .observe(&control_event.body(), std::time::Instant::now());
                     }
                 }
                 // Don't handle web to avoid infinite loopbacks.
@@ -61,9 +54,6 @@ impl BlaulichtApp {
                     if control_event.originator() == EventOriginator::Plugin && concerns_desk {
                         self.recent_fixture_property
                             .observe(&body, std::time::Instant::now());
-                    }
-                    if control_event_marks_showfile_dirty(&body, own_session) {
-                        self.mark_showfile_dirty();
                     }
                     if let ControlEvent::MainUi(main_ui_event) = body {
                         match main_ui_event {
@@ -109,11 +99,7 @@ impl BlaulichtApp {
                 }
                 // Host commands are applied by the engine; the desk only sees
                 // its reply (`SystemMessage::CommandResult`).
-                Some(BusBody::Host(command)) => {
-                    if command.edits_show() {
-                        self.mark_showfile_dirty();
-                    }
-                }
+                Some(BusBody::Host(_)) => {}
                 None => {
                     empty += 1;
                 }
@@ -173,25 +159,15 @@ impl BlaulichtApp {
                         //     "DMX".to_string(),
                         // );
                     }
-                    SystemMessage::SavePluginState {
-                        plugin_name,
-                        state_data,
-                        location,
-                    } => {
-                        if location == PluginStateLocation::Global {
-                            let mut config_mut = self.data.config.lock().unwrap();
-                            config_mut
-                                .plugin_state
-                                .insert(plugin_name.clone(), state_data.clone());
-                            let config_path = PathBuf::from(self.data.config_path.clone());
-                            if let Err(err) = config::write_config(config_path, config_mut.clone())
-                            {
-                                tracing::error!(
-                                    "Failed to write config after global state save: {err}"
-                                );
-                            }
-                        }
+                    SystemMessage::ShowLoaded {
+                        generation,
+                        frontend_section,
+                    } => self.apply_show_loaded(generation, frontend_section),
+                    SystemMessage::ShowfileStatus(status) => {
+                        self.save_status = status.save;
+                        self.saved_at = status.saved_at;
                     }
+                    SystemMessage::Exiting { .. } => self.exit_requested = true,
                     SystemMessage::DeskRequest(request) => {
                         self.view_state.apply_desk_request(request);
                     }
@@ -236,117 +212,9 @@ impl BlaulichtApp {
     }
 }
 
-/// `true` if `event` changes what the showfile saves. `own_session` is
-/// `false` for events from another operator session: those change only that
-/// session if they are [`SessionScope::Session`] (its selection or focus,
-/// which the showfile doesn't save), but their control events edit scenes
-/// like the desk's own.
-fn control_event_marks_showfile_dirty(event: &ControlEvent, own_session: bool) -> bool {
-    match event {
-        ControlEvent::Transaction(events) => events
-            .iter()
-            .any(|event| control_event_marks_showfile_dirty(event, own_session)),
-        _ if !own_session && session_scope(event) == SessionScope::Session => false,
-        ControlEvent::SelectGroup(_)
-        | ControlEvent::DeSelectGroup(_)
-        | ControlEvent::SelectFolder(_)
-        | ControlEvent::LimitSelectionToFixtureInCurrentGroup(_)
-        | ControlEvent::UnLimitSelectionToFixtureInCurrentGroup(_)
-        | ControlEvent::RemoveSelection
-        | ControlEvent::RemoveAllSelection
-        | ControlEvent::PushSelection
-        | ControlEvent::PopSelection
-        | ControlEvent::MainUi(_)
-        | ControlEvent::PluginUi(_, _)
-        | ControlEvent::SetLiveMode(_)
-        | ControlEvent::ToggleLiveMode
-        | ControlEvent::MiscEvent { .. } => false,
-        _ => true,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{control_event_marks_showfile_dirty, plugin_log_source};
-    use blaulicht_shared::{
-        folder::{FolderItem, FolderKind},
-        ControlEvent,
-    };
-
-    #[test]
-    fn selecting_a_folder_is_not_show_data_but_editing_folders_is() {
-        assert!(!control_event_marks_showfile_dirty(
-            &ControlEvent::SelectFolder(0),
-            true
-        ));
-        // The Programmer's folder deselect and the SelectFolder rollback.
-        assert!(!control_event_marks_showfile_dirty(
-            &ControlEvent::Transaction(vec![
-                ControlEvent::DeSelectGroup(0),
-                ControlEvent::LimitSelectionToFixtureInCurrentGroup(1),
-            ]),
-            true
-        ));
-        for event in [
-            ControlEvent::CreateFolder {
-                id: 0,
-                kind: FolderKind::Groups,
-                parent: None,
-                name: "Stage".to_string(),
-            },
-            ControlEvent::RenameFolder(0, "Front".to_string()),
-            ControlEvent::DeleteFolder(0),
-            ControlEvent::MoveToFolder {
-                item: FolderItem::Group(1),
-                folder: Some(0),
-            },
-            ControlEvent::ReorderFolder(0, 2),
-        ] {
-            assert!(
-                control_event_marks_showfile_dirty(&event, true),
-                "{event:?}"
-            );
-        }
-    }
-
-    /// Another operator's focus changes only their session (the showfile
-    /// saves the desk's), but their control events edit the show.
-    #[test]
-    fn other_sessions_mark_the_show_dirty_only_when_they_edit_it() {
-        for event in [
-            ControlEvent::SetSceneFocus(1),
-            ControlEvent::SetFocusedSceneGraph(Some(0)),
-        ] {
-            assert!(
-                control_event_marks_showfile_dirty(&event, true),
-                "{event:?}"
-            );
-            assert!(
-                !control_event_marks_showfile_dirty(&event, false),
-                "{event:?}"
-            );
-        }
-        for event in [
-            ControlEvent::SetColor((1, 2, 3)),
-            ControlEvent::SetChannelOverride(0, 1, 255),
-            ControlEvent::Transaction(vec![
-                ControlEvent::SetSceneFocus(1),
-                ControlEvent::SetAlpha(9),
-            ]),
-        ] {
-            assert!(
-                control_event_marks_showfile_dirty(&event, false),
-                "{event:?}"
-            );
-        }
-        assert!(!control_event_marks_showfile_dirty(
-            &ControlEvent::Transaction(vec![
-                ControlEvent::SetSceneFocus(1),
-                ControlEvent::SelectGroup(0),
-            ]),
-            false
-        ));
-    }
+    use super::plugin_log_source;
 
     #[test]
     fn plugin_logs_are_attributed_to_the_plugin_file_stem() {

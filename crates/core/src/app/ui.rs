@@ -1,17 +1,17 @@
 use crate::app::{
     components::{self, ButtonSize, Dialog},
-    theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec, ShowfileSaveStatus,
+    theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
 };
 use crate::client::{EngineClient, LocalClient};
-use crate::config;
-use crate::state::AppStateWrapper;
+use crate::config::ShowfileUiState;
+use crate::hub::{CommandOutcome, HostCommand};
+use crate::persistence::SaveStatus;
 use crate::state::ScreenId;
 
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;
 
 use egui::Context;
-use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
 const BEAT_MARKER_TRIGGER_DEBOUNCE_FRACTION: f32 = 0.90;
@@ -31,16 +31,19 @@ impl Drop for BlaulichtApp {
 
 impl BlaulichtApp {
     /// Called once before the first frame.
+    ///
+    /// `config_dir` is where the file dialogs start when there is no
+    /// showfile and no `showfile_home`.
     pub fn new(
         cc: &eframe::CreationContext<'_>,
-        state: AppStateWrapper,
         client: LocalClient,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
+        config_dir: Option<std::path::PathBuf>,
         external_screens: Vec<(usize, usize)>,
     ) -> Self {
-        let mut app = Self::new_default(state, client, desktop_mode, showfile_home);
+        let mut app = Self::new_default(client, desktop_mode, showfile_home, config_dir);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 
@@ -70,22 +73,9 @@ impl BlaulichtApp {
             .map(|(dim_x, dim_y)| ExternalScreen::new(egui::vec2(*dim_x as f32, *dim_y as f32)))
             .collect();
 
-        let startup_showfile_state = {
-            let config_guard = app.data.config.lock().unwrap();
-            config_guard
-                .last_open_showfile
-                .clone()
-                .and_then(|path| config::read_showfile_ui_state(path).ok())
-        };
-
-        if let Some(showfile_state) = startup_showfile_state {
-            if let Some(ui_state) = showfile_state.ui {
-                app.apply_showfile_ui_state(ui_state);
-            }
-        }
-
+        // The startup showfile's screen layouts arrive with the engine's
+        // `ShowLoaded` (already queued on the client), in the first frame.
         app.publish_ui_mirror();
-        app.reset_save_tracking();
 
         app
     }
@@ -107,19 +97,18 @@ impl eframe::App for BlaulichtApp {
             ctx,
             std::mem::take(&mut self.pending_numberpad_delta),
         );
-        self.poll_save_completion(ctx);
-        self.detect_showfile_dirty();
-        self.tick_autosave();
+
+        // The engine ran its shutdown hook (`HostCommand::Quit` / `Restart`,
+        // from any client): close, so `main` can exit.
+        if std::mem::take(&mut self.exit_requested) {
+            self.allow_close_once = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
 
         if ctx.input(|input| input.viewport().close_requested()) {
             if self.allow_close_once {
                 self.allow_close_once = false;
-            } else if matches!(
-                self.save_status,
-                ShowfileSaveStatus::Dirty
-                    | ShowfileSaveStatus::Saving
-                    | ShowfileSaveStatus::Failed(_)
-            ) {
+            } else if self.save_status.has_unsaved_changes() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.pending_lifecycle_action = Some(GuardedLifecycleAction::Quit);
             }
@@ -141,8 +130,7 @@ impl eframe::App for BlaulichtApp {
         self.debug_dialog(ctx);
 
         // Update all graphs with current data
-        {
-            let audio_data = self.data.state.audio_spectrogram.read().unwrap();
+        self.client.with_spectrogram(|audio_data| {
             let audio_output = audio_data.current_output();
             let audio_snapshot = audio_output.snapshot;
 
@@ -214,7 +202,7 @@ impl eframe::App for BlaulichtApp {
                 self.beat_model_graphs[0].update((beat * 100.0).round() as i32);
                 self.beat_model_graphs[1].update((downbeat * 100.0).round() as i32);
             }
-        }
+        });
 
         // Loop & plugin tick speed over time.
         self.loop_speed_graph
@@ -235,6 +223,7 @@ impl eframe::App for BlaulichtApp {
         }
         self.finish_jog_adjustment(ctx);
         self.publish_ui_mirror();
+        self.publish_frontend_section();
     }
 }
 
@@ -276,226 +265,81 @@ impl BlaulichtApp {
         self.log_window.draw(ctx, ui);
     }
 
-    fn tick_autosave(&mut self) {
-        const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(30);
-
-        if self.last_autosave_check.elapsed() < AUTOSAVE_INTERVAL {
-            return;
-        }
-        self.last_autosave_check = Instant::now();
-
-        if matches!(
-            self.save_status,
-            ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Failed(_)
-        ) {
-            self.request_showfile_save(false);
-        }
-    }
-
-    pub(crate) fn mark_showfile_dirty(&mut self) {
-        self.dirty_revision = self.dirty_revision.wrapping_add(1);
-        if self
-            .data
-            .config
-            .lock()
-            .unwrap()
-            .last_open_showfile
-            .is_none()
-        {
-            return;
-        }
-        if self.save_in_flight {
-            self.save_pending = true;
-        } else {
-            self.save_status = ShowfileSaveStatus::Dirty;
-        }
-    }
-
-    fn detect_showfile_dirty(&mut self) {
-        const DIRTY_CHECK_INTERVAL: Duration = Duration::from_secs(2);
-
-        while let Ok(completion) = self.dirty_check_receiver.try_recv() {
-            self.dirty_check_in_flight = false;
-            if completion.revision != self.dirty_revision || self.save_in_flight {
-                continue;
-            }
-            match completion.result {
-                Ok(hash) => {
-                    self.save_status = if hash == self.last_autosave_hash {
-                        ShowfileSaveStatus::Clean
-                    } else {
-                        ShowfileSaveStatus::Dirty
-                    };
-                }
-                Err(error) => tracing::warn!("Failed to check showfile dirty state: {error}"),
-            }
-        }
-
-        if self.last_dirty_check.elapsed() < DIRTY_CHECK_INTERVAL
-            || self.dirty_check_in_flight
-            || self.save_in_flight
-        {
-            return;
-        }
-        self.last_dirty_check = Instant::now();
-        if self
-            .data
-            .config
-            .lock()
-            .unwrap()
-            .last_open_showfile
-            .is_none()
-        {
-            self.save_status = ShowfileSaveStatus::NoShowfile;
-            return;
-        }
-
-        let showfile = self.build_showfile();
-        let revision = self.dirty_revision;
-        let sender = self.dirty_check_sender.clone();
-        self.dirty_check_in_flight = true;
-        if let Err(error) = std::thread::Builder::new()
-            .name("showfile-dirty-check".to_owned())
-            .spawn(move || {
-                let result = Self::serialize_showfile(showfile).map(|(_, hash)| hash);
-                let _ = sender.send(crate::app::DirtyCheckCompletion { revision, result });
-            })
-        {
-            self.dirty_check_in_flight = false;
-            tracing::warn!("Failed to start showfile dirty check: {error}");
-        }
-    }
-
-    fn serialized_showfile(&self) -> Result<(String, u64), String> {
-        Self::serialize_showfile(self.build_showfile())
-    }
-
-    fn serialize_showfile(showfile: config::CoreShowfile) -> Result<(String, u64), String> {
-        let serialized =
-            serde_json::to_string_pretty(&showfile).map_err(|error| error.to_string())?;
-        let mut hasher = std::hash::DefaultHasher::new();
-        serialized.hash(&mut hasher);
-        Ok((serialized, hasher.finish()))
-    }
-
-    pub(crate) fn request_showfile_save(&mut self, manual: bool) {
-        let Some(path) = self.data.config.lock().unwrap().last_open_showfile.clone() else {
-            self.save_status = ShowfileSaveStatus::NoShowfile;
-            if manual {
-                self.show_popup(PopupSpec::with_duration(
-                    Duration::from_secs(2),
-                    "No Showfile".to_string(),
-                ));
-            }
-            return;
-        };
-        if self.save_in_flight {
-            self.save_pending = true;
-            return;
-        }
-        let (serialized, hash) = match self.serialized_showfile() {
-            Ok(result) => result,
-            Err(error) => {
-                self.save_status = ShowfileSaveStatus::Failed(error);
-                return;
-            }
-        };
-        if hash == self.last_autosave_hash {
-            self.save_status = ShowfileSaveStatus::Clean;
-            return;
-        }
-
-        self.save_status = ShowfileSaveStatus::Saving;
-        self.save_in_flight = true;
-        let sender = self.save_completion_sender.clone();
-        std::thread::spawn(move || {
-            let result = config::write_atomic(&path, serialized.as_bytes())
-                .map_err(|error| error.to_string());
-            if result.is_ok() {
-                tracing::info!(
-                    "Saved showfile {}",
-                    config::absolute_showfile_path(&path).display()
-                );
-            }
-            let _ = sender.send(crate::app::SaveCompletion {
-                hash,
-                manual,
-                result,
-            });
+    /// Saves the show (the Save button): "Saved Showfile" once the engine
+    /// wrote it, or why it couldn't.
+    pub(crate) fn request_showfile_save(&mut self) {
+        self.send_command(HostCommand::SaveShowfile, |app, _| {
+            app.show_popup(PopupSpec::with_duration(
+                Duration::from_secs(2),
+                "Saved Showfile".to_string(),
+            ));
         });
     }
 
-    fn poll_save_completion(&mut self, ctx: &Context) {
-        while let Ok(completion) = self.save_completion_receiver.try_recv() {
-            self.save_in_flight = false;
-            match completion.result {
-                Ok(()) => {
-                    self.last_autosave_hash = completion.hash;
-                    self.last_save_time = Some(Instant::now());
-                    self.save_status = ShowfileSaveStatus::Clean;
-                    let config = self.data.config.lock().unwrap().clone();
-                    if let Err(error) = config::write_config(
-                        std::path::PathBuf::from(&self.data.config_path),
-                        config,
-                    ) {
-                        tracing::warn!("Failed to persist showfile path: {error}");
-                    }
-                    if completion.manual {
-                        self.show_popup(PopupSpec::with_duration(
-                            Duration::from_secs(2),
-                            "Saved Showfile".to_string(),
-                        ));
-                    }
-                }
-                Err(error) => {
-                    tracing::error!("Failed to save showfile: {error}");
-                    self.save_status = ShowfileSaveStatus::Failed(error);
-                    self.pending_lifecycle_action = self.lifecycle_action_after_save.take();
-                }
-            }
-            if self.save_pending {
-                self.save_pending = false;
-                self.request_showfile_save(false);
-                if !self.save_in_flight && matches!(self.save_status, ShowfileSaveStatus::Clean) {
-                    if let Some(action) = self.lifecycle_action_after_save.take() {
-                        self.execute_lifecycle_action(action, ctx);
-                    }
-                }
-            } else if matches!(self.save_status, ShowfileSaveStatus::Clean) {
-                if let Some(action) = self.lifecycle_action_after_save.take() {
-                    self.execute_lifecycle_action(action, ctx);
-                }
-            }
+    /// The engine loaded another show: drop view state that holds ids of the
+    /// previous one, and take the screen layouts the showfile brought.
+    pub(crate) fn apply_show_loaded(
+        &mut self,
+        generation: u64,
+        frontend_section: Option<ShowfileUiState>,
+    ) {
+        if generation != self.show_generation {
+            self.reset_show_view_state();
         }
+        if let Some(section) = frontend_section {
+            self.apply_showfile_ui_state(section);
+        }
+        self.show_generation = generation;
+        // Publish ours for the new show even if it looks the same.
+        self.published_frontend_section = None;
     }
 
-    pub(crate) fn reset_save_tracking(&mut self) {
-        self.dirty_revision = self.dirty_revision.wrapping_add(1);
-        self.last_dirty_check = Instant::now();
-        self.last_autosave_hash = self
-            .serialized_showfile()
-            .map(|(_, hash)| hash)
-            .unwrap_or(0);
-        self.save_status = if self
-            .data
-            .config
-            .lock()
-            .unwrap()
-            .last_open_showfile
-            .is_some()
-        {
-            ShowfileSaveStatus::Clean
-        } else {
-            ShowfileSaveStatus::NoShowfile
-        };
+    /// Drops view state that holds ids of the previous show: selections and
+    /// dialog targets, the scene graph canvas, the visualizer's selection and
+    /// undo. Sessions are repaired by the engine.
+    fn reset_show_view_state(&mut self) {
+        self.visualizer_ui_state.reset_stage_view();
+        self.selected_fixture_group = None;
+        self.setup_fixture_id = 0;
+        self.delete_fixture = None;
+        self.add_fixture_group = None;
+        self.scene_dialog_target = 0;
+        self.view_ui_state = Default::default();
+        self.view_perf_ui_state = Default::default();
+        self.animation_ui_state = Default::default();
+        self.scene_graph_ui_state = Default::default();
+        self.palette_ui_state = Default::default();
+        self.setup_groups_ui = Default::default();
+        self.setup_scenes_ui = Default::default();
+        self.setup_palettes_ui = Default::default();
+        self.programmer_ui_state.active_palettes_cache.clear();
+        self.programmer_ui_state
+            .scene_overview_animation_selection_edit = None;
+    }
+
+    /// Publishes the screen layouts (the showfile's `ui` section) when they
+    /// changed, once the engine announced a show to publish them for.
+    fn publish_frontend_section(&mut self) {
+        if self.show_generation == 0 {
+            return;
+        }
+        let section = self.showfile_ui_state();
+        if self.published_frontend_section.as_ref() == Some(&section) {
+            return;
+        }
+        self.published_frontend_section = Some(section.clone());
+        self.client.send(HostCommand::SetFrontendSection {
+            generation: self.show_generation,
+            section,
+        });
     }
 
     fn render_save_status(&self, ctx: &Context) {
         let (label, color) = match &self.save_status {
-            ShowfileSaveStatus::NoShowfile | ShowfileSaveStatus::Clean => return,
-            ShowfileSaveStatus::Dirty => ("Unsaved changes", egui::Color32::YELLOW),
-            ShowfileSaveStatus::Saving => ("Saving...", egui::Color32::LIGHT_BLUE),
-            ShowfileSaveStatus::Failed(_) => ("Save failed", egui::Color32::LIGHT_RED),
+            SaveStatus::NoShowfile | SaveStatus::Clean => return,
+            SaveStatus::Dirty => ("Unsaved changes", egui::Color32::YELLOW),
+            SaveStatus::Saving => ("Saving...", egui::Color32::LIGHT_BLUE),
+            SaveStatus::Failed(_) => ("Save failed", egui::Color32::LIGHT_RED),
         };
         const DOT_RADIUS: f32 = 4.0;
         egui::Area::new(egui::Id::new("showfile_save_status"))
@@ -506,36 +350,37 @@ impl BlaulichtApp {
                     .allocate_exact_size(egui::Vec2::splat(DOT_RADIUS * 2.0), egui::Sense::hover());
                 ui.painter().circle_filled(rect.center(), DOT_RADIUS, color);
                 response.on_hover_text(match &self.save_status {
-                    ShowfileSaveStatus::Failed(error) => format!("{label}: {error}"),
+                    SaveStatus::Failed(error) => format!("{label}: {error}"),
                     _ => label.to_owned(),
                 });
             });
     }
 
-    pub(crate) fn request_guarded_lifecycle(
-        &mut self,
-        action: GuardedLifecycleAction,
-        ctx: &Context,
-    ) {
-        if matches!(
-            self.save_status,
-            ShowfileSaveStatus::Dirty | ShowfileSaveStatus::Saving | ShowfileSaveStatus::Failed(_)
-        ) {
+    pub(crate) fn request_guarded_lifecycle(&mut self, action: GuardedLifecycleAction) {
+        if self.save_status.has_unsaved_changes() {
             self.pending_lifecycle_action = Some(action);
         } else {
-            self.execute_lifecycle_action(action, ctx);
+            // Clean as far as the desk knows: the engine's final save
+            // catches an edit made since its last check.
+            self.send_lifecycle(action, true);
         }
     }
 
-    fn execute_lifecycle_action(&mut self, action: GuardedLifecycleAction, ctx: &Context) {
-        match action {
-            GuardedLifecycleAction::Quit => {
-                self.data.state.set_grand_master_percent(100);
-                self.allow_close_once = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-            GuardedLifecycleAction::Restart => std::process::exit(42),
-        }
+    /// Asks the engine to run its shutdown hook and exit (saving first if
+    /// `save`). The window closes on `SystemMessage::Exiting`; if the save
+    /// fails, the refusal shows and the guard dialog comes back.
+    fn send_lifecycle(&mut self, action: GuardedLifecycleAction, save: bool) {
+        let command = match action {
+            GuardedLifecycleAction::Quit => HostCommand::Quit { save },
+            GuardedLifecycleAction::Restart => HostCommand::Restart { save },
+        };
+        self.reply_handlers
+            .send_then(&self.client, command, move |app, outcome| {
+                if let CommandOutcome::Refused(why) = outcome {
+                    app.show_refusal(why.clone());
+                    app.pending_lifecycle_action = Some(action);
+                }
+            });
     }
 
     fn render_lifecycle_guard(&mut self, ctx: &Context) {
@@ -556,18 +401,11 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, true, "Save", ButtonSize::Medium) {
                         self.pending_lifecycle_action = None;
-                        self.lifecycle_action_after_save = Some(action);
-                        self.request_showfile_save(true);
+                        self.send_lifecycle(action, true);
                     }
                     if components::button(ui, false, "Discard", ButtonSize::Medium) {
                         self.pending_lifecycle_action = None;
-                        match action {
-                            GuardedLifecycleAction::Quit => {
-                                self.allow_close_once = true;
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close)
-                            }
-                            GuardedLifecycleAction::Restart => std::process::exit(42),
-                        }
+                        self.send_lifecycle(action, false);
                     }
                     if components::button(ui, false, "Cancel", ButtonSize::Medium) {
                         self.pending_lifecycle_action = None;
@@ -576,55 +414,6 @@ impl BlaulichtApp {
             });
         if response.cancel_requested {
             self.pending_lifecycle_action = None;
-        }
-    }
-
-    fn build_showfile(&self) -> config::CoreShowfile {
-        use blaulicht_shared::{SaveEngineState, ShowfileArtNetReceiver, ShowfileArtNetState};
-
-        let engine_snapshot = { self.data.state.dmx_engine.read().unwrap().0.clone() };
-        let plugin_state = { self.data.state.plugin_state_storage.lock().unwrap().clone() };
-        let artnet_state = {
-            let artnet_output = self.data.state.artnet_output.read().unwrap();
-            ShowfileArtNetState {
-                receivers: artnet_output
-                    .receivers
-                    .iter()
-                    .filter(|receiver| receiver.owner_plugin_id.is_none())
-                    .map(|receiver| ShowfileArtNetReceiver {
-                        address: receiver.address,
-                        enabled: receiver.enabled,
-                        universes: (!receiver.sends_all_universes())
-                            .then_some((receiver.first_universe, receiver.last_universe)),
-                    })
-                    .collect(),
-            }
-        };
-
-        let mut engine = SaveEngineState::from(engine_snapshot);
-        Self::clear_volatile_engine_state(&mut engine);
-
-        config::CoreShowfile {
-            format_version: config::current_showfile_version(),
-            engine,
-            artnet: artnet_state,
-            plugin_state,
-            stage: self.client.with_show(|show| show.stage().clone()),
-            ui: Some(self.showfile_ui_state()),
-        }
-    }
-
-    /// Animation timers advance on every engine tick; keeping them out of the
-    /// snapshot prevents a running animation from flagging the showfile dirty.
-    fn clear_volatile_engine_state(engine: &mut blaulicht_shared::SaveEngineState) {
-        for scene in &mut engine.scenes {
-            for selection in &mut scene.value_mut().sink.active_animations {
-                for animation in selection.value_mut() {
-                    for timer in &mut animation.value_mut().fixture_timers {
-                        *timer.value_mut() = Default::default();
-                    }
-                }
-            }
         }
     }
 }

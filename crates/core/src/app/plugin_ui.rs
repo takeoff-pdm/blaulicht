@@ -7,18 +7,14 @@ use strum::IntoEnumIterator;
 
 /// Window/pane title for a plugin UI: the numeric id plus the plugin's file
 /// stem, so several open plugin windows can be told apart.
-pub(crate) fn plugin_ui_title(data: &crate::state::AppStateWrapper, plugin_id: u8) -> String {
-    let name = data
-        .state
-        .plugins
-        .read()
-        .unwrap()
-        .get(&plugin_id)
-        .and_then(|p| {
+pub(crate) fn plugin_ui_title(client: &impl EngineClient, plugin_id: u8) -> String {
+    let name = client.with_plugins(|plugins| {
+        plugins.get(&plugin_id).and_then(|p| {
             std::path::Path::new(p.path.as_ref())
                 .file_stem()
                 .map(|stem| stem.to_string_lossy().into_owned())
-        });
+        })
+    });
     match name {
         Some(name) => format!("Plugin UI #{plugin_id} · {name}"),
         None => format!("Plugin UI #{plugin_id}"),
@@ -26,27 +22,25 @@ pub(crate) fn plugin_ui_title(data: &crate::state::AppStateWrapper, plugin_id: u
 }
 
 impl BlaulichtApp {
+    /// Whether plugin `plugin_id` is an animation plugin, whose UI lives in
+    /// the animation editor.
+    fn is_animation_plugin(&self, plugin_id: u8) -> bool {
+        self.client.with_plugin_runtime_kinds(|kinds| {
+            matches!(
+                kinds.get(&plugin_id),
+                Some(crate::state::PluginRuntimeKind::Animation { .. })
+            )
+        })
+    }
+
     pub(crate) fn render_plugin_ui_contents(&mut self, ui: &mut egui::Ui, plugin_id: u8) {
-        if matches!(
-            self.data
-                .state
-                .plugin_runtime_kinds
-                .read()
-                .unwrap()
-                .get(&plugin_id),
-            Some(crate::state::PluginRuntimeKind::Animation { .. })
-        ) {
+        if self.is_animation_plugin(plugin_id) {
             ui.label("Animation plugin UI is available in the animation editor.");
             return;
         }
         let ops = self
-            .data
-            .state
-            .plugin_ui_ops
-            .read()
-            .unwrap()
-            .get(&plugin_id)
-            .cloned();
+            .client
+            .with_plugin_ui_ops(|ops| ops.get(&plugin_id).cloned());
 
         if let Some(ops) = ops {
             let mut idx = 0usize;
@@ -65,20 +59,22 @@ impl BlaulichtApp {
     }
 
     pub fn render_plugin_ui(&mut self, ctx: &Context, canvas_screen_id: ScreenId) {
-        let ops_map = self.data.state.plugin_ui_ops.read().unwrap().clone();
         let visibility_map = self.view_state.plugin_visibility.clone();
+        // Copies of the ops of the windows open on this screen only.
+        let ops_map: std::collections::HashMap<u8, Vec<crate::ui_ops::WasmUiOp>> =
+            self.client.with_plugin_ui_ops(|ops| {
+                visibility_map
+                    .iter()
+                    .filter(|(_, visibility)| {
+                        visibility.open && visibility.screen_id == canvas_screen_id
+                    })
+                    .filter_map(|(id, _)| ops.get(id).map(|ops| (*id, ops.clone())))
+                    .collect()
+            });
 
         for (plugin_id, visibility) in visibility_map.iter() {
             let plugin_id = *plugin_id;
-            if matches!(
-                self.data
-                    .state
-                    .plugin_runtime_kinds
-                    .read()
-                    .unwrap()
-                    .get(&plugin_id),
-                Some(crate::state::PluginRuntimeKind::Animation { .. })
-            ) {
+            if self.is_animation_plugin(plugin_id) {
                 continue;
             }
             let mut is_open = visibility.open;
@@ -90,7 +86,7 @@ impl BlaulichtApp {
                 continue;
             }
 
-            let title = plugin_ui_title(&self.data, plugin_id);
+            let title = plugin_ui_title(&self.client, plugin_id);
             let popped_out = self.view_state.is_popped_out(plugin_id);
             let maximize_requested = popped_out && self.view_state.take_maximize_request(plugin_id);
             let client = &self.client;

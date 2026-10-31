@@ -14,6 +14,7 @@ pub mod hub;
 pub mod log;
 pub mod mainloop;
 pub mod msg;
+pub mod persistence;
 pub mod plugin;
 pub mod routes;
 pub mod stage;

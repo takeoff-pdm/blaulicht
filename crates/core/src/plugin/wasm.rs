@@ -2356,7 +2356,6 @@ impl PluginManager {
         let showfile_state_storage = Arc::clone(&self.state_ref.plugin_state_storage);
         let global_state_storage = Arc::clone(&self.state_ref.plugin_state_storage_global);
         let state_ref_for_save = Arc::clone(&self.state_ref);
-        let system_out = self.hub.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_save_plugin_state",
@@ -2418,20 +2417,12 @@ impl PluginManager {
                     encoded
                 };
 
-                // The desk writes global state to config.toml (until 052 moves
-                // that into the engine); nobody else should.
-                let delivered = system_out.publish_to(
-                    ClientId::Desk,
-                    SystemMessage::SavePluginState {
-                        plugin_name: plugin_name.clone(),
-                        state_data,
-                        location,
-                    },
-                );
-                if !delivered && location == PluginStateLocation::Global {
-                    tracing::warn!(
-                        "No desk frontend connected; global state of {plugin_name} is not written to config.toml"
-                    );
+                // Global state lives in config.toml, which the persistence
+                // service writes; showfile state is saved with the show.
+                if location == PluginStateLocation::Global {
+                    state_ref_for_save
+                        .persistence
+                        .save_global_plugin_state(plugin_name, state_data);
                 }
             },
         )?;

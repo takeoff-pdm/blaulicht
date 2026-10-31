@@ -42,8 +42,10 @@ pub struct StageState {
     /// Counts changes, so a frontend can tell cheaply whether its copy is
     /// current.
     revision: u64,
-    /// The showfile the stage's model assets sit next to; `None` until the
-    /// show is saved.
+    /// The open showfile, `None` for a show that was never saved. The
+    /// engine's only copy: the stage's model assets sit next to it, and the
+    /// persistence service saves to it and writes it into the config's
+    /// `last_open_showfile`.
     showfile: Option<PathBuf>,
     /// Where the engine last put each attached fixture. A fixture found
     /// anywhere else was moved by something else (Setup, a hand placement),
@@ -62,9 +64,9 @@ impl EngineState {
         self.3.revision
     }
 
-    /// The showfile the stage's model assets are stored next to, if the show
-    /// has been saved.
-    pub fn stage_showfile(&self) -> Option<&Path> {
+    /// The open showfile, if the show has one. The stage's model assets are
+    /// stored next to it.
+    pub fn showfile(&self) -> Option<&Path> {
         self.3.showfile.as_deref()
     }
 
@@ -79,10 +81,17 @@ impl EngineState {
         self.reconcile_stage();
     }
 
-    /// The show was saved as `showfile`, with its model assets copied there
-    /// (`relocated` points at the copies).
-    pub fn relocate_stage(&mut self, relocated: StageScene, showfile: PathBuf) {
-        self.3.scene = Arc::new(relocated);
+    /// The show is saved as `showfile` from now on, with its model assets
+    /// copied there: points the stage's assets at the copies in `relocated`
+    /// (by asset id; the rest of the stage is kept, so an edit made while the
+    /// copies were written survives).
+    pub fn relocate_stage(&mut self, relocated: &StageScene, showfile: PathBuf) {
+        let scene = Arc::make_mut(&mut self.3.scene);
+        for (id, asset) in &relocated.assets {
+            if let Some(current) = scene.assets.get_mut(id) {
+                current.relative_path.clone_from(&asset.relative_path);
+            }
+        }
         self.3.showfile = Some(showfile);
         self.3.revision = self.3.revision.wrapping_add(1);
     }
@@ -904,7 +913,7 @@ mod tests {
 
         state.load_stage(stage, Some("/shows/show.json".into()));
 
-        assert_eq!(state.stage_showfile(), Some(Path::new("/shows/show.json")));
+        assert_eq!(state.showfile(), Some(Path::new("/shows/show.json")));
         assert_eq!(state.stage().fixture_attachments.len(), 1);
         assert_eq!(Some(pose(&state, (1, 1))), mount(&state, (1, 1)));
         // A UI snapshot shares the stage instead of copying it.

@@ -960,7 +960,7 @@ impl BlaulichtApp {
             });
             let showfile = self
                 .client
-                .with_show(|show| show.stage_showfile().map(|path| path.to_path_buf()));
+                .with_show(|show| show.showfile().map(|path| path.to_path_buf()));
             let importing = self.visualizer_ui_state.import_receiver.is_some()
                 || self
                     .visualizer_ui_state
@@ -1210,7 +1210,7 @@ impl BlaulichtApp {
 
         let showfile = self
             .client
-            .with_show(|show| show.stage_showfile().map(|path| path.to_path_buf()));
+            .with_show(|show| show.showfile().map(|path| path.to_path_buf()));
         let Some(showfile) = showfile else {
             return;
         };
