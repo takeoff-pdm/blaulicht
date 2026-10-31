@@ -1,6 +1,7 @@
 /// This module deals with applying events on fixtures to produce a continuous DMX output.
 mod management;
 mod session;
+mod setup_commands;
 mod state;
 
 use artnet_protocol::ArtCommand;
@@ -33,7 +34,7 @@ use blaulicht_shared::{
 };
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap, HashSet},
     io::ErrorKind,
     mem,
@@ -109,6 +110,9 @@ pub struct DmxEngine {
     /// key and when the run started. Overlaid on the normal render for
     /// `SETUP_SECS`, so the rest of the show keeps playing.
     fixture_inits: Vec<((u8, u8), Instant)>,
+    /// Fixtures `HostCommand::InitFixtures` asked to initialize since the
+    /// last frame; moved into `fixture_inits` after rendering.
+    pending_fixture_inits: RefCell<Vec<(u8, u8)>>,
 
     scene_graph_runtime: SceneGraphRuntime,
     animation_clock: animation::AnimationClockRuntime,
@@ -368,6 +372,7 @@ impl DmxEngine {
             running_setup: false,
             setup_start_time: Instant::now(),
             fixture_inits: Vec::new(),
+            pending_fixture_inits: RefCell::new(Vec::new()),
             scene_graph_runtime: SceneGraphRuntime::default(),
             animation_clock: animation::AnimationClockRuntime::default(),
             graph_overlay_scenes: Vec::new(),
@@ -456,7 +461,7 @@ impl DmxEngine {
     /// Runs the `setup` routine of every fixture with a pending or active
     /// "Initialize" request on top of the rendered frame.
     fn run_fixture_inits(&mut self) {
-        for key in self.state_ref.take_fixture_init_requests() {
+        for key in std::mem::take(self.pending_fixture_inits.get_mut()) {
             match self.fixture_inits.iter_mut().find(|(k, _)| *k == key) {
                 Some((_, started)) => *started = Instant::now(),
                 None => self.fixture_inits.push((key, Instant::now())),
@@ -499,6 +504,14 @@ impl DmxEngine {
         mem::drop(state);
         self.fixture_inits
             .retain(|(key, _)| !finished.contains(key));
+    }
+
+    /// The fixtures whose setup routine runs (or is queued to run).
+    #[cfg(test)]
+    pub(crate) fn initializing_fixtures(&self) -> Vec<(u8, u8)> {
+        let mut fixtures: Vec<_> = self.fixture_inits.iter().map(|(key, _)| *key).collect();
+        fixtures.extend(self.pending_fixture_inits.borrow().iter().copied());
+        fixtures
     }
 
     pub fn tick(&mut self, audio_snapshot: &CollectorOutput) -> DmxTickSpeeds {
@@ -880,6 +893,52 @@ impl DmxEngine {
                             last_seen: Instant::now(),
                         },
                     );
+                OK
+            }
+            HostCommand::CreateGroup { name, folder } => state.create_group_command(name, folder),
+            HostCommand::RenameGroup { group, name } => state.rename_group_command(group, &name),
+            HostCommand::DeleteGroup(group) => state.delete_group_command(group),
+            HostCommand::CreateScene { name, folder } => state.create_scene_command(name, folder),
+            HostCommand::CloneScene { scene, name } => state.clone_scene_command(scene, name),
+            HostCommand::RenameScene { scene, name } => state.rename_scene_command(scene, &name),
+            HostCommand::DeleteScene(scene) => state.delete_scene_command(scene),
+            HostCommand::AddFixtures { group, fixtures } => {
+                state.add_fixtures_command(group, fixtures)
+            }
+            HostCommand::UpdateFixture {
+                group,
+                fixture,
+                value,
+            } => state.update_fixture_command(group, fixture, value),
+            HostCommand::DeleteFixture { group, fixture } => {
+                state.delete_fixture_command(group, fixture)
+            }
+            HostCommand::SwapFixtures { group, a, b } => state.swap_fixtures_command(group, a, b),
+            HostCommand::MoveFixtureToGroup {
+                group,
+                fixture,
+                target,
+            } => state.move_fixture_command(group, fixture, target),
+            HostCommand::InitFixtures(fixtures) => {
+                if !state.has_fixtures(&fixtures) {
+                    return CommandOutcome::Refused("Fixture not found".to_string());
+                }
+                let mut pending = self.pending_fixture_inits.borrow_mut();
+                for key in fixtures {
+                    if !pending.contains(&key) {
+                        pending.push(key);
+                    }
+                }
+                OK
+            }
+            HostCommand::CreateAnimationTemplate(spec) => {
+                state.create_animation_template_command(spec)
+            }
+            HostCommand::UpdateAnimationTemplate { id, spec } => {
+                state.update_animation_template_command(id, spec)
+            }
+            HostCommand::DeleteAnimationTemplate(id) => {
+                state.delete_animation(id);
                 OK
             }
         }

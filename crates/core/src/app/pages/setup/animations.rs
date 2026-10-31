@@ -14,13 +14,16 @@ use crate::{
         pages::AnimationEditState,
         BlaulichtApp,
     },
-    dmx::EngineState,
+    client::EngineClient,
+    hub::HostCommand,
+    plugin::tick::stable_animation_template_id,
 };
 use blaulicht_shared::{
     AnimationPresetCategory, AnimationSpec, AnimationSpecBody, AnimationSpecBodyKind,
     AnimationTemplate, FixtureProperty,
 };
 use egui::{Context, FontId, Key, Label, RichText, TextEdit, Vec2};
+use std::collections::BTreeMap;
 use strum::IntoEnumIterator;
 
 /// Four, not five, since the Setup tab bar takes the room of the fifth at 800x480.
@@ -90,8 +93,10 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Large) {
                         if let Some(id) = self.animation_ui_state.selected_animation_id {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                            dmx_engine.delete_animation(id);
+                            self.send_setup_command(
+                                HostCommand::DeleteAnimationTemplate(id),
+                                |_, _| {},
+                            );
                             self.animation_ui_state.selected_animation_id = None;
                             self.animation_ui_state.selected_animation_id_before = None;
                             self.animation_ui_state.delete_confirm_open = false;
@@ -105,26 +110,21 @@ impl BlaulichtApp {
             });
     }
 
-    /// Inserts `spec` as a new animation template. Returns false when the
-    /// template ID space is exhausted.
-    fn insert_animation_template(&mut self, spec: AnimationSpec) -> bool {
-        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-        let Some(new_id) = (0..=u8::MAX)
-            .find(|candidate| !dmx_engine.0.animation_templates.contains_key(candidate))
-        else {
-            drop(dmx_engine);
-            self.show_popup(crate::app::PopupSpec::with_duration(
-                std::time::Duration::from_secs(3),
-                "Animation limit reached".to_string(),
-            ));
-            return false;
-        };
-
-        dmx_engine
-            .0
-            .animation_templates
-            .insert(new_id, AnimationTemplate { spec });
-        true
+    /// Sends `spec` as a new animation template; `on_ok` runs once the
+    /// engine has added it ("Animation limit reached" shows as a popup).
+    /// Does nothing while the previous Setup command still waits for its
+    /// reply, so a double tap adds one template.
+    fn insert_animation_template(
+        &mut self,
+        spec: AnimationSpec,
+        on_ok: impl FnOnce(&mut Self) + 'static,
+    ) {
+        if self.setup_reply_pending() {
+            return;
+        }
+        self.send_setup_command(HostCommand::CreateAnimationTemplate(spec), |app, _| {
+            on_ok(app)
+        });
     }
 
     fn render_presets_dialog(&mut self, ctx: &Context, _ui: &mut egui::Ui) {
@@ -212,9 +212,9 @@ impl BlaulichtApp {
             });
 
         if let Some(preset) = chosen {
-            if self.insert_animation_template(AnimationSpec::preset(preset)) {
-                self.animation_ui_state.presets_open = false;
-            }
+            self.insert_animation_template(AnimationSpec::preset(preset), |app| {
+                app.animation_ui_state.presets_open = false;
+            });
         }
     }
 
@@ -322,28 +322,33 @@ impl BlaulichtApp {
                     });
 
                     if button_pressed {
-                        let base_name = std::mem::take(&mut self.animation_ui_state.new_name);
+                        // The name stays in the field until the template is
+                        // added, so a refused create keeps it.
                         let spec = AnimationSpec {
-                            name: base_name.clone(),
+                            name: self.animation_ui_state.new_name.clone(),
                             body: AnimationSpecBody::from(self.animation_ui_state.new_mode),
                             property: self.animation_ui_state.new_prop,
                         };
 
-                        if self.insert_animation_template(spec) {
-                            self.animation_ui_state.create_open = false;
-                            self.animation_ui_state.close_selection_dialogs();
-                        } else {
-                            self.animation_ui_state.new_name = base_name;
-                        }
+                        self.insert_animation_template(spec, |app| {
+                            app.animation_ui_state.new_name.clear();
+                            app.animation_ui_state.create_open = false;
+                            app.animation_ui_state.close_selection_dialogs();
+                        });
                     }
                 });
             });
         }
     }
 
-    fn animation_pagination(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, compact: bool) {
+    fn animation_pagination(
+        &mut self,
+        ui: &mut egui::Ui,
+        templates: &BTreeMap<u8, AnimationTemplate>,
+        compact: bool,
+    ) {
         // TODO: can we do this without the allocation?
-        let raw_items: Vec<_> = dmx_engine.0.animation_templates.iter().collect();
+        let raw_items: Vec<_> = templates.iter().collect();
         let paginated_animations = self
             .animation_ui_state
             .pagination
@@ -405,8 +410,19 @@ impl BlaulichtApp {
             egui::vec2(ui.available_width(), ui.available_height()),
             render_context.primary_layout(),
             |ui| {
-                let dmx_engine = { self.data.state.dmx_engine.read().unwrap().clone() };
-                self.animation_pagination(ui, &dmx_engine, render_context.is_narrow_dynamic());
+                // One read per frame: the templates, the palettes (for the
+                // editor's previews) and this session's selected fixtures.
+                let (templates, palettes_snapshot, selected_fixtures) = self
+                    .client
+                    .with_session(|show, me| {
+                        (
+                            show.0.animation_templates.clone(),
+                            show.0.palettes.clone(),
+                            me.fixture_selection(&show.0.groups).fixtures,
+                        )
+                    })
+                    .unwrap_or_default();
+                self.animation_pagination(ui, &templates, render_context.is_narrow_dynamic());
 
                 ui.separator();
 
@@ -458,37 +474,37 @@ impl BlaulichtApp {
                                 ui.heading("Animation Details");
                                 ui.add_space(4.0);
 
-                                match self.animation_ui_state.selected_animation_id {
-                                    Some(id) => {
+                                // A template deleted elsewhere is no selection.
+                                let selected = self
+                                    .animation_ui_state
+                                    .selected_animation_id
+                                    .and_then(|id| templates.get(&id).map(|anim| (id, anim)));
+                                match selected {
+                                    Some((id, anim)) => {
                                         // Load new value.
                                         if self.animation_ui_state.selected_animation_id
                                             != self.animation_ui_state.selected_animation_id_before
                                         {
-                                            let dmx_engine =
-                                                self.data.state.dmx_engine.read().unwrap();
-                                            let anim = dmx_engine
-                                                .0
-                                                .animation_templates
-                                                .get(&id)
-                                                .unwrap()
-                                                .clone();
                                             self.animation_ui_state
                                                 .edit_state
                                                 .load_state(anim.spec.clone());
                                             if let AnimationSpecBody::WasmPlugin(wasm) =
                                                 &anim.spec.body
                                             {
-                                                let source = crate::plugin::tick::stable_animation_template_id(
-                                                    &wasm.plugin_key,
-                                                    id,
-                                                );
-                                                crate::plugin::wasm::clone_animation_instance_state(
-                                                    &self.data.state,
-                                                    &wasm.plugin_key,
-                                                    source,
-                                                    self.animation_ui_state
-                                                        .edit_state
-                                                        .wasm_editor_instance_id,
+                                                // The editor instance starts from the
+                                                // template's plugin state.
+                                                self.client.send(
+                                                    HostCommand::CloneAnimationInstanceState {
+                                                        plugin_key: wasm.plugin_key.clone(),
+                                                        source: stable_animation_template_id(
+                                                            &wasm.plugin_key,
+                                                            id,
+                                                        ),
+                                                        target: self
+                                                            .animation_ui_state
+                                                            .edit_state
+                                                            .wasm_editor_instance_id,
+                                                    },
                                                 );
                                             }
 
@@ -496,49 +512,45 @@ impl BlaulichtApp {
                                                 self.animation_ui_state.selected_animation_id;
                                         }
 
-                                        let palettes_snapshot = self
-                                            .data
-                                            .state
-                                            .dmx_engine
-                                            .read()
-                                            .unwrap()
-                                            .0
-                                            .palettes
-                                            .clone();
-
                                         let live_audio = self.live_audio_for_preview();
 
-                                        if let Some(value_changed) = self
-                                            .animation_ui_state
-                                            .edit_state
-                                            .show(ui, ctx, &palettes_snapshot, &live_audio, &self.client, &mut self.view_state.plugin_tabs_selected, &dmx_engine.get_selection().fixtures, panel_max)
+                                        if let Some(value_changed) =
+                                            self.animation_ui_state.edit_state.show(
+                                                ui,
+                                                ctx,
+                                                &palettes_snapshot,
+                                                &live_audio,
+                                                &self.client,
+                                                &mut self.view_state.plugin_tabs_selected,
+                                                &selected_fixtures,
+                                                panel_max,
+                                            )
                                         {
                                             if let AnimationSpecBody::WasmPlugin(wasm) =
                                                 &value_changed.body
                                             {
-                                                let target = crate::plugin::tick::stable_animation_template_id(
-                                                    &wasm.plugin_key,
-                                                    id,
-                                                );
-                                                crate::plugin::wasm::clone_animation_instance_state(
-                                                    &self.data.state,
-                                                    &wasm.plugin_key,
-                                                    self.animation_ui_state
-                                                        .edit_state
-                                                        .wasm_editor_instance_id,
-                                                    target,
+                                                // And the template gets the editor's
+                                                // state back, before its new spec.
+                                                self.client.send(
+                                                    HostCommand::CloneAnimationInstanceState {
+                                                        plugin_key: wasm.plugin_key.clone(),
+                                                        source: self
+                                                            .animation_ui_state
+                                                            .edit_state
+                                                            .wasm_editor_instance_id,
+                                                        target: stable_animation_template_id(
+                                                            &wasm.plugin_key,
+                                                            id,
+                                                        ),
+                                                    },
                                                 );
                                             }
-                                            let mut dmx_engine =
-                                                self.data.state.dmx_engine.write().unwrap();
-
-                                            let anim = dmx_engine
-                                                .0
-                                                .animation_templates
-                                                .get_mut(&id)
-                                                .unwrap();
-
-                                            anim.spec = value_changed;
+                                            self.client.send(
+                                                HostCommand::UpdateAnimationTemplate {
+                                                    id,
+                                                    spec: value_changed,
+                                                },
+                                            );
                                         }
                                     }
                                     None => {

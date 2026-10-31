@@ -317,12 +317,8 @@ impl<'engine> EngineState {
         self.0.scenes.get_mut(&curr_scene_id).unwrap()
     }
 
-    pub fn new_scene(&mut self, name: String) {
+    pub fn new_scene(&mut self, name: String) -> Option<u8> {
         self.0.new_scene(name)
-    }
-
-    pub fn clone_scene(&mut self, name: String) {
-        self.0.clone_scene(name)
     }
 
     pub fn rename_scene(&mut self, scene_id: u8, name: String) -> bool {

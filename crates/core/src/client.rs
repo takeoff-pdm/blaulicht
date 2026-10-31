@@ -560,6 +560,10 @@ pub(crate) mod testing {
         pub(crate) fn app(&self) -> &Arc<AppState> {
             &self.app
         }
+
+        pub(crate) fn engine(&self) -> &DmxEngine {
+            &self.engine
+        }
     }
 
     /// The engine with the desk and one remote client in its own session.

@@ -30,8 +30,8 @@ use std::{
 };
 
 use blaulicht_shared::{
-    scene::FixtureSelection, AnimationPreset, ControlEvent, ControlEventMessage,
-    CONTROLS_REQUIRING_SELECTION,
+    fixture::state::Fixture, folder::FolderId, scene::FixtureSelection, AnimationPreset,
+    AnimationSpec, ControlEvent, ControlEventMessage, CONTROLS_REQUIRING_SELECTION,
 };
 use crossbeam_channel::{Receiver, Sender};
 use strum::EnumCount;
@@ -178,7 +178,10 @@ pub type CommandSeq = u64;
 /// Host-only operations. Unlike `ControlEvent`, these are never serialized to
 /// plugins, so adding one is not a plugin ABI change. New UI-only operations
 /// go here.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// Commands that act on a group, scene, fixture or template name it by id
+/// (never by the sender's focus), so a dialog acts on what it was opened for.
+#[derive(Clone, Debug)]
 pub enum HostCommand {
     /// Does nothing; the engine answers `Ok`. Lets a client check its command
     /// path end to end.
@@ -218,6 +221,90 @@ pub enum HostCommand {
         instance_id: u64,
         fixtures: Vec<(u8, u8)>,
     },
+
+    //
+    // Setup › Groups.
+    //
+    /// Creates a group named `name` (as given) and moves it into `folder`
+    /// (`None` = top level; a folder it can't move into leaves it at the top
+    /// level). Answers `CreatedId::Group`; refused with "Group limit
+    /// reached".
+    CreateGroup {
+        name: String,
+        folder: Option<FolderId>,
+    },
+    /// Renames a group to `name` (trimmed). Refused with "Name is empty" or
+    /// "Group not found".
+    RenameGroup { group: u8, name: String },
+    /// Deletes a group, its fixtures' scene state and every session's
+    /// selection of it (the sender's selection and stack are cleared, as on
+    /// the desk before). Refused with "Group not found".
+    DeleteGroup(u8),
+
+    //
+    // Setup › Scenes.
+    //
+    /// Creates an empty scene named `name` (as given) in `folder` (as for
+    /// `CreateGroup`). Answers `CreatedId::Scene`; refused with "Scene limit
+    /// reached".
+    CreateScene {
+        name: String,
+        folder: Option<FolderId>,
+    },
+    /// Copies scene `scene` (its changes, animations and masters) into a new
+    /// scene named `name`, in the same folder. Answers `CreatedId::Scene`;
+    /// refused with "Scene not found" (also for `BLANK`) or "Scene limit
+    /// reached".
+    CloneScene { scene: u8, name: String },
+    /// Renames a scene to `name` (trimmed). Refused with "Name is empty" or
+    /// "Scene not found" (also for `BLANK`).
+    RenameScene { scene: u8, name: String },
+    /// Deletes a scene; sessions focused on it move to another scene, and a
+    /// live preview of it ends. Refused with "Scene not found" (also for
+    /// `BLANK`) or "At least one scene must remain".
+    DeleteScene(u8),
+
+    //
+    // Setup › Fixtures.
+    //
+    /// Adds `fixtures` to `group` as one batch: all or none. Refused with
+    /// the reason (`FixtureBatchError`), e.g. a DMX overlap.
+    AddFixtures { group: u8, fixtures: Vec<Fixture> },
+    /// Replaces fixture `fixture` of `group` with `value` (name, address,
+    /// position, ...). Refused with the reason (`FixtureBatchError`).
+    UpdateFixture {
+        group: u8,
+        fixture: u8,
+        value: Fixture,
+    },
+    /// Deletes a fixture and its scene state; every session's selection is
+    /// repaired (the sender's selection and stack are cleared, as on the desk
+    /// before). Refused with "Fixture not found".
+    DeleteFixture { group: u8, fixture: u8 },
+    /// Swaps the ids (the order) of fixtures `a` and `b` of `group`, with
+    /// their scene state. Refused with "Fixture not found".
+    SwapFixtures { group: u8, a: u8, b: u8 },
+    /// Moves fixture `fixture` of `group` into group `target`, with its scene
+    /// state. Answers `CreatedId::Fixture` (its id in `target`); refused with
+    /// "Could not move fixture".
+    MoveFixtureToGroup { group: u8, fixture: u8, target: u8 },
+    /// Runs the `setup` routine (e.g. a lamp strike) of each fixture
+    /// `(group, fixture)` on top of the running show for a few seconds.
+    /// Refused with "Fixture not found" if one doesn't exist (then none
+    /// runs).
+    InitFixtures(Vec<(u8, u8)>),
+
+    //
+    // Setup › Animations.
+    //
+    /// Adds `spec` as a new animation template (lowest free id). Answers
+    /// `CreatedId::AnimationTemplate`; refused with "Animation limit
+    /// reached".
+    CreateAnimationTemplate(AnimationSpec),
+    /// Replaces template `id`'s spec. Refused with "Animation not found".
+    UpdateAnimationTemplate { id: u8, spec: AnimationSpec },
+    /// Deletes template `id` and removes it from every scene.
+    DeleteAnimationTemplate(u8),
 }
 
 impl HostCommand {
@@ -226,15 +313,31 @@ impl HostCommand {
     /// for `ControlEvent`s).
     pub fn edits_show(&self) -> bool {
         match self {
-            HostCommand::ToggleAnimationPreset(_) | HostCommand::SaveAnimationAsTemplate { .. } => {
-                true
-            }
+            HostCommand::ToggleAnimationPreset(_)
+            | HostCommand::SaveAnimationAsTemplate { .. }
+            | HostCommand::CreateGroup { .. }
+            | HostCommand::RenameGroup { .. }
+            | HostCommand::DeleteGroup(_)
+            | HostCommand::CreateScene { .. }
+            | HostCommand::CloneScene { .. }
+            | HostCommand::RenameScene { .. }
+            | HostCommand::DeleteScene(_)
+            | HostCommand::AddFixtures { .. }
+            | HostCommand::UpdateFixture { .. }
+            | HostCommand::DeleteFixture { .. }
+            | HostCommand::SwapFixtures { .. }
+            | HostCommand::MoveFixtureToGroup { .. }
+            | HostCommand::CreateAnimationTemplate(_)
+            | HostCommand::UpdateAnimationTemplate { .. }
+            | HostCommand::DeleteAnimationTemplate(_) => true,
             // A copy into an editor instance is scratch state; the Apply
-            // that copies it back sends `LoadSpecIntoAnimation`, which marks
-            // the show.
+            // that copies it back sends `LoadSpecIntoAnimation` (Programmer)
+            // or `UpdateAnimationTemplate` (Setup), which mark the show.
+            // Initializing a fixture only changes its DMX output for a while.
             HostCommand::Ping
             | HostCommand::CloneAnimationInstanceState { .. }
-            | HostCommand::KeepAnimationEditorAlive { .. } => false,
+            | HostCommand::KeepAnimationEditorAlive { .. }
+            | HostCommand::InitFixtures(_) => false,
         }
     }
 }
@@ -350,6 +453,13 @@ pub enum CreatedId {
     Palette(u8),
     /// An animation template.
     AnimationTemplate(u8),
+    Group(u8),
+    Scene(u8),
+    /// A fixture's id in its (new) group.
+    Fixture {
+        group: u8,
+        fixture: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

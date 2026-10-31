@@ -235,6 +235,9 @@ pub struct BlaulichtApp {
     rename_scene_dialog_open: bool,
     rename_scene_name: String,
     delete_scene_dialog_open: bool,
+    /// The scene the open clone, rename or delete dialog acts on (the focused
+    /// scene when it opened).
+    scene_dialog_target: u8,
     current_scene_animations_dialog_open: bool,
 
     popup: Option<PopupSpec>,
@@ -314,6 +317,10 @@ pub struct BlaulichtApp {
     rename_group_name: String,
     delete_group_open: bool,
     delete_fixture: Option<(u8, u8)>,
+    /// The Setup dialog command (batch add, rename, create) whose reply is
+    /// still on its way; the dialog's OK waits for it (see
+    /// `setup_reply_pending`).
+    setup_reply: Option<crate::hub::CommandSeq>,
     move_fixture_group_dialog_open: bool,
     new_group_name: String,
     /// Setup › Groups: selected folder and the open folder dialog.
@@ -477,6 +484,7 @@ impl BlaulichtApp {
             rename_scene_dialog_open: false,
             rename_scene_name: String::new(),
             delete_scene_dialog_open: false,
+            scene_dialog_target: 0,
             current_scene_animations_dialog_open: false,
             popup: None,
             popup_open_time: Instant::now(),
@@ -605,6 +613,7 @@ impl BlaulichtApp {
             rename_group_name: String::new(),
             delete_group_open: false,
             delete_fixture: None,
+            setup_reply: None,
             move_fixture_group_dialog_open: false,
             new_group_name: DEFAULT_NEW_GROUP_NAME.to_string(),
             setup_groups_ui: components::SetupFolderUi::default(),

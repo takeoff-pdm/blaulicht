@@ -23,6 +23,7 @@ use crate::app::{
 };
 use crate::client::EngineClient;
 use crate::dmx::EngineState;
+use crate::hub::HostCommand;
 use blaulicht_shared::{
     folder::{FolderId, FolderItem, FolderKind},
     AppSubPage, ControlEvent, ControlEventMessage, EngineGroups, EventOriginator,
@@ -250,8 +251,7 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         if components::button(ui, false, "Confirm", ButtonSize::Large) {
                             if let Some(id) = self.add_fixture_group {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                dmx_engine.delete_group(id);
+                                self.send_setup_command(HostCommand::DeleteGroup(id), |_, _| {});
                                 self.delete_group_open = false;
                                 self.add_fixture_group = None;
                             }
@@ -293,18 +293,12 @@ impl BlaulichtApp {
                     });
 
                     if button_pressed {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        let created = dmx_engine.create_group(self.new_group_name.clone());
                         // New groups go into the selected folder.
-                        if let (Some(group), Some(folder)) = (created, self.setup_groups_ui.folder)
-                        {
-                            if let Err(err) = dmx_engine
-                                .0
-                                .move_to_folder(FolderItem::Group(group), Some(folder))
-                            {
-                                tracing::warn!("New group {group} stays at the top level: {err}");
-                            }
-                        }
+                        let create = HostCommand::CreateGroup {
+                            name: self.new_group_name.clone(),
+                            folder: self.setup_groups_ui.folder,
+                        };
+                        self.send_setup_command(create, |_, _| {});
                         self.new_group_name = DEFAULT_NEW_GROUP_NAME.to_string();
                         self.add_group_open = false;
                     }
@@ -349,18 +343,19 @@ impl BlaulichtApp {
                         }
                     });
 
-                    if confirm_pressed {
-                        let trimmed = self.rename_group_name.trim();
+                    // Closes once the engine has renamed the group.
+                    if confirm_pressed && !self.setup_reply_pending() {
+                        let trimmed = self.rename_group_name.trim().to_string();
 
-                        if let (false, Some(group_id)) =
-                            (trimmed.is_empty(), self.add_fixture_group)
-                        {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-
-                            if dmx_engine.rename_group(group_id, trimmed.to_string()) {
-                                self.rename_group_name.clear();
-                                self.rename_group_dialog_open = false;
-                            }
+                        if let (false, Some(group)) = (trimmed.is_empty(), self.add_fixture_group) {
+                            let rename = HostCommand::RenameGroup {
+                                group,
+                                name: trimmed,
+                            };
+                            self.send_setup_command(rename, |app, _| {
+                                app.rename_group_name.clear();
+                                app.rename_group_dialog_open = false;
+                            });
                         }
                     }
                 });

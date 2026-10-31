@@ -168,36 +168,38 @@ impl EngineState {
         self.scenes.iter().filter(|(id, _)| **id != BLANK_SCENE_ID)
     }
 
-    pub fn new_scene(&mut self, name: String) {
-        if let Some(new_id) = next_scene_id(&self.scenes) {
-            self.scenes.insert(
-                new_id,
-                Scene {
-                    sink: EngineSink::from_groups(&self.groups),
-                    name,
-                    folder: None,
-                },
-            );
-        }
+    /// Adds an empty scene and returns its id; `None` when every id is
+    /// taken.
+    pub fn new_scene(&mut self, name: String) -> Option<u8> {
+        let new_id = next_scene_id(&self.scenes)?;
+        self.scenes.insert(
+            new_id,
+            Scene {
+                sink: EngineSink::from_groups(&self.groups),
+                name,
+                folder: None,
+            },
+        );
+        Some(new_id)
     }
 
-    pub fn clone_scene(&mut self, name: String) {
-        if self.current_scene_focus == BLANK_SCENE_ID {
-            return;
+    /// Copies scene `source` into a new scene named `name`, in the same
+    /// folder, and returns its id. `None` for `BLANK`, a missing scene, or
+    /// when every id is taken.
+    pub fn clone_scene_of(&mut self, source: u8, name: String) -> Option<u8> {
+        if source == BLANK_SCENE_ID {
+            return None;
         }
-        if let Some(new_id) = next_scene_id(&self.scenes) {
-            if let Some(curr_scene) = self.scenes.get(&self.current_scene_focus) {
-                self.scenes.insert(
-                    new_id,
-                    Scene {
-                        sink: curr_scene.sink.clone(),
-                        name,
-                        // A clone lands next to its source.
-                        folder: curr_scene.folder,
-                    },
-                );
-            }
-        }
+        let source = self.scenes.get(&source)?;
+        let new_id = next_scene_id(&self.scenes)?;
+        let scene = Scene {
+            sink: source.sink.clone(),
+            name,
+            // A clone lands next to its source.
+            folder: source.folder,
+        };
+        self.scenes.insert(new_id, scene);
+        Some(new_id)
     }
 
     pub fn rename_scene(&mut self, scene_id: u8, name: String) -> bool {

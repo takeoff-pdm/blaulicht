@@ -409,7 +409,11 @@ impl BlaulichtApp {
         ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
-        let engine = { self.data.state.dmx_engine.read().unwrap().clone_for_ui() };
+        let session = self.client.session();
+        let engine = self.client.with_show(|show| {
+            show.clone_for_session(session)
+                .unwrap_or_else(|| show.clone_for_ui())
+        });
         let state = &engine.0;
         let palettes_snapshot: Vec<(u8, Palette)> = state
             .palettes

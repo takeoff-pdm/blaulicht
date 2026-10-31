@@ -3,14 +3,15 @@
 //! 024 move them.
 
 use crate::app::components::Dialog;
+use crate::app::PopupSpec;
 use crate::app::{
     components::{self, ButtonSize, HFader},
     page::PageRenderContext,
     BlaulichtApp,
 };
-use crate::app::{PopupButtonSpec, PopupSpec};
 use crate::client::EngineClient;
 use crate::dmx::EngineState;
+use crate::hub::{CreatedId, HostCommand};
 use crate::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
@@ -132,15 +133,19 @@ impl BlaulichtApp {
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Medium) {
-                        let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                        if dmx_engine.delete_fixture_from_group(group_id, fixture_id) {
-                            self.setup_fixture_id = dmx_engine
-                                .0
-                                .groups
-                                .get(&group_id)
-                                .and_then(|group| group.fixtures.keys().next().copied())
-                                .unwrap_or_default();
-                        }
+                        let delete = HostCommand::DeleteFixture {
+                            group: group_id,
+                            fixture: fixture_id,
+                        };
+                        self.send_setup_command(delete, move |app, _| {
+                            app.setup_fixture_id = app.client.with_show(|show| {
+                                show.0
+                                    .groups
+                                    .get(&group_id)
+                                    .and_then(|group| group.fixtures.keys().next().copied())
+                                    .unwrap_or_default()
+                            });
+                        });
                         self.delete_fixture = None;
                     }
                     if components::button(ui, true, "Cancel", ButtonSize::Medium) {
@@ -307,11 +312,9 @@ impl BlaulichtApp {
         });
     }
 
-    fn render_add_fixture_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) -> bool {
-        let mut skip_rest = false;
-
+    fn render_add_fixture_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if !self.add_fixture_open {
-            return skip_rest;
+            return;
         }
 
         const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
@@ -598,7 +601,10 @@ impl BlaulichtApp {
                             button_pressed = false;
                         }
 
-                        if button_pressed && self.add_fixture_group.is_some() {
+                        if button_pressed
+                            && self.add_fixture_group.is_some()
+                            && !self.setup_reply_pending()
+                        {
                             let group_id = self.add_fixture_group.unwrap();
                             let base_name = self.add_fixture_name.clone();
                             let mut start_addr = self.add_fixture_start_addr as usize;
@@ -658,38 +664,24 @@ impl BlaulichtApp {
                                 start_addr = start_addr.saturating_add(footprint);
                             }
 
-                            let result = self
-                                .data
-                                .state
-                                .dmx_engine
-                                .write()
-                                .unwrap()
-                                .add_fixture_batch_to_group(group_id, fixtures);
-
-                            if let Err(error) = result {
-                                self.show_popup(PopupSpec {
-                                    label: error.to_string(),
-                                    label_size: Some(18.0),
-                                    lifetime_duration: Duration::from_secs(5),
-                                    button: Some(PopupButtonSpec {
-                                        label: "OK".to_string(),
-                                    }),
-                                });
-                            } else {
+                            // All or none; a refusal (e.g. a DMX overlap) shows
+                            // as a popup and keeps the dialog open.
+                            let add = HostCommand::AddFixtures {
+                                group: group_id,
+                                fixtures,
+                            };
+                            self.send_setup_command(add, |app, _| {
                                 // Reset fields and close only after the full batch succeeds.
-                                self.add_fixture_open = false;
-                                self.add_fixture_kind_dialog_open = false;
-                                self.add_fixture_model_dialog_open = false;
-                                self.close_add_fixture_numberpads();
-                                self.add_fixture_name = String::from("New Fixture");
-                                skip_rest = true;
-                            }
+                                app.add_fixture_open = false;
+                                app.add_fixture_kind_dialog_open = false;
+                                app.add_fixture_model_dialog_open = false;
+                                app.close_add_fixture_numberpads();
+                                app.add_fixture_name = String::from("New Fixture");
+                            });
                         }
                     });
                 });
             });
-
-        skip_rest
     }
 
     pub(super) fn setup_fixtures_ui(
@@ -701,11 +693,7 @@ impl BlaulichtApp {
     ) {
         self.render_delete_fixture_dialog(ctx);
 
-        // Skipping required because UI breaks at some point.
-        let skip_rest = self.render_add_fixture_dialog(ctx, dmx_engine);
-        if skip_rest {
-            return;
-        }
+        self.render_add_fixture_dialog(ctx, dmx_engine);
 
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             self.fixture_toolbar(ui, dmx_engine);
@@ -718,7 +706,7 @@ impl BlaulichtApp {
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
                 let (new_g, new_f, changed) = self.group_selection(
-                    dmx_engine.groups(),
+                    dmx_engine,
                     self.add_fixture_group,
                     self.setup_fixture_id,
                     ui,
@@ -805,6 +793,21 @@ impl BlaulichtApp {
         self.load_fixture_into_editor(fix);
     }
 
+    /// Swaps fixtures `fid` and `other` of group `gid` (Move Up / Down); the
+    /// editor keeps the moved fixture selected, at its new id `other`.
+    fn swap_setup_fixtures(&mut self, gid: u8, fid: u8, other: u8) {
+        let swap = HostCommand::SwapFixtures {
+            group: gid,
+            a: fid,
+            b: other,
+        };
+        self.send_setup_command(swap, move |app, _| {
+            if app.add_fixture_group == Some(gid) && app.setup_fixture_id == fid {
+                app.setup_fixture_id = other;
+            }
+        });
+    }
+
     fn load_fixture_into_editor(&mut self, fix: &Fixture) {
         self.new_fixture_name = fix.name.to_string();
         self.new_fixture_addr = fix.start_addr;
@@ -826,11 +829,6 @@ impl BlaulichtApp {
         };
         let fid = self.setup_fixture_id;
 
-        // let dmx_engine =
-        //     { self.data.state.dmx_engine.write().unwrap().clone() };
-
-        // Read current fixture snapshot
-        // let engine_read = self.data.state.dmx_engine.read().unwrap();
         if let Some(group) = dmx_engine.groups().get(&gid) {
             if let Some(fix) = group.fixtures.get(&fid) {
                 ui.label(
@@ -954,23 +952,12 @@ impl BlaulichtApp {
                             updated.rotation.y = self.new_fixture_rot_y;
                             updated.rotation.z = self.new_fixture_rot_z;
 
-                            let result = self
-                                .data
-                                .state
-                                .dmx_engine
-                                .write()
-                                .unwrap()
-                                .update_fixture(gid, fid, updated);
-                            if let Err(error) = result {
-                                self.show_popup(PopupSpec {
-                                    label: error.to_string(),
-                                    label_size: Some(18.0),
-                                    lifetime_duration: Duration::from_secs(5),
-                                    button: Some(PopupButtonSpec {
-                                        label: "OK".to_string(),
-                                    }),
-                                });
-                            }
+                            let update = HostCommand::UpdateFixture {
+                                group: gid,
+                                fixture: fid,
+                                value: updated,
+                            };
+                            self.send_setup_command(update, |_, _| {});
                         }
 
                         ui.add_space(6.0);
@@ -985,10 +972,7 @@ impl BlaulichtApp {
                         if components::button(ui, prev_fid.is_some(), "Move Up", ButtonSize::Medium)
                         {
                             if let Some(prev) = prev_fid {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                if dmx_engine.swap_fixtures_in_group(gid, fid, prev) {
-                                    self.setup_fixture_id = prev;
-                                }
+                                self.swap_setup_fixtures(gid, fid, prev);
                             }
                         }
 
@@ -1001,10 +985,7 @@ impl BlaulichtApp {
                             ButtonSize::Medium,
                         ) {
                             if let Some(next) = next_fid {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                if dmx_engine.swap_fixtures_in_group(gid, fid, next) {
-                                    self.setup_fixture_id = next;
-                                }
+                                self.swap_setup_fixtures(gid, fid, next);
                             }
                         }
 
@@ -1049,44 +1030,44 @@ impl BlaulichtApp {
                             );
 
                             if changed {
-                                let moved_fixture = {
-                                    let mut dmx_engine =
-                                        self.data.state.dmx_engine.write().unwrap();
-                                    dmx_engine
-                                        .move_fixture_to_group(gid, fid, target_gid)
-                                        .and_then(|new_fid| {
-                                            dmx_engine
-                                                .0
-                                                .groups
-                                                .get(&target_gid)
-                                                .and_then(|group| group.fixtures.get(&new_fid))
-                                                .cloned()
-                                                .map(|fixture| (new_fid, fixture))
-                                        })
+                                // The editor follows the fixture to its new
+                                // group and id.
+                                let move_fixture = HostCommand::MoveFixtureToGroup {
+                                    group: gid,
+                                    fixture: fid,
+                                    target: target_gid,
                                 };
-
-                                if let Some((new_fid, fix)) = moved_fixture {
-                                    self.add_fixture_group = Some(target_gid);
-                                    self.setup_fixture_id = new_fid;
-                                    self.close_edit_fixture_numberpads();
-                                    self.load_fixture_into_editor(&fix);
-                                } else {
-                                    self.show_popup(PopupSpec::with_duration(
-                                        Duration::from_secs(3),
-                                        "Could not move fixture".to_string(),
-                                    ));
-                                }
+                                self.send_setup_command(move_fixture, |app, created| {
+                                    if let Some(CreatedId::Fixture { group, fixture }) = created {
+                                        let moved = app.client.with_show(|show| {
+                                            show.0
+                                                .groups
+                                                .get(&group)
+                                                .and_then(|group| group.fixtures.get(&fixture))
+                                                .cloned()
+                                        });
+                                        app.add_fixture_group = Some(group);
+                                        app.setup_fixture_id = fixture;
+                                        app.close_edit_fixture_numberpads();
+                                        if let Some(fix) = moved {
+                                            app.load_fixture_into_editor(&fix);
+                                        }
+                                    }
+                                });
                             }
                         }
 
                         ui.add_space(6.0);
 
                         if components::button(ui, false, "Initialize", ButtonSize::Medium) {
-                            self.data.state.request_fixture_init(gid, fid);
-                            self.show_popup(PopupSpec::with_duration(
-                                Duration::from_secs(3),
-                                format!("Initializing `{}` (10 s)", self.new_fixture_name),
-                            ));
+                            let label = format!("Initializing `{}` (10 s)", self.new_fixture_name);
+                            let init = HostCommand::InitFixtures(vec![(gid, fid)]);
+                            self.send_setup_command(init, move |app, _| {
+                                app.show_popup(PopupSpec::with_duration(
+                                    Duration::from_secs(3),
+                                    label,
+                                ));
+                            });
                         }
 
                         ui.add_space(6.0);

@@ -297,9 +297,6 @@ pub struct AppState {
     pub health_data: RwLock<AppHealthState>,
     pub dmx_engine: RwLock<EngineState>,
     grand_master_percent: AtomicU8,
-    /// `(group_id, fixture_id)` pairs the UI asked the DMX engine to run the
-    /// fixture `setup` routine for (lamp strike etc.). Drained by the engine.
-    pending_fixture_inits: Mutex<Vec<(u8, u8)>>,
     pub audio: RwLock<AudioState>,
     pub(crate) external_tempo: Mutex<crate::audio::external_tempo::ExternalTempo>,
     pub dmx_universes: [RwLock<DmxBuffer>; NUM_DMX_UNIVERSES],
@@ -365,7 +362,6 @@ impl AppState {
             artnet_output: RwLock::new(ArtNetOutput::default()),
             dmx_engine: RwLock::new(EngineState::default()),
             grand_master_percent: AtomicU8::new(100),
-            pending_fixture_inits: Mutex::new(Vec::new()),
             dmx_universes: array::from_fn(|_| RwLock::new(DmxBuffer::new())),
             audio: RwLock::new(AudioState::default()),
             // audio_snapshot: RwLock::new(CollectedAudioSnapshot::default()),
@@ -405,23 +401,6 @@ impl AppState {
     pub fn set_grand_master_percent(&self, percent: u8) {
         self.grand_master_percent
             .store(percent.min(100), Ordering::Relaxed);
-    }
-
-    /// Ask the DMX engine to run the fixture's `setup` routine (e.g. a lamp
-    /// strike) without interrupting the running show.
-    pub fn request_fixture_init(&self, group_id: u8, fixture_id: u8) {
-        if let Ok(mut pending) = self.pending_fixture_inits.lock() {
-            if !pending.contains(&(group_id, fixture_id)) {
-                pending.push((group_id, fixture_id));
-            }
-        }
-    }
-
-    pub fn take_fixture_init_requests(&self) -> Vec<(u8, u8)> {
-        self.pending_fixture_inits
-            .lock()
-            .map(|mut pending| std::mem::take(&mut *pending))
-            .unwrap_or_default()
     }
 
     pub fn log_plugin(&self, plugin_key: u8, msg: Cow<'static, str>) {

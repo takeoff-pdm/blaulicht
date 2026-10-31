@@ -336,16 +336,16 @@ impl BlaulichtApp {
     }
 
     /// Setup › Fixtures' picker: the group tree (one group at a time) and the
-    /// fixtures of the selected group. Returns `(group, fixture, changed)`.
+    /// fixtures of the selected group, drawn from `dmx_engine` (the page's
+    /// snapshot). Returns `(group, fixture, changed)`.
     pub fn group_selection(
         &mut self,
-        groups: &EngineGroups,
+        dmx_engine: &EngineState,
         selected_group: Option<u8>,
         selected_fixture: u8,
         ui: &mut egui::Ui,
     ) -> (u8, u8, bool) {
-        let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-
+        let groups = dmx_engine.groups();
         let mut group_result = selected_group.unwrap_or(0);
         let mut fixture_result = selected_fixture;
         let mut changed = false;

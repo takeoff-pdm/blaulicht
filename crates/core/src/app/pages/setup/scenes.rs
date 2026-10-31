@@ -6,7 +6,8 @@
 //! (`setup_scenes_ui`, a [`SetupFolderUi`]); Rename and Delete act on
 //! whichever is selected, and new scenes and folders go into the selected
 //! folder (the top level otherwise). Clone acts on the focused scene, and the
-//! clone lands next to it.
+//! clone lands next to it. The clone, rename and delete dialogs remember the
+//! scene they were opened for (`scene_dialog_target`) and send its id.
 //!
 //! Layout as in Setup › Groups: toolbar on top, then
 //! [`BlaulichtApp::setup_scene_tree`] on the left and the details of the
@@ -30,6 +31,7 @@ use crate::app::{
 };
 use crate::client::EngineClient;
 use crate::dmx::EngineState;
+use crate::hub::HostCommand;
 use blaulicht_shared::{
     folder::{FolderItem, FolderKind},
     scene::BLANK_SCENE_ID,
@@ -48,7 +50,7 @@ impl BlaulichtApp {
         self.render_add_scene_dialog(ctx);
         self.render_clone_scene_dialog(ctx);
         self.render_rename_scene_dialog(ctx);
-        self.render_delete_scene_dialog(ctx);
+        self.render_delete_scene_dialog(ctx, dmx_engine);
         if let Some(event) = self.setup_scenes_ui.dialog.show(ctx, &dmx_engine.0) {
             self.setup_scenes_ui.follow(ctx, SETUP_SCENE_TREE, &event);
             self.client
@@ -102,7 +104,10 @@ impl BlaulichtApp {
             ButtonSize::Medium,
             Some("Select a scene"),
         ) {
-            self.clone_scene_dialog_open = true;
+            if let Some((id, _)) = scene {
+                self.scene_dialog_target = id;
+                self.clone_scene_dialog_open = true;
+            }
         }
 
         if components::button(ui, false, "New Folder", ButtonSize::Medium) {
@@ -118,7 +123,8 @@ impl BlaulichtApp {
         ) {
             if let Some(folder) = folder {
                 self.setup_scenes_ui.dialog = FolderDialog::rename(&dmx_engine.0, folder);
-            } else if let Some((_, scene)) = scene {
+            } else if let Some((id, scene)) = scene {
+                self.scene_dialog_target = id;
                 self.rename_scene_name = scene.name.clone();
                 self.rename_scene_dialog_open = true;
             }
@@ -133,7 +139,8 @@ impl BlaulichtApp {
         ) {
             if let Some(folder) = folder {
                 self.setup_scenes_ui.dialog = FolderDialog::delete(folder);
-            } else if scene.is_some() {
+            } else if let Some((id, _)) = scene {
+                self.scene_dialog_target = id;
                 self.delete_scene_dialog_open = true;
             }
         }
@@ -255,8 +262,11 @@ impl BlaulichtApp {
                 });
 
                 if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    dmx_engine.clone_scene(self.new_scene_name.take());
+                    let clone = HostCommand::CloneScene {
+                        scene: self.scene_dialog_target,
+                        name: self.new_scene_name.take(),
+                    };
+                    self.send_setup_command(clone, |_, _| {});
                     self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
                     self.clone_scene_dialog_open = false;
                 }
@@ -294,24 +304,12 @@ impl BlaulichtApp {
                 });
 
                 if button_pressed {
-                    let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                    let before: Vec<u8> = dmx_engine.0.scenes.keys().copied().collect();
-                    dmx_engine.new_scene(self.new_scene_name.take());
                     // New scenes go into the selected folder.
-                    let created = dmx_engine
-                        .0
-                        .scenes
-                        .keys()
-                        .copied()
-                        .find(|id| !before.contains(id));
-                    if let (Some(scene), Some(folder)) = (created, self.setup_scenes_ui.folder) {
-                        if let Err(err) = dmx_engine
-                            .0
-                            .move_to_folder(FolderItem::Scene(scene), Some(folder))
-                        {
-                            tracing::warn!("New scene {scene} stays at the top level: {err}");
-                        }
-                    }
+                    let create = HostCommand::CreateScene {
+                        name: self.new_scene_name.take(),
+                        folder: self.setup_scenes_ui.folder,
+                    };
+                    self.send_setup_command(create, |_, _| {});
                     self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
                     self.new_scene_dialog_open = false;
                 }
@@ -355,33 +353,33 @@ impl BlaulichtApp {
                         }
                     });
 
-                    if confirm_pressed {
-                        let trimmed = self.rename_scene_name.trim();
+                    // Closes once the engine has renamed the scene.
+                    if confirm_pressed && !self.setup_reply_pending() {
+                        let trimmed = self.rename_scene_name.trim().to_string();
 
                         if !trimmed.is_empty() {
-                            let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                            let scene_id = dmx_engine.0.current_scene_focus;
-
-                            if dmx_engine.rename_scene(scene_id, trimmed.to_string()) {
-                                self.rename_scene_name.clear();
-                                self.rename_scene_dialog_open = false;
-                            }
+                            let rename = HostCommand::RenameScene {
+                                scene: self.scene_dialog_target,
+                                name: trimmed,
+                            };
+                            self.send_setup_command(rename, |app, _| {
+                                app.rename_scene_name.clear();
+                                app.rename_scene_dialog_open = false;
+                            });
                         }
                     }
                 });
         }
     }
 
-    fn render_delete_scene_dialog(&mut self, ctx: &Context) {
+    fn render_delete_scene_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if self.delete_scene_dialog_open {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Large;
             const WIDTH: f32 = 240.0;
             const HEIGHT: f32 = 130.0;
 
-            let can_delete = {
-                let dmx_engine = self.data.state.dmx_engine.read().unwrap();
-                dmx_engine.0.scenes.len() > 1
-            };
+            // `BLANK` doesn't count: the last user scene can't be deleted.
+            let can_delete = dmx_engine.0.user_scenes().count() > 1;
 
             Dialog::new("Delete Scene".to_string(), egui::vec2(WIDTH, HEIGHT))
                 .with_backdrop()
@@ -396,13 +394,14 @@ impl BlaulichtApp {
 
                     ui.horizontal(|ui| {
                         if can_delete {
-                            if components::button(ui, false, "Confirm", BUTTON_SIZE) {
-                                let mut dmx_engine = self.data.state.dmx_engine.write().unwrap();
-                                let scene_id = dmx_engine.0.current_scene_focus;
-
-                                if dmx_engine.delete_scene(scene_id) {
-                                    self.delete_scene_dialog_open = false;
-                                }
+                            // Closes once the engine has deleted the scene.
+                            if components::button(ui, false, "Confirm", BUTTON_SIZE)
+                                && !self.setup_reply_pending()
+                            {
+                                let delete = HostCommand::DeleteScene(self.scene_dialog_target);
+                                self.send_setup_command(delete, |app, _| {
+                                    app.delete_scene_dialog_open = false;
+                                });
                             }
                         }
 
