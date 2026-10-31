@@ -2,7 +2,7 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec, ShowfileSaveStatus,
 };
-use crate::client::LocalClient;
+use crate::client::{EngineClient, LocalClient};
 use crate::config;
 use crate::state::AppStateWrapper;
 use crate::state::ScreenId;
@@ -79,7 +79,6 @@ impl BlaulichtApp {
         };
 
         if let Some(showfile_state) = startup_showfile_state {
-            app.visualizer_ui_state.load_stage(showfile_state.stage);
             if let Some(ui_state) = showfile_state.ui {
                 app.apply_showfile_ui_state(ui_state);
             }
@@ -610,7 +609,7 @@ impl BlaulichtApp {
             engine,
             artnet: artnet_state,
             plugin_state,
-            stage: self.visualizer_ui_state.stage.clone(),
+            stage: self.client.with_show(|show| show.stage().clone()),
             ui: Some(self.showfile_ui_state()),
         }
     }

@@ -384,15 +384,16 @@ fn triangle_mesh_bytes(mesh: &three_d_asset::TriMesh) -> usize {
         + mesh.colors.as_ref().map_or(0, |values| values.len() * 4)
 }
 
-pub fn import_glb(source: &Path, showfile: &Path) -> Result<StageAsset> {
-    if source
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(str::to_ascii_lowercase)
-        != Some("glb".to_string())
-    {
-        bail!("Only .glb models are supported");
-    }
+/// Reads and fully validates the model at `source` (on the caller's thread:
+/// parsing and texture preparation can take a while), for
+/// [`install_glb`]. Returns the file name and contents.
+pub fn read_glb_for_import(source: &Path) -> Result<(String, Vec<u8>)> {
+    let file_name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("model.glb")
+        .to_string();
+    check_glb_name(&file_name)?;
     let metadata = fs::metadata(source).with_context(|| format!("Cannot read {source:?}"))?;
     if !metadata.is_file() {
         bail!("Selected model is not a regular file");
@@ -400,15 +401,44 @@ pub fn import_glb(source: &Path, showfile: &Path) -> Result<StageAsset> {
     if metadata.len() > MAX_GLB_BYTES {
         bail!("GLB exceeds the 100 MB import limit");
     }
-
     let bytes = fs::read(source).with_context(|| format!("Cannot read {source:?}"))?;
+    check_glb_bytes(&bytes)?;
+    let _prepared = load_prepared_model(source)?;
+    Ok((file_name, bytes))
+}
+
+fn check_glb_name(file_name: &str) -> Result<()> {
+    if Path::new(file_name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase)
+        != Some("glb".to_string())
+    {
+        bail!("Only .glb models are supported");
+    }
+    Ok(())
+}
+
+fn check_glb_bytes(bytes: &[u8]) -> Result<()> {
+    if bytes.len() as u64 > MAX_GLB_BYTES {
+        bail!("GLB exceeds the 100 MB import limit");
+    }
     if bytes.len() < 12 || &bytes[..4] != b"glTF" {
         bail!("File is not a binary glTF model");
     }
+    Ok(())
+}
 
-    let _prepared = load_prepared_model(source)?;
+/// Stores model `bytes` (originally named `file_name`) next to `showfile`, in
+/// `<showfile stem>.assets/<content hash>.glb` (kept if it is already
+/// there), and returns the asset that points at it. Checks the name, size
+/// and glTF header only; the frontend parses the model before it sends it
+/// ([`read_glb_for_import`]) and again when it loads it.
+pub fn install_glb(file_name: &str, bytes: &[u8], showfile: &Path) -> Result<StageAsset> {
+    check_glb_name(file_name)?;
+    check_glb_bytes(bytes)?;
 
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let hash = format!("{:x}", Sha256::digest(bytes));
     let parent = showfile.parent().unwrap_or_else(|| Path::new("."));
     let stem = showfile
         .file_stem()
@@ -419,21 +449,17 @@ pub fn import_glb(source: &Path, showfile: &Path) -> Result<StageAsset> {
     let asset_dir = parent.join(&folder_name);
     fs::create_dir_all(&asset_dir)
         .with_context(|| format!("Cannot create asset directory {asset_dir:?}"))?;
-    let file_name = format!("{hash}.glb");
-    let destination = asset_dir.join(&file_name);
+    let stored_name = format!("{hash}.glb");
+    let destination = asset_dir.join(&stored_name);
     if !destination.exists() {
-        crate::config::write_atomic(&destination, &bytes)
+        crate::config::write_atomic(&destination, bytes)
             .with_context(|| format!("Cannot install imported model {destination:?}"))?;
     }
 
     Ok(StageAsset {
-        original_name: source
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("model.glb")
-            .to_string(),
+        original_name: file_name.to_string(),
         relative_path: PathBuf::from(folder_name)
-            .join(file_name)
+            .join(stored_name)
             .to_string_lossy()
             .into_owned(),
         content_hash: hash,
@@ -526,10 +552,34 @@ mod tests {
         let source = directory.path().join("bad.glb");
         fs::write(&source, b"not a glb file").unwrap();
 
-        let result = import_glb(&source, &directory.path().join("show.json"));
+        assert!(read_glb_for_import(&source).is_err());
+        let result = install_glb(
+            "bad.glb",
+            b"not a glb file",
+            &directory.path().join("show.json"),
+        );
 
         assert!(result.is_err());
         assert!(!directory.path().join("show.assets").exists());
+    }
+
+    #[test]
+    fn an_installed_model_lands_next_to_the_showfile_once() {
+        let directory = tempdir::TempDir::new("blaulicht-install-glb").unwrap();
+        let showfile = directory.path().join("show.json");
+        let (name, bytes) = read_glb_for_import(&test_asset("Box.glb")).unwrap();
+
+        let asset = install_glb(&name, &bytes, &showfile).unwrap();
+        let again = install_glb(&name, &bytes, &showfile).unwrap();
+
+        assert_eq!(asset, again);
+        assert_eq!(asset.original_name, "Box.glb");
+        assert!(asset.relative_path.starts_with("show.assets"));
+        assert_eq!(
+            fs::read(resolve_asset(&showfile, &asset).unwrap()).unwrap(),
+            bytes
+        );
+        assert!(install_glb("box.obj", &bytes, &showfile).is_err());
     }
 
     #[test]

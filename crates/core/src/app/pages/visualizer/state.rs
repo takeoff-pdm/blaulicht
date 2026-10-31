@@ -1,20 +1,17 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     path::PathBuf,
-    sync::{
-        mpsc::{Receiver, Sender},
-        Arc, Mutex,
-    },
+    sync::{mpsc::Receiver, Arc, Mutex},
 };
 
 use egui::{Id, Pos2};
 
-use crate::stage::{StageAsset, StageScene};
+use crate::hub::CommandSeq;
+use crate::stage::StageScene;
 use crate::stage_assets::PreparedStageModel;
-use blaulicht_shared::fixture::state::{Position, Rotation};
 
 use super::constants::{DEFAULT_ROOM_DEPTH, DEFAULT_ROOM_WIDTH};
-use super::data::RenderSceneSnapshot;
+use super::data::{Pose, RenderSceneSnapshot};
 use super::math::Vec3;
 use super::renderer::GlowRenderer;
 
@@ -48,10 +45,12 @@ pub(super) enum SelectionKey {
     Object(u64),
 }
 
+/// One undo step: the whole stage and where every fixture stood. Undo sends
+/// it back as `HostCommand::RestoreStage`.
 #[derive(Clone)]
 pub(super) struct EditorSnapshot {
     pub(super) stage: StageScene,
-    pub(super) fixtures: BTreeMap<(u8, u8), (Position, Rotation)>,
+    pub(super) fixtures: BTreeMap<(u8, u8), Pose>,
 }
 
 pub(super) struct EditorState {
@@ -143,12 +142,36 @@ impl Default for VisualizerSettings {
     }
 }
 
+/// A model file read for import (its name and contents), or why it can't be.
+pub(super) type ImportedModelFile = Result<(String, Vec<u8>), String>;
+
 pub struct VisualizerUiState {
-    pub(crate) stage: StageScene,
+    /// The editor's working copy of the engine's stage
+    /// (`EngineState::stage`). Edits change it at once, for immediate
+    /// feedback, and are sent as commands; it follows the engine again once
+    /// no drag is running and no reply is outstanding.
+    pub(super) stage: StageScene,
+    /// The stage as last received from the engine or sent to it: an edit is
+    /// the difference between this and `stage` (`StagePatch::between`).
+    pub(super) stage_base: StageScene,
+    /// The engine stage revision `stage` was copied from; `None` forces a
+    /// fresh copy.
+    pub(super) stage_revision: Option<u64>,
+    /// The last stage command sent; while its reply is outstanding, the
+    /// working copy is not replaced.
+    pub(super) stage_reply: Option<CommandSeq>,
+    /// Fixtures moved in the editor but not yet back from the engine: drawn
+    /// here instead of where the engine has them.
+    pub(super) fixture_drafts: BTreeMap<(u8, u8), Pose>,
+    /// The part of `fixture_drafts` already sent.
+    pub(super) fixture_drafts_sent: BTreeMap<(u8, u8), Pose>,
     pub(super) editor: EditorState,
-    pub(super) attachment_world_cache: BTreeMap<(u8, u8), ([f32; 3], [f32; 3])>,
     pub(super) import_dialog: Option<egui_file_dialog::FileDialog>,
-    pub(super) import_receiver: Option<Receiver<Result<StageAsset, String>>>,
+    /// A model being read and checked off the UI thread: its file name and
+    /// contents, for `HostCommand::ImportStageModel`.
+    pub(super) import_receiver: Option<Receiver<ImportedModelFile>>,
+    /// The import command waiting for its reply.
+    pub(super) import_reply: Option<CommandSeq>,
     pub(super) import_error: Option<String>,
     pub(super) model_cache: HashMap<String, Arc<PreparedStageModel>>,
     pub(super) model_states: HashMap<String, ModelLoadState>,
@@ -200,9 +223,12 @@ pub(super) struct VisualizerRenderTarget {
 }
 
 impl VisualizerUiState {
-    pub(crate) fn load_stage(&mut self, stage: StageScene) {
-        self.stage = stage;
-        self.attachment_world_cache.clear();
+    /// Forgets everything the editor kept about the previous show (a new
+    /// one was loaded); the stage itself comes from the engine.
+    pub(crate) fn reset_stage_view(&mut self) {
+        self.stage_revision = None;
+        self.fixture_drafts.clear();
+        self.fixture_drafts_sent.clear();
         self.editor.selection.clear();
         self.editor.undo.clear();
         self.editor.redo.clear();
@@ -336,10 +362,15 @@ impl Default for VisualizerUiState {
             .expect("visualizer model loader thread must start");
         Self {
             stage: StageScene::default(),
+            stage_base: StageScene::default(),
+            stage_revision: None,
+            stage_reply: None,
+            fixture_drafts: BTreeMap::new(),
+            fixture_drafts_sent: BTreeMap::new(),
             editor: EditorState::default(),
-            attachment_world_cache: BTreeMap::new(),
             import_dialog: None,
             import_receiver: None,
+            import_reply: None,
             import_error: None,
             model_cache: HashMap::new(),
             model_states: HashMap::new(),

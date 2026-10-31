@@ -1,11 +1,13 @@
+use blaulicht_shared::fixture::state::Fixture;
 use blaulicht_shared::{
     fixture::{light::Light, FixtureType},
     RGBColor,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use crate::stage::{StageObjectKind, StageScene};
+use crate::dmx::EngineState;
+use crate::stage::{geometry::attachment_pose, StageObjectKind, StageScene};
 use crate::stage_assets::PreparedStageModel;
 
 use super::constants::{BASE_SIZE, HEAD_SIZE, PAN_JOINT_HEIGHT, YOKE_HEIGHT};
@@ -97,9 +99,41 @@ pub(super) struct FixturePose {
     pub(super) head_rot: [f32; 16],
 }
 
-pub(super) fn collect_fixtures(
-    app_state: &crate::state::AppState,
+/// A fixture's position (metres) and rotation (degrees).
+pub(super) type Pose = ([f32; 3], [f32; 3]);
+
+/// Where the editor draws fixture `key`: where it was moved in the editor
+/// (`drafts`), else on its truss in the editor's working copy of the stage,
+/// else where the engine has it. Once the engine has applied an edit, all
+/// three agree.
+pub(super) fn fixture_pose(
     stage: &StageScene,
+    drafts: &BTreeMap<(u8, u8), Pose>,
+    key: (u8, u8),
+    fixture: &Fixture,
+) -> Pose {
+    if let Some(pose) = drafts.get(&key) {
+        return *pose;
+    }
+    stage
+        .fixture_attachments
+        .iter()
+        .find(|attachment| (attachment.group_id, attachment.fixture_id) == key)
+        .and_then(|attachment| attachment_pose(stage, attachment))
+        .unwrap_or((
+            [fixture.pos.x, fixture.pos.y, fixture.pos.z],
+            [fixture.rotation.x, fixture.rotation.y, fixture.rotation.z],
+        ))
+}
+
+/// The scene to render: the engine's fixtures with their state decoded from
+/// the merged DMX output (`universes`, one copy per universe), placed as the
+/// editor shows them ([`fixture_pose`]), plus the stage's visible objects.
+pub(super) fn collect_fixtures(
+    show: &EngineState,
+    universes: &[Option<[u8; 513]>],
+    stage: &StageScene,
+    drafts: &BTreeMap<(u8, u8), Pose>,
     model_cache: &HashMap<String, Arc<PreparedStageModel>>,
 ) -> RenderSceneSnapshot {
     let mut fixtures = Vec::new();
@@ -107,43 +141,27 @@ pub(super) fn collect_fixtures(
     // Source from the final, merged DMX output (base scene + overlays + palettes +
     // master alpha + overrides) rather than a single scene's pre-merge sink, and
     // decode each fixture's state back from the wire values via `state_from_dmx`.
-    let engine = match app_state.dmx_engine.read() {
-        Ok(engine) => engine,
-        Err(_) => {
-            return RenderSceneSnapshot {
-                error: Some("DMX engine state is temporarily unavailable".to_string()),
-                ..Default::default()
-            };
-        }
-    };
-
     let mut skipped_fixtures = 0;
 
-    for (group_id, group) in &engine.0.groups {
+    for (group_id, group) in &show.0.groups {
         for (fixture_id, fixture) in &group.fixtures {
-            let Some(universe) = app_state.dmx_universes.get(fixture.universe_no) else {
+            let Some(Some(buffer)) = universes.get(fixture.universe_no) else {
                 skipped_fixtures += 1;
                 continue;
             };
-            let state = {
-                let Ok(buffer) = universe.read() else {
-                    skipped_fixtures += 1;
-                    continue;
-                };
-                fixture
-                    .state_from_dmx(&buffer.dmx_buffer)
-                    .resolve(&engine.0.palettes)
-            };
+            let state = fixture.state_from_dmx(buffer).resolve(&show.0.palettes);
             let rgb: RGBColor = state.color.into();
             let alpha = (state.alpha as f32 / 255.0).clamp(0.0, 1.0);
             let pan_deg = (state.orientation.pan as f32 / 255.0) * 540.0 - 270.0;
             let tilt_deg = (state.orientation.tilt as f32 / 255.0) * 270.0 - 135.0;
             let pan_rad = pan_deg.to_radians();
             let tilt_rad = tilt_deg.to_radians();
+            let (position, rotation) =
+                fixture_pose(stage, drafts, (*group_id, *fixture_id), fixture);
             let rotation = Vec3::new(
-                fixture.rotation.x.to_radians(),
-                fixture.rotation.y.to_radians(),
-                fixture.rotation.z.to_radians(),
+                rotation[0].to_radians(),
+                rotation[1].to_radians(),
+                rotation[2].to_radians(),
             );
             let kind = match &fixture.type_ {
                 FixtureType::MovingHead(_) => RenderFixtureKind::MovingHead,
@@ -153,7 +171,7 @@ pub(super) fn collect_fixtures(
                 },
                 FixtureType::Dimmer(_) => RenderFixtureKind::Dimmer,
             };
-            let pos = Vec3::new(fixture.pos.x, fixture.pos.y, fixture.pos.z);
+            let pos = Vec3::new(position[0], position[1], position[2]);
 
             if ![pos.x, pos.y, pos.z, rotation.x, rotation.y, rotation.z]
                 .iter()

@@ -27,6 +27,7 @@ pub struct EngineState(
     pub blaulicht_shared::EngineState,
     pub(super) SessionStore,
     pub(super) SessionMeta,
+    pub(super) super::StageState,
 );
 
 /// The fixtures `selection` covers in `groups`: every fixture of each
@@ -123,6 +124,7 @@ impl<'engine> EngineState {
             },
             self.1.clone(),
             self.2,
+            self.3.clone(),
         )
     }
 
@@ -271,6 +273,8 @@ impl<'engine> EngineState {
         other.scene_graphs.retain_scene_ids(&valid_scene_ids);
 
         let sessions = std::mem::take(&mut self.1);
+        // The stage is loaded separately (`load_stage`), after the patch.
+        let stage = std::mem::take(&mut self.3);
         let meta = SessionMeta {
             live_owner: None,
             ..self.2
@@ -286,6 +290,7 @@ impl<'engine> EngineState {
             },
             sessions,
             meta,
+            stage,
         );
 
         // BLANK is ephemeral: it is absent from every showfile and is rebuilt
@@ -486,7 +491,12 @@ impl Default for EngineState {
             folders: BTreeMap::new(),
         };
 
-        Self(state, SessionStore::new(), SessionMeta::default())
+        Self(
+            state,
+            SessionStore::new(),
+            SessionMeta::default(),
+            Default::default(),
+        )
     }
 }
 

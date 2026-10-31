@@ -3,6 +3,7 @@ mod management;
 mod performance_commands;
 mod session;
 mod setup_commands;
+mod stage_commands;
 mod state;
 
 use artnet_protocol::ArtCommand;
@@ -10,6 +11,7 @@ use blaulicht_audio_engine::CollectorOutput;
 pub use performance_commands::SCENE_GRAPH_CANVAS_HALF_EXTENT;
 use serialport::SerialPort;
 pub use session::*;
+pub use stage_commands::StageState;
 pub use state::*;
 pub mod animation;
 pub mod scene;
@@ -836,7 +838,14 @@ impl DmxEngine {
                     },
                 }
             }
-            BusBody::Host(command) => self.apply_host(state, command),
+            BusBody::Host(command) => {
+                let changes_patch = command.changes_patch();
+                let outcome = self.apply_host(state, command);
+                if changes_patch && matches!(outcome, CommandOutcome::Ok { .. }) {
+                    state.reconcile_stage();
+                }
+                outcome
+            }
         };
         state.swap_session(session);
         Some(CommandResult {
@@ -915,12 +924,31 @@ impl DmxEngine {
             HostCommand::DeleteFixture { group, fixture } => {
                 state.delete_fixture_command(group, fixture)
             }
-            HostCommand::SwapFixtures { group, a, b } => state.swap_fixtures_command(group, a, b),
+            HostCommand::SwapFixtures { group, a, b } => {
+                let outcome = state.swap_fixtures_command(group, a, b);
+                if matches!(outcome, CommandOutcome::Ok { .. }) {
+                    state.swap_stage_fixtures(group, a, b);
+                }
+                outcome
+            }
             HostCommand::MoveFixtureToGroup {
                 group,
                 fixture,
                 target,
-            } => state.move_fixture_command(group, fixture, target),
+            } => {
+                let outcome = state.move_fixture_command(group, fixture, target);
+                if let CommandOutcome::Ok {
+                    created:
+                        Some(CreatedId::Fixture {
+                            group: to,
+                            fixture: new_id,
+                        }),
+                } = outcome
+                {
+                    state.move_stage_fixture((group, fixture), (to, new_id));
+                }
+                outcome
+            }
             HostCommand::InitFixtures(fixtures) => {
                 if !state.has_fixtures(&fixtures) {
                     return CommandOutcome::Refused("Fixture not found".to_string());
@@ -989,6 +1017,16 @@ impl DmxEngine {
             HostCommand::SetSceneGraphStart { graph, node } => {
                 state.set_scene_graph_start_command(graph, node)
             }
+            HostCommand::AddStageObject(object) => state.add_stage_object_command(object),
+            HostCommand::RemoveStageObjects(ids) => state.remove_stage_objects_command(&ids),
+            HostCommand::PatchStage(patch) => state.patch_stage_command(*patch),
+            HostCommand::RestoreStage { stage, fixtures } => {
+                state.restore_stage_command(*stage, &fixtures)
+            }
+            HostCommand::ImportStageModel { file_name, bytes } => {
+                state.import_stage_model_command(&file_name, &bytes.0)
+            }
+            HostCommand::RemoveStageAssets(ids) => state.remove_stage_assets_command(&ids),
         }
     }
 

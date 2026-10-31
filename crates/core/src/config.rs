@@ -88,10 +88,11 @@ pub struct CoreShowfile {
     pub ui: Option<ShowfileUiState>,
 }
 
+/// What a loaded showfile holds for the desk frontend. The stage goes into
+/// the engine (`dmx::EngineState::load_stage`).
 #[derive(Debug, Clone, Default)]
 pub struct LoadedShowfileState {
     pub ui: Option<ShowfileUiState>,
-    pub stage: StageScene,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,13 +227,9 @@ fn read_showfile_logic(
                 .collect();
 
             dmx.load_showfile(core_engine, legacy_base_scene);
+            dmx.load_stage(showfile.stage, Some(file));
 
-            let mut stage = showfile.stage;
-            stage.sanitize();
-            Ok(LoadedShowfileState {
-                ui: showfile.ui,
-                stage,
-            })
+            Ok(LoadedShowfileState { ui: showfile.ui })
         }
         Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
             Ok(deprecated) => {
@@ -253,6 +250,7 @@ fn read_showfile_logic(
                     .receivers
                     .retain(|r| r.owner_plugin_id.is_some());
                 dmx.load_showfile(core_format, true);
+                dmx.load_stage(StageScene::default(), Some(file));
 
                 Ok(LoadedShowfileState::default())
             }
@@ -265,14 +263,7 @@ pub fn read_showfile_ui_state(file: PathBuf) -> anyhow::Result<LoadedShowfileSta
     let string = fs::read_to_string(&file)?;
 
     match serde_json::from_str::<CoreShowfile>(&string) {
-        Ok(showfile) => {
-            let mut stage = showfile.stage;
-            stage.sanitize();
-            Ok(LoadedShowfileState {
-                ui: showfile.ui,
-                stage,
-            })
-        }
+        Ok(showfile) => Ok(LoadedShowfileState { ui: showfile.ui }),
         Err(showfile_err) => match serde_json::from_str::<SaveEngineState>(&string) {
             Ok(_) => Ok(LoadedShowfileState::default()),
             Err(_) => Err(anyhow!(showfile_err)),
@@ -357,6 +348,7 @@ pub fn close_showfile(
         .retain(|r| r.owner_plugin_id.is_some());
 
     dmx.load_showfile(EngineState::default(), false);
+    dmx.load_stage(StageScene::default(), None);
 }
 
 impl Default for Config {
@@ -583,6 +575,53 @@ mod tests {
         assert!(receivers[0].sends_universe(5));
         // Pre-range showfiles keep sending every universe.
         assert!(receivers[1].sends_all_universes());
+    }
+
+    #[test]
+    fn a_loaded_showfile_hands_its_stage_to_the_engine() {
+        use std::sync::RwLock;
+
+        let directory = TempDir::new("blaulicht-stage-load").unwrap();
+        let path = directory.path().join("show.json");
+        let mut stage = StageScene::default();
+        stage.add_object(crate::stage::StageObject::preset(
+            crate::stage::StageObjectKind::Box,
+            1,
+        ));
+        let showfile = CoreShowfile {
+            format_version: current_showfile_version(),
+            engine: SaveEngineState::default(),
+            artnet: ShowfileArtNetState::default(),
+            plugin_state: HashMap::new(),
+            stage: stage.clone(),
+            ui: None,
+        };
+        fs::write(&path, serde_json::to_vec(&showfile).unwrap()).unwrap();
+
+        let dmx = RwLock::new(dmx::EngineState::default());
+        let artnet = RwLock::new(ArtNetOutput::default());
+        let plugin_state = Arc::new(Mutex::new(HashMap::new()));
+        read_showfile_logic(
+            path.clone(),
+            &mut dmx.write().unwrap(),
+            &mut artnet.write().unwrap(),
+            &plugin_state,
+        )
+        .unwrap();
+        {
+            let dmx = dmx.read().unwrap();
+            assert_eq!(dmx.stage().objects, stage.objects);
+            assert_eq!(dmx.stage_showfile(), Some(path.as_path()));
+        }
+
+        close_showfile(
+            &mut dmx.write().unwrap(),
+            &mut artnet.write().unwrap(),
+            &plugin_state,
+        );
+        let dmx = dmx.read().unwrap();
+        assert!(dmx.stage().objects.is_empty());
+        assert_eq!(dmx.stage_showfile(), None);
     }
 
     #[test]

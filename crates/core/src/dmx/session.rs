@@ -262,7 +262,7 @@ impl EngineState {
         if id == SessionId::DESK {
             return true;
         }
-        let EngineState(state, sessions, meta) = self;
+        let EngineState(state, sessions, meta, _) = self;
         match sessions.get_mut(&id) {
             Some(session) => {
                 session.swap_with(state);
@@ -324,7 +324,7 @@ impl EngineState {
     /// `repair`). `DESK` is repaired by the structural change itself, as
     /// before.
     pub fn repair_sessions(&mut self) {
-        let EngineState(state, sessions, _) = self;
+        let EngineState(state, sessions, _, _) = self;
         for session in sessions.values_mut() {
             session.repair(state);
         }
@@ -333,7 +333,7 @@ impl EngineState {
     /// Resets every side-store session as if it had just been opened, after
     /// a new show was loaded. The sessions stay open.
     pub(super) fn reset_sessions(&mut self) {
-        let EngineState(state, sessions, _) = self;
+        let EngineState(state, sessions, _, _) = self;
         for session in sessions.values_mut() {
             *session =
                 OperatorSession::new(state.current_scene_focus, state.scene_graphs.focused_graph);

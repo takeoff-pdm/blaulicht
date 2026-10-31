@@ -4,6 +4,7 @@ use crate::{
         ui::FileDialogOpenOrigin,
         BlaulichtApp, PopupSpec, ShowfileSaveStatus,
     },
+    client::EngineClient,
     config,
 };
 use egui::{Context, FontFamily, FontId, Ui};
@@ -72,8 +73,7 @@ impl BlaulichtApp {
         config::close_showfile(&mut dmx, &mut artnet, &self.data.state.plugin_state_storage);
         drop(artnet);
         drop(dmx);
-        self.visualizer_ui_state
-            .load_stage(crate::stage::StageScene::default());
+        self.visualizer_ui_state.reset_stage_view();
         self.reset_save_tracking();
     }
 
@@ -99,8 +99,8 @@ impl BlaulichtApp {
 
         mem::drop(config);
 
+        self.visualizer_ui_state.reset_stage_view();
         if let Some(loaded_state) = loaded_state {
-            self.visualizer_ui_state.load_stage(loaded_state.stage);
             if let Some(ui_state) = loaded_state.ui {
                 self.apply_showfile_ui_state(ui_state);
             }
@@ -480,13 +480,14 @@ impl BlaulichtApp {
 
                     let previous_showfile = config.last_open_showfile.clone();
                     mem::drop(config);
+                    let mut stage = self.client.with_show(|show| show.stage().clone());
                     if let Some(previous_showfile) = previous_showfile {
                         match crate::stage_assets::copy_assets_for_save_as(
-                            &self.visualizer_ui_state.stage,
+                            &stage,
                             &previous_showfile,
                             &file,
                         ) {
-                            Ok(stage) => self.visualizer_ui_state.stage = stage,
+                            Ok(relocated) => stage = relocated,
                             Err(error) => {
                                 self.show_popup(PopupSpec::with_duration(
                                     Duration::from_secs(4),
@@ -496,6 +497,15 @@ impl BlaulichtApp {
                             }
                         }
                     }
+                    // The save below reads the stage back at once, so this
+                    // can't wait for a command (until 052 moves saving into
+                    // the engine).
+                    self.data
+                        .state
+                        .dmx_engine
+                        .write()
+                        .unwrap()
+                        .relocate_stage(stage, file.to_path_buf());
                     let mut config = self.data.config.lock().unwrap();
                     config.last_open_showfile = Some(file.to_path_buf());
                     //

@@ -45,6 +45,7 @@ use crate::{
     event::{EventBusHandle, SystemEventBusConnection},
     frontend_ui::{FrontendUiMirror, FrontendUiPublisher, FrontendUiSnapshot},
     msg::{StageStatus, StartupStage, SystemMessage, TERMINAL_ONLY_LOG_TARGET},
+    stage::{FixturePlacement, StageObject, StagePatch, StageScene},
 };
 
 //
@@ -401,6 +402,53 @@ pub enum HostCommand {
     /// Makes `node` the active node of `graph` ("Set as Start"). Refused
     /// with "Scene graph not found" or "Node not found".
     SetSceneGraphStart { graph: GraphId, node: NodeId },
+
+    //
+    // Visualizer: the stage (room, objects, trusses, fixture attachments).
+    // After each, and after every patch change, the engine places the
+    // fixtures attached to trusses (`EngineState::reconcile_stage`).
+    //
+    /// Adds an object to the stage. Answers `CreatedId::StageObject`.
+    AddStageObject(StageObject),
+    /// Removes objects with their truss connections and the attachments of
+    /// fixtures hanging on them (the fixtures stay where they are). Refused
+    /// with "Stage object not found" (then nothing is removed).
+    RemoveStageObjects(Vec<u64>),
+    /// Applies one editor change as a whole: room, object contents,
+    /// connections, attachments and hand-placed fixtures. Refused with
+    /// "Stage object not found", "Fixture not found", "Truss not found" or
+    /// "Trusses cannot be connected" (then nothing changes).
+    PatchStage(Box<StagePatch>),
+    /// Replaces the whole stage and puts `fixtures` where they were, for the
+    /// visualizer's undo and redo. The engine never changes the stage by
+    /// itself between commands, so this loses no engine-side update.
+    RestoreStage {
+        stage: Box<StageScene>,
+        fixtures: Vec<FixturePlacement>,
+    },
+    /// Stores a binary glTF model next to the showfile (in `<showfile
+    /// stem>.assets/`, named by its content hash) and adds it to the stage.
+    /// Answers `CreatedId::StageObject`; refused with "Save the showfile
+    /// before importing models" or why the file was rejected.
+    ImportStageModel {
+        file_name: String,
+        bytes: ModelBytes,
+    },
+    /// Removes imported models (assets) and the objects that show them.
+    /// Refused with "Model not found" (then nothing is removed).
+    RemoveStageAssets(Vec<u64>),
+}
+
+/// The contents of a model file in [`HostCommand::ImportStageModel`].
+/// Shared, so the bus copies a pointer, not the file, to each connection;
+/// `Debug` prints only the size.
+#[derive(Clone)]
+pub struct ModelBytes(pub Arc<[u8]>);
+
+impl fmt::Debug for ModelBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ModelBytes({} bytes)", self.0.len())
+    }
 }
 
 /// One editable parameter of a scene graph node
@@ -462,7 +510,13 @@ impl HostCommand {
             | HostCommand::DisconnectSceneGraphNodes { .. }
             | HostCommand::SetSceneGraphNode { .. }
             | HostCommand::SetSceneGraphEdge { .. }
-            | HostCommand::SetSceneGraphStart { .. } => true,
+            | HostCommand::SetSceneGraphStart { .. }
+            | HostCommand::AddStageObject(_)
+            | HostCommand::RemoveStageObjects(_)
+            | HostCommand::PatchStage(_)
+            | HostCommand::RestoreStage { .. }
+            | HostCommand::ImportStageModel { .. }
+            | HostCommand::RemoveStageAssets(_) => true,
             // A copy into an editor instance is scratch state; the Apply
             // that copies it back sends `LoadSpecIntoAnimation` (Programmer)
             // or `UpdateAnimationTemplate` (Setup), which mark the show.
@@ -474,6 +528,23 @@ impl HostCommand {
             | HostCommand::KeepAnimationEditorAlive { .. }
             | HostCommand::InitFixtures(_) => false,
         }
+    }
+}
+
+impl HostCommand {
+    /// Whether the command can change the fixture patch, so fixtures
+    /// attached to trusses need placing again (stage commands do that
+    /// themselves).
+    pub fn changes_patch(&self) -> bool {
+        matches!(
+            self,
+            HostCommand::DeleteGroup(_)
+                | HostCommand::AddFixtures { .. }
+                | HostCommand::UpdateFixture { .. }
+                | HostCommand::DeleteFixture { .. }
+                | HostCommand::SwapFixtures { .. }
+                | HostCommand::MoveFixtureToGroup { .. }
+        )
     }
 }
 
@@ -602,6 +673,8 @@ pub enum CreatedId {
         graph: GraphId,
         node: NodeId,
     },
+    /// An object on the visualizer's stage.
+    StageObject(u64),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

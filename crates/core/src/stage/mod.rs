@@ -1,3 +1,6 @@
+pub mod geometry;
+pub mod math;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -506,6 +509,91 @@ impl StageScene {
     }
 }
 
+/// Where a fixture stands: its position (metres) and rotation (degrees), as
+/// the visualizer places it ([`StagePatch::fixtures`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FixturePlacement {
+    pub group: u8,
+    pub fixture: u8,
+    pub position: [f32; 3],
+    pub rotation: [f32; 3],
+}
+
+/// One stage edit, applied by the engine as a whole
+/// (`HostCommand::PatchStage`): only the parts that changed, so concurrent
+/// edits of other objects survive. Objects are added and removed by their
+/// own commands, because the engine allocates their ids.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StagePatch {
+    pub room: Option<StageRoom>,
+    /// Existing objects with their new contents (name, flags, transform,
+    /// truss spec, ...).
+    pub objects: Vec<(u64, StageObject)>,
+    pub disconnect: Vec<TrussConnection>,
+    pub connect: Vec<TrussConnection>,
+    /// Fixtures `(group, fixture)` taken off their truss.
+    pub detach: Vec<(u8, u8)>,
+    /// Attachments to add; each replaces its fixture's previous one.
+    pub attach: Vec<FixtureTrussAttachment>,
+    /// Fixtures moved by hand. A fixture that is still attached afterwards
+    /// is taken off its truss, as for any other move of an attached fixture.
+    pub fixtures: Vec<FixturePlacement>,
+}
+
+impl StagePatch {
+    /// What turns `base` into `edited`, except added or removed objects
+    /// (and without fixture placements, which aren't stage data).
+    pub fn between(base: &StageScene, edited: &StageScene) -> Self {
+        let room = (base.room != edited.room).then(|| edited.room.clone());
+        let objects = edited
+            .objects
+            .iter()
+            .filter(|(id, object)| base.objects.get(id).is_some_and(|old| old != *object))
+            .map(|(id, object)| (*id, object.clone()))
+            .collect();
+        let connections = |stage: &StageScene| {
+            stage
+                .truss_connections
+                .iter()
+                .map(|connection| connection.normalized())
+                .map(|connection| (connection.a, connection.b))
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let (old, new) = (connections(base), connections(edited));
+        let as_connection =
+            |(a, b): &(TrussEndpointRef, TrussEndpointRef)| TrussConnection { a: *a, b: *b };
+        fn attachments(stage: &StageScene) -> BTreeMap<(u8, u8), &FixtureTrussAttachment> {
+            stage
+                .fixture_attachments
+                .iter()
+                .map(|attachment| ((attachment.group_id, attachment.fixture_id), attachment))
+                .collect()
+        }
+        let (old_attached, new_attached) = (attachments(base), attachments(edited));
+        Self {
+            room,
+            objects,
+            disconnect: old.difference(&new).map(as_connection).collect(),
+            connect: new.difference(&old).map(as_connection).collect(),
+            detach: old_attached
+                .keys()
+                .filter(|key| !new_attached.contains_key(key))
+                .copied()
+                .collect(),
+            attach: new_attached
+                .iter()
+                .filter(|(key, attachment)| old_attached.get(key) != Some(attachment))
+                .map(|(_, attachment)| (*attachment).clone())
+                .collect(),
+            fixtures: Vec::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 fn finite_clamp(value: f32, fallback: f32, min: f32, max: f32) -> f32 {
     if value.is_finite() {
         value.clamp(min, max)
@@ -704,5 +792,51 @@ mod tests {
         let restored: StageScene = serde_json::from_str(&json).unwrap();
 
         assert_eq!(restored, scene);
+    }
+
+    #[test]
+    fn a_patch_holds_only_what_changed() {
+        let mut base = StageScene::default();
+        let a = base.add_object(StageObject::truss_preset(1, TrussSpec::default()));
+        let b = base.add_object(StageObject::truss_preset(2, TrussSpec::default()));
+        let attached = |fixture_id, distance_m| FixtureTrussAttachment {
+            group_id: 0,
+            fixture_id,
+            truss_id: a,
+            branch: 0,
+            distance_m,
+            rotation_offset: [0.0; 3],
+        };
+        base.fixture_attachments = vec![attached(0, 1.0), attached(1, 1.0)];
+        let joint = TrussConnection {
+            a: TrussEndpointRef {
+                object_id: b,
+                endpoint: 0,
+            },
+            b: TrussEndpointRef {
+                object_id: a,
+                endpoint: 1,
+            },
+        };
+        assert!(StagePatch::between(&base, &base).is_empty());
+
+        let mut edited = base.clone();
+        edited.room.width = 12.0;
+        edited.objects.get_mut(&b).unwrap().transform.translation[0] = 3.0;
+        edited.truss_connections.push(joint);
+        edited.fixture_attachments = vec![attached(1, 2.0)];
+
+        let patch = StagePatch::between(&base, &edited);
+        assert_eq!(patch.room.as_ref().map(|room| room.width), Some(12.0));
+        assert_eq!(patch.objects, vec![(b, edited.objects[&b].clone())]);
+        assert_eq!(patch.connect, vec![joint.normalized()]);
+        assert!(patch.disconnect.is_empty());
+        assert_eq!(patch.detach, vec![(0, 0)]);
+        assert_eq!(patch.attach, vec![attached(1, 2.0)]);
+
+        let back = StagePatch::between(&edited, &base);
+        assert_eq!(back.disconnect, vec![joint.normalized()]);
+        assert_eq!(back.detach, Vec::<(u8, u8)>::new());
+        assert_eq!(back.attach.len(), 2);
     }
 }
