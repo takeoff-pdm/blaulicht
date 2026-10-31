@@ -118,7 +118,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 053 | [Engine crate, egui crate and a headless binary](TICKETS/decouple/053-crate-split-headless.done.md) | done | 039, 046, 050, 043, 044, 051, 045, 052 |
 | 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.done.md) | done | 053 |
 | 048 | [Web frontend spike: egui on wasm or Svelte](TICKETS/decouple/048-web-frontend-spike.done.md) | done | 047 |
-| 054 | [Web frontend](TICKETS/decouple/054-web-frontend.planned.md) | planned | 048 |
+| 054 | [Web frontend](TICKETS/decouple/054-web-frontend.doing.md) | doing | 048 |
 
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
