@@ -55,6 +55,10 @@ midir = "0.10.1"
 # DMX
 serialport = "4.7.3"
 
+[target.'cfg(unix)'.dependencies]
+# Signal handling of the headless binary.
+nix = { version = "0.26.4", default-features = false, features = ["signal"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 mach = "0.3"
 libc = "0.2"

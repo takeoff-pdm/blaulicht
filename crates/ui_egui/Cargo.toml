@@ -26,6 +26,7 @@ map-range = "0.1.2"
 strum = { version = "0.27.2", features = ["derive"] }
 chrono = "0.4.42"
 tracing = "0.1.44"
+clap = { version = "4.5.56", default-features = false, features = ["derive"] }
 
 # Egui
 egui = "0.34.1"

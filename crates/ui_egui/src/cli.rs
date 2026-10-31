@@ -1,4 +1,7 @@
-use clap::Parser;
+//! Command line flags of the egui desk (`#[command(flatten)]` them into the
+//! binary's arguments, next to the engine's `EngineArgs`).
+
+use clap::Args;
 use std::path::PathBuf;
 
 fn parse_size_tuple(s: &str) -> Result<(usize, usize), String> {
@@ -11,9 +14,8 @@ fn parse_size_tuple(s: &str) -> Result<(usize, usize), String> {
     Ok((w, h))
 }
 
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-pub struct CliArgs {
+#[derive(Args, Debug, Clone)]
+pub struct UiArgs {
     /// Whether the UI shall include borders / decorations.
     #[arg(short, long, default_value_t = false)]
     pub window_decorations: bool,
@@ -25,10 +27,6 @@ pub struct CliArgs {
     /// Specify external screens to add with dimensions (x,y). Can be used multiple times.
     #[arg(short, long, value_parser = parse_size_tuple)]
     pub external_screens: Vec<(usize, usize)>,
-
-    /// Config file location.
-    #[arg(short, long)]
-    pub config_file: Option<PathBuf>,
 
     /// Default directory for showfiles.
     #[arg(long, value_name = "DIR")]

@@ -1,28 +1,24 @@
-use anyhow::Context;
-use blaulicht_ui_egui::app::BlaulichtApp;
-mod cli;
-use blaulicht_engine::audio::defs::AudioThreadControlSignal;
-use blaulicht_engine::client::LocalClient;
-use blaulicht_engine::event::SystemEventBus;
-use blaulicht_engine::hub::{BusMessage, ClientId, SessionId, SystemHub};
-use blaulicht_engine::mainloop::SupervisorRequest;
-use blaulicht_engine::msg::{StageStatus, StartupStage, SystemMessage};
-use blaulicht_engine::persistence::{ExitRequest, PersistenceService};
-use blaulicht_engine::plugin::PluginManager;
-use blaulicht_engine::state::AppState;
-use blaulicht_engine::{config, mainloop, utils};
+//! The desk: the engine and the native egui UI in one process.
+
+use blaulicht_engine::cli::EngineArgs;
+use blaulicht_engine::persistence::ExitRequest;
+use blaulicht_engine::{Engine, EngineOptions};
+use blaulicht_ui_egui::cli::UiArgs;
 use clap::Parser;
-use cli::CliArgs;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::atomic::AtomicU8;
-use std::sync::Arc;
-use std::thread;
-use tracing::info;
 
 #[cfg(feature = "dhat")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct CliArgs {
+    #[command(flatten)]
+    ui: UiArgs,
+
+    #[command(flatten)]
+    engine: EngineArgs,
+}
 
 fn main() -> anyhow::Result<()> {
     #[cfg(feature = "dhat")]
@@ -30,205 +26,27 @@ fn main() -> anyhow::Result<()> {
 
     let args = CliArgs::parse();
 
-    let config_filepath = match args.config_file {
-        Some(path) => path,
-        None => PathBuf::from_str("./config.toml").unwrap(),
-    };
-
-    // Every system message (logs, startup stages, heartbeats, ...) goes
-    // through the hub; frontends subscribe to it.
-    let hub = SystemHub::new();
-    blaulicht_engine::log::init_tracing(hub.clone());
-
-    let cfg = config::read_config(config_filepath.clone())?;
-    let Some(cfg) = cfg else {
-        info!(
-            "Created default configuration file at {}",
-            config_filepath.to_string_lossy()
-        );
+    let Some(mut engine) = Engine::start(EngineOptions {
+        config_file: args.engine.config_file(),
+        attach_desk: true,
+    })?
+    else {
         return Ok(());
     };
+    let desk = engine
+        .take_desk()
+        .expect("the engine was started with a desk client");
+    let config_dir = engine.config_file().parent().map(|dir| dir.to_path_buf());
 
-    let send_stage = |stage, status| {
-        hub.publish(SystemMessage::StartupStage { stage, status });
-    };
-    send_stage(
-        StartupStage::Config,
-        StageStatus::ok(
-            config_filepath
-                .file_name()
-                .unwrap_or(config_filepath.as_os_str())
-                .to_string_lossy(),
-        ),
-    );
-
-    let version = env!("CARGO_PKG_VERSION");
-    info!("Starting BLAULICHT {version}");
-
-    //
-    // Audio.
-    //
-
-    // Requests to the supervisor thread: from the engine (audio input and
-    // plugin reload commands) and from the plugin watcher.
-    let (supervisor_sender, supervisor_receiver) =
-        crossbeam_channel::unbounded::<SupervisorRequest>();
-    // The engine's config: the supervisor writes the selected audio input
-    // into it, the persistence service the open showfile and the global
-    // plugin state.
-    let shared_config = config::SharedConfig::new(cfg.clone(), config_filepath.clone());
-
-    let audio_thread_control_signal =
-        Arc::new(AtomicU8::new(AudioThreadControlSignal::CONTINUE.into()));
-
-    //
-    // Read config file.
-    //
-
-    let initial_audio_input = match cfg.default_audio_device {
-        None => None,
-        Some(ref name) => {
-            let input = utils::input_from_name(name.clone());
-            if input.is_some() {
-                info!("Using default audio device: <{name}> from configuration file.");
-            } else {
-                tracing::warn!(
-                    "Configured audio device <{name}> is unavailable; selecting one automatically"
-                );
-            }
-            input
-        }
-    };
-
-    //
-    // Event bus.
-    //
-
-    let mut event_bus = SystemEventBus::<BusMessage>::new();
-    // Adds connections while the bus runs (frontends attaching later).
-    let event_bus_handle = event_bus.handle();
-
-    let event_bus_connection_mainloop = event_bus_handle.connect();
-    let event_bus_connection_dmx = event_bus_handle.connect();
-
-    thread::spawn(move || {
-        event_bus.run();
-    });
-
-    let app_state = Arc::new(AppState::new(&cfg.plugins));
-    // Attach the desk frontend before the engine starts, so plugin requests
-    // sent during startup (e.g. creating an owned external screen) reach it.
-    // Its hub subscription replays the startup stages and logs sent so far.
-    let desk = LocalClient::connect(
-        ClientId::Desk,
-        SessionId::DESK,
-        Arc::clone(&app_state),
-        &hub,
-        &event_bus_handle,
-    );
-    {
-        let mut global_state = app_state.plugin_state_storage_global.lock().unwrap();
-        *global_state = cfg.plugin_state.clone();
+    let result = blaulicht_ui_egui::desk::run(desk, args.ui, config_dir);
+    if let Err(error) = &result {
+        tracing::error!("The desk window failed: {error}");
     }
-
-    // The persistence service loads the startup showfile before the engine
-    // starts (so plugins find its state when they initialize), then saves,
-    // loads and autosaves on its own thread.
-    let mut persistence =
-        PersistenceService::new(Arc::clone(&app_state), hub.clone(), shared_config.clone());
-    if let Some(showfile) = &cfg.last_open_showfile {
-        let name = showfile
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        send_stage(StartupStage::Showfile, StageStatus::running(name.clone()));
-        let loaded = persistence.open_startup(Some(showfile.clone()));
-        send_stage(
-            StartupStage::Showfile,
-            match loaded {
-                Ok(()) => StageStatus::ok(name),
-                Err(_) => StageStatus::failed(format!("{name}: could not load, see Logs")),
-            },
-        );
-    } else {
-        // A new, empty show (still announced, so frontends start in step).
-        let _ = persistence.open_startup(None);
-        send_stage(StartupStage::Showfile, StageStatus::ok("none"));
-    }
-    let persistence = persistence
-        .spawn()
-        .context("Failed to start the persistence service")?;
-
-    {
-        // Audio recording and analysis thread.
-        let hub = hub.clone();
-        let audio_thread_control_signal = audio_thread_control_signal.clone();
-        let cfg = cfg.clone();
-        let shared_config = shared_config.clone();
-        let supervisor_sender = supervisor_sender.clone();
-        let app_state = Arc::clone(&app_state);
-        thread::spawn(move || {
-            mainloop::supervisor_thread(
-                supervisor_receiver,
-                supervisor_sender,
-                initial_audio_input,
-                audio_thread_control_signal,
-                hub,
-                cfg,
-                shared_config,
-                event_bus_connection_mainloop,
-                event_bus_connection_dmx,
-                app_state,
-            )
-        });
-    }
-
-    //
-    // Filesystem plugin watcher.
-    //
-    let plugins = cfg.plugins.clone();
-    thread::spawn(move || {
-        PluginManager::watch_plugins(supervisor_sender, &plugins)
-            .context("Failed to start plugin watcher")
-            .unwrap();
-    });
-
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 480.0])
-            .with_resizable(args.desktop_mode)
-            .with_decorations(args.window_decorations),
-        // The visualizer is rendered in an egui GL callback and requires a
-        // real depth attachment for opaque fixture geometry and outlines.
-        depth_buffer: 24,
-        multisampling: 4,
-        ..Default::default()
-    };
-
-    let initial_popup = None;
-
-    eframe::run_native(
-        "blaulicht",
-        native_options,
-        Box::new(|cc| {
-            Ok(Box::new(BlaulichtApp::new(
-                cc,
-                desk,
-                initial_popup,
-                args.desktop_mode,
-                args.showfile_home.clone(),
-                config_filepath.parent().map(|dir| dir.to_path_buf()),
-                args.external_screens,
-            )))
-        }),
-    )
-    .unwrap();
 
     // The desk closed (after `HostCommand::Quit` / `Restart`, or its window
     // was closed): let the persistence service finish, then stop the engine.
-    // (It no longer stops by itself when nobody listens to system messages.)
-    let exit = persistence.stop();
-    hub.shutdown();
+    let exit = engine.shutdown();
+    result.map_err(|error| anyhow::anyhow!("{error}"))?;
     if let Some(exit @ ExitRequest::Restart) = exit {
         std::process::exit(exit.code());
     }

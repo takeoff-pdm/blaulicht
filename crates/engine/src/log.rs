@@ -73,12 +73,14 @@ fn source_for_module_path(path: &str) -> Cow<'static, str> {
             ("audio", _) => "Audio",
             ("config", _) => "Config",
             ("routes", _) => "Web",
+            // Startup and shutdown (`Engine::start`).
+            ("lifecycle", _) => "Init",
             _ => "Engine",
         },
         // The egui frontend.
         "blaulicht_ui_egui" => "UI",
-        // The desk binary's `main.rs` logs with its bare crate name.
-        "blaulicht_core" => "Init",
+        // The binaries log with their bare crate names.
+        "blaulicht_core" | "blaulicht_headless" => "Init",
         "blaulicht_audio_engine" => "Audio",
         "blaulicht_shared" => "Engine",
         "" => "Unknown",
@@ -185,6 +187,8 @@ mod tests {
     #[test]
     fn our_module_paths_map_to_subsystems() {
         assert_eq!(source_for_target("blaulicht_core"), "Init");
+        assert_eq!(source_for_target("blaulicht_headless"), "Init");
+        assert_eq!(source_for_target("blaulicht_engine::lifecycle"), "Init");
         assert_eq!(
             source_for_target("blaulicht_engine::mainloop::supervisor"),
             "Engine"

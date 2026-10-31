@@ -5,6 +5,7 @@ authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 rust-version = "1.76"
+description = "The Blaulicht desk: the engine and the native egui UI in one process."
 
 [package.metadata.docs.rs]
 all-features = true
@@ -25,12 +26,9 @@ blaulicht-engine = { path = "../engine", default-features = false }
 blaulicht-ui-egui = { path = "../ui_egui" }
 
 anyhow = "1.0.94"
-crossbeam-channel = "0.5.14"
 clap = { version = "4.5.56", default-features = false, features = ["derive"] }
 dhat = { version = "0.3.3", optional = true }
 tracing = "0.1.44"
-egui = "0.34.1"
-eframe = { version = "0.34.1", default-features = false, features = ["default_fonts", "glow"] }
 
 
 [profile.dev.package.audioviz]
