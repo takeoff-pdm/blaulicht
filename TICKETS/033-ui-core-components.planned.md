@@ -6,7 +6,7 @@
 | Depends on | 032 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/components/button.rs`, `button_new.rs`, `clickable.rs`, `tree.rs`, `folder_tree.rs`, `fixtures_shared.rs` (chips and cards), `navbar.rs` (status slot), new component files as needed
+**Touches:** `crates/ui_egui/src/app/components/button.rs`, `button_new.rs`, `clickable.rs`, `tree.rs`, `folder_tree.rs`, `fixtures_shared.rs` (chips and cards), `navbar.rs` (status slot), new component files as needed
 
 ## Problem
 Everything is drawn by one painted button style (`components::button`, 191 call sites) with no variants, so Save and Delete look the same and every row is a filled box. The design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) defines Button, ListRow, Chip and Status; read their `components/<Name>/README.md` and previews.
@@ -22,9 +22,9 @@ Everything is drawn by one painted button style (`components::button`, 191 call 
 - Sheets, menus and toasts (034). Header, nav rail and tab bar (035). Page layouts (036–038).
 
 ## Key code
-- `button`, `ButtonSize`, `paint_button_label` — `crates/core/src/app/components/button.rs:105-178`
-- Tree rows — `crates/core/src/app/components/tree.rs:436-628`
-- Group and fixture cards — `crates/core/src/app/components/fixtures_shared.rs:122-192`
+- `button`, `ButtonSize`, `paint_button_label` — `crates/ui_egui/src/app/components/button.rs:105-178`
+- Tree rows — `crates/ui_egui/src/app/components/tree.rs:436-628`
+- Group and fixture cards — `crates/ui_egui/src/app/components/fixtures_shared.rs:122-192`
 
 ## Acceptance criteria
 - [ ] All four button variants exist and are used for at least Store/Cancel/Delete in the folder dialogs.

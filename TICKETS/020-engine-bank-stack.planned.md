@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | **ABI bump** (serialized shared types change) and **showfile shape** change (new fields need `#[serde(default)]`) (only if banks are persisted; runtime-only is fine) |
 
-**Touches:** `crates/shared/src/state/engine.rs`, `crates/shared/src/view.rs`, `crates/shared/src/abi.rs`, engine event handling, `crates/plugin_framework/src/ (new bank module)`, `crates/core/src/plugin/ (cleanup on plugin error/reload)`
+**Touches:** `crates/shared/src/state/engine.rs`, `crates/shared/src/view.rs`, `crates/shared/src/abi.rs`, engine event handling, `crates/plugin_framework/src/ (new bank module)`, `crates/engine/src/plugin/ (cleanup on plugin error/reload)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -28,7 +28,7 @@ Original review notes (2026-09-27):
 ## Key code
 - `View`, `apply_events` — `crates/shared/src/view.rs`
 - `current_overlay_scenes` — `crates/shared/src/state/engine.rs`
-- Plugin error/reload paths — `crates/core/src/plugin/mod.rs`, `tick.rs`
+- Plugin error/reload paths — `crates/engine/src/plugin/mod.rs`, `tick.rs`
 
 ## Acceptance criteria
 - [ ] Unit tests: save, apply view, restore gives an identical overlay state; nested push/pop; auto-pop on plugin error.

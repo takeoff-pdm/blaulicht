@@ -1,6 +1,9 @@
 DIR := ${CURDIR}
 VERSION = 0.30.0
 BUILD_OUTPUT_DIR = blaulicht-dist
+# The desk binary (engine + egui UI); its package and binary keep the name
+# blaulicht-core. The engine-only binary is blaulicht-headless in the
+# blaulicht-engine package and is not part of the release archives yet.
 PACKAGE = blaulicht-core
 RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./target)
 # Only allocate a TTY when we have one (e.g. not under CI or a non-interactive shell).

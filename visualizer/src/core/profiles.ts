@@ -3,7 +3,7 @@
  * `crates/shared/src/fixture/{light,moving_head,dimmer}.rs`.
  *
  * Channel indexing: blaulicht's internal DMX buffer is 1-based (slot 0 is
- * dropped before the Art-Net payload is built, see `crates/core/src/dmx/mod.rs`).
+ * dropped before the Art-Net payload is built, see `crates/engine/src/dmx/mod.rs`).
  * Here `base` is the 0-based Art-Net offset of the fixture's channel 0, i.e.
  * `base = start_addr - 1`.
  */

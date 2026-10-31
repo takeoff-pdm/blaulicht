@@ -6,7 +6,7 @@
 | Depends on | 032, 033 |
 | ABI / showfile | Possibly **ABI bump** if engine refusals reach the UI through a new shared event type (append at the end) |
 
-**Touches:** `crates/core/src/app/components/dialog.rs`, `selection_dialog.rs`, `id_selection_dialog.rs`, `folder_tree.rs` (`FolderDialog`), `crates/core/src/app/mod.rs` (`show_popup`), `popup.rs`, `crates/core/src/app/event.rs`, engine error path in `crates/core/src/dmx/mod.rs`
+**Touches:** `crates/ui_egui/src/app/components/dialog.rs`, `selection_dialog.rs`, `id_selection_dialog.rs`, `folder_tree.rs` (`FolderDialog`), `crates/ui_egui/src/app/mod.rs` (`show_popup`), `popup.rs`, `crates/ui_egui/src/app/event.rs`, engine error path in `crates/engine/src/dmx/mod.rs`
 
 ## Problem
 Dialogs are fixed-size `egui::Window`s with hard-coded grey frames; there is no long-press or right-click; the only feedback is a centred 200 × 100 popup; and when the engine rejects an event nothing reaches the UI (palette clashes and refused animations fail silently). See Sheet, ContextMenu and Toast in the design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja).
@@ -21,9 +21,9 @@ Dialogs are fixed-size `egui::Window`s with hard-coded grey frames; there is no 
 - Header and navigation (035). Page layouts (036–038).
 
 ## Key code
-- `Dialog` — `crates/core/src/app/components/dialog.rs:8-345`
-- `show_popup`, `PopupSpec` — `crates/core/src/app/mod.rs:67-113`, `popup.rs:12-60`
-- Engine apply and its `(error, rollback)` result — `crates/core/src/dmx/mod.rs`
+- `Dialog` — `crates/ui_egui/src/app/components/dialog.rs:8-345`
+- `show_popup`, `PopupSpec` — `crates/ui_egui/src/app/mod.rs:67-113`, `popup.rs:12-60`
+- Engine apply and its `(error, rollback)` result — `crates/engine/src/dmx/mod.rs`
 
 ## Acceptance criteria
 - [ ] The same dialog shows as a sheet at 800 × 480 and as a popover or menu on desktop, with no page-specific code.

@@ -6,7 +6,7 @@
 | Depends on | 006 |
 | ABI / showfile | none expected (uses existing rename events; add a batch rename event only if needed, then ABI bump) |
 
-**Touches:** `crates/core/src/app/pages/setup/fixtures.rs (after 006)`, `crates/shared (fixture naming helper, if any)`
+**Touches:** `crates/ui_egui/src/app/pages/setup/fixtures.rs (after 006)`, `crates/shared (fixture naming helper, if any)`
 
 ## Problem
 Original review notes (2026-09-27):

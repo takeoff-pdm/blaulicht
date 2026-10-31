@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | Showfile shape only if dimensions are stored per fixture there (prefer an asset table in code/data) |
 
-**Touches:** `crates/core/src/stage_assets.rs (or a data file next to it)`, visualizer model/asset definitions
+**Touches:** `crates/ui_egui/src/stage_assets.rs (or a data file next to it)`, visualizer model/asset definitions
 
 ## Problem
 Original review notes (2026-09-27):
@@ -22,7 +22,7 @@ Original review notes (2026-09-27):
 - Placement UI (027).
 
 ## Key code
-- `crates/core/src/stage_assets.rs`, `crates/core/src/app/pages/visualizer/truss.rs`
+- `crates/ui_egui/src/stage_assets.rs`, `crates/ui_egui/src/app/pages/visualizer/truss.rs`
 
 ## Acceptance criteria
 - [ ] Every used type has dimensions with a cited source, and the 3D view renders them to scale.

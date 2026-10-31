@@ -5,14 +5,14 @@ description: Run blaulicht-core headless in a per-worktree Docker container (Xvf
 
 # blaulicht-env (blenv)
 
-`blenv` runs the real `blaulicht-core` UI (egui on X11, software GL) in a Docker container
+`blenv` runs the real `blaulicht-core` desk (engine + egui UI on X11, software GL) in a Docker container
 on display `:9`. Each git worktree gets its own container, build cache and inspector port,
 so several agents can run instances in parallel. The worktree is bind-mounted at `/work`,
 so edits are picked up by the next `blenv build`.
 
 Two equivalent interfaces:
 - **MCP tools** (`blaulicht-env` server from `.mcp.json`): `blenv_up`, `blenv_build`,
-  `blenv_run`, `screenshot` (returns the image inline), `click`, `drag`, `scroll`, `key`,
+  `blenv_run` (`headless=true` for the engine alone), `screenshot` (returns the image inline), `click`, `drag`, `scroll`, `key`,
   `type_text`, `navigate`, `plugin_ui`, `windows`, `blctl`, `logs`, `blenv_status`,
   `blenv_stop`, `blenv_down`. Input tools take `screenshot_after=true` to save a round-trip.
 - **CLI**: `scripts/blenv <cmd>` (`scripts/blenv --help`). Screenshots go to
@@ -35,6 +35,10 @@ Two equivalent interfaces:
    `scripts/blenv logs --grep 'ERROR|WARN'`.
 7. When done: `scripts/blenv stop`, or `scripts/blenv down` (the build cache is kept;
    `--volumes` removes it too).
+
+Engine without UI: `scripts/blenv build headless`, then `scripts/blenv run --headless
+[--showfile <path>]` runs `blaulicht-headless` (crate `blaulicht-engine`) with the same config;
+`blctl`, `logs` and `stop` work, there is no window to screenshot.
 
 Shortcuts: `scripts/blenv nav <Page>` (Logs System Audio Setup View
 ViewPerformance Programmer Animations Palettes SceneGraph Visualizer; Animations and

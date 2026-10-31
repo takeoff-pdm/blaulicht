@@ -6,8 +6,9 @@ screenshot and click the real UI without a monitor. One container per git worktr
 
 ```sh
 scripts/blenv up            # build image (first time), start container
-scripts/blenv build         # plugins (inspector + sample/animation set) + core
+scripts/blenv build         # plugins (inspector + sample/animation set) + core (the desk)
 scripts/blenv run           # start app (800x480 kiosk layout); --desktop for 1500x950
+scripts/blenv build headless && scripts/blenv run --headless  # engine only, no window
 scripts/blenv screenshot    # -> .blenv/shots/<ts>.png
 scripts/blenv click 100 40  # window-relative coordinates
 scripts/blenv nav Audio     # page switch through the inspector
@@ -26,7 +27,7 @@ server (`.mcp.json`, `uv run --script tools/blenv/mcp_server.py`) and the skill 
 |---|---|
 | Image: toolchain (nightly + wasm32), X/GL/input tools. No source. | `Dockerfile`, tag `blenv:<hash of Dockerfile>` |
 | Container entry: Xvfb (GLX off, so GL goes through EGL) + openbox + x11vnc | `container/entrypoint.sh`, `container/openbox-rc.xml` |
-| Builds: `cargo build -p blaulicht-core --no-default-features --features "x11 audio wasmtime"`, plugins to `crates/plugins/bundle_debug/` | `container/build.sh` |
+| Builds: `cargo build -p blaulicht-core --no-default-features --features "x11 audio wasmtime"` (the desk), `build headless`: `cargo build -p blaulicht-engine --bin blaulicht-headless` with the same features minus `x11`/`wayland`, plugins to `crates/plugins/bundle_debug/` | `container/build.sh` |
 | App start: config from template, inspector ping wait, window at 0,0 | `container/run-app.sh`, `config.template.toml` |
 | Host CLI and library | `blenv.py` (Python 3.9+, stdlib only), shim `scripts/blenv` |
 | MCP server | `mcp_server.py` |
@@ -55,5 +56,7 @@ published on a random `127.0.0.1` port, which `scripts/blenv vnc` prints.
 - `BLENV_FEATURES` and `CARGO_BUILD_JOBS` are forwarded to `blenv build`. If a new nightly
   breaks the build, pin it by changing `ARG RUST_NIGHTLY=nightly` in the Dockerfile to
   `nightly-YYYY-MM-DD`; the image tag follows the Dockerfile hash, so `blenv up` rebuilds.
+- `run --headless` starts `blaulicht-headless` (engine only) with the same config and showfile
+  handling; `blctl`, `logs`, `status` and `stop` work, screenshots and input don't (no window).
 - `scripts/blenv list` shows all instances; `scripts/blenv gc [--yes]` removes stopped ones
   and the volumes of instances whose worktree was deleted.

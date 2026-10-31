@@ -40,7 +40,7 @@ verify and finish it. The index is in the root [`TODO.md`](../TODO.md).
   `cd crates/plugins && make build_noopt` and grep the output for `^error`, because the Makefile reports success even when a build fails.
 - **Showfile shape**: new fields need `#[serde(default)]`. Load a scratch copy of an existing showfile and confirm with
   `python3 scripts/blctl.py state` that it did not silently boot a default show.
-- **Shared UI files**: `crates/core/src/app/pages/fixtures_setup.rs` and `app/components/fixtures_shared.rs` are touched by
+- **Shared UI files**: `crates/ui_egui/src/app/pages/fixtures_setup.rs` and `app/components/fixtures_shared.rs` are touched by
   006, 007, 011, 019 and 024. After 006 lands they are split into `app/pages/setup/`.
 - **Enums**: append new `ControlEvent` / `MainUiEvent` / `AppPage` variants **at the end** to keep the bincode indices stable.
 

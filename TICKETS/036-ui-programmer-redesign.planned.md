@@ -6,7 +6,7 @@
 | Depends on | 033, 034, 035 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/programmer.rs`, `programmer_animations.rs`, `crates/core/src/app/components/fixtures_shared.rs` (`fixture_selection`, `scene_overview`), `fader.rs`, `knob.rs`, `speed_knob.rs`
+**Touches:** `crates/ui_egui/src/app/pages/programmer.rs`, `programmer_animations.rs`, `crates/ui_egui/src/app/components/fixtures_shared.rs` (`fixture_selection`, `scene_overview`), `fader.rs`, `knob.rs`, `speed_knob.rs`
 
 ## Problem
 The Programmer is the busiest page: seven equal toolbar buttons with cut labels, a scene column, group cards, horizontal sliders and round knobs. The concept page's direction A mockup and the design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) show the target layout (README "Layout patterns" → Programmer).
@@ -22,9 +22,9 @@ The Programmer is the busiest page: seven equal toolbar buttons with cut labels,
 - New programmer features. Behaviour stays as it is; only layout and components change.
 
 ## Key code
-- `programmer_ui` and the toolbar — `crates/core/src/app/pages/programmer.rs`
+- `programmer_ui` and the toolbar — `crates/ui_egui/src/app/pages/programmer.rs`
 - `toolbar_button_width`, `TOOLBAR_BUTTONS` — `programmer.rs:21,1187` (remove)
-- Faders and knobs — `crates/core/src/app/components/fader.rs`, `knob.rs`, `speed_knob.rs`
+- Faders and knobs — `crates/ui_egui/src/app/components/fader.rs`, `knob.rs`, `speed_knob.rs`
 
 ## Acceptance criteria
 - [ ] At 800 × 480 nothing is cut or overlapping, and all Programmer functions remain reachable.

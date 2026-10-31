@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | none |
 
-**Touches:** new: `crates/core/src/app/ui_tokens.rs` (or `app/tokens/`), `crates/core/src/app/theme.rs`, `crates/core/src/ui.rs` (style install, fonts), `crates/assets` (font files), `crates/core/src/app/page.rs` (`PageRenderContext`), `crates/core/src/app/external_screen.rs` (pane render mode)
+**Touches:** new: `crates/ui_egui/src/app/ui_tokens.rs` (or `app/tokens/`), `crates/ui_egui/src/app/theme.rs`, `crates/ui_egui/src/app/ui.rs` (style install, fonts), `crates/assets` (font files), `crates/ui_egui/src/app/page.rs` (`PageRenderContext`), `crates/ui_egui/src/app/external_screen.rs` (pane render mode)
 
 ## Problem
 The app has no shared sizes or type scale. `theme.rs` only sets colours; there are 237 `vec2(…)` and 235 colour literals in `app/`, and `interact_size = 44×36` is copied into 7 files. Desktop mode renders the kiosk layout into a fixed 723 × 480 canvas. The maintainer chose the "Console" direction with the navy palette (2026-10-30); its tokens and rules are in the design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja): read its `README.md` and `tokens.json`.
@@ -24,10 +24,10 @@ The app has no shared sizes or type scale. `theme.rs` only sets colours; there a
 - Restyling individual components or pages (033–038). Pages may look half-migrated after this ticket; that is expected.
 
 ## Key code
-- `set_theme`, `BLUE` — `crates/core/src/app/theme.rs`
-- Font setup and `set_pixels_per_point` — `crates/core/src/ui.rs:43-62`
-- `PageRenderContext` — `crates/core/src/app/page.rs:15-72`
-- Pane `render_mode` — `crates/core/src/config.rs:144`, `crates/core/src/app/external_screen.rs:415-490`
+- `set_theme`, `BLUE` — `crates/ui_egui/src/app/theme.rs`
+- Font setup and `set_pixels_per_point` — `crates/ui_egui/src/app/ui.rs:43-62`
+- `PageRenderContext` — `crates/ui_egui/src/app/page.rs:15-72`
+- Pane `render_mode` — `crates/engine/src/config.rs:144`, `crates/ui_egui/src/app/external_screen.rs:415-490`
 
 ## Acceptance criteria
 - [ ] All design-system tokens exist in code with the same names and values; a unit test checks a few values against the design system (or a copied `tokens.json`).

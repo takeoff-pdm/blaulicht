@@ -6,7 +6,7 @@
 | Depends on | 011 |
 | ABI / showfile | **ABI bump** (serialized shared types change) and **showfile shape** change (new fields need `#[serde(default)]`) |
 
-**Touches:** `crates/shared/src/scene.rs (EngineSink palette assignment)`, `crates/shared/src/palette.rs`, `crates/shared/src/abi.rs`, `crates/core/src/app/pages/fixtures_perf.rs (render_palette_assignment_dialog)`
+**Touches:** `crates/shared/src/scene.rs (EngineSink palette assignment)`, `crates/shared/src/palette.rs`, `crates/shared/src/abi.rs`, `crates/ui_egui/src/app/pages/fixtures_perf.rs (render_palette_assignment_dialog)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -23,7 +23,7 @@ Original review notes (2026-09-27):
 - Palette hierarchy (016/018).
 
 ## Key code
-- `render_palette_assignment_dialog`, `refresh_active_palettes_cache` — `crates/core/src/app/pages/fixtures_perf.rs:793-826`
+- `render_palette_assignment_dialog`, `refresh_active_palettes_cache` — `crates/ui_egui/src/app/pages/fixtures_perf.rs:793-826`
 - `EngineSink`, `sync_palette_bindings` — `crates/shared/src/scene.rs:120+`
 - `PaletteKind::properties` — `crates/shared/src/palette.rs`
 

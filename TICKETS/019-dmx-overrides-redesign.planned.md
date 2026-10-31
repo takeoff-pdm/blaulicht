@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | **ABI bump** (serialized shared types change) and **showfile shape** change (new fields need `#[serde(default)]`) |
 
-**Touches:** `crates/core/src/app/pages/fixtures_setup.rs (remove)`, `crates/core/src/app/pages/system/dmx.rs`, `crates/shared/src/state/engine.rs (overrides)`, `crates/shared/src/abi.rs`, `crates/core/src/dmx/`, `crates/plugins/inspector + scripts/blctl.py (override/clear commands must keep working)`
+**Touches:** `crates/ui_egui/src/app/pages/fixtures_setup.rs (remove)`, `crates/ui_egui/src/app/pages/system/dmx.rs`, `crates/shared/src/state/engine.rs (overrides)`, `crates/shared/src/abi.rs`, `crates/engine/src/dmx/`, `crates/plugins/inspector + scripts/blctl.py (override/clear commands must keep working)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -26,9 +26,9 @@ Original review notes (2026-09-27):
 
 
 ## Key code
-- Override dialogs — `crates/core/src/app/pages/fixtures_setup.rs:267-336`
+- Override dialogs — `crates/ui_egui/src/app/pages/fixtures_setup.rs:267-336`
 - `EngineState.overrides`
-- `BlaulichtApp.desktop_mode` — `crates/core/src/app/mod.rs:145`
+- `BlaulichtApp.desktop_mode` — `crates/ui_egui/src/app/mod.rs:145`
 
 ## Acceptance criteria
 - [ ] Toggling an override off restores the underlying value in DMX output without deleting the override.

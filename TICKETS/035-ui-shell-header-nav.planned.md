@@ -6,7 +6,7 @@
 | Depends on | 032, 033 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/components/navbar.rs`, `horizontal_nav.rs`, new `components/page_header.rs`, `crates/core/src/ui.rs` (main screen), `crates/core/src/app/external_screen.rs` (pane chrome)
+**Touches:** `crates/ui_egui/src/app/components/navbar.rs`, `horizontal_nav.rs`, new `components/page_header.rs`, `crates/ui_egui/src/app/ui.rs` (main screen), `crates/ui_egui/src/app/external_screen.rs` (pane chrome)
 
 ## Problem
 Pages draw their own toolbars of equal-width buttons with cut labels ("Scene Anim…", "UnLmt"), the nav rail shows filled tiles, and sub-page tabs wrap into hidden rows in narrow panes. See PageHeader, NavRail and TabBar in the design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja).
@@ -21,9 +21,9 @@ Pages draw their own toolbars of equal-width buttons with cut labels ("Scene Ani
 - Moving each page's toolbar into the header happens in the page tickets (036–038); this ticket provides the component and converts one simple page (Logs or System) as the example.
 
 ## Key code
-- Nav rail — `crates/core/src/app/components/navbar.rs:17-185`
-- Sub-page tabs — `crates/core/src/app/components/horizontal_nav.rs`
-- Pane frame — `crates/core/src/app/external_screen.rs:411-413`
+- Nav rail — `crates/ui_egui/src/app/components/navbar.rs:17-185`
+- Sub-page tabs — `crates/ui_egui/src/app/components/horizontal_nav.rs`
+- Pane frame — `crates/ui_egui/src/app/external_screen.rs:411-413`
 
 ## Acceptance criteria
 - [ ] Header actions never truncate: extra actions appear under More.

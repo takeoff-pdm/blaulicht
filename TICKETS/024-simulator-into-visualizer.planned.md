@@ -6,7 +6,7 @@
 | Depends on | 005 |
 | ABI / showfile | ABI bump only if new sub-page variants are added to shared (they are, via 005's mechanism) |
 
-**Touches:** `crates/core/src/app/components/fixtures_shared.rs`, `crates/core/src/app/pages/visualizer/`, `crates/core/src/app/pages/setup/fixtures.rs`, `crates/shared/src/page/sub.rs`
+**Touches:** `crates/ui_egui/src/app/components/fixtures_shared.rs`, `crates/ui_egui/src/app/pages/visualizer/`, `crates/ui_egui/src/app/pages/setup/fixtures.rs`, `crates/shared/src/page/sub.rs`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -22,8 +22,8 @@ Original review notes (2026-09-27):
 - Visualizer bugs (025).
 
 ## Key code
-- `render_dmx_simulation_dialog` — `crates/core/src/app/components/fixtures_shared.rs:289`
-- `visualizer_ui` — `crates/core/src/app/pages/visualizer/ui.rs`
+- `render_dmx_simulation_dialog` — `crates/ui_egui/src/app/components/fixtures_shared.rs:289`
+- `visualizer_ui` — `crates/ui_egui/src/app/pages/visualizer/ui.rs`
 
 ## Acceptance criteria
 - [ ] The simulator is reachable only in the Visualizer and works as before (universe switch, live values).

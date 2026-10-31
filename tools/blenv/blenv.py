@@ -255,9 +255,12 @@ def run(
     showfile: Optional[str] = None,
     external_screens: Sequence[str] = (),
     keep_config: bool = False,
+    headless: bool = False,
 ) -> str:
     require_running(inst)
     args: List[str] = []
+    if headless:
+        args.append("--headless")
     if desktop:
         args.append("--desktop")
     if showfile:
@@ -565,8 +568,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub.add_parser("status")
     sub.add_parser("shell", help="interactive shell in the container")
 
-    p = sub.add_parser("build", help="build core and/or plugins in the container")
-    p.add_argument("what", nargs="?", default="all", choices=["all", "core", "plugins"])
+    p = sub.add_parser("build", help="build core (desk), headless and/or plugins in the container")
+    p.add_argument("what", nargs="?", default="all", choices=["all", "core", "headless", "plugins"])
     p.add_argument("plugins", nargs="*", help="plugin dirs (default: blenv set)")
 
     p = sub.add_parser("run", help="(re)start the app and wait for the inspector")
@@ -574,6 +577,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--showfile", help="host showfile to load (copied into the container)")
     p.add_argument("-e", "--external-screen", action="append", default=[], metavar="W,H")
     p.add_argument("--keep-config", action="store_true", help="keep /state/config.toml")
+    p.add_argument("--headless", action="store_true",
+                   help="run blaulicht-headless (engine only, no window; blctl and logs work)")
     sub.add_parser("restart", help="restart the app with the last run arguments")
     sub.add_parser("stop", help="stop the app (container keeps running)")
 
@@ -674,7 +679,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             code, _ = build(inst, args.what, args.plugins)
             return code
         elif cmd == "run":
-            print(run(inst, args.desktop, args.showfile, args.external_screen, args.keep_config))
+            print(run(inst, args.desktop, args.showfile, args.external_screen, args.keep_config,
+                      args.headless))
         elif cmd == "restart":
             print(restart(inst))
         elif cmd == "stop":

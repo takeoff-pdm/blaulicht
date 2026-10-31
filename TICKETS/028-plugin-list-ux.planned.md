@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/system/misc.rs (render_plugin_management)`, `crates/core/src/state.rs (read-only)`
+**Touches:** `crates/ui_egui/src/app/pages/system/misc.rs (render_plugin_management)`, `crates/engine/src/state.rs (read-only)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -24,8 +24,8 @@ Original review notes (2026-09-27):
 - Enable/disable/reload from the UI (root backlog item).
 
 ## Key code
-- `render_plugin_management` — `crates/core/src/app/pages/system/misc.rs:~413`
-- `PluginRuntimeKind` — `crates/core/src/state.rs:282`
+- `render_plugin_management` — `crates/ui_egui/src/app/pages/system/misc.rs:~413`
+- `PluginRuntimeKind` — `crates/engine/src/state.rs:282`
 
 ## Acceptance criteria
 - [ ] Animation plugins show a tag and no button. Normal plugins show the button inside their entry.

@@ -6,7 +6,7 @@
 | Depends on | 033, 034, 035 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/system/*`, `audio.rs`, `view.rs`, `view_perf.rs`, `scene_graph.rs`, `visualizer/ui.rs`, `crates/core/src/app/plugin_ui.rs` (chrome only), `components/log.rs`
+**Touches:** `crates/ui_egui/src/app/pages/system/*`, `audio.rs`, `view.rs`, `view_perf.rs`, `scene_graph.rs`, `visualizer/ui.rs`, `crates/ui_egui/src/app/plugin_ui.rs` (chrome only), `components/log.rs`
 
 ## Problem
 After 036 and 037 the other pages still use the old buttons, literals and dialogs. The design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) applies to every page.
@@ -21,12 +21,12 @@ After 036 and 037 the other pages still use the old buttons, literals and dialog
 - Visualizer rendering, plugin-drawn content.
 
 ## Key code
-- Page files — `crates/core/src/app/pages/`
-- Plugin windows — `crates/core/src/app/plugin_ui.rs`
+- Page files — `crates/ui_egui/src/app/pages/`
+- Plugin windows — `crates/ui_egui/src/app/plugin_ui.rs`
 
 ## Acceptance criteria
 - [ ] No page uses `ButtonSize` or the old `Dialog` frame colours.
-- [ ] `rg 'Color32::from_rgb|vec2\(' crates/core/src/app/pages` shows only data colours and intentional layout values, each with a comment.
+- [ ] `rg 'Color32::from_rgb|vec2\(' crates/ui_egui/src/app/pages` shows only data colours and intentional layout values, each with a comment.
 
 ## Verification
 - `cargo clippy --workspace --all-targets --all-features`, `cargo fmt --all --check` and `cargo test --workspace --all-features` are clean (run them in the blenv container).

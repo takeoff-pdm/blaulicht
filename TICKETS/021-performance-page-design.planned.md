@@ -25,9 +25,9 @@ Original review notes (2026-09-27):
 - Implementation.
 
 ## Key code
-- `crates/core/src/app/pages/scene_graph.rs`
+- `crates/ui_egui/src/app/pages/scene_graph.rs`
 - `crates/shared/src/scene_graph.rs`
-- `crates/core/src/app/pages/view_perf.rs`
+- `crates/ui_egui/src/app/pages/view_perf.rs`
 
 ## Acceptance criteria
 - [ ] 022 contains an approved, concrete spec.

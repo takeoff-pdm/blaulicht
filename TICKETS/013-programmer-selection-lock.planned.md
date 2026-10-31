@@ -6,7 +6,7 @@
 | Depends on | 011 |
 | ABI / showfile | **ABI bump** (serialized shared types change) and **showfile shape** change (new fields need `#[serde(default)]`) |
 
-**Touches:** `crates/shared/src/state/engine.rs`, `crates/shared/src/abi.rs`, engine selection event handling, `crates/core/src/app/pages/fixtures_perf.rs`, `crates/core/src/app/components/fixtures_shared.rs (fixture_selection)`
+**Touches:** `crates/shared/src/state/engine.rs`, `crates/shared/src/abi.rs`, engine selection event handling, `crates/ui_egui/src/app/pages/fixtures_perf.rs`, `crates/ui_egui/src/app/components/fixtures_shared.rs (fixture_selection)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -25,7 +25,7 @@ Original review notes (2026-09-27):
 
 ## Key code
 - `EngineSelection`, `selection_stack` — `crates/shared/src/state/engine.rs:26-60`
-- `fixture_selection`, `group_selection` — `crates/core/src/app/components/fixtures_shared.rs:577,726`
+- `fixture_selection`, `group_selection` — `crates/ui_egui/src/app/components/fixtures_shared.rs:577,726`
 
 ## Acceptance criteria
 - [ ] With the lock on, clicking groups does not change the selection, and the list is filtered.

@@ -6,7 +6,7 @@
 | Depends on | 053 |
 | ABI / showfile | none; `port` from `config.toml` becomes the listen port |
 
-**Touches:** new `crates/engine/src/server/`, `crates/engine/src/client.rs` (`RemoteClient`), `crates/shared/src/` (wire types), `crates/core/src/routes/` (delete)
+**Touches:** new `crates/engine/src/server/`, `crates/engine/src/client.rs` (`RemoteClient`), `crates/shared/src/` (wire types), `crates/engine/src/routes/` (delete)
 
 ## Problem
 Remote frontends need a way to attach. `routes/` is 539 lines of commented-out actix code, and `port = 1234`

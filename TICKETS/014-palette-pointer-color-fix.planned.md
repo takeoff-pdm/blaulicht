@@ -6,7 +6,7 @@
 | Depends on | none |
 | ABI / showfile | **ABI bump only if** a serialized value representation changes; prefer a fix that doesn't |
 
-**Touches:** `crates/shared/src/palette.rs`, `crates/core/src/app/pages/palettes.rs`, `possibly crates/shared/src/fixture/ (FixtureState color resolve)`
+**Touches:** `crates/shared/src/palette.rs`, `crates/ui_egui/src/app/pages/palettes.rs`, `possibly crates/shared/src/fixture/ (FixtureState color resolve)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -28,7 +28,7 @@ Original review notes (2026-09-27):
 
 ## Key code
 - `resolve_via_chain`, `apply_pointer_ops`, `extract_leaf_property` — `crates/shared/src/palette.rs:174-260`
-- `palette_resolved_rgb` — `crates/core/src/app/pages/palettes.rs:972`
+- `palette_resolved_rgb` — `crates/ui_egui/src/app/pages/palettes.rs:972`
 
 ## Acceptance criteria
 - [ ] The new unit tests pass (`cargo test -p blaulicht-shared`).

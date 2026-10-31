@@ -724,7 +724,7 @@ mod tests {
 
     /// Applies a rollback the way the DMX engine does: a `Transaction` is
     /// atomic. `DeSelectGroup` and `LimitSelectionToFixtureInCurrentGroup`
-    /// are handled in `crates/core/src/dmx/mod.rs`; their effect on the
+    /// are handled in `crates/engine/src/dmx/mod.rs`; their effect on the
     /// selection is mirrored here (the core test runs the real engine).
     fn apply(state: &mut EngineState, event: ControlEvent) -> Result<(), &'static str> {
         match event {

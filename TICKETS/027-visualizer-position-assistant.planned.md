@@ -6,7 +6,7 @@
 | Depends on | 026 |
 | ABI / showfile | Showfile shape if new placement metadata (layer id) is stored; use `#[serde(default)]` |
 
-**Touches:** `crates/core/src/app/pages/visualizer/ (new assistant module)`, visualizer state
+**Touches:** `crates/ui_egui/src/app/pages/visualizer/ (new assistant module)`, visualizer state
 
 ## Problem
 Original review notes (2026-09-27):
@@ -24,7 +24,7 @@ Original review notes (2026-09-27):
 - Automatic placement.
 
 ## Key code
-- `VisualizerUiState`, `EditorState` — `crates/core/src/app/pages/visualizer/state.rs`
+- `VisualizerUiState`, `EditorState` — `crates/ui_egui/src/app/pages/visualizer/state.rs`
 - snapping helpers in `visualizer/ui.rs` / `math.rs`
 
 ## Acceptance criteria

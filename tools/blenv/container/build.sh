@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Build blaulicht-core and/or plugins inside the blenv container.
-#   build.sh [core|plugins|all] [plugin-dir...]
+# Build blaulicht-core (the desk), blaulicht-headless and/or plugins inside the blenv container.
+#   build.sh [core|headless|plugins|all] [plugin-dir...]
 set -euo pipefail
 cd /work
 
 FEATURES="${BLENV_FEATURES:-x11 audio wasmtime}"
+# The headless binary is the engine crate's: same features minus the windowing ones.
+HEADLESS_FEATURES="${BLENV_HEADLESS_FEATURES:-$(tr ' ' '\n' <<<"$FEATURES" | grep -vxE 'x11|wayland' | xargs)}"
 DEFAULT_PLUGINS=(
     inspector
     julia_animation_plugin
@@ -21,6 +23,12 @@ plugins=("$@")
 build_core() {
     echo "==> blaulicht-core (features: $FEATURES)"
     cargo build -p blaulicht-core --no-default-features --features "$FEATURES"
+}
+
+build_headless() {
+    echo "==> blaulicht-headless (features: $HEADLESS_FEATURES)"
+    cargo build -p blaulicht-engine --bin blaulicht-headless --no-default-features \
+        --features "$HEADLESS_FEATURES"
 }
 
 build_plugins() {
@@ -52,7 +60,8 @@ build_plugins() {
 
 case "$what" in
     core) build_core ;;
+    headless) build_headless ;;
     plugins) build_plugins ;;
     all) build_plugins && build_core ;;
-    *) echo "usage: build.sh [core|plugins|all] [plugin-dir...]" >&2; exit 2 ;;
+    *) echo "usage: build.sh [core|headless|plugins|all] [plugin-dir...]" >&2; exit 2 ;;
 esac

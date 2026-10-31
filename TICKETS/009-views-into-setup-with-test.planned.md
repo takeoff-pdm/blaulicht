@@ -6,7 +6,7 @@
 | Depends on | 006, 020 |
 | ABI / showfile | none beyond what 020 adds |
 
-**Touches:** `crates/core/src/app/pages/view.rs -> crates/core/src/app/pages/setup/views.rs`, `crates/shared/src/page/mod.rs`
+**Touches:** `crates/ui_egui/src/app/pages/view.rs -> crates/ui_egui/src/app/pages/setup/views.rs`, `crates/shared/src/page/mod.rs`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -23,7 +23,7 @@ Original review notes (2026-09-27):
 - Performance-side views (022).
 
 ## Key code
-- `view_ui`, apply button (~line 407) — `crates/core/src/app/pages/view.rs`
+- `view_ui`, apply button (~line 407) — `crates/ui_egui/src/app/pages/view.rs`
 - `View::apply_events` — `crates/shared/src/view.rs`
 - Bank save/restore events — ticket 020
 

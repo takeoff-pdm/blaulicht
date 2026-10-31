@@ -6,6 +6,8 @@ import re
 makefile_path = "Makefile"
 cargo_toml_paths = [
         "./crates/core/Cargo.toml",
+        "./crates/engine/Cargo.toml",
+        "./crates/ui_egui/Cargo.toml",
         "./crates/shared/Cargo.toml",
         "./crates/plugin_framework/Cargo.toml",
 ]

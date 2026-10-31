@@ -6,7 +6,7 @@
 | Depends on | 033, 034, 035 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/setup/{fixtures,groups,scenes,animations,palettes}.rs`, `crates/core/src/app/pages/animation_spec_editor.rs`
+**Touches:** `crates/ui_egui/src/app/pages/setup/{fixtures,groups,scenes,animations,palettes}.rs`, `crates/ui_egui/src/app/pages/animation_spec_editor.rs`
 
 ## Problem
 Each Setup tab has its own toolbar, button sizes and dialog style, and long forms run under the tab bar at 800 × 480. The design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) defines the master–detail pattern (README "Layout patterns").
@@ -22,8 +22,8 @@ Each Setup tab has its own toolbar, button sizes and dialog style, and long form
 - Programmer (036) and other pages (038).
 
 ## Key code
-- Setup pages — `crates/core/src/app/pages/setup/`
-- Spec editor — `crates/core/src/app/pages/animation_spec_editor.rs`
+- Setup pages — `crates/ui_egui/src/app/pages/setup/`
+- Spec editor — `crates/ui_egui/src/app/pages/animation_spec_editor.rs`
 
 ## Acceptance criteria
 - [ ] All five tabs follow master–detail at both densities, with no content under the tab bar at 800 × 480.

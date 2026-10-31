@@ -64,7 +64,10 @@ def blenv_down(volumes: bool = False) -> str:
 
 @mcp.tool()
 def blenv_build(what: str = "all", plugins: Optional[list[str]] = None) -> str:
-    """Build in the container: what = all | core | plugins. First build takes minutes.
+    """Build in the container: what = all | core | headless | plugins. First build takes minutes.
+
+    core is the desk (blaulicht-core, engine + egui UI); headless is blaulicht-headless
+    (engine only, not part of all).
 
     plugins: plugin dirs under crates/plugins (default: inspector + sample/animation set).
     Returns the exit code and the tail of the build output.
@@ -75,14 +78,17 @@ def blenv_build(what: str = "all", plugins: Optional[list[str]] = None) -> str:
 
 @mcp.tool()
 def blenv_run(desktop: bool = False, showfile: Optional[str] = None,
-              external_screens: Optional[list[str]] = None, keep_config: bool = False) -> str:
+              external_screens: Optional[list[str]] = None, keep_config: bool = False,
+              headless: bool = False) -> str:
     """(Re)start the app and wait for the inspector ping.
 
     desktop: --desktop-mode with a 1500x950 window (default is the 800x480 kiosk layout).
     showfile: host path to a showfile JSON; a copy is loaded so the original stays untouched.
     external_screens: e.g. ["1920,1080"] opens windows bl_ext_0, ...
+    headless: run blaulicht-headless instead (engine only, no window; build it with
+    blenv_build("headless")). blctl and logs work, screenshots and input don't.
     """
-    return blenv.run(_inst(), desktop, showfile, external_screens or [], keep_config)
+    return blenv.run(_inst(), desktop, showfile, external_screens or [], keep_config, headless)
 
 
 @mcp.tool()

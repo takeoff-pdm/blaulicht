@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Start (or restart) blaulicht-core on display :9 and wait until it is usable.
 #   run-app.sh [--desktop] [--showfile PATH] [--keep-config] [-e W,H]...
+#   run-app.sh --headless [--showfile PATH] [--keep-config]   (engine only, no window)
 #   run-app.sh --stop
 set -euo pipefail
 cd /work
 
-BIN="${CARGO_TARGET_DIR:-/build/target}/debug/blaulicht-core"
+TARGET="${CARGO_TARGET_DIR:-/build/target}/debug"
+BIN="$TARGET/blaulicht-core"
 CONFIG=/state/config.toml
 LOG=/state/app.log
 PIDFILE=/state/app.pid
@@ -20,14 +22,16 @@ stop_app() {
         done
     fi
     pkill -9 -x blaulicht-core 2>/dev/null || true
+    pkill -9 -x blaulicht-headl 2>/dev/null || true # blaulicht-headless; comm is cut to 15 characters
     rm -f "$PIDFILE"
 }
 
-desktop=0 keep_config=0 showfile="" app_args=()
+desktop=0 headless=0 keep_config=0 showfile="" app_args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stop) stop_app; echo "blenv: app stopped"; exit 0 ;;
         --desktop) desktop=1 ;;
+        --headless) headless=1 ;;
         --keep-config) keep_config=1 ;;
         --showfile) showfile="$2"; shift ;;
         -e) app_args+=(-e "$2"); shift ;;
@@ -36,6 +40,12 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+if [[ $headless -eq 1 ]]; then
+    [[ $desktop -eq 0 && ${#app_args[@]} -eq 0 ]] \
+        || { echo "error: --headless has no window (no --desktop or -e)" >&2; exit 2; }
+    BIN="$TARGET/blaulicht-headless"
+    [[ -x $BIN ]] || { echo "error: $BIN not built; run 'blenv build headless' first" >&2; exit 1; }
+fi
 [[ -x $BIN ]] || { echo "error: $BIN not built; run 'blenv build' first" >&2; exit 1; }
 [[ -f crates/plugins/bundle_debug/inspector.wasm ]] \
     || { echo "error: inspector.wasm missing; run 'blenv build plugins'" >&2; exit 1; }
@@ -62,7 +72,7 @@ pid=$(cat "$PIDFILE")
 deadline=$((SECONDS + TIMEOUT_S))
 until python3 scripts/blctl.py ping >/dev/null 2>&1; do
     if ! kill -0 "$pid" 2>/dev/null; then
-        echo "error: blaulicht-core exited during startup; last log lines:" >&2
+        echo "error: $(basename "$BIN") exited during startup; last log lines:" >&2
         tail -n 40 "$LOG" >&2
         exit 1
     fi
@@ -73,6 +83,12 @@ until python3 scripts/blctl.py ping >/dev/null 2>&1; do
     fi
     sleep 0.5
 done
+
+if [[ $headless -eq 1 ]]; then
+    echo "blenv: headless engine running (pid $pid, no window)"
+    python3 scripts/blctl.py ping
+    exit 0
+fi
 
 wid=$(xdotool search --name '^blaulicht$' | head -n1 || true)
 if [[ -n $wid ]]; then

@@ -6,7 +6,7 @@
 | Depends on | 005 |
 | ABI / showfile | **ABI bump** if a host function is added; none if built purely on `bl_send_event` |
 
-**Touches:** `crates/plugin_framework/src/blaulicht.rs`, `crates/core/src/app/event.rs`, `crates/core/src/plugin/wasm.rs (only if a host fn is needed)`, `crates/shared/src/abi.rs`
+**Touches:** `crates/plugin_framework/src/blaulicht.rs`, `crates/ui_egui/src/app/event.rs`, `crates/engine/src/plugin/wasm.rs (only if a host fn is needed)`, `crates/shared/src/abi.rs`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -24,8 +24,8 @@ Original review notes (2026-09-27):
 
 ## Key code
 - `ui::is_open`, `ui::maximize_screen` — `crates/plugin_framework/src/blaulicht.rs:~500`
-- `SetPluginUIOpen` handling — `crates/core/src/app/event.rs:~38`
-- `notify_plugin_ui_open` — `crates/core/src/app/plugin_ui.rs:9`
+- `SetPluginUIOpen` handling — `crates/ui_egui/src/app/event.rs:~38`
+- `notify_plugin_ui_open` — `crates/ui_egui/src/app/plugin_ui.rs:9`
 
 ## Acceptance criteria
 - [ ] A test plugin (or console) can open its UI, close it and navigate to a sub-page, verified live.

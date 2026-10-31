@@ -138,6 +138,9 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - Three scene/palette pickers outside 018's scope still show flat lists: the palette binding picker (`palette_binding_button` in `components/fixture_value_binding.rs`, used by the animation spec editor), the pointer-palette target picker (`render_pointer_editor` in `pages/setup/palettes.rs`) and the Scene Graph's "+ Add Scene" combo box (`pages/scene_graph.rs`, which also lists BLANK). `tree_picker_dialog` with `palette_tree_items` / `scene_tree_items` fits all three; the first two need the folders passed in (found in 018).
 - Programmer palette dialog: tapping a palette whose properties another active palette already covers is rejected by the engine with no feedback in the UI (same with the old Available list; found in 018).
 - Programmer scene column: when the focused scene's folder is collapsed, nothing shows which scene is focused (the folder row is not highlighted) (found in 018).
+- The background worker's debug spectrogram dump (`BLAULICHT_SPECTROGRAM_DIR`, `crates/engine/src/mainloop/bg_worker.rs`) is always black: it is 480x100, so after the 5/20 px padding 75 rows remain for 128 bins and `create_spectrogram_image` returns early (`height < bin_count`). It needs a height of at least 153 px (found in 046).
+- In `--desktop` mode, `-e W,H` external screens never open: `drive_external_screen` is only called from the kiosk branch of `BlaulichtApp::ui` (`render_main_screen`); the System › Screens list shows them (seen in 053, code unchanged).
+- The release archives (top-level `Makefile`) contain only the desk binary; `blaulicht-headless` (`cargo build -p blaulicht-engine --bin blaulicht-headless`) isn't packaged yet (053).
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet

@@ -6,7 +6,7 @@
 | Depends on | 022 |
 | ABI / showfile | none |
 
-**Touches:** `crates/core/src/app/pages/view_perf.rs (or its successor from 022)`
+**Touches:** `crates/ui_egui/src/app/pages/view_perf.rs (or its successor from 022)`
 
 ## Problem
 Original review notes (2026-09-27):
@@ -21,7 +21,7 @@ Original review notes (2026-09-27):
 
 
 ## Key code
-- `set_grand_master_percent` — `crates/core/src/app/pages/view_perf.rs:258-282`
+- `set_grand_master_percent` — `crates/ui_egui/src/app/pages/view_perf.rs:258-282`
 
 ## Acceptance criteria
 - [ ] Visually distinct fader; blackout state is unmistakable; value changes are reflected in DMX output.

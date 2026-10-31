@@ -6,7 +6,7 @@
 | Depends on | 021, 005 |
 | ABI / showfile | TBD by 021 |
 
-**Touches:** `crates/core/src/app/pages/view_perf.rs`, `crates/core/src/app/pages/scene_graph.rs`, `crates/shared/src/page/mod.rs`, (refined by 021)
+**Touches:** `crates/ui_egui/src/app/pages/view_perf.rs`, `crates/ui_egui/src/app/pages/scene_graph.rs`, `crates/shared/src/page/mod.rs`, (refined by 021)
 
 ## Problem
 Original review notes (2026-09-27):
@@ -23,8 +23,8 @@ Original review notes (2026-09-27):
 - Grand master redesign (023).
 
 ## Key code
-- `view_perf_ui` — `crates/core/src/app/pages/view_perf.rs:217`
-- `render_scene_graph`, `auto_layout_graph` — `crates/core/src/app/pages/scene_graph.rs`
+- `view_perf_ui` — `crates/ui_egui/src/app/pages/view_perf.rs:217`
+- `render_scene_graph`, `auto_layout_graph` — `crates/ui_egui/src/app/pages/scene_graph.rs`
 
 ## Acceptance criteria
 - [ ] As defined by 021.

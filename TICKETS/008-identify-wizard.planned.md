@@ -6,7 +6,7 @@
 | Depends on | 006 |
 | ABI / showfile | none expected (use existing DMX overrides / selection events to highlight) |
 
-**Touches:** new: crates/core/src/app/pages/setup/identify.rs, `crates/core/src/app/pages/setup/fixtures.rs`
+**Touches:** new: crates/ui_egui/src/app/pages/setup/identify.rs, `crates/ui_egui/src/app/pages/setup/fixtures.rs`
 
 ## Problem
 Original review notes (2026-09-27):
