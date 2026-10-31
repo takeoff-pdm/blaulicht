@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use crate::app::view_state::ScreenId;
 use crate::app::{
     page::PageRenderContext, view_state::PluginOpenState, BlaulichtApp, ExternalScreen,
 };
@@ -10,7 +11,6 @@ use blaulicht_engine::{
         ShowfileExternalScreen, ShowfileUiState,
     },
     frontend_ui::FrontendUiSnapshot,
-    state::ScreenId,
 };
 use blaulicht_shared::{AppPage, ExternalScreenInfo};
 use egui::{pos2, vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2, WidgetText};

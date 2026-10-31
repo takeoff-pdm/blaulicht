@@ -1,6 +1,6 @@
+use crate::app::view_state::ScreenId;
 use crate::app::{components, view_state::PluginTabSelections, BlaulichtApp};
 use blaulicht_engine::client::{EngineClient, LocalClient};
-use blaulicht_engine::state::ScreenId;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, PluginUiEvent};
 use egui::Context;
 use strum::IntoEnumIterator;

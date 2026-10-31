@@ -4,6 +4,7 @@ use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_glow::CallbackFn;
 
 use crate::app::page::PageRenderContext;
+use crate::app::view_state::ScreenId;
 use crate::app::BlaulichtApp;
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand, ModelBytes};
@@ -11,7 +12,7 @@ use blaulicht_engine::stage::{
     FixturePlacement, FixtureTrussAttachment, StageObject, StageObjectKind, StagePatch,
     TrussConnection, TrussEndpointRef, TrussPart, TrussProfile, TrussSpec,
 };
-use blaulicht_engine::state::{ScreenId, NUM_DMX_UNIVERSES};
+use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
 use super::data::{collect_fixtures, fixture_pose, Pose, RenderSceneSnapshot};

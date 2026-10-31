@@ -1,13 +1,11 @@
 use crate::app::{
     components::{self, ButtonSize, Dialog},
-    view_state::PluginOpenState,
+    view_state::{PluginOpenState, ScreenId},
     BlaulichtApp, GuardedLifecycleAction, PopupSpec,
 };
 use blaulicht_engine::{
-    audio::defs::AudioThreadControlSignal,
-    client::EngineClient,
-    hub::HostCommand,
-    state::{ScreenId, NUM_DMX_UNIVERSES},
+    audio::defs::AudioThreadControlSignal, client::EngineClient, hub::HostCommand,
+    state::NUM_DMX_UNIVERSES,
 };
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};

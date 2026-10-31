@@ -6,7 +6,18 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use blaulicht_engine::frontend_ui::DeskRequest;
-use blaulicht_engine::state::ScreenId;
+
+/// A desk window: the main screen or an external screen window.
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+pub struct ScreenId(usize);
+
+impl ScreenId {
+    pub const MAIN: Self = Self(0);
+
+    pub fn external(index: usize) -> Self {
+        Self(index + 1)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PluginOpenState {

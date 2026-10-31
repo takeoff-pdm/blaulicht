@@ -4,8 +4,8 @@
 use egui::Context;
 
 use crate::app::page::PageRenderContext;
+use crate::app::view_state::ScreenId;
 use crate::app::BlaulichtApp;
-use blaulicht_engine::state::ScreenId;
 
 /// The visualizer's view state; empty without the visualizer.
 #[derive(Default)]

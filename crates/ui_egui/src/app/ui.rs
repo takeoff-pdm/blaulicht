@@ -1,3 +1,4 @@
+use crate::app::view_state::ScreenId;
 use crate::app::{
     components::{self, ButtonSize, Dialog},
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
@@ -6,7 +7,6 @@ use blaulicht_engine::client::{EngineClient, LocalClient};
 use blaulicht_engine::config::ShowfileUiState;
 use blaulicht_engine::hub::{CommandOutcome, HostCommand};
 use blaulicht_engine::persistence::SaveStatus;
-use blaulicht_engine::state::ScreenId;
 
 // #[cfg(feature = "audio")]
 // use cpal::traits::DeviceTrait;

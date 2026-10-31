@@ -14,7 +14,7 @@ use blaulicht_engine::{
     config::ShowfileUiState,
     msg::TickSpeeds,
     persistence::SaveStatus,
-    state::{ScreenId, NUM_DMX_UNIVERSES},
+    state::NUM_DMX_UNIVERSES,
 };
 use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
@@ -44,6 +44,7 @@ mod startup;
 mod theme;
 mod ui;
 mod view_state;
+pub use view_state::ScreenId;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Selection {
