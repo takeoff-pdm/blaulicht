@@ -27,8 +27,10 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use blaulicht_shared::{
-    fixture::state::FixtureState, scene::BLANK_SCENE_ID, scene_graph::GraphId, EngineGroups,
-    EngineSelection,
+    fixture::state::FixtureState,
+    scene::{FixtureSelection, BLANK_SCENE_ID},
+    scene_graph::GraphId,
+    EngineGroups, EngineSelection,
 };
 
 use super::EngineState;
@@ -145,6 +147,14 @@ pub struct SessionView<'a> {
     pub control_buffer: &'a FixtureState,
     pub scene_focus: u8,
     pub focused_graph: Option<GraphId>,
+}
+
+impl SessionView<'_> {
+    /// The fixtures this session's selection covers: the session-aware form
+    /// of [`EngineState::get_selection`] (which reads the `DESK` fields).
+    pub fn fixture_selection(&self, groups: &EngineGroups) -> FixtureSelection {
+        super::state::resolve_selection(self.selection, groups)
+    }
 }
 
 impl EngineState {

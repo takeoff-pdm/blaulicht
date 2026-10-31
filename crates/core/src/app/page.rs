@@ -1,4 +1,5 @@
 use crate::app::{components, BlaulichtApp};
+use crate::client::EngineClient;
 use crate::state::ScreenId;
 use blaulicht_shared::{
     AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
@@ -98,7 +99,7 @@ impl BlaulichtApp {
         }
         self.navbar.select_subpage(subpage);
         // Web originator: notifies plugins without looping back into the UI.
-        self.data.client.send(ControlEventMessage::new(
+        self.client.send(ControlEventMessage::new(
             EventOriginator::Web,
             ControlEvent::MainUi(MainUiEvent::NavigateSubPage(subpage)),
         ));

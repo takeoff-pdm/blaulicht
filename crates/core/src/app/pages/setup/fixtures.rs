@@ -9,6 +9,7 @@ use crate::app::{
     BlaulichtApp,
 };
 use crate::app::{PopupButtonSpec, PopupSpec};
+use crate::client::EngineClient;
 use crate::dmx::EngineState;
 use crate::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::fixture::dimmer::Dimmer;
@@ -201,7 +202,7 @@ impl BlaulichtApp {
                     }
 
                     if components::button(ui, true, "Add", ButtonSize::Medium) {
-                        self.data.client.send(ControlEventMessage::new(
+                        self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::SetChannelOverride(
                                 self.add_dmx_override_uni,
@@ -279,7 +280,7 @@ impl BlaulichtApp {
                                 .add(HFader::new(&mut value, 0.0..=255.0).with_label("Value"))
                                 .changed()
                             {
-                                self.data.client.send(ControlEventMessage::new(
+                                self.client.send(ControlEventMessage::new(
                                     EventOriginator::Web,
                                     ControlEvent::SetChannelOverride(
                                         *universe as u16,
@@ -293,7 +294,7 @@ impl BlaulichtApp {
                         ui.add_space(50.0);
 
                         if components::button(ui, false, "Delete", ButtonSize::Medium) {
-                            self.data.client.send(ControlEventMessage::new(
+                            self.client.send(ControlEventMessage::new(
                                 EventOriginator::Web,
                                 ControlEvent::RemoveChannelOverride(*universe as u16, *chan as u16),
                             ));

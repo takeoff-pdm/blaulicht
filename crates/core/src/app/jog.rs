@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 
 use super::BlaulichtApp;
+use crate::client::EngineClient;
 
 const RECENT_PROPERTY_WINDOW: Duration = Duration::from_secs(5);
 
@@ -62,8 +63,7 @@ impl BlaulichtApp {
             return;
         };
         if let Some(event) = self.recent_fixture_property.adjust(delta, Instant::now()) {
-            self.data
-                .client
+            self.client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
     }

@@ -10,6 +10,7 @@ use crate::{
             SceneGraphUI, SystemUI, ViewPerfUI, VisualizerUiState,
         },
     },
+    client::{LocalClient, ReplyHandlers},
     msg::TickSpeeds,
     state::{AppStateWrapper, ScreenId, NUM_DMX_UNIVERSES},
 };
@@ -152,7 +153,7 @@ pub struct BlaulichtApp {
     external_screens: Vec<ExternalScreen>,
     plugin_ui_visible_tabs: HashSet<(ScreenId, u8)>,
     /// Plugin window state; frontend-owned, published to the engine through
-    /// the desk's client connection (`data.client`).
+    /// the desk's client (`client`).
     view_state: view_state::NativeViewState,
 
     // Example stuff:
@@ -200,7 +201,17 @@ pub struct BlaulichtApp {
     last_spectrogram_max_columns: Cell<usize>,
     last_spectrogram_snapshot_time: Cell<u64>,
 
+    /// Legacy direct access to engine state; pages move onto `client` in
+    /// 043–052.
     pub data: AppStateWrapper,
+    /// The desk's connection to the engine (`ClientId::Desk`,
+    /// `SessionId::DESK`): read show state and sessions, send commands, take
+    /// their results, read the live streams, publish view state. Use it
+    /// through the `EngineClient` trait.
+    client: LocalClient,
+    /// Closures waiting for the results of the desk's commands; run by
+    /// `handle_events` (`ReplyHandlers::send_then`).
+    reply_handlers: ReplyHandlers<BlaulichtApp>,
 
     fps_samples: VecDeque<f32>,
     tick_speeds: TickSpeeds,
@@ -349,6 +360,7 @@ pub struct BlaulichtApp {
 impl BlaulichtApp {
     fn new_default(
         data: AppStateWrapper,
+        client: LocalClient,
         desktop_mode: bool,
         showfile_home: Option<PathBuf>,
     ) -> Self {
@@ -436,6 +448,8 @@ impl BlaulichtApp {
             last_spectrogram_max_columns: Cell::new(0),
             last_spectrogram_snapshot_time: Cell::new(0),
             data,
+            client,
+            reply_handlers: ReplyHandlers::default(),
             tick_speeds: TickSpeeds::default(),
             loop_speed_graph: TimeSeriesGraph::new(
                 "Loop (ms)".to_string(),

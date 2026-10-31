@@ -1,4 +1,5 @@
 use crate::app::{components, view_state::PluginTabSelections, BlaulichtApp};
+use crate::client::{EngineClient, LocalClient};
 use crate::state::ScreenId;
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, PluginUiEvent};
 use egui::Context;
@@ -53,7 +54,7 @@ impl BlaulichtApp {
                 ui,
                 &ops,
                 &mut idx,
-                &self.data,
+                &self.client,
                 plugin_id,
                 None,
                 &mut self.view_state.plugin_tabs_selected,
@@ -92,7 +93,7 @@ impl BlaulichtApp {
             let title = plugin_ui_title(&self.data, plugin_id);
             let popped_out = self.view_state.is_popped_out(plugin_id);
             let maximize_requested = popped_out && self.view_state.take_maximize_request(plugin_id);
-            let data = &self.data;
+            let client = &self.client;
             let tabs_selected = &mut self.view_state.plugin_tabs_selected;
 
             // The closures below only collect what the user did; it is applied
@@ -136,7 +137,7 @@ impl BlaulichtApp {
                                         ui,
                                         ops,
                                         &mut idx,
-                                        data,
+                                        client,
                                         plugin_id,
                                         None,
                                         tabs_selected,
@@ -178,7 +179,7 @@ impl BlaulichtApp {
                                         ui,
                                         ops,
                                         &mut idx,
-                                        data,
+                                        client,
                                         plugin_id,
                                         None,
                                         tabs_selected,
@@ -278,7 +279,7 @@ pub(crate) fn render_plugin_ops(
     ui: &mut egui::Ui,
     ops: &[crate::ui_ops::WasmUiOp],
     idx: &mut usize,
-    data: &crate::state::AppStateWrapper,
+    client: &LocalClient,
     plugin_id: u8,
     animation_instance: Option<u64>,
     tabs_selected: &mut PluginTabSelections,
@@ -325,8 +326,7 @@ pub(crate) fn render_plugin_ops(
             Op::Button { label, id } => {
                 if plugin_action(ui, label, true) {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -334,8 +334,7 @@ pub(crate) fn render_plugin_ops(
                 let clicked = plugin_action(ui, label, *enabled);
                 if *enabled && clicked {
                     let evt = route_event(PluginUiEvent::Button { id: *id });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -375,8 +374,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         selected: current,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -387,8 +385,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         checked: c,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -404,8 +401,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         value: state,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
                 *idx += 1;
@@ -423,8 +419,7 @@ pub(crate) fn render_plugin_ops(
                     .changed()
                 {
                     let evt = route_event(PluginUiEvent::Slider { id: *id, value: v });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -448,8 +443,7 @@ pub(crate) fn render_plugin_ops(
                         id: *id,
                         value: new_value,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
                 *idx += 1;
@@ -463,8 +457,7 @@ pub(crate) fn render_plugin_ops(
                 });
                 if let Some(text) = response.inner {
                     let evt = route_event(PluginUiEvent::Text { id: *id, text });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -476,8 +469,7 @@ pub(crate) fn render_plugin_ops(
                     plugin_text_edit(ui, plugin_id, animation_instance, *id, text, true)
                 {
                     let evt = route_event(PluginUiEvent::Text { id: *id, text });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -492,8 +484,7 @@ pub(crate) fn render_plugin_ops(
                         b,
                         a,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
                 *idx += 1;
             }
@@ -504,7 +495,7 @@ pub(crate) fn render_plugin_ops(
                         ui,
                         ops,
                         idx,
-                        data,
+                        client,
                         plugin_id,
                         animation_instance,
                         tabs_selected,
@@ -539,7 +530,7 @@ pub(crate) fn render_plugin_ops(
                                 ui,
                                 ops,
                                 idx,
-                                data,
+                                client,
                                 plugin_id,
                                 animation_instance,
                                 tabs_selected,
@@ -587,7 +578,7 @@ pub(crate) fn render_plugin_ops(
                                 ui,
                                 ops,
                                 idx,
-                                data,
+                                client,
                                 plugin_id,
                                 animation_instance,
                                 tabs_selected,
@@ -613,7 +604,7 @@ pub(crate) fn render_plugin_ops(
                             ui,
                             ops,
                             idx,
-                            data,
+                            client,
                             plugin_id,
                             animation_instance,
                             tabs_selected,
@@ -706,8 +697,7 @@ pub(crate) fn render_plugin_ops(
                         tabs_id: *id,
                         tab_id: current,
                     });
-                    data.client
-                        .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                    client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                 }
 
                 // Render only the selected tab's content, bounded to its EndTab.
@@ -719,7 +709,7 @@ pub(crate) fn render_plugin_ops(
                             ui,
                             bounded,
                             &mut inner_idx,
-                            data,
+                            client,
                             plugin_id,
                             animation_instance,
                             tabs_selected,
@@ -741,7 +731,7 @@ pub(crate) fn render_plugin_ops(
                         ui,
                         ops,
                         idx,
-                        data,
+                        client,
                         plugin_id,
                         animation_instance,
                         tabs_selected,
@@ -761,7 +751,7 @@ pub(crate) fn render_plugin_ops(
                         ui,
                         ops,
                         idx,
-                        data,
+                        client,
                         plugin_id,
                         animation_instance,
                         tabs_selected,
@@ -803,15 +793,14 @@ pub(crate) fn render_plugin_ops(
                             x: (local_pos.x * scale_x) as i32,
                             y: (local_pos.y * scale_y) as i32,
                         });
-                        data.client
-                            .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                        client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
 
                 if resp.drag_started() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let origin = pos - resp.total_drag_delta().unwrap_or_default() - rect.min;
-                        data.client.send(ControlEventMessage::new(
+                        client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragStart {
                                 id: *id,
@@ -824,7 +813,7 @@ pub(crate) fn render_plugin_ops(
                 if resp.drag_stopped() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let local = pos - rect.min;
-                        data.client.send(ControlEventMessage::new(
+                        client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             route_event(PluginUiEvent::CanvasDragEnd {
                                 id: *id,
@@ -845,8 +834,7 @@ pub(crate) fn render_plugin_ops(
                             dx: (delta.x * scale_x) as i32,
                             dy: (delta.y * scale_y) as i32,
                         });
-                        data.client
-                            .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                        client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                     }
                 }
 
@@ -862,8 +850,7 @@ pub(crate) fn render_plugin_ops(
                                 y: (local_pos.y * scale_y) as i32,
                                 delta: zoom - 1.0,
                             });
-                            data.client
-                                .send(ControlEventMessage::new(EventOriginator::Web, evt));
+                            client.send(ControlEventMessage::new(EventOriginator::Web, evt));
                         }
                     }
                 }

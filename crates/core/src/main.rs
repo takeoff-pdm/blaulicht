@@ -2,8 +2,9 @@ use anyhow::Context;
 use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
+use blaulicht_core::client::LocalClient;
 use blaulicht_core::event::SystemEventBus;
-use blaulicht_core::hub::{BusMessage, ClientConnection, ClientId, SessionId, SystemHub};
+use blaulicht_core::hub::{BusMessage, ClientId, SessionId, SystemHub};
 use blaulicht_core::msg::{FromFrontend, StageStatus, StartupStage, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
@@ -110,12 +111,12 @@ fn main() -> anyhow::Result<()> {
     // Attach the desk frontend before the engine starts, so plugin requests
     // sent during startup (e.g. creating an owned external screen) reach it.
     // Its hub subscription replays the startup stages and logs sent so far.
-    let desk = ClientConnection::connect(
+    let desk = LocalClient::connect(
         ClientId::Desk,
         SessionId::DESK,
+        Arc::clone(&app_state),
         &hub,
         &event_bus_handle,
-        &app_state.frontend_ui,
     );
     {
         let mut global_state = app_state.plugin_state_storage_global.lock().unwrap();
@@ -156,7 +157,6 @@ fn main() -> anyhow::Result<()> {
         from_frontend_sender,
         config: Arc::new(Mutex::new(cfg.clone())),
         config_path: config_filepath.to_string_lossy().to_string(),
-        client: desk,
         state: Arc::clone(&app_state),
     };
     // let data = Data::new(state_wrapper);
@@ -232,6 +232,7 @@ fn main() -> anyhow::Result<()> {
             Ok(Box::new(BlaulichtApp::new(
                 cc,
                 state_wrapper,
+                desk,
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home.clone(),

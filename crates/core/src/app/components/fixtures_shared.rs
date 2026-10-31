@@ -6,8 +6,8 @@ use crate::{
         },
         BlaulichtApp, Selection,
     },
+    client::{EngineClient, LocalClient},
     dmx::EngineState,
-    hub::ClientConnection,
     state::{DmxBuffer, NUM_DMX_UNIVERSES},
 };
 use blaulicht_shared::{
@@ -570,8 +570,7 @@ impl BlaulichtApp {
                             Some(TreeAction::MoveRequested(_)) | None => None,
                         };
                         if let Some(msg) = msg {
-                            self.data
-                                .client
+                            self.client
                                 .send(ControlEventMessage::new(EventOriginator::Web, msg));
                         }
                     },
@@ -643,7 +642,7 @@ impl BlaulichtApp {
                                             )
                                         };
 
-                                        self.data.client.send(ControlEventMessage::new(
+                                        self.client.send(ControlEventMessage::new(
                                             EventOriginator::Web,
                                             msg,
                                         ));
@@ -707,7 +706,7 @@ impl BlaulichtApp {
                 &buf,
                 &dmx_engine.0.palettes,
                 &frozen_props,
-                &self.data.client,
+                &self.client,
                 animations.as_slice(),
             );
         }
@@ -718,7 +717,7 @@ impl BlaulichtApp {
         buf: &FixtureState,
         palettes: &BTreeMap<u8, Palette>,
         frozen_props: &HashSet<FixtureProperty>,
-        client: &ClientConnection,
+        client: &LocalClient,
         _animations: &[u8],
     ) {
         let resolved = buf.resolve(palettes);
@@ -935,7 +934,7 @@ impl BlaulichtApp {
 
         match action {
             Some(TreeAction::SelectLeaf(scene_id)) if scene_id != focus => {
-                self.data.client.send(ControlEventMessage::new(
+                self.client.send(ControlEventMessage::new(
                     EventOriginator::Web,
                     ControlEvent::SetSceneFocus(scene_id),
                 ));

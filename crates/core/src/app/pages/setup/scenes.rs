@@ -28,6 +28,7 @@ use crate::app::{
     page::PageRenderContext,
     BlaulichtApp,
 };
+use crate::client::EngineClient;
 use crate::dmx::EngineState;
 use blaulicht_shared::{
     folder::{FolderItem, FolderKind},
@@ -50,8 +51,7 @@ impl BlaulichtApp {
         self.render_delete_scene_dialog(ctx);
         if let Some(event) = self.setup_scenes_ui.dialog.show(ctx, &dmx_engine.0) {
             self.setup_scenes_ui.follow(ctx, SETUP_SCENE_TREE, &event);
-            self.data
-                .client
+            self.client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
         self.setup_scenes_ui.drop_missing_folder(&dmx_engine.0);
@@ -172,7 +172,7 @@ impl BlaulichtApp {
             Some(TreeAction::SelectLeaf(scene_id)) => {
                 self.setup_scenes_ui.folder = None;
                 if state.current_scene_focus != scene_id {
-                    self.data.client.send(ControlEventMessage::new(
+                    self.client.send(ControlEventMessage::new(
                         EventOriginator::Web,
                         ControlEvent::SetSceneFocus(scene_id),
                     ));

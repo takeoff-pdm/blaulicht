@@ -10,6 +10,7 @@
 //! folder picker. Assigning a palette to a selection is done in the
 //! Programmer (`render_palette_assignment_dialog` in `pages/programmer.rs`).
 
+use crate::client::EngineClient;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 
@@ -382,7 +383,7 @@ impl BlaulichtApp {
                 ui.horizontal(|ui| {
                     if components::button(ui, false, "Confirm", ButtonSize::Medium) {
                         if let Some(id) = self.palette_ui_state.delete_palette_id {
-                            let _ = self.data.client.send(ControlEventMessage::new(
+                            let _ = self.client.send(ControlEventMessage::new(
                                 EventOriginator::Web,
                                 ControlEvent::DeletePalette(id),
                             ));
@@ -422,8 +423,7 @@ impl BlaulichtApp {
         if let Some(event) = self.setup_palettes_ui.dialog.show(ctx, state) {
             self.setup_palettes_ui
                 .follow(ctx, SETUP_PALETTE_TREE, &event);
-            self.data
-                .client
+            self.client
                 .send(ControlEventMessage::new(EventOriginator::Web, event));
         }
         self.setup_palettes_ui.drop_missing_folder(state);
@@ -597,7 +597,7 @@ impl BlaulichtApp {
         ui.add_space(12.0);
 
         if components::button(ui, false, "Unassign", ButtonSize::Medium) {
-            self.data.client.send(ControlEventMessage::new(
+            self.client.send(ControlEventMessage::new(
                 EventOriginator::Web,
                 ControlEvent::UnassignPalette(id),
             ));
@@ -609,7 +609,7 @@ impl BlaulichtApp {
         );
 
         if let Some(new_color) = color_update {
-            self.data.client.send(ControlEventMessage::new(
+            self.client.send(ControlEventMessage::new(
                 EventOriginator::Web,
                 ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
             ));
@@ -986,8 +986,7 @@ impl BlaulichtApp {
                     self.setup_palettes_ui.folder,
                     ControlEvent::CreatePalette(name, kind),
                 );
-                self.data
-                    .client
+                self.client
                     .send(ControlEventMessage::new(EventOriginator::Web, event));
                 self.palette_ui_state.create_dialog_open = false;
             }
@@ -1072,11 +1071,11 @@ impl BlaulichtApp {
         if should_save {
             let name = self.palette_ui_state.new_name.clone();
             if let Some(kind) = self.palette_ui_state.build_palette_kind() {
-                self.data.client.send(ControlEventMessage::new(
+                self.client.send(ControlEventMessage::new(
                     EventOriginator::Web,
                     ControlEvent::RenamePalette(palette_id, name),
                 ));
-                self.data.client.send(ControlEventMessage::new(
+                self.client.send(ControlEventMessage::new(
                     EventOriginator::Web,
                     ControlEvent::UpdatePalette(palette_id, kind),
                 ));

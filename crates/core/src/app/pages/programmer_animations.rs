@@ -9,6 +9,7 @@
 //! template named after it or creates that template, the same way the
 //! Animations page does. Editing templates stays on the Animations page.
 
+use crate::client::EngineClient;
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, TextInput},
@@ -193,8 +194,7 @@ impl BlaulichtApp {
     }
 
     fn send_animation_event(&self, event: ControlEvent) {
-        self.data
-            .client
+        self.client
             .send(ControlEventMessage::new(EventOriginator::Web, event));
     }
 

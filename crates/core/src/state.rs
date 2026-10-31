@@ -21,21 +21,19 @@ use crate::{
     config::{Config, PluginConfig},
     dmx::EngineState,
     frontend_ui::FrontendUiMirror,
-    hub::ClientConnection,
     msg::FromFrontend,
     plugin::{midi::MidiError, serial::SerialError},
     ui_ops::WasmUiOp,
 };
 
+/// What the desk frontend still reaches directly, besides its
+/// [`crate::client::LocalClient`] (`BlaulichtApp::client`). Pages move off
+/// these fields onto the client page by page (043–052); then this goes away.
 pub struct AppStateWrapper {
     pub from_frontend_sender: crossbeam_channel::Sender<FromFrontend>,
 
     pub config: Arc<Mutex<Config>>,
     pub config_path: String,
-    /// The desk's connection to the engine: sends commands in its envelope,
-    /// receives bus traffic, system messages and replies, and publishes its
-    /// view-state snapshot.
-    pub client: ClientConnection,
 
     pub state: Arc<AppState>,
 }

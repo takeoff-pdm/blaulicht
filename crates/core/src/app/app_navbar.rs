@@ -2,6 +2,7 @@ use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainU
 use egui::Context;
 
 use crate::app::{components::NavbarStatus, BlaulichtApp};
+use crate::client::EngineClient;
 
 impl BlaulichtApp {
     pub fn show_navbar(&mut self, ctx: &Context) {
@@ -20,7 +21,7 @@ impl BlaulichtApp {
         // self.current_page = page_change.clone();
 
         // Send event to notify plugins.
-        self.data.client.send(ControlEventMessage::new(
+        self.client.send(ControlEventMessage::new(
             EventOriginator::Web,
             ControlEvent::MainUi(MainUiEvent::NavigatePage(page_change)),
         ));

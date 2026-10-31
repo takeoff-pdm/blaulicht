@@ -29,6 +29,37 @@ pub struct EngineState(
     pub(super) SessionMeta,
 );
 
+/// The fixtures `selection` covers in `groups`: every fixture of each
+/// selected group, or only the filtered fixtures when exactly one group is
+/// selected with a fixture filter.
+pub(super) fn resolve_selection(
+    selection: &EngineSelection,
+    groups: &EngineGroups,
+) -> FixtureSelection {
+    let group_ids = &selection.group_ids;
+    let fixtures_in_group = &selection.fixtures_in_group;
+
+    let mut fixtures_to_add = vec![];
+
+    for (gid, group) in groups.iter().filter(|(k, _)| group_ids.contains(k)) {
+        if group_ids.len() != 1 || fixtures_in_group.is_empty() {
+            for fix_id in group.fixtures.keys() {
+                fixtures_to_add.push((*gid, *fix_id));
+            }
+        } else {
+            for fix in fixtures_in_group {
+                if group.fixtures.contains_key(fix) {
+                    fixtures_to_add.push((*gid, *fix));
+                }
+            }
+        }
+    }
+
+    FixtureSelection {
+        fixtures: fixtures_to_add,
+    }
+}
+
 impl<'engine> EngineState {
     /// Cheap clone for read-only UI rendering: every scene except the
     /// currently focused one is replaced with an empty-sink placeholder
@@ -91,29 +122,10 @@ impl<'engine> EngineState {
         )
     }
 
+    /// The fixtures the `DESK` session's selection covers. For any session,
+    /// see [`super::SessionView::fixture_selection`].
     pub fn get_selection(&self) -> FixtureSelection {
-        let group_ids = &self.0.selection.group_ids;
-        let fixtures_in_group = &self.0.selection.fixtures_in_group;
-
-        let mut fixtures_to_add = vec![];
-
-        for (gid, group) in self.0.groups.iter().filter(|(k, _)| group_ids.contains(k)) {
-            if group_ids.len() != 1 || fixtures_in_group.is_empty() {
-                for fix_id in group.fixtures.keys() {
-                    fixtures_to_add.push((*gid, *fix_id));
-                }
-            } else {
-                for fix in fixtures_in_group {
-                    if group.fixtures.contains_key(fix) {
-                        fixtures_to_add.push((*gid, *fix));
-                    }
-                }
-            }
-        }
-
-        FixtureSelection {
-            fixtures: fixtures_to_add,
-        }
+        resolve_selection(&self.0.selection, &self.0.groups)
     }
 
     /// Loads an engine state into the running engine.

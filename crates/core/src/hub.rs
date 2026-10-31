@@ -190,6 +190,18 @@ pub enum BusBody {
     Host(HostCommand),
 }
 
+impl From<ControlEventMessage> for BusBody {
+    fn from(message: ControlEventMessage) -> Self {
+        BusBody::Control(message)
+    }
+}
+
+impl From<HostCommand> for BusBody {
+    fn from(command: HostCommand) -> Self {
+        BusBody::Host(command)
+    }
+}
+
 /// A message on the event bus. Host-only: plugins receive only the
 /// `ControlEventMessage` inside a [`BusBody::Control`].
 #[derive(Clone, Debug)]

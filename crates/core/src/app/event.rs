@@ -1,5 +1,6 @@
 use crate::{
     app::BlaulichtApp,
+    client::{EngineClient, ReplyHandlers},
     config,
     hub::{session_scope, BusBody, SessionScope},
     msg::SystemMessage,
@@ -33,11 +34,11 @@ impl BlaulichtApp {
             // messages per frame, letting the system queue fill up under log
             // bursts.
             let mut empty = 0;
-            let message = self.data.client.try_recv_bus();
+            let message = self.client.try_recv_bus();
             // Other operator sessions' selection, focus and control events
             // don't move this desk's jog target (`concerns_desk`) and mark
             // the show dirty only if they edit it (`own_session`).
-            let session = self.data.client.session();
+            let session = self.client.session();
             let (concerns_desk, own_session) = message.as_ref().map_or((false, false), |message| {
                 (
                     message.concerns_session(session),
@@ -117,7 +118,7 @@ impl BlaulichtApp {
                 }
             }
 
-            match self.data.client.try_recv_system() {
+            match self.client.try_recv_system() {
                 Some(sys) => match sys {
                     SystemMessage::Heartbeat(_) => {
                         self.last_heartbeat_frame = self.frame_count;
@@ -201,10 +202,9 @@ impl BlaulichtApp {
                     SystemMessage::DeskRequest(request) => {
                         self.view_state.apply_desk_request(request);
                     }
-                    SystemMessage::CommandResult(_result) => {
-                        // Replies to the desk's own commands. Nothing waits
-                        // for them yet (refusals are only logged by the
-                        // engine); dialogs and refusal feedback (034) will.
+                    SystemMessage::CommandResult(_) => {
+                        // Not in the client's system stream: results are
+                        // taken with `take_results` below.
                     }
                     SystemMessage::PluginAlert {
                         plugin_id: _plugin_id,
@@ -231,6 +231,14 @@ impl BlaulichtApp {
             if drained >= 10_000 {
                 break;
             }
+        }
+
+        // Results of the desk's own commands: run the closures waiting for
+        // them (`ReplyHandlers::send_then`). Results nobody waits for are
+        // dropped (refusals are logged by the engine).
+        let results = self.client.take_results();
+        if !results.is_empty() {
+            ReplyHandlers::dispatch(self, |app| &mut app.reply_handlers, &results);
         }
     }
 }

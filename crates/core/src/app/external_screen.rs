@@ -2,6 +2,7 @@
 
 use crate::{
     app::{page::PageRenderContext, view_state::PluginOpenState, BlaulichtApp, ExternalScreen},
+    client::EngineClient,
     config::{
         PageRenderMode, ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab,
         ShowfileExternalScreen, ShowfileUiState,
@@ -521,7 +522,7 @@ impl BlaulichtApp {
             open_plugins: self.view_state.open_plugins(),
             external_screens: self.external_screen_infos(),
         };
-        self.data.client.publish_ui(snapshot);
+        self.client.publish_ui(snapshot);
     }
 
     fn reset_external_screen_plugin_ui_tracking(&mut self) {

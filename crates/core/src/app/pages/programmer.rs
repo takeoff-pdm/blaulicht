@@ -8,6 +8,7 @@ use crate::{
         pages::{palette_kind_label, AnimationEditState, AnimationPresetsUi},
         BlaulichtApp,
     },
+    client::EngineClient,
     dmx::EngineState,
 };
 use blaulicht_shared::{
@@ -49,14 +50,14 @@ impl BlaulichtApp {
     /// frontend's session owns the preview, and the red dot shows whenever
     /// any session previews (overlays are suppressed for everyone).
     fn live_mode_toggle(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState, size: ButtonSize) {
-        let owned = dmx_engine.live_owner() == Some(self.data.client.session());
+        let owned = dmx_engine.live_owner() == Some(self.client.session());
         let any = dmx_engine.0.live_mode;
 
         // Scoped so the painter below can anchor the dot to the button's rect.
         let scope = ui.scope(|ui| components::button(ui, owned, "LIVE", size));
 
         if scope.inner {
-            self.data.client.send(ControlEventMessage::new(
+            self.client.send(ControlEventMessage::new(
                 EventOriginator::Web,
                 ControlEvent::ToggleLiveMode,
             ));
@@ -188,7 +189,7 @@ impl BlaulichtApp {
                                     ControlEvent::SelectGroup(curr_group),
                                 ];
 
-                                self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
+                                self.client.send(ControlEventMessage::new(EventOriginator::Web,
                                     ControlEvent::Transaction(instr)));
                                 }
                             }
@@ -242,7 +243,7 @@ impl BlaulichtApp {
                                             instr.push(ControlEvent::LimitSelectionToFixtureInCurrentGroup(*fix_id));
                                         }
 
-                                        self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
+                                        self.client.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
                                     }
                                     else {
@@ -259,10 +260,10 @@ impl BlaulichtApp {
                                             }
                                         }
 
-                                        self.data.client.send(ControlEventMessage::new(EventOriginator::Web,
+                                        self.client.send(ControlEventMessage::new(EventOriginator::Web,
                                             ControlEvent::Transaction(instr)));
 
-                                        // self.data.client.send(ControlEventMessage::new(EventOriginator::Web, 
+                                        // self.client.send(ControlEventMessage::new(EventOriginator::Web, 
                                         //     ControlEvent::Transaction(vec![
                                         //         ControlEvent::RemoveAllSelection,
                                         //         ControlEvent::SelectGroup(curr_group),
@@ -426,7 +427,7 @@ impl BlaulichtApp {
                                                                                 ControlEvent::PopSelection,
                                                                             );
 
-                                                                            self.data.client.send(
+                                                                            self.client.send(
                                                                                 ControlEventMessage::new(
                                                                                     EventOriginator::Web,
                                                                                     ControlEvent::Transaction(
@@ -473,7 +474,7 @@ impl BlaulichtApp {
 
     /// Sends `RemoveAllSelection`.
     fn clear_selection(&self) {
-        self.data.client.send(ControlEventMessage::new(
+        self.client.send(ControlEventMessage::new(
             EventOriginator::Web,
             ControlEvent::RemoveAllSelection,
         ));
@@ -512,7 +513,7 @@ impl BlaulichtApp {
     /// Removes one change (fixture property) from the focused scene.
     fn remove_scene_change(&self, change: FixtureSelector) {
         let FixtureSelector { gid, fid, property } = change;
-        self.data.client.send(ControlEventMessage::new(
+        self.client.send(ControlEventMessage::new(
             EventOriginator::Web,
             ControlEvent::RemoveChange {
                 selection: FixtureSelection {
@@ -757,8 +758,7 @@ impl BlaulichtApp {
                     Some("No changes"),
                 ) {
                     if let Some(event) = undo_all_changes_event(&scene.sink.changeset) {
-                        self.data
-                            .client
+                        self.client
                             .send(ControlEventMessage::new(EventOriginator::Web, event));
                     }
                     self.programmer_ui_state.undo_all_changes_confirm_open = false;
@@ -845,6 +845,7 @@ impl BlaulichtApp {
                             &dmx_engine.0.palettes,
                             &live_audio,
                             &self.data,
+                            &self.client,
                             &mut self.view_state.plugin_tabs_selected,
                             &selec.fixtures,
                             details_panel_max,
@@ -869,7 +870,7 @@ impl BlaulichtApp {
                                 target,
                             );
                         }
-                        self.data.client.send(ControlEventMessage::new(
+                        self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::Transaction(vec![ControlEvent::LoadSpecIntoAnimation(
                                 *anim_id, spec,
@@ -927,7 +928,7 @@ impl BlaulichtApp {
 
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data.client.send(ControlEventMessage::new(
+                        self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::Transaction(selection_instructions.into_iter().collect()),
                         ));
@@ -945,7 +946,7 @@ impl BlaulichtApp {
                         selection_instructions.push_back(event);
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data.client.send(ControlEventMessage::new(
+                        self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::Transaction(selection_instructions.into_iter().collect()),
                         ));
@@ -966,7 +967,7 @@ impl BlaulichtApp {
                             .push_back(ControlEvent::SetAnimationSpeed(*animation_id, speed));
                         selection_instructions.push_back(ControlEvent::PopSelection);
 
-                        self.data.client.send(ControlEventMessage::new(
+                        self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::Transaction(selection_instructions.into_iter().collect()),
                         ));
@@ -1092,7 +1093,7 @@ impl BlaulichtApp {
                 if state.palettes.is_empty() {
                     ui.label("No palettes. Create them in Setup › Palettes.");
                 } else if let Some(id) = palette_assignment_tree(ui, &items, &active) {
-                    self.data.client.send(ControlEventMessage::new(
+                    self.client.send(ControlEventMessage::new(
                         EventOriginator::Web,
                         palette_toggle_event(&active, id),
                     ));

@@ -2,6 +2,7 @@ use crate::app::{
     components::{self, ButtonSize, Dialog},
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec, ShowfileSaveStatus,
 };
+use crate::client::LocalClient;
 use crate::config;
 use crate::state::AppStateWrapper;
 use crate::state::ScreenId;
@@ -33,12 +34,13 @@ impl BlaulichtApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         state: AppStateWrapper,
+        client: LocalClient,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
         external_screens: Vec<(usize, usize)>,
     ) -> Self {
-        let mut app = Self::new_default(state, desktop_mode, showfile_home);
+        let mut app = Self::new_default(state, client, desktop_mode, showfile_home);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 

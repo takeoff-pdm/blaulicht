@@ -201,6 +201,7 @@ impl AnimationEditState {
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
         data: &crate::state::AppStateWrapper,
+        client: &crate::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         wasm_fixtures: &[(u8, u8)],
         panel_max: egui::Pos2,
@@ -230,7 +231,7 @@ impl AnimationEditState {
                     }
                 }
                 AnimationSpecBody::WasmPlugin(_) => {
-                    self.anim_wasm_ui(ui, data, plugin_tabs_selected, wasm_fixtures)
+                    self.anim_wasm_ui(ui, data, client, plugin_tabs_selected, wasm_fixtures)
                 }
             }
 
@@ -255,6 +256,7 @@ impl AnimationEditState {
         &mut self,
         ui: &mut egui::Ui,
         data: &crate::state::AppStateWrapper,
+        client: &crate::client::LocalClient,
         plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         fixtures: &[(u8, u8)],
     ) {
@@ -355,7 +357,7 @@ impl AnimationEditState {
                                 ui,
                                 &ops,
                                 &mut index,
-                                data,
+                                client,
                                 *plugin_id,
                                 Some(self.wasm_editor_instance_id),
                                 plugin_tabs_selected,

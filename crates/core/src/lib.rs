@@ -4,6 +4,7 @@
 pub mod app;
 pub mod audio;
 pub mod cli;
+pub mod client;
 pub mod command;
 pub mod config;
 pub mod dmx;

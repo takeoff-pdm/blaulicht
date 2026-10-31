@@ -21,6 +21,7 @@ use crate::app::{
     page::PageRenderContext,
     BlaulichtApp,
 };
+use crate::client::EngineClient;
 use crate::dmx::EngineState;
 use blaulicht_shared::{
     folder::{FolderId, FolderItem, FolderKind},
@@ -82,8 +83,7 @@ impl BlaulichtApp {
     /// folder is deselected.
     fn apply_group_folder_event(&mut self, ctx: &Context, event: ControlEvent) {
         self.setup_groups_ui.follow(ctx, SETUP_GROUP_TREE, &event);
-        self.data
-            .client
+        self.client
             .send(ControlEventMessage::new(EventOriginator::Web, event));
     }
 

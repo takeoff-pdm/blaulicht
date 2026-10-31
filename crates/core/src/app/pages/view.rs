@@ -1,3 +1,4 @@
+use crate::client::EngineClient;
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog, Knob, Pagination, SpeedKnob},
@@ -398,7 +399,7 @@ impl BlaulichtApp {
                                                 "Apply",
                                                 ButtonSize::Medium,
                                             ) {
-                                                self.data.client.send(ControlEventMessage::new(
+                                                self.client.send(ControlEventMessage::new(
                                                     EventOriginator::Web,
                                                     ControlEvent::Transaction(
                                                         view_snapshot.apply_events(),
