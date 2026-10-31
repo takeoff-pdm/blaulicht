@@ -113,7 +113,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 044 | [Performance, View and Scene graph pages onto EngineClient](TICKETS/decouple/044-commands-performance-view-graph.done.md) | done | 042 |
 | 051 | [Visualizer onto EngineClient; stage geometry becomes show state](TICKETS/decouple/051-visualizer-stage-into-engine.done.md) | done | 042 |
 | 045 | [Audio, Art-Net and System pages onto EngineClient](TICKETS/decouple/045-commands-audio-artnet-system.done.md) | done | 042, 039 |
-| 052 | [Engine owns showfile, config and lifecycle](TICKETS/decouple/052-engine-owns-persistence.doing.md) | doing | 049, 042, 051, 043, 044, 045, 050 |
+| 052 | [Engine owns showfile, config and lifecycle](TICKETS/decouple/052-engine-owns-persistence.done.md) | done | 049, 042, 051, 043, 044, 045, 050 |
 | 046 | [Remove egui from engine-side code](TICKETS/decouple/046-egui-out-of-engine-code.planned.md) | planned | — |
 | 053 | [Engine crate, egui crate and a headless binary](TICKETS/decouple/053-crate-split-headless.planned.md) | planned | 039, 046, 050, 043, 044, 051, 045, 052 |
 | 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.planned.md) | planned | 053 |
