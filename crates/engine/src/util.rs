@@ -1,4 +1,5 @@
 use audio_thread_priority::promote_current_thread_to_real_time;
+#[cfg(not(target_arch = "wasm32"))]
 use thread_priority::ThreadPriority;
 
 pub fn increase_thread_priority() {
@@ -6,12 +7,17 @@ pub fn increase_thread_priority() {
     conservative();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn conservative() {
     match thread_priority::set_current_thread_priority(ThreadPriority::Max) {
         Ok(_) => tracing::info!("Raised engine thread priority"),
         Err(err) => tracing::warn!("Failed to raise engine thread priority: {err}"),
     }
 }
+
+/// wasm32 builds of the engine never run its threads (see `plugin::midi`).
+#[cfg(target_arch = "wasm32")]
+fn conservative() {}
 
 #[allow(dead_code)]
 fn realtime() {

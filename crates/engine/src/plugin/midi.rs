@@ -1,4 +1,8 @@
+// The wasm32 stand-in at the end uses only a few of these.
+#![cfg_attr(target_arch = "wasm32", allow(unused_imports))]
+
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+#[cfg(not(target_arch = "wasm32"))]
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,6 +23,7 @@ pub enum MidiError {
 // TODO: multi-device input support.
 //
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct MidiManager {
     connection_map: HashMap<String, MidiDeviceHandle>,
     device_id_counter: u8,
@@ -38,6 +43,7 @@ pub struct MidiManager {
     system_message_sender: SystemHub,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct MidiDeviceHandle {
     device_name: String,
     device_id: u8,
@@ -45,6 +51,7 @@ struct MidiDeviceHandle {
     input: MidiInputConnection<()>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl MidiManager {
     pub fn new(
         midi_out_receiver: Receiver<MidiEvent>,
@@ -305,5 +312,37 @@ impl MidiManager {
         }
 
         Ok(incoming_events)
+    }
+}
+
+/// The engine compiles for wasm32 (the web frontend links the engine crate
+/// for its client and wire types, ticket 054), but never runs there. midir's
+/// Web MIDI backend doesn't build, so wasm32 gets an inert manager.
+#[cfg(target_arch = "wasm32")]
+pub struct MidiManager;
+
+#[cfg(target_arch = "wasm32")]
+impl MidiManager {
+    pub fn new(
+        _midi_out_receiver: Receiver<MidiEvent>,
+        _to_plugins_sender: Sender<MidiEvent>,
+        _app_state: Arc<AppState>,
+        _system_message_sender: SystemHub,
+    ) -> Self {
+        Self
+    }
+
+    pub fn enumerate_devices(&self) -> Result<Vec<String>, MidiError> {
+        Ok(Vec::new())
+    }
+
+    pub fn reload(&mut self) {}
+
+    pub fn request_device(&mut self, _device_name: &str) -> Option<u8> {
+        None
+    }
+
+    pub fn tick(&mut self) -> Result<Vec<MidiEvent>, MidiError> {
+        Ok(Vec::new())
     }
 }
