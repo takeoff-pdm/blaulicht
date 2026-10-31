@@ -21,10 +21,10 @@ use super::PluginWasmState;
 use wasmtime::*;
 
 use crate::command::Command;
+use crate::frontend_ui::{self, DeskRequest};
 use crate::msg::MidiEvent;
 use crate::msg::WasmLogBody;
 use crate::msg::TERMINAL_ONLY_LOG_TARGET;
-use crate::state::PluginOpenState;
 use crate::ui_ops::WasmUiOp;
 use crate::{
     msg::SystemMessage,
@@ -851,6 +851,8 @@ impl PluginManager {
         )?;
 
         let event_bus = self.event_bus.clone();
+        let state_ref = Arc::clone(&self.state_ref);
+        let system_out = self.system_out.clone();
         linker.func_wrap::<_, ()>(
             "blaulicht",
             "bl_send_event",
@@ -872,6 +874,14 @@ impl PluginManager {
                         return;
                     }
                 };
+                // Requests only the desk can act on (`SetPluginUIOpen`) go to it
+                // over the host-only system channel; the event itself still goes
+                // on the bus so other plugins see it as before.
+                frontend_ui::route_plugin_event_to_desk(
+                    &state_ref.frontend_ui,
+                    &system_out,
+                    &event,
+                );
                 event_bus.send(ControlEventMessage::new(EventOriginator::Plugin, event));
             },
         )?;
@@ -929,47 +939,22 @@ impl PluginManager {
 
         let state_ref = Arc::clone(&self.state_ref);
         linker.func_wrap::<_, i32>("blaulicht", "ui_is_open", move |plugin_id: i32| {
-            let pid = plugin_id as u8;
-            let map = state_ref.plugin_ui_visibility.read().unwrap();
-            if map.get(&pid).is_some_and(|visibility| visibility.open) {
-                1
-            } else {
-                0
-            }
+            // Open in any frontend; false when none is connected.
+            i32::from(state_ref.frontend_ui.is_plugin_open(plugin_id as u8))
         })?;
 
         let state_ref = Arc::clone(&self.state_ref);
-        let event_bus = self.event_bus.clone();
+        let system_out = self.system_out.clone();
         linker.func_wrap::<_, ()>("blaulicht", "ui_maximize_screen", move |plugin_id: i32| {
-            let pid = plugin_id as u8;
-
-            let was_open = {
-                let mut map = state_ref.plugin_ui_visibility.write().unwrap();
-                let entry = map.entry(pid).or_insert(PluginOpenState::CLOSED);
-                let was_open = entry.open;
-                entry.open = true;
-                was_open
-            };
-
-            {
-                let mut map = state_ref.plugin_ui_popped_out.write().unwrap();
-                map.insert(pid, true);
-            }
-
-            {
-                let mut map = state_ref.plugin_ui_maximize_requested.write().unwrap();
-                map.insert(pid, true);
-            }
-
-            if !was_open {
-                event_bus.send(ControlEventMessage::new(
-                    EventOriginator::Plugin,
-                    ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
-                        plugin_id: pid,
-                        open: true,
-                    }),
-                ));
-            }
+            // View state belongs to the desk frontend: ask it, or drop the
+            // request (with a debug log) when no desk is connected.
+            frontend_ui::send_desk_request(
+                &state_ref.frontend_ui,
+                &system_out,
+                DeskRequest::MaximizePluginUi {
+                    plugin_id: plugin_id as u8,
+                },
+            );
         })?;
 
         let system_out = self.system_out.clone();
@@ -1008,7 +993,7 @@ impl PluginManager {
             "blaulicht",
             "ui_list_external_screens",
             move |mut caller: Caller<'_, ()>, _plugin_id: i32, buffer_ptr: i32, buffer_len: i32| {
-                let screens = state_ref.external_screens.read().unwrap().clone();
+                let screens = state_ref.frontend_ui.desk_external_screens();
                 let json = serde_json::to_string(&screens).unwrap_or_else(|_| "[]".to_string());
                 let json_bytes = json.as_bytes();
 
@@ -1029,6 +1014,7 @@ impl PluginManager {
             },
         )?;
 
+        let state_ref = Arc::clone(&self.state_ref);
         let event_bus = self.event_bus.clone();
         linker.func_wrap::<_, i32>(
             "blaulicht",
@@ -1037,6 +1023,12 @@ impl PluginManager {
                 if width <= 0 || height <= 0 {
                     tracing::warn!(
                         "Refusing to create external screen with invalid size {width}x{height}"
+                    );
+                    return 0;
+                }
+                if !state_ref.frontend_ui.desk_connected() {
+                    tracing::debug!(
+                        "No desk frontend connected; dropping external screen request from plugin {plugin_id}"
                     );
                     return 0;
                 }
@@ -1060,10 +1052,15 @@ impl PluginManager {
             "ui_remove_external_screen",
             move |plugin_id: i32, _index: i32| {
                 let owner_plugin_id = plugin_id as u8;
+                if !state_ref.frontend_ui.desk_connected() {
+                    tracing::debug!(
+                        "No desk frontend connected; dropping external screen removal from plugin {owner_plugin_id}"
+                    );
+                    return 0;
+                }
                 let exists = state_ref
-                    .external_screens
-                    .read()
-                    .unwrap()
+                    .frontend_ui
+                    .desk_external_screens()
                     .iter()
                     .any(|screen| screen.owner_plugin_id == Some(owner_plugin_id));
 

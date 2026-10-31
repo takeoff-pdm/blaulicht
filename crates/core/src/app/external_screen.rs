@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use crate::{
-    app::{page::PageRenderContext, BlaulichtApp, ExternalScreen},
+    app::{page::PageRenderContext, view_state::PluginOpenState, BlaulichtApp, ExternalScreen},
     config::{
         PageRenderMode, ShowfileDockNode, ShowfileDockSplitAxis, ShowfileDockTab,
         ShowfileExternalScreen, ShowfileUiState,
     },
-    state::{PluginOpenState, ScreenId},
+    frontend_ui::FrontendUiSnapshot,
+    state::ScreenId,
 };
 use blaulicht_shared::{AppPage, ExternalScreenInfo};
 use egui::{pos2, vec2, Color32, Context, Frame, Id, Margin, Sense, Stroke, Vec2, WidgetText};
@@ -512,23 +513,28 @@ impl BlaulichtApp {
             .collect()
     }
 
-    pub(crate) fn sync_external_screen_infos(&self) {
-        let mut external_screens = self.data.state.external_screens.write().unwrap();
-        *external_screens = self.external_screen_infos();
+    /// Publish the view state the engine may read (open plugin UIs, external
+    /// screens) to its mirror. Nothing is sent unless it changed, so this runs
+    /// every frame and after every external screen change.
+    pub(crate) fn publish_ui_mirror(&mut self) {
+        let snapshot = FrontendUiSnapshot {
+            open_plugins: self.view_state.open_plugins(),
+            external_screens: self.external_screen_infos(),
+        };
+        self.desk_ui.publish(snapshot);
     }
 
     fn reset_external_screen_plugin_ui_tracking(&mut self) {
         self.plugin_ui_visible_tabs.clear();
 
-        let popped_out = self.data.state.plugin_ui_popped_out.read().unwrap().clone();
-        let mut visibility = self.data.state.plugin_ui_visibility.write().unwrap();
-        for (plugin_id, entry) in visibility.iter_mut() {
+        let view = &mut self.view_state;
+        for (plugin_id, entry) in view.plugin_visibility.iter_mut() {
             if entry.screen_id == ScreenId::MAIN {
                 continue;
             }
 
             entry.screen_id = ScreenId::MAIN;
-            if !popped_out.get(plugin_id).copied().unwrap_or(false) {
+            if !view.plugin_popped_out.contains(plugin_id) {
                 entry.open = false;
             }
         }
@@ -545,7 +551,7 @@ impl BlaulichtApp {
     ) {
         self.external_screens
             .push(ExternalScreen::new_owned(dimensions, owner_plugin_id));
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
     }
 
     pub(crate) fn add_external_screen(&mut self) {
@@ -559,7 +565,7 @@ impl BlaulichtApp {
 
         self.external_screens.remove(index);
         self.reset_external_screen_plugin_ui_tracking();
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
         true
     }
 
@@ -594,7 +600,7 @@ impl BlaulichtApp {
                     }
                     if removed_any {
                         self.reset_external_screen_plugin_ui_tracking();
-                        self.sync_external_screen_infos();
+                        self.publish_ui_mirror();
                     }
                     return removed_any;
                 }
@@ -616,7 +622,7 @@ impl BlaulichtApp {
             self.reset_external_screen_plugin_ui_tracking();
         }
 
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
         !had_existing || removed_any
     }
 
@@ -631,7 +637,7 @@ impl BlaulichtApp {
         }
 
         self.reset_external_screen_plugin_ui_tracking();
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
         true
     }
 
@@ -686,24 +692,19 @@ impl BlaulichtApp {
     }
 
     fn set_plugin_ui_tab_open(&mut self, plugin_id: u8, screen_id: ScreenId, open: bool) {
-        let changed = {
-            let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-            let entry = map.entry(plugin_id).or_insert(PluginOpenState::CLOSED);
+        let entry = self
+            .view_state
+            .plugin_visibility
+            .entry(plugin_id)
+            .or_insert(PluginOpenState::CLOSED);
 
-            if !open && entry.screen_id != screen_id {
-                return;
-            }
+        if !open && entry.screen_id != screen_id {
+            return;
+        }
 
-            let changed = entry.open != open;
-            entry.open = open;
-            if open {
-                entry.screen_id = screen_id;
-            }
-            changed
-        };
-
-        if changed {
-            super::plugin_ui::notify_plugin_ui_open(&self.data, plugin_id, open);
+        entry.open = open;
+        if open {
+            entry.screen_id = screen_id;
         }
     }
 
@@ -732,7 +733,7 @@ impl BlaulichtApp {
         self.external_screens =
             merge_external_screens_from_showfile(current, ui_state.external_screens);
         self.reset_external_screen_plugin_ui_tracking();
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
     }
 
     pub fn drive_external_screen(&mut self, ctx: &Context, screen_idx: usize) {
@@ -766,7 +767,7 @@ impl BlaulichtApp {
                 *slot = screen;
             }
         });
-        self.sync_external_screen_infos();
+        self.publish_ui_mirror();
     }
 
     pub fn draw_external_screen_contents(

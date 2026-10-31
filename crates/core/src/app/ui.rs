@@ -33,12 +33,13 @@ impl BlaulichtApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         state: AppStateWrapper,
+        desk_ui: crate::frontend_ui::FrontendUiPublisher,
         initial_popup: Option<PopupSpec>,
         desktop_mode: bool,
         showfile_home: Option<std::path::PathBuf>,
         external_screens: Vec<(usize, usize)>,
     ) -> Self {
-        let mut app = Self::new_default(state, desktop_mode, showfile_home);
+        let mut app = Self::new_default(state, desk_ui, desktop_mode, showfile_home);
 
         cc.egui_ctx.set_pixels_per_point(1.0);
 
@@ -83,7 +84,7 @@ impl BlaulichtApp {
             }
         }
 
-        app.sync_external_screen_infos();
+        app.publish_ui_mirror();
         app.reset_save_tracking();
 
         app
@@ -99,6 +100,7 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
+        self.publish_ui_mirror();
         // Give an open numberpad first priority. After rendering, any remaining
         // delta adjusts the recent fixture property instead.
         crate::app::components::publish_relative_adjustment(
@@ -232,6 +234,7 @@ impl eframe::App for BlaulichtApp {
             }
         }
         self.finish_jog_adjustment(ctx);
+        self.publish_ui_mirror();
     }
 }
 

@@ -1,15 +1,14 @@
 use crate::{
     app::{
         components::{self, ButtonSize, Dialog},
+        view_state::PluginOpenState,
         BlaulichtApp, GuardedLifecycleAction, PopupSpec,
     },
     audio::defs::AudioThreadControlSignal,
     msg::FromFrontend,
-    state::{PluginOpenState, ScreenId, NUM_DMX_UNIVERSES},
+    state::{ScreenId, NUM_DMX_UNIVERSES},
 };
-use blaulicht_shared::{
-    AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
-};
+use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Color32, Context, FontId, RichText, ThemePreference};
 use std::{mem, path::Path, process::Command, time::Duration};
 
@@ -372,7 +371,6 @@ impl BlaulichtApp {
         // The caller (`render_system_tab_content`) already wraps the tab in a
         // page-height scroll area, so the list is not scrolled separately here.
         let plugins = self.data.state.plugins.read().unwrap();
-        let current_visibility = self.data.state.plugin_ui_visibility.read().unwrap().clone();
 
         for (i, (plugin_id, plugin)) in plugins.iter().enumerate() {
             let box_size = egui::vec2(ui.available_width(), 42.0);
@@ -440,9 +438,7 @@ impl BlaulichtApp {
             ui.horizontal(|ui| {
                 // TODO: write a helper function for accessing this screen-specific
                 // state.
-                let visibility = *current_visibility
-                    .get(plugin_id)
-                    .unwrap_or(&PluginOpenState::CLOSED);
+                let visibility = self.view_state.plugin_open_state(*plugin_id);
 
                 let label = if visibility.open {
                     "Hide UI"
@@ -450,11 +446,12 @@ impl BlaulichtApp {
                     "Show UI"
                 };
                 if ui.small_button(label).clicked() {
-                    let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-
                     // PATCH: ensure that the window is only open on one screen.
-
-                    let entry = map.entry(*plugin_id).or_insert(PluginOpenState::CLOSED);
+                    let entry = self
+                        .view_state
+                        .plugin_visibility
+                        .entry(*plugin_id)
+                        .or_insert(PluginOpenState::CLOSED);
 
                     match visibility.open {
                         true => {
@@ -465,17 +462,8 @@ impl BlaulichtApp {
                             entry.screen_id = screen_id;
                         }
                     };
-
-                    // Notify plugins.
-                    self.data
-                        .event_bus_connection
-                        .send(ControlEventMessage::new(
-                            EventOriginator::Web,
-                            ControlEvent::MainUi(MainUiEvent::SetPluginUIOpen {
-                                plugin_id: *plugin_id,
-                                open: entry.open,
-                            }),
-                        ));
+                    // Plugins learn about it through the engine's mirror
+                    // (`ui_is_open`), published at the end of the frame.
                 }
             });
             ui.add_space(8.0);

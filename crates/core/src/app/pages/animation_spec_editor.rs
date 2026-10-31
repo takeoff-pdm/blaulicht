@@ -201,6 +201,7 @@ impl AnimationEditState {
         palettes: &BTreeMap<u8, Palette>,
         live_audio: &blaulicht_audio_engine::CollectorOutput,
         data: &crate::state::AppStateWrapper,
+        plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         wasm_fixtures: &[(u8, u8)],
         panel_max: egui::Pos2,
     ) -> Option<AnimationSpec> {
@@ -228,7 +229,9 @@ impl AnimationEditState {
                         upgrade_legacy_wasm = true;
                     }
                 }
-                AnimationSpecBody::WasmPlugin(_) => self.anim_wasm_ui(ui, data, wasm_fixtures),
+                AnimationSpecBody::WasmPlugin(_) => {
+                    self.anim_wasm_ui(ui, data, plugin_tabs_selected, wasm_fixtures)
+                }
             }
 
             ui.vertical(|ui| {
@@ -252,6 +255,7 @@ impl AnimationEditState {
         &mut self,
         ui: &mut egui::Ui,
         data: &crate::state::AppStateWrapper,
+        plugin_tabs_selected: &mut crate::app::view_state::PluginTabSelections,
         fixtures: &[(u8, u8)],
     ) {
         /// Space reserved below the plugin UI for the editor's own Apply button.
@@ -354,6 +358,7 @@ impl AnimationEditState {
                                 data,
                                 *plugin_id,
                                 Some(self.wasm_editor_instance_id),
+                                plugin_tabs_selected,
                             );
                         });
                 });

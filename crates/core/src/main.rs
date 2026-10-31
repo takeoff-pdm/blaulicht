@@ -3,6 +3,7 @@ use blaulicht_core::app::BlaulichtApp;
 use blaulicht_core::audio::defs::AudioThreadControlSignal;
 use blaulicht_core::cli::CliArgs;
 use blaulicht_core::event::SystemEventBus;
+use blaulicht_core::frontend_ui::FrontendId;
 use blaulicht_core::msg::{FromFrontend, StageStatus, StartupStage, SystemMessage};
 use blaulicht_core::plugin::PluginManager;
 use blaulicht_core::state::{AppState, AppStateWrapper};
@@ -103,6 +104,9 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_state = Arc::new(AppState::new(&cfg.plugins));
+    // Attach the desk frontend before the engine starts, so plugin requests
+    // sent during startup (e.g. creating an owned external screen) reach it.
+    let desk_ui = app_state.frontend_ui.connect(FrontendId::DESK);
     {
         let mut global_state = app_state.plugin_state_storage_global.lock().unwrap();
         *global_state = cfg.plugin_state.clone();
@@ -220,6 +224,7 @@ fn main() -> anyhow::Result<()> {
             Ok(Box::new(BlaulichtApp::new(
                 cc,
                 state_wrapper,
+                desk_ui,
                 initial_popup,
                 args.desktop_mode,
                 args.showfile_home.clone(),

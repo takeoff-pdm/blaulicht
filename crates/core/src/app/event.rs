@@ -1,7 +1,6 @@
 use crate::{app::BlaulichtApp, config, msg::SystemMessage};
 use blaulicht_shared::{ControlEvent, EventOriginator, LogLevel, MainUiEvent, PluginStateLocation};
 use crossbeam_channel::TryRecvError;
-use std::collections::hash_map::Entry;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "audio")]
@@ -53,12 +52,10 @@ impl BlaulichtApp {
                             MainUiEvent::NavigatePage(app_page) => {
                                 self.navbar.navigate_to(app_page)
                             }
-                            MainUiEvent::SetPluginUIOpen { plugin_id, open } => {
-                                tracing::debug!("Set plugin {plugin_id} UI visibility to {open}");
-                                let mut map = self.data.state.plugin_ui_visibility.write().unwrap();
-                                if let Entry::Occupied(ref mut entry) = map.entry(plugin_id) {
-                                    entry.get_mut().open = open;
-                                };
+                            MainUiEvent::SetPluginUIOpen { .. } => {
+                                // Plugin requests reach the desk as
+                                // `SystemMessage::DeskRequest` (routed by the
+                                // plugin host); the bus copy is for plugins.
                             }
                             MainUiEvent::CreateExternalScreen { width, height } => {
                                 self.add_external_screen_with_dimensions(egui::vec2(
@@ -177,6 +174,9 @@ impl BlaulichtApp {
                                 );
                             }
                         }
+                    }
+                    SystemMessage::DeskRequest(request) => {
+                        self.view_state.apply_desk_request(request);
                     }
                     SystemMessage::PluginAlert {
                         plugin_id: _plugin_id,

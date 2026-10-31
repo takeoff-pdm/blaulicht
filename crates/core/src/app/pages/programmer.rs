@@ -838,6 +838,7 @@ impl BlaulichtApp {
                             &dmx_engine.0.palettes,
                             &live_audio,
                             &self.data,
+                            &mut self.view_state.plugin_tabs_selected,
                             &selec.fixtures,
                             details_panel_max,
                         );
