@@ -116,7 +116,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 052 | [Engine owns showfile, config and lifecycle](TICKETS/decouple/052-engine-owns-persistence.done.md) | done | 049, 042, 051, 043, 044, 045, 050 |
 | 046 | [Remove egui from engine-side code](TICKETS/decouple/046-egui-out-of-engine-code.done.md) | done | — |
 | 053 | [Engine crate, egui crate and a headless binary](TICKETS/decouple/053-crate-split-headless.done.md) | done | 039, 046, 050, 043, 044, 051, 045, 052 |
-| 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.doing.md) | doing | 053 |
+| 047 | [Websocket transport and RemoteClient](TICKETS/decouple/047-websocket-transport.done.md) | done | 053 |
 | 048 | [Web frontend spike: egui on wasm or Svelte](TICKETS/decouple/048-web-frontend-spike.planned.md) | planned | 047 |
 | 054 | [Web frontend](TICKETS/decouple/054-web-frontend.planned.md) | planned | 048 |
 
@@ -141,6 +141,8 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - The background worker's debug spectrogram dump (`BLAULICHT_SPECTROGRAM_DIR`, `crates/engine/src/mainloop/bg_worker.rs`) is always black: it is 480x100, so after the 5/20 px padding 75 rows remain for 128 bins and `create_spectrogram_image` returns early (`height < bin_count`). It needs a height of at least 153 px (found in 046).
 - In `--desktop` mode, `-e W,H` external screens never open: `drive_external_screen` is only called from the kiosk branch of `BlaulichtApp::ui` (`render_main_screen`); the System › Screens list shows them (seen in 053, code unchanged).
 - The release archives (top-level `Makefile`) contain only the desk binary; `blaulicht-headless` (`cargo build -p blaulicht-engine --bin blaulicht-headless`) isn't packaged yet (053).
+- The remote client server (047, `crates/engine/src/server/`) has no authentication: anyone on the network who reaches `port` (default 1234, on all interfaces) can control the show, and `HostCommand::SaveShowfileAs` / `LoadShowfile` take paths on the engine host, so a client can write a showfile anywhere the engine may write. Add authentication (and maybe a bind address or read-only clients) before using it outside a trusted network; `server_enabled = false` turns it off.
+- The show state changes on every tick while animations run (OUTDOOR: the bincode snapshot's digest changes continuously), so remote clients get a full show snapshot at the 10 Hz cap: about 1.1 MB/s in bincode and about 10 MB/s in JSON for OUTDOOR (047). Per-section deltas, or keeping animation runtime state out of the snapshot, would cut that.
 - add UDP sink(s) to which a DMX frame can be sent
   - input or output??
   - if output was meant, we have this -> artnet
