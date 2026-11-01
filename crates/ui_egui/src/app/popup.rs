@@ -83,9 +83,18 @@ impl BlaulichtApp {
         const INIT_POPUP_MAX_DURATION: Duration = Duration::from_secs(15);
 
         let open_elapsed = self.init_popup_open_time.elapsed();
+        // The minimum is a splash for the desk's own startup. A remote
+        // frontend usually joins a running engine (the hub replays
+        // "initialization complete" at once), so it shows the checklist only
+        // while the engine is really still starting.
+        let min_duration = if self.client.is_remote() {
+            Duration::ZERO
+        } else {
+            INIT_POPUP_MIN_DURATION
+        };
 
         if (self.engine_initialization_complete || open_elapsed > INIT_POPUP_MAX_DURATION)
-            && open_elapsed > INIT_POPUP_MIN_DURATION
+            && open_elapsed >= min_duration
         {
             return false;
         }
