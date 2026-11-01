@@ -140,7 +140,11 @@ pub struct BlaulichtApp {
     config_dir: Option<PathBuf>,
     navbar: Navbar,
 
-    main_screen_desktop_mode: ExternalScreen,
+    /// The showfile's `ui.main_screen_desktop_mode`: the dock layout of the
+    /// old desktop main screen, which the desktop layout's sidebar replaced
+    /// (ticket 055). Kept as loaded and saved back unchanged, so that a show
+    /// keeps it for builds that still read it.
+    legacy_main_screen_dock: Option<blaulicht_engine::config::ShowfileExternalScreen>,
     external_screens: Vec<ExternalScreen>,
     plugin_ui_visible_tabs: HashSet<(ScreenId, u8)>,
     /// Plugin window state; frontend-owned, published to the engine through
@@ -356,7 +360,7 @@ impl BlaulichtApp {
             showfile_home,
             config_dir,
             navbar: Navbar::new(AppPage::Logs),
-            main_screen_desktop_mode: ExternalScreen::default(),
+            legacy_main_screen_dock: None,
             external_screens: vec![],
             plugin_ui_visible_tabs: HashSet::new(),
             view_state: view_state::NativeViewState::default(),

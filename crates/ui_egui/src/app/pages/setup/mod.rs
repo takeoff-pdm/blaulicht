@@ -53,16 +53,25 @@ impl BlaulichtApp {
         self.render_dmx_override_dialog(ctx, &dmx_engine);
         self.render_dmx_simulation_dialog(ctx, dmx_engine.groups());
 
-        self.subpage_ui(ui, AppPage::Setup, |app, ui, subpage| match subpage {
-            AppSubPage::Setup_Fixtures => {
-                app.setup_fixtures_ui(ui, ctx, render_context, &dmx_engine)
-            }
-            AppSubPage::Setup_Groups => app.setup_groups_ui(ui, ctx, render_context, &dmx_engine),
-            AppSubPage::Setup_Scenes => app.setup_scenes_ui(ui, ctx, render_context, &dmx_engine),
-            AppSubPage::Setup_Animations => app.setup_animations_ui(ui, ctx, render_context),
-            AppSubPage::Setup_Palettes => app.setup_palettes_ui(ui, ctx, render_context),
-            _ => {}
-        });
+        self.subpage_ui(
+            ui,
+            AppPage::Setup,
+            render_context,
+            |app, ui, subpage| match subpage {
+                AppSubPage::Setup_Fixtures => {
+                    app.setup_fixtures_ui(ui, ctx, render_context, &dmx_engine)
+                }
+                AppSubPage::Setup_Groups => {
+                    app.setup_groups_ui(ui, ctx, render_context, &dmx_engine)
+                }
+                AppSubPage::Setup_Scenes => {
+                    app.setup_scenes_ui(ui, ctx, render_context, &dmx_engine)
+                }
+                AppSubPage::Setup_Animations => app.setup_animations_ui(ui, ctx, render_context),
+                AppSubPage::Setup_Palettes => app.setup_palettes_ui(ui, ctx, render_context),
+                _ => {}
+            },
+        );
     }
 }
 

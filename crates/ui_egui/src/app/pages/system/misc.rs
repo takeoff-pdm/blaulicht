@@ -78,10 +78,15 @@ impl BlaulichtApp {
         self.render_serial_dialog(ctx);
         self.render_screens_dialog(ctx);
 
-        self.subpage_ui(ui, AppPage::System, |app, ui, subpage| match subpage {
-            AppSubPage::System_System => app.render_system_general(ui, render_context),
-            other => app.render_system_tab_content(ui, screen_id, other),
-        });
+        self.subpage_ui(
+            ui,
+            AppPage::System,
+            render_context,
+            |app, ui, subpage| match subpage {
+                AppSubPage::System_System => app.render_system_general(ui, render_context),
+                other => app.render_system_tab_content(ui, screen_id, other),
+            },
+        );
     }
 
     /// The General tab: showfile, theme, lifecycle and health overview.

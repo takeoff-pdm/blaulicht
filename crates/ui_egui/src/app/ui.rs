@@ -91,7 +91,8 @@ impl BlaulichtApp {
 impl eframe::App for BlaulichtApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx();
+        // Owned, so that `ui` stays free for the desktop layout's panels.
+        let ctx = &ui.ctx().clone();
         // Continuous rendering - always request repaints
         // TODO: try to get actual screen FPS from X11 / wayland
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
@@ -227,17 +228,7 @@ impl eframe::App for BlaulichtApp {
         self.plugin_speed_graph
             .update(self.tick_speeds.plugins.as_micros() as i32);
 
-        match self.layout.is_desktop() {
-            true => {
-                let mut screen = self.main_screen_desktop_mode.clone();
-                self.draw_external_screen_contents(ctx, ScreenId::MAIN, &mut screen);
-                // TODO: this is completely broken.
-                self.main_screen_desktop_mode = screen;
-            }
-            false => {
-                self.render_main_screen(ctx);
-            }
-        }
+        self.render_main_screen(ui);
         self.finish_jog_adjustment(ctx);
         self.publish_ui_mirror();
         self.publish_frontend_section();
@@ -245,23 +236,21 @@ impl eframe::App for BlaulichtApp {
 }
 
 impl BlaulichtApp {
-    fn render_main_screen(&mut self, ctx: &Context) {
-        // Navbar
-        self.show_navbar(ctx);
-
-        let page = self.navbar.page();
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // // Update animation time for continuous rendering
-            self.frame_count += 1; // TODO: when does this overflow?
-            self.animation_time += 0.016; // 16ms ~= 60fps
-
-            let render_context = crate::app::page::PageRenderContext::new(
-                blaulicht_engine::config::PageRenderMode::Default,
-                ui.available_size(),
-            );
-            self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN, render_context);
-        });
+    /// The main window: the navigation (the mobile layout's icon rail or the
+    /// desktop layout's sidebar) and the current page in the central panel,
+    /// then plugin windows and external screens.
+    fn render_main_screen(&mut self, ui: &mut egui::Ui) {
+        let ctx = &ui.ctx().clone();
+        match self.layout {
+            UiLayout::Mobile => {
+                self.show_navbar(ctx);
+                egui::CentralPanel::default().show(ctx, |ui| self.main_page_ui(ui, ctx));
+            }
+            UiLayout::Desktop => {
+                self.show_desktop_sidebar(ui);
+                egui::CentralPanel::default().show_inside(ui, |ui| self.main_page_ui(ui, ctx));
+            }
+        }
 
         // Render per-plugin UI windows.
         self.render_plugin_ui(ctx, ScreenId::MAIN);
@@ -271,6 +260,18 @@ impl BlaulichtApp {
             self.drive_external_screen(ctx, i);
             i += 1;
         }
+    }
+
+    /// The main window's current page, in the central panel's `ui`.
+    fn main_page_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        // // Update animation time for continuous rendering
+        self.frame_count += 1; // TODO: when does this overflow?
+        self.animation_time += 0.016; // 16ms ~= 60fps
+
+        let page = self.navbar.page();
+        let render_context =
+            crate::app::page::PageRenderContext::for_main_screen(self.layout, ui.available_size());
+        self.page_content_based_on_tab(page, ui, ctx, ScreenId::MAIN, render_context);
     }
 
     pub fn logs_ui(
@@ -302,6 +303,8 @@ impl BlaulichtApp {
     ) {
         if generation != self.show_generation {
             self.reset_show_view_state();
+            // Belongs to the previous show's `ui` section.
+            self.legacy_main_screen_dock = None;
         }
         if let Some(section) = frontend_section {
             self.apply_showfile_ui_state(section);

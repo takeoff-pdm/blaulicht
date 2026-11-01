@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use blaulicht_shared::{AppPage, AppSubPage};
 use egui::{Context, Frame, Separator, Widget};
@@ -30,10 +30,60 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
     }
 }
 
+/// A page's name in the desktop sidebar (the mobile rail shows only icons).
+pub fn app_page_label(page: AppPage) -> &'static str {
+    match page {
+        AppPage::Logs => "Logs",
+        AppPage::System => "System",
+        AppPage::Audio => "Audio",
+        AppPage::Setup => "Setup",
+        AppPage::View => "Views",
+        AppPage::ViewPerformance => "View Performance",
+        AppPage::Programmer => "Programmer",
+        AppPage::Animations => "Animations",
+        AppPage::Palettes => "Palettes",
+        AppPage::SceneGraph => "Scene Graph",
+        AppPage::Visualizer => "Visualizer",
+    }
+}
+
+/// Something clicked in the desktop sidebar (`components::desktop_sidebar`),
+/// applied by [`Navbar::sidebar_click`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarClick {
+    /// A page row. For a page with sub-pages, the section header.
+    Page(AppPage),
+    /// A sub-page row inside its page's section.
+    SubPage(AppSubPage),
+    /// The fold arrow of a page's section.
+    ToggleSection(AppPage),
+    /// The startup status slot: opens Logs.
+    Status,
+}
+
+/// What a sidebar click changed, for the events that tell plugins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavChange {
+    /// Switched to this page.
+    Page(AppPage),
+    /// Selected this sub-page; `page_changed` if that also switched to its
+    /// page.
+    SubPage {
+        subpage: AppSubPage,
+        page_changed: bool,
+    },
+}
+
 pub struct Navbar {
     pub current_page: AppPage,
     /// Selected tab per page. Pages without an entry show their default tab.
     subpages: HashMap<AppPage, AppSubPage>,
+    /// Desktop sidebar: pages whose sub-page section is unfolded.
+    expanded: HashSet<AppPage>,
+    /// The current page when [`Navbar::sync_sections`] last ran, so that it
+    /// unfolds a section once per page change and a section folded by hand
+    /// stays folded.
+    synced_page: Option<AppPage>,
 }
 
 impl Navbar {
@@ -41,6 +91,8 @@ impl Navbar {
         let mut navbar = Self {
             current_page: AppPage::Logs,
             subpages: HashMap::new(),
+            expanded: HashSet::new(),
+            synced_page: None,
         };
         navbar.navigate_to(initial_page);
         navbar
@@ -78,6 +130,65 @@ impl Navbar {
             .get(&page)
             .copied()
             .or_else(|| page.default_subpage())
+    }
+
+    /// Desktop sidebar: whether `page`'s sub-pages are unfolded. Always
+    /// `false` for a page without sub-pages.
+    pub fn is_expanded(&self, page: AppPage) -> bool {
+        self.expanded.contains(&page)
+    }
+
+    /// Desktop sidebar: unfolds the current page's section when the current
+    /// page changed since the last call, however it changed (sidebar, mobile
+    /// rail, `NavigatePage` / `NavigateSubPage` events). Call once per frame
+    /// before drawing the sidebar.
+    pub fn sync_sections(&mut self) {
+        if self.synced_page == Some(self.current_page) {
+            return;
+        }
+        self.synced_page = Some(self.current_page);
+        self.expand(self.current_page);
+    }
+
+    fn expand(&mut self, page: AppPage) {
+        if !page.list_subpages().is_empty() {
+            self.expanded.insert(page);
+        }
+    }
+
+    /// Applies a desktop sidebar click. Returns what changed, `None` if the
+    /// click only folded a section or hit the entry already shown.
+    pub fn sidebar_click(&mut self, click: SidebarClick) -> Option<NavChange> {
+        match click {
+            SidebarClick::Page(page) => {
+                // Opens the page's selected (or default) sub-page, and shows
+                // its section.
+                self.expand(page);
+                if self.current_page == page {
+                    return None;
+                }
+                self.navigate_to(page);
+                Some(NavChange::Page(self.current_page))
+            }
+            SidebarClick::SubPage(subpage) => {
+                let page = subpage.page();
+                let page_changed = self.current_page != page;
+                let changed = page_changed || self.subpage(page) != Some(subpage);
+                self.navigate_to_subpage(subpage);
+                self.expand(page);
+                changed.then_some(NavChange::SubPage {
+                    subpage,
+                    page_changed,
+                })
+            }
+            SidebarClick::ToggleSection(page) => {
+                if !self.expanded.remove(&page) {
+                    self.expand(page);
+                }
+                None
+            }
+            SidebarClick::Status => self.sidebar_click(SidebarClick::Page(AppPage::Logs)),
+        }
     }
 
     /// `status`, if given, adds a slot below the pages; clicking it opens Logs.
@@ -146,9 +257,12 @@ impl Navbar {
     }
 }
 
-fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -> bool {
+/// Icon, short caption and color of the startup status slot.
+pub(crate) fn status_style(
+    indicator: StartupIndicator,
+) -> (&'static str, &'static str, egui::Color32) {
     use egui_phosphor::regular as icons;
-    let (icon, caption, color) = match status.indicator {
+    match indicator {
         StartupIndicator::Failed => (icons::WARNING, "FAIL", egui::Color32::LIGHT_RED),
         StartupIndicator::Restarting => (
             icons::ARROWS_CLOCKWISE,
@@ -156,7 +270,11 @@ fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -
             egui::Color32::from_rgb(240, 180, 60),
         ),
         StartupIndicator::Running => (icons::HOURGLASS, "BUSY", egui::Color32::LIGHT_BLUE),
-    };
+    }
+}
+
+fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -> bool {
+    let (icon, caption, color) = status_style(status.indicator);
 
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let painter = ui.painter_at(rect);
@@ -188,7 +306,7 @@ fn status_slot(ui: &mut egui::Ui, size: egui::Vec2, status: &NavbarStatus<'_>) -
 
 #[cfg(test)]
 mod tests {
-    use super::Navbar;
+    use super::{NavChange, Navbar, SidebarClick};
     use blaulicht_shared::{AppPage, AppSubPage};
 
     #[test]
@@ -262,5 +380,131 @@ mod tests {
 
         let navbar = Navbar::new(AppPage::Animations);
         assert_eq!(navbar.page(), AppPage::Setup);
+    }
+
+    #[test]
+    fn sidebar_subpage_click_navigates_and_unfolds() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        let change = navbar.sidebar_click(SidebarClick::SubPage(AppSubPage::System_Dmx));
+        assert_eq!(
+            change,
+            Some(NavChange::SubPage {
+                subpage: AppSubPage::System_Dmx,
+                page_changed: true,
+            })
+        );
+        assert_eq!(navbar.page(), AppPage::System);
+        assert_eq!(
+            navbar.subpage(AppPage::System),
+            Some(AppSubPage::System_Dmx)
+        );
+        assert!(navbar.is_expanded(AppPage::System));
+
+        // Another tab of the same page.
+        let change = navbar.sidebar_click(SidebarClick::SubPage(AppSubPage::System_Midi));
+        assert_eq!(
+            change,
+            Some(NavChange::SubPage {
+                subpage: AppSubPage::System_Midi,
+                page_changed: false,
+            })
+        );
+        // The tab already shown.
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::SubPage(AppSubPage::System_Midi)),
+            None
+        );
+    }
+
+    #[test]
+    fn sidebar_page_click_opens_the_selected_or_default_subpage() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::Page(AppPage::Setup)),
+            Some(NavChange::Page(AppPage::Setup))
+        );
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Fixtures)
+        );
+        assert!(navbar.is_expanded(AppPage::Setup));
+
+        navbar.sidebar_click(SidebarClick::SubPage(AppSubPage::Setup_Palettes));
+        navbar.sidebar_click(SidebarClick::Page(AppPage::Programmer));
+        assert_eq!(navbar.page(), AppPage::Programmer);
+        // A page without sub-pages has no section to unfold.
+        assert!(!navbar.is_expanded(AppPage::Programmer));
+
+        navbar.sidebar_click(SidebarClick::Page(AppPage::Setup));
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Palettes)
+        );
+        // Clicking the page already shown changes nothing.
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::Page(AppPage::Setup)),
+            None
+        );
+    }
+
+    #[test]
+    fn sections_unfold_once_per_page_change() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        navbar.sync_sections();
+        assert!(!navbar.is_expanded(AppPage::System));
+
+        // Navigation from elsewhere (an event, the mobile rail) unfolds the
+        // current page's section.
+        navbar.navigate_to_subpage(AppSubPage::System_Serial);
+        navbar.sync_sections();
+        assert!(navbar.is_expanded(AppPage::System));
+
+        // Folded by hand: stays folded while the page stays.
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::System)),
+            None
+        );
+        navbar.sync_sections();
+        assert!(!navbar.is_expanded(AppPage::System));
+        assert_eq!(navbar.page(), AppPage::System);
+
+        // Leaving and coming back unfolds it again; other sections keep
+        // their state.
+        navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::Setup));
+        navbar.navigate_to(AppPage::Audio);
+        navbar.sync_sections();
+        navbar.navigate_to(AppPage::System);
+        navbar.sync_sections();
+        assert!(navbar.is_expanded(AppPage::System));
+        assert!(navbar.is_expanded(AppPage::Setup));
+
+        navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::Setup));
+        assert!(!navbar.is_expanded(AppPage::Setup));
+        // Pages without sub-pages never unfold.
+        navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::Logs));
+        assert!(!navbar.is_expanded(AppPage::Logs));
+    }
+
+    #[test]
+    fn sidebar_status_opens_logs() {
+        let mut navbar = Navbar::new(AppPage::Programmer);
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::Status),
+            Some(NavChange::Page(AppPage::Logs))
+        );
+        assert_eq!(navbar.sidebar_click(SidebarClick::Status), None);
+    }
+
+    #[test]
+    fn moved_pages_open_their_setup_tab_from_the_sidebar() {
+        let mut navbar = Navbar::new(AppPage::Logs);
+        assert_eq!(
+            navbar.sidebar_click(SidebarClick::Page(AppPage::Palettes)),
+            Some(NavChange::Page(AppPage::Setup))
+        );
+        assert_eq!(
+            navbar.subpage(AppPage::Setup),
+            Some(AppSubPage::Setup_Palettes)
+        );
     }
 }

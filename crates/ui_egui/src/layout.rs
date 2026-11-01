@@ -99,8 +99,14 @@ mod tests {
 
     #[test]
     fn reads_the_layout_query_parameter() {
-        assert_eq!(UiLayout::from_query("?layout=desktop"), Some(UiLayout::Desktop));
-        assert_eq!(UiLayout::from_query("layout=mobile"), Some(UiLayout::Mobile));
+        assert_eq!(
+            UiLayout::from_query("?layout=desktop"),
+            Some(UiLayout::Desktop)
+        );
+        assert_eq!(
+            UiLayout::from_query("layout=mobile"),
+            Some(UiLayout::Mobile)
+        );
         assert_eq!(
             UiLayout::from_query("?debug=1&layout=desktop"),
             Some(UiLayout::Desktop)

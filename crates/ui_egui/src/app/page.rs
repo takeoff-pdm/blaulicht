@@ -1,5 +1,6 @@
 use crate::app::view_state::ScreenId;
 use crate::app::{components, BlaulichtApp};
+use crate::layout::UiLayout;
 use blaulicht_engine::client::EngineClient;
 use blaulicht_shared::{
     AppPage, AppSubPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
@@ -21,6 +22,10 @@ pub struct PageRenderContext {
     /// Only the visualizer reads it.
     #[cfg_attr(not(feature = "visualizer"), allow(dead_code))]
     pub(crate) short: bool,
+    /// Whether pages with sub-pages draw their tab bar
+    /// ([`BlaulichtApp::subpage_ui`]). Off in the desktop layout's main
+    /// window, whose sidebar lists the sub-pages instead.
+    subpage_tabs: bool,
 }
 
 impl PageRenderContext {
@@ -39,7 +44,34 @@ impl PageRenderContext {
             size: egui::vec2(width, height),
             width_class,
             short: height < 480.0,
+            subpage_tabs: true,
         }
+    }
+
+    /// The context of the main window's page, which fills its central panel.
+    /// - Mobile: the kiosk rendering (`Default`), with sub-page tab bars.
+    /// - Desktop: `Dynamic` rendering (the page reflows with the window, as in
+    ///   a "Dynamic" dock tile), without tab bars: the sidebar lists the
+    ///   sub-pages.
+    pub(crate) fn for_main_screen(layout: UiLayout, size: egui::Vec2) -> Self {
+        use blaulicht_engine::config::PageRenderMode;
+        match layout {
+            UiLayout::Mobile => Self::new(PageRenderMode::Default, size),
+            UiLayout::Desktop => Self::new(PageRenderMode::Dynamic, size).without_subpage_tabs(),
+        }
+    }
+
+    /// Pages render without their sub-page tab bar: something else (the
+    /// desktop sidebar) selects the sub-page.
+    pub(crate) fn without_subpage_tabs(self) -> Self {
+        Self {
+            subpage_tabs: false,
+            ..self
+        }
+    }
+
+    pub(crate) fn shows_subpage_tabs(self) -> bool {
+        self.subpage_tabs
     }
 
     pub(crate) fn is_dynamic(self) -> bool {
@@ -109,14 +141,20 @@ impl BlaulichtApp {
 
     /// Renders `page` with its sub-page tab bar along the bottom edge and calls
     /// `content` with the active tab and a `Ui` for the area above the bar.
+    /// Without tabs in `render_context` (the desktop layout, where the sidebar
+    /// selects the tab), `content` gets all of `ui` and no bar is drawn.
     /// Returns `None`, drawing nothing, if `page` has no sub-pages.
     pub(crate) fn subpage_ui<R>(
         &mut self,
         ui: &mut egui::Ui,
         page: AppPage,
+        render_context: PageRenderContext,
         content: impl FnOnce(&mut Self, &mut egui::Ui, AppSubPage) -> R,
     ) -> Option<R> {
         let active = self.current_subpage(page)?;
+        if !render_context.shows_subpage_tabs() {
+            return Some(content(self, ui, active));
+        }
         let (mut content_ui, clicked) =
             components::subpage_tabs_layout(ui, page.list_subpages(), active);
         let active = match clicked {
@@ -211,6 +249,29 @@ mod tests {
             .width_class,
             PageWidthClass::Wide
         );
+    }
+
+    #[test]
+    fn main_screen_context_follows_the_layout() {
+        let size = egui::vec2(1_000.0, 700.0);
+        let mobile = PageRenderContext::for_main_screen(UiLayout::Mobile, size);
+        assert!(!mobile.is_dynamic());
+        assert!(mobile.shows_subpage_tabs());
+        let desktop = PageRenderContext::for_main_screen(UiLayout::Desktop, size);
+        assert!(desktop.is_dynamic());
+        assert!(!desktop.shows_subpage_tabs());
+    }
+
+    #[test]
+    fn subpage_tabs_are_on_unless_turned_off() {
+        let context = PageRenderContext::new(
+            blaulicht_engine::config::PageRenderMode::Default,
+            egui::vec2(800.0, 480.0),
+        );
+        assert!(context.shows_subpage_tabs());
+        let desktop = context.without_subpage_tabs();
+        assert!(!desktop.shows_subpage_tabs());
+        assert_eq!(desktop.size, context.size);
     }
 
     #[test]

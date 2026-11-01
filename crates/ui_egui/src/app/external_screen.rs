@@ -712,7 +712,7 @@ impl BlaulichtApp {
     /// with the plugin disabled and no monitor attached.
     pub(crate) fn showfile_ui_state(&self) -> ShowfileUiState {
         ShowfileUiState {
-            main_screen_desktop_mode: Some(self.main_screen_desktop_mode.to_showfile()),
+            main_screen_desktop_mode: self.legacy_main_screen_dock.clone(),
             external_screens: showfile_external_screens(&self.external_screens),
         }
     }
@@ -722,9 +722,7 @@ impl BlaulichtApp {
     /// kept, and plugin-owned entries in the showfile (written by older
     /// builds) are ignored.
     pub(crate) fn apply_showfile_ui_state(&mut self, ui_state: ShowfileUiState) {
-        if let Some(main_screen) = ui_state.main_screen_desktop_mode {
-            self.main_screen_desktop_mode = ExternalScreen::from_showfile(main_screen);
-        }
+        self.legacy_main_screen_dock = ui_state.main_screen_desktop_mode;
 
         let current = std::mem::take(&mut self.external_screens);
         self.external_screens =
