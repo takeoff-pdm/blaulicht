@@ -23,7 +23,9 @@ use strum::EnumIter;
 //      ControlEvent gained `ReorderFolder` (ticket 031).
 // v18: AppSubPage gained `Setup_Animations` and `Setup_Palettes`; the Animations
 //      and Palettes pages moved into Setup (ticket 010).
-pub const PLUGIN_ABI_VERSION: u32 = 18;
+// v19: Light gained `VarytecStarstrip10_10Chan` and MovingHead gained
+//      `MartinRushMH6Wash_14Chan`, so the encoded EngineState can hold new variants.
+pub const PLUGIN_ABI_VERSION: u32 = 19;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {
