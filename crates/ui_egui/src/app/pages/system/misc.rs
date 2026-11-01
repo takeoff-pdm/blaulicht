@@ -127,11 +127,14 @@ impl BlaulichtApp {
                             .font(FontId::monospace(14.0)),
                     );
                     if let Some(path) = &showfile {
-                        name_label.on_hover_text(
+                        // A remote UI can't resolve a path on the engine's
+                        // host against its own working directory.
+                        let path = if self.client.is_remote() {
+                            path.clone()
+                        } else {
                             blaulicht_engine::config::absolute_showfile_path(path)
-                                .to_string_lossy()
-                                .into_owned(),
-                        );
+                        };
+                        name_label.on_hover_text(path.to_string_lossy().into_owned());
                     }
 
                     if let Some(saved_at) = self.saved_at {
@@ -150,6 +153,14 @@ impl BlaulichtApp {
                         );
                     }
                 });
+
+                if let Some(line) = self.remote_status_line() {
+                    ui.label(
+                        egui::RichText::new(line)
+                            .color(Color32::from_gray(140))
+                            .font(FontId::monospace(12.0)),
+                    );
+                }
 
                 ui.add_space(3.0);
 
@@ -183,16 +194,20 @@ impl BlaulichtApp {
                 ui.separator();
                 ui.add_space(15.0);
 
+                // Quitting or restarting the engine and shutting down its
+                // device are left to the desk; a remote UI's external
+                // screens would be the desk's windows.
+                let remote = self.client.is_remote();
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "Quit", button_size) {
+                    if !remote && components::button(ui, false, "Quit", button_size) {
                         self.request_guarded_lifecycle(GuardedLifecycleAction::Quit);
                     }
 
-                    if components::button(ui, false, "Restart", button_size) {
+                    if !remote && components::button(ui, false, "Restart", button_size) {
                         self.request_guarded_lifecycle(GuardedLifecycleAction::Restart);
                     }
 
-                    if components::button(ui, false, "Shutdown", button_size) {
+                    if !remote && components::button(ui, false, "Shutdown", button_size) {
                         self.system_ui_state.confirm_shutdown_open = true;
                     }
 
@@ -201,7 +216,7 @@ impl BlaulichtApp {
                         self.system_ui_state.debug_open = !self.system_ui_state.debug_open;
                     }
 
-                    if components::button(ui, false, "Add Screen", button_size) {
+                    if !remote && components::button(ui, false, "Add Screen", button_size) {
                         self.add_external_screen();
                     }
                 });
@@ -325,6 +340,12 @@ impl BlaulichtApp {
                         ui.label(format!("{name}  {state:?}"));
                     }
                 }),
+                AppSubPage::System_Screens if self.client.is_remote() => {
+                    ui.label(
+                        "External screens are windows of the desk, on the engine's \
+                         device. Manage them there.",
+                    );
+                }
                 AppSubPage::System_Screens => {
                     if components::button(ui, false, "Add Screen", ButtonSize::Medium) {
                         self.add_external_screen();

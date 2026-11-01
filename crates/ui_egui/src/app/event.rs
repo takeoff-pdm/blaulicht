@@ -167,7 +167,11 @@ impl BlaulichtApp {
                         self.save_status = status.save;
                         self.saved_at = status.saved_at;
                     }
-                    SystemMessage::Exiting { .. } => self.exit_requested = true,
+                    // A remote UI stays open and shows the dropped
+                    // connection instead.
+                    SystemMessage::Exiting { .. } => {
+                        self.exit_requested = !self.client.is_remote();
+                    }
                     SystemMessage::DeskRequest(request) => {
                         self.view_state.apply_desk_request(request);
                     }

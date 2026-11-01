@@ -31,6 +31,7 @@ use web_time::{Instant, SystemTime};
 mod app_navbar;
 mod commands;
 pub mod components;
+mod connection;
 mod debug;
 mod event;
 pub mod external_screen;
@@ -187,6 +188,8 @@ pub struct BlaulichtApp {
     /// Closures waiting for the results of the desk's commands; run by
     /// `handle_events` (`ReplyHandlers::send_then`).
     reply_handlers: ReplyHandlers<BlaulichtApp>,
+    /// A remote client's reconnects (`connection.rs`).
+    connection_ui: connection::ConnectionUi,
 
     fps_samples: VecDeque<f32>,
     tick_speeds: TickSpeeds,
@@ -420,6 +423,7 @@ impl BlaulichtApp {
             spectrogram_ring: pages::SpectrogramRing::default(),
             client,
             reply_handlers: ReplyHandlers::default(),
+            connection_ui: connection::ConnectionUi::default(),
             tick_speeds: TickSpeeds::default(),
             loop_speed_graph: TimeSeriesGraph::new(
                 "Loop (ms)".to_string(),

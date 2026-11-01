@@ -129,14 +129,17 @@ impl BlaulichtApp {
 
     pub fn render_showfile_buttons(&mut self, ui: &mut Ui, button_size: ButtonSize) {
         ui.horizontal(|ui| {
+            // The file dialogs browse this machine, so they're no use to a
+            // remote UI: showfile paths are the engine host's.
             #[cfg(feature = "file-dialog")]
-            if components::button(ui, false, "Load Showfile", button_size) {
-                self.open_load_showfile_dialog();
-            }
+            if !self.client.is_remote() {
+                if components::button(ui, false, "Load Showfile", button_size) {
+                    self.open_load_showfile_dialog();
+                }
 
-            #[cfg(feature = "file-dialog")]
-            if components::button(ui, false, "Save to Showfile", button_size) {
-                self.open_save_showfile_dialog();
+                if components::button(ui, false, "Save to Showfile", button_size) {
+                    self.open_save_showfile_dialog();
+                }
             }
 
             let showfile_open = self.client.showfile_path().is_some();

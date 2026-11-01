@@ -17,12 +17,30 @@ use blaulicht_engine::{
     frontend_ui::FrontendUiSnapshot,
     hub::{BusBody, BusMessage, ClientId, CommandResult, CommandSeq, SessionId},
     msg::SystemMessage,
+    server::protocol::Stream,
     state::{AppHealthState, ArtNetReceiver, PluginRuntimeKind, PluginState},
     ui_ops::WasmUiOp,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
 use blaulicht_engine::client::LocalClient;
+
+/// The streams a remote UI receives: what its pages read, without the bus
+/// (plugins' navigation requests are the desk's) and with the spectrogram
+/// only for the Audio page (it is the biggest).
+pub fn remote_streams(audio_page: bool) -> Vec<Stream> {
+    let mut streams = vec![
+        Stream::Dmx,
+        Stream::Health,
+        Stream::Status,
+        Stream::PluginUi,
+        Stream::AnimationEditorUi,
+    ];
+    if audio_page {
+        streams.push(Stream::Spectrogram);
+    }
+    streams
+}
 
 /// The frontend's client: [`LocalClient`] in the engine's process (never on
 /// wasm32), or a [`RemoteClient`].

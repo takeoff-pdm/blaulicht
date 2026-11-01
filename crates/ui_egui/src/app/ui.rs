@@ -42,7 +42,16 @@ impl BlaulichtApp {
     ) -> Self {
         let mut app = Self::new_default(client, desktop_mode, showfile_home, config_dir);
 
-        cc.egui_ctx.set_pixels_per_point(1.0);
+        // The desk's layout is made for its 800x480 touchscreen at 1:1. In a
+        // browser the page keeps the device's pixel ratio and zooms the
+        // layout to the window instead (`fit_web_zoom`).
+        if !cfg!(target_arch = "wasm32") {
+            cc.egui_ctx.set_pixels_per_point(1.0);
+        } else {
+            // A browser would pass on its light or dark preference; start
+            // dark like the desk (System > General switches).
+            cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
+        }
 
         app.animation_time = 0.0;
 
@@ -87,7 +96,10 @@ impl eframe::App for BlaulichtApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
 
         self.handle_events();
+        self.sync_remote_streams();
         self.publish_ui_mirror();
+        #[cfg(target_arch = "wasm32")]
+        fit_web_zoom(ctx);
         // Give an open numberpad first priority. After rendering, any remaining
         // delta adjusts the recent fixture property instead.
         crate::app::components::publish_relative_adjustment(
@@ -113,6 +125,10 @@ impl eframe::App for BlaulichtApp {
 
         if ctx.style().visuals.dark_mode {
             theme::set_theme(ctx, theme::BLUE);
+        }
+
+        if self.render_connection_notice(ctx) {
+            return;
         }
 
         if self.render_init_popup(ctx) {
@@ -294,7 +310,7 @@ impl BlaulichtApp {
     /// Drops view state that holds ids of the previous show: selections and
     /// dialog targets, the scene graph canvas, the visualizer's selection and
     /// undo. Sessions are repaired by the engine.
-    fn reset_show_view_state(&mut self) {
+    pub(crate) fn reset_show_view_state(&mut self) {
         self.visualizer_ui_state.reset_stage_view();
         self.selected_fixture_group = None;
         self.setup_fixture_id = 0;
@@ -315,9 +331,11 @@ impl BlaulichtApp {
     }
 
     /// Publishes the screen layouts (the showfile's `ui` section) when they
-    /// changed, once the engine announced a show to publish them for.
+    /// changed, once the engine announced a show to publish them for. Only
+    /// the desk's are saved (`HostCommand::is_desk_only`); a remote UI keeps
+    /// its own.
     fn publish_frontend_section(&mut self) {
-        if self.show_generation == 0 {
+        if self.show_generation == 0 || self.client.is_remote() {
             return;
         }
         let section = self.showfile_ui_state();
@@ -412,5 +430,22 @@ impl BlaulichtApp {
         if response.cancel_requested {
             self.pending_lifecycle_action = None;
         }
+    }
+}
+
+/// The kiosk layout is made for 800x480 points. In a browser, zoom it to the
+/// window (the page keeps the device's pixel ratio): a tablet gets the desk's
+/// layout scaled to its screen, a big window a moderately larger one.
+#[cfg(target_arch = "wasm32")]
+fn fit_web_zoom(ctx: &Context) {
+    const LAYOUT: egui::Vec2 = egui::vec2(800.0, 480.0);
+    let zoom = ctx.zoom_factor();
+    // The window in CSS pixels.
+    let window = ctx.screen_rect().size() * zoom;
+    let fit = (window.x / LAYOUT.x)
+        .min(window.y / LAYOUT.y)
+        .clamp(0.6, 1.5);
+    if (fit - zoom).abs() > 0.01 {
+        ctx.set_zoom_factor(fit);
     }
 }

@@ -1,5 +1,6 @@
 //! Stand-in for the visualizer in builds without the `visualizer` feature
-//! (three-d and glow): the page shows a notice, everything else is a no-op.
+//! (three-d and glow), such as the web UI: the page shows a notice,
+//! everything else is a no-op.
 
 use egui::Context;
 
@@ -31,6 +32,10 @@ impl BlaulichtApp {
     ) {
         ui.heading("Visualizer");
         ui.add_space(4.0);
-        ui.label("This build has no visualizer (feature \"visualizer\" is off).");
+        if cfg!(target_arch = "wasm32") {
+            ui.label("The web UI has no visualizer yet. Use it on the desk.");
+        } else {
+            ui.label("This build has no visualizer (feature \"visualizer\" is off).");
+        }
     }
 }
