@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build blaulicht-core (the desk), blaulicht-headless and/or plugins inside the blenv container.
-#   build.sh [core|headless|plugins|all] [plugin-dir...]
+# Build blaulicht-core (the desk), blaulicht-headless, the web UI and/or plugins inside the blenv container.
+#   build.sh [core|headless|web|plugins|all] [plugin-dir...]
 set -euo pipefail
 cd /work
 
@@ -29,6 +29,31 @@ build_headless() {
     echo "==> blaulicht-headless (features: $HEADLESS_FEATURES)"
     cargo build -p blaulicht-engine --bin blaulicht-headless --no-default-features \
         --features "$HEADLESS_FEATURES"
+}
+
+# The web UI bundle (crates/web/build.sh --lint) into $CARGO_TARGET_DIR/web, where the
+# engine in $CARGO_TARGET_DIR/debug finds it. Installs wasm-bindgen-cli (the exact version
+# in Cargo.lock, prebuilt, into the cargo volume) on first use.
+build_web() {
+    local want have
+    want=$(awk '$0 == "name = \"wasm-bindgen\"" { getline; gsub(/"/, "", $3); print $3; exit }' Cargo.lock)
+    have=$("$CARGO_HOME/bin/wasm-bindgen" --version 2>/dev/null | awk '{ print $2 }' || true)
+    if [[ $have != "$want" ]]; then
+        echo "==> installing wasm-bindgen-cli $want into $CARGO_HOME/bin"
+        local tmp name
+        tmp=$(mktemp -d)
+        name="wasm-bindgen-$want-$(uname -m)-unknown-linux-gnu"
+        if curl -fsSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$want/$name.tar.gz" \
+            | tar -xz -C "$tmp"; then
+            mkdir -p "$CARGO_HOME/bin"
+            install -m 755 "$tmp/$name/wasm-bindgen" "$CARGO_HOME/bin/wasm-bindgen"
+        else
+            cargo install wasm-bindgen-cli --version "$want" --locked --root "$CARGO_HOME"
+        fi
+        rm -rf "$tmp"
+    fi
+    echo "==> web UI"
+    crates/web/build.sh --lint
 }
 
 build_plugins() {
@@ -61,7 +86,8 @@ build_plugins() {
 case "$what" in
     core) build_core ;;
     headless) build_headless ;;
+    web) build_web ;;
     plugins) build_plugins ;;
     all) build_plugins && build_core ;;
-    *) echo "usage: build.sh [core|headless|plugins|all] [plugin-dir...]" >&2; exit 2 ;;
+    *) echo "usage: build.sh [core|headless|web|plugins|all] [plugin-dir...]" >&2; exit 2 ;;
 esac

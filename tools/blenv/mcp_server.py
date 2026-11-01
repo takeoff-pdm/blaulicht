@@ -64,10 +64,11 @@ def blenv_down(volumes: bool = False) -> str:
 
 @mcp.tool()
 def blenv_build(what: str = "all", plugins: Optional[list[str]] = None) -> str:
-    """Build in the container: what = all | core | headless | plugins. First build takes minutes.
+    """Build in the container: what = all | core | headless | web | plugins. First build takes minutes.
 
     core is the desk (blaulicht-core, engine + egui UI); headless is blaulicht-headless
-    (engine only, not part of all).
+    (engine only, not part of all); web is the browser UI bundle the engine serves on its
+    port (crates/web/build.sh into $CARGO_TARGET_DIR/web; not part of all).
 
     plugins: plugin dirs under crates/plugins (default: inspector + sample/animation set).
     Returns the exit code and the tail of the build output.

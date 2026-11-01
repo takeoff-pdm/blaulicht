@@ -71,6 +71,11 @@ build-archive-x64-debug: cargo-build-x64-debug
 	tar -cvzf dist/blaulicht-x86_64-unknown-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
 	rm -rf $(BUILD_OUTPUT_DIR)
 
+# The web UI bundle (crates/web/build.sh) into target/web, where the engine
+# serves it from target/debug or target/release. Not in the archives yet.
+build-web:
+	crates/web/build.sh --lint
+
 release: clean build-archives gh-release
 
 # Publish the local release to Github releases

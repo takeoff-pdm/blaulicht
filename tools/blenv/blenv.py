@@ -568,8 +568,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub.add_parser("status")
     sub.add_parser("shell", help="interactive shell in the container")
 
-    p = sub.add_parser("build", help="build core (desk), headless and/or plugins in the container")
-    p.add_argument("what", nargs="?", default="all", choices=["all", "core", "headless", "plugins"])
+    p = sub.add_parser("build", help="build core (desk), headless, the web UI and/or plugins in the container")
+    p.add_argument("what", nargs="?", default="all",
+                   choices=["all", "core", "headless", "web", "plugins"])
     p.add_argument("plugins", nargs="*", help="plugin dirs (default: blenv set)")
 
     p = sub.add_parser("run", help="(re)start the app and wait for the inspector")

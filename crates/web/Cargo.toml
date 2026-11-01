@@ -1,0 +1,31 @@
+[package]
+name = "blaulicht-web"
+version = "0.30.0"
+authors = ["MikMuellerDev"]
+edition = "2021"
+publish = false
+rust-version = "1.76"
+description = "The web frontend: the egui UI compiled to wasm32, served by the engine and connected to it as a remote client."
+
+# Only a wasm32 build has content (see src/lib.rs); `crates/web/build.sh`
+# builds the bundle. Everything below is wasm32-only, so native workspace
+# builds compile an empty crate.
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+blaulicht-engine = { path = "../engine", default-features = false }
+blaulicht-ui-egui = { path = "../ui_egui", default-features = false }
+eframe = { version = "0.34.1", default-features = false, features = ["default_fonts", "glow"] }
+log = "0.4"
+# `log`: without a tracing subscriber, tracing events become log records,
+# which eframe's WebLogger prints to the browser console.
+tracing = { version = "0.1.44", features = ["log"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Location", "Window"] }
+# rand (engine, audio engine) and tungstenite reach getrandom; in a browser
+# it needs its JS backend. Enabled here, for the web build only: plugins also
+# build for wasm32-unknown-unknown but run in wasmtime without JS.
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }

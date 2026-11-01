@@ -14,11 +14,23 @@ incremental = true
 # incremental = true
 debug = true
 
+# The web frontend's bundle (crates/web/build.sh): small, since every
+# browser downloads it.
+[profile.web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = false
+strip = true
+incremental = false
+
 [workspace]
 members = [
     "./crates/core",
     "./crates/engine",
     "./crates/ui_egui",
+    "./crates/web",
     "./crates/shared",
     "./crates/plugin_framework",
     "./crates/audio_engine",
