@@ -20,6 +20,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::legacy::virtual_midi::{VirtualMidi, VIRTUAL_DEVICE_ID};
 use crate::korg::{FADER_BYTES, SELECT_BUTTON_STARTER};
+use crate::legacy::view_loop::ViewLoopConfig;
 use crate::legacy::LegacyState;
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,10 @@ const LEARN_FLASH_ON: u32 = 420;
 /// Latched (auto-hold) pads flash bright/dim in their own colour.
 const HOLD_FLASH_PERIOD: u32 = 500;
 const HOLD_FLASH_ON: u32 = 250;
+/// "Toggle view loop" buttons blink rapidly while the loop runs and stay lit
+/// while it is off.
+const LOOP_FLASH_PERIOD: u32 = 300;
+const LOOP_FLASH_ON: u32 = 150;
 
 // ---------------------------------------------------------------------------
 // Reserved pads: still driven by the hardcoded legacy arms in mod.rs.
@@ -359,12 +364,12 @@ fn one_or_many<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
 pub enum Action {
     TriggerView(u8),
     /// View active while the button is held; the look present at press time is
-    /// restored on release. Shift+press latches it until the button is tapped.
+    /// restored on release. Shift+press (or shift while held) latches it until the button is tapped.
     HoldView(u8),
     FocusScene(u8),
     ToggleOverlay(u8),
     /// Overlay active while the button is held (press adds, release removes).
-    /// Shift+press latches it (auto-hold) until the button is tapped again.
+    /// Shift+press (or shift while held) latches it (auto-hold) until the button is tapped again.
     HoldOverlay(u8),
     NavigatePage(AppPage),
     TogglePluginUi(u8),
@@ -375,6 +380,8 @@ pub enum Action {
     /// Button: master alpha of every listed scene is `alpha` while held; the
     /// previous values are restored on release.
     HoldSceneAlpha { scenes: Vec<u8>, alpha: u8 },
+    /// Button: turns the view loop (auto mode) on or off.
+    ToggleViewLoop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,10 +396,11 @@ pub enum ActionKind {
     SceneMasterAlpha,
     SceneMasterSpeed,
     HoldSceneAlpha,
+    ToggleViewLoop,
 }
 
 impl ActionKind {
-    const BUTTON_KINDS: [ActionKind; 8] = [
+    const BUTTON_KINDS: [ActionKind; 9] = [
         ActionKind::TriggerView,
         ActionKind::HoldView,
         ActionKind::FocusScene,
@@ -401,6 +409,7 @@ impl ActionKind {
         ActionKind::HoldSceneAlpha,
         ActionKind::NavigatePage,
         ActionKind::TogglePluginUi,
+        ActionKind::ToggleViewLoop,
     ];
     const FADER_KINDS: [ActionKind; 2] =
         [ActionKind::SceneMasterAlpha, ActionKind::SceneMasterSpeed];
@@ -424,6 +433,7 @@ impl ActionKind {
             ActionKind::SceneMasterAlpha => "Scene master alpha (scene list)",
             ActionKind::SceneMasterSpeed => "Scene master speed (scene list)",
             ActionKind::HoldSceneAlpha => "Hold scene alpha while pressed",
+            ActionKind::ToggleViewLoop => "Toggle view loop (auto mode)",
         }
     }
 
@@ -437,6 +447,7 @@ impl ActionKind {
             ActionKind::HoldSceneAlpha => 5,    // red
             ActionKind::NavigatePage => 45,     // blue
             ActionKind::TogglePluginUi => 53,   // magenta
+            ActionKind::ToggleViewLoop => 57,   // pink
             ActionKind::SceneMasterAlpha | ActionKind::SceneMasterSpeed => 0,
         }
     }
@@ -467,6 +478,7 @@ impl ActionKind {
             ActionKind::TogglePluginUi => (0..PLUGIN_ID_CHOICES)
                 .map(|id| (id, format!("Plugin window #{id}")))
                 .collect(),
+            ActionKind::ToggleViewLoop => Vec::new(),
         }
     }
 
@@ -487,7 +499,13 @@ impl ActionKind {
                 scenes: vec![code],
                 alpha: 0,
             },
+            ActionKind::ToggleViewLoop => Action::ToggleViewLoop,
         }
+    }
+
+    /// Actions that need no target pick.
+    fn has_target(&self) -> bool {
+        !matches!(self, ActionKind::ToggleViewLoop)
     }
 }
 
@@ -504,6 +522,7 @@ impl Action {
             Action::SceneMasterAlpha(_) => ActionKind::SceneMasterAlpha,
             Action::SceneMasterSpeed(_) => ActionKind::SceneMasterSpeed,
             Action::HoldSceneAlpha { .. } => ActionKind::HoldSceneAlpha,
+            Action::ToggleViewLoop => ActionKind::ToggleViewLoop,
         }
     }
 
@@ -587,6 +606,7 @@ impl Action {
             Action::HoldSceneAlpha { scenes, alpha } => {
                 format!("Hold alpha {alpha}%: {}", scene_names(scenes))
             }
+            Action::ToggleViewLoop => "View loop on/off".to_string(),
         }
     }
 }
@@ -603,6 +623,9 @@ pub struct Mapping {
 struct PersistedMappings {
     version: u32,
     mappings: Vec<Mapping>,
+    /// The View Loop tab's list; older showfiles have none.
+    #[serde(default)]
+    view_loop: ViewLoopConfig,
 }
 
 /// Shape written by the retired view-trigger wizard; migrated on load.
@@ -647,6 +670,7 @@ impl LegacyState {
 
         if let Ok(state) = serde_json::from_str::<PersistedMappings>(&json) {
             self.mappings = state.mappings;
+            self.view_loop.config = state.view_loop;
             // Shift became a modifier; a mapping on it from an older showfile
             // would swallow every shift press.
             let before = self.mappings.len();
@@ -686,6 +710,7 @@ impl LegacyState {
         let state = PersistedMappings {
             version: 1,
             mappings: self.mappings.clone(),
+            view_loop: self.view_loop.config.clone(),
         };
         match serde_json::to_string(&state) {
             Ok(json) => bpf::save_plugin_state(bpf::PluginStateLocation::Showfile, &json),
@@ -823,6 +848,12 @@ impl LegacyState {
                 // press+release at once, so there it toggles instead of holding.
                 (144, SHIFT_NOTE, v) if v > 0 => {
                     self.shift_held = if synthetic { !self.shift_held } else { true };
+                    if self.shift_held {
+                        // Shift after the pad works too: latch whatever hold
+                        // pads are already down, so their release keeps them.
+                        let pressed = std::mem::take(&mut self.pressed_holds);
+                        self.latched_holds.extend(pressed);
+                    }
                     return true;
                 }
                 (128, SHIFT_NOTE, _) | (144, SHIFT_NOTE, 0) => {
@@ -845,6 +876,7 @@ impl LegacyState {
             Input::Release => {
                 // Swallow the release of a mapped/learnable control so legacy
                 // release arms don't fire for it; everything else passes through.
+                self.pressed_holds.remove(&control);
                 if let Some(idx) = self.mapping_index(control) {
                     // Twin clicks deliver press+release together; their hold
                     // actions toggled on press, so ignore the release. A
@@ -951,7 +983,10 @@ impl LegacyState {
                                     // when the view is already held.
                                     _ => self.execute(control, &action, value),
                                 },
-                                HoldPress::Hold => self.execute(control, &action, value),
+                                HoldPress::Hold => {
+                                    self.pressed_holds.insert(control);
+                                    self.execute(control, &action, value)
+                                }
                             }
                         }
                         _ => self.execute(control, &action, value),
@@ -1093,6 +1128,11 @@ impl LegacyState {
                 self.page_update_from_ui = false;
                 self.pending_app_page_sync = true;
             }
+            Action::ToggleViewLoop => {
+                self.view_loop.toggle();
+                let state = if self.view_loop.running { "on" } else { "off" };
+                self.push_mapping_log(format!("View loop {state}"));
+            }
             Action::TogglePluginUi(plugin_id) => {
                 let open = !self.plugin_ui_open.get(plugin_id).copied().unwrap_or(false);
                 self.plugin_ui_open.insert(*plugin_id, open);
@@ -1145,6 +1185,7 @@ impl LegacyState {
             Action::HoldSceneAlpha { .. } => self.held_alphas.contains_key(&m.control),
             Action::NavigatePage(p) => self.current_app_page == Some(*p),
             Action::TogglePluginUi(id) => self.plugin_ui_open.get(id).copied().unwrap_or(false),
+            Action::ToggleViewLoop => self.view_loop.running,
             Action::SceneMasterAlpha(_) | Action::SceneMasterSpeed(_) => false,
         }
     }
@@ -1168,8 +1209,18 @@ impl LegacyState {
         let mut desired = BTreeMap::new();
 
         let hold_phase_on = clock % HOLD_FLASH_PERIOD < HOLD_FLASH_ON;
+        let loop_lit = self.view_loop_led_lit(clock);
         for m in &self.mappings {
             if let Some(note) = m.control.note() {
+                if m.action == Action::ToggleViewLoop {
+                    let color = match (loop_lit, is_single_led(note)) {
+                        (false, _) => LED_OFF,
+                        (true, true) => LED_WHITE,
+                        (true, false) => m.color,
+                    };
+                    desired.insert(note, color);
+                    continue;
+                }
                 let bright = if self.latched_holds.contains(&m.control) {
                     hold_phase_on
                 } else {
@@ -1220,13 +1271,21 @@ impl LegacyState {
         desired
     }
 
+    /// Whether a "Toggle view loop" button LED is lit right now: rapid blink
+    /// while the loop runs, solid while it is off.
+    fn view_loop_led_lit(&self, clock: u32) -> bool {
+        !self.view_loop.running || clock % LOOP_FLASH_PERIOD < LOOP_FLASH_ON
+    }
+
     /// MIDI Mix button LEDs: single colour, note-on 127 = on, 0 = off.
     fn desired_mix_leds(&self, clock: u32, dmx: &EngineState) -> BTreeMap<u8, u8> {
         let mut desired = BTreeMap::new();
         let hold_phase_on = clock % HOLD_FLASH_PERIOD < HOLD_FLASH_ON;
         for m in &self.mappings {
             if let Some(note) = m.control.mix_note() {
-                let on = if self.latched_holds.contains(&m.control) {
+                let on = if m.action == Action::ToggleViewLoop {
+                    self.view_loop_led_lit(clock)
+                } else if self.latched_holds.contains(&m.control) {
                     hold_phase_on
                 } else {
                     self.action_active(m, dmx)
@@ -1278,6 +1337,12 @@ impl LegacyState {
     pub fn sync_mapping_leds(&mut self, conn: &VirtualMidi, clock: u32) {
         // A latch only makes sense while its pad is still a hold mapping.
         let mappings = &self.mappings;
+        self.pressed_holds.retain(|control| {
+            mappings.iter().any(|m| {
+                m.control == *control
+                    && matches!(m.action, Action::HoldOverlay(_) | Action::HoldView(_))
+            })
+        });
         self.latched_holds.retain(|control| {
             mappings
                 .iter()
@@ -1438,7 +1503,9 @@ impl LegacyState {
                 ui::combo_box("Action", ACTION_COMBO_ID, &kind_labels, kind_idx as u8);
 
                 let targets = draft.action.kind().targets(dmx);
-                if targets.is_empty() {
+                if !draft.action.kind().has_target() {
+                    // Nothing to pick.
+                } else if targets.is_empty() {
                     ui::label("No targets available for this action.");
                 } else if let Some(scenes) = draft.action.scenes() {
                     ui::label("Scenes:");
