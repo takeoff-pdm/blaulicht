@@ -125,7 +125,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
 | 055 | [Desktop / mobile layout setting with a desktop navigation sidebar](TICKETS/055-desktop-mobile-layout.done.md) | done | — |
-| 056 | [Desktop studio style: tokens, compact density, buttons, sidebar and status bar](TICKETS/056-desktop-studio-style.doing.md) | doing | 055 |
+| 056 | [Desktop studio style: tokens, compact density, buttons, sidebar and status bar](TICKETS/056-desktop-studio-style.done.md) | done | 055 |
 
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
@@ -134,6 +134,8 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - Web UI (054) follow-ups: the visualizer on the web (048 row 14: GLSL `300 es`, depth/MSAA, its two threads, stage models fetched from the engine host); showfile Load / Save As for remote UIs (needs a "list showfiles" request, since paths are the engine host's); a native remote desk (`blaulicht-core --connect host:port` with `AppClient::Remote`, mostly wiring); the web UI repaints at 60 fps like the desk even when idle, which costs battery on tablets; touch use was only tested with a mouse in desktop chromium (canvas zoom-to-fit, egui's hidden text input for the keyboard), not on a real tablet or phone.
 - Log lines replayed to a newly connected frontend (the hub keeps the last 1000) are stamped with the time they arrive, not when they were logged (`LogWindow::add_log` takes `Local::now()`): a web UI opened later shows the whole replay at one time (054). `SystemMessage::Log` has no timestamp yet.
 - The engine is compiled for wasm32 by the web build only "by accident" (048 row 13): lifecycle, main loop, plugin host, server and persistence compile but would fail at runtime in a browser. A `runtime` feature (or a light model crate) would let the compiler catch web-reachable runtime code.
+
+- 056 delivered the desktop (Compact) half of 032, 033 and 035: `app/ui_tokens.rs`, `Density`, IBM Plex, button variants, flat tree rows, the desktop nav. When those tickets run, align `ui_tokens` with the design system's `tokens.json` (056 could not read the artifact) and build the kiosk (Touch) side on the same tokens; see 056 Notes for what is left.
 
 - `crates/plugins/pioneer_pro_dj_link/Cargo.toml` has an absolute path dependency (`/home/mik/Downloads/prolink-test/prolink-rs`), so `make build_noopt` fails for it everywhere else.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.
