@@ -40,6 +40,12 @@ Engine without UI: `scripts/blenv build headless`, then `scripts/blenv run --hea
 [--showfile <path>]` runs `blaulicht-headless` (crate `blaulicht-engine`) with the same config;
 `blctl`, `logs` and `stop` work, there is no window to screenshot.
 
+Web UI: `scripts/blenv build web` builds the browser bundle (`crates/web`) into
+`/build/target/web`; a running desk or headless engine serves it at `http://127.0.0.1:1234/`
+in the container, where a browser connects as a remote client in its own session. The image
+has no browser; see `tools/blenv/README.md` (Notes) for installing chromium in the running
+container and telling its `Blaulicht` window from the desk's `blaulicht`.
+
 Shortcuts: `scripts/blenv nav <Page>` (Logs System Audio Setup View
 ViewPerformance Programmer Animations Palettes SceneGraph Visualizer; Animations and
 Palettes open the Setup tabs of the same name, and other tabs are selected with

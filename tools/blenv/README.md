@@ -9,6 +9,7 @@ scripts/blenv up            # build image (first time), start container
 scripts/blenv build         # plugins (inspector + sample/animation set) + core (the desk)
 scripts/blenv run           # start app (800x480 kiosk layout); --desktop for 1500x950
 scripts/blenv build headless && scripts/blenv run --headless  # engine only, no window
+scripts/blenv build web     # web UI bundle; the running engine serves it on port 1234
 scripts/blenv screenshot    # -> .blenv/shots/<ts>.png
 scripts/blenv click 100 40  # window-relative coordinates
 scripts/blenv nav Audio     # page switch through the inspector
@@ -27,7 +28,7 @@ server (`.mcp.json`, `uv run --script tools/blenv/mcp_server.py`) and the skill 
 |---|---|
 | Image: toolchain (nightly + wasm32), X/GL/input tools. No source. | `Dockerfile`, tag `blenv:<hash of Dockerfile>` |
 | Container entry: Xvfb (GLX off, so GL goes through EGL) + openbox + x11vnc | `container/entrypoint.sh`, `container/openbox-rc.xml` |
-| Builds: `cargo build -p blaulicht-core --no-default-features --features "x11 audio wasmtime"` (the desk), `build headless`: `cargo build -p blaulicht-engine --bin blaulicht-headless` with the same features minus `x11`/`wayland`, plugins to `crates/plugins/bundle_debug/` | `container/build.sh` |
+| Builds: `cargo build -p blaulicht-core --no-default-features --features "x11 audio wasmtime"` (the desk), `build headless`: `cargo build -p blaulicht-engine --bin blaulicht-headless` with the same features minus `x11`/`wayland`, plugins to `crates/plugins/bundle_debug/`, `build web`: `crates/web/build.sh --lint` into `/build/target/web` (installs the matching prebuilt wasm-bindgen-cli into the cargo volume on first use) | `container/build.sh` |
 | App start: config from template, inspector ping wait, window at 0,0 | `container/run-app.sh`, `config.template.toml` |
 | Host CLI and library | `blenv.py` (Python 3.9+, stdlib only), shim `scripts/blenv` |
 | MCP server | `mcp_server.py` |
@@ -58,5 +59,13 @@ published on a random `127.0.0.1` port, which `scripts/blenv vnc` prints.
   `nightly-YYYY-MM-DD`; the image tag follows the Dockerfile hash, so `blenv up` rebuilds.
 - `run --headless` starts `blaulicht-headless` (engine only) with the same config and showfile
   handling; `blctl`, `logs`, `status` and `stop` work, screenshots and input don't (no window).
+- The web UI (`build web`) is served by the desk or headless engine at `http://127.0.0.1:1234/`
+  inside the container. The image has no browser: for checks, install one in the running
+  container only (`apt-get update && apt-get install -y --no-install-recommends chromium`) and
+  start it on `:9`, e.g. `chromium --no-sandbox --test-type --use-angle=swiftshader
+  --enable-unsafe-swiftshader --enable-logging=stderr --user-data-dir=/tmp/chr --app=http://127.0.0.1:1234/`
+  (console lines go to its stderr). Its window is titled `Blaulicht`, the desk's `blaulicht`;
+  `--window` matching ignores case, so with both open pick windows with
+  `xdotool search --name` plus an exact `getwindowname` check.
 - `scripts/blenv list` shows all instances; `scripts/blenv gc [--yes]` removes stopped ones
   and the volumes of instances whose worktree was deleted.
