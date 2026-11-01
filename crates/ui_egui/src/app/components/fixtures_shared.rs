@@ -357,7 +357,7 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.set_width(NARROW_TREE_WIDTH);
-                        ui.label("Groups:");
+                        components::column_header(ui, "Groups:");
                         ui.add_space(8.0);
 
                         // Same folders and collapse state as Setup › Groups.
@@ -513,7 +513,7 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.set_width(NARROW_TREE_WIDTH);
-                        ui.label("Groups:");
+                        components::column_header(ui, "Groups:");
                         ui.add_space(8.0);
                         ui.set_min_height(ui.available_height());
 
@@ -885,7 +885,7 @@ impl BlaulichtApp {
         let focus = state.current_scene_focus;
 
         let show_tree = |ui: &mut egui::Ui| {
-            ui.label(format!("Scenes: {}", state.user_scenes().count()));
+            components::column_header(ui, &format!("Scenes: {}", state.user_scenes().count()));
             ui.add_space(4.0);
             egui::ScrollArea::vertical()
                 .id_salt("programmer-scenes")

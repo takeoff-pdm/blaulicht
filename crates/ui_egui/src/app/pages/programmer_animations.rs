@@ -434,7 +434,12 @@ impl BlaulichtApp {
             });
 
             ui.separator();
-            if components::button(ui, true, "Close", ButtonSize::Medium.with_width(140.0)) {
+            if components::button(
+                ui,
+                true,
+                "Close",
+                ButtonSize::Medium.with_touch_width(140.0),
+            ) {
                 self.programmer_ui_state.animation_presets.open = false;
                 self.programmer_ui_state.animation_presets.save = None;
             }
@@ -486,14 +491,19 @@ impl BlaulichtApp {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if components::button(ui, false, "Cancel", ButtonSize::Medium.with_width(140.0)) {
+                if components::button(
+                    ui,
+                    false,
+                    "Cancel",
+                    ButtonSize::Medium.with_touch_width(140.0),
+                ) {
                     close = true;
                 }
                 if components::action_button(
                     ui,
                     !name.is_empty() && !name_taken,
                     "Save",
-                    ButtonSize::Medium.with_width(140.0),
+                    ButtonSize::Medium.with_touch_width(140.0),
                     Some(if name.is_empty() {
                         "Enter a name"
                     } else {

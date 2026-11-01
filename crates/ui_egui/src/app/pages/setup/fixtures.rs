@@ -132,7 +132,13 @@ impl BlaulichtApp {
                 ui.heading(RichText::new("Delete this fixture?").strong());
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "Confirm", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "Confirm",
+                        ButtonSize::Medium,
+                    ) {
                         let delete = HostCommand::DeleteFixture {
                             group: group_id,
                             fixture: fixture_id,
@@ -148,7 +154,13 @@ impl BlaulichtApp {
                         });
                         self.delete_fixture = None;
                     }
-                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Medium,
+                    ) {
                         self.delete_fixture = None;
                     }
                 });
@@ -168,7 +180,8 @@ impl BlaulichtApp {
         Dialog::new("Add Override".to_string(), egui::vec2(260.0, height))
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                ui.spacing_mut().interact_size =
+                    crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
 
                 ui.horizontal_centered(|ui| {
                     ui.set_height(cell_h);
@@ -206,7 +219,13 @@ impl BlaulichtApp {
                         self.close_dmx_override_numberpads();
                     }
 
-                    if components::button(ui, true, "Add", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Primary,
+                        "Add",
+                        ButtonSize::Medium,
+                    ) {
                         self.client.send(ControlEventMessage::new(
                             EventOriginator::Web,
                             ControlEvent::SetChannelOverride(
@@ -248,7 +267,13 @@ impl BlaulichtApp {
                 ui.horizontal_centered(|ui| {
                     ui.label("DMX Overrides");
 
-                    if components::button(ui, false, "Add", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "Add",
+                        ButtonSize::Medium,
+                    ) {
                         self.add_dmx_override_open = true;
                         self.close_dmx_override_numberpads();
                     }
@@ -298,7 +323,13 @@ impl BlaulichtApp {
 
                         ui.add_space(50.0);
 
-                        if components::button(ui, false, "Delete", ButtonSize::Medium) {
+                        if components::button_as(
+                            ui,
+                            false,
+                            components::ButtonVariant::Danger,
+                            "Delete",
+                            ButtonSize::Medium,
+                        ) {
                             self.client.send(ControlEventMessage::new(
                                 EventOriginator::Web,
                                 ControlEvent::RemoveChannelOverride(*universe as u16, *chan as u16),
@@ -326,7 +357,8 @@ impl BlaulichtApp {
         Dialog::new("Add Fixture".to_string(), egui::vec2(width, height))
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                ui.spacing_mut().interact_size =
+                    crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
                 // Group selector
                 ui.label(format!("Group #{}", self.add_fixture_group.unwrap_or(0)));
 
@@ -1085,7 +1117,13 @@ impl BlaulichtApp {
 
                         ui.add_space(6.0);
 
-                        if components::button(ui, true, "Delete", ButtonSize::Medium) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Danger,
+                            "Delete",
+                            ButtonSize::Medium,
+                        ) {
                             self.delete_fixture = Some((gid, fid));
                         }
                     });

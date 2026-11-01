@@ -5,6 +5,7 @@
 use crate::app::{
     components::{self, ButtonSize, Dialog, Held, Knob, SpeedKnob},
     pages::{palette_kind_label, AnimationEditState, AnimationPresetsUi},
+    ui_tokens::Density,
     BlaulichtApp,
 };
 use blaulicht_engine::{client::EngineClient, dmx::EngineState, hub::HostCommand};
@@ -67,11 +68,14 @@ impl BlaulichtApp {
         if any {
             const RADIUS: f32 = 4.0;
             let rect = scope.response.rect;
-            ui.painter().circle_filled(
-                egui::pos2(rect.right() - RADIUS - 3.0, rect.top() + RADIUS + 3.0),
-                RADIUS,
-                Color32::RED,
-            );
+            // The desktop's button fits its label, so the dot sits on the
+            // corner like a badge instead of inside.
+            let center = if Density::of(ui.ctx()).is_compact() {
+                egui::pos2(rect.right() - 1.0, rect.top() + 1.0)
+            } else {
+                egui::pos2(rect.right() - RADIUS - 3.0, rect.top() + RADIUS + 3.0)
+            };
+            ui.painter().circle_filled(center, RADIUS, Color32::RED);
         }
 
         scope.response.on_hover_text(match (owned, any) {
@@ -144,7 +148,7 @@ impl BlaulichtApp {
                             let button_size = if render_context.is_narrow_dynamic() {
                                 ButtonSize::Medium
                             } else {
-                                ButtonSize::Medium.with_width(toolbar_button_width(
+                                ButtonSize::Medium.with_touch_width(toolbar_button_width(
                                     ui.available_width(),
                                     ui.spacing().item_spacing.x,
                                     TOOLBAR_BUTTONS,
@@ -285,7 +289,7 @@ impl BlaulichtApp {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(
                                     ui.available_width(),
-                                    ButtonSize::Medium.dim().0.y,
+                                    button_size.height_at(Density::of(ui.ctx())),
                                 ),
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
@@ -561,7 +565,7 @@ impl BlaulichtApp {
             let width = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0)
                 .floor()
                 .max(40.0);
-            let size = ButtonSize::Medium.with_width(width);
+            let size = ButtonSize::Medium.with_touch_width(width);
             if components::button(
                 ui,
                 self.programmer_ui_state.scene_changes_dialog_open,
@@ -714,12 +718,17 @@ impl BlaulichtApp {
                         ui,
                         !changes.is_empty(),
                         "Undo all",
-                        ButtonSize::Medium.with_width(140.0),
+                        ButtonSize::Medium.with_touch_width(140.0),
                         Some("No changes"),
                     ) {
                         self.programmer_ui_state.undo_all_changes_confirm_open = true;
                     }
-                    if components::button(ui, true, "Close", ButtonSize::Medium.with_width(140.0)) {
+                    if components::button(
+                        ui,
+                        true,
+                        "Close",
+                        ButtonSize::Medium.with_touch_width(140.0),
+                    ) {
                         self.programmer_ui_state.scene_changes_dialog_open = false;
                     }
                 });
@@ -766,7 +775,7 @@ impl BlaulichtApp {
                     ui,
                     false,
                     "Cancel",
-                    ButtonSize::Medium.with_width(140.0),
+                    ButtonSize::Medium.with_touch_width(140.0),
                 ) {
                     self.programmer_ui_state.undo_all_changes_confirm_open = false;
                 }
@@ -774,7 +783,7 @@ impl BlaulichtApp {
                     ui,
                     count > 0,
                     "Undo all",
-                    ButtonSize::Medium.with_width(140.0),
+                    ButtonSize::Medium.with_touch_width(140.0),
                     Some("No changes"),
                 ) {
                     if let Some(event) = undo_all_changes_event(&scene.sink.changeset) {

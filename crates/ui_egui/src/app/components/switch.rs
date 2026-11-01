@@ -1,5 +1,7 @@
 use egui::{pos2, vec2, Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
 
+use crate::app::ui_tokens::{self, Density, Weight};
+
 /// Width of the drawn base plate. The widget may allocate more when its caption is wider.
 const PLATE_WIDTH: f32 = 64.0;
 
@@ -26,6 +28,9 @@ impl<'a> Switch<'a> {
 
 impl<'a> Widget for Switch<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
+        if Density::of(ui.ctx()).is_compact() {
+            return self.compact_ui(ui);
+        }
         // Lay the caption out before allocating: the label is painted centered under the
         // plate, so a caption wider than the plate lands outside the allocated rect and is
         // clipped by the surrounding container. Reserve the width the caption actually needs.
@@ -146,6 +151,66 @@ impl<'a> Widget for Switch<'a> {
             painter.galley(text_pos, galley, ui.visuals().text_color());
         }
 
+        response
+    }
+}
+
+impl Switch<'_> {
+    /// The Compact (desktop) look: a small pill toggle, lit in the accent
+    /// colour when on, with the caption to its right.
+    fn compact_ui(self, ui: &mut Ui) -> Response {
+        let color = ui_tokens::palette(ui.ctx());
+        const TRACK: egui::Vec2 = vec2(30.0, 16.0);
+        let density = Density::of(ui.ctx());
+        let height = density.control_height();
+        let galley = self.label.map(|label| {
+            ui.painter().layout_no_wrap(
+                label,
+                density.font(Weight::Regular, density.body_size()),
+                color.text,
+            )
+        });
+        let label_width = galley.as_ref().map_or(0.0, |g| g.size().x + 6.0);
+        let (rect, mut response) =
+            ui.allocate_exact_size(vec2(TRACK.x + label_width, height), Sense::click());
+        if response.clicked() {
+            *self.state = !*self.state;
+            response.mark_changed();
+        }
+        let on = *self.state;
+        let hovered = response.hovered();
+        let track = Rect::from_min_size(pos2(rect.left(), rect.center().y - TRACK.y / 2.0), TRACK);
+        let (fill, border) = match (on, hovered) {
+            (true, false) => (color.accent, color.accent),
+            (true, true) => (color.accent_hover, color.accent_hover),
+            (false, false) => (color.surface_raised, color.line_strong),
+            (false, true) => (color.surface_hover, color.line_hover),
+        };
+        let painter = ui.painter();
+        painter.rect(
+            track,
+            TRACK.y / 2.0,
+            fill,
+            Stroke::new(ui_tokens::HAIRLINE, border),
+            StrokeKind::Inside,
+        );
+        let knob_x = if on {
+            track.right() - TRACK.y / 2.0
+        } else {
+            track.left() + TRACK.y / 2.0
+        };
+        let knob_color = if on { color.text_strong } else { color.muted };
+        painter.circle_filled(
+            pos2(knob_x, track.center().y),
+            TRACK.y / 2.0 - 3.0,
+            knob_color,
+        );
+        if let Some(galley) = galley {
+            let pos = pos2(track.right() + 6.0, rect.center().y - galley.size().y / 2.0);
+            painter.galley(pos, galley, color.text);
+        }
+        response
+            .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, on, ""));
         response
     }
 }

@@ -427,7 +427,13 @@ impl BlaulichtApp {
                 ui.label(format!("Save the current show before {verb}?"));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if components::button(ui, true, "Save", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Primary,
+                        "Save",
+                        ButtonSize::Medium,
+                    ) {
                         self.pending_lifecycle_action = None;
                         self.send_lifecycle(action, true);
                     }

@@ -381,7 +381,13 @@ impl BlaulichtApp {
                 ui.heading(RichText::new("Delete this palette?").strong());
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "Confirm", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "Confirm",
+                        ButtonSize::Medium,
+                    ) {
                         if let Some(id) = self.palette_ui_state.delete_palette_id {
                             let _ = self.client.send(ControlEventMessage::new(
                                 EventOriginator::Web,
@@ -391,7 +397,13 @@ impl BlaulichtApp {
                         self.palette_ui_state.delete_dialog_open = false;
                         self.palette_ui_state.delete_palette_id = None;
                     }
-                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Medium,
+                    ) {
                         self.palette_ui_state.delete_dialog_open = false;
                         self.palette_ui_state.delete_palette_id = None;
                     }
@@ -509,9 +521,11 @@ impl BlaulichtApp {
             }
         }
 
-        if components::action_button(
+        if components::action_button_as(
             ui,
             has_selection,
+            false,
+            components::ButtonVariant::Danger,
             "Delete",
             ButtonSize::Medium,
             Some("Select a palette or folder"),
@@ -529,7 +543,7 @@ impl BlaulichtApp {
     /// Tapping a palette selects it, tapping a folder selects the folder,
     /// "Move…" opens the folder picker for that row.
     fn setup_palette_tree(&mut self, ui: &mut egui::Ui, state: &EngineState) {
-        ui.label("Palettes:");
+        components::column_header(ui, "Palettes:");
         ui.add_space(8.0);
 
         let items = palette_tree_items(state, |_| true, |p| palette_kind_label(&p.kind));
@@ -972,7 +986,13 @@ impl BlaulichtApp {
 
                 ui.vertical_centered(|ui| {
                     ui.horizontal(|ui| {
-                        if components::button(ui, false, "Create", ButtonSize::Medium) {
+                        if components::button_as(
+                            ui,
+                            false,
+                            components::ButtonVariant::Primary,
+                            "Create",
+                            ButtonSize::Medium,
+                        ) {
                             should_create = true;
                         }
                         if components::button(ui, false, "Cancel", ButtonSize::Medium) {
@@ -1062,7 +1082,13 @@ impl BlaulichtApp {
 
                 ui.vertical_centered(|ui| {
                     ui.horizontal(|ui| {
-                        if components::button(ui, false, "Save", ButtonSize::Medium) {
+                        if components::button_as(
+                            ui,
+                            false,
+                            components::ButtonVariant::Primary,
+                            "Save",
+                            ButtonSize::Medium,
+                        ) {
                             should_save = true;
                         }
                         if components::button(ui, false, "Cancel", ButtonSize::Medium) {

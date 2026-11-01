@@ -130,9 +130,11 @@ impl BlaulichtApp {
             }
         }
 
-        if components::action_button(
+        if components::action_button_as(
             ui,
             has_selection,
+            false,
+            components::ButtonVariant::Danger,
             "Delete",
             ButtonSize::Medium,
             Some("Select a scene or folder"),
@@ -151,7 +153,7 @@ impl BlaulichtApp {
     /// the folder picker for that row.
     fn setup_scene_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let state = &dmx_engine.0;
-        ui.label("Scenes:");
+        components::column_header(ui, "Scenes:");
         ui.add_space(8.0);
 
         let items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
@@ -252,7 +254,13 @@ impl BlaulichtApp {
                         self.new_scene_name = DEFAULT_NEW_SCENE_NAME.to_string();
                         self.clone_scene_dialog_open = false;
                     }
-                    button_pressed = components::button(ui, true, "OK", BUTTON_SIZE);
+                    button_pressed = components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Primary,
+                        "OK",
+                        BUTTON_SIZE,
+                    );
                 });
 
                 ctx.input(|input| {
@@ -296,7 +304,13 @@ impl BlaulichtApp {
 
                 ui.add_space(SPACING);
 
-                let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                let mut button_pressed = components::button_as(
+                    ui,
+                    false,
+                    components::ButtonVariant::Primary,
+                    "OK",
+                    BUTTON_SIZE,
+                );
                 ctx.input(|input| {
                     if input.key_pressed(Key::Enter) {
                         button_pressed = true;
@@ -342,7 +356,13 @@ impl BlaulichtApp {
                             self.rename_scene_name.clear();
                         }
 
-                        if components::button(ui, true, "OK", BUTTON_SIZE) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Primary,
+                            "OK",
+                            BUTTON_SIZE,
+                        ) {
                             confirm_pressed = true;
                         }
                     });
@@ -395,8 +415,13 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         if can_delete {
                             // Closes once the engine has deleted the scene.
-                            if components::button(ui, false, "Confirm", BUTTON_SIZE)
-                                && !self.setup_reply_pending()
+                            if components::button_as(
+                                ui,
+                                false,
+                                components::ButtonVariant::Primary,
+                                "Confirm",
+                                BUTTON_SIZE,
+                            ) && !self.setup_reply_pending()
                             {
                                 let delete = HostCommand::DeleteScene(self.scene_dialog_target);
                                 self.send_setup_command(delete, |app, _| {
@@ -405,7 +430,13 @@ impl BlaulichtApp {
                             }
                         }
 
-                        if components::button(ui, true, "Cancel", BUTTON_SIZE) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Tonal,
+                            "Cancel",
+                            BUTTON_SIZE,
+                        ) {
                             self.delete_scene_dialog_open = false;
                         }
                     });

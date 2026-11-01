@@ -39,7 +39,13 @@ impl BlaulichtApp {
                             .with_hint_text("Port")
                             .ui(ui, &mut self.system_ui_state.new_artnet_port);
 
-                        components::button(ui, true, "Create", ButtonSize::Medium)
+                        components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Primary,
+                            "Create",
+                            ButtonSize::Medium,
+                        )
                     })
                     .inner;
 

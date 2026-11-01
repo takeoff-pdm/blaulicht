@@ -40,6 +40,7 @@ use std::{
 use egui::{Color32, Context, Id, Rect, Sense, Ui};
 
 use crate::app::components::{self, ButtonColor, ButtonSize};
+use crate::app::ui_tokens::{self, Density, Weight};
 
 /// Default row height, matching the 50 px group rows in the Programmer.
 pub const TREE_ROW_HEIGHT: f32 = 50.0;
@@ -405,6 +406,9 @@ where
     }
 
     fn show_rows(self, ui: &mut Ui) -> Option<TreeAction<F, L>> {
+        if Density::of(ui.ctx()).is_compact() {
+            return self.show_rows_compact(ui);
+        }
         let mut state = TreeState::<F>::load(ui.ctx(), self.id);
         let rows = visible_rows(self.items, &state.collapsed);
 
@@ -507,6 +511,290 @@ where
 
         action
     }
+}
+
+impl<F, L> Tree<'_, F, L>
+where
+    F: Copy + Ord + Send + Sync + 'static,
+    L: Copy + Ord,
+{
+    /// The rows at Compact density (desktop): flat single-line list rows on
+    /// the page background with hairlines between them, the label on the left
+    /// and the detail in `muted` on the right; the selected row gets the
+    /// `selection` fill and a 2px accent bar. "Move…" is a quiet button that
+    /// shows on the hovered or selected row.
+    fn show_rows_compact(self, ui: &mut Ui) -> Option<TreeAction<F, L>> {
+        let color = ui_tokens::palette(ui.ctx());
+        let mut state = TreeState::<F>::load(ui.ctx(), self.id);
+        let rows = visible_rows(self.items, &state.collapsed);
+        let density = Density::of(ui.ctx());
+        let h = density.row_height() + 2.0;
+        let toggle_width = 18.0;
+        let indent_step = 14.0;
+        let move_size = ButtonSize::Custom(0.0, 20.0, 12.0);
+
+        let full_width = ui.available_width();
+        let mut action = None;
+        let mut toggled = None;
+
+        let label_font = |selected: bool| {
+            let weight = if selected {
+                Weight::Medium
+            } else {
+                Weight::Regular
+            };
+            density.font(weight, density.body_size())
+        };
+        let detail_font = density.font(Weight::Regular, density.small_size());
+        let detail_of = |row: &TreeRow, item: &TreeItem<F, L>| match (&item.detail, item.key) {
+            (Some(d), _) => Some(d.clone()),
+            (None, TreeKey::Folder(_)) => Some(row.child_count.to_string()),
+            (None, TreeKey::Leaf(_)) => None,
+        };
+        // Details show on every row or on none, so a narrow column does not
+        // end up with a few rows that have them.
+        let show_details = rows.iter().all(|row| {
+            let item = &self.items[row.item];
+            let Some(detail) = detail_of(row, item) else {
+                return true;
+            };
+            let indent = indent_width(
+                row.depth,
+                indent_step,
+                full_width,
+                toggle_width,
+                self.min_body_width,
+            );
+            let icon = if matches!(item.key, TreeKey::Folder(_)) {
+                20.0
+            } else {
+                0.0
+            };
+            let label = ui
+                .painter()
+                .layout_no_wrap(item.label.clone(), label_font(true), Color32::PLACEHOLDER)
+                .size()
+                .x;
+            let detail = ui
+                .painter()
+                .layout_no_wrap(detail, detail_font.clone(), Color32::PLACEHOLDER)
+                .size()
+                .x;
+            indent + toggle_width + 2.0 + icon + label + 12.0 + detail + 6.0 <= full_width
+        });
+
+        for row in &rows {
+            let item = &self.items[row.item];
+            let is_selected = self.selected.contains(&item.key);
+            let is_folder = matches!(item.key, TreeKey::Folder(_));
+            let indent = indent_width(
+                row.depth,
+                indent_step,
+                full_width,
+                toggle_width,
+                self.min_body_width,
+            );
+
+            let (row_rect, _) = ui.allocate_exact_size(egui::vec2(full_width, h), Sense::hover());
+            let row_id = self.id.with(("row", row.item));
+            let body_rect = Rect::from_min_max(
+                egui::pos2(row_rect.left() + indent + toggle_width, row_rect.top()),
+                row_rect.max,
+            );
+            let body = ui.interact(body_rect, row_id, Sense::click());
+            let toggle_rect = Rect::from_min_size(
+                egui::pos2(row_rect.left() + indent, row_rect.top()),
+                egui::vec2(toggle_width, h),
+            );
+            let toggle =
+                is_folder.then(|| ui.interact(toggle_rect, row_id.with("toggle"), Sense::click()));
+            let hovered = ui.rect_contains_pointer(row_rect);
+
+            // Background, the selection bar and the hairline under the row.
+            let painter = ui.painter();
+            if is_selected {
+                painter.rect_filled(row_rect, 0.0, color.selection);
+                painter.rect_filled(
+                    Rect::from_min_size(row_rect.left_top(), egui::vec2(ui_tokens::ACCENT_BAR, h)),
+                    0.0,
+                    color.accent,
+                );
+            } else if hovered {
+                painter.rect_filled(row_rect, 0.0, color.surface_raised);
+            }
+            painter.hline(
+                row_rect.x_range(),
+                row_rect.bottom() - 0.5,
+                egui::Stroke::new(ui_tokens::HAIRLINE, color.line),
+            );
+            if row.depth > 0 {
+                let guides = Rect::from_min_size(row_rect.left_top(), egui::vec2(indent, h));
+                paint_guides(ui, guides, row.depth);
+            }
+
+            if let (TreeKey::Folder(f), Some(toggle)) = (item.key, &toggle) {
+                let caret = if row.collapsed {
+                    egui_phosphor::regular::CARET_RIGHT
+                } else {
+                    egui_phosphor::regular::CARET_DOWN
+                };
+                let caret_color = if toggle.hovered() {
+                    color.text_strong
+                } else if row.child_count > 0 {
+                    color.muted
+                } else {
+                    color.faint
+                };
+                ui.painter().text(
+                    toggle_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    caret,
+                    density.font(Weight::Regular, 11.0),
+                    caret_color,
+                );
+                if toggle.clicked() {
+                    toggled = Some(f);
+                }
+            }
+
+            // "Move…" on the hovered or selected row, at the right end.
+            let mut right = body_rect.right() - 6.0;
+            if self.move_button && (hovered || is_selected) {
+                let galley_width = ui
+                    .painter()
+                    .layout_no_wrap(
+                        "Move…".to_owned(),
+                        density.font(Weight::Medium, density.button_text_size()),
+                        Color32::PLACEHOLDER,
+                    )
+                    .size()
+                    .x;
+                let width = galley_width + 2.0 * density.button_padding_x();
+                let rect = Rect::from_center_size(
+                    egui::pos2(right - width / 2.0, row_rect.center().y),
+                    egui::vec2(width, 20.0),
+                );
+                let clicked = ui
+                    .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                        components::studio_button(
+                            ui,
+                            components::ButtonVariant::Quiet,
+                            true,
+                            "Move…",
+                            move_size,
+                            None,
+                        )
+                        .clicked()
+                    })
+                    .inner;
+                if clicked {
+                    action = Some(TreeAction::MoveRequested(item.key));
+                }
+                right = rect.left() - 6.0;
+            }
+
+            // Icon, label and detail.
+            let mut x = body_rect.left() + 2.0;
+            let text_color = if is_selected || body.hovered() {
+                color.text_strong
+            } else {
+                color.text
+            };
+            if is_folder {
+                let icon = if row.collapsed {
+                    egui_phosphor::regular::FOLDER_SIMPLE
+                } else {
+                    egui_phosphor::regular::FOLDER_OPEN
+                };
+                let icon_color = if is_selected {
+                    color.accent
+                } else {
+                    color.muted
+                };
+                ui.painter().text(
+                    egui::pos2(x, row_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    icon,
+                    density.font(Weight::Regular, 14.0),
+                    icon_color,
+                );
+                x += 20.0;
+            }
+            let detail = detail_of(row, item).filter(|_| show_details);
+            let label_font = label_font(is_selected);
+            let label_galley =
+                ui.painter()
+                    .layout_no_wrap(item.label.clone(), label_font.clone(), text_color);
+            if let Some(detail) = detail {
+                let detail_galley =
+                    ui.painter()
+                        .layout_no_wrap(detail, detail_font.clone(), color.muted);
+                // The detail goes first when there is no room for both.
+                if x + label_galley.size().x + 12.0 + detail_galley.size().x <= right {
+                    let pos = egui::pos2(
+                        right - detail_galley.size().x,
+                        row_rect.center().y - detail_galley.size().y / 2.0,
+                    );
+                    ui.painter().galley(pos, detail_galley, color.muted);
+                }
+            }
+            paint_truncated_font(
+                ui,
+                egui::pos2(x, row_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                &item.label,
+                label_font,
+                (right - x).max(0.0),
+                text_color,
+            );
+
+            body.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::SelectableLabel,
+                    true,
+                    is_selected,
+                    &item.label,
+                )
+            });
+            if body.clicked() {
+                action = Some(match item.key {
+                    TreeKey::Folder(f) => TreeAction::TapFolder(f),
+                    TreeKey::Leaf(l) => TreeAction::SelectLeaf(l),
+                });
+            }
+        }
+
+        if let Some(f) = toggled {
+            state.toggle(f);
+            ui.ctx().request_repaint();
+        }
+        state.store(ui.ctx(), self.id);
+
+        action
+    }
+}
+
+fn paint_truncated_font(
+    ui: &Ui,
+    pos: egui::Pos2,
+    align: egui::Align2,
+    text: &str,
+    font: egui::FontId,
+    max_width: f32,
+    color: Color32,
+) {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::text::TextFormat {
+            font_id: font,
+            color,
+            ..Default::default()
+        },
+    );
+    job.wrap = egui::text::TextWrapping::truncate_at_width(max_width);
+    let galley = ui.painter().layout_job(job);
+    let min = align.anchor_size(pos, galley.size()).min;
+    ui.painter().galley(min, galley, color);
 }
 
 fn paint_guides(ui: &Ui, rect: Rect, depth: usize) {

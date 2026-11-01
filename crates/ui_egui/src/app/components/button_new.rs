@@ -1,4 +1,7 @@
-use crate::app::components::{paint_button_label, text_color_for_bg, ButtonSize};
+use crate::app::components::{
+    paint_button_label, studio_button, text_color_for_bg, ButtonSize, ButtonVariant,
+};
+use crate::app::ui_tokens::Density;
 use egui::{Color32, Sense, Ui, Vec2};
 use std::borrow::Cow;
 
@@ -29,6 +32,15 @@ impl<'t> Button<'t> {
     }
 
     pub fn ui(&self, ui: &mut Ui, active: bool) -> bool {
+        if Density::of(ui.ctx()).is_compact() {
+            let variant = if active {
+                ButtonVariant::On
+            } else {
+                ButtonVariant::Tonal
+            };
+            return studio_button(ui, variant, true, &self.label, self.size, None).clicked();
+        }
+
         const RADIUS: f32 = 1.0;
         // const BORDER_WIDTH: f32 = 6.0;
 

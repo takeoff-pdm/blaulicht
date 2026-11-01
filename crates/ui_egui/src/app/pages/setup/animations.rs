@@ -89,7 +89,13 @@ impl BlaulichtApp {
                 ui.add_space(12.0);
 
                 ui.horizontal(|ui| {
-                    if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                    if components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "Confirm",
+                        ButtonSize::Large,
+                    ) {
                         if let Some(id) = self.animation_ui_state.selected_animation_id {
                             self.send_setup_command(
                                 HostCommand::DeleteAnimationTemplate(id),
@@ -101,7 +107,13 @@ impl BlaulichtApp {
                         }
                     }
 
-                    if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Large,
+                    ) {
                         self.animation_ui_state.delete_confirm_open = false;
                     }
                 });
@@ -155,7 +167,7 @@ impl BlaulichtApp {
                         ui,
                         selected_category.is_none(),
                         "All",
-                        ButtonSize::Medium.with_width(90.0),
+                        ButtonSize::Medium.with_touch_width(90.0),
                     ) {
                         self.animation_ui_state.preset_category = None;
                     }
@@ -164,7 +176,7 @@ impl BlaulichtApp {
                             ui,
                             selected_category == Some(category),
                             category.label(),
-                            ButtonSize::Medium.with_width(110.0),
+                            ButtonSize::Medium.with_touch_width(110.0),
                         ) {
                             self.animation_ui_state.preset_category = Some(category);
                         }
@@ -232,7 +244,8 @@ impl BlaulichtApp {
             )
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                ui.spacing_mut().interact_size =
+                    crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
 
                 // Name
                 ui.horizontal(|ui| {
@@ -310,8 +323,13 @@ impl BlaulichtApp {
                         self.animation_ui_state.close_selection_dialogs();
                     }
 
-                    let mut button_pressed =
-                        components::button(ui, true, "Create", ButtonSize::Medium);
+                    let mut button_pressed = components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Primary,
+                        "Create",
+                        ButtonSize::Medium,
+                    );
 
                     ctx.input(|input| {
                         if input.key_pressed(Key::Enter) {
@@ -453,9 +471,10 @@ impl BlaulichtApp {
                                     !self.animation_ui_state.presets_open;
                             }
 
-                            if button(
+                            if components::button_as(
                                 ui,
                                 self.animation_ui_state.selected_animation_id.is_some(),
+                                components::ButtonVariant::Danger,
                                 "Delete",
                                 ButtonSize::Medium,
                             ) && self.animation_ui_state.selected_animation_id.is_some()

@@ -61,7 +61,13 @@ impl BlaulichtApp {
                         self.system_ui_state.pending_load_file = None;
                         self.load_showfile_path(file.clone());
                     }
-                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Medium,
+                    ) {
                         self.system_ui_state.pending_load_file = None;
                     }
                 });
@@ -110,7 +116,13 @@ impl BlaulichtApp {
                         self.system_ui_state.close_showfile_confirm_open = false;
                         self.close_showfile();
                     }
-                    if components::button(ui, true, "Cancel", ButtonSize::Medium) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Medium,
+                    ) {
                         self.system_ui_state.close_showfile_confirm_open = false;
                     }
                 });

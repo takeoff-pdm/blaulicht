@@ -55,3 +55,15 @@ pub fn indexed_label(id: impl std::fmt::Display, name: &str) -> String {
         format!("{id} | {name}")
     }
 }
+
+/// A column's title ("Groups:"). On the kiosk (Touch density) a plain label
+/// as before; on the desktop (Compact density) a small uppercase header in
+/// `muted`, without the colon.
+pub fn column_header(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    let density = crate::app::ui_tokens::Density::of(ui.ctx());
+    if density.is_compact() {
+        ui.label(density.overline(text.trim_end_matches(':')))
+    } else {
+        ui.label(text)
+    }
+}

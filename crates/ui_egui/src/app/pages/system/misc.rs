@@ -1,5 +1,5 @@
 use crate::app::{
-    components::{self, ButtonSize, Dialog},
+    components::{self, ButtonSize, ButtonVariant, Dialog},
     view_state::{PluginOpenState, ScreenId},
     BlaulichtApp, GuardedLifecycleAction, PopupSpec,
 };
@@ -35,7 +35,13 @@ impl BlaulichtApp {
                 ui.add_space(12.0);
 
                 ui.horizontal_wrapped(|ui| {
-                    if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                    if components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "Confirm",
+                        ButtonSize::Large,
+                    ) {
                         match Command::new("/usr/bin/shutdown.sh").status() {
                             Ok(status) if status.success() => {
                                 tracing::info!("Shutdown command executed successfully.");
@@ -51,7 +57,13 @@ impl BlaulichtApp {
                         self.system_ui_state.confirm_shutdown_open = false;
                     }
 
-                    if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                    if components::button_as(
+                        ui,
+                        true,
+                        components::ButtonVariant::Tonal,
+                        "Cancel",
+                        ButtonSize::Large,
+                    ) {
                         self.system_ui_state.confirm_shutdown_open = false;
                     }
                 });
@@ -95,7 +107,7 @@ impl BlaulichtApp {
         ui: &mut egui::Ui,
         render_context: crate::app::page::PageRenderContext,
     ) {
-        let button_size = ButtonSize::Medium.with_width(110.0);
+        let button_size = ButtonSize::Medium.with_touch_width(110.0);
         const HEALTH_COLUMN_WIDTH: f32 = 136.0;
         let narrow = render_context.is_dynamic()
             && render_context.width_class == crate::app::page::PageWidthClass::Narrow;
@@ -212,7 +224,14 @@ impl BlaulichtApp {
                         self.request_guarded_lifecycle(GuardedLifecycleAction::Restart);
                     }
 
-                    if !remote && components::button(ui, false, "Shutdown", button_size) {
+                    if !remote
+                        && components::variant_button(
+                            ui,
+                            ButtonVariant::Danger,
+                            "Shutdown",
+                            button_size,
+                        )
+                    {
                         self.system_ui_state.confirm_shutdown_open = true;
                     }
 

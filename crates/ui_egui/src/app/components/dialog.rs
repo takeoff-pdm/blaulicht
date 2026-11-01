@@ -263,23 +263,15 @@ impl Dialog {
             false => window_proto.fixed_pos(center_pos),
         };
 
-        window_proto
-            .frame(Frame {
-                corner_radius: CornerRadius::same(1),
-                fill: Color32::from_gray(40),
-                stroke: Stroke::new(1.0, Color32::from_gray(60)),
-                inner_margin: Margin::symmetric(6, 12),
-                ..Frame::default()
-            })
-            .show(ctx, |ui| {
-                // ui.allocate_ui_with_layout(
-                //     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
-                //     egui::Layout::top_down(egui::Align::Min),
-                //     |ui| {
-                ui.vertical_centered(|ui| {
-                    add_contents(ui);
-                });
+        window_proto.frame(dialog_frame(ctx)).show(ctx, |ui| {
+            // ui.allocate_ui_with_layout(
+            //     egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
+            //     egui::Layout::top_down(egui::Align::Min),
+            //     |ui| {
+            ui.vertical_centered(|ui| {
+                add_contents(ui);
             });
+        });
     }
 
     fn show_fixed_pos(
@@ -305,24 +297,16 @@ impl Dialog {
             false => window_proto.fixed_pos(fixed_pos.to_pos2()),
         };
 
-        window_proto
-            .frame(Frame {
-                corner_radius: CornerRadius::same(1),
-                fill: Color32::from_gray(40),
-                stroke: Stroke::new(1.0, Color32::from_gray(60)),
-                inner_margin: Margin::symmetric(6, 12),
-                ..Frame::default()
-            })
-            .show(ctx, |ui| {
-                let frame = Frame::NONE;
+        window_proto.frame(dialog_frame(ctx)).show(ctx, |ui| {
+            let frame = Frame::NONE;
 
-                frame.show(ui, |ui| {
-                    ui.set_min_size(self.builder.popup_size);
-                    ui.vertical_centered(|ui| {
-                        add_contents(ui);
-                    });
+            frame.show(ui, |ui| {
+                ui.set_min_size(self.builder.popup_size);
+                ui.vertical_centered(|ui| {
+                    add_contents(ui);
                 });
             });
+        });
     }
 
     pub fn render_popup_backdrop(
@@ -376,3 +360,29 @@ impl Dialog {
 //         Self::new()
 //     }
 // }
+
+/// The dialog window's frame. The kiosk (Touch density) keeps its grey
+/// frame; the desktop (Compact density) uses the Console `surface` with a
+/// hairline border, the window radius and a soft shadow. The inner margin is
+/// the same, so dialog sizes stay valid.
+fn dialog_frame(ctx: &egui::Context) -> Frame {
+    let color = ui_tokens::palette(ctx);
+    use crate::app::ui_tokens::{self, Density};
+    if Density::of(ctx).is_compact() {
+        return Frame {
+            corner_radius: CornerRadius::same(ui_tokens::RADIUS_WINDOW),
+            fill: color.surface,
+            stroke: Stroke::new(ui_tokens::HAIRLINE, color.line_strong),
+            inner_margin: Margin::symmetric(6, 12),
+            shadow: ctx.global_style().visuals.window_shadow,
+            ..Frame::default()
+        };
+    }
+    Frame {
+        corner_radius: CornerRadius::same(1),
+        fill: Color32::from_gray(40),
+        stroke: Stroke::new(1.0, Color32::from_gray(60)),
+        inner_margin: Margin::symmetric(6, 12),
+        ..Frame::default()
+    }
+}

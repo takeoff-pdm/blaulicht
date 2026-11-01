@@ -754,7 +754,8 @@ fn name_dialog(
     )
     .with_backdrop()
     .show(ctx, |ui| {
-        ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+        ui.spacing_mut().interact_size =
+            crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
         ui.label(RichText::new(title).strong().size(16.0));
         ui.label(RichText::new(place).size(12.0).color(Color32::GRAY));
         ui.add_space(8.0);
@@ -848,7 +849,13 @@ fn delete_dialog(ctx: &Context, state: &EngineState, summary: &DeleteSummary) ->
                 cancel = true;
             }
             ui.add_space(8.0);
-            if components::button(ui, true, "Delete", DIALOG_BUTTON) {
+            if components::button_as(
+                ui,
+                true,
+                components::ButtonVariant::Danger,
+                "Delete",
+                DIALOG_BUTTON,
+            ) {
                 confirm = true;
             }
         });
@@ -981,7 +988,7 @@ pub fn tree_picker_dialog(
         components::visible_rows(items, state.collapsed()).len()
     };
     let list_height = ((rows.max(1)) as f32 * (PICKER_ROW_HEIGHT + 2.0)).min(PICKER_LIST_HEIGHT);
-    let close_size = ButtonSize::Medium.with_width(160.0);
+    let close_size = ButtonSize::Medium.with_touch_width(160.0);
 
     let mut picked = None;
     let mut close = false;

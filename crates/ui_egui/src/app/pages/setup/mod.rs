@@ -39,7 +39,8 @@ impl BlaulichtApp {
         render_context: PageRenderContext,
     ) {
         // Make controls touch-friendly within this page
-        ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+        ui.spacing_mut().interact_size =
+            crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
         // One snapshot per frame, as this client's session sees the show (its
         // focused scene is the selected one on Setup › Scenes).
         let session = self.client.session();

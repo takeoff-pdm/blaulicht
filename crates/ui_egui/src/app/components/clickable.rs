@@ -1,6 +1,7 @@
 use egui::{Color32, Rect, Ui, Vec2};
 
 use crate::app::components::{button::ButtonSize, text_color_for_bg};
+use crate::app::ui_tokens::{self, Density};
 
 pub fn clickable(
     ui: &mut Ui,
@@ -9,6 +10,10 @@ pub fn clickable(
     size: ButtonSize,
     add_contents: impl FnOnce(&mut Ui, Rect, Color32),
 ) -> bool {
+    if Density::of(ui.ctx()).is_compact() {
+        return studio_clickable(ui, active, primary_color, size, add_contents);
+    }
+
     let radius = 1.0;
 
     let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
@@ -54,5 +59,48 @@ pub fn clickable(
 
     add_contents(ui, rect, fg_color);
 
+    response.clicked()
+}
+
+/// [`clickable`] at Compact density: the caller's size (it paints into the
+/// rect), flat with a hairline border, no shadow. Active keeps the caller's
+/// colour, toned down so it reads as "lit" rather than a solid tile.
+fn studio_clickable(
+    ui: &mut Ui,
+    active: bool,
+    primary_color: Color32,
+    size: ButtonSize,
+    add_contents: impl FnOnce(&mut Ui, Rect, Color32),
+) -> bool {
+    let color = ui_tokens::palette(ui.ctx());
+    let (rect, response) = ui.allocate_exact_size(size.dim().0, egui::Sense::click());
+    let hovered = response.hovered();
+    let pressed = response.is_pointer_button_down_on();
+    let (fill, border) = if active {
+        let mix = if hovered { 0.6 } else { 0.45 };
+        (
+            color.surface_raised.lerp_to_gamma(primary_color, mix),
+            primary_color,
+        )
+    } else if pressed {
+        (color.surface_pressed, color.line_hover)
+    } else if hovered {
+        (color.surface_hover, color.line_hover)
+    } else {
+        (color.surface_raised, color.line_strong)
+    };
+    ui.painter().rect(
+        rect,
+        egui::CornerRadius::same(ui_tokens::RADIUS),
+        fill,
+        egui::Stroke::new(ui_tokens::HAIRLINE, border),
+        egui::StrokeKind::Inside,
+    );
+    let fg = if active {
+        color.text_strong
+    } else {
+        color.text
+    };
+    add_contents(ui, rect, fg);
     response.clicked()
 }

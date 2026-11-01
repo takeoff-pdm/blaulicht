@@ -117,9 +117,11 @@ impl BlaulichtApp {
             }
         }
 
-        if components::action_button(
+        if components::action_button_as(
             ui,
             has_selection,
+            false,
+            components::ButtonVariant::Danger,
             "Delete",
             ButtonSize::Medium,
             Some("Select a group or folder"),
@@ -137,7 +139,7 @@ impl BlaulichtApp {
     /// folder; "Move…" opens the folder picker for that row.
     fn setup_group_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let state = &dmx_engine.0;
-        ui.label("Groups:");
+        components::column_header(ui, "Groups:");
         ui.add_space(8.0);
 
         if state.groups.is_empty() && !state.folders.values().any(|f| f.kind == FolderKind::Groups)
@@ -251,7 +253,13 @@ impl BlaulichtApp {
                     ui.add_space(12.0);
 
                     ui.horizontal(|ui| {
-                        if components::button(ui, false, "Confirm", ButtonSize::Large) {
+                        if components::button_as(
+                            ui,
+                            false,
+                            components::ButtonVariant::Primary,
+                            "Confirm",
+                            ButtonSize::Large,
+                        ) {
                             if let Some(id) = self.add_fixture_group {
                                 self.send_setup_command(HostCommand::DeleteGroup(id), |_, _| {});
                                 self.delete_group_open = false;
@@ -259,7 +267,13 @@ impl BlaulichtApp {
                             }
                         }
 
-                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Tonal,
+                            "Cancel",
+                            ButtonSize::Large,
+                        ) {
                             self.delete_group_open = false;
                         }
                     });
@@ -276,7 +290,8 @@ impl BlaulichtApp {
             Dialog::new("Create Group".to_string(), size)
                 .with_backdrop()
                 .show(ctx, |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                    ui.spacing_mut().interact_size =
+                        crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
                     Frame::new()
                         .inner_margin(Margin::symmetric(10, 6))
                         .show(ui, |ui| {
@@ -287,7 +302,13 @@ impl BlaulichtApp {
 
                     ui.add_space(SPACING);
 
-                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                    let mut button_pressed = components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "OK",
+                        BUTTON_SIZE,
+                    );
                     ctx.input(|input| {
                         if input.key_pressed(Key::Enter) {
                             button_pressed = true;
@@ -334,7 +355,13 @@ impl BlaulichtApp {
                             self.rename_group_name.clear();
                         }
 
-                        if components::button(ui, true, "OK", BUTTON_SIZE) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Primary,
+                            "OK",
+                            BUTTON_SIZE,
+                        ) {
                             confirm_pressed = true;
                         }
                     });

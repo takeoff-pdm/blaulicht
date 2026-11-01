@@ -526,7 +526,7 @@ impl BlaulichtApp {
         } = snapshot;
 
         render_context.horizontal(ui, egui::Align::Min, |ui| {
-            ui.label("Graphs:");
+            components::column_header(ui, "Graphs:");
 
             let focused_id = focused.as_ref().map(|(id, _)| *id);
             for (gid, name) in &graphs {
@@ -806,7 +806,7 @@ impl BlaulichtApp {
         });
 
         ui.add_space(8.0);
-        ui.label("Scenes:");
+        components::column_header(ui, "Scenes:");
         for scene_id in &scene_node.scenes {
             ui.horizontal(|ui| {
                 let name = scene_names

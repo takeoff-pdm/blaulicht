@@ -68,7 +68,13 @@ impl BlaulichtApp {
                     ui.add_space(12.0);
 
                     ui.horizontal(|ui| {
-                        let confirm = components::button(ui, false, "Confirm", ButtonSize::Large);
+                        let confirm = components::button_as(
+                            ui,
+                            false,
+                            components::ButtonVariant::Primary,
+                            "Confirm",
+                            ButtonSize::Large,
+                        );
                         if confirm {
                             let current_page = self.view_ui_state.pagination.current_page();
                             self.send_command(HostCommand::DeleteView(view_id), move |app, _| {
@@ -78,7 +84,13 @@ impl BlaulichtApp {
                             self.view_ui_state.delete_view_id = None;
                         }
 
-                        if components::button(ui, true, "Cancel", ButtonSize::Large) {
+                        if components::button_as(
+                            ui,
+                            true,
+                            components::ButtonVariant::Tonal,
+                            "Cancel",
+                            ButtonSize::Large,
+                        ) {
                             self.view_ui_state.delete_view_open = false;
                             self.view_ui_state.delete_view_id = None;
                         }
@@ -162,7 +174,8 @@ impl BlaulichtApp {
             Dialog::new("Create View".to_string(), size)
                 .with_backdrop()
                 .show(ctx, |ui| {
-                    ui.spacing_mut().interact_size = egui::vec2(44.0, 36.0);
+                    ui.spacing_mut().interact_size =
+                        crate::app::ui_tokens::Density::of(ui.ctx()).interact_size();
                     Frame::new()
                         .inner_margin(Margin::symmetric(10, 6))
                         .show(ui, |ui| {
@@ -175,7 +188,13 @@ impl BlaulichtApp {
 
                     ui.add_space(SPACING);
 
-                    let mut button_pressed = components::button(ui, false, "OK", BUTTON_SIZE);
+                    let mut button_pressed = components::button_as(
+                        ui,
+                        false,
+                        components::ButtonVariant::Primary,
+                        "OK",
+                        BUTTON_SIZE,
+                    );
                     ctx.input(|input| {
                         if input.key_pressed(Key::Enter) {
                             button_pressed = true;
