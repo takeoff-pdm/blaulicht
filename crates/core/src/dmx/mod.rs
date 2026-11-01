@@ -685,7 +685,7 @@ impl DmxEngine {
                         merged_for_overlay.merge_from(
                             &scene_fixture_state,
                             change,
-                            MergeStrategy::Highest, // WAS HIGHEST ONCE
+                            MergeStrategy::for_overlay_property(change),
                             palettes,
                         );
                     }
