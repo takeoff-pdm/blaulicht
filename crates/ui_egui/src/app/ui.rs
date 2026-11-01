@@ -1,7 +1,7 @@
 use crate::app::view_state::ScreenId;
 use crate::app::{
     components::{self, ButtonSize, Dialog},
-    theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
+    theme, ui_tokens, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
 };
 use crate::client::AppClient;
 use crate::layout::UiLayout;
@@ -69,6 +69,11 @@ impl BlaulichtApp {
             font_keys.insert(1, "phosphor".into());
         }
         blaulicht_assets::add_to_fonts(&mut fonts);
+        // Desktop: IBM Plex, the Compact density and the Console colours.
+        // The kiosk keeps its fonts and the `BLUE` theme (set per frame).
+        if layout.is_desktop() {
+            ui_tokens::install_desktop(&cc.egui_ctx, &mut fonts);
+        }
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
         cc.egui_ctx.set_fonts(fonts);
@@ -128,7 +133,8 @@ impl eframe::App for BlaulichtApp {
             }
         }
 
-        if ctx.style().visuals.dark_mode {
+        // The desktop layout installed its styles once (`install_desktop`).
+        if ctx.style().visuals.dark_mode && !self.layout.is_desktop() {
             theme::set_theme(ctx, theme::BLUE);
         }
 
