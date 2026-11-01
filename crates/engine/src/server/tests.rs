@@ -10,6 +10,7 @@ use std::{
 };
 use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
+use blaulicht_audio_engine::CollectorOutput;
 use blaulicht_shared::{
     fixture::state::FixtureState, ControlEvent, ControlEventMessage, EventOriginator, LogLevel,
 };
@@ -546,6 +547,68 @@ fn a_remote_client_times_round_trips_and_reconnects_in_a_new_session() {
     assert_ne!(again.client(), remote.client());
     assert_eq!(again.streams(), vec![Stream::Status]);
     assert_eq!(server.clients().len(), 2);
+}
+
+/// The spectrogram stream mirrors the engine's time-stamped columns: only
+/// new ones go out, also when stamps repeat and the engine trims old columns
+/// by age, and a restart of the engine's spectrogram starts the mirror over.
+#[test]
+fn the_spectrogram_stream_mirrors_stamped_columns_through_age_trimming() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    let app = Arc::clone(engine.app());
+    let push = |times_ms: &[u64]| {
+        let mut spec = app.audio_spectrogram.write().unwrap();
+        for &time_ms in times_ms {
+            spec.push_data_at(time_ms, CollectorOutput::default());
+        }
+    };
+    let engine_times = || {
+        app.audio_spectrogram
+            .read()
+            .unwrap()
+            .column_times_ms
+            .clone()
+    };
+
+    app.audio_spectrogram.write().unwrap().restart_live(
+        Instant::now(),
+        Duration::from_millis(200),
+        10_000,
+    );
+    push(&(0..50).map(|i| i * 20).collect::<Vec<_>>());
+    let remote = connect(&mut engine, &server, &[Stream::Spectrogram]);
+    engine.tick_until("the first columns", |_| {
+        remote.with_spectrogram(|spec| spec.column_times_ms.clone()) == engine_times()
+    });
+    remote.with_spectrogram(|spec| {
+        assert_eq!(spec.window, Some(Duration::from_millis(200)));
+        assert!(spec.epoch.is_some());
+    });
+
+    // Batches with a repeated stamp each, while the engine keeps only the
+    // last 1.2 s (window plus slack), so its ring is trimmed all along.
+    for batch in 0..10u64 {
+        let start = 1_000 + batch * 400;
+        push(&[start, start, start + 200]);
+        engine.tick_until("a batch", |_| {
+            remote.with_spectrogram(|spec| spec.column_times_ms.clone()) == engine_times()
+        });
+    }
+    let times = engine_times();
+    assert_eq!(times.back(), Some(&4_800));
+    assert!(times.front().copied().unwrap() >= 4_800 - 1_200);
+
+    // The engine's spectrogram starts over at engine time 0.
+    app.audio_spectrogram.write().unwrap().restart_live(
+        Instant::now(),
+        Duration::from_millis(200),
+        10_000,
+    );
+    push(&[0, 20, 40]);
+    engine.tick_until("the restart", |_| {
+        remote.with_spectrogram(|spec| spec.column_times_ms.clone()) == [0, 20, 40]
+    });
 }
 
 /// Every message type survives both encodings where a Rust client reads it,

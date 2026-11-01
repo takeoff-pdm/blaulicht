@@ -377,12 +377,17 @@ pub struct SpectrogramUpdate {
     pub max_columns: u32,
     pub bin_count: u32,
     pub tick_period_ms: u32,
+    /// The span of time the engine keeps (`AudioSpectrogram::window`).
+    pub window_ms: Option<u32>,
     /// Oldest first.
     pub columns: Vec<SpectrogramColumn>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpectrogramColumn {
+    /// When the engine took the column, in milliseconds of engine time
+    /// (`AudioSpectrogram::column_times_ms`).
+    pub time_ms: u64,
     pub snapshot: CollectedAudioSnapshot,
     pub buckets: Vec<AudioBucket>,
 }

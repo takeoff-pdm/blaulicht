@@ -32,8 +32,21 @@ pub struct AudioSpectrogram {
     /// rate never stretches the window.
     pub window: Option<Duration>,
     /// The instant `column_times_ms == 0` refers to, when the columns are
-    /// stamped live. Lets a viewer turn the stamps into wall-clock time.
+    /// stamped live. Lets a viewer turn the stamps into wall-clock time
+    /// (see [`Self::now_ms`]).
     pub epoch: Option<Instant>,
+    /// Producer time at [`Self::epoch`], in milliseconds; 0 for the producer
+    /// itself. A mirror on another machine (a remote client) keeps the
+    /// producer's stamps, sets `epoch` to an instant of its own clock and
+    /// this to the producer time it estimates for that instant.
+    pub epoch_offset_ms: f64,
+    /// Bumped by every [`Self::clear`], so a reader that copies new columns
+    /// can tell a fresh start from trimming.
+    pub generation: u64,
+    /// Columns pushed since the last [`Self::clear`]; trimming never lowers
+    /// it. A reader that remembers it knows how many of the newest columns
+    /// it has not seen yet.
+    pub pushed: u64,
 }
 
 impl AudioSpectrogram {
@@ -46,7 +59,17 @@ impl AudioSpectrogram {
             tick_period,
             window: None,
             epoch: None,
+            epoch_offset_ms: 0.0,
+            generation: 0,
+            pushed: 0,
         }
+    }
+
+    /// The producer's clock now, in the unit of [`Self::column_times_ms`],
+    /// when the columns are stamped live.
+    pub fn now_ms(&self) -> Option<f64> {
+        self.epoch
+            .map(|epoch| epoch.elapsed().as_secs_f64() * 1000.0 + self.epoch_offset_ms)
     }
 
     /// Start a fresh live recording: drop every column and stamp new ones
@@ -54,6 +77,7 @@ impl AudioSpectrogram {
     pub fn restart_live(&mut self, epoch: Instant, window: Duration, max_columns: usize) {
         self.clear();
         self.epoch = Some(epoch);
+        self.epoch_offset_ms = 0.0;
         self.window = Some(window);
         self.max_columns = max_columns;
     }
@@ -61,6 +85,8 @@ impl AudioSpectrogram {
     pub fn clear(&mut self) {
         self.columns.clear();
         self.column_times_ms.clear();
+        self.generation += 1;
+        self.pushed = 0;
     }
 
     /// Push a column stamped one tick period after the previous one. For
@@ -100,6 +126,7 @@ impl AudioSpectrogram {
         }
         self.columns.push_back(data);
         self.column_times_ms.push_back(time_ms);
+        self.pushed += 1;
     }
 
     fn pop_front(&mut self) {
@@ -853,6 +880,15 @@ mod tests {
         spec.push_data_at(500, CollectorOutput::default());
         spec.push_data_at(400, CollectorOutput::default());
         assert_eq!(spec.column_times_ms, [500, 500]);
+    }
+
+    #[test]
+    fn pushed_counts_past_trimming_and_clear_starts_a_new_generation() {
+        let mut spec = spectrogram_with_columns(4, 9);
+        assert_eq!((spec.generation, spec.pushed), (0, 9));
+        spec.clear();
+        spec.push_data(CollectorOutput::default());
+        assert_eq!((spec.generation, spec.pushed), (1, 1));
     }
 
     #[test]

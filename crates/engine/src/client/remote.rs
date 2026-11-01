@@ -296,21 +296,61 @@ impl RemoteState {
     }
 }
 
+/// How far a remote client's spectrogram clock runs behind the best-case
+/// arrival of the engine's columns. Columns come in batches up to 50 ms apart
+/// (the server's spectrogram interval) plus network jitter; the audio page
+/// trails this clock by its own latency on top.
+const SPECTROGRAM_PLAYOUT_MS: f64 = 100.0;
+
+/// How much the clock estimate may slip per update (20 Hz: 1 ms per second),
+/// so it follows a local clock that runs faster than the engine's.
+const SPECTROGRAM_CLOCK_DECAY_MS: f64 = 0.05;
+
 fn apply_spectrogram(spectrogram: &RwLock<AudioSpectrogram>, update: SpectrogramUpdate) {
     let mut spectrogram = write(spectrogram);
     if update.reset {
         spectrogram.clear();
+        spectrogram.epoch = None;
     }
     spectrogram.max_columns = update.max_columns as usize;
     spectrogram.bin_count = update.bin_count as usize;
     spectrogram.tick_period = Duration::from_millis(update.tick_period_ms.into());
+    spectrogram.window = update
+        .window_ms
+        .map(|window_ms| Duration::from_millis(window_ms.into()));
+    let Some(newest_ms) = update.columns.last().map(|column| column.time_ms) else {
+        return;
+    };
     for column in update.columns {
-        spectrogram.push_data(CollectorOutput {
-            snapshot: column.snapshot,
-            current_audio_colunn: column.buckets,
-            ..CollectorOutput::default()
-        });
+        spectrogram.push_data_at(
+            column.time_ms,
+            CollectorOutput {
+                snapshot: column.snapshot,
+                current_audio_colunn: column.buckets,
+                ..CollectorOutput::default()
+            },
+        );
     }
+    sync_spectrogram_clock(&mut spectrogram, newest_ms, Instant::now());
+}
+
+/// Keep the engine's stamps and estimate the engine time of a local epoch
+/// (`AudioSpectrogram::epoch_offset_ms`), so the audio page scrolls with the
+/// engine's clock. The estimate is the engine time this update implies for
+/// the epoch if it had arrived without delay, maximised over the updates
+/// (the least delayed one wins), minus the playout delay.
+fn sync_spectrogram_clock(spectrogram: &mut AudioSpectrogram, newest_ms: u64, now: Instant) {
+    let fresh = spectrogram.epoch.is_none();
+    let epoch = *spectrogram.epoch.get_or_insert(now);
+    let since_epoch_ms = now.saturating_duration_since(epoch).as_secs_f64() * 1000.0;
+    let sample = newest_ms as f64 - since_epoch_ms;
+    let best = if fresh {
+        sample
+    } else {
+        let previous = spectrogram.epoch_offset_ms + SPECTROGRAM_PLAYOUT_MS;
+        sample.max(previous - SPECTROGRAM_CLOCK_DECAY_MS)
+    };
+    spectrogram.epoch_offset_ms = best - SPECTROGRAM_PLAYOUT_MS;
 }
 
 fn kind(message: &ServerMessage) -> &'static str {
@@ -518,5 +558,36 @@ impl EngineClient for RemoteClient {
             open_plugins: snapshot.open_plugins.clone(),
         });
         self.last_ui = Some(snapshot.open_plugins);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn the_spectrogram_clock_follows_the_least_delayed_update() {
+        let mut spec = AudioSpectrogram::new(100, 2, Duration::from_millis(20));
+        let start = Instant::now();
+        // First update: engine time 5000 ms now, played out 100 ms later.
+        sync_spectrogram_clock(&mut spec, 5_000, start);
+        assert_eq!(spec.epoch, Some(start));
+        assert_close(spec.epoch_offset_ms, 5_000.0 - SPECTROGRAM_PLAYOUT_MS);
+
+        // 50 ms later, but the update was 30 ms late: the estimate only
+        // slips by the decay.
+        sync_spectrogram_clock(&mut spec, 5_020, start + Duration::from_millis(50));
+        assert_close(
+            spec.epoch_offset_ms,
+            5_000.0 - SPECTROGRAM_PLAYOUT_MS - SPECTROGRAM_CLOCK_DECAY_MS,
+        );
+
+        // An update with less delay than the first one moves it forward.
+        sync_spectrogram_clock(&mut spec, 5_110, start + Duration::from_millis(100));
+        assert_close(spec.epoch_offset_ms, 5_010.0 - SPECTROGRAM_PLAYOUT_MS);
     }
 }

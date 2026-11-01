@@ -175,8 +175,7 @@ impl SpectrogramRing {
         };
         let px_per_ms = width as f64 / window_ms as f64;
         let engine_now_ms = spec
-            .epoch
-            .map(|epoch| epoch.elapsed().as_secs_f64() * 1000.0)
+            .now_ms()
             .unwrap_or(newest_ms as f64 + SPECTROGRAM_LATENCY_MS);
         let head = head_pixel(engine_now_ms, newest_ms, px_per_ms);
 

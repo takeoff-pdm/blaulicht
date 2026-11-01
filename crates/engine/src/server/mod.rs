@@ -486,7 +486,9 @@ struct ClientSession<'a> {
     stage: Option<(u64, Option<PathBuf>)>,
     dmx: Vec<Option<Vec<u8>>>,
     health: Vec<u8>,
-    spectrogram_time: Option<u64>,
+    /// `(generation, pushed)` of the spectrogram when its columns were last
+    /// sent (`AudioSpectrogram::generation`, `pushed`).
+    spectrogram_cursor: Option<(u64, u64)>,
     plugin_ui: Vec<u8>,
     editor_ui: Vec<u8>,
     status: Vec<u8>,
@@ -544,7 +546,7 @@ impl<'a> ClientSession<'a> {
             stage: None,
             dmx: vec![None; NUM_DMX_UNIVERSES],
             health: Vec::new(),
-            spectrogram_time: None,
+            spectrogram_cursor: None,
             plugin_ui: Vec::new(),
             editor_ui: Vec::new(),
             status: Vec::new(),
@@ -695,7 +697,7 @@ impl<'a> ClientSession<'a> {
                 self.next_health = now;
             }
             Stream::Spectrogram => {
-                self.spectrogram_time = None;
+                self.spectrogram_cursor = None;
                 self.next_spectrogram = now;
             }
             Stream::PluginUi => {
@@ -970,40 +972,49 @@ impl<'a> ClientSession<'a> {
     }
 
     fn send_spectrogram(&mut self) -> anyhow::Result<bool> {
-        let update = {
+        let (update, cursor) = {
             let spectrogram = read(&self.shared.app.audio_spectrogram);
-            let newest = spectrogram
-                .columns
-                .back()
-                .map(|column| column.snapshot.time);
-            let reset = match (self.spectrogram_time, newest) {
-                (_, None) => return Ok(true),
-                (None, Some(_)) => true,
-                (Some(last), Some(newest)) if newest == last => return Ok(true),
-                // The spectrogram started over.
-                (Some(last), Some(newest)) => newest < last,
+            let len = spectrogram.columns.len();
+            if len == 0 {
+                return Ok(true);
+            }
+            // Count the new columns rather than compare stamps: stamps may
+            // repeat, and the engine trims old columns by age.
+            let cursor = (spectrogram.generation, spectrogram.pushed);
+            let (reset, new) = match self.spectrogram_cursor {
+                Some(last) if last == cursor => return Ok(true),
+                Some((generation, pushed)) if generation == cursor.0 => {
+                    let new = cursor.1.saturating_sub(pushed);
+                    // Fell behind by more than the engine keeps: start over.
+                    (new > len as u64, new.min(len as u64) as usize)
+                }
+                // The first update, or the spectrogram started over.
+                _ => (true, len),
             };
             let columns = spectrogram
                 .columns
                 .iter()
-                .filter(|column| reset || Some(column.snapshot.time) > self.spectrogram_time)
-                .map(|column| SpectrogramColumn {
+                .zip(&spectrogram.column_times_ms)
+                .skip(len - new)
+                .map(|(column, &time_ms)| SpectrogramColumn {
+                    time_ms,
                     snapshot: column.snapshot.clone(),
                     buckets: column.current_audio_colunn.clone(),
                 })
                 .collect();
-            SpectrogramUpdate {
+            let update = SpectrogramUpdate {
                 reset,
                 max_columns: spectrogram.max_columns as u32,
                 bin_count: spectrogram.bin_count as u32,
                 tick_period_ms: spectrogram.tick_period.as_millis() as u32,
+                window_ms: spectrogram.window.map(|window| window.as_millis() as u32),
                 columns,
-            }
+            };
+            (update, cursor)
         };
-        let newest = update.columns.last().map(|column| column.snapshot.time);
         let written = self.send(&ServerMessage::Spectrogram(update))?;
         if written != Written::Dropped {
-            self.spectrogram_time = newest.or(self.spectrogram_time);
+            self.spectrogram_cursor = Some(cursor);
         }
         Ok(written == Written::Sent)
     }
