@@ -73,7 +73,7 @@ use crate::{
 
 /// The protocol version a client states in [`ClientMessage::Hello`]. The
 /// server rejects any other.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// How the messages of one connection are encoded; chosen by the frame type
 /// of the client's [`ClientMessage::Hello`].

@@ -7,6 +7,12 @@ overflow-checks = true
 lto = false
 incremental = true
 
+# The learned beat model runs on the engine thread for every audio frame.
+# Unoptimized it took about a third of a debug engine loop, which starved the
+# other engine ticks (spectrogram, plugins).
+[profile.dev.package.blaulicht-audio-features]
+opt-level = 2
+
 [profile.release]
 # opt-level = 3
 # lto = true

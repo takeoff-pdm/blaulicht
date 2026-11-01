@@ -42,6 +42,9 @@ serde = { version = "1", features = ["derive"] }
 map-range = "0.1.2"
 image = "0.25.6"
 kdam = "0.6.3"
+# The live spectrogram's epoch: the engine (and so this crate) also runs in
+# the browser (web frontend), where std's Instant panics.
+web-time = "1"
 clap = { version = "4.5.21", features = ["derive"] }
 
 

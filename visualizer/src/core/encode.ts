@@ -95,6 +95,11 @@ function mac250eStrobeToDmx(speed: number): number {
   return 72 - mapRangeU8(speed, [1, 255], [0, 22]);
 }
 
+function rushMh6StrobeToDmx(speed: number): number {
+  if (speed === 0) return 12; // shutter open
+  return mapRangeU8(speed, [1, 255], [16, 131]);
+}
+
 /** Several profiles emit full white on a dedicated channel only when the
  *  colour is exactly 255/255/255, mirroring the Rust writer. */
 function whiteOverride(s: FixtureState): number {
@@ -219,6 +224,11 @@ const LIGHT_ENCODERS: Record<string, Encoder> = {
     put(d, b, 5, 0);
     put(d, b, 6, s.alpha);
   },
+  VarytecStarstrip10_10Chan: (s, d, b) => {
+    // One dumb fixture: every lamp gets colour brightness x alpha.
+    const level = Math.trunc((Math.max(s.r, s.g, s.b) * s.alpha) / 255);
+    for (let lamp = 0; lamp < 10; lamp++) put(d, b, lamp, level);
+  },
 };
 
 const MOVING_HEAD_ENCODERS: Record<string, Encoder> = {
@@ -244,6 +254,25 @@ const MOVING_HEAD_ENCODERS: Record<string, Encoder> = {
     put(d, b, 4, s.strobe === 0 ? 0 : mapRangeU8(s.strobe, [1, 255], [10, 250]));
     put(d, b, 5, s.focus);
     put(d, b, 6, satOf(s) * 255);
+  },
+  MartinRushMH6Wash_14Chan: (s, d, b) => {
+    // Black means "no colour set": run on the white LED (mirrors the Rust writer).
+    const unset = Math.max(s.r, s.g, s.b) < 0.05 * 255;
+    const w = unset ? 255 : Math.min(s.r, s.g, s.b);
+    put(d, b, 0, rushMh6StrobeToDmx(s.strobe));
+    put(d, b, 1, s.alpha);
+    put(d, b, 2, 0);
+    put(d, b, 3, unset ? 0 : s.r - w);
+    put(d, b, 4, unset ? 0 : s.g - w);
+    put(d, b, 5, unset ? 0 : s.b - w);
+    put(d, b, 6, w);
+    put(d, b, 7, 0); // colour presets off
+    put(d, b, 8, s.focus);
+    put(d, b, 9, s.pan);
+    put(d, b, 10, 0);
+    put(d, b, 11, s.tilt);
+    put(d, b, 12, 0);
+    put(d, b, 13, 0); // fixture control: no function
   },
 };
 

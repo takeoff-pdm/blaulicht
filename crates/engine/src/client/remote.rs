@@ -299,7 +299,7 @@ impl RemoteState {
 fn apply_spectrogram(spectrogram: &RwLock<AudioSpectrogram>, update: SpectrogramUpdate) {
     let mut spectrogram = write(spectrogram);
     if update.reset {
-        spectrogram.columns.clear();
+        spectrogram.clear();
     }
     spectrogram.max_columns = update.max_columns as usize;
     spectrogram.bin_count = update.bin_count as usize;

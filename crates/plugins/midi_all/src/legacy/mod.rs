@@ -1,6 +1,7 @@
 mod apc_midi;
 mod apc_twin;
 mod page_nav;
+pub(crate) mod view_loop;
 pub(crate) mod mapping;
 pub(crate) mod virtual_midi;
 
@@ -20,17 +21,19 @@ use map_range::MapRange;
 use crate::legacy::apc_midi::MidiDevice;
 
 // Plugin UI widget ids: 0 fans switch, 1 verbose switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
-// editor (mapping.rs), 100.. mapping list rows. Tabs are a separate namespace
+// editor (mapping.rs), 70..74 view loop, 100.. mapping list rows, 230.. view loop rows. Tabs are a separate namespace
 // but stay out of those ranges anyway.
 const UI_TABS_ID: u8 = 41;
 const UI_TAB_TWIN: u8 = 42;
 const UI_TAB_TRIGGERS: u8 = 43;
 const UI_TAB_MISC: u8 = 44;
 const UI_TAB_KORG: u8 = 38;
+const UI_TAB_VIEW_LOOP: u8 = 39;
 const UI_FANS_SWITCH_ID: u8 = 0;
 const UI_VERBOSE_SWITCH_ID: u8 = 1;
 use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::mapping::{ControlId, Mapping, MappingDevice, MappingEditor};
+use crate::legacy::view_loop::ViewLoop;
 
 #[derive(Default)]
 pub struct LegacyState {
@@ -69,6 +72,9 @@ pub struct LegacyState {
     pub(crate) shift_held: bool,
     /// "Hold overlay" controls latched by shift+press (auto-hold); they flash.
     pub(crate) latched_holds: BTreeSet<ControlId>,
+    /// Hold pads currently held down on the hardware (momentary, not latched).
+    /// Pressing shift while they are down latches them too.
+    pub(crate) pressed_holds: BTreeSet<ControlId>,
     /// Scene alphas remembered while a "Hold scene alpha" button is down.
     pub(crate) held_alphas: BTreeMap<ControlId, Vec<(u8, u8)>>,
     /// The look (overlays + masters) remembered while a "Hold view" button is
@@ -76,6 +82,8 @@ pub struct LegacyState {
     pub(crate) held_views: BTreeMap<ControlId, View>,
     /// Last velocity sent per MIDI Mix button LED.
     pub(crate) mix_lit_colors: BTreeMap<u8, u8>,
+    /// Auto mode: cycles through a list of views (see view_loop.rs).
+    pub(crate) view_loop: ViewLoop,
 }
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
@@ -156,6 +164,16 @@ impl LegacyState {
 
             ui::begin_tab(UI_TABS_ID, UI_TAB_TRIGGERS, "Mappings");
             self.render_mappings_ui(&input.events.events, input.id);
+            ui::end_tab();
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_VIEW_LOOP, "View Loop");
+            let changed = bpf::with_dmx(|dmx| {
+                self.view_loop
+                    .render(&input.events.events, input.id, input.clock, dmx)
+            });
+            if changed {
+                self.save_mappings();
+            }
             ui::end_tab();
 
             ui::begin_tab(UI_TABS_ID, UI_TAB_MISC, "Misc");
@@ -294,6 +312,9 @@ impl LegacyState {
                 MidiDevice::APCMini => self.apc(handle, res, input.clone()),
             }
         }
+
+        // After the devices, so a mapped toggle takes effect this tick.
+        self.view_loop.tick(input.clock);
 
         //     match ev {
         //         ControlEvent::SelectGroup(42) => {

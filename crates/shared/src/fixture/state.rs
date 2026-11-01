@@ -17,6 +17,20 @@ pub enum MergeStrategy {
     Interpolate,
 }
 
+impl MergeStrategy {
+    /// How an overlay scene merges `property` onto the scenes below it.
+    ///
+    /// Position is latest-wins: the higher overlay places the head. Taking the
+    /// max (or the midpoint) of two pan/tilt values points the head somewhere
+    /// neither scene asked for. Everything else stays highest-takes-precedence.
+    pub fn for_overlay_property(property: FixtureProperty) -> Self {
+        match property {
+            FixtureProperty::Pan | FixtureProperty::Tilt => MergeStrategy::Latest,
+            _ => MergeStrategy::Highest,
+        }
+    }
+}
+
 /// Concrete pan/tilt as carried by palettes and the resolved view used by
 /// fixture-write paths.
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Encode, Decode)]
@@ -394,5 +408,37 @@ mod tests {
 
         assert!(outcome.changed.is_empty());
         assert!(outcome.rejected.is_empty());
+    }
+
+    #[test]
+    fn overlay_merge_pan_tilt_latest_wins_others_highest() {
+        let palettes = BTreeMap::new();
+        let below = FixtureState {
+            alpha: FixtureValue::Literal(200),
+            pan: FixtureValue::Literal(200),
+            tilt: FixtureValue::Literal(180),
+            ..Default::default()
+        };
+        let overlay = FixtureState {
+            alpha: FixtureValue::Literal(50),
+            pan: FixtureValue::Literal(20),
+            tilt: FixtureValue::Literal(10),
+            ..Default::default()
+        };
+
+        let mut merged = below.clone();
+        for property in [FixtureProperty::Alpha, FixtureProperty::Pan, FixtureProperty::Tilt] {
+            merged.merge_from(
+                &overlay,
+                property,
+                MergeStrategy::for_overlay_property(property),
+                &palettes,
+            );
+        }
+        let resolved = merged.resolve(&palettes);
+
+        assert_eq!(resolved.orientation.pan, 20, "pan: overlay wins even if lower");
+        assert_eq!(resolved.orientation.tilt, 10, "tilt: overlay wins even if lower");
+        assert_eq!(resolved.alpha, 200, "alpha: highest wins");
     }
 }

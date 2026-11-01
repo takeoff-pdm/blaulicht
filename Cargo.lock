@@ -519,6 +519,7 @@ dependencies = [
  "rustfft",
  "serde",
  "symphonia",
+ "web-time",
 ]
 
 [[package]]

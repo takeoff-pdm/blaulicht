@@ -200,7 +200,7 @@ fn process_file(path: &Path, output_dir: &Path) -> anyhow::Result<()> {
             let segment_path = file_output_dir.join(format!("{segment:04}.png"));
             render_spectrogram(&spectrogram, &segment_path)?;
             segment += 1;
-            spectrogram.columns.clear();
+            spectrogram.clear();
         }
     }
 
