@@ -124,7 +124,7 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 055 | [Desktop / mobile layout setting with a desktop navigation sidebar](TICKETS/055-desktop-mobile-layout.doing.md) | doing | — |
+| 055 | [Desktop / mobile layout setting with a desktop navigation sidebar](TICKETS/055-desktop-mobile-layout.done.md) | done | — |
 
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
