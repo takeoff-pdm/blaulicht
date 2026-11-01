@@ -52,6 +52,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Remote clients (`server`, `client::RemoteClient`): sync websockets, no
 # async runtime; bincode (serde mode) and JSON on the wire.
 tungstenite = "0.24"
+# Plain HTTP on the same port (the web frontend's files); already in the
+# tree through tungstenite.
+httparse = "1"
 bincode = { version = "2.0.1", features = ["serde"] }
 
 # Wasm

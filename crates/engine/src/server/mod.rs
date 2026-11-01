@@ -3,7 +3,9 @@
 //! [`crate::client::RemoteClient`]).
 //!
 //! - One listener thread accepts connections on `config.toml`'s `port`
-//!   (`server_enabled = false` turns it off); each client gets its own
+//!   (`server_enabled = false` turns it off). A plain HTTP request there
+//!   gets the web frontend's files ([`http`]); a websocket upgrade becomes a
+//!   remote client. Each client gets its own
 //!   thread, a [`ClientConnection`] (a fresh `ClientId::Remote`, a new
 //!   operator session, a hub subscription, a bus connection and a view-state
 //!   publisher) and the engine's state to read. Sync `tungstenite`, no async
@@ -25,6 +27,7 @@
 //!   `ClientConnection`, which closes the session and drops the client's
 //!   view-state entries.
 
+pub mod http;
 pub mod json;
 pub mod protocol;
 pub mod snapshot;
@@ -109,6 +112,9 @@ pub struct ServerOptions {
     pub queue_capacity: usize,
     /// How long a client may take no data before it is disconnected.
     pub stall_timeout: Duration,
+    /// The web frontend's bundle, served to plain HTTP requests
+    /// ([`http::web_root`]). Without one, `/` explains how to build it.
+    pub web_root: Option<PathBuf>,
 }
 
 impl ServerOptions {
@@ -118,6 +124,7 @@ impl ServerOptions {
             max_clients: MAX_CLIENTS,
             queue_capacity: REMOTE_QUEUE_CAPACITY,
             stall_timeout: STALL_TIMEOUT,
+            web_root: None,
         }
     }
 }
@@ -337,6 +344,14 @@ fn connect(
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
+    match http::peek_request(&stream, HANDSHAKE_TIMEOUT)? {
+        http::Peeked::Upgrade => {}
+        http::Peeked::Http(request) => {
+            http::respond(stream, &request, shared.options.web_root.as_deref());
+            return Ok(None);
+        }
+        http::Peeked::Invalid => anyhow::bail!("not an HTTP request"),
+    }
     let mut ws = tungstenite::accept_with_config(stream, Some(websocket_config()))
         .map_err(|err| anyhow::anyhow!("websocket handshake failed: {err}"))?;
 

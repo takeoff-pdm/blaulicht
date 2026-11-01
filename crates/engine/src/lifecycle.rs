@@ -216,8 +216,25 @@ impl Engine {
         //
         let server = if cfg.server_enabled {
             let bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, cfg.port));
+            let web_root =
+                crate::server::http::web_root(cfg.web_ui_dir.as_deref(), config_file.parent());
+            match web_root.as_deref() {
+                Some(root) if root.join("index.html").is_file() => {
+                    info!("Web UI on http://{bind}/ (files from {})", root.display())
+                }
+                Some(root) => info!(
+                    "No web UI bundle in {} (build it with crates/web/build.sh); \
+                     http://{bind}/ explains",
+                    root.display()
+                ),
+                None => info!("No web UI bundle found; http://{bind}/ explains"),
+            }
+            let options = ServerOptions {
+                web_root,
+                ..ServerOptions::new(bind)
+            };
             match Server::start(
-                ServerOptions::new(bind),
+                options,
                 Arc::clone(&app_state),
                 hub.clone(),
                 event_bus_handle.clone(),

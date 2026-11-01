@@ -629,3 +629,142 @@ fn wire_types_round_trip() {
     }
     assert!(SystemTime::now() > saved_at);
 }
+
+/// Sends a raw HTTP `request` to the server's port and returns the status,
+/// the headers (names lowercased) and the body; the server closes the
+/// connection after answering.
+fn http(server: &ServerHandle, request: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut stream = TcpStream::connect(server.local_addr()).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).unwrap();
+    let split = answer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .expect("a response head");
+    let head = String::from_utf8(answer[..split].to_vec()).unwrap();
+    let body = answer[split + 4..].to_vec();
+    let mut lines = head.split("\r\n");
+    let status = lines
+        .next()
+        .unwrap()
+        .split(' ')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let headers = lines
+        .filter_map(|line| line.split_once(": "))
+        .map(|(name, value)| (name.to_ascii_lowercase(), value.to_string()))
+        .collect();
+    (status, headers, body)
+}
+
+fn header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
+}
+
+/// Without a web bundle, the port still answers plain HTTP: `/` says how to
+/// build the web UI, everything else is not there, and only GET and HEAD
+/// are served.
+#[test]
+fn the_port_explains_a_missing_web_bundle() {
+    let engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+
+    let (status, headers, body) = http(&server, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert_eq!(status, 200);
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some("text/html; charset=utf-8")
+    );
+    assert!(String::from_utf8_lossy(&body).contains("the web UI is not built"));
+
+    let (status, _, _) = http(&server, "GET /blaulicht_web.js HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert_eq!(status, 404);
+    let (status, headers, _) = http(&server, "POST / HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert_eq!(
+        (status, header(&headers, "allow")),
+        (405, Some("GET, HEAD"))
+    );
+}
+
+/// The port serves the web bundle to browsers (gzip when they take it,
+/// revalidation by ETag, nothing outside the bundle) and remote clients on
+/// the same port at the same time.
+#[test]
+fn the_port_serves_the_web_bundle_and_remote_clients() {
+    let bundle = tempdir::TempDir::new("web-bundle").unwrap();
+    let file =
+        |name: &str, contents: &[u8]| std::fs::write(bundle.path().join(name), contents).unwrap();
+    file("index.html", b"<html>web ui</html>");
+    file("blaulicht_web.js", b"export default 1;");
+    file("blaulicht_web_bg.wasm", b"\0asm raw");
+    file("blaulicht_web_bg.wasm.gz", b"gzipped");
+    std::fs::write(bundle.path().parent().unwrap().join("secret.txt"), b"no").unwrap();
+
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(ServerOptions {
+        web_root: Some(bundle.path().to_path_buf()),
+        ..loopback()
+    });
+
+    let (status, headers, body) = http(&server, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert_eq!(
+        (status, body.as_slice()),
+        (200, b"<html>web ui</html>".as_slice())
+    );
+    assert_eq!(header(&headers, "cache-control"), Some("no-cache"));
+    let (_, headers, _) = http(
+        &server,
+        "GET /blaulicht_web.js?v=1 HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+
+    let wasm = "GET /blaulicht_web_bg.wasm HTTP/1.1\r\nHost: x\r\n";
+    let (status, headers, body) = http(
+        &server,
+        &format!("{wasm}Accept-Encoding: deflate, gzip;q=1.0\r\n\r\n"),
+    );
+    assert_eq!((status, body.as_slice()), (200, b"gzipped".as_slice()));
+    assert_eq!(header(&headers, "content-type"), Some("application/wasm"));
+    assert_eq!(header(&headers, "content-encoding"), Some("gzip"));
+    let (_, headers, body) = http(&server, &format!("{wasm}\r\n"));
+    assert_eq!(body, b"\0asm raw");
+    assert_eq!(header(&headers, "content-encoding"), None);
+
+    let etag = header(&headers, "etag").expect("an etag").to_string();
+    let (status, _, body) = http(&server, &format!("{wasm}If-None-Match: {etag}\r\n\r\n"));
+    assert_eq!((status, body.len()), (304, 0));
+
+    let (status, headers, body) = http(&server, "HEAD / HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert_eq!((status, body.len()), (200, 0));
+    assert_eq!(header(&headers, "content-length"), Some("19"));
+
+    for escape in [
+        "/../secret.txt",
+        "/%2e%2e/secret.txt",
+        "//etc/passwd",
+        "/a/../../secret.txt",
+    ] {
+        let (status, _, _) = http(
+            &server,
+            &format!("GET {escape} HTTP/1.1\r\nHost: x\r\n\r\n"),
+        );
+        assert_eq!(status, 404, "{escape}");
+    }
+
+    // A remote client on the same port.
+    let remote = connect(&mut engine, &server, &[]);
+    assert_eq!(round_trip(&mut engine, &remote, HostCommand::Ping), OK);
+}

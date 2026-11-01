@@ -557,6 +557,7 @@ dependencies = [
  "cpal 0.15.3",
  "crossbeam-channel",
  "dhat",
+ "httparse",
  "itertools 0.14.0",
  "js-sys",
  "libc",

@@ -37,6 +37,11 @@ pub struct Config {
     /// Whether the engine accepts remote clients at all.
     #[serde(default = "default_server_enabled")]
     pub server_enabled: bool,
+    /// The web frontend's bundle (`crates/web/build.sh`), served on `port`
+    /// to plain HTTP requests. Relative to this file's folder. Unset: `web/`
+    /// next to the binary, or one folder up (`target/web` in a checkout).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_ui_dir: Option<PathBuf>,
     pub dmx_out_devices: [String; 2],
     pub default_audio_device: Option<String>,
 
@@ -339,6 +344,7 @@ impl Default for Config {
         Self {
             port: 1234,
             server_enabled: default_server_enabled(),
+            web_ui_dir: None,
             dmx_out_devices: ["/dev/dmx_out0".to_string(), "/dev/dmx_out1".to_string()],
             default_audio_device: None,
 
