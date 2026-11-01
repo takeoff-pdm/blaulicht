@@ -341,6 +341,12 @@ fn connect(
     stream: TcpStream,
     peer: SocketAddr,
 ) -> anyhow::Result<Option<(ClientId, String)>> {
+    // The listener is non-blocking, and on macOS/BSD an accepted socket
+    // inherits that (Linux doesn't). A non-blocking socket here makes the
+    // peek fail early and cuts off large HTTP answers (the 2.7 MB wasm) at
+    // whatever fits in the send buffer, so the browser sees
+    // ERR_CONTENT_LENGTH_MISMATCH. The timeouts below need it blocking.
+    stream.set_nonblocking(false)?;
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;

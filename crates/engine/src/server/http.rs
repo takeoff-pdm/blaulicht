@@ -27,6 +27,9 @@ const PEEK_POLL: Duration = Duration::from_millis(5);
 /// How long to read (and drop) what a client still sends after the answer,
 /// so closing doesn't reset the connection under the answer.
 const LINGER: Duration = Duration::from_millis(200);
+/// How long one send of an HTTP answer may make no progress before the
+/// connection is given up.
+const HTTP_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// What a new connection asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -215,6 +218,9 @@ pub(crate) fn respond(mut stream: TcpStream, request: &Request, web_root: Option
         return;
     }
     let response = response_for(request, web_root);
+    // The handshake's short write timeout is too tight for the wasm bundle
+    // over slow Wi-Fi; it only fires when a send makes no progress at all.
+    let _ = stream.set_write_timeout(Some(HTTP_WRITE_TIMEOUT));
     tracing::debug!(
         "Web UI: {} {} -> {}",
         request.method,

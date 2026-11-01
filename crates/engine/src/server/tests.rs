@@ -831,3 +831,42 @@ fn the_port_serves_the_web_bundle_and_remote_clients() {
     let remote = connect(&mut engine, &server, &[]);
     assert_eq!(round_trip(&mut engine, &remote, HostCommand::Ping), OK);
 }
+
+/// A file larger than the socket's send buffer arrives whole even when the
+/// browser is slow to read. On macOS an accepted socket inherited the
+/// listener's non-blocking mode, so the answer was cut off at the send
+/// buffer (ERR_CONTENT_LENGTH_MISMATCH in the browser).
+#[test]
+fn the_port_serves_large_files_to_slow_readers() {
+    use std::io::{Read, Write};
+    let bundle = tempdir::TempDir::new("web-bundle").unwrap();
+    std::fs::write(bundle.path().join("index.html"), b"<html></html>").unwrap();
+    let wasm: Vec<u8> = (0..8u32 << 20).map(|i| (i % 251) as u8).collect();
+    std::fs::write(bundle.path().join("blaulicht_web_bg.wasm"), &wasm).unwrap();
+
+    let engine = TestEngine::start(small_rig);
+    let server = engine.start_server(ServerOptions {
+        web_root: Some(bundle.path().to_path_buf()),
+        ..loopback()
+    });
+
+    let mut stream = TcpStream::connect(server.local_addr()).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    stream
+        .write_all(b"GET /blaulicht_web_bg.wasm HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    // Let the server fill its send buffer before anything is read.
+    std::thread::sleep(Duration::from_millis(300));
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).unwrap();
+    let split = answer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .expect("a response head")
+        + 4;
+    assert!(answer.starts_with(b"HTTP/1.1 200"));
+    assert_eq!(answer.len() - split, wasm.len(), "the whole file arrives");
+    assert!(answer[split..] == wasm[..]);
+}
