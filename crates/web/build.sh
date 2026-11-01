@@ -58,11 +58,8 @@ wasm="$target_dir/wasm32-unknown-unknown/$artifact_dir/blaulicht_web.wasm"
 
 rm -rf "$out"
 mkdir -p "$out"
+# No wasm-opt: -Oz saved 6 % raw and nothing after gzip (ticket 054).
 wasm-bindgen --target web --no-typescript --out-dir "$out" "$wasm"
-if [[ $profile != dev ]] && command -v wasm-opt >/dev/null; then
-    wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
-        -o "$out/blaulicht_web_bg.wasm" "$out/blaulicht_web_bg.wasm"
-fi
 cp crates/web/index.html "$out/"
 gzip -9 -k -f "$out/blaulicht_web_bg.wasm" "$out/blaulicht_web.js" "$out/index.html"
 
