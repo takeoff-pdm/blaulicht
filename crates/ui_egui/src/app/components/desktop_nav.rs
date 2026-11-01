@@ -548,7 +548,34 @@ fn rail_row(ui: &mut Ui, id: egui::Id, icon: &str, label: &str, current: bool) -
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, current, label)
     });
-    response.on_hover_text(label)
+    if response.hovered() {
+        rail_tooltip(ui, id, rect, label);
+    }
+    response
+}
+
+/// The page name next to a hovered rail icon (to its right, like a pro
+/// app's tool rail), instead of egui's tooltip under the pointer, which
+/// would cover the icon below.
+fn rail_tooltip(ui: &Ui, id: egui::Id, row: Rect, label: &str) {
+    let density = Density::of(ui.ctx());
+    let color = ui_tokens::palette(ui.ctx());
+    egui::Area::new(id.with("rail_tooltip"))
+        .order(egui::Order::Tooltip)
+        .interactable(false)
+        .pivot(Align2::LEFT_CENTER)
+        .fixed_pos(egui::pos2(row.right() + 6.0, row.center().y))
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style())
+                .inner_margin(egui::Margin::symmetric(8, 4))
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new(label)
+                            .font(density.font(Weight::Medium, nav_text_size(density)))
+                            .color(color.text_strong),
+                    );
+                });
+        });
 }
 
 fn nav_row_height(density: Density) -> f32 {
