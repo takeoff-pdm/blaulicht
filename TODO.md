@@ -120,6 +120,12 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 048 | [Web frontend spike: egui on wasm or Svelte](TICKETS/decouple/048-web-frontend-spike.done.md) | done | 047 |
 | 054 | [Web frontend](TICKETS/decouple/054-web-frontend.done.md) | done | 048 |
 
+### E11 — Desktop layout
+
+| # | Ticket | Status | Depends on |
+|---|---|---|---|
+| 055 | [Desktop / mobile layout setting with a desktop navigation sidebar](TICKETS/055-desktop-mobile-layout.planned.md) | planned | — |
+
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
 Items marked `→ TICKET NNN` are covered by that ticket.
