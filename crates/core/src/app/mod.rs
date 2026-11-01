@@ -17,11 +17,10 @@ use blaulicht_shared::fixture::dimmer::Dimmer;
 use blaulicht_shared::fixture::light::Light;
 use blaulicht_shared::fixture::moving_head::MovingHead;
 use blaulicht_shared::{AppPage, CollectedAudioSnapshot};
-use egui::{Color32, ColorImage, Pos2, TextureHandle, Vec2};
+use egui::{Color32, Pos2, Vec2};
 use egui_dock::DockState;
 use pages::{PaletteUI, ViewUI};
 use std::{
-    cell::Cell,
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
     time::{Duration, Instant},
@@ -181,20 +180,8 @@ pub struct BlaulichtApp {
 
     animation_time: f32,
 
-    // Spectrogram smooth scrolling
-    spectro_scroll_px_offset: f32,
-    /// Per-bin volume sums of the columns that have not yet advanced the
-    /// ring by a whole pixel; averaged into the next drawn pixel column.
-    spectro_pending_sum: Vec<u32>,
-    spectro_pending_count: u32,
-    spectro_pending_beat: bool,
-    spectro_pending_onset: bool,
-    spectrogram_image_buffer: ColorImage,
-    spectrogram_texture_handle: Option<TextureHandle>,
-    last_spectrogram_columns: Cell<usize>,
-    last_spectrogram_bucket_data_len: Cell<usize>,
-    last_spectrogram_max_columns: Cell<usize>,
-    last_spectrogram_snapshot_time: Cell<u64>,
+    /// Live scrolling spectrogram on the audio page.
+    spectrogram_ring: pages::SpectrogramRing,
 
     pub data: AppStateWrapper,
 
@@ -419,17 +406,7 @@ impl BlaulichtApp {
             last_beat_marker_snapshot_time: 0,
             frame_count: 0,
             animation_time: 0.0,
-            spectro_scroll_px_offset: 0.0,
-            spectro_pending_sum: Vec::new(),
-            spectro_pending_count: 0,
-            spectro_pending_beat: false,
-            spectro_pending_onset: false,
-            spectrogram_image_buffer: ColorImage::default(),
-            spectrogram_texture_handle: None,
-            last_spectrogram_columns: Cell::new(0),
-            last_spectrogram_bucket_data_len: Cell::new(0),
-            last_spectrogram_max_columns: Cell::new(0),
-            last_spectrogram_snapshot_time: Cell::new(0),
+            spectrogram_ring: Default::default(),
             data,
             tick_speeds: TickSpeeds::default(),
             loop_speed_graph: TimeSeriesGraph::new(

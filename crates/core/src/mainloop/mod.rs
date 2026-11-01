@@ -179,17 +179,11 @@ pub fn run(
     // Configure spectrogram window to keep configured seconds based on spectrogram refresh rate.
     // Fall back to at least 1 Hz; default configured to 60 Hz.
     let spec_refresh_hz = config.spectrogram_refresh_hz.max(1) as usize;
-    let window_secs = config.spectrogram_window_seconds.max(1) as usize;
-    let desired_columns = spec_refresh_hz * window_secs;
-    let spec_period = Duration::from_millis((1000f32 / spec_refresh_hz as f32) as u64);
-    {
-        let mut spec = app_state.audio_spectrogram.write().unwrap();
-        spec.max_columns = desired_columns;
-        // Trim if we already exceed.
-        while spec.columns.len() > spec.max_columns {
-            spec.columns.pop_front();
-        }
-    }
+    let window_secs = config.spectrogram_window_seconds.max(1);
+    let spec_period = Duration::from_secs_f64(1.0 / spec_refresh_hz as f64);
+    // Columns are stamped with engine time and trimmed by age; the count is
+    // only a safety cap (twice the nominal rate, plus slack).
+    let max_spectrogram_columns = spec_refresh_hz * (window_secs as usize + 2) * 2;
 
     const COLLECTOR_DMX: usize = 0;
     const COLLECTOR_SPECTROGRAM: usize = 1;
@@ -229,11 +223,16 @@ pub fn run(
     // Loop speed.
     let mut time_of_last_system_publish = 0;
     let mainloop_begin_time = Instant::now();
+    app_state.audio_spectrogram.write().unwrap().restart_live(
+        mainloop_begin_time,
+        Duration::from_secs(window_secs),
+        max_spectrogram_columns,
+    );
 
     // Ticks.
     let mut dmx_time_of_last_tick = Instant::now();
     let mut plugins_time_of_last_tick = Instant::now();
-    let mut spectrogram_time_of_last_tick = Instant::now();
+    let mut next_spectrogram_tick = Instant::now();
     let mut plugin_audio_cursor = AudioEventCursor::default();
     let mut tempo_overlay = crate::audio::external_tempo::TempoOverlay::default();
 
@@ -360,7 +359,17 @@ pub fn run(
             dmx_time_of_last_tick = Instant::now();
         }
 
-        if spectrogram_time_of_last_tick.elapsed() >= spec_period {
+        // Scheduled rather than polled: a slow loop iteration delays one
+        // column but the next one is due on time again, so the column rate
+        // holds as long as the loop stays faster than the period. After a
+        // long stall, resync instead of bursting out catch-up columns.
+        let spectrogram_due = Instant::now();
+        if spectrogram_due >= next_spectrogram_tick {
+            next_spectrogram_tick += spec_period;
+            if spectrogram_due.saturating_duration_since(next_spectrogram_tick) > spec_period * 3 {
+                next_spectrogram_tick = spectrogram_due + spec_period;
+            }
+
             {
                 let mut ui_params = app_state.audio_params.write().unwrap();
                 if ui_params.changed {
@@ -373,12 +382,12 @@ pub fn run(
             }
 
             let output = sig_collector.tick_output::<COLLECTOR_SPECTROGRAM>();
+            let taken_ms = mainloop_begin_time.elapsed().as_millis() as u64;
             app_state
                 .audio_spectrogram
                 .write()
                 .unwrap()
-                .push_data(output);
-            spectrogram_time_of_last_tick = Instant::now();
+                .push_data_at(taken_ms, output);
         }
 
         // Measure speeds.

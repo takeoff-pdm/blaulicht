@@ -10,6 +10,7 @@ mod view_perf;
 mod visualizer;
 
 pub use animation_spec_editor::*;
+pub(crate) use audio::SpectrogramRing;
 pub use programmer::*;
 pub use programmer_animations::*;
 pub use scene_graph::*;

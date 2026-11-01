@@ -1,56 +1,113 @@
 use crate::{AudioBucket, CollectorOutput};
 use blaulicht_shared::CollectedAudioSnapshot;
 use egui::{Color32, ColorImage};
-use std::{collections::VecDeque, time::Duration};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
+
+/// Columns older than the window are kept this much longer, so a viewer that
+/// trails the newest column (see the live audio page) still has data for its
+/// left edge.
+const WINDOW_SLACK_MS: u64 = 1000;
 
 /// Rolling buffer of recent spectra for a live spectrogram.
 #[derive(Clone)]
 pub struct AudioSpectrogram {
     /// Most-recent-last columns; each column is `bin_count` tall with u8 intensities 0..=255.
     /// Contains bins. A bin is just a averaged part of the frequency space.
+    ///
+    /// Read freely, but mutate only through the methods so
+    /// [`Self::column_times_ms`] stays in step.
     pub columns: VecDeque<CollectorOutput>,
-    /// Maximum number of time columns to keep.
+    /// When each column was taken, in milliseconds on the producer's clock
+    /// (see [`Self::epoch`]). Parallel to `columns` and never decreasing.
+    pub column_times_ms: VecDeque<u64>,
+    /// Maximum number of time columns to keep. With a [`Self::window`] set this
+    /// is only a safety cap.
     pub max_columns: usize,
     /// Number of frequency bins per column.
     pub bin_count: usize,
     // Time to wait between ticks of the spectrogram.
     pub tick_period: Duration,
+    /// Span of time the spectrogram shows. When set, columns are trimmed by
+    /// age rather than by count, so a producer that falls behind its tick
+    /// rate never stretches the window.
+    pub window: Option<Duration>,
+    /// The instant `column_times_ms == 0` refers to, when the columns are
+    /// stamped live. Lets a viewer turn the stamps into wall-clock time.
+    pub epoch: Option<Instant>,
 }
 
 impl AudioSpectrogram {
     pub fn new(max_columns: usize, bin_count: usize, tick_period: Duration) -> Self {
         Self {
             columns: VecDeque::with_capacity(max_columns),
+            column_times_ms: VecDeque::with_capacity(max_columns),
             max_columns,
             bin_count,
             tick_period,
+            window: None,
+            epoch: None,
         }
     }
 
-    // pub fn audio_snapshot(&mut self, snapshot: CollectedAudioSnapshot) {
-    //     self.snapshot = snapshot;
-    // }
+    /// Start a fresh live recording: drop every column and stamp new ones
+    /// relative to `epoch`, keeping roughly `window` of history.
+    pub fn restart_live(&mut self, epoch: Instant, window: Duration, max_columns: usize) {
+        self.clear();
+        self.epoch = Some(epoch);
+        self.window = Some(window);
+        self.max_columns = max_columns;
+    }
 
-    pub fn push_data(&mut self, mut data: CollectorOutput) {
+    pub fn clear(&mut self) {
+        self.columns.clear();
+        self.column_times_ms.clear();
+    }
+
+    /// Push a column stamped one tick period after the previous one. For
+    /// offline renderers that run on simulated time.
+    pub fn push_data(&mut self, data: CollectorOutput) {
+        let time_ms = self
+            .column_times_ms
+            .back()
+            .map(|last| last + self.tick_period.as_millis() as u64)
+            .unwrap_or(0);
+        self.push_data_at(time_ms, data);
+    }
+
+    /// Push a column taken at `time_ms` (see [`Self::column_times_ms`]).
+    pub fn push_data_at(&mut self, time_ms: u64, mut data: CollectorOutput) {
         if self.max_columns == 0 || self.bin_count == 0 {
             return;
         }
-        // Column
-        {
-            // Ensure correct height; pad or truncate as needed.
-            if data.current_audio_colunn.len() != self.bin_count {
-                // panic!("Had to resize  {} vs. {}", col.len(), self.bin_count);
-                // This can happen due to rounding issues.
-                data.current_audio_colunn
-                    .resize(self.bin_count, AudioBucket::default());
-            }
-            // println!("{} vs {}", self.columns.len(), self.max_columns);
-            while self.columns.len() >= self.max_columns {
-                self.columns.pop_front();
-                // println!("too many columns, reducing...");
-            }
-            self.columns.push_back(data);
+        // Ensure correct height; pad or truncate as needed.
+        if data.current_audio_colunn.len() != self.bin_count {
+            // This can happen due to rounding issues.
+            data.current_audio_colunn
+                .resize(self.bin_count, AudioBucket::default());
         }
+        // Stamps must not go backwards: viewers binary-search them.
+        let time_ms = time_ms.max(self.column_times_ms.back().copied().unwrap_or(0));
+
+        while self.columns.len() >= self.max_columns {
+            self.pop_front();
+        }
+        if let Some(window) = self.window {
+            let keep_ms = window.as_millis() as u64 + WINDOW_SLACK_MS;
+            let cutoff = time_ms.saturating_sub(keep_ms);
+            while self.column_times_ms.front().is_some_and(|&t| t < cutoff) {
+                self.pop_front();
+            }
+        }
+        self.columns.push_back(data);
+        self.column_times_ms.push_back(time_ms);
+    }
+
+    fn pop_front(&mut self) {
+        self.columns.pop_front();
+        self.column_times_ms.pop_front();
     }
 
     pub fn current_snapshot(&self) -> CollectedAudioSnapshot {
@@ -720,6 +777,51 @@ mod tests {
             spec.push_data(output);
         }
         spec
+    }
+
+    #[test]
+    fn push_data_stamps_one_tick_period_apart() {
+        let spec = spectrogram_with_columns(10, 3);
+        assert_eq!(spec.column_times_ms, [0, 20, 40]);
+    }
+
+    #[test]
+    fn push_data_still_trims_by_count_without_a_window() {
+        let spec = spectrogram_with_columns(4, 9);
+        assert_eq!(spec.columns.len(), 4);
+        assert_eq!(spec.column_times_ms, [100, 120, 140, 160]);
+    }
+
+    #[test]
+    fn live_window_trims_by_age_not_count() {
+        let mut spec = AudioSpectrogram::new(40, 2, Duration::from_millis(20));
+        spec.restart_live(Instant::now(), Duration::from_secs(2), 10_000);
+        // A slow producer: one column every 100 ms for 10 s.
+        for i in 0..=100u64 {
+            spec.push_data_at(i * 100, CollectorOutput::default());
+        }
+        let newest = *spec.column_times_ms.back().unwrap();
+        let oldest = *spec.column_times_ms.front().unwrap();
+        assert_eq!(newest, 10_000);
+        // Window plus slack, regardless of how many columns that is.
+        assert_eq!(newest - oldest, 2_000 + WINDOW_SLACK_MS);
+        assert_eq!(spec.columns.len(), spec.column_times_ms.len());
+    }
+
+    #[test]
+    fn stamps_never_go_backwards() {
+        let mut spec = AudioSpectrogram::new(40, 2, Duration::from_millis(20));
+        spec.push_data_at(500, CollectorOutput::default());
+        spec.push_data_at(400, CollectorOutput::default());
+        assert_eq!(spec.column_times_ms, [500, 500]);
+    }
+
+    #[test]
+    fn restart_live_drops_old_columns() {
+        let mut spec = spectrogram_with_columns(10, 5);
+        spec.restart_live(Instant::now(), Duration::from_secs(1), 100);
+        assert!(spec.columns.is_empty() && spec.column_times_ms.is_empty());
+        assert_eq!(spec.max_columns, 100);
     }
 
     #[test]
