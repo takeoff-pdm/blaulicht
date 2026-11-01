@@ -16,7 +16,7 @@
 //! never user-selectable and can't be moved into a folder.
 //!
 //! Scene *content* (changes, animations) is edited on the Programmer page
-//! (`pages/programmer.rs`): its Scene Changes panel and dialog, and the Scene
+//! (`pages/programmer.rs`): its Scene Changes dialog and the Scene
 //! Animations dialog.
 
 #[cfg(doc)]

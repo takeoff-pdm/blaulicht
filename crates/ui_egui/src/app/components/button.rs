@@ -1,7 +1,7 @@
 use egui::{Color32, Sense, Ui, Vec2};
 
 use crate::app::components::text_color_for_bg;
-use crate::app::ui_tokens::{self, Density, Weight};
+use crate::app::ui_tokens::{self, Density};
 
 pub enum ButtonColor {
     Blue,
@@ -325,24 +325,26 @@ fn studio_colors(
 ) -> StudioColors {
     if !enabled {
         return StudioColors {
-            fill: Color32::TRANSPARENT,
-            border: color.line,
+            fill: color.surface_raised,
+            border: color.surface_raised,
             text: color.faint,
         };
     }
     match variant {
+        // Like egui's own buttons: a filled box without a border at rest, a
+        // border under the pointer.
         ButtonVariant::Tonal => StudioColors {
-            fill: if pressed {
+            fill: if hovered || pressed {
                 color.surface_pressed
-            } else if hovered {
-                color.surface_hover
             } else {
-                color.surface_raised
+                color.surface_hover
             },
-            border: if hovered || pressed {
+            border: if pressed {
+                color.text
+            } else if hovered {
                 color.line_hover
             } else {
-                color.line_strong
+                color.surface_hover
             },
             text: if hovered || pressed {
                 color.text_strong
@@ -382,12 +384,12 @@ fn studio_colors(
             fill: if hovered || pressed {
                 color.danger_fill_hover
             } else {
-                color.surface_raised
+                color.surface_hover
             },
             border: if hovered || pressed {
                 color.danger
             } else {
-                color.surface_raised.lerp_to_gamma(color.danger, 0.55)
+                color.surface_hover
             },
             text: color.danger,
         },
@@ -410,7 +412,7 @@ fn studio_colors(
 }
 
 /// A studio-style button (Compact density): sized to its label (at least
-/// the custom width of `size`), never truncated, flat with a hairline border,
+/// the custom width of `size`), never truncated, filled like egui's buttons (a border under the pointer),
 /// hover / pressed / focus states and the colours of `variant`. A disabled
 /// button (or one in a disabled `Ui`) shows `disabled_reason` on hover.
 pub fn studio_button(
@@ -423,7 +425,7 @@ pub fn studio_button(
 ) -> egui::Response {
     let density = Density::of(ui.ctx());
     let enabled = enabled && ui.is_enabled();
-    let font = density.font(Weight::Medium, density.button_text_size());
+    let font = density.button_font();
     let galley = ui
         .painter()
         .layout_no_wrap(label.to_owned(), font, Color32::PLACEHOLDER);

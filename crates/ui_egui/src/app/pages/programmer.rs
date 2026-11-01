@@ -29,7 +29,7 @@ pub struct ProgrammerUi {
     /// The full Scene Changes dialog (all changes of the focused scene, by
     /// fixture).
     pub scene_changes_dialog_open: bool,
-    /// The "Undo all scene changes?" confirmation.
+    /// The "Clear all scene changes?" confirmation.
     pub undo_all_changes_confirm_open: bool,
     /// The Animations dialog: presets and templates for the selection.
     pub animation_presets: AnimationPresetsUi,
@@ -121,7 +121,7 @@ impl BlaulichtApp {
         self.render_animation_presets_dialog(ctx, &dmx_engine);
         self.render_palette_assignment_dialog(ctx, &dmx_engine);
         if self.programmer_ui_state.scene_changes_dialog_open {
-            // Renders the Undo all confirmation itself, stacked on top.
+            // Renders the Clear confirmation itself, stacked on top.
             self.render_scene_changes_dialog(ctx, &dmx_engine);
         } else {
             self.render_undo_all_changes_dialog(ctx, &dmx_engine);
@@ -360,7 +360,7 @@ impl BlaulichtApp {
                                             ui.separator();
                                             ui.add_space(12.0);
                                             ui.set_max_width(ui.available_width().max(1.0));
-                                            self.scene_changes_panel(ui, &dmx_engine);
+                                            self.scene_changes_button(ui, &dmx_engine);
                                             ui.separator();
 
                                             for (selection, animations) in
@@ -548,97 +548,25 @@ impl BlaulichtApp {
         ));
     }
 
-    /// The Scene Changes panel in the right column: the focused scene's
-    /// changes with a remove button per row, plus All (the full dialog) and
-    /// Undo all (with confirmation).
-    fn scene_changes_panel(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
-        const ROW_BUTTON: f32 = 28.0;
-
-        let scene = dmx_engine.curr_scene();
-        let groups = dmx_engine.groups();
-        let changes = sorted_changes(&scene.sink.changeset);
-
-        ui.heading("Scene Changes");
-        ui.add_space(4.0);
-
-        ui.horizontal(|ui| {
-            let width = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0)
-                .floor()
-                .max(40.0);
-            let size = ButtonSize::Medium.with_touch_width(width);
-            if components::button(
-                ui,
-                self.programmer_ui_state.scene_changes_dialog_open,
-                &format!("All ({})", changes.len()),
-                size,
-            ) {
-                self.programmer_ui_state.scene_changes_dialog_open =
-                    !self.programmer_ui_state.scene_changes_dialog_open;
-            }
-            if components::action_button(
-                ui,
-                !changes.is_empty(),
-                "Undo all",
-                size,
-                Some("No changes"),
-            ) {
-                self.programmer_ui_state.undo_all_changes_confirm_open = true;
-            }
-        });
-        ui.add_space(4.0);
-
-        if changes.is_empty() {
-            ui.label("No Scene Changes");
-            return;
+    /// The Scene Changes button in the right column: the number of changes
+    /// of the focused scene. It opens the Scene Changes dialog, where single
+    /// changes are removed and Clear removes all of them.
+    fn scene_changes_button(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        let count = dmx_engine.curr_scene().sink.changeset.len();
+        let width = ui.available_width().clamp(40.0, 200.0);
+        if components::button(
+            ui,
+            self.programmer_ui_state.scene_changes_dialog_open,
+            &format!("Scene Changes ({count})"),
+            ButtonSize::Medium.with_touch_width(width),
+        ) {
+            self.programmer_ui_state.scene_changes_dialog_open =
+                !self.programmer_ui_state.scene_changes_dialog_open;
         }
-
-        // The panel sits in a horizontal row, so `available_height` is only the
-        // row height: size the list from what is left of the visible column.
-        // The selection's animation cards below it keep room for one card.
-        let selection_has_animations = Self::selection_animation_count(dmx_engine) > 0;
-        let reserve = if selection_has_animations { 140.0 } else { 8.0 };
-        let list_height = (ui.clip_rect().bottom() - ui.cursor().top() - reserve).max(100.0);
-
-        egui::ScrollArea::vertical()
-            .id_salt("programmer_scene_changes")
-            .max_height(list_height)
-            .min_scrolled_height(list_height)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for change in changes {
-                    let (group_name, fixture_name) = change_names(groups, &change);
-                    ui.horizontal(|ui| {
-                        if components::button(
-                            ui,
-                            false,
-                            egui_phosphor::regular::X,
-                            ButtonSize::Medium.with_width(ROW_BUTTON),
-                        ) {
-                            self.remove_scene_change(change.clone());
-                        }
-                        ui.vertical(|ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(change.property.to_string())
-                                        .color(Color32::WHITE),
-                                )
-                                .truncate(),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(format!("{group_name} · {fixture_name}")).small(),
-                                )
-                                .truncate(),
-                            );
-                        });
-                    });
-                    ui.add_space(2.0);
-                }
-            });
     }
 
     /// All changes of the focused scene, grouped by fixture; every property
-    /// can be removed on its own, or all of them with Undo all.
+    /// can be removed on its own, or all of them with Clear.
     fn render_scene_changes_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
         if !self.programmer_ui_state.scene_changes_dialog_open {
             return;
@@ -685,11 +613,17 @@ impl BlaulichtApp {
                         for ((gid, fid), fixture_changes) in &by_fixture {
                             let (group_name, fixture_name) =
                                 change_names(groups, &fixture_changes[0]);
+                            // The desktop keeps to its palette: a muted header.
+                            let header_color = if Density::of(ui.ctx()).is_compact() {
+                                crate::app::ui_tokens::palette(ui.ctx()).muted
+                            } else {
+                                Color32::LIGHT_GREEN
+                            };
                             ui.label(
                                 RichText::new(format!(
                                     "Group {gid} ({group_name}) · Fixture {fid} ({fixture_name})"
                                 ))
-                                .color(Color32::LIGHT_GREEN),
+                                .color(header_color),
                             );
                             ui.horizontal_wrapped(|ui| {
                                 for change in fixture_changes {
@@ -714,10 +648,12 @@ impl BlaulichtApp {
 
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if components::action_button(
+                    if components::action_button_as(
                         ui,
                         !changes.is_empty(),
-                        "Undo all",
+                        false,
+                        components::ButtonVariant::Danger,
+                        "Clear",
                         ButtonSize::Medium.with_touch_width(140.0),
                         Some("No changes"),
                     ) {
@@ -743,7 +679,7 @@ impl BlaulichtApp {
         }
     }
 
-    /// Confirmation for Undo all: removes every change of the focused scene
+    /// Confirmation for Clear: removes every change of the focused scene
     /// (one `RemoveChange` per property, in one `Transaction`). Other scenes
     /// are not touched.
     fn render_undo_all_changes_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
@@ -758,12 +694,12 @@ impl BlaulichtApp {
         let count = scene.sink.changeset.len();
 
         let response = Dialog::new(
-            "Undo All Scene Changes".to_string(),
+            "Clear Scene Changes".to_string(),
             egui::vec2(WIDTH, HEIGHT),
         )
         .with_backdrop()
         .show(ctx, |ui| {
-            ui.heading("Undo all changes?");
+            ui.heading("Clear all changes?");
             ui.add_space(4.0);
             ui.label(format!(
                 "Removes all {count} changes from the scene \"{}\". Other scenes keep their changes.",
@@ -779,10 +715,12 @@ impl BlaulichtApp {
                 ) {
                     self.programmer_ui_state.undo_all_changes_confirm_open = false;
                 }
-                if components::action_button(
+                if components::action_button_as(
                     ui,
                     count > 0,
-                    "Undo all",
+                    false,
+                    components::ButtonVariant::Danger,
+                    "Clear",
                     ButtonSize::Medium.with_touch_width(140.0),
                     Some("No changes"),
                 ) {
@@ -1249,7 +1187,7 @@ fn change_names<'a>(
     (group.name.as_str(), fixture)
 }
 
-/// The event behind Undo all: one `RemoveChange` per changed property,
+/// The event behind Clear: one `RemoveChange` per changed property,
 /// covering every fixture that changed it, in one `Transaction`. Like the
 /// per-row remove, it acts on the focused scene. `None` without changes.
 pub(crate) fn undo_all_changes_event(changeset: &HashSet<FixtureSelector>) -> Option<ControlEvent> {

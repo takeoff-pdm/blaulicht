@@ -518,11 +518,14 @@ where
     F: Copy + Ord + Send + Sync + 'static,
     L: Copy + Ord,
 {
-    /// The rows at Compact density (desktop): flat single-line list rows on
-    /// the page background with hairlines between them, the label on the left
-    /// and the detail in `muted` on the right; the selected row gets the
-    /// `selection` fill and a 2px accent bar. "Move…" is a quiet button that
-    /// shows on the hovered or selected row.
+    /// The rows at Compact density (desktop): a tree like a file browser.
+    /// Folders have a caret, a folder icon (not in [`Self::compact`] narrow
+    /// trees) and a medium-weight label; a child's label starts right of its
+    /// parent's, and a guide line drops from the parent's caret. The detail
+    /// sits in `muted` on the right. The selected row gets the `selection`
+    /// fill and a 2px accent bar from its indentation on, so the guides of
+    /// its parents stay visible. "Move…" is a quiet button that shows on the
+    /// hovered or selected row.
     fn show_rows_compact(self, ui: &mut Ui) -> Option<TreeAction<F, L>> {
         let color = ui_tokens::palette(ui.ctx());
         let mut state = TreeState::<F>::load(ui.ctx(), self.id);
@@ -530,15 +533,17 @@ where
         let density = Density::of(ui.ctx());
         let h = density.row_height() + 2.0;
         let toggle_width = 18.0;
-        let indent_step = 14.0;
+        let folder_icon = if self.compact { 0.0 } else { 20.0 };
+        // A child's label starts this much right of its parent's label.
+        let indent_step = folder_icon + 12.0;
         let move_size = ButtonSize::Custom(0.0, 20.0, 12.0);
 
         let full_width = ui.available_width();
         let mut action = None;
         let mut toggled = None;
 
-        let label_font = |selected: bool| {
-            let weight = if selected {
+        let label_font = |folder: bool| {
+            let weight = if folder {
                 Weight::Medium
             } else {
                 Weight::Regular
@@ -565,14 +570,15 @@ where
                 toggle_width,
                 self.min_body_width,
             );
-            let icon = if matches!(item.key, TreeKey::Folder(_)) {
-                20.0
-            } else {
-                0.0
-            };
+            let is_folder = matches!(item.key, TreeKey::Folder(_));
+            let icon = if is_folder { folder_icon } else { 0.0 };
             let label = ui
                 .painter()
-                .layout_no_wrap(item.label.clone(), label_font(true), Color32::PLACEHOLDER)
+                .layout_no_wrap(
+                    item.label.clone(),
+                    label_font(is_folder),
+                    Color32::PLACEHOLDER,
+                )
                 .size()
                 .x;
             let detail = ui
@@ -610,26 +616,38 @@ where
                 is_folder.then(|| ui.interact(toggle_rect, row_id.with("toggle"), Sense::click()));
             let hovered = ui.rect_contains_pointer(row_rect);
 
-            // Background, the selection bar and the hairline under the row.
+            // Background and selection bar from the indentation on (with a
+            // 1px gap between rows), then the guides of the parents.
             let painter = ui.painter();
+            let item_rect = Rect::from_min_max(
+                egui::pos2(row_rect.left() + indent, row_rect.top()),
+                egui::pos2(row_rect.right(), row_rect.bottom() - 1.0),
+            );
             if is_selected {
-                painter.rect_filled(row_rect, 0.0, color.selection);
+                painter.rect_filled(item_rect, 0.0, color.selection);
                 painter.rect_filled(
-                    Rect::from_min_size(row_rect.left_top(), egui::vec2(ui_tokens::ACCENT_BAR, h)),
+                    Rect::from_min_size(
+                        item_rect.left_top(),
+                        egui::vec2(ui_tokens::ACCENT_BAR, item_rect.height()),
+                    ),
                     0.0,
                     color.accent,
                 );
             } else if hovered {
-                painter.rect_filled(row_rect, 0.0, color.surface_raised);
+                painter.rect_filled(item_rect, 0.0, color.surface_raised);
             }
-            painter.hline(
-                row_rect.x_range(),
-                row_rect.bottom() - 0.5,
-                egui::Stroke::new(ui_tokens::HAIRLINE, color.line),
-            );
             if row.depth > 0 {
-                let guides = Rect::from_min_size(row_rect.left_top(), egui::vec2(indent, h));
-                paint_guides(ui, guides, row.depth);
+                // One line per parent level, under that parent's caret.
+                let step = indent / row.depth as f32;
+                for level in 0..row.depth {
+                    let x = (row_rect.left() + step * level as f32 + toggle_width / 2.0).round()
+                        + 0.5;
+                    painter.vline(
+                        x,
+                        row_rect.y_range(),
+                        egui::Stroke::new(ui_tokens::HAIRLINE, color.line_strong),
+                    );
+                }
             }
 
             if let (TreeKey::Folder(f), Some(toggle)) = (item.key, &toggle) {
@@ -664,7 +682,7 @@ where
                     .painter()
                     .layout_no_wrap(
                         "Move…".to_owned(),
-                        density.font(Weight::Medium, density.button_text_size()),
+                        density.button_font(),
                         Color32::PLACEHOLDER,
                     )
                     .size()
@@ -700,7 +718,7 @@ where
             } else {
                 color.text
             };
-            if is_folder {
+            if is_folder && folder_icon > 0.0 {
                 let icon = if row.collapsed {
                     egui_phosphor::regular::FOLDER_SIMPLE
                 } else {
@@ -718,10 +736,10 @@ where
                     density.font(Weight::Regular, 14.0),
                     icon_color,
                 );
-                x += 20.0;
+                x += folder_icon;
             }
             let detail = detail_of(row, item).filter(|_| show_details);
-            let label_font = label_font(is_selected);
+            let label_font = label_font(is_folder);
             let label_galley =
                 ui.painter()
                     .layout_no_wrap(item.label.clone(), label_font.clone(), text_color);

@@ -145,8 +145,8 @@ pub fn palette(ctx: &egui::Context) -> &'static Palette {
     }
 }
 
-/// Corner radius of controls (buttons, inputs, rows).
-pub const RADIUS: u8 = 3;
+/// Corner radius of controls (buttons, inputs, rows): egui's default 2 px.
+pub const RADIUS: u8 = 2;
 /// Corner radius of windows, menus and popups.
 pub const RADIUS_WINDOW: u8 = 4;
 /// Width of hairline borders and separators.
@@ -229,7 +229,7 @@ impl Density {
     pub fn button_padding_x(self) -> f32 {
         match self {
             Density::Touch => 4.0,
-            Density::Compact => 10.0,
+            Density::Compact => 8.0,
         }
     }
 
@@ -245,8 +245,13 @@ impl Density {
     pub fn button_text_size(self) -> f32 {
         match self {
             Density::Touch => 11.0,
-            Density::Compact => 12.5,
+            Density::Compact => 13.0,
         }
+    }
+
+    /// The font of button labels: regular weight, like egui's own buttons.
+    pub fn button_font(self) -> FontId {
+        self.font(Weight::Regular, self.button_text_size())
     }
 
     /// Size of captions, details and section headers.
@@ -295,7 +300,7 @@ fn compact_text_styles(style: &mut Style) {
         ),
         (
             TextStyle::Button,
-            density.font(Weight::Medium, density.button_text_size()),
+            density.button_font(),
         ),
         (TextStyle::Heading, density.font(Weight::SemiBold, 16.0)),
         (

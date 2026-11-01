@@ -1,6 +1,6 @@
 use crate::app::{
     components::{
-        self, ButtonSize, Dialog, HFader, TreeAction, TreeKey, NARROW_TREE_WIDTH, SETUP_GROUP_TREE,
+        self, ButtonSize, Dialog, HFader, TreeAction, TreeKey, SETUP_GROUP_TREE,
     },
     BlaulichtApp, Selection,
 };
@@ -25,10 +25,19 @@ const PROGRAMMER_SCENE_TREE: &str = "programmer_scenes";
 /// Width of the Programmer's scene column: the old scene pager's 100 px.
 /// The Programmer row at 800x480 has no room to spare (a 108 px column
 /// already cut off the right column's "M. Speed"), so this is narrower than
-/// [`NARROW_TREE_WIDTH`]: an 18 px toggle and a 70 px minimum body leave
+/// `NARROW_TREE_WIDTH`: an 18 px toggle and a 70 px minimum body leave
 /// 8 px of indentation, so every nested level indents 8 px and the guide
 /// lines and chevrons show the depth.
 const SCENE_COLUMN_WIDTH: f32 = 100.0;
+
+/// [`SCENE_COLUMN_WIDTH`] on the kiosk; the desktop has room for 150 px.
+fn scene_column_width(ctx: &egui::Context) -> f32 {
+    if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+        150.0
+    } else {
+        SCENE_COLUMN_WIDTH
+    }
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct DmxSimulator {
@@ -353,10 +362,10 @@ impl BlaulichtApp {
             |ui| {
                 ui.set_min_height(ui.available_height());
                 ui.allocate_ui_with_layout(
-                    egui::vec2(NARROW_TREE_WIDTH, ui.available_height()),
+                    egui::vec2(components::narrow_tree_width(ui.ctx()), ui.available_height()),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.set_width(NARROW_TREE_WIDTH);
+                        ui.set_width(components::narrow_tree_width(ui.ctx()));
                         components::column_header(ui, "Groups:");
                         ui.add_space(8.0);
 
@@ -509,10 +518,10 @@ impl BlaulichtApp {
             |ui| {
                 ui.set_min_height(ui.available_height());
                 ui.allocate_ui_with_layout(
-                    egui::vec2(NARROW_TREE_WIDTH, ui.available_height()),
+                    egui::vec2(components::narrow_tree_width(ui.ctx()), ui.available_height()),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.set_width(NARROW_TREE_WIDTH);
+                        ui.set_width(components::narrow_tree_width(ui.ctx()));
                         components::column_header(ui, "Groups:");
                         ui.add_space(8.0);
                         ui.set_min_height(ui.available_height());
@@ -573,7 +582,8 @@ impl BlaulichtApp {
                         egui::ScrollArea::vertical()
                             .id_salt("sfix-p")
                             .show(ui, |ui| {
-                                ui.label("Fixtures");
+                                let density = crate::app::ui_tokens::Density::of(ui.ctx());
+                                components::column_header(ui, "Fixtures");
                                 ui.add_space(8.0);
 
                                 for (group_id, fix_id, fixture_selection) in &total_fixtures {
@@ -584,12 +594,23 @@ impl BlaulichtApp {
                                         continue;
                                     };
 
+                                    // The desktop's tiles are wider and
+                                    // flatter, and long names truncate.
+                                    let tile = if density.is_compact() {
+                                        ButtonSize::Large.with_width(150.0).with_height(38.0)
+                                    } else {
+                                        ButtonSize::Large.with_height(50.0)
+                                    };
                                     let button_clicked = components::clickable(
                                         ui,
                                         true, //*fixture_selection == Selection::Limited,
                                         fixture_selection.color(),
-                                        ButtonSize::Large.with_height(50.0),
+                                        tile,
                                         |ui, rect, fg| {
+                                            if density.is_compact() {
+                                                paint_fixture_tile(ui, rect, fg, fixture.name.as_str(), fixture.type_.kind_string());
+                                                return;
+                                            }
                                             let painter = ui.painter();
 
                                             // painter.rect_filled(rect, 0.0, bg);
@@ -908,10 +929,10 @@ impl BlaulichtApp {
             .inner
         } else {
             ui.allocate_ui_with_layout(
-                egui::vec2(SCENE_COLUMN_WIDTH, ui.available_height()), // fixed width, max height
+                egui::vec2(scene_column_width(ui.ctx()), ui.available_height()), // fixed width, max height
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    ui.set_width(SCENE_COLUMN_WIDTH);
+                    ui.set_width(scene_column_width(ui.ctx()));
                     show_tree(ui)
                 },
             )
@@ -931,4 +952,35 @@ impl BlaulichtApp {
             _ => {}
         }
     }
+}
+
+/// The label of a Programmer fixture tile at Compact density: the name and
+/// the kind below it, truncated to the tile.
+fn paint_fixture_tile(ui: &egui::Ui, rect: egui::Rect, fg: Color32, name: &str, kind: &str) {
+    use crate::app::ui_tokens::{Density, Weight};
+    let density = Density::of(ui.ctx());
+    let max_width = rect.width() - 16.0;
+    let line = |text: &str, font: egui::FontId, color: Color32| {
+        let mut job = egui::text::LayoutJob::single_section(
+            text.to_owned(),
+            egui::text::TextFormat {
+                font_id: font,
+                color,
+                ..Default::default()
+            },
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width(max_width);
+        ui.painter().layout_job(job)
+    };
+    let name = line(name, density.font(Weight::Medium, density.body_size()), fg);
+    let kind = line(
+        kind,
+        density.font(Weight::Regular, density.small_size()),
+        fg.gamma_multiply(0.7),
+    );
+    let top = rect.center().y - (name.size().y + kind.size().y) / 2.0;
+    let left = rect.left() + 8.0;
+    ui.painter().galley(egui::pos2(left, top), name.clone(), fg);
+    ui.painter()
+        .galley(egui::pos2(left, top + name.size().y), kind, fg);
 }

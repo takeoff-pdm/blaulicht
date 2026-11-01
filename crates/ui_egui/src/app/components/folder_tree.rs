@@ -62,6 +62,16 @@ pub const SCENE_PICKER_TREE: &str = "scene_picker";
 /// pushed off screen.
 pub const NARROW_TREE_WIDTH: f32 = 120.0;
 
+/// The width of a narrow picker column: [`NARROW_TREE_WIDTH`] on the kiosk,
+/// 160 px on the desktop, which has the room for whole group names.
+pub fn narrow_tree_width(ctx: &Context) -> f32 {
+    if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+        160.0
+    } else {
+        NARROW_TREE_WIDTH
+    }
+}
+
 /// A [`Tree`] for a [`NARROW_TREE_WIDTH`] column: a slimmer toggle (24 px), a
 /// smaller minimum row body (80 px), 8 px indentation (clamped at 12 px, so
 /// levels 1 and 2+ are visible) and the compact look (no folder icon, less
