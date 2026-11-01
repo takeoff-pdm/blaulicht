@@ -59,6 +59,32 @@ impl BlaulichtApp {
         }
     }
 
+    /// The desktop layout's status bar, as a bottom panel of `ui`. Read-only:
+    /// only cheap reads of state the client already holds.
+    pub fn show_desktop_status_bar(&mut self, ui: &mut egui::Ui) {
+        let show_name = self
+            .client
+            .showfile_path()
+            .as_deref()
+            .map(blaulicht_engine::config::showfile_display_name);
+        let live = self.client.with_show(|show| show.0.live_mode);
+        // The beat dot flashes for a moment after each beat.
+        let beat_flash = self.beat_marker_has_beat
+            && self.beat_marker_anchor_instant.elapsed() < std::time::Duration::from_millis(120);
+        let info = components::StatusBarInfo {
+            show_name,
+            save_status: &self.save_status,
+            bpm: self.collector_snapshot.bpm,
+            beat_index: self.beat_marker_has_beat.then_some(self.beat_marker_index),
+            beat_flash,
+            loop_ms: self.tick_speeds.loop_total.as_secs_f32() * 1000.0,
+            plugins_ms: self.tick_speeds.plugins.as_secs_f32() * 1000.0,
+            live,
+            connection: self.client.is_remote().then(|| self.client.status()),
+        };
+        components::status_bar(ui, &info);
+    }
+
     /// Tells plugins about a navigation in this UI. Sent as `Web`, so it
     /// doesn't loop back into the UI.
     fn notify_navigation(&self, event: MainUiEvent) {

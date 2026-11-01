@@ -148,7 +148,10 @@ impl eframe::App for BlaulichtApp {
         }
 
         self.render_popup(ctx);
-        self.render_save_status(ctx);
+        // The desktop layout shows it in its status bar.
+        if !self.layout.is_desktop() {
+            self.render_save_status(ctx);
+        }
         self.render_lifecycle_guard(ctx);
 
         self.debug_dialog(ctx);
@@ -253,6 +256,8 @@ impl BlaulichtApp {
                 egui::CentralPanel::default().show(ctx, |ui| self.main_page_ui(ui, ctx));
             }
             UiLayout::Desktop => {
+                // First, so it spans the window under the sidebar.
+                self.show_desktop_status_bar(ui);
                 self.show_desktop_sidebar(ui);
                 egui::CentralPanel::default().show_inside(ui, |ui| self.main_page_ui(ui, ctx));
             }
