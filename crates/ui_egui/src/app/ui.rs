@@ -4,6 +4,7 @@ use crate::app::{
     theme, BlaulichtApp, ExternalScreen, GuardedLifecycleAction, PopupSpec,
 };
 use crate::client::AppClient;
+use crate::layout::UiLayout;
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::config::ShowfileUiState;
 use blaulicht_engine::hub::{CommandOutcome, HostCommand};
@@ -35,12 +36,12 @@ impl BlaulichtApp {
         cc: &eframe::CreationContext<'_>,
         client: AppClient,
         initial_popup: Option<PopupSpec>,
-        desktop_mode: bool,
+        layout: UiLayout,
         showfile_home: Option<std::path::PathBuf>,
         config_dir: Option<std::path::PathBuf>,
         external_screens: Vec<(usize, usize)>,
     ) -> Self {
-        let mut app = Self::new_default(client, desktop_mode, showfile_home, config_dir);
+        let mut app = Self::new_default(client, layout, showfile_home, config_dir);
 
         // The desk's layout is made for its 800x480 touchscreen at 1:1. In a
         // browser the page keeps the device's pixel ratio and zooms the
@@ -98,8 +99,11 @@ impl eframe::App for BlaulichtApp {
         self.handle_events();
         self.sync_remote_streams();
         self.publish_ui_mirror();
+        // The desktop layout keeps the browser's own scale.
         #[cfg(target_arch = "wasm32")]
-        fit_web_zoom(ctx);
+        if !self.layout.is_desktop() {
+            fit_web_zoom(ctx);
+        }
         // Give an open numberpad first priority. After rendering, any remaining
         // delta adjusts the recent fixture property instead.
         crate::app::components::publish_relative_adjustment(
@@ -223,7 +227,7 @@ impl eframe::App for BlaulichtApp {
         self.plugin_speed_graph
             .update(self.tick_speeds.plugins.as_micros() as i32);
 
-        match self.desktop_mode {
+        match self.layout.is_desktop() {
             true => {
                 let mut screen = self.main_screen_desktop_mode.clone();
                 self.draw_external_screen_contents(ctx, ScreenId::MAIN, &mut screen);
@@ -433,7 +437,7 @@ impl BlaulichtApp {
     }
 }
 
-/// The kiosk layout is made for 800x480 points. In a browser, zoom it to the
+/// The kiosk (mobile) layout is made for 800x480 points. In a browser, zoom it to the
 /// window (the page keeps the device's pixel ratio): a tablet gets the desk's
 /// layout scaled to its screen, a big window a moderately larger one.
 #[cfg(target_arch = "wasm32")]

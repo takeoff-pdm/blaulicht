@@ -10,6 +10,7 @@ use crate::app::{
     },
 };
 use crate::client::AppClient;
+use crate::layout::UiLayout;
 use blaulicht_engine::{
     client::ReplyHandlers, config::ShowfileUiState, msg::TickSpeeds, persistence::SaveStatus,
     state::NUM_DMX_UNIVERSES,
@@ -128,7 +129,8 @@ impl ExternalScreen {
 }
 
 pub struct BlaulichtApp {
-    desktop_mode: bool,
+    /// Mobile (kiosk / touch) or desktop layout, chosen at startup.
+    layout: UiLayout,
     /// Where the file dialogs start (`--showfile-home`).
     #[cfg_attr(not(feature = "file-dialog"), allow(dead_code))]
     showfile_home: Option<PathBuf>,
@@ -345,12 +347,12 @@ pub struct BlaulichtApp {
 impl BlaulichtApp {
     fn new_default(
         client: AppClient,
-        desktop_mode: bool,
+        layout: UiLayout,
         showfile_home: Option<PathBuf>,
         config_dir: Option<PathBuf>,
     ) -> Self {
         Self {
-            desktop_mode,
+            layout,
             showfile_home,
             config_dir,
             navbar: Navbar::new(AppPage::Logs),

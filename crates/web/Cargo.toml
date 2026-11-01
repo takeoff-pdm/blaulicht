@@ -23,7 +23,7 @@ log = "0.4"
 tracing = { version = "0.1.44", features = ["log"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Location", "Window"] }
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Location", "MediaQueryList", "Window"] }
 # rand (engine, audio engine) and tungstenite reach getrandom; in a browser
 # it needs its JS backend. Enabled here, for the web build only: plugins also
 # build for wasm32-unknown-unknown but run in wasmtime without JS.

@@ -4,8 +4,15 @@
 //! `blaulicht_web.js`, `blaulicht_web_bg.wasm`; see the engine's
 //! `server::http`). The page connects back to the same host and port over the
 //! websocket protocol as a `RemoteClient`, in an operator session of its own,
-//! and runs `BlaulichtApp` in the kiosk layout. No visualizer, file dialogs
-//! or plugin pop-outs (their features are off).
+//! and runs `BlaulichtApp`. No visualizer, file dialogs or plugin pop-outs
+//! (their features are off).
+//!
+//! Layout: `?layout=mobile` is the desk's 800x480 touch layout zoomed to the
+//! window, `?layout=desktop` the navigation sidebar layout at the browser's
+//! own scale. Without the parameter, a window at least 1024 CSS pixels wide
+//! with a mouse or trackpad as its primary pointer gets the desktop layout,
+//! phones and tablets the mobile one (`UiLayout::web_default`). The layout is
+//! chosen when the page loads; reload to switch.
 //!
 //! Build it with `crates/web/build.sh` (or `scripts/blenv build web`).
 #![cfg(target_arch = "wasm32")]
@@ -13,7 +20,7 @@
 use std::cell::RefCell;
 
 use blaulicht_engine::client::RemoteClient;
-use blaulicht_ui_egui::{app::BlaulichtApp, client::remote_streams};
+use blaulicht_ui_egui::{app::BlaulichtApp, client::remote_streams, layout::UiLayout};
 use wasm_bindgen::{prelude::*, JsCast};
 
 thread_local! {
@@ -41,8 +48,9 @@ pub fn start() {
             return;
         };
         let url = engine_url();
+        let layout = page_layout();
         tracing::info!(
-            "Blaulicht web UI {}: connecting to {url}",
+            "Blaulicht web UI {} ({layout} layout): connecting to {url}",
             env!("CARGO_PKG_VERSION")
         );
         let started = runner
@@ -59,7 +67,7 @@ pub fn start() {
                         cc,
                         client.into(),
                         None,
-                        false,
+                        layout,
                         None,
                         None,
                         Vec::new(),
@@ -88,6 +96,28 @@ fn engine_url() -> String {
         .host()
         .unwrap_or_else(|_| "localhost:1234".to_string());
     format!("{}://{host}/", if secure { "wss" } else { "ws" })
+}
+
+/// The layout the page URL asks for (`?layout=desktop|mobile`), else
+/// [`UiLayout::web_default`] for this window.
+fn page_layout() -> UiLayout {
+    let Some(window) = web_sys::window() else {
+        return UiLayout::Mobile;
+    };
+    let query = window.location().search().unwrap_or_default();
+    UiLayout::from_query(&query).unwrap_or_else(|| {
+        let width = window
+            .inner_width()
+            .ok()
+            .and_then(|width| width.as_f64())
+            .unwrap_or(0.0);
+        let coarse_pointer = window
+            .match_media("(pointer: coarse)")
+            .ok()
+            .flatten()
+            .is_some_and(|query| query.matches());
+        UiLayout::web_default(width, coarse_pointer)
+    })
 }
 
 fn element(id: &str) -> Option<web_sys::Element> {

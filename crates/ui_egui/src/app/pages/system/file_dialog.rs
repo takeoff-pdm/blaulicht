@@ -194,7 +194,7 @@ impl BlaulichtApp {
             Some(dialog) => dialog,
             None => return,
         };
-        let popup_dialog = !self.desktop_mode;
+        let popup_dialog = !self.layout.is_desktop();
 
         if popup_dialog {
             let viewport = ctx.viewport_rect().size();
