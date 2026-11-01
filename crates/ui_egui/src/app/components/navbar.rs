@@ -26,7 +26,7 @@ pub fn app_page_to_icon(from: &AppPage) -> &'static str {
         AppPage::Animations => egui_phosphor::regular::WAVE_SINE,
         AppPage::Palettes => egui_phosphor::regular::PALETTE,
         AppPage::SceneGraph => egui_phosphor::regular::GRAPH,
-        AppPage::Visualizer => egui_phosphor::regular::WAVEFORM,
+        AppPage::Visualizer => egui_phosphor::regular::CUBE_FOCUS,
     }
 }
 
@@ -59,6 +59,9 @@ pub enum SidebarClick {
     ToggleSection(AppPage),
     /// The startup status slot: opens Logs.
     Status,
+    /// The header's collapse button: switches between the full sidebar and
+    /// the icon rail.
+    ToggleRail,
 }
 
 /// What a sidebar click changed, for the events that tell plugins.
@@ -84,6 +87,8 @@ pub struct Navbar {
     /// unfolds a section once per page change and a section folded by hand
     /// stays folded.
     synced_page: Option<AppPage>,
+    /// Desktop sidebar: folded to an icon rail.
+    rail: bool,
 }
 
 impl Navbar {
@@ -93,6 +98,7 @@ impl Navbar {
             subpages: HashMap::new(),
             expanded: HashSet::new(),
             synced_page: None,
+            rail: false,
         };
         navbar.navigate_to(initial_page);
         navbar
@@ -136,6 +142,11 @@ impl Navbar {
     /// `false` for a page without sub-pages.
     pub fn is_expanded(&self, page: AppPage) -> bool {
         self.expanded.contains(&page)
+    }
+
+    /// Desktop sidebar: whether it is folded to an icon rail.
+    pub fn is_rail(&self) -> bool {
+        self.rail
     }
 
     /// Desktop sidebar: unfolds the current page's section when the current
@@ -188,6 +199,10 @@ impl Navbar {
                 None
             }
             SidebarClick::Status => self.sidebar_click(SidebarClick::Page(AppPage::Logs)),
+            SidebarClick::ToggleRail => {
+                self.rail = !self.rail;
+                None
+            }
         }
     }
 
@@ -506,5 +521,24 @@ mod tests {
             navbar.subpage(AppPage::Setup),
             Some(AppSubPage::Setup_Palettes)
         );
+    }
+
+    #[test]
+    fn rail_toggle_keeps_the_page() {
+        let mut navbar = Navbar::new(AppPage::Programmer);
+        assert!(!navbar.is_rail());
+        assert_eq!(navbar.sidebar_click(SidebarClick::ToggleRail), None);
+        assert!(navbar.is_rail());
+        assert_eq!(navbar.page(), AppPage::Programmer);
+        navbar.sidebar_click(SidebarClick::ToggleRail);
+        assert!(!navbar.is_rail());
+    }
+
+    #[test]
+    fn every_page_has_its_own_icon() {
+        let icons: std::collections::HashSet<_> = AppPage::navbar_pages()
+            .map(|page| super::app_page_to_icon(&page))
+            .collect();
+        assert_eq!(icons.len(), AppPage::navbar_pages().count());
     }
 }
