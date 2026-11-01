@@ -208,7 +208,12 @@ impl RemoteState {
         let results: Vec<_> = pending.into_keys().map(|seq| self.refused(seq)).collect();
         inbox.results.extend(results);
         drop(inbox);
-        tracing::info!("Remote client {}: disconnected ({reason})", self.client());
+        match self.welcome.get() {
+            Some(welcome) => {
+                tracing::info!("Remote client {}: disconnected ({reason})", welcome.client)
+            }
+            None => tracing::info!("Remote client: could not connect ({reason})"),
+        }
     }
 
     fn count(&self, kind: &'static str, bytes: usize) {

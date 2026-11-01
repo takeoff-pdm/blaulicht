@@ -181,9 +181,12 @@ impl RemoteClient {
             let waker = Rc::clone(&waker);
             Closure::<dyn FnMut(CloseEvent)>::new(move |event: CloseEvent| {
                 let reason = match (event.code(), event.reason()) {
-                    (1000, _) => "closed by the engine".to_string(),
-                    (code, reason) if reason.is_empty() => format!("connection lost ({code})"),
-                    (code, reason) => format!("connection lost ({code}: {reason})"),
+                    (_, reason) if !reason.is_empty() => format!("closed by the engine: {reason}"),
+                    (1000 | 1001, _) => "closed by the engine".to_string(),
+                    // 1006: the browser saw the socket go without a close
+                    // frame.
+                    (1006, _) => "the engine stopped or the network dropped".to_string(),
+                    (code, _) => format!("connection lost (code {code})"),
                 };
                 state.disconnect(&reason);
                 waker();
@@ -191,7 +194,7 @@ impl RemoteClient {
         };
         let on_error = Closure::<dyn FnMut(Event)>::new(move |_event: Event| {
             // The browser tells no details; the close event follows.
-            tracing::warn!("Remote client: websocket error");
+            tracing::debug!("Remote client: websocket error");
         });
         link.socket
             .set_onopen(Some(on_open.as_ref().unchecked_ref()));
