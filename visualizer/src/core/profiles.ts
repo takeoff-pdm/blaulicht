@@ -109,6 +109,12 @@ function mac250eStrobeFromDmx(dmx: number): number {
   return 0;
 }
 
+/** Rush MH 6 shutter: 16..131 is strobe slow -> fast; anything else is not strobe. */
+function rushMh6StrobeFromDmx(dmx: number): number {
+  if (dmx >= 16 && dmx <= 131) return mapRangeU8(dmx, [16, 131], [1, 255]);
+  return 0;
+}
+
 function profile(
   kind: FixtureKind,
   model: string,
@@ -350,6 +356,17 @@ export const LIGHT_PROFILES: Record<string, FixtureProfile> = {
       });
     },
   ),
+
+  VarytecStarstrip10_10Chan: profile(
+    'Light',
+    'VarytecStarstrip10_10Chan',
+    10,
+    'wash',
+    Array.from({ length: 10 }, (_, i) => `Lamp ${i + 1}`),
+    // The Rust decoder reports white; the lamps are 2800 K halogen, so draw
+    // them tungsten-warm. The writer drives all ten lamps equally.
+    (d, b) => state({ r: 255, g: 214, b: 170, alpha: ch(d, b, 0) }),
+  ),
 };
 
 //
@@ -409,6 +426,43 @@ export const MOVING_HEAD_PROFILES: Record<string, FixtureProfile> = {
         alpha: ch(d, b, 3),
         strobe: raw < 10 ? 0 : mapRangeU8(raw, [10, 250], [1, 255]),
         focus: ch(d, b, 5),
+      });
+    },
+  ),
+
+  MartinRushMH6Wash_14Chan: profile(
+    'MovingHead',
+    'MartinRushMH6Wash_14Chan',
+    14,
+    'head',
+    [
+      'Shutter',
+      'Dimmer',
+      'Dimmer fine',
+      'Red',
+      'Green',
+      'Blue',
+      'White',
+      'Colour presets',
+      'Zoom',
+      'Pan',
+      'Pan fine',
+      'Tilt',
+      'Tilt fine',
+      'Control',
+    ],
+    (d, b) => {
+      // The writer moves the grey part of the colour to the white LED; add it back.
+      const w = ch(d, b, 6);
+      return state({
+        r: Math.min(255, ch(d, b, 3) + w),
+        g: Math.min(255, ch(d, b, 4) + w),
+        b: Math.min(255, ch(d, b, 5) + w),
+        alpha: ch(d, b, 1),
+        pan: ch(d, b, 9),
+        tilt: ch(d, b, 11),
+        strobe: rushMh6StrobeFromDmx(ch(d, b, 0)),
+        focus: ch(d, b, 8),
       });
     },
   ),

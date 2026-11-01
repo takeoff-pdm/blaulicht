@@ -30,8 +30,10 @@ const FOOTPRINTS: Record<string, number> = {
   KuzeLEDPar: 8,
   StairvilleWildWash648RGB_6Chan: 6,
   StairvilleLEDPar56_7Chan: 7,
+  VarytecStarstrip10_10Chan: 10,
   MartinMac250E: 18,
   VaryTechHeroSpot60: 8,
+  MartinRushMH6Wash_14Chan: 14,
   FogMachineSingle: 1,
   DimmerSingle: 1,
   DimmerWStrobe: 2,
@@ -157,6 +159,61 @@ describe('golden vectors from the Rust test-suite', () => {
     expect(profile.decode(dmx, 400).strobe).toBe(0);
   });
 
+  // Ported from `rush_mh6_writes_rgbw_and_keeps_presets_and_control_off`.
+  it('encodes a Rush MH 6 Wash the way blaulicht does', () => {
+    const encode = encoderFor('MovingHead', 'MartinRushMH6Wash_14Chan')!;
+    const dmx = new Uint8Array(513).fill(0xaa);
+    const state: FixtureState = {
+      r: 255, g: 191, b: 127, // the grey part 127 goes to the white LED
+      alpha: 200,
+      pan: 10,
+      tilt: 200,
+      strobe: 0,
+      focus: 77,
+    };
+    encode(state, dmx, 400);
+
+    expect(dmx[400], 'shutter must sit in the open range').toBeGreaterThanOrEqual(8);
+    expect(dmx[400]).toBeLessThanOrEqual(15);
+    expect(dmx[401]).toBe(200); // dimmer
+    expect(dmx[402]).toBe(0); // dimmer fine
+    expect([dmx[403], dmx[404], dmx[405], dmx[406]]).toEqual([128, 64, 0, 127]); // RGBW
+    expect(dmx[407]).toBe(0); // colour presets off
+    expect(dmx[408]).toBe(77); // zoom
+    expect(dmx[409]).toBe(10); // pan
+    expect(dmx[411]).toBe(200); // tilt
+    expect(dmx[413]).toBe(0); // fixture control: no function
+    expect(dmx[414], 'must not bleed into the next fixture').toBe(0xaa);
+
+    const back = lookupProfile('MovingHead', 'MartinRushMH6Wash_14Chan')!.decode(dmx, 400);
+    expect({ r: back.r, g: back.g, b: back.b }).toEqual({ r: 255, g: 191, b: 127 });
+    expect(back.alpha).toBe(200);
+    expect(back.strobe).toBe(0);
+    expect(back.pan).toBe(10);
+    expect(back.tilt).toBe(200);
+    expect(back.focus).toBe(77);
+
+    // Strobe ends map onto the 16..131 band; pulse/random codes are not strobe.
+    encode({ ...state, strobe: 1 }, dmx, 400);
+    expect(dmx[400]).toBe(16);
+    encode({ ...state, strobe: 255 }, dmx, 400);
+    expect(dmx[400]).toBe(131);
+    dmx[400] = 244;
+    expect(lookupProfile('MovingHead', 'MartinRushMH6Wash_14Chan')!.decode(dmx, 400).strobe).toBe(0);
+  });
+
+  // Ported from `rush_mh6_black_or_unset_colour_lights_the_white_led`.
+  it('runs a Rush MH 6 Wash on its white LED when no colour is set', () => {
+    const encode = encoderFor('MovingHead', 'MartinRushMH6Wash_14Chan')!;
+    const dmx = new Uint8Array(513);
+    encode({ r: 0, g: 0, b: 0, alpha: 255, pan: 40, tilt: 90, strobe: 0, focus: 0 }, dmx, 400);
+    expect([dmx[403], dmx[404], dmx[405], dmx[406]]).toEqual([0, 0, 0, 255]);
+    expect(dmx[401]).toBe(255);
+
+    encode({ r: 25, g: 0, b: 0, alpha: 255, pan: 0, tilt: 0, strobe: 0, focus: 0 }, dmx, 400);
+    expect([dmx[403], dmx[406]]).toEqual([25, 0]);
+  });
+
   it('pre-multiplies colour by the dimmer on profiles without a dimmer channel', () => {
     // Generic3ChanNoAlpha has no master dimmer, so blaulicht scales RGB itself.
     const encode = encoderFor('Light', 'Generic3ChanNoAlpha')!;
@@ -190,6 +247,18 @@ describe('visualiser-specific colour handling', () => {
     // Warm and cold white are driven equally, so the result must be near-neutral.
     expect(Math.max(back.r, back.g, back.b) - Math.min(back.r, back.g, back.b))
       .toBeLessThan(90);
+  });
+
+  it('drives all Starstrip lamps with colour brightness x alpha', () => {
+    const profile = lookupProfile('Light', 'VarytecStarstrip10_10Chan')!;
+    const encode = encoderFor('Light', 'VarytecStarstrip10_10Chan')!;
+    const dmx = new Uint8Array(512);
+    encode({ r: 0, g: 255, b: 100, alpha: 128, pan: 0, tilt: 0, strobe: 200, focus: 0 }, dmx, 0);
+    expect(Array.from(dmx.slice(0, 10))).toEqual(new Array(10).fill(128));
+
+    const back = profile.decode(dmx, 0);
+    expect(back.alpha).toBe(128);
+    expect(back.r).toBeGreaterThan(back.b); // warm halogen
   });
 
   it('gives a bare dimmer channel a tungsten colour so it is visible', () => {
@@ -241,9 +310,14 @@ describe('encode -> decode round-trip', () => {
     KuzeLEDPar: { rgb: true, alpha: true, strobeTolerance: 0 },
     StairvilleWildWash648RGB_6Chan: { rgb: true, alpha: true, strobeTolerance: 0 },
     StairvilleLEDPar56_7Chan: { rgb: true, alpha: true, strobeTolerance: 3 },
+    // Colour collapses to a single brightness; covered by its own test.
+    VarytecStarstrip10_10Chan: {},
     // The wheel quantises colour to 12 slots, so only hue-adjacency is testable.
     MartinMac250E: { alpha: true, pan: true, tilt: true, focus: true, strobeTolerance: 14 },
     VaryTechHeroSpot60: { pan: true, tilt: true, alpha: true, focus: true, strobeTolerance: 3 },
+    MartinRushMH6Wash_14Chan: {
+      rgb: true, alpha: true, pan: true, tilt: true, focus: true, strobeTolerance: 3,
+    },
     FogMachineSingle: { alpha: true },
     DimmerSingle: { alpha: true },
     DimmerWStrobe: { alpha: true, strobeTolerance: 0 },

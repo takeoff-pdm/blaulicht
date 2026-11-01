@@ -148,6 +148,14 @@ pub enum Light {
     // 6: Master dimmer
     //
     StairvilleLEDPar56_7Chan,
+    //
+    // Varytec Starstrip 10 Active DMX (10x GU10 warm-white halogen), 10-channel mode.
+    // 0..9: Lamp 1..10 dimmer
+    //
+    // Driven as one dumb fixture: every lamp gets the same value, the brightness
+    // of the colour (max of R/G/B) times alpha. No strobe channel in this mode.
+    //
+    VarytecStarstrip10_10Chan,
 }
 
 impl Display for Light {
@@ -175,6 +183,7 @@ impl Light {
             Light::KuzeLEDPar => 8,
             Light::StairvilleWildWash648RGB_6Chan => 6,
             Light::StairvilleLEDPar56_7Chan => 7,
+            Light::VarytecStarstrip10_10Chan => 10,
         }
     }
 
@@ -329,6 +338,13 @@ impl Light {
                 };
                 fixture_channel!(dmx, this, 5) = 0;
                 fixture_channel!(dmx, this, 6) = state.alpha;
+            }
+            Light::VarytecStarstrip10_10Chan => {
+                let (r, g, b) = color.tup();
+                let level = (r.max(g).max(b) as u16 * state.alpha as u16 / 255) as u8;
+                for lamp in 0..10 {
+                    fixture_channel!(dmx, this, lamp) = level;
+                }
             }
         }
     }
@@ -559,6 +575,13 @@ impl Light {
                     focus: 0,
                 }
             }
+            Light::VarytecStarstrip10_10Chan => ResolvedFixtureState {
+                color: RGBColor::white().into(),
+                alpha: fixture_channel!(dmx, this, 0),
+                orientation: FixtureOrientation::default(),
+                strobe_speed: 0,
+                focus: 0,
+            },
         };
         resolved.into()
     }
@@ -589,6 +612,44 @@ impl Light {
             Light::KuzeLEDPar => {}
             Light::StairvilleWildWash648RGB_6Chan => {}
             Light::StairvilleLEDPar56_7Chan => {}
+            Light::VarytecStarstrip10_10Chan => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixture::FixtureType;
+
+    #[test]
+    fn starstrip_drives_all_lamps_with_brightness_times_alpha() {
+        let fix = Fixture::new(
+            0,
+            100,
+            "starstrip".to_string(),
+            FixtureType::from(Light::VarytecStarstrip10_10Chan),
+        );
+        let state = ResolvedFixtureState {
+            color: RGBColor {
+                r: 0,
+                g: 255,
+                b: 100,
+            }
+            .into(),
+            alpha: 128,
+            ..Default::default()
+        };
+        let mut dmx = [0u8; 513];
+        fix.write(&state, &mut dmx);
+
+        assert_eq!(&dmx[100..110], &[128u8; 10]);
+        assert_eq!(dmx[110], 0, "no bleed past lamp 10");
+
+        let back: ResolvedFixtureState = fix
+            .type_
+            .state_from_dmx(&fix, &dmx)
+            .resolve(&Default::default());
+        assert_eq!(back.alpha, 128);
     }
 }
