@@ -1,0 +1,5 @@
+# python 3.12.3
+essentia-tensorflow==2.1b6.dev1389
+numpy==2.5.4
+PyYAML==6.0.3
+six==1.17.0
