@@ -287,6 +287,7 @@ The suggestions come from `viz/sections.py`, whose long outros are a known weak 
 | `viz/label.js` | the labelling mode |
 | `viz/show_compile.py`, `analyze/` | the show compiler and its analyzers, pilots (`analyze/pilots/`), effect head training (`analyze/fx_train/`), SongFormer fine-tune (`analyze/edm_finetune/`) |
 | `decision/` | plan layer, Beat Saber comparison and the A/B listening test |
+| `../charlie/` | package versions, clone commits and run scripts from ae-charlie, and what's still only there |
 
 Everything ran on ae-charlie in `/localhome/sokrates/melody` (`code/`, `data/`, `out/`, `runs/`,
 `logs/`; venvs `.venv-ess` Essentia, `.venv-game` GAME, `.venv-ort` SwiftF0, `.venv-train` torch).

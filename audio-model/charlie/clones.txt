@@ -1,0 +1,11 @@
+melody/code/GAME https://github.com/openvpi/GAME.git 69ba01ded0ddda5495e51ba373685f1be1a67ea2
+melody/code/SOME https://github.com/openvpi/SOME.git e523eef70777c1370199363de03eb37d66dce76e
+melody/code/sheetsage https://github.com/chrisdonahue/sheetsage.git bbdd7b7b6a5fb845828f82790acdceb03a197779
+melody/models/src/ADTOF-pytorch https://github.com/xavriley/ADTOF-pytorch.git 85c192e78f716ea0b111cc8a5ee4a8f6a3a4f8a9
+melody/models/src/BTC-ISMIR19 https://github.com/jayg996/BTC-ISMIR19.git 2682317be668032e6e4b269ded36adaa2ad57df0
+melody/models/src/EDMFormer https://github.com/25ohms/EDMFormer 0bcd4f2d866110a6085ec424716efa124920c495
+melody/models/src/musicfm https://github.com/minzwon/musicfm.git b83ebedb401bcef639b26b05c0c8bee1dc2dfe71
+melody/models/src/PretrainedSED https://github.com/fschmid56/PretrainedSED.git 1aa47e482f7e89904cba2338999345025d8b4e36
+melody/models/src/Skip-BART https://github.com/RS2002/Skip-BART 88e56d1c07460276273fbbed777d248239262ced
+melody/models/src/SongFormer https://github.com/ASLP-lab/SongFormer 139b2aa3b14bd1c6d961d0994e9fc975f1ef7fd5
+melody/models/src/YourMT3 https://huggingface.co/spaces/mimbres/YourMT3 5e66c1ea173a8186e0d20432b841d3180cc015b5
