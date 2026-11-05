@@ -1,0 +1,1322 @@
+{
+ "top": {
+  "riser": [
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 24.48,
+    "end": 61.4,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 223.2,
+    "end": 262.64,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "f0811c996e8b",
+    "name": "Netsky - Rio",
+    "start": 15.28,
+    "end": 22.64,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 246.76,
+    "end": 260.84,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 37.92,
+    "end": 60.96,
+    "kind": "riser",
+    "peak": 0.997,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "1f6236562632",
+    "name": "Boris Brejcha - Gravity",
+    "start": 193.88,
+    "end": 226.48,
+    "kind": "riser",
+    "peak": 0.996,
+    "dsp_saw": true,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "be45893a3fb0",
+    "name": "The Chainsmokers - Don't Let Me Down",
+    "start": 8.4,
+    "end": 17.44,
+    "kind": "riser",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "80f1fdffb40a",
+    "name": "Dimitri Vegas & Like Mike - Mammoth",
+    "start": 234.0,
+    "end": 269.96,
+    "kind": "riser",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "f0811c996e8b",
+    "name": "Netsky - Rio",
+    "start": 38.88,
+    "end": 44.64,
+    "kind": "riser",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bdb6b36930c2",
+    "name": "Felix - Dont You Want Me KIKI Extended Remix-www.groovytunes.org",
+    "start": 3.0,
+    "end": 13.76,
+    "kind": "riser",
+    "peak": 0.985,
+    "dsp_saw": true,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 22.96,
+    "end": 36.76,
+    "kind": "riser",
+    "peak": 0.985,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "90916f976b65",
+    "name": "deadmau5 - Strobe",
+    "start": 588.36,
+    "end": 612.44,
+    "kind": "riser",
+    "peak": 0.982,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0849896ea229",
+    "name": "LAVINIA - Reasons - Radio Edit",
+    "start": 95.2,
+    "end": 99.16,
+    "kind": "riser",
+    "peak": 0.976,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bfb1011e24d6",
+    "name": "Charlie Sparks (UK) - Denki (Mika Heggemann Remix)",
+    "start": 51.4,
+    "end": 60.96,
+    "kind": "riser",
+    "peak": 0.973,
+    "dsp_saw": true,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "downlifter": [
+   {
+    "id": "2425a9877a38",
+    "name": "Showtek - Booyah",
+    "start": 239.52,
+    "end": 252.76,
+    "kind": "downlifter",
+    "peak": 0.999,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "9b6c5f27b7c6",
+    "name": "BIIANCO - 2 Hard 2 Luv",
+    "start": 2.96,
+    "end": 12.8,
+    "kind": "downlifter",
+    "peak": 0.996,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "2425a9877a38",
+    "name": "Showtek - Booyah",
+    "start": 27.8,
+    "end": 33.24,
+    "kind": "downlifter",
+    "peak": 0.994,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "84fb91348144",
+    "name": "Skrillex - Scary Monsters and Nice Sprites",
+    "start": 199.88,
+    "end": 201.92,
+    "kind": "downlifter",
+    "peak": 0.99,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 3.0,
+    "end": 14.72,
+    "kind": "downlifter",
+    "peak": 0.981,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 0.24,
+    "end": 1.56,
+    "kind": "downlifter",
+    "peak": 0.976,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 170.48,
+    "end": 171.68,
+    "kind": "downlifter",
+    "peak": 0.975,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "84fb91348144",
+    "name": "Skrillex - Scary Monsters and Nice Sprites",
+    "start": 41.32,
+    "end": 48.68,
+    "kind": "downlifter",
+    "peak": 0.974,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": true
+   },
+   {
+    "id": "80f1fdffb40a",
+    "name": "Dimitri Vegas & Like Mike - Mammoth",
+    "start": 136.16,
+    "end": 139.64,
+    "kind": "downlifter",
+    "peak": 0.974,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 94.0,
+    "end": 96.4,
+    "kind": "downlifter",
+    "peak": 0.972,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 156.44,
+    "end": 160.08,
+    "kind": "downlifter",
+    "peak": 0.968,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "2425a9877a38",
+    "name": "Showtek - Booyah",
+    "start": 161.96,
+    "end": 163.6,
+    "kind": "downlifter",
+    "peak": 0.966,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 125.44,
+    "end": 127.52,
+    "kind": "downlifter",
+    "peak": 0.961,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 17.88,
+    "end": 20.2,
+    "kind": "downlifter",
+    "peak": 0.961,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "impact": [
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 337.56,
+    "end": 339.64,
+    "kind": "impact",
+    "peak": 0.995,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "c1234d6c96dd",
+    "name": "Gigi D'Agostino - L'Amour Toujours",
+    "start": 234.92,
+    "end": 237.92,
+    "kind": "impact",
+    "peak": 0.993,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "90916f976b65",
+    "name": "deadmau5 - Strobe",
+    "start": 618.56,
+    "end": 620.2,
+    "kind": "impact",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "685d9642080a",
+    "name": "Swedish House Mafia - Don't You Worry Child (feat. John Martin)",
+    "start": 159.8,
+    "end": 161.16,
+    "kind": "impact",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 165.32,
+    "end": 166.68,
+    "kind": "impact",
+    "peak": 0.99,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 168.92,
+    "end": 169.88,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "b79d19101cd9",
+    "name": "Swedish House Mafia - Save the World",
+    "start": 60.52,
+    "end": 61.92,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 30.04,
+    "end": 31.84,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "685d9642080a",
+    "name": "Swedish House Mafia - Don't You Worry Child (feat. John Martin)",
+    "start": 52.16,
+    "end": 53.76,
+    "kind": "impact",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 277.8,
+    "end": 279.44,
+    "kind": "impact",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "04b1ae9b7779",
+    "name": "Scooter - Maria (I Like It Loud)",
+    "start": 0.2,
+    "end": 1.92,
+    "kind": "impact",
+    "peak": 0.988,
+    "dsp_saw": true,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bfb1011e24d6",
+    "name": "Charlie Sparks (UK) - Denki (Mika Heggemann Remix)",
+    "start": 108.04,
+    "end": 109.44,
+    "kind": "impact",
+    "peak": 0.987,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "08ebe1831c57",
+    "name": "Loi - Golden Summer",
+    "start": 36.48,
+    "end": 38.28,
+    "kind": "impact",
+    "peak": 0.987,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "b79d19101cd9",
+    "name": "Swedish House Mafia - Save the World",
+    "start": 203.84,
+    "end": 205.52,
+    "kind": "impact",
+    "peak": 0.985,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "horn": [
+   {
+    "id": "a6ad9e19879f",
+    "name": "Fred again.. & The Blessed Madonna - Marea (We've Lost Dancing)",
+    "start": 125.92,
+    "end": 126.44,
+    "kind": "horn",
+    "peak": 0.99,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 479.16,
+    "end": 480.36,
+    "kind": "horn",
+    "peak": 0.988,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 384.68,
+    "end": 386.68,
+    "kind": "horn",
+    "peak": 0.987,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 362.12,
+    "end": 364.72,
+    "kind": "horn",
+    "peak": 0.982,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "c1234d6c96dd",
+    "name": "Gigi D'Agostino - L'Amour Toujours",
+    "start": 8.08,
+    "end": 9.2,
+    "kind": "horn",
+    "peak": 0.98,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 378.28,
+    "end": 380.88,
+    "kind": "horn",
+    "peak": 0.967,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "486be76f8517",
+    "name": "Bon Jovi - Livin' On A Prayer",
+    "start": 120.92,
+    "end": 121.88,
+    "kind": "horn",
+    "peak": 0.962,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 369.04,
+    "end": 370.2,
+    "kind": "horn",
+    "peak": 0.962,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 225.28,
+    "end": 225.52,
+    "kind": "horn",
+    "peak": 0.955,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bfb1011e24d6",
+    "name": "Charlie Sparks (UK) - Denki (Mika Heggemann Remix)",
+    "start": 338.96,
+    "end": 339.32,
+    "kind": "horn",
+    "peak": 0.944,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "a6ad9e19879f",
+    "name": "Fred again.. & The Blessed Madonna - Marea (We've Lost Dancing)",
+    "start": 221.48,
+    "end": 221.96,
+    "kind": "horn",
+    "peak": 0.944,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bff9e88c9d9b",
+    "name": "Martin Garrix - Repeat It",
+    "start": 145.48,
+    "end": 145.84,
+    "kind": "horn",
+    "peak": 0.941,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 400.84,
+    "end": 401.64,
+    "kind": "horn",
+    "peak": 0.93,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "9b6c5f27b7c6",
+    "name": "BIIANCO - 2 Hard 2 Luv",
+    "start": 136.48,
+    "end": 136.72,
+    "kind": "horn",
+    "peak": 0.906,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "siren": [
+   {
+    "id": "7110e848a808",
+    "name": "Trancemaster Krause - Even The Stars Are Crying",
+    "start": 108.16,
+    "end": 124.24,
+    "kind": "siren",
+    "peak": 0.996,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "cd79f8cfe8c9",
+    "name": "Major Lazer - Light It Up (Remix)",
+    "start": 61.36,
+    "end": 64.28,
+    "kind": "siren",
+    "peak": 0.99,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "e4ee7009d612",
+    "name": "Purple Disco Machine - In the Dark",
+    "start": 204.76,
+    "end": 213.92,
+    "kind": "siren",
+    "peak": 0.989,
+    "dsp_saw": null,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "1140afb12e9f",
+    "name": "Mausio - NEVER DONE",
+    "start": 142.64,
+    "end": 149.4,
+    "kind": "siren",
+    "peak": 0.985,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 197.2,
+    "end": 204.4,
+    "kind": "siren",
+    "peak": 0.974,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "a39234f7190b",
+    "name": "Skrillex - Bangarang",
+    "start": 209.56,
+    "end": 210.84,
+    "kind": "siren",
+    "peak": 0.957,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ea6e29117cc1",
+    "name": "BURNR - Everything You Need",
+    "start": 210.28,
+    "end": 212.96,
+    "kind": "siren",
+    "peak": 0.953,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0d6ab9d47100",
+    "name": "RÜFÜS DU SOL - Innerbloom",
+    "start": 513.52,
+    "end": 517.6,
+    "kind": "siren",
+    "peak": 0.945,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "fe0b3c607b1b",
+    "name": "Hardwell - Spaceman",
+    "start": 114.32,
+    "end": 119.48,
+    "kind": "siren",
+    "peak": 0.944,
+    "dsp_saw": null,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "ea6e29117cc1",
+    "name": "BURNR - Everything You Need",
+    "start": 199.32,
+    "end": 205.64,
+    "kind": "siren",
+    "peak": 0.935,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "90916f976b65",
+    "name": "deadmau5 - Strobe",
+    "start": 153.56,
+    "end": 159.24,
+    "kind": "siren",
+    "peak": 0.925,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "6abf2ba99729",
+    "name": "Trancemaster Krause - Mosquito (Extended Mix)",
+    "start": 229.56,
+    "end": 230.44,
+    "kind": "siren",
+    "peak": 0.924,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "72e515e4694a",
+    "name": "Ben Böhmer - Beyond Beliefs",
+    "start": 218.68,
+    "end": 220.56,
+    "kind": "siren",
+    "peak": 0.919,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "b899646ef537",
+    "name": "Martin Garrix - Animals",
+    "start": 80.36,
+    "end": 83.72,
+    "kind": "siren",
+    "peak": 0.915,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "revcym": [
+   {
+    "id": "bdb6b36930c2",
+    "name": "Felix - Dont You Want Me KIKI Extended Remix-www.groovytunes.org",
+    "start": 11.12,
+    "end": 13.52,
+    "kind": "revcym",
+    "peak": 0.987,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "555542ee3cb1",
+    "name": "HUGEL - Jamaican (Bam Bam)",
+    "start": 119.2,
+    "end": 120.16,
+    "kind": "revcym",
+    "peak": 0.984,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 122.08,
+    "end": 122.48,
+    "kind": "revcym",
+    "peak": 0.984,
+    "dsp_saw": null,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ]
+ },
+ "dsp_missed": {
+  "riser": [
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 24.48,
+    "end": 61.4,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 223.2,
+    "end": 262.64,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "f0811c996e8b",
+    "name": "Netsky - Rio",
+    "start": 15.28,
+    "end": 22.64,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 246.76,
+    "end": 260.84,
+    "kind": "riser",
+    "peak": 0.998,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 37.92,
+    "end": 60.96,
+    "kind": "riser",
+    "peak": 0.997,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "be45893a3fb0",
+    "name": "The Chainsmokers - Don't Let Me Down",
+    "start": 8.4,
+    "end": 17.44,
+    "kind": "riser",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "80f1fdffb40a",
+    "name": "Dimitri Vegas & Like Mike - Mammoth",
+    "start": 234.0,
+    "end": 269.96,
+    "kind": "riser",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "f0811c996e8b",
+    "name": "Netsky - Rio",
+    "start": 38.88,
+    "end": 44.64,
+    "kind": "riser",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 22.96,
+    "end": 36.76,
+    "kind": "riser",
+    "peak": 0.985,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "90916f976b65",
+    "name": "deadmau5 - Strobe",
+    "start": 588.36,
+    "end": 612.44,
+    "kind": "riser",
+    "peak": 0.982,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0849896ea229",
+    "name": "LAVINIA - Reasons - Radio Edit",
+    "start": 95.2,
+    "end": 99.16,
+    "kind": "riser",
+    "peak": 0.976,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "1f6236562632",
+    "name": "Boris Brejcha - Gravity",
+    "start": 454.64,
+    "end": 481.96,
+    "kind": "riser",
+    "peak": 0.972,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "3fbd1caa0670",
+    "name": "Fisher - Losing It",
+    "start": 25.68,
+    "end": 30.4,
+    "kind": "riser",
+    "peak": 0.971,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "e4ee7009d612",
+    "name": "Purple Disco Machine - In the Dark",
+    "start": 271.04,
+    "end": 282.24,
+    "kind": "riser",
+    "peak": 0.969,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "downlifter": [],
+  "impact": [
+   {
+    "id": "ce281bd15e8a",
+    "name": "Zedd - Clarity",
+    "start": 337.56,
+    "end": 339.64,
+    "kind": "impact",
+    "peak": 0.995,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "c1234d6c96dd",
+    "name": "Gigi D'Agostino - L'Amour Toujours",
+    "start": 234.92,
+    "end": 237.92,
+    "kind": "impact",
+    "peak": 0.993,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "90916f976b65",
+    "name": "deadmau5 - Strobe",
+    "start": 618.56,
+    "end": 620.2,
+    "kind": "impact",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "685d9642080a",
+    "name": "Swedish House Mafia - Don't You Worry Child (feat. John Martin)",
+    "start": 159.8,
+    "end": 161.16,
+    "kind": "impact",
+    "peak": 0.991,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 165.32,
+    "end": 166.68,
+    "kind": "impact",
+    "peak": 0.99,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "0f39a31104e7",
+    "name": "Swedish House Mafia - Greyhound",
+    "start": 168.92,
+    "end": 169.88,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "b79d19101cd9",
+    "name": "Swedish House Mafia - Save the World",
+    "start": 60.52,
+    "end": 61.92,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 30.04,
+    "end": 31.84,
+    "kind": "impact",
+    "peak": 0.989,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "685d9642080a",
+    "name": "Swedish House Mafia - Don't You Worry Child (feat. John Martin)",
+    "start": 52.16,
+    "end": 53.76,
+    "kind": "impact",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "99329334e661",
+    "name": "Eiffel 65 - Blue (Da Ba Dee)",
+    "start": 277.8,
+    "end": 279.44,
+    "kind": "impact",
+    "peak": 0.988,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bfb1011e24d6",
+    "name": "Charlie Sparks (UK) - Denki (Mika Heggemann Remix)",
+    "start": 108.04,
+    "end": 109.44,
+    "kind": "impact",
+    "peak": 0.987,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "08ebe1831c57",
+    "name": "Loi - Golden Summer",
+    "start": 36.48,
+    "end": 38.28,
+    "kind": "impact",
+    "peak": 0.987,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "b79d19101cd9",
+    "name": "Swedish House Mafia - Save the World",
+    "start": 203.84,
+    "end": 205.52,
+    "kind": "impact",
+    "peak": 0.985,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "bfb1011e24d6",
+    "name": "Charlie Sparks (UK) - Denki (Mika Heggemann Remix)",
+    "start": 193.16,
+    "end": 194.68,
+    "kind": "impact",
+    "peak": 0.984,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": true
+   }
+  ],
+  "horn": [],
+  "siren": [],
+  "revcym": []
+ },
+ "named": {
+  "58e556af6855": [
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 15.56,
+    "end": 16.04,
+    "kind": "impact",
+    "peak": 0.727,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": true
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 61.52,
+    "end": 62.28,
+    "kind": "impact",
+    "peak": 0.914,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": true
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 88.52,
+    "end": 89.04,
+    "kind": "impact",
+    "peak": 0.665,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 88.76,
+    "end": 91.72,
+    "kind": "riser",
+    "peak": 0.371,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 92.32,
+    "end": 92.52,
+    "kind": "impact",
+    "peak": 0.756,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 104.88,
+    "end": 107.56,
+    "kind": "riser",
+    "peak": 0.38,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 107.72,
+    "end": 108.0,
+    "kind": "impact",
+    "peak": 0.61,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 138.44,
+    "end": 139.2,
+    "kind": "impact",
+    "peak": 0.725,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": true
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 163.8,
+    "end": 168.52,
+    "kind": "riser",
+    "peak": 0.812,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 165.24,
+    "end": 165.92,
+    "kind": "impact",
+    "peak": 0.8,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "58e556af6855",
+    "name": "Acraze - Do It To It",
+    "start": 205.72,
+    "end": 207.44,
+    "kind": "riser",
+    "peak": 0.375,
+    "dsp_saw": false,
+    "before_drop": false,
+    "on_drop": false
+   }
+  ],
+  "fe0b3c607b1b": [
+   {
+    "id": "fe0b3c607b1b",
+    "name": "Hardwell - Spaceman",
+    "start": 65.2,
+    "end": 70.4,
+    "kind": "riser",
+    "peak": 0.826,
+    "dsp_saw": true,
+    "before_drop": false,
+    "on_drop": false
+   },
+   {
+    "id": "fe0b3c607b1b",
+    "name": "Hardwell - Spaceman",
+    "start": 110.56,
+    "end": 119.48,
+    "kind": "riser",
+    "peak": 0.406,
+    "dsp_saw": true,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "fe0b3c607b1b",
+    "name": "Hardwell - Spaceman",
+    "start": 114.32,
+    "end": 119.48,
+    "kind": "siren",
+    "peak": 0.944,
+    "dsp_saw": null,
+    "before_drop": true,
+    "on_drop": false
+   },
+   {
+    "id": "fe0b3c607b1b",
+    "name": "Hardwell - Spaceman",
+    "start": 119.52,
+    "end": 119.68,
+    "kind": "impact",
+    "peak": 0.602,
+    "dsp_saw": false,
+    "before_drop": true,
+    "on_drop": false
+   }
+  ]
+ },
+ "agree_with_sed": {
+  "horn": {
+   "head_events": 14,
+   "of_those_sed_too": 1,
+   "sed_events": 4,
+   "of_those_head_too": 1
+  },
+  "siren": {
+   "head_events": 35,
+   "of_those_sed_too": 0,
+   "sed_events": 2,
+   "of_those_head_too": 0
+  }
+ }
+}

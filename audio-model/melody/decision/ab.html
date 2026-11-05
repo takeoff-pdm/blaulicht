@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lights A/B</title>
+<style>
+  :root { --bg: #08090c; --panel: #14161c; --ink: #e8eaf0; --dim: #9096a6; --line: #2a2e38; --hot: #ff3b5c; --a: #4fc3f7; --b: #f0b020; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, "Segoe UI", sans-serif; }
+  #wrap { display: flex; flex-direction: column; height: 100%; }
+  #club { position: relative; flex: 1; min-height: 0; aspect-ratio: 16 / 9; margin: 0 auto; max-width: 100%; background: #000; }
+  #club canvas { width: 100% !important; height: 100% !important; display: block; }
+  #badge { position: absolute; left: 14px; top: 10px; font-size: 44px; font-weight: 700; opacity: .9; pointer-events: none; }
+  #badge.A { color: var(--a); } #badge.B { color: var(--b); }
+  #bar { padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  #msg { flex: 1 1 260px; min-width: 200px; }
+  button { font: inherit; color: var(--ink); background: #20242e; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { background: #2b3040; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.pick { font-weight: 600; }
+  button.pick.A { border-color: var(--a); } button.pick.B { border-color: var(--b); }
+  #prog { color: var(--dim); font-variant-numeric: tabular-nums; }
+  kbd { background: #2b3040; border-radius: 3px; padding: 0 5px; font-size: 13px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="club"><div id="badge"></div><div id="clubhud" class="hidden"></div></div>
+  <div id="bar">
+    <span id="prog"></span>
+    <span id="msg">Loading…</span>
+    <button id="start">Start <kbd>Space</kbd></button>
+    <button id="replayA" disabled>Replay A <kbd>1</kbd></button>
+    <button id="replayB" disabled>Replay B <kbd>2</kbd></button>
+    <button class="pick A" id="pickA" disabled>A is better <kbd>A</kbd></button>
+    <button class="pick B" id="pickB" disabled>B is better <kbd>B</kbd></button>
+    <button id="pickSame" disabled>Can't tell <kbd>0</kbd></button>
+    <button id="fullscreen">Fullscreen</button>
+  </div>
+  <!-- what club.js looks up; not part of this page -->
+  <div class="hidden">
+    <input type="checkbox" id="strobes" checked><select id="smoke"><option value="both" selected>both</option></select>
+    <button id="fog"></button><button id="resetview"></button><button id="djview"></button><button id="topview"></button><div id="cues"></div>
+  </div>
+</div>
+<script>
+"use strict";
+// The page plays each side's windows of a song with the real audio and the plan-aware club, then asks which side is
+// better. It never learns a side's variant; the server keeps that (ab_trials.json).
+const $ = (id) => document.getElementById(id);
+const state = { song: null, playing: false, pos: 0, startCtx: 0 };
+let ctx = null, source = null, muteOut = null;
+const audioTime = () => state.playing ? ctx.currentTime - state.startCtx : state.pos;
+const outputLatency = () => state.playing && ctx ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0;
+window.MelodyLab = { state, audioTime, analysisTime: () => audioTime() - outputLatency() };
+
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function prepareDoc(doc, side) {
+  for (const v of Object.values(doc.notes)) v.sort((a, b) => a[0] - b[0]);
+  doc.energyData = {}; doc.energyNorm = {};
+  for (const [k, v] of Object.entries(doc.energy)) {
+    const e = b64(v); doc.energyData[k] = e;
+    const sorted = Array.from(e).sort((a, b) => a - b);
+    doc.energyNorm[k] = [sorted[Math.floor(sorted.length * 0.2)], sorted[Math.floor(sorted.length * 0.995)]];
+  }
+  doc.id = `${doc.id}:${side}`;  // club.js prepares again when the id changes
+  return doc;
+}
+
+let trials = [], idx = 0, cur = null, token = 0, replays = { A: 0, B: 0 }, tStart = 0;
+const wait = (s, t) => new Promise((res) => setTimeout(res, s * 1000)).then(() => t === token);
+function stopAudio() { if (source) { try { source.stop(); } catch { /* already stopped */ } source.disconnect(); source = null; } state.pos = audioTime(); state.playing = false; }
+function setButtons(playing, heard) {
+  $("replayA").disabled = playing || !heard; $("replayB").disabled = playing || !heard;
+  $("pickA").disabled = playing || !heard; $("pickB").disabled = playing || !heard; $("pickSame").disabled = playing || !heard;
+  $("start").disabled = playing;
+}
+async function loadTrial(i) {
+  idx = i; const t = trials[i];
+  $("prog").textContent = `${i + 1} / ${trials.length}`;
+  $("msg").textContent = "Loading…"; setButtons(true, false); $("start").disabled = true;
+  const [a, b, audio] = await Promise.all([
+    fetch(`/api/doc/${t.n}/A`).then((r) => r.json()), fetch(`/api/doc/${t.n}/B`).then((r) => r.json()),
+    fetch(`/api/audio/${t.song}`).then((r) => r.arrayBuffer()),
+  ]);
+  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+  cur = { t, docs: { A: prepareDoc(a, "A"), B: prepareDoc(b, "B") }, buffer: await ctx.decodeAudioData(audio), heard: false };
+  replays = { A: 0, B: 0 }; state.song = null; $("badge").textContent = ""; $("badge").className = "";
+  $("msg").textContent = "Press Space: you'll see A, then B, the same two moments of the song.";
+  setButtons(false, false); tStart = performance.now();
+}
+async function playSide(side, tk) {
+  state.song = cur.docs[side];
+  $("badge").textContent = side; $("badge").className = side;
+  for (const [a, b] of cur.t.windows) {
+    if (tk !== token) return;
+    stopAudio(); state.pos = a;
+    await wait(0.25, tk);  // club.js prepares the new side in this gap
+    if (tk !== token) return;
+    await ctx.resume();
+    source = ctx.createBufferSource(); source.buffer = cur.buffer;
+    if (!muteOut) { muteOut = ctx.createGain(); muteOut.gain.value = location.search.includes("mute") ? 0 : 1; muteOut.connect(ctx.destination); }  // ?mute: for tests
+    source.connect(muteOut);
+    const at = ctx.currentTime + 0.05;
+    source.start(at, a); state.startCtx = at - a; state.playing = true;
+    await wait(b - a + 0.05, tk);
+  }
+  if (tk === token) { stopAudio(); }
+}
+async function run(sides) {
+  const tk = ++token; setButtons(true, cur.heard);
+  for (const s of sides) { $("msg").textContent = `Playing ${s}…`; await playSide(s, tk); if (tk !== token) return; await wait(0.4, tk); }
+  cur.heard = true; $("badge").textContent = ""; $("msg").textContent = "Which side suits the music better? Replay if you like.";
+  setButtons(false, true);
+}
+async function pick(choice) {
+  if (!cur || !cur.heard || state.playing) return;
+  token++; stopAudio();
+  await fetch("/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ n: cur.t.n, choice, replays, seconds: Math.round((performance.now() - tStart) / 1000) }) });
+  trials[idx].done = true;
+  const next = trials.findIndex((t) => !t.done);
+  if (next < 0) { $("msg").textContent = "All done, thanks. The answers are in decision/ab_results/answers.jsonl; run analyse_ab.py."; state.song = null; setButtons(true, false); $("start").disabled = true; return; }
+  loadTrial(next);
+}
+$("start").addEventListener("click", () => { if (cur) run(["A", "B"]); });
+$("replayA").addEventListener("click", () => { replays.A++; run(["A"]); });
+$("replayB").addEventListener("click", () => { replays.B++; run(["B"]); });
+$("pickA").addEventListener("click", () => pick("A")); $("pickB").addEventListener("click", () => pick("B")); $("pickSame").addEventListener("click", () => pick("same"));
+window.addEventListener("keydown", (e) => {
+  if (e.repeat) return;
+  const click = (id) => { const el = $(id); if (!el.disabled) el.click(); };
+  if (e.code === "Space") { e.preventDefault(); click("start"); }
+  else if (e.code === "Digit1") click("replayA"); else if (e.code === "Digit2") click("replayB");
+  else if (e.code === "KeyA") click("pickA"); else if (e.code === "KeyB") click("pickB"); else if (e.code === "Digit0") click("pickSame");
+});
+fetch("/api/trials").then((r) => r.json()).then((list) => {
+  trials = list; const next = trials.findIndex((t) => !t.done);
+  if (next < 0) { $("msg").textContent = "All trials answered."; return; }
+  loadTrial(next);
+});
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module" src="/club_plan.js"></script>
+</body>
+</html>

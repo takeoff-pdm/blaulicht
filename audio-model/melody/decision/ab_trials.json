@@ -1,0 +1,872 @@
+[
+ {
+  "song": "76c0fdea3f9f",
+  "name": "Kygo - Firestone",
+  "windows": [
+   [
+    92.571,
+    105.689
+   ],
+   [
+    188.212,
+    201.33
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 0
+ },
+ {
+  "song": "4da87934d41c",
+  "name": "Mika Heggemann - Millennium Bitch (2024 Rework) (Extended Mix)",
+  "windows": [
+   [
+    11.29,
+    22.49
+   ],
+   [
+    113.693,
+    124.893
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 1
+ },
+ {
+  "song": "49d651b07755",
+  "name": "Afem Syko - Why So Shy (Extended Mix)",
+  "windows": [
+   [
+    24.19,
+    35.39
+   ],
+   [
+    139.39,
+    150.59
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 2
+ },
+ {
+  "song": "bdb6b36930c2",
+  "name": "Felix - Dont You Want Me KIKI Extended Remix-www.groovytunes.org",
+  "windows": [
+   [
+    11.801,
+    23.388
+   ],
+   [
+    134.282,
+    145.868
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 3
+ },
+ {
+  "song": "f1348a186e7a",
+  "name": "Kungs vs Cookin' on 3 Burners - This Girl",
+  "windows": [
+   [
+    13.977,
+    27.747
+   ],
+   [
+    183.17,
+    196.94
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 4
+ },
+ {
+  "song": "06e423e90056",
+  "name": "Mika Heggemann - All That You Love",
+  "windows": [
+   [
+    24.34,
+    35.691
+   ],
+   [
+    76.228,
+    87.579
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 5
+ },
+ {
+  "song": "a8badac50934",
+  "name": "Paul van Dyk - For an Angel",
+  "windows": [
+   [
+    75.285,
+    87.462
+   ],
+   [
+    284.049,
+    296.227
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 6
+ },
+ {
+  "song": "ba8aaeaa0fd0",
+  "name": "Mika Heggemann - DOWN LOW (Extended Mix)",
+  "windows": [
+   [
+    24.32,
+    35.671
+   ],
+   [
+    102.157,
+    113.508
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 7
+ },
+ {
+  "song": "a88a28bf487e",
+  "name": "Part Time Killer - One Day You Will Be Fame",
+  "windows": [
+   [
+    17.038,
+    27.847
+   ],
+   [
+    66.964,
+    77.772
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 8
+ },
+ {
+  "song": "06e423e90056",
+  "name": "Mika Heggemann - All That You Love",
+  "windows": [
+   [
+    24.34,
+    35.691
+   ],
+   [
+    76.228,
+    87.579
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 9
+ },
+ {
+  "song": "be45893a3fb0",
+  "name": "The Chainsmokers - Don't Let Me Down",
+  "windows": [
+   [
+    63.788,
+    74.288
+   ],
+   [
+    111.785,
+    122.285
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 10
+ },
+ {
+  "song": "1b00b7a51260",
+  "name": "Mika Heggemann - Heartbeat Destiny",
+  "windows": [
+   [
+    36.333,
+    47.386
+   ],
+   [
+    124.755,
+    135.807
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 11
+ },
+ {
+  "song": "1954fd6963c3",
+  "name": "David Guetta - Flames",
+  "windows": [
+   [
+    7.65,
+    25.522
+   ],
+   [
+    155.736,
+    173.608
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 12
+ },
+ {
+  "song": "49d651b07755",
+  "name": "Afem Syko - Why So Shy (Extended Mix)",
+  "windows": [
+   [
+    24.19,
+    35.39
+   ],
+   [
+    139.39,
+    150.59
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 13
+ },
+ {
+  "song": "1954fd6963c3",
+  "name": "David Guetta - Flames",
+  "windows": [
+   [
+    7.65,
+    25.522
+   ],
+   [
+    155.736,
+    173.608
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 14
+ },
+ {
+  "song": "a8badac50934",
+  "name": "Paul van Dyk - For an Angel",
+  "windows": [
+   [
+    75.285,
+    87.462
+   ],
+   [
+    284.049,
+    296.227
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 15
+ },
+ {
+  "song": "ba8aaeaa0fd0",
+  "name": "Mika Heggemann - DOWN LOW (Extended Mix)",
+  "windows": [
+   [
+    24.32,
+    35.671
+   ],
+   [
+    102.157,
+    113.508
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 16
+ },
+ {
+  "song": "a88a28bf487e",
+  "name": "Part Time Killer - One Day You Will Be Fame",
+  "windows": [
+   [
+    17.038,
+    27.847
+   ],
+   [
+    66.964,
+    77.772
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 17
+ },
+ {
+  "song": "e13b8b25ac9e",
+  "name": "Avicii - The Nights",
+  "windows": [
+   [
+    28.643,
+    41.976
+   ],
+   [
+    203.887,
+    217.22
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 18
+ },
+ {
+  "song": "a88a28bf487e",
+  "name": "Part Time Killer - One Day You Will Be Fame",
+  "windows": [
+   [
+    17.038,
+    27.847
+   ],
+   [
+    66.964,
+    77.772
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 19
+ },
+ {
+  "song": "2eaf7692f934",
+  "name": "Mika Heggemann - DOWN LOW",
+  "windows": [
+   [
+    40.938,
+    52.289
+   ],
+   [
+    92.831,
+    104.183
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 20
+ },
+ {
+  "song": "e13b8b25ac9e",
+  "name": "Avicii - The Nights",
+  "windows": [
+   [
+    28.643,
+    41.976
+   ],
+   [
+    203.887,
+    217.22
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 21
+ },
+ {
+  "song": "f1348a186e7a",
+  "name": "Kungs vs Cookin' on 3 Burners - This Girl",
+  "windows": [
+   [
+    13.977,
+    27.747
+   ],
+   [
+    183.17,
+    196.94
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 22
+ },
+ {
+  "song": "a8badac50934",
+  "name": "Paul van Dyk - For an Angel",
+  "windows": [
+   [
+    75.285,
+    87.462
+   ],
+   [
+    284.049,
+    296.227
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 23
+ },
+ {
+  "song": "2eaf7692f934",
+  "name": "Mika Heggemann - DOWN LOW",
+  "windows": [
+   [
+    40.938,
+    52.289
+   ],
+   [
+    92.831,
+    104.183
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 24
+ },
+ {
+  "song": "4da87934d41c",
+  "name": "Mika Heggemann - Millennium Bitch (2024 Rework) (Extended Mix)",
+  "windows": [
+   [
+    11.29,
+    22.49
+   ],
+   [
+    113.693,
+    124.893
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 25
+ },
+ {
+  "song": "be45893a3fb0",
+  "name": "The Chainsmokers - Don't Let Me Down",
+  "windows": [
+   [
+    63.788,
+    74.288
+   ],
+   [
+    111.785,
+    122.285
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 26
+ },
+ {
+  "song": "ba8aaeaa0fd0",
+  "name": "Mika Heggemann - DOWN LOW (Extended Mix)",
+  "windows": [
+   [
+    24.32,
+    35.671
+   ],
+   [
+    102.157,
+    113.508
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 27
+ },
+ {
+  "song": "2eaf7692f934",
+  "name": "Mika Heggemann - DOWN LOW",
+  "windows": [
+   [
+    40.938,
+    52.289
+   ],
+   [
+    92.831,
+    104.183
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 28
+ },
+ {
+  "song": "be45893a3fb0",
+  "name": "The Chainsmokers - Don't Let Me Down",
+  "windows": [
+   [
+    63.788,
+    74.288
+   ],
+   [
+    111.785,
+    122.285
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 29
+ },
+ {
+  "song": "bdb6b36930c2",
+  "name": "Felix - Dont You Want Me KIKI Extended Remix-www.groovytunes.org",
+  "windows": [
+   [
+    11.801,
+    23.388
+   ],
+   [
+    134.282,
+    145.868
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 30
+ },
+ {
+  "song": "f1348a186e7a",
+  "name": "Kungs vs Cookin' on 3 Burners - This Girl",
+  "windows": [
+   [
+    13.977,
+    27.747
+   ],
+   [
+    183.17,
+    196.94
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 31
+ },
+ {
+  "song": "1954fd6963c3",
+  "name": "David Guetta - Flames",
+  "windows": [
+   [
+    7.65,
+    25.522
+   ],
+   [
+    155.736,
+    173.608
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 32
+ },
+ {
+  "song": "4da87934d41c",
+  "name": "Mika Heggemann - Millennium Bitch (2024 Rework) (Extended Mix)",
+  "windows": [
+   [
+    11.29,
+    22.49
+   ],
+   [
+    113.693,
+    124.893
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "n": 33
+ },
+ {
+  "song": "e13b8b25ac9e",
+  "name": "Avicii - The Nights",
+  "windows": [
+   [
+    28.643,
+    41.976
+   ],
+   [
+    203.887,
+    217.22
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 34
+ },
+ {
+  "song": "49d651b07755",
+  "name": "Afem Syko - Why So Shy (Extended Mix)",
+  "windows": [
+   [
+    24.19,
+    35.39
+   ],
+   [
+    139.39,
+    150.59
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 35
+ },
+ {
+  "song": "76c0fdea3f9f",
+  "name": "Kygo - Firestone",
+  "windows": [
+   [
+    92.571,
+    105.689
+   ],
+   [
+    188.212,
+    201.33
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "n": 36
+ },
+ {
+  "song": "1b00b7a51260",
+  "name": "Mika Heggemann - Heartbeat Destiny",
+  "windows": [
+   [
+    36.333,
+    47.386
+   ],
+   [
+    124.755,
+    135.807
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "n": 37
+ },
+ {
+  "song": "bdb6b36930c2",
+  "name": "Felix - Dont You Want Me KIKI Extended Remix-www.groovytunes.org",
+  "windows": [
+   [
+    11.801,
+    23.388
+   ],
+   [
+    134.282,
+    145.868
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 38
+ },
+ {
+  "song": "76c0fdea3f9f",
+  "name": "Kygo - Firestone",
+  "windows": [
+   [
+    92.571,
+    105.689
+   ],
+   [
+    188.212,
+    201.33
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "n": 39
+ },
+ {
+  "song": "06e423e90056",
+  "name": "Mika Heggemann - All That You Love",
+  "windows": [
+   [
+    24.34,
+    35.691
+   ],
+   [
+    76.228,
+    87.579
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "n": 40
+ },
+ {
+  "song": "1b00b7a51260",
+  "name": "Mika Heggemann - Heartbeat Destiny",
+  "windows": [
+   [
+    36.333,
+    47.386
+   ],
+   [
+    124.755,
+    135.807
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "n": 41
+ },
+ {
+  "song": "a88a28bf487e",
+  "name": "Part Time Killer - One Day You Will Be Fame",
+  "windows": [
+   [
+    17.038,
+    27.847
+   ],
+   [
+    66.964,
+    77.772
+   ]
+  ],
+  "A": "llm",
+  "B": "rules",
+  "against": "llm",
+  "repeat_of": 19,
+  "n": 42
+ },
+ {
+  "song": "76c0fdea3f9f",
+  "name": "Kygo - Firestone",
+  "windows": [
+   [
+    92.571,
+    105.689
+   ],
+   [
+    188.212,
+    201.33
+   ]
+  ],
+  "A": "rules",
+  "B": "llm",
+  "against": "llm",
+  "repeat_of": 0,
+  "n": 43
+ },
+ {
+  "song": "e13b8b25ac9e",
+  "name": "Avicii - The Nights",
+  "windows": [
+   [
+    28.643,
+    41.976
+   ],
+   [
+    203.887,
+    217.22
+   ]
+  ],
+  "A": "random",
+  "B": "rules",
+  "against": "random",
+  "repeat_of": 34,
+  "n": 44
+ },
+ {
+  "song": "4da87934d41c",
+  "name": "Mika Heggemann - Millennium Bitch (2024 Rework) (Extended Mix)",
+  "windows": [
+   [
+    11.29,
+    22.49
+   ],
+   [
+    113.693,
+    124.893
+   ]
+  ],
+  "A": "beam",
+  "B": "rules",
+  "against": "beam",
+  "repeat_of": 1,
+  "n": 45
+ },
+ {
+  "song": "1954fd6963c3",
+  "name": "David Guetta - Flames",
+  "windows": [
+   [
+    7.65,
+    25.522
+   ],
+   [
+    155.736,
+    173.608
+   ]
+  ],
+  "A": "rules",
+  "B": "beam",
+  "against": "beam",
+  "repeat_of": 14,
+  "n": 46
+ },
+ {
+  "song": "06e423e90056",
+  "name": "Mika Heggemann - All That You Love",
+  "windows": [
+   [
+    24.34,
+    35.691
+   ],
+   [
+    76.228,
+    87.579
+   ]
+  ],
+  "A": "rules",
+  "B": "random",
+  "against": "random",
+  "repeat_of": 9,
+  "n": 47
+ }
+]

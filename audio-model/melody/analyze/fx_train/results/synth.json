@@ -1,0 +1,1162 @@
+{
+ "gen_beats": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.64,
+    "event_f1": 0.606,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.548,
+    "event_f1": 0.571,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.465,
+    "event_f1": 0.464,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.706,
+    "event_f1": 0.761,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.595,
+    "event_f1": 0.563,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.514,
+    "event_f1": 0.538,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.029,
+    "impact_fires": 0.051
+   },
+   "mean_event_f1": 0.584
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.551,
+    "event_f1": 0.476,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.16,
+    "event_f1": 0.128,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.425,
+    "event_f1": 0.535,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.042,
+    "event_f1": 0.085,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.587,
+    "event_f1": 0.544,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.208,
+    "event_f1": 0.319,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.016,
+    "impact_fires": 0.071
+   },
+   "mean_event_f1": 0.348
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.315,
+    "event_f1": 0.38,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.288,
+    "event_f1": 0.289,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.175,
+    "event_f1": 0.256,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.0,
+    "event_f1": 0.0,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.089,
+    "event_f1": 0.138,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.22,
+    "event_f1": 0.342,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.042,
+    "impact_fires": 0.076
+   },
+   "mean_event_f1": 0.234
+  }
+ },
+ "gen_both": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.665,
+    "event_f1": 0.635,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.506,
+    "event_f1": 0.566,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.522,
+    "event_f1": 0.524,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.706,
+    "event_f1": 0.718,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.57,
+    "event_f1": 0.535,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.711,
+    "event_f1": 0.679,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.043,
+    "impact_fires": 0.022
+   },
+   "mean_event_f1": 0.61
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.595,
+    "event_f1": 0.542,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.173,
+    "event_f1": 0.132,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.539,
+    "event_f1": 0.566,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.105,
+    "event_f1": 0.194,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.586,
+    "event_f1": 0.524,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.201,
+    "event_f1": 0.25,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.063,
+    "impact_fires": 0.032
+   },
+   "mean_event_f1": 0.368
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.409,
+    "event_f1": 0.453,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.32,
+    "event_f1": 0.32,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.173,
+    "event_f1": 0.262,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.16,
+    "event_f1": 0.301,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.192,
+    "event_f1": 0.281,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.316,
+    "event_f1": 0.4,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.035,
+    "impact_fires": 0.042
+   },
+   "mean_event_f1": 0.336
+  }
+ },
+ "gen_mel": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.607,
+    "event_f1": 0.533,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.467,
+    "event_f1": 0.411,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.502,
+    "event_f1": 0.46,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.456,
+    "event_f1": 0.5,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.257,
+    "event_f1": 0.25,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.737,
+    "event_f1": 0.752,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.08,
+    "impact_fires": 0.08
+   },
+   "mean_event_f1": 0.484
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.341,
+    "event_f1": 0.322,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.138,
+    "event_f1": 0.178,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.213,
+    "event_f1": 0.249,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.2,
+    "event_f1": 0.247,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.094,
+    "event_f1": 0.154,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.08,
+    "event_f1": 0.086,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.079,
+    "impact_fires": 0.063
+   },
+   "mean_event_f1": 0.206
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.389,
+    "event_f1": 0.515,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.329,
+    "event_f1": 0.333,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.092,
+    "event_f1": 0.133,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.098,
+    "event_f1": 0.167,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.128,
+    "event_f1": 0.184,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.0,
+    "event_f1": 0.0,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.083,
+    "impact_fires": 0.083
+   },
+   "mean_event_f1": 0.222
+  }
+ },
+ "yt_beats": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.511,
+    "event_f1": 0.443,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.289,
+    "event_f1": 0.265,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.289,
+    "event_f1": 0.324,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.213,
+    "event_f1": 0.25,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.184,
+    "event_f1": 0.249,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.211,
+    "event_f1": 0.312,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.051,
+    "impact_fires": 0.116
+   },
+   "mean_event_f1": 0.307
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.654,
+    "event_f1": 0.573,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.285,
+    "event_f1": 0.233,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.457,
+    "event_f1": 0.577,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.681,
+    "event_f1": 0.723,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.612,
+    "event_f1": 0.531,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.682,
+    "event_f1": 0.741,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.016,
+    "impact_fires": 0.056
+   },
+   "mean_event_f1": 0.563
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.492,
+    "event_f1": 0.588,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.341,
+    "event_f1": 0.417,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.146,
+    "event_f1": 0.285,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.932,
+    "event_f1": 0.934,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.411,
+    "event_f1": 0.468,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.513,
+    "event_f1": 0.587,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.042,
+    "impact_fires": 0.104
+   },
+   "mean_event_f1": 0.546
+  }
+ },
+ "yt_both": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.528,
+    "event_f1": 0.479,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.314,
+    "event_f1": 0.262,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.279,
+    "event_f1": 0.296,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.182,
+    "event_f1": 0.215,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.307,
+    "event_f1": 0.364,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.084,
+    "event_f1": 0.169,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.058,
+    "impact_fires": 0.072
+   },
+   "mean_event_f1": 0.298
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.629,
+    "event_f1": 0.543,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.254,
+    "event_f1": 0.209,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.479,
+    "event_f1": 0.556,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.675,
+    "event_f1": 0.738,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.64,
+    "event_f1": 0.579,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.735,
+    "event_f1": 0.73,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.056,
+    "impact_fires": 0.063
+   },
+   "mean_event_f1": 0.559
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.52,
+    "event_f1": 0.635,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.295,
+    "event_f1": 0.403,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.161,
+    "event_f1": 0.279,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.918,
+    "event_f1": 0.934,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.39,
+    "event_f1": 0.491,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.638,
+    "event_f1": 0.702,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.035,
+    "impact_fires": 0.083
+   },
+   "mean_event_f1": 0.574
+  }
+ },
+ "yt_mel": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.416,
+    "event_f1": 0.316,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.078,
+    "event_f1": 0.061,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.18,
+    "event_f1": 0.204,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.017,
+    "event_f1": 0.052,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.025,
+    "event_f1": 0.046,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.103,
+    "event_f1": 0.101,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.058,
+    "impact_fires": 0.13
+   },
+   "mean_event_f1": 0.13
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.499,
+    "event_f1": 0.431,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.152,
+    "event_f1": 0.127,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.257,
+    "event_f1": 0.299,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.378,
+    "event_f1": 0.337,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.138,
+    "event_f1": 0.087,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.607,
+    "event_f1": 0.71,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.04,
+    "impact_fires": 0.135
+   },
+   "mean_event_f1": 0.332
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.388,
+    "event_f1": 0.544,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.17,
+    "event_f1": 0.208,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.18,
+    "event_f1": 0.178,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.703,
+    "event_f1": 0.715,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.052,
+    "event_f1": 0.037,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.335,
+    "event_f1": 0.482,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.021,
+    "impact_fires": 0.139
+   },
+   "mean_event_f1": 0.361
+  }
+ },
+ "both_beats": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.623,
+    "event_f1": 0.595,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.459,
+    "event_f1": 0.382,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.445,
+    "event_f1": 0.453,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.66,
+    "event_f1": 0.718,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.516,
+    "event_f1": 0.598,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.625,
+    "event_f1": 0.591,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.036,
+    "impact_fires": 0.109
+   },
+   "mean_event_f1": 0.556
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.69,
+    "event_f1": 0.604,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.192,
+    "event_f1": 0.108,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.532,
+    "event_f1": 0.574,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.698,
+    "event_f1": 0.702,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.69,
+    "event_f1": 0.584,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.583,
+    "event_f1": 0.615,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.063,
+    "impact_fires": 0.095
+   },
+   "mean_event_f1": 0.531
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.434,
+    "event_f1": 0.512,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.277,
+    "event_f1": 0.333,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.209,
+    "event_f1": 0.329,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.89,
+    "event_f1": 0.914,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.222,
+    "event_f1": 0.33,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.463,
+    "event_f1": 0.517,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.014,
+    "impact_fires": 0.097
+   },
+   "mean_event_f1": 0.489
+  }
+ },
+ "both_both": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.67,
+    "event_f1": 0.605,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.471,
+    "event_f1": 0.39,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.498,
+    "event_f1": 0.514,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.667,
+    "event_f1": 0.721,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.443,
+    "event_f1": 0.468,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.668,
+    "event_f1": 0.622,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.043,
+    "impact_fires": 0.159
+   },
+   "mean_event_f1": 0.553
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.67,
+    "event_f1": 0.59,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.202,
+    "event_f1": 0.169,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.556,
+    "event_f1": 0.628,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.674,
+    "event_f1": 0.648,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.619,
+    "event_f1": 0.504,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.531,
+    "event_f1": 0.633,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.056,
+    "impact_fires": 0.111
+   },
+   "mean_event_f1": 0.529
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.428,
+    "event_f1": 0.532,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.206,
+    "event_f1": 0.296,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.252,
+    "event_f1": 0.424,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.892,
+    "event_f1": 0.872,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.337,
+    "event_f1": 0.417,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.485,
+    "event_f1": 0.599,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.042,
+    "impact_fires": 0.139
+   },
+   "mean_event_f1": 0.523
+  }
+ },
+ "both_mel": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.523,
+    "event_f1": 0.467,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.251,
+    "event_f1": 0.193,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.435,
+    "event_f1": 0.41,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.31,
+    "event_f1": 0.364,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.097,
+    "event_f1": 0.116,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.709,
+    "event_f1": 0.686,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.109,
+    "impact_fires": 0.138
+   },
+   "mean_event_f1": 0.373
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.449,
+    "event_f1": 0.376,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.22,
+    "event_f1": 0.154,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.317,
+    "event_f1": 0.329,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.318,
+    "event_f1": 0.269,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.2,
+    "event_f1": 0.147,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.512,
+    "event_f1": 0.642,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.063,
+    "impact_fires": 0.159
+   },
+   "mean_event_f1": 0.32
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.376,
+    "event_f1": 0.513,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.146,
+    "event_f1": 0.179,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.228,
+    "event_f1": 0.254,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.641,
+    "event_f1": 0.57,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.173,
+    "event_f1": 0.175,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.407,
+    "event_f1": 0.535,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.09,
+    "impact_fires": 0.243
+   },
+   "mean_event_f1": 0.371
+  }
+ },
+ "both_both_hn": {
+  "test_gen": {
+   "riser": {
+    "frame_f1": 0.652,
+    "event_f1": 0.623,
+    "events": 160
+   },
+   "downlifter": {
+    "frame_f1": 0.479,
+    "event_f1": 0.446,
+    "events": 88
+   },
+   "impact": {
+    "frame_f1": 0.435,
+    "event_f1": 0.481,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.656,
+    "event_f1": 0.734,
+    "events": 75
+   },
+   "siren": {
+    "frame_f1": 0.439,
+    "event_f1": 0.433,
+    "events": 49
+   },
+   "revcym": {
+    "frame_f1": 0.641,
+    "event_f1": 0.66,
+    "events": 59
+   },
+   "empty_fake_drops": {
+    "n": 138,
+    "riser_fires": 0.051,
+    "impact_fires": 0.022
+   },
+   "mean_event_f1": 0.563
+  },
+  "test_yt": {
+   "riser": {
+    "frame_f1": 0.677,
+    "event_f1": 0.57,
+    "events": 162
+   },
+   "downlifter": {
+    "frame_f1": 0.215,
+    "event_f1": 0.143,
+    "events": 55
+   },
+   "impact": {
+    "frame_f1": 0.535,
+    "event_f1": 0.584,
+    "events": 148
+   },
+   "horn": {
+    "frame_f1": 0.627,
+    "event_f1": 0.606,
+    "events": 46
+   },
+   "siren": {
+    "frame_f1": 0.646,
+    "event_f1": 0.526,
+    "events": 52
+   },
+   "revcym": {
+    "frame_f1": 0.521,
+    "event_f1": 0.614,
+    "events": 60
+   },
+   "empty_fake_drops": {
+    "n": 126,
+    "riser_fires": 0.048,
+    "impact_fires": 0.024
+   },
+   "mean_event_f1": 0.507
+  },
+  "test_rb": {
+   "riser": {
+    "frame_f1": 0.423,
+    "event_f1": 0.479,
+    "events": 161
+   },
+   "downlifter": {
+    "frame_f1": 0.235,
+    "event_f1": 0.261,
+    "events": 90
+   },
+   "impact": {
+    "frame_f1": 0.205,
+    "event_f1": 0.346,
+    "events": 163
+   },
+   "horn": {
+    "frame_f1": 0.867,
+    "event_f1": 0.865,
+    "events": 66
+   },
+   "siren": {
+    "frame_f1": 0.259,
+    "event_f1": 0.353,
+    "events": 60
+   },
+   "revcym": {
+    "frame_f1": 0.511,
+    "event_f1": 0.626,
+    "events": 57
+   },
+   "empty_fake_drops": {
+    "n": 144,
+    "riser_fires": 0.076,
+    "impact_fires": 0.049
+   },
+   "mean_event_f1": 0.488
+  }
+ }
+}

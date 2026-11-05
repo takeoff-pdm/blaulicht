@@ -1,0 +1,901 @@
+{
+ "58e556af6855": {
+  "drops_direct": {
+   "raw": "0:00, 0:15, 0:30, 0:45, 1:00, 1:15, 1:30, 1:45, 2:00, 2:15, 2:30, 2:45, 3:00, 3:15",
+   "seconds": 2.21,
+   "new_tokens": 83
+  },
+  "cropped_60": {
+   "shift": -60,
+   "sections": {
+    "raw": "00:00-00:01 | Intro | A short, filtered synth stab followed by a crisp, punchy electronic drum hit that sets the tempo.\n00:01-00:04 | First vocal sample | The female voice enters with the hook “Pop your backs with it,” delivered in a clear, slightly processed timbre.\n00:04-00:08 | Beat drop | The full drum pattern—tight kick, snappy snare, and crisp hi-hats—locks in, accompanied by a deep, side‑chained synth bass that drives the groove.\n00:08-00:12 | Repetitive chant | The vocal line “Drop with it, lean with it, rock with it, snap with it” repeats, layered over a minimal synth pad that adds subtle harmonic texture.\n00:12-00:16 | Instrumental break | The vocal drops out, leaving the bass and drums to groove, with a filtered synth arpeggio building tension.\n00:16-00:20 | Second vocal entry | The hook returns, now with added background ad‑libs and a slight delay effect, reinforcing the dance‑floor command.\n00:20-00:24 | Build‑up | Percussive risers and a rising filter sweep increase energy, leading into the next section.\n00:24-00:28 | Breakdown | The drums momentarily drop out, leaving a spacious pad and a filtered version of the vocal chant, creating a brief atmospheric pause.\n00:28-00:32 | Re‑entry of full beat | The full drum kit and bass slam back in, with the vocal hook repeated in a more layered fashion.\n00:32-00:36 | Variation of chant | The lyric “All my ladies, pop your backs with it” is introduced, adding a call‑and‑response feel.\n00:36-00:40 | Extended instrumental groove | The track settles into a steady four‑on‑the‑floor rhythm, with subtle synth stabs and occasional percussive fills.\n00:40-00:44 | Vocal ad‑libs | Short, processed vocal snippets (“All my ladies, drop your backs with it”) punctuate the groove, adding texture.\n00:44-00:48 | Mid‑section development | Additional synth layers and a filtered white‑noise sweep increase intensity, preparing for the next vocal burst.\n00:48-00:52 | Third vocal entry | The hook returns, now with a slightly more aggressive filter on the vocal, emphasizing the dance command.\n00:52-00:56 | Breakdown & build | The drums drop out again, leaving a resonant bass note and a delayed vocal phrase, then a rapid snare roll builds tension.\n00:56-01:00 | Full‑beat climax | The beat drops back in with added high‑frequency synth accents, driving the energy higher.\n01:00-01:04 | Repetition of chant | The “Drop with it, lean with it, rock with it, snap with it” line repeats, now layered with a subtle vocal harmony.\n01:04-01:08 | Instrumental bridge | A short synth lead melody weaves over the groove, providing a melodic contrast.\n01:08-01:12 | Fourth vocal entry | The hook “All my ladies, pop your backs with it” is delivered with a slightly more reverberant tone, adding depth.\n01:12-01:16 | Extended instrumental groove | The track settles back into the core rhythm, with minor",
+    "seconds": 16.68,
+    "new_tokens": 800,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 1.0,
+      "name": "Intro",
+      "line": "00:00-00:01 | Intro | A short, filtered synth stab followed by a crisp, punchy electronic drum hit that sets the tempo."
+     },
+     {
+      "start": 1.0,
+      "end": 4.0,
+      "name": "First vocal sample",
+      "line": "00:01-00:04 | First vocal sample | The female voice enters with the hook “Pop your backs with it,” delivered in a clear, slightly processed timbre."
+     },
+     {
+      "start": 4.0,
+      "end": 8.0,
+      "name": "Beat drop",
+      "line": "00:04-00:08 | Beat drop | The full drum pattern—tight kick, snappy snare, and crisp hi-hats—locks in, accompanied by a deep, side‑chained synth bass that drives the groove."
+     },
+     {
+      "start": 8.0,
+      "end": 12.0,
+      "name": "Repetitive chant",
+      "line": "00:08-00:12 | Repetitive chant | The vocal line “Drop with it, lean with it, rock with it, snap with it” repeats, layered over a minimal synth pad that adds subtle harmonic texture."
+     },
+     {
+      "start": 12.0,
+      "end": 16.0,
+      "name": "Instrumental break",
+      "line": "00:12-00:16 | Instrumental break | The vocal drops out, leaving the bass and drums to groove, with a filtered synth arpeggio building tension."
+     },
+     {
+      "start": 16.0,
+      "end": 20.0,
+      "name": "Second vocal entry",
+      "line": "00:16-00:20 | Second vocal entry | The hook returns, now with added background ad‑libs and a slight delay effect, reinforcing the dance‑floor command."
+     },
+     {
+      "start": 20.0,
+      "end": 24.0,
+      "name": "Build‑up",
+      "line": "00:20-00:24 | Build‑up | Percussive risers and a rising filter sweep increase energy, leading into the next section."
+     },
+     {
+      "start": 24.0,
+      "end": 28.0,
+      "name": "Breakdown",
+      "line": "00:24-00:28 | Breakdown | The drums momentarily drop out, leaving a spacious pad and a filtered version of the vocal chant, creating a brief atmospheric pause."
+     },
+     {
+      "start": 28.0,
+      "end": 32.0,
+      "name": "Re‑entry of full beat",
+      "line": "00:28-00:32 | Re‑entry of full beat | The full drum kit and bass slam back in, with the vocal hook repeated in a more layered fashion."
+     },
+     {
+      "start": 32.0,
+      "end": 36.0,
+      "name": "Variation of chant",
+      "line": "00:32-00:36 | Variation of chant | The lyric “All my ladies, pop your backs with it” is introduced, adding a call‑and‑response feel."
+     },
+     {
+      "start": 36.0,
+      "end": 40.0,
+      "name": "Extended instrumental groove",
+      "line": "00:36-00:40 | Extended instrumental groove | The track settles into a steady four‑on‑the‑floor rhythm, with subtle synth stabs and occasional percussive fills."
+     },
+     {
+      "start": 40.0,
+      "end": 44.0,
+      "name": "Vocal ad‑libs",
+      "line": "00:40-00:44 | Vocal ad‑libs | Short, processed vocal snippets (“All my ladies, drop your backs with it”) punctuate the groove, adding texture."
+     },
+     {
+      "start": 44.0,
+      "end": 48.0,
+      "name": "Mid‑section development",
+      "line": "00:44-00:48 | Mid‑section development | Additional synth layers and a filtered white‑noise sweep increase intensity, preparing for the next vocal burst."
+     },
+     {
+      "start": 48.0,
+      "end": 52.0,
+      "name": "Third vocal entry",
+      "line": "00:48-00:52 | Third vocal entry | The hook returns, now with a slightly more aggressive filter on the vocal, emphasizing the dance command."
+     },
+     {
+      "start": 52.0,
+      "end": 56.0,
+      "name": "Breakdown & build",
+      "line": "00:52-00:56 | Breakdown & build | The drums drop out again, leaving a resonant bass note and a delayed vocal phrase, then a rapid snare roll builds tension."
+     },
+     {
+      "start": 56.0,
+      "end": 60.0,
+      "name": "Full‑beat climax",
+      "line": "00:56-01:00 | Full‑beat climax | The beat drops back in with added high‑frequency synth accents, driving the energy higher."
+     },
+     {
+      "start": 60.0,
+      "end": 64.0,
+      "name": "Repetition of chant",
+      "line": "01:00-01:04 | Repetition of chant | The “Drop with it, lean with it, rock with it, snap with it” line repeats, now layered with a subtle vocal harmony."
+     },
+     {
+      "start": 64.0,
+      "end": 68.0,
+      "name": "Instrumental bridge",
+      "line": "01:04-01:08 | Instrumental bridge | A short synth lead melody weaves over the groove, providing a melodic contrast."
+     },
+     {
+      "start": 68.0,
+      "end": 72.0,
+      "name": "Fourth vocal entry",
+      "line": "01:08-01:12 | Fourth vocal entry | The hook “All my ladies, pop your backs with it” is delivered with a slightly more reverberant tone, adding depth."
+     },
+     {
+      "start": 72.0,
+      "end": 76.0,
+      "name": "Extended instrumental groove",
+      "line": "01:12-01:16 | Extended instrumental groove | The track settles back into the core rhythm, with minor"
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:30, 0:45, 1:15, 1:45",
+    "seconds": 0.94,
+    "new_tokens": 23
+   }
+  },
+  "padded_30": {
+   "shift": 30,
+   "sections": {
+    "raw": "00:00-00:30 | Intro | A deep, resonant synth bassline and a crisp, four-on-the-floor kick drum establish a steady, club‑ready groove. Subtle hi‑hats and a faint atmospheric pad fill out the low‑mid spectrum, creating a spacious, immersive soundstage.\n00:30-00:45 | Build‑up | Additional percussive elements—shuffling hi‑hats, a snappy clap, and a rising white‑noise sweep—gradually increase in intensity, while the bassline becomes more pronounced and the synth pad swells, heightening anticipation.\n00:45-01:00 | Drop / Main Groove | The full drum pattern locks in, delivering a driving, dance‑floor‑focused rhythm. The bassline remains dominant, providing a powerful low‑end foundation, while the synth pad adds a subtle harmonic texture. The mix is clean and punchy, with the kick and bass tightly side‑chained for maximum impact.\n01:00-01:15 | Breakdown | Percussion recedes, leaving the bassline and pad to create a more minimal, hypnotic atmosphere. A filtered version of the main synth motif is introduced, building tension for the next section.\n01:15-01:30 | Build‑up 2 | Percussive elements re‑enter, layered with a rising filter sweep and a short, staccato synth stab. The energy climbs toward the next drop.\n01:30-01:45 | Drop / Main Groove (reprise) | The full groove returns, now with added subtle melodic accents and a slightly more aggressive high‑frequency sheen, reinforcing the track’s driving momentum.\n01:45-02:00 | Outro | Elements gradually strip away, leaving the bassline and a fading pad to close the piece, allowing the listener to exit the groove smoothly.\n02:00-02:15 | Final Fade‑out | The bassline and pad dissolve into a low‑pass filtered ambience, ending the track on a subdued, lingering note.\n02:15-02:30 | Extended Outro / Fade‑out | The track continues to fade, with the bassline and pad slowly disappearing into silence, providing a clean, professional conclusion.\n02:30-02:45 | Fade‑out (final) | The last remnants of the bass and pad fade out completely, leaving a brief moment of silence.\n02:45-03:00 | Silence | A short pause of complete silence follows the fade‑out, emphasizing the track’s polished production and giving the listener a moment to reflect.\n03:00-03:15 | Fade‑out (final) | The silence is broken by a final, subtle re‑introduction of the bassline and pad, which then gently fade out once more.\n03:15-03:30 | Fade‑out (final) | The track concludes with a final, smooth fade‑out, leaving a lingering sense of the groove’s energy.\n03:30-03:45 | Fade‑out (final) | The last remnants of the bass and pad fade out, ending the piece with a clean, professional finish.\n03:45-03:55 | Fade‑out (final) | The track concludes with a final, smooth fade‑out, leaving a lingering sense of the groove’s energy.\n03:55-04:10 | Fade‑out (final) | The last remnants of the bass and pad fade out, ending the piece with a clean, professional finish.\n04:10-04:25 |",
+    "seconds": 16.28,
+    "new_tokens": 800,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 30.0,
+      "name": "Intro",
+      "line": "00:00-00:30 | Intro | A deep, resonant synth bassline and a crisp, four-on-the-floor kick drum establish a steady, club‑ready groove. Subtle hi‑hats and a faint atmospheric pad fill out the low‑mid spectrum, creating a spacious, immersive soundstage."
+     },
+     {
+      "start": 30.0,
+      "end": 45.0,
+      "name": "Build‑up",
+      "line": "00:30-00:45 | Build‑up | Additional percussive elements—shuffling hi‑hats, a snappy clap, and a rising white‑noise sweep—gradually increase in intensity, while the bassline becomes more pronounced and the synth pad swells, heightening anticipation."
+     },
+     {
+      "start": 45.0,
+      "end": 60.0,
+      "name": "Drop / Main Groove",
+      "line": "00:45-01:00 | Drop / Main Groove | The full drum pattern locks in, delivering a driving, dance‑floor‑focused rhythm. The bassline remains dominant, providing a powerful low‑end foundation, while the synth pad adds a subtle harmonic texture. The mix is clean and punchy, with the kick and bass tightly side‑chained for maximum impact."
+     },
+     {
+      "start": 60.0,
+      "end": 75.0,
+      "name": "Breakdown",
+      "line": "01:00-01:15 | Breakdown | Percussion recedes, leaving the bassline and pad to create a more minimal, hypnotic atmosphere. A filtered version of the main synth motif is introduced, building tension for the next section."
+     },
+     {
+      "start": 75.0,
+      "end": 90.0,
+      "name": "Build‑up 2",
+      "line": "01:15-01:30 | Build‑up 2 | Percussive elements re‑enter, layered with a rising filter sweep and a short, staccato synth stab. The energy climbs toward the next drop."
+     },
+     {
+      "start": 90.0,
+      "end": 105.0,
+      "name": "Drop / Main Groove (reprise)",
+      "line": "01:30-01:45 | Drop / Main Groove (reprise) | The full groove returns, now with added subtle melodic accents and a slightly more aggressive high‑frequency sheen, reinforcing the track’s driving momentum."
+     },
+     {
+      "start": 105.0,
+      "end": 120.0,
+      "name": "Outro",
+      "line": "01:45-02:00 | Outro | Elements gradually strip away, leaving the bassline and a fading pad to close the piece, allowing the listener to exit the groove smoothly."
+     },
+     {
+      "start": 120.0,
+      "end": 135.0,
+      "name": "Final Fade‑out",
+      "line": "02:00-02:15 | Final Fade‑out | The bassline and pad dissolve into a low‑pass filtered ambience, ending the track on a subdued, lingering note."
+     },
+     {
+      "start": 135.0,
+      "end": 150.0,
+      "name": "Extended Outro / Fade‑out",
+      "line": "02:15-02:30 | Extended Outro / Fade‑out | The track continues to fade, with the bassline and pad slowly disappearing into silence, providing a clean, professional conclusion."
+     },
+     {
+      "start": 150.0,
+      "end": 165.0,
+      "name": "Fade‑out (final)",
+      "line": "02:30-02:45 | Fade‑out (final) | The last remnants of the bass and pad fade out completely, leaving a brief moment of silence."
+     },
+     {
+      "start": 165.0,
+      "end": 180.0,
+      "name": "Silence",
+      "line": "02:45-03:00 | Silence | A short pause of complete silence follows the fade‑out, emphasizing the track’s polished production and giving the listener a moment to reflect."
+     },
+     {
+      "start": 180.0,
+      "end": 195.0,
+      "name": "Fade‑out (final)",
+      "line": "03:00-03:15 | Fade‑out (final) | The silence is broken by a final, subtle re‑introduction of the bassline and pad, which then gently fade out once more."
+     },
+     {
+      "start": 195.0,
+      "end": 210.0,
+      "name": "Fade‑out (final)",
+      "line": "03:15-03:30 | Fade‑out (final) | The track concludes with a final, smooth fade‑out, leaving a lingering sense of the groove’s energy."
+     },
+     {
+      "start": 210.0,
+      "end": 225.0,
+      "name": "Fade‑out (final)",
+      "line": "03:30-03:45 | Fade‑out (final) | The last remnants of the bass and pad fade out, ending the piece with a clean, professional finish."
+     },
+     {
+      "start": 225.0,
+      "end": 235.0,
+      "name": "Fade‑out (final)",
+      "line": "03:45-03:55 | Fade‑out (final) | The track concludes with a final, smooth fade‑out, leaving a lingering sense of the groove’s energy."
+     },
+     {
+      "start": 235.0,
+      "end": 250.0,
+      "name": "Fade‑out (final)",
+      "line": "03:55-04:10 | Fade‑out (final) | The last remnants of the bass and pad fade out, ending the piece with a clean, professional finish."
+     },
+     {
+      "start": 250.0,
+      "end": 265.0,
+      "name": "",
+      "line": "04:10-04:25 |"
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:30, 0:45, 0:57, 1:08, 1:23, 1:35, 1:47, 1:59, 2:11, 2:23, 2:35, 2:47, 2:59, 3:11, 3:23, 3:35, 3:47",
+    "seconds": 2.58,
+    "new_tokens": 100
+   }
+  }
+ },
+ "8a0e3b75f4a1": {
+  "drops_direct": {
+   "raw": "0:00, 0:20, 0:40, 0:59, 1:19, 1:39, 1:58, 2:18, 2:38, 2:58, 3:18, 3:38, 3:58, 4:18, 4:38",
+   "seconds": 2.6,
+   "new_tokens": 89
+  },
+  "cropped_60": {
+   "shift": -60,
+   "sections": {
+    "raw": "00:00-00:07 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture.\n00:07-00:14 | Build‑up | Percussive elements and a subtle bass pulse are introduced, gradually increasing in intensity.\n00:14-00:21 | Main Groove | The full drum pattern locks in with a deep, resonant bassline, while a repetitive synth motif drives the rhythm forward.\n00:21-00:28 | Variation | Additional synth layers and rhythmic accents are added, creating a richer, more complex groove.\n00:28-00:35 | Breakdown | The drums drop out, leaving the bass and a filtered synth to create a moment of tension.\n00:35-00:42 | Re‑build | Percussion and bass re‑enter, building energy toward the next section.\n00:42-00:49 | Main Groove (reprise) | The full groove returns with slight variations in synth phrasing and filter movement.\n00:49-00:56 | Variation (second) | New melodic fragments and rhythmic tweaks add freshness while maintaining the core groove.\n00:56-01:03 | Breakdown (second) | Drums and bass momentarily withdraw, emphasizing the atmospheric synth textures.\n01:03-01:10 | Re‑build (second) | Percussion and bass re‑enter, intensifying the drive toward the climax.\n01:10-01:17 | Main Groove (final) | The track reaches its peak energy with the full arrangement, delivering a powerful, dance‑floor‑ready feel.\n01:17-01:24 | Outro (first) | Elements gradually strip away, leaving a fading synth pad and low‑end rumble.\n01:24-01:31 | Outro (second) | The remaining textures dissolve into silence, completing the track’s atmospheric closure.",
+    "seconds": 8.88,
+    "new_tokens": 442,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 7.0,
+      "name": "Intro",
+      "line": "00:00-00:07 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture."
+     },
+     {
+      "start": 7.0,
+      "end": 14.0,
+      "name": "Build‑up",
+      "line": "00:07-00:14 | Build‑up | Percussive elements and a subtle bass pulse are introduced, gradually increasing in intensity."
+     },
+     {
+      "start": 14.0,
+      "end": 21.0,
+      "name": "Main Groove",
+      "line": "00:14-00:21 | Main Groove | The full drum pattern locks in with a deep, resonant bassline, while a repetitive synth motif drives the rhythm forward."
+     },
+     {
+      "start": 21.0,
+      "end": 28.0,
+      "name": "Variation",
+      "line": "00:21-00:28 | Variation | Additional synth layers and rhythmic accents are added, creating a richer, more complex groove."
+     },
+     {
+      "start": 28.0,
+      "end": 35.0,
+      "name": "Breakdown",
+      "line": "00:28-00:35 | Breakdown | The drums drop out, leaving the bass and a filtered synth to create a moment of tension."
+     },
+     {
+      "start": 35.0,
+      "end": 42.0,
+      "name": "Re‑build",
+      "line": "00:35-00:42 | Re‑build | Percussion and bass re‑enter, building energy toward the next section."
+     },
+     {
+      "start": 42.0,
+      "end": 49.0,
+      "name": "Main Groove (reprise)",
+      "line": "00:42-00:49 | Main Groove (reprise) | The full groove returns with slight variations in synth phrasing and filter movement."
+     },
+     {
+      "start": 49.0,
+      "end": 56.0,
+      "name": "Variation (second)",
+      "line": "00:49-00:56 | Variation (second) | New melodic fragments and rhythmic tweaks add freshness while maintaining the core groove."
+     },
+     {
+      "start": 56.0,
+      "end": 63.0,
+      "name": "Breakdown (second)",
+      "line": "00:56-01:03 | Breakdown (second) | Drums and bass momentarily withdraw, emphasizing the atmospheric synth textures."
+     },
+     {
+      "start": 63.0,
+      "end": 70.0,
+      "name": "Re‑build (second)",
+      "line": "01:03-01:10 | Re‑build (second) | Percussion and bass re‑enter, intensifying the drive toward the climax."
+     },
+     {
+      "start": 70.0,
+      "end": 77.0,
+      "name": "Main Groove (final)",
+      "line": "01:10-01:17 | Main Groove (final) | The track reaches its peak energy with the full arrangement, delivering a powerful, dance‑floor‑ready feel."
+     },
+     {
+      "start": 77.0,
+      "end": 84.0,
+      "name": "Outro (first)",
+      "line": "01:17-01:24 | Outro (first) | Elements gradually strip away, leaving a fading synth pad and low‑end rumble."
+     },
+     {
+      "start": 84.0,
+      "end": 91.0,
+      "name": "Outro (second)",
+      "line": "01:24-01:31 | Outro (second) | The remaining textures dissolve into silence, completing the track’s atmospheric closure."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:00, 0:17, 0:34, 0:51, 1:08, 1:25, 1:42, 1:59, 2:16, 2:33, 2:50, 3:07, 3:24, 3:41",
+    "seconds": 2.23,
+    "new_tokens": 83
+   }
+  },
+  "padded_30": {
+   "shift": 30,
+   "sections": {
+    "raw": "00:00-00:30 | Intro | A deep, pulsating bassline and crisp, driving electronic drums establish a hypnotic, dancefloor‑ready groove.\n00:30-01:00 | Build‑up | Layered synth stabs and subtle percussive accents increase tension, preparing the listener for the main section.\n01:00-01:45 | Main Groove | The core bassline and drum pattern lock into a steady, energetic rhythm, with additional synth textures adding depth.\n01:45-02:15 | Breakdown | Elements strip back to a minimal bass pulse and atmospheric pads, creating a moment of release.\n02:15-02:45 | Re‑build | Percussive elements and synth layers gradually re‑enter, rebuilding energy toward the climax.\n02:45-03:30 | Climax / Peak | Full‑force bassline, drums, and synths combine for a high‑energy, dance‑floor‑focused section.\n03:30-04:00 | Outro | Elements gradually fade, leaving the bassline and drums to dissolve into a smooth, lingering finish.",
+    "seconds": 5.89,
+    "new_tokens": 258,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 30.0,
+      "name": "Intro",
+      "line": "00:00-00:30 | Intro | A deep, pulsating bassline and crisp, driving electronic drums establish a hypnotic, dancefloor‑ready groove."
+     },
+     {
+      "start": 30.0,
+      "end": 60.0,
+      "name": "Build‑up",
+      "line": "00:30-01:00 | Build‑up | Layered synth stabs and subtle percussive accents increase tension, preparing the listener for the main section."
+     },
+     {
+      "start": 60.0,
+      "end": 105.0,
+      "name": "Main Groove",
+      "line": "01:00-01:45 | Main Groove | The core bassline and drum pattern lock into a steady, energetic rhythm, with additional synth textures adding depth."
+     },
+     {
+      "start": 105.0,
+      "end": 135.0,
+      "name": "Breakdown",
+      "line": "01:45-02:15 | Breakdown | Elements strip back to a minimal bass pulse and atmospheric pads, creating a moment of release."
+     },
+     {
+      "start": 135.0,
+      "end": 165.0,
+      "name": "Re‑build",
+      "line": "02:15-02:45 | Re‑build | Percussive elements and synth layers gradually re‑enter, rebuilding energy toward the climax."
+     },
+     {
+      "start": 165.0,
+      "end": 210.0,
+      "name": "Climax / Peak",
+      "line": "02:45-03:30 | Climax / Peak | Full‑force bassline, drums, and synths combine for a high‑energy, dance‑floor‑focused section."
+     },
+     {
+      "start": 210.0,
+      "end": 240.0,
+      "name": "Outro",
+      "line": "03:30-04:00 | Outro | Elements gradually fade, leaving the bassline and drums to dissolve into a smooth, lingering finish."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:30, 0:50, 1:10, 1:30, 1:50, 2:10, 2:30, 2:50, 3:10, 3:30, 3:50, 4:10, 4:30, 4:50",
+    "seconds": 2.53,
+    "new_tokens": 83
+   }
+  }
+ },
+ "dcb7a7d3e846": {
+  "drops_direct": {
+   "raw": "0:29, 0:58, 1:27, 1:56, 2:25, 2:54",
+   "seconds": 1.38,
+   "new_tokens": 35
+  },
+  "cropped_60": {
+   "shift": -60,
+   "sections": {
+    "raw": "00:00-00:06 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture.\n00:06-00:12 | Build‑up | Percussive elements and a rising white‑noise sweep increase tension.\n00:12-00:20 | First Drop | The beat drops with a heavy, distorted kick, a gritty bassline, and a sharp, aggressive synth lead.\n00:20-00:27 | Breakdown | The rhythm pulls back, leaving space for a haunting, reverb‑drenched synth melody that adds a melancholic contrast.\n00:27-00:34 | Build‑up | Percussion and risers return, building energy toward the next climax.\n00:34-00:41 | Second Drop | The full, distorted beat and bass return, now layered with additional synth stabs for heightened intensity.\n00:41-00:48 | Breakdown | A brief, stripped‑down section featuring only the atmospheric pad and a subtle, filtered arpeggio, creating a moment of tension release.\n00:48-00:55 | Build‑up | Percussive rolls and a rising filter sweep rebuild momentum.\n00:55-01:02 | Third Drop | The track erupts with the full, aggressive beat, a more complex synth lead, and intensified distortion, delivering the peak energy.\n01:02-01:09 | Breakdown | The rhythm recedes, leaving a spacious, echo‑laden synth line that adds a sense of lingering darkness.\n01:09-01:16 | Build‑up | Percussion and a snare roll accelerate, accompanied by a pitch‑rising synth effect.\n01:16-01:23 | Fourth Drop | The final, most forceful drop combines all elements—distorted kick, driving bass, and a layered, high‑energy synth melody—culminating the track’s intensity.\n01:23-01:30 | Outro | Elements gradually fade, with the atmospheric pad and a low‑pass filtered version of the lead synth lingering before silence.",
+    "seconds": 9.24,
+    "new_tokens": 473,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 6.0,
+      "name": "Intro",
+      "line": "00:00-00:06 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture."
+     },
+     {
+      "start": 6.0,
+      "end": 12.0,
+      "name": "Build‑up",
+      "line": "00:06-00:12 | Build‑up | Percussive elements and a rising white‑noise sweep increase tension."
+     },
+     {
+      "start": 12.0,
+      "end": 20.0,
+      "name": "First Drop",
+      "line": "00:12-00:20 | First Drop | The beat drops with a heavy, distorted kick, a gritty bassline, and a sharp, aggressive synth lead."
+     },
+     {
+      "start": 20.0,
+      "end": 27.0,
+      "name": "Breakdown",
+      "line": "00:20-00:27 | Breakdown | The rhythm pulls back, leaving space for a haunting, reverb‑drenched synth melody that adds a melancholic contrast."
+     },
+     {
+      "start": 27.0,
+      "end": 34.0,
+      "name": "Build‑up",
+      "line": "00:27-00:34 | Build‑up | Percussion and risers return, building energy toward the next climax."
+     },
+     {
+      "start": 34.0,
+      "end": 41.0,
+      "name": "Second Drop",
+      "line": "00:34-00:41 | Second Drop | The full, distorted beat and bass return, now layered with additional synth stabs for heightened intensity."
+     },
+     {
+      "start": 41.0,
+      "end": 48.0,
+      "name": "Breakdown",
+      "line": "00:41-00:48 | Breakdown | A brief, stripped‑down section featuring only the atmospheric pad and a subtle, filtered arpeggio, creating a moment of tension release."
+     },
+     {
+      "start": 48.0,
+      "end": 55.0,
+      "name": "Build‑up",
+      "line": "00:48-00:55 | Build‑up | Percussive rolls and a rising filter sweep rebuild momentum."
+     },
+     {
+      "start": 55.0,
+      "end": 62.0,
+      "name": "Third Drop",
+      "line": "00:55-01:02 | Third Drop | The track erupts with the full, aggressive beat, a more complex synth lead, and intensified distortion, delivering the peak energy."
+     },
+     {
+      "start": 62.0,
+      "end": 69.0,
+      "name": "Breakdown",
+      "line": "01:02-01:09 | Breakdown | The rhythm recedes, leaving a spacious, echo‑laden synth line that adds a sense of lingering darkness."
+     },
+     {
+      "start": 69.0,
+      "end": 76.0,
+      "name": "Build‑up",
+      "line": "01:09-01:16 | Build‑up | Percussion and a snare roll accelerate, accompanied by a pitch‑rising synth effect."
+     },
+     {
+      "start": 76.0,
+      "end": 83.0,
+      "name": "Fourth Drop",
+      "line": "01:16-01:23 | Fourth Drop | The final, most forceful drop combines all elements—distorted kick, driving bass, and a layered, high‑energy synth melody—culminating the track’s intensity."
+     },
+     {
+      "start": 83.0,
+      "end": 90.0,
+      "name": "Outro",
+      "line": "01:23-01:30 | Outro | Elements gradually fade, with the atmospheric pad and a low‑pass filtered version of the lead synth lingering before silence."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:27, 0:55, 1:23, 1:51, 2:19",
+    "seconds": 1.08,
+    "new_tokens": 29
+   }
+  },
+  "padded_30": {
+   "shift": 30,
+   "sections": {
+    "raw": "00:00-00:31 | Intro | A long, atmospheric build‑up with evolving synth pads, subtle percussive elements, and a gradual increase in tension.\n00:31-00:46 | Build‑up | Rising synth arpeggios and filtered white‑noise sweeps intensify the anticipation.\n00:46-01:00 | Drop 1 | The track erupts into a high‑energy section driven by a punchy four‑on‑the‑floor kick, a deep, side‑chained synth bass, and a bright, melodic lead synth that carries the main hook.\n01:00-01:20 | Breakdown 1 | Energy recedes; the arrangement strips back to spacious pads and a filtered version of the lead melody, creating a moment of release.\n01:20-01:40 | Build‑up 2 | Tension rebuilds with layered risers, snare rolls, and a gradual re‑introduction of the bassline.\n01:40-02:00 | Drop 2 | Returns to the full‑force groove, this time with added harmonic layers and a more aggressive synth lead, heightening the euphoric feel.\n02:00-02:20 | Breakdown 2 | A brief, atmospheric interlude featuring reverb‑drenched chords and a subdued percussive pattern, providing contrast.\n02:20-02:40 | Build‑up 3 | A rapid ascent of white‑noise sweeps and pitch‑rising synths leads back into the final climax.\n02:40-03:00 | Drop 3 / Finale | The track reaches its peak intensity with a fuller arrangement, intensified side‑chain compression on the bass, and a soaring lead that resolves the melodic tension.\n03:00-03:20 | Outro | Elements gradually fade, leaving the atmospheric pads to close the piece on a lingering, uplifting note.",
+    "seconds": 8.87,
+    "new_tokens": 432,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 31.0,
+      "name": "Intro",
+      "line": "00:00-00:31 | Intro | A long, atmospheric build‑up with evolving synth pads, subtle percussive elements, and a gradual increase in tension."
+     },
+     {
+      "start": 31.0,
+      "end": 46.0,
+      "name": "Build‑up",
+      "line": "00:31-00:46 | Build‑up | Rising synth arpeggios and filtered white‑noise sweeps intensify the anticipation."
+     },
+     {
+      "start": 46.0,
+      "end": 60.0,
+      "name": "Drop 1",
+      "line": "00:46-01:00 | Drop 1 | The track erupts into a high‑energy section driven by a punchy four‑on‑the‑floor kick, a deep, side‑chained synth bass, and a bright, melodic lead synth that carries the main hook."
+     },
+     {
+      "start": 60.0,
+      "end": 80.0,
+      "name": "Breakdown 1",
+      "line": "01:00-01:20 | Breakdown 1 | Energy recedes; the arrangement strips back to spacious pads and a filtered version of the lead melody, creating a moment of release."
+     },
+     {
+      "start": 80.0,
+      "end": 100.0,
+      "name": "Build‑up 2",
+      "line": "01:20-01:40 | Build‑up 2 | Tension rebuilds with layered risers, snare rolls, and a gradual re‑introduction of the bassline."
+     },
+     {
+      "start": 100.0,
+      "end": 120.0,
+      "name": "Drop 2",
+      "line": "01:40-02:00 | Drop 2 | Returns to the full‑force groove, this time with added harmonic layers and a more aggressive synth lead, heightening the euphoric feel."
+     },
+     {
+      "start": 120.0,
+      "end": 140.0,
+      "name": "Breakdown 2",
+      "line": "02:00-02:20 | Breakdown 2 | A brief, atmospheric interlude featuring reverb‑drenched chords and a subdued percussive pattern, providing contrast."
+     },
+     {
+      "start": 140.0,
+      "end": 160.0,
+      "name": "Build‑up 3",
+      "line": "02:20-02:40 | Build‑up 3 | A rapid ascent of white‑noise sweeps and pitch‑rising synths leads back into the final climax."
+     },
+     {
+      "start": 160.0,
+      "end": 180.0,
+      "name": "Drop 3 / Finale",
+      "line": "02:40-03:00 | Drop 3 / Finale | The track reaches its peak intensity with a fuller arrangement, intensified side‑chain compression on the bass, and a soaring lead that resolves the melodic tension."
+     },
+     {
+      "start": 180.0,
+      "end": 200.0,
+      "name": "Outro",
+      "line": "03:00-03:20 | Outro | Elements gradually fade, leaving the atmospheric pads to close the piece on a lingering, uplifting note."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:32, 0:46, 1:00, 1:14, 1:28, 1:42, 1:56, 2:10, 2:24, 2:38, 2:52, 3:06, 3:20, 3:34, 3:48, 4:02",
+    "seconds": 2.6,
+    "new_tokens": 95
+   }
+  }
+ },
+ "fe0b3c607b1b": {
+  "drops_direct": {
+   "raw": "0:29, 1:00, 1:30, 2:00, 2:30",
+   "seconds": 1.12,
+   "new_tokens": 29
+  },
+  "cropped_60": {
+   "shift": -60,
+   "sections": {
+    "raw": "00:00-00:07 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture.\n00:07-00:14 | Build‑up | Percussive elements and a rising arpeggiated synth increase tension.\n00:14-00:22 | First Drop | The full beat drops with a heavy, distorted kick, sharp hi‑hats, and a gritty synth bassline.\n00:22-00:30 | Breakdown | Elements strip back to a minimal synth motif, creating a brief release.\n00:30-00:37 | Build‑up | Tension rebuilds with layered synths and rising effects.\n00:37-00:45 | Second Drop | The main drop returns, intensifying the distorted bass and aggressive synth leads.\n00:45-00:52 | Breakdown | A short, atmospheric pause with filtered pads and subtle percussive clicks.\n00:52-01:00 | Build‑up | Re‑introduction of rhythmic elements and a rising filter sweep.\n01:00-01:08 | Third Drop | The climax of the track, featuring the full, pounding rhythm and a prominent, distorted synth lead.\n01:08-01:15 | Outro | Elements gradually fade, leaving a lingering synth texture that dissolves into silence.",
+    "seconds": 6.62,
+    "new_tokens": 311,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 7.0,
+      "name": "Intro",
+      "line": "00:00-00:07 | Intro | A filtered synth pad fades in, establishing a dark, atmospheric texture."
+     },
+     {
+      "start": 7.0,
+      "end": 14.0,
+      "name": "Build‑up",
+      "line": "00:07-00:14 | Build‑up | Percussive elements and a rising arpeggiated synth increase tension."
+     },
+     {
+      "start": 14.0,
+      "end": 22.0,
+      "name": "First Drop",
+      "line": "00:14-00:22 | First Drop | The full beat drops with a heavy, distorted kick, sharp hi‑hats, and a gritty synth bassline."
+     },
+     {
+      "start": 22.0,
+      "end": 30.0,
+      "name": "Breakdown",
+      "line": "00:22-00:30 | Breakdown | Elements strip back to a minimal synth motif, creating a brief release."
+     },
+     {
+      "start": 30.0,
+      "end": 37.0,
+      "name": "Build‑up",
+      "line": "00:30-00:37 | Build‑up | Tension rebuilds with layered synths and rising effects."
+     },
+     {
+      "start": 37.0,
+      "end": 45.0,
+      "name": "Second Drop",
+      "line": "00:37-00:45 | Second Drop | The main drop returns, intensifying the distorted bass and aggressive synth leads."
+     },
+     {
+      "start": 45.0,
+      "end": 52.0,
+      "name": "Breakdown",
+      "line": "00:45-00:52 | Breakdown | A short, atmospheric pause with filtered pads and subtle percussive clicks."
+     },
+     {
+      "start": 52.0,
+      "end": 60.0,
+      "name": "Build‑up",
+      "line": "00:52-01:00 | Build‑up | Re‑introduction of rhythmic elements and a rising filter sweep."
+     },
+     {
+      "start": 60.0,
+      "end": 68.0,
+      "name": "Third Drop",
+      "line": "01:00-01:08 | Third Drop | The climax of the track, featuring the full, pounding rhythm and a prominent, distorted synth lead."
+     },
+     {
+      "start": 68.0,
+      "end": 75.0,
+      "name": "Outro",
+      "line": "01:08-01:15 | Outro | Elements gradually fade, leaving a lingering synth texture that dissolves into silence."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:15, 0:45, 1:15, 1:45",
+    "seconds": 0.92,
+    "new_tokens": 23
+   }
+  },
+  "padded_30": {
+   "shift": 30,
+   "sections": {
+    "raw": "00:00-00:30 | Intro | A long, atmospheric build‑up with evolving synth textures and subtle percussive elements, gradually increasing tension.\n00:30-00:59 | Build‑up | The rhythm tightens, additional layers of synths and a rising filter sweep create anticipation for the drop.\n00:59-01:29 | Drop 1 | The track erupts into a high‑energy section driven by a punchy four‑on‑the‑floor kick, a deep, resonant bassline, and bright, melodic synth leads that deliver the main hook.\n01:29-01:59 | Breakdown 1 | Energy recedes; the arrangement strips back to spacious pads and a filtered version of the lead melody, allowing the listener to breathe before the next surge.\n01:59-02:29 | Build‑up 2 | Percussive rolls and rising risers rebuild tension, re‑introducing rhythmic elements and preparing the listener for the next climax.\n02:29-02:59 | Drop 2 | A second, intensified drop repeats the core melodic and rhythmic motifs, adding extra layers of synth arpeggios and a more aggressive bass texture for heightened impact.\n02:59-03:29 | Breakdown 2 | The track pulls back again, this time focusing on atmospheric pads and a subdued version of the lead, creating a moment of contrast.\n03:29-03:59 | Outro | Elements gradually fade, with the bass and kick diminishing, leaving lingering synth ambience that gently resolves the track.\n03:59-04:00 | Silence | The music ends abruptly, leaving a brief moment of silence.",
+    "seconds": 9.6,
+    "new_tokens": 383,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 30.0,
+      "name": "Intro",
+      "line": "00:00-00:30 | Intro | A long, atmospheric build‑up with evolving synth textures and subtle percussive elements, gradually increasing tension."
+     },
+     {
+      "start": 30.0,
+      "end": 59.0,
+      "name": "Build‑up",
+      "line": "00:30-00:59 | Build‑up | The rhythm tightens, additional layers of synths and a rising filter sweep create anticipation for the drop."
+     },
+     {
+      "start": 59.0,
+      "end": 89.0,
+      "name": "Drop 1",
+      "line": "00:59-01:29 | Drop 1 | The track erupts into a high‑energy section driven by a punchy four‑on‑the‑floor kick, a deep, resonant bassline, and bright, melodic synth leads that deliver the main hook."
+     },
+     {
+      "start": 89.0,
+      "end": 119.0,
+      "name": "Breakdown 1",
+      "line": "01:29-01:59 | Breakdown 1 | Energy recedes; the arrangement strips back to spacious pads and a filtered version of the lead melody, allowing the listener to breathe before the next surge."
+     },
+     {
+      "start": 119.0,
+      "end": 149.0,
+      "name": "Build‑up 2",
+      "line": "01:59-02:29 | Build‑up 2 | Percussive rolls and rising risers rebuild tension, re‑introducing rhythmic elements and preparing the listener for the next climax."
+     },
+     {
+      "start": 149.0,
+      "end": 179.0,
+      "name": "Drop 2",
+      "line": "02:29-02:59 | Drop 2 | A second, intensified drop repeats the core melodic and rhythmic motifs, adding extra layers of synth arpeggios and a more aggressive bass texture for heightened impact."
+     },
+     {
+      "start": 179.0,
+      "end": 209.0,
+      "name": "Breakdown 2",
+      "line": "02:59-03:29 | Breakdown 2 | The track pulls back again, this time focusing on atmospheric pads and a subdued version of the lead, creating a moment of contrast."
+     },
+     {
+      "start": 209.0,
+      "end": 239.0,
+      "name": "Outro",
+      "line": "03:29-03:59 | Outro | Elements gradually fade, with the bass and kick diminishing, leaving lingering synth ambience that gently resolves the track."
+     },
+     {
+      "start": 239.0,
+      "end": 240.0,
+      "name": "Silence",
+      "line": "03:59-04:00 | Silence | The music ends abruptly, leaving a brief moment of silence."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:30, 1:00, 1:30, 2:00, 2:30, 3:00",
+    "seconds": 1.54,
+    "new_tokens": 35
+   }
+  }
+ },
+ "6a67050f048d": {
+  "drops_direct": {
+   "raw": "0:06, 0:44, 1:39, 2:14",
+   "seconds": 1.05,
+   "new_tokens": 23
+  },
+  "cropped_60": {
+   "shift": -60,
+   "sections": {
+    "raw": "00:00-00:02 | Intro | Atmospheric synth pads and a filtered kick drum set a spacious, anticipatory mood.\n00:02-00:09 | Build‑up | Percussive elements and rising synth arpeggios increase tension, leading into the first drop.\n00:09-00:15 | Drop 1 | The main synth lead cuts in with a bright, melodic hook, supported by a punchy four‑on‑the‑floor kick and side‑chained bass, establishing the track’s energetic core.\n00:15-00:22 | Breakdown 1 | The arrangement strips back to airy pads and a subdued vocal phrase, creating a moment of contrast before the next surge.\n00:22-00:28 | Build‑up 2 | Re‑introduction of percussive rolls and filtered synth sweeps builds momentum toward the second drop.\n00:28-00:35 | Drop 2 | A variation of the main synth melody returns, now layered with additional harmonic stabs and a more aggressive bassline, heightening the track’s intensity.\n00:35-00:41 | Breakdown 2 | A brief pause with ambient textures and a whispered vocal snippet provides a breath before the final climax.\n00:41-00:48 | Build‑up 3 | Rapid snare rolls, risers, and a rising filter sweep drive the energy upward.\n00:48-00:55 | Drop 3 / Finale | The track reaches its peak with a full‑force combination of the lead synth, driving kick, and layered vocal chops, sustaining the high‑energy vibe to the end.\n00:55-01:00 | Outro | Elements gradually fade, leaving the atmospheric pads to close the piece on a lingering, euphoric note.",
+    "seconds": 9.2,
+    "new_tokens": 409,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 2.0,
+      "name": "Intro",
+      "line": "00:00-00:02 | Intro | Atmospheric synth pads and a filtered kick drum set a spacious, anticipatory mood."
+     },
+     {
+      "start": 2.0,
+      "end": 9.0,
+      "name": "Build‑up",
+      "line": "00:02-00:09 | Build‑up | Percussive elements and rising synth arpeggios increase tension, leading into the first drop."
+     },
+     {
+      "start": 9.0,
+      "end": 15.0,
+      "name": "Drop 1",
+      "line": "00:09-00:15 | Drop 1 | The main synth lead cuts in with a bright, melodic hook, supported by a punchy four‑on‑the‑floor kick and side‑chained bass, establishing the track’s energetic core."
+     },
+     {
+      "start": 15.0,
+      "end": 22.0,
+      "name": "Breakdown 1",
+      "line": "00:15-00:22 | Breakdown 1 | The arrangement strips back to airy pads and a subdued vocal phrase, creating a moment of contrast before the next surge."
+     },
+     {
+      "start": 22.0,
+      "end": 28.0,
+      "name": "Build‑up 2",
+      "line": "00:22-00:28 | Build‑up 2 | Re‑introduction of percussive rolls and filtered synth sweeps builds momentum toward the second drop."
+     },
+     {
+      "start": 28.0,
+      "end": 35.0,
+      "name": "Drop 2",
+      "line": "00:28-00:35 | Drop 2 | A variation of the main synth melody returns, now layered with additional harmonic stabs and a more aggressive bassline, heightening the track’s intensity."
+     },
+     {
+      "start": 35.0,
+      "end": 41.0,
+      "name": "Breakdown 2",
+      "line": "00:35-00:41 | Breakdown 2 | A brief pause with ambient textures and a whispered vocal snippet provides a breath before the final climax."
+     },
+     {
+      "start": 41.0,
+      "end": 48.0,
+      "name": "Build‑up 3",
+      "line": "00:41-00:48 | Build‑up 3 | Rapid snare rolls, risers, and a rising filter sweep drive the energy upward."
+     },
+     {
+      "start": 48.0,
+      "end": 55.0,
+      "name": "Drop 3 / Finale",
+      "line": "00:48-00:55 | Drop 3 / Finale | The track reaches its peak with a full‑force combination of the lead synth, driving kick, and layered vocal chops, sustaining the high‑energy vibe to the end."
+     },
+     {
+      "start": 55.0,
+      "end": 60.0,
+      "name": "Outro",
+      "line": "00:55-01:00 | Outro | Elements gradually fade, leaving the atmospheric pads to close the piece on a lingering, euphoric note."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:35, 1:05, 1:35, 2:05",
+    "seconds": 0.78,
+    "new_tokens": 23
+   }
+  },
+  "padded_30": {
+   "shift": 30,
+   "sections": {
+    "raw": "00:00-00:31 | Intro | Sparse electronic ambience with a subtle synth pad and a faint, filtered kick that hints at the forthcoming beat.\n00:31-00:49 | Build‑up / Pre‑drop | A short, rhythmic vocal sample (“Baby, if you need me”) is introduced, layered over a rising synth arpeggio and a gradually intensifying drum pattern.\n00:49-01:00 | Drop / Main Hook | The full beat drops in with a punchy, side‑chain‑compressed kick, crisp snare/clap, and a driving synth bass. The vocal hook “Baby, if you need me” repeats in a tight, rhythmic pattern, creating a catchy, club‑ready chorus.\n01:00-01:12 | Verse 1 | The instrumentation pulls back slightly, allowing the lead vocal to deliver the first lyrical verse. The synth pads become more atmospheric, and the drums settle into a steadier groove.\n01:12-01:24 | Pre‑Chorus / Build‑up | A short build‑up re‑introduces the rising synth arpeggio and a filtered white‑noise sweep, leading back into the main hook.\n01:24-01:39 | Chorus / Main Hook (reprise) | The full drop returns, reinforcing the central vocal phrase and adding layered harmonies for extra impact.\n01:39-01:52 | Verse 2 | Similar to the first verse, with slight variations in the synth texture and a more pronounced bass line.\n01:52-02:04 | Pre‑Chorus / Build‑up | Re‑iteration of the build‑up elements, preparing for the final climax.\n02:04-02:18 | Chorus / Main Hook (final) | The hook is delivered with maximum energy, additional vocal ad‑libs, and a slightly more aggressive synth lead.\n02:18-02:30 | Outro / Fade‑out | The beat gradually strips back to the core synth pad and a filtered kick, while the vocal sample repeats and fades, leaving a lingering sense of the track’s hypnotic groove.",
+    "seconds": 9.48,
+    "new_tokens": 480,
+    "parsed": [
+     {
+      "start": 0.0,
+      "end": 31.0,
+      "name": "Intro",
+      "line": "00:00-00:31 | Intro | Sparse electronic ambience with a subtle synth pad and a faint, filtered kick that hints at the forthcoming beat."
+     },
+     {
+      "start": 31.0,
+      "end": 49.0,
+      "name": "Build‑up / Pre‑drop",
+      "line": "00:31-00:49 | Build‑up / Pre‑drop | A short, rhythmic vocal sample (“Baby, if you need me”) is introduced, layered over a rising synth arpeggio and a gradually intensifying drum pattern."
+     },
+     {
+      "start": 49.0,
+      "end": 60.0,
+      "name": "Drop / Main Hook",
+      "line": "00:49-01:00 | Drop / Main Hook | The full beat drops in with a punchy, side‑chain‑compressed kick, crisp snare/clap, and a driving synth bass. The vocal hook “Baby, if you need me” repeats in a tight, rhythmic pattern, creating a catchy, club‑ready chorus."
+     },
+     {
+      "start": 60.0,
+      "end": 72.0,
+      "name": "Verse 1",
+      "line": "01:00-01:12 | Verse 1 | The instrumentation pulls back slightly, allowing the lead vocal to deliver the first lyrical verse. The synth pads become more atmospheric, and the drums settle into a steadier groove."
+     },
+     {
+      "start": 72.0,
+      "end": 84.0,
+      "name": "Pre‑Chorus / Build‑up",
+      "line": "01:12-01:24 | Pre‑Chorus / Build‑up | A short build‑up re‑introduces the rising synth arpeggio and a filtered white‑noise sweep, leading back into the main hook."
+     },
+     {
+      "start": 84.0,
+      "end": 99.0,
+      "name": "Chorus / Main Hook (reprise)",
+      "line": "01:24-01:39 | Chorus / Main Hook (reprise) | The full drop returns, reinforcing the central vocal phrase and adding layered harmonies for extra impact."
+     },
+     {
+      "start": 99.0,
+      "end": 112.0,
+      "name": "Verse 2",
+      "line": "01:39-01:52 | Verse 2 | Similar to the first verse, with slight variations in the synth texture and a more pronounced bass line."
+     },
+     {
+      "start": 112.0,
+      "end": 124.0,
+      "name": "Pre‑Chorus / Build‑up",
+      "line": "01:52-02:04 | Pre‑Chorus / Build‑up | Re‑iteration of the build‑up elements, preparing for the final climax."
+     },
+     {
+      "start": 124.0,
+      "end": 138.0,
+      "name": "Chorus / Main Hook (final)",
+      "line": "02:04-02:18 | Chorus / Main Hook (final) | The hook is delivered with maximum energy, additional vocal ad‑libs, and a slightly more aggressive synth lead."
+     },
+     {
+      "start": 138.0,
+      "end": 150.0,
+      "name": "Outro / Fade‑out",
+      "line": "02:18-02:30 | Outro / Fade‑out | The beat gradually strips back to the core synth pad and a filtered kick, while the vocal sample repeats and fades, leaving a lingering sense of the track’s hypnotic groove."
+     }
+    ]
+   },
+   "drops_direct": {
+    "raw": "0:31, 1:14, 2:09, 2:44",
+    "seconds": 1.1,
+    "new_tokens": 23
+   }
+  }
+ }
+}

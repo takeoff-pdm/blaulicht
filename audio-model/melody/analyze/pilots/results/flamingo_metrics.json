@@ -1,0 +1,1953 @@
+{
+ "speed": {
+  "clips": 85,
+  "parse_ok": 85,
+  "seconds_per_clip_mean": 1.47,
+  "seconds_per_clip_max": 2.38,
+  "seconds_whole_song_query_mean": 11.7,
+  "hours_175_songs_10_parts": 0.71,
+  "hours_175_songs_with_2_whole_queries": 1.85,
+  "batch": [
+   {
+    "batch": 1,
+    "clips": 9,
+    "seconds": 15.9,
+    "same_as_batch_1": null
+   },
+   {
+    "batch": 4,
+    "clips": 9,
+    "seconds": 6.6,
+    "same_as_batch_1": 6
+   },
+   {
+    "batch": 8,
+    "clips": 9,
+    "seconds": 5.3,
+    "same_as_batch_1": 6
+   }
+  ],
+  "memory": {
+   "58e556af6855": {
+    "whole": {
+     "allocated_gb": 16.44,
+     "reserved_gb": 16.74
+    },
+    "parts": {
+     "allocated_gb": 15.68,
+     "reserved_gb": 16.8
+    }
+   },
+   "fe0b3c607b1b": {
+    "whole": {
+     "allocated_gb": 16.33,
+     "reserved_gb": 17.36
+    },
+    "parts": {
+     "allocated_gb": 15.76,
+     "reserved_gb": 17.36
+    }
+   },
+   "8a0e3b75f4a1": {
+    "whole": {
+     "allocated_gb": 16.78,
+     "reserved_gb": 17.36
+    },
+    "parts": {
+     "allocated_gb": 15.66,
+     "reserved_gb": 17.36
+    }
+   },
+   "dcb7a7d3e846": {
+    "whole": {
+     "allocated_gb": 16.56,
+     "reserved_gb": 17.36
+    },
+    "parts": {
+     "allocated_gb": 15.8,
+     "reserved_gb": 17.36
+    }
+   },
+   "6a67050f048d": {
+    "whole": {
+     "allocated_gb": 16.28,
+     "reserved_gb": 17.36
+    },
+    "parts": {
+     "allocated_gb": 15.7,
+     "reserved_gb": 17.38
+    }
+   }
+  },
+  "long": {
+   "longest song, 503 s": {
+    "seconds": 4.01,
+    "allocated_gb": 17.88,
+    "reserved_gb": 18.61
+   },
+   "20 minutes, the cap": {
+    "seconds": 6.91,
+    "allocated_gb": 21.26,
+    "reserved_gb": 22.58
+   }
+  }
+ },
+ "letters": {
+  "same_letter": {
+   "pairs": 14,
+   "energy_diff": 2.07,
+   "function": 0.79,
+   "vocals": 0.79,
+   "lead": 0.86,
+   "mood": 0.07
+  },
+  "different_letter": {
+   "pairs": 131,
+   "energy_diff": 1.73,
+   "function": 0.69,
+   "vocals": 0.83,
+   "lead": 0.47,
+   "mood": 0.13
+  },
+  "per_song": {
+   "58e556af6855": {
+    "same": {
+     "pairs": 8,
+     "energy_diff": 2.62,
+     "function": 0.88,
+     "vocals": 0.62,
+     "lead": 1,
+     "mood": 0
+    },
+    "different": {
+     "pairs": 28,
+     "energy_diff": 2.61,
+     "function": 0.75,
+     "vocals": 0.46,
+     "lead": 1,
+     "mood": 0.07
+    }
+   },
+   "fe0b3c607b1b": {
+    "same": {
+     "pairs": 0
+    },
+    "different": {
+     "pairs": 15,
+     "energy_diff": 0.0,
+     "function": 0.67,
+     "vocals": 1,
+     "lead": 0.47,
+     "mood": 0.13
+    }
+   },
+   "8a0e3b75f4a1": {
+    "same": {
+     "pairs": 2,
+     "energy_diff": 1.5,
+     "function": 0.5,
+     "vocals": 1,
+     "lead": 1,
+     "mood": 0
+    },
+    "different": {
+     "pairs": 43,
+     "energy_diff": 1.6,
+     "function": 0.47,
+     "vocals": 1,
+     "lead": 0.37,
+     "mood": 0.14
+    }
+   },
+   "dcb7a7d3e846": {
+    "same": {
+     "pairs": 3,
+     "energy_diff": 1.67,
+     "function": 0.67,
+     "vocals": 1,
+     "lead": 0.33,
+     "mood": 0.33
+    },
+    "different": {
+     "pairs": 18,
+     "energy_diff": 2.39,
+     "function": 0.72,
+     "vocals": 1,
+     "lead": 0.17,
+     "mood": 0.06
+    }
+   },
+   "6a67050f048d": {
+    "same": {
+     "pairs": 1,
+     "energy_diff": 0.0,
+     "function": 1,
+     "vocals": 1,
+     "lead": 1,
+     "mood": 0
+    },
+    "different": {
+     "pairs": 27,
+     "energy_diff": 1.56,
+     "function": 1,
+     "vocals": 0.74,
+     "lead": 0.3,
+     "mood": 0.22
+    }
+   }
+  }
+ },
+ "energy": {
+  "sections_per_drop": {
+   "58e556af6855": {
+    "flamingo": [
+     {
+      "time": 15.4,
+      "pre": 5.0,
+      "post": 5.0
+     },
+     {
+      "time": 61.5,
+      "pre": 7.3,
+      "post": 10.0
+     },
+     {
+      "time": 138.3,
+      "pre": 7.0,
+      "post": 10.0
+     }
+    ],
+    "signal_level": [
+     {
+      "time": 15.4,
+      "pre": 145.4,
+      "post": 205.5
+     },
+     {
+      "time": 61.5,
+      "pre": 143.6,
+      "post": 207.6
+     },
+     {
+      "time": 138.3,
+      "pre": 168.1,
+      "post": 208.0
+     }
+    ]
+   },
+   "fe0b3c607b1b": {
+    "flamingo": [
+     {
+      "time": 30.0,
+      "pre": 7.0,
+      "post": 10.0
+     },
+     {
+      "time": 120.0,
+      "pre": 10.0,
+      "post": 10.0
+     }
+    ],
+    "signal_level": [
+     {
+      "time": 30.0,
+      "pre": 173.8,
+      "post": 215.1
+     },
+     {
+      "time": 120.0,
+      "pre": 201.0,
+      "post": 224.5
+     }
+    ]
+   },
+   "8a0e3b75f4a1": {
+    "flamingo": [
+     {
+      "time": 48.9,
+      "pre": 7.0,
+      "post": 10.0
+     },
+     {
+      "time": 191.1,
+      "pre": 8.5,
+      "post": 10.0
+     },
+     {
+      "time": 248.0,
+      "pre": 7.0,
+      "post": 10.0
+     }
+    ],
+    "signal_level": [
+     {
+      "time": 48.9,
+      "pre": 170.9,
+      "post": 204.1
+     },
+     {
+      "time": 191.1,
+      "pre": 154.9,
+      "post": 205.1
+     },
+     {
+      "time": 248.0,
+      "pre": 162.2,
+      "post": 205.2
+     }
+    ]
+   },
+   "dcb7a7d3e846": {
+    "flamingo": [
+     {
+      "time": 28.6,
+      "pre": 6.0,
+      "post": 10.0
+     }
+    ],
+    "signal_level": [
+     {
+      "time": 28.6,
+      "pre": 108.8,
+      "post": 149.6
+     }
+    ]
+   },
+   "6a67050f048d": {
+    "flamingo": [
+     {
+      "time": 45.6,
+      "pre": 7.0,
+      "post": 10.0
+     },
+     {
+      "time": 119.2,
+      "pre": 8.3,
+      "post": 10.0
+     }
+    ],
+    "signal_level": [
+     {
+      "time": 45.6,
+      "pre": 188.9,
+      "post": 226.2
+     },
+     {
+      "time": 119.2,
+      "pre": 177.7,
+      "post": 221.0
+     }
+    ]
+   }
+  },
+  "rose": 9,
+  "drops": 11,
+  "mean_rise": 2.26,
+  "parts_around_drops": [
+   {
+    "song": "58e556af6855",
+    "time": 15.4,
+    "before": 5.0,
+    "after": 5.0
+   },
+   {
+    "song": "58e556af6855",
+    "time": 61.5,
+    "before": 7.0,
+    "after": 10.0
+   },
+   {
+    "song": "58e556af6855",
+    "time": 138.3,
+    "before": 10.0,
+    "after": 10.0
+   },
+   {
+    "song": "fe0b3c607b1b",
+    "time": 30.0,
+    "before": 10.0,
+    "after": 10.0
+   },
+   {
+    "song": "fe0b3c607b1b",
+    "time": 120.0,
+    "before": 10.0,
+    "after": 10.0
+   },
+   {
+    "song": "8a0e3b75f4a1",
+    "time": 48.9,
+    "before": 7.0,
+    "after": 10.0
+   },
+   {
+    "song": "8a0e3b75f4a1",
+    "time": 191.1,
+    "before": 7.0,
+    "after": 10.0
+   },
+   {
+    "song": "8a0e3b75f4a1",
+    "time": 248.0,
+    "before": 7.0,
+    "after": 10.0
+   },
+   {
+    "song": "dcb7a7d3e846",
+    "time": 28.6,
+    "before": 7.0,
+    "after": 7.0
+   },
+   {
+    "song": "6a67050f048d",
+    "time": 45.6,
+    "before": 7.0,
+    "after": 10.0
+   },
+   {
+    "song": "6a67050f048d",
+    "time": 119.2,
+    "before": 10.0,
+    "after": 10.0
+   }
+  ],
+  "parts_rose": 5,
+  "parts_same": 6,
+  "corr_energy_vs_signal_level": 0.52,
+  "energy_histogram": {
+   "5.0": 4,
+   "7.0": 17,
+   "8.0": 2,
+   "10.0": 22
+  },
+  "corr_energy_vs_clip_length": 0.44
+ },
+ "equal_length_around_drops": {
+  "8": {
+   "drops": 11,
+   "default": {
+    "rose": 6,
+    "same": 5,
+    "fell": 0,
+    "mean_before": 6.55,
+    "mean_after": 7.73,
+    "says_drop_after": 0,
+    "says_drop_before": 0
+   },
+   "reversed": {
+    "rose": 3,
+    "same": 8,
+    "fell": 0,
+    "mean_before": 7.09,
+    "mean_after": 7.55,
+    "says_drop_after": 4,
+    "says_drop_before": 0
+   }
+  },
+  "16": {
+   "drops": 10,
+   "default": {
+    "rose": 3,
+    "same": 7,
+    "fell": 0,
+    "mean_before": 8.1,
+    "mean_after": 8.8,
+    "says_drop_after": 0,
+    "says_drop_before": 0
+   },
+   "reversed": {
+    "rose": 3,
+    "same": 7,
+    "fell": 0,
+    "mean_before": 8.0,
+    "mean_after": 8.8,
+    "says_drop_after": 6,
+    "says_drop_before": 4
+   }
+  },
+  "30": {
+   "drops": 8,
+   "default": {
+    "rose": 3,
+    "same": 5,
+    "fell": 0,
+    "mean_before": 8.88,
+    "mean_after": 10.0,
+    "says_drop_after": 0,
+    "says_drop_before": 0
+   },
+   "reversed": {
+    "rose": 5,
+    "same": 3,
+    "fell": 0,
+    "mean_before": 8.38,
+    "mean_after": 10.0,
+    "says_drop_after": 6,
+    "says_drop_before": 4
+   }
+  }
+ },
+ "function": {
+  "section_clips": {
+   "n": 41,
+   "agree": 0.2,
+   "always_commonest_label": 0.27,
+   "answers": {
+    "build-up": 22,
+    "intro": 19
+   }
+  },
+  "confusion": {
+   "breakdown -> build-up": 6,
+   "breakdown -> intro": 4,
+   "build-up -> build-up": 6,
+   "build-up -> intro": 5,
+   "drop -> build-up": 4,
+   "drop -> intro": 7,
+   "intro -> build-up": 3,
+   "intro -> intro": 2,
+   "outro -> build-up": 3,
+   "outro -> intro": 1
+  },
+  "part_clips": {
+   "n": 38,
+   "agree": 0.05,
+   "answers": {
+    "intro": 21,
+    "build-up": 17
+   }
+  }
+ },
+ "vocals": {
+  "table": {
+   "regions little, says no": 26,
+   "regions mostly, says no": 28,
+   "regions mostly, says yes": 23,
+   "regions some, says no": 8
+  },
+  "clear_clips": 77,
+  "agree_on_clear_clips": 0.64,
+  "per_song": {
+   "Acraze - Do It To It": {
+    "regions mostly, says no": 9,
+    "regions mostly, says yes": 8,
+    "regions some, says no": 3,
+    "vocal_share": 0.84,
+    "lyric_lines": 8
+   },
+   "Hardwell - Spaceman": {
+    "regions little, says no": 15,
+    "vocal_share": 0.0,
+    "lyric_lines": 0
+   },
+   "Charlotte de Witte - Doppler": {
+    "regions mostly, says no": 19,
+    "regions some, says no": 2,
+    "vocal_share": 0.874,
+    "lyric_lines": 1
+   },
+   "Darude - Sandstorm": {
+    "regions little, says no": 11,
+    "regions some, says no": 1,
+    "vocal_share": 0.032,
+    "lyric_lines": 1
+   },
+   "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang)": {
+    "regions mostly, says yes": 15,
+    "regions some, says no": 2,
+    "vocal_share": 0.744,
+    "lyric_lines": 34
+   }
+  }
+ },
+ "instruments": {
+  "Acraze - Do It To It": {
+   "flamingo_lead": [
+    [
+     "synth bass",
+     17
+    ],
+    [
+     "synth bass and electronic drums",
+     2
+    ],
+    [
+     "synth lead",
+     1
+    ]
+   ],
+   "flamingo_other": [
+    [
+     "synth pads",
+     19
+    ],
+    [
+     "drum machine",
+     18
+    ],
+    [
+     "percussion samples",
+     6
+    ],
+    [
+     "synth leads",
+     5
+    ],
+    [
+     "synth bass",
+     2
+    ],
+    [
+     "electronic drums",
+     2
+    ]
+   ],
+   "mt3_notes": {
+    "bass": 1,
+    "brass": 188,
+    "drums": 345,
+    "singing": 342,
+    "strings": 2
+   },
+   "styles": [
+    "Electronic---House",
+    "Electronic---Techno"
+   ]
+  },
+  "Hardwell - Spaceman": {
+   "flamingo_lead": [
+    [
+     "synth lead",
+     9
+    ],
+    [
+     "synth bass",
+     4
+    ],
+    [
+     "synth arpeggio",
+     2
+    ]
+   ],
+   "flamingo_other": [
+    [
+     "drum machine",
+     15
+    ],
+    [
+     "bass synth",
+     11
+    ],
+    [
+     "pad synths",
+     8
+    ],
+    [
+     "percussion samples",
+     5
+    ],
+    [
+     "synth pads",
+     2
+    ],
+    [
+     "synth lead",
+     2
+    ]
+   ],
+   "mt3_notes": {
+    "brass": 20,
+    "drums": 1549,
+    "guitar": 31,
+    "lead": 133,
+    "organ": 33,
+    "piano": 168,
+    "strings": 13
+   },
+   "styles": [
+    "Electronic---Electro House",
+    "Electronic---House"
+   ]
+  },
+  "Charlotte de Witte - Doppler": {
+   "flamingo_lead": [
+    [
+     "synth bass",
+     10
+    ],
+    [
+     "synth arpeggio",
+     7
+    ],
+    [
+     "synth lead",
+     3
+    ],
+    [
+     "synth bassline",
+     1
+    ]
+   ],
+   "flamingo_other": [
+    [
+     "drum machine",
+     21
+    ],
+    [
+     "synth pads",
+     15
+    ],
+    [
+     "synth lead",
+     9
+    ],
+    [
+     "synth bass",
+     5
+    ],
+    [
+     "bass synth",
+     5
+    ],
+    [
+     "pad synths",
+     3
+    ]
+   ],
+   "mt3_notes": {
+    "brass": 113,
+    "chromatic": 57,
+    "drums": 435,
+    "guitar": 174,
+    "lead": 205,
+    "organ": 38,
+    "singing": 363,
+    "strings": 28
+   },
+   "styles": [
+    "Electronic---Techno",
+    "Electronic---Trance"
+   ]
+  },
+  "Darude - Sandstorm": {
+   "flamingo_lead": [
+    [
+     "synth arpeggio",
+     6
+    ],
+    [
+     "synth bass",
+     3
+    ],
+    [
+     "synth lead",
+     2
+    ],
+    [
+     "synth pad",
+     1
+    ]
+   ],
+   "flamingo_other": [
+    [
+     "drum machine",
+     11
+    ],
+    [
+     "synth bass",
+     6
+    ],
+    [
+     "synth pads",
+     6
+    ],
+    [
+     "bass synth",
+     3
+    ],
+    [
+     "pad synths",
+     2
+    ],
+    [
+     "synth lead",
+     2
+    ]
+   ],
+   "mt3_notes": {
+    "bass": 4,
+    "brass": 30,
+    "drums": 1594,
+    "guitar": 1282,
+    "lead": 185,
+    "piano": 78,
+    "reed": 264,
+    "singing": 40,
+    "strings": 260
+   },
+   "styles": [
+    "Electronic---Trance",
+    "Electronic---Euro House"
+   ]
+  },
+  "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang)": {
+   "flamingo_lead": [
+    [
+     "synth lead",
+     9
+    ],
+    [
+     "synth bass",
+     6
+    ],
+    [
+     "synth pad",
+     2
+    ]
+   ],
+   "flamingo_other": [
+    [
+     "drum machine",
+     15
+    ],
+    [
+     "bass synth",
+     9
+    ],
+    [
+     "pad synths",
+     7
+    ],
+    [
+     "synth pads",
+     6
+    ],
+    [
+     "synth leads",
+     4
+    ],
+    [
+     "electronic drums",
+     2
+    ]
+   ],
+   "mt3_notes": {
+    "bass": 30,
+    "brass": 5,
+    "chromatic": 21,
+    "drums": 607,
+    "guitar": 367,
+    "lead": 16,
+    "organ": 13,
+    "pad": 10,
+    "piano": 379,
+    "singing": 378,
+    "strings": 16
+   },
+   "styles": [
+    "Electronic---Hands Up",
+    "Electronic---Hardstyle"
+   ]
+  }
+ },
+ "instrument_vocabulary": [
+  [
+   "drum machine",
+   80
+  ],
+  [
+   "synth bass",
+   53
+  ],
+  [
+   "synth pads",
+   48
+  ],
+  [
+   "synth lead",
+   39
+  ],
+  [
+   "bass synth",
+   29
+  ],
+  [
+   "pad synths",
+   20
+  ],
+  [
+   "synth arpeggio",
+   15
+  ],
+  [
+   "percussion samples",
+   13
+  ],
+  [
+   "synth leads",
+   12
+  ],
+  [
+   "electronic drums",
+   5
+  ],
+  [
+   "pads",
+   5
+  ],
+  [
+   "synth pad",
+   3
+  ],
+  [
+   "sub bass",
+   2
+  ],
+  [
+   "arpeggiated synth lead",
+   2
+  ],
+  [
+   "synth bass and electronic drums",
+   2
+  ],
+  [
+   "pad synth",
+   1
+  ],
+  [
+   "synth bassline",
+   1
+  ]
+ ],
+ "acoustic_names": {
+  "piano": 0,
+  "guitar": 0,
+  "strings": 0,
+  "brass": 0,
+  "organ": 0,
+  "synth": 225,
+  "bass": 87,
+  "drum": 87
+ },
+ "timestamps": {
+  "Acraze - Do It To It": {
+   "duration": 207.4587074829932,
+   "said": [
+    [
+     0.0,
+     15.0,
+     "Intro"
+    ],
+    [
+     15.0,
+     45.0,
+     "Build‑up"
+    ],
+    [
+     45.0,
+     75.0,
+     "Main Groove / Verse‑like section"
+    ],
+    [
+     75.0,
+     105.0,
+     "Breakdown / Bridge"
+    ],
+    [
+     105.0,
+     135.0,
+     "Second Groove / Chorus‑like section"
+    ],
+    [
+     135.0,
+     165.0,
+     "Outro / Fade‑out"
+    ]
+   ],
+   "last_said": 165.0,
+   "multiple_of_15_s": 1,
+   "median_distance_to_part_boundary": 3.3,
+   "chance_distance": 6.3,
+   "drop_to_nearest_said_boundary": [
+    0.4,
+    13.5,
+    3.3
+   ],
+   "drops": [
+    15.4,
+    61.5,
+    138.3
+   ],
+   "drops_direct": [
+    0,
+    15,
+    30,
+    45,
+    60,
+    75,
+    90,
+    105,
+    120,
+    135,
+    150,
+    165,
+    180,
+    195
+   ],
+   "drops_direct_distance": [
+    15.4,
+    0.4,
+    14.6,
+    16.5,
+    1.5,
+    13.5,
+    28.5,
+    33.3,
+    18.3,
+    3.3,
+    11.7,
+    26.7,
+    41.7,
+    56.7
+   ],
+   "cropped_60_boundaries": [
+    0.0,
+    1.0,
+    4.0,
+    8.0,
+    12.0,
+    16.0,
+    20.0,
+    24.0,
+    28.0,
+    32.0,
+    36.0,
+    40.0,
+    44.0,
+    48.0,
+    52.0,
+    56.0,
+    60.0,
+    64.0,
+    68.0,
+    72.0,
+    76.0
+   ],
+   "cropped_60_median_distance_after_undoing_shift": 7.0,
+   "cropped_60_median_distance_without_undoing": 5.0,
+   "padded_30_boundaries": [
+    0.0,
+    30.0,
+    45.0,
+    60.0,
+    75.0,
+    90.0,
+    105.0,
+    120.0,
+    135.0,
+    150.0,
+    165.0,
+    180.0,
+    195.0,
+    210.0,
+    225.0,
+    235.0,
+    250.0,
+    265.0
+   ],
+   "padded_30_median_distance_after_undoing_shift": 15.0,
+   "padded_30_median_distance_without_undoing": 15.0,
+   "drops_direct_cropped": [
+    30,
+    45,
+    75,
+    105
+   ],
+   "drops_direct_padded": [
+    30,
+    45,
+    57,
+    68,
+    83,
+    95,
+    107,
+    119,
+    131,
+    143,
+    155,
+    167,
+    179,
+    191,
+    203,
+    215,
+    227
+   ]
+  },
+  "Hardwell - Spaceman": {
+   "duration": 183.64897959183673,
+   "said": [
+    [
+     0.0,
+     28.0,
+     "Intro"
+    ],
+    [
+     28.0,
+     55.0,
+     "Build‑up"
+    ],
+    [
+     55.0,
+     80.0,
+     "Pre‑drop / Tension"
+    ],
+    [
+     80.0,
+     105.0,
+     "Drop / Main Section"
+    ],
+    [
+     105.0,
+     130.0,
+     "Breakdown / Bridge"
+    ],
+    [
+     130.0,
+     155.0,
+     "Second Drop / Variation"
+    ],
+    [
+     155.0,
+     175.0,
+     "Outro"
+    ]
+   ],
+   "last_said": 175.0,
+   "multiple_of_15_s": 0.25,
+   "median_distance_to_part_boundary": 5.0,
+   "chance_distance": 8.3,
+   "drop_to_nearest_said_boundary": [
+    2.0,
+    10.0
+   ],
+   "drops": [
+    30.0,
+    120.0
+   ],
+   "drops_direct": [
+    29,
+    60,
+    90,
+    120,
+    150
+   ],
+   "drops_direct_distance": [
+    1.0,
+    30.0,
+    30.0,
+    0.0,
+    30.0
+   ],
+   "cropped_60_boundaries": [
+    0.0,
+    7.0,
+    14.0,
+    22.0,
+    30.0,
+    37.0,
+    45.0,
+    52.0,
+    60.0,
+    68.0,
+    75.0
+   ],
+   "cropped_60_median_distance_after_undoing_shift": 6.0,
+   "cropped_60_median_distance_without_undoing": 6.0,
+   "padded_30_boundaries": [
+    0.0,
+    30.0,
+    59.0,
+    89.0,
+    119.0,
+    149.0,
+    179.0,
+    209.0,
+    239.0,
+    240.0
+   ],
+   "padded_30_median_distance_after_undoing_shift": 7.5,
+   "padded_30_median_distance_without_undoing": 7.5,
+   "drops_direct_cropped": [
+    15,
+    45,
+    75,
+    105
+   ],
+   "drops_direct_padded": [
+    30,
+    60,
+    90,
+    120,
+    150,
+    180
+   ]
+  },
+  "Charlotte de Witte - Doppler": {
+   "duration": 277.33916099773245,
+   "said": [
+    [
+     0.0,
+     7.0,
+     "Intro"
+    ],
+    [
+     7.0,
+     14.0,
+     "Build‑up"
+    ],
+    [
+     14.0,
+     21.0,
+     "Main Groove"
+    ],
+    [
+     21.0,
+     28.0,
+     "Breakdown"
+    ],
+    [
+     28.0,
+     35.0,
+     "Build‑up"
+    ],
+    [
+     35.0,
+     42.0,
+     "Main Groove"
+    ],
+    [
+     42.0,
+     49.0,
+     "Breakdown"
+    ],
+    [
+     49.0,
+     56.0,
+     "Build‑up"
+    ],
+    [
+     56.0,
+     63.0,
+     "Main Groove"
+    ],
+    [
+     63.0,
+     70.0,
+     "Breakdown"
+    ],
+    [
+     70.0,
+     77.0,
+     "Build‑up"
+    ],
+    [
+     77.0,
+     84.0,
+     "Main Groove"
+    ],
+    [
+     84.0,
+     91.0,
+     "Breakdown"
+    ],
+    [
+     91.0,
+     98.0,
+     "Build‑up"
+    ],
+    [
+     98.0,
+     105.0,
+     "Main Groove"
+    ],
+    [
+     105.0,
+     112.0,
+     "Breakdown"
+    ],
+    [
+     112.0,
+     120.0,
+     "Build‑up"
+    ],
+    [
+     120.0,
+     127.0,
+     "Main Groove"
+    ],
+    [
+     127.0,
+     134.0,
+     "Breakdown"
+    ],
+    [
+     134.0,
+     141.0,
+     "Build‑up"
+    ],
+    [
+     141.0,
+     148.0,
+     "Main Groove"
+    ],
+    [
+     148.0,
+     155.0,
+     "Breakdown"
+    ],
+    [
+     155.0,
+     162.0,
+     "Build‑up"
+    ],
+    [
+     162.0,
+     169.0,
+     "Main Groove"
+    ]
+   ],
+   "last_said": 169.0,
+   "multiple_of_15_s": 0.12,
+   "median_distance_to_part_boundary": 6.5,
+   "chance_distance": 6.9,
+   "drop_to_nearest_said_boundary": [
+    0.1,
+    22.1,
+    79.0
+   ],
+   "drops": [
+    48.9,
+    191.1,
+    248.0
+   ],
+   "drops_direct": [
+    0,
+    20,
+    40,
+    59,
+    79,
+    99,
+    118,
+    138,
+    158,
+    178,
+    198,
+    218,
+    238,
+    258,
+    278
+   ],
+   "drops_direct_distance": [
+    48.9,
+    28.9,
+    8.9,
+    10.1,
+    30.1,
+    50.1,
+    69.1,
+    53.1,
+    33.1,
+    13.1,
+    6.9,
+    26.9,
+    10.0,
+    10.0,
+    30.0
+   ],
+   "cropped_60_boundaries": [
+    0.0,
+    7.0,
+    14.0,
+    21.0,
+    28.0,
+    35.0,
+    42.0,
+    49.0,
+    56.0,
+    63.0,
+    70.0,
+    77.0,
+    84.0,
+    91.0
+   ],
+   "cropped_60_median_distance_after_undoing_shift": 3.0,
+   "cropped_60_median_distance_without_undoing": 0.0,
+   "padded_30_boundaries": [
+    0.0,
+    30.0,
+    60.0,
+    105.0,
+    135.0,
+    165.0,
+    210.0,
+    240.0
+   ],
+   "padded_30_median_distance_after_undoing_shift": 2.0,
+   "padded_30_median_distance_without_undoing": 2.5,
+   "drops_direct_cropped": [
+    0,
+    17,
+    34,
+    51,
+    68,
+    85,
+    102,
+    119,
+    136,
+    153,
+    170,
+    187,
+    204,
+    221
+   ],
+   "drops_direct_padded": [
+    30,
+    50,
+    70,
+    90,
+    110,
+    130,
+    150,
+    170,
+    190,
+    210,
+    230,
+    250,
+    270,
+    290
+   ]
+  },
+  "Darude - Sandstorm": {
+   "duration": 232.28083900226758,
+   "said": [
+    [
+     0.0,
+     2.0,
+     "Intro"
+    ],
+    [
+     2.0,
+     4.0,
+     "Percussive hit"
+    ],
+    [
+     4.0,
+     6.0,
+     "Silence"
+    ],
+    [
+     6.0,
+     8.0,
+     "Synth pad swell"
+    ],
+    [
+     8.0,
+     10.0,
+     "Percussive hit"
+    ],
+    [
+     10.0,
+     12.0,
+     "Silence"
+    ],
+    [
+     12.0,
+     14.0,
+     "Synth pad swell"
+    ],
+    [
+     14.0,
+     16.0,
+     "Percussive hit"
+    ],
+    [
+     16.0,
+     18.0,
+     "Silence"
+    ],
+    [
+     18.0,
+     20.0,
+     "Synth pad swell"
+    ],
+    [
+     20.0,
+     22.0,
+     "Percussive hit"
+    ],
+    [
+     22.0,
+     24.0,
+     "Silence"
+    ],
+    [
+     24.0,
+     26.0,
+     "Synth pad swell"
+    ],
+    [
+     26.0,
+     28.0,
+     "Percussive hit"
+    ],
+    [
+     28.0,
+     30.0,
+     "Silence"
+    ],
+    [
+     30.0,
+     32.0,
+     "Synth pad swell"
+    ],
+    [
+     32.0,
+     34.0,
+     "Percussive hit"
+    ],
+    [
+     34.0,
+     36.0,
+     "Silence"
+    ],
+    [
+     36.0,
+     38.0,
+     "Synth pad swell"
+    ],
+    [
+     38.0,
+     40.0,
+     "Percussive hit"
+    ],
+    [
+     40.0,
+     42.0,
+     "Silence"
+    ],
+    [
+     42.0,
+     44.0,
+     "Synth pad swell"
+    ],
+    [
+     44.0,
+     46.0,
+     "Percussive hit"
+    ],
+    [
+     46.0,
+     48.0,
+     "Silence"
+    ],
+    [
+     48.0,
+     50.0,
+     "Synth pad swell"
+    ],
+    [
+     50.0,
+     52.0,
+     "Percussive hit"
+    ],
+    [
+     52.0,
+     54.0,
+     "Silence"
+    ],
+    [
+     54.0,
+     56.0,
+     "Synth pad swell"
+    ],
+    [
+     56.0,
+     58.0,
+     "Percussive hit"
+    ],
+    [
+     58.0,
+     60.0,
+     "Silence"
+    ]
+   ],
+   "last_said": 60.0,
+   "multiple_of_15_s": 0.1,
+   "median_distance_to_part_boundary": 5.6,
+   "chance_distance": 9.4,
+   "drop_to_nearest_said_boundary": [
+    0.6
+   ],
+   "drops": [
+    28.6
+   ],
+   "drops_direct": [
+    29,
+    58,
+    87,
+    116,
+    145,
+    174
+   ],
+   "drops_direct_distance": [
+    0.4,
+    29.4,
+    58.4,
+    87.4,
+    116.4,
+    145.4
+   ],
+   "cropped_60_boundaries": [
+    0.0,
+    6.0,
+    12.0,
+    20.0,
+    27.0,
+    34.0,
+    41.0,
+    48.0,
+    55.0,
+    62.0,
+    69.0,
+    76.0,
+    83.0,
+    90.0
+   ],
+   "cropped_60_median_distance_after_undoing_shift": 44.5,
+   "cropped_60_median_distance_without_undoing": 1.0,
+   "padded_30_boundaries": [
+    0.0,
+    31.0,
+    46.0,
+    60.0,
+    80.0,
+    100.0,
+    120.0,
+    140.0,
+    160.0,
+    180.0,
+    200.0
+   ],
+   "padded_30_median_distance_after_undoing_shift": 30.0,
+   "padded_30_median_distance_without_undoing": 40.0,
+   "drops_direct_cropped": [
+    27,
+    55,
+    83,
+    111,
+    139
+   ],
+   "drops_direct_padded": [
+    32,
+    46,
+    60,
+    74,
+    88,
+    102,
+    116,
+    130,
+    144,
+    158,
+    172,
+    186,
+    200,
+    214,
+    228,
+    242
+   ]
+  },
+  "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang)": {
+   "duration": 174.4,
+   "said": [
+    [
+     0.0,
+     6.0,
+     "Intro"
+    ],
+    [
+     6.0,
+     18.0,
+     "Build‑up"
+    ],
+    [
+     18.0,
+     29.0,
+     "Drop 1"
+    ],
+    [
+     29.0,
+     43.0,
+     "Verse 1"
+    ],
+    [
+     43.0,
+     55.0,
+     "Pre‑Chorus"
+    ],
+    [
+     55.0,
+     68.0,
+     "Chorus 1"
+    ],
+    [
+     68.0,
+     79.0,
+     "Post‑Chorus / Bridge"
+    ],
+    [
+     79.0,
+     92.0,
+     "Verse 2"
+    ],
+    [
+     92.0,
+     105.0,
+     "Pre‑Chorus (repeat)"
+    ],
+    [
+     105.0,
+     118.0,
+     "Chorus 2"
+    ],
+    [
+     118.0,
+     120.0,
+     "Drop 2 / Outro"
+    ]
+   ],
+   "last_said": 120.0,
+   "multiple_of_15_s": 0.25,
+   "median_distance_to_part_boundary": 4.0,
+   "chance_distance": 6.1,
+   "drop_to_nearest_said_boundary": [
+    2.6,
+    0.8
+   ],
+   "drops": [
+    45.6,
+    119.2
+   ],
+   "drops_direct": [
+    6,
+    44,
+    99,
+    134
+   ],
+   "drops_direct_distance": [
+    39.6,
+    1.6,
+    20.2,
+    14.8
+   ],
+   "cropped_60_boundaries": [
+    0.0,
+    2.0,
+    9.0,
+    15.0,
+    22.0,
+    28.0,
+    35.0,
+    41.0,
+    48.0,
+    55.0,
+    60.0
+   ],
+   "cropped_60_median_distance_after_undoing_shift": 3.0,
+   "cropped_60_median_distance_without_undoing": 3.0,
+   "padded_30_boundaries": [
+    0.0,
+    31.0,
+    49.0,
+    60.0,
+    72.0,
+    84.0,
+    99.0,
+    112.0,
+    124.0,
+    138.0,
+    150.0
+   ],
+   "padded_30_median_distance_after_undoing_shift": 1.0,
+   "padded_30_median_distance_without_undoing": 5.0,
+   "drops_direct_cropped": [
+    35,
+    65,
+    95,
+    125
+   ],
+   "drops_direct_padded": [
+    31,
+    74,
+    129,
+    164
+   ]
+  }
+ },
+ "wording": {
+  "reversed": {
+   "n": 40,
+   "same_function": 0.23,
+   "same_vocals": 1.0,
+   "same_lead": 0.75,
+   "energy_diff": 0.6,
+   "energy_corr": 0.79
+  },
+  "no_hint": {
+   "n": 40,
+   "same_function": 0.7,
+   "same_vocals": 1.0,
+   "same_lead": 0.72,
+   "energy_diff": 0.45,
+   "energy_corr": 0.83
+  }
+ },
+ "function_answers_by_wording": {
+  "default": {
+   "intro": 22,
+   "build-up": 18
+  },
+  "reversed": {
+   "outro": 7,
+   "build-up": 11,
+   "intro": 2,
+   "drop": 16,
+   "breakdown": 4
+  },
+  "no_hint": {
+   "intro": 24,
+   "build-up": 16
+  }
+ },
+ "controls": {
+  "digital silence": {
+   "rms_dbfs": -200.0,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"sub-bass\", \"hi-hats\", \"percussion\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"mysterious, anticipatory\", \"function\": \"intro\"}",
+   "hear": "I can't hear any instruments in this clip. The audio is completely silent.",
+   "hear_careful_system": "No instruments are audible in this clip.",
+   "describe": "This track is a minimalist ambient‑drone piece, blending the spacious textures of ambient music with the sustained, low‑frequency focus of drone. It runs at a measured ≈ 158 BPM (though the pulse is imperceptible) and is rooted in A minor, with no conventional chord changes (the chord list is “N, N”).\nInstrumentation is limited to a single, deep, resonant synth tone that dominates the mix. The sou"
+  },
+  "white noise at -70 dBFS": {
+   "rms_dbfs": -70.0,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"sub-bass\", \"percussion\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 2, \"mood\": \"dark, mysterious\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": "No instruments are audible in this clip.",
+   "describe": "This track is a minimalist ambient drone piece, situated within the broader ambient genre and leaning toward the drone‑ambient sub‑genre with a pure, texture‑focused stylistic blend.  It runs at an indicated 115.38 BPM (though the music itself contains no perceptible pulse) and is rooted in A♭ major, with the harmonic content essentially consisting of a sustained tonal center rather than functiona"
+  },
+  "sine 440 Hz at -20 dBFS": {
+   "rms_dbfs": -23.0,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"synth bass\", \"electronic drums\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 2, \"mood\": \"calm, atmospheric\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip. The audio consists of silence.",
+   "hear_careful_system": "No instruments are audible in this clip.",
+   "describe": "This track is an experimental electronic piece that blends drone, noise, and minimalist ambient aesthetics. It operates at a measured 176.47 BPM (though the pulse is imperceptible) and is rooted in A minor, with the harmonic content essentially absent—no chord changes are present (N / N).\nInstrumentation is limited to a single, sustained low‑frequency tone generated by a synthesizer or a processed"
+  },
+  "Acraze - Do It To It, mix only, drop 15-45 s": {
+   "rms_dbfs": -10.0,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, hypnotic\", \"function\": \"build-up\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a driving Tech House piece that leans toward a minimal‑tech sub‑genre, blending a tight four‑on‑the‑floor groove with subtle, evolving synth textures.  It runs at 125 BPM in 4/4 time and is rooted in C minor. The duration of the piece is 30.00 seconds.\nInstrumentation & production: The foundation is a punchy, side‑chain‑compressed kick drum paired with crisp hi‑hats and a deep, reson"
+  },
+  "Acraze - Do It To It, drums only, drop 15-45 s": {
+   "rms_dbfs": -13.1,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a driving Tech House piece that leans toward a minimal, club‑oriented sub‑genre, blending a tight four‑on‑the‑floor groove with subtle melodic synth work.  It runs at 125 BPM in a steady 4/4 meter and is rooted in C minor. The duration of the piece is 30.00 seconds.\nInstrumentation and production are focused on a clean, punchy sound: a deep, resonant synth bass anchors the low end, w"
+  },
+  "Acraze - Do It To It, bass only, drop 15-45 s": {
+   "rms_dbfs": -13.8,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"synth pads\", \"drum machine\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "hear": "I can hear a drum kit, including a kick drum, snare drum, and hi-hat. There are no other instruments present in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a minimalist electronic piece that blends ambient‑techno textures with a subtle, hypnotic groove. It sits at ≈ 96.8 BPM in a steady 4/4 meter and is rooted in C minor, though the harmonic content is essentially absent, consisting of a continuous, sustained synth drone that hovers over the tonal center.\nInstrumentation is stripped down to a single, low‑frequency synthesizer that gener"
+  },
+  "Acraze - Do It To It, vocals only, drop 15-45 s": {
+   "rms_dbfs": -25.7,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"synth bass\", \"electronic drums\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 3, \"mood\": \"mysterious, anticipatory\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a minimalist ambient‑drone piece that blends deep, sustained synth pads with a subtle, low‑frequency drone, creating an ethereal, meditative soundscape.  It runs at a steady 125 BPM (though the pulse is felt more as a slow, continuous flow rather than a strict beat) and is rooted in C minor. The duration of the piece is 29.99 seconds.\nInstrumentation & production: The arrangement is "
+  },
+  "Charlotte de Witte - Doppler, mix only, drop 49-79 s": {
+   "rms_dbfs": -10.0,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, hypnotic\", \"function\": \"build-up\"}",
+   "hear": "I can hear a drum machine, a synthesizer, and a bass synthesizer.",
+   "hear_careful_system": null,
+   "describe": "This track is a high‑energy Tech House piece that blends the driving pulse of classic house with the sleek, minimalistic aesthetics of modern club‑oriented electronic music.  It runs at a precise 136.36 BPM and is rooted in B♭ major, though the harmonic content is deliberately sparse, focusing instead on rhythm and texture. The duration of the piece is 29.99 seconds.\nInstrumentation and production"
+  },
+  "Charlotte de Witte - Doppler, drums only, drop 49-79 s": {
+   "rms_dbfs": -10.3,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a driving Minimal Techno piece that leans into a hypnotic, club‑oriented aesthetic.  It sits at 136.36 BPM in a steady 4/4 meter and is rooted in F major, though the harmonic content is deliberately sparse, alternating between moments of “no chord” and brief flashes of F♯m7♭5 and F♯maj7 that add fleeting tension before returning to the tonal center. The duration of the piece is 29.99"
+  },
+  "Charlotte de Witte - Doppler, bass only, drop 49-79 s": {
+   "rms_dbfs": -35.4,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"sub-bass\", \"percussion\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 2, \"mood\": \"dark, mysterious\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a minimalist ambient‑drone piece that blends deep, sustained synth textures with a subtle, low‑frequency pulse, creating an immersive, meditative soundscape.  It runs at a measured ≈ 142.86 BPM (though the pulse is felt more as a slow, almost imperceptible heartbeat than a strict beat) and is rooted in C minor, with the harmonic material consisting mainly of a continuous C‑minor dron"
+  },
+  "Charlotte de Witte - Doppler, vocals only, drop 49-79 s": {
+   "rms_dbfs": -30.1,
+   "part": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"synth bass\", \"electronic drums\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 2, \"mood\": \"mysterious, anticipatory\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a minimalist ambient‑drone piece that blends sparse, meditative sound‑design with a subtle, evolving harmonic texture.  It runs at a measured ≈ 158 BPM (though the pulse is felt more as a slow, continuous flow than a strict beat) and is rooted in B♭ minor, with the harmonic material revolving around a sustained B♭ minor drone and occasional color tones such as an F♯ maj7 and a C♯ 6 t"
+  },
+  "Darude - Sandstorm, mix only, drop 29-59 s": {
+   "rms_dbfs": -23.9,
+   "part": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"build-up\"}",
+   "hear": "Synthesizers, electronic drums, and a synth bass.",
+   "hear_careful_system": null,
+   "describe": "This track is a high‑energy Hard Trance piece that blends classic trance euphoria with a harder, more driving edge. It runs at ≈ 136 BPM in a steady 4/4 meter and is rooted in E minor.\nThe production is polished and high‑fidelity, featuring a punchy four‑on‑the‑floor kick, crisp hi‑hats, and a deep, resonant synth bass that anchors the groove. Bright, arpeggiated lead synths cut through a wide ste"
+  },
+  "Darude - Sandstorm, drums only, drop 29-59 s": {
+   "rms_dbfs": -26.7,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a driving Tech House piece that leans toward a minimal, club‑oriented sub‑genre, blending a tight four‑on‑the‑floor groove with subtle melodic synth work.  It runs at ≈ 136 BPM in a steady 4/4 meter and is rooted in A minor. The duration of the piece is 30.00 seconds.\nInstrumentation and production are focused on a clean, punchy sound: a deep, resonant synth bass anchors the low end,"
+  },
+  "Hardwell - Spaceman, mix only, drop 30-60 s": {
+   "rms_dbfs": -7.6,
+   "part": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "hear": "I can hear a drum kit, a synthesizer, and a bass guitar.",
+   "hear_careful_system": null,
+   "describe": "This track is a high‑energy Hardstyle piece, leaning toward the raw‑hardstyle sub‑genre with a hard‑hitting, festival‑ready blend of pounding kicks and aggressive synth work.  It runs at 130.43 BPM in a steady 4/4 meter and is rooted in E♭ minor. The duration of the piece is 30.00 seconds.\nInstrumentation and production are built around a massively distorted, side‑chained kick that dominates the l"
+  },
+  "Hardwell - Spaceman, drums only, drop 30-60 s": {
+   "rms_dbfs": -8.0,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, anticipatory\", \"function\": \"build-up\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a driving Tech House piece that leans toward a minimal, club‑oriented sub‑genre, blending a tight four‑on‑the‑floor groove with subtle melodic synth work.  It runs at 125 BPM in a steady 4/4 meter and is rooted in F♯ minor. The duration of the piece is 30.00 seconds.\nInstrumentation and production are focused on a clean, punchy sound: a deep, resonant synth bass anchors the low end, "
+  },
+  "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang), mix only, drop 46-76 s": {
+   "rms_dbfs": -7.2,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "hear": "Synthesizers, electronic drums, and a synth bass.",
+   "hear_careful_system": null,
+   "describe": "This track is an energetic Progressive House piece that leans toward a melodic, vocal‑driven sub‑genre, blending the driving pulse of club‑floor house with pop‑style female singing.  The duration of the piece is 30.00 seconds.\nTempo & Key – The song moves at 150 BPM and is rooted in A minor.\nInstrumentation & Production – A polished, high‑fidelity production anchors the groove with a classic four‑"
+  },
+  "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang), drums only, drop 46-76 s": {
+   "rms_dbfs": -9.7,
+   "part": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, anticipatory\", \"function\": \"build-up\"}",
+   "hear": "No instruments are audible in this clip.",
+   "hear_careful_system": null,
+   "describe": "This track is a high‑energy Hardstyle piece, leaning toward the raw‑hardstyle sub‑genre with a hard‑hitting, club‑oriented blend of pounding kicks and aggressive synth work.  It runs at 150 BPM in a steady 4/4 meter and is rooted in F minor. The duration of the piece is 30.00 seconds.\nInstrumentation and production are built around a massively distorted, side‑chained kick that dominates the low en"
+  }
+ }
+}

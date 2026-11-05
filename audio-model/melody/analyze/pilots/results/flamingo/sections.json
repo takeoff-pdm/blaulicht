@@ -1,0 +1,955 @@
+{
+ "58e556af6855": [
+  {
+   "kind": "Intro",
+   "start": 0.07,
+   "end": 7.75,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synth\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 2.38,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synth"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 7.75,
+   "end": 15.4397,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "seconds": 1.3,
+   "new_tokens": 63,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 5.0,
+    "mood": "dark, driving",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 15.4397,
+   "end": 30.8,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "seconds": 1.24,
+   "new_tokens": 63,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 5.0,
+    "mood": "dark, driving",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 30.8,
+   "end": 53.8412,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, hypnotic\", \"function\": \"intro\"}",
+   "seconds": 1.75,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, hypnotic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 53.8412,
+   "end": 61.5138,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 7, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "seconds": 1.43,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "percussion samples"
+    ],
+    "vocals": true,
+    "vocal_type": "spoken sample",
+    "energy": 7.0,
+    "mood": "energetic, confident",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 61.5138,
+   "end": 92.24,
+   "raw": "{\"lead_instrument\": \"synth bass and electronic drums\", \"other_instruments\": [\"synth bass\", \"electronic drums\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 10, \"mood\": \"energetic, club-ready\", \"function\": \"intro\"}",
+   "seconds": 1.57,
+   "new_tokens": 80,
+   "parsed": {
+    "lead_instrument": "synth bass and electronic drums",
+    "other_instruments": [
+     "synth bass",
+     "electronic drums",
+     "synth pads",
+     "percussion samples"
+    ],
+    "vocals": true,
+    "vocal_type": "spoken sample",
+    "energy": 10.0,
+    "mood": "energetic, club-ready",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Groove",
+   "start": 92.24,
+   "end": 105.6713,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 7, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.28,
+   "new_tokens": 65,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 7.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 105.6713,
+   "end": 130.6311,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, hypnotic\", \"function\": \"build-up\"}",
+   "seconds": 1.92,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "driving, hypnotic",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 130.6311,
+   "end": 138.32,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, energetic\", \"function\": \"intro\"}",
+   "seconds": 1.33,
+   "new_tokens": 69,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "driving, energetic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 138.32,
+   "end": 169.0394,
+   "raw": "{\"lead_instrument\": \"synth bass and electronic drums\", \"other_instruments\": [\"synth bass\", \"electronic drums\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 10, \"mood\": \"energetic, club-ready\", \"function\": \"intro\"}",
+   "seconds": 1.55,
+   "new_tokens": 80,
+   "parsed": {
+    "lead_instrument": "synth bass and electronic drums",
+    "other_instruments": [
+     "synth bass",
+     "electronic drums",
+     "synth pads",
+     "percussion samples"
+    ],
+    "vocals": true,
+    "vocal_type": "spoken sample",
+    "energy": 10.0,
+    "mood": "energetic, club-ready",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Outro",
+   "start": 169.0394,
+   "end": 207.43,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 7, \"mood\": \"hypnotic, driving\", \"function\": \"intro\"}",
+   "seconds": 1.49,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "percussion samples"
+    ],
+    "vocals": true,
+    "vocal_type": "spoken sample",
+    "energy": 7.0,
+    "mood": "hypnotic, driving",
+    "function": "intro"
+   }
+  }
+ ],
+ "8a0e3b75f4a1": [
+  {
+   "kind": "Intro",
+   "start": 0.8914,
+   "end": 20.4488,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, energetic\", \"function\": \"build-up\"}",
+   "seconds": 1.44,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, energetic",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 20.4488,
+   "end": 41.7832,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"synth bass\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.44,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "synth bass",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 41.7832,
+   "end": 48.8966,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.4,
+   "new_tokens": 72,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 48.8966,
+   "end": 105.7876,
+   "raw": "{\"lead_instrument\": \"synth bassline\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, hypnotic\", \"function\": \"intro\"}",
+   "seconds": 1.51,
+   "new_tokens": 72,
+   "parsed": {
+    "lead_instrument": "synth bassline",
+    "other_instruments": [
+     "drum machine",
+     "synth lead",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, hypnotic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Groove",
+   "start": 105.7876,
+   "end": 132.4411,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, energetic\", \"function\": \"intro\"}",
+   "seconds": 1.4,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth lead",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, energetic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 132.4411,
+   "end": 183.9928,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"synth bass\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.54,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "synth bass",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 183.9928,
+   "end": 191.1032,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.67,
+   "new_tokens": 72,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 191.1032,
+   "end": 244.4214,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, hypnotic\", \"function\": \"build-up\"}",
+   "seconds": 1.8,
+   "new_tokens": 72,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth lead",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, hypnotic",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 244.4214,
+   "end": 247.9784,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.44,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 247.9784,
+   "end": 272.8709,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, energetic\", \"function\": \"intro\"}",
+   "seconds": 1.38,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth lead",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, energetic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Outro",
+   "start": 272.8709,
+   "end": 276.4258,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.43,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  }
+ ],
+ "dcb7a7d3e846": [
+  {
+   "kind": "Intro",
+   "start": 0.3983,
+   "end": 3.9253,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"synth pads\", \"drum machine\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"dark, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.34,
+   "new_tokens": 69,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "synth pads",
+     "drum machine",
+     "percussion samples"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "dark, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 3.9253,
+   "end": 21.5606,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"synth bass\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.46,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "synth bass",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 5.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 21.5606,
+   "end": 28.6165,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.43,
+   "new_tokens": 72,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 28.6165,
+   "end": 88.5748,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"synth bass\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.57,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "synth bass",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Outro",
+   "start": 88.5748,
+   "end": 231.406,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"synth lead\", \"drum machine\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"driving, intense\", \"function\": \"build-up\"}",
+   "seconds": 1.8,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "synth lead",
+     "drum machine",
+     "percussion samples"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "driving, intense",
+    "function": "build-up"
+   }
+  }
+ ],
+ "fe0b3c607b1b": [
+  {
+   "kind": "Intro",
+   "start": 0.0382,
+   "end": 22.532,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "seconds": 1.67,
+   "new_tokens": 63,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 5.0,
+    "mood": "hypnotic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 22.532,
+   "end": 30.0381,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"energetic, anticipatory\", \"function\": \"build-up\"}",
+   "seconds": 1.86,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "percussion samples"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 7.0,
+    "mood": "energetic, anticipatory",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 30.0381,
+   "end": 60.0385,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.71,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "percussion samples"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 60.0385,
+   "end": 90.029,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"build-up\"}",
+   "seconds": 1.45,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Groove",
+   "start": 90.029,
+   "end": 105.0311,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"build-up\"}",
+   "seconds": 1.45,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 105.0311,
+   "end": 112.5411,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.43,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 112.5411,
+   "end": 120.0398,
+   "raw": "{\"lead_instrument\": \"synth arpeggio\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.48,
+   "new_tokens": 73,
+   "parsed": {
+    "lead_instrument": "synth arpeggio",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 120.0398,
+   "end": 174.4125,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"synth lead\", \"drum machine\", \"percussion samples\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"aggressive, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.57,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "synth lead",
+     "drum machine",
+     "percussion samples"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "aggressive, driving",
+    "function": "build-up"
+   }
+  },
+  {
+   "kind": "Outro",
+   "start": 174.4125,
+   "end": 181.9112,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"build-up\"}",
+   "seconds": 1.42,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, driving",
+    "function": "build-up"
+   }
+  }
+ ],
+ "6a67050f048d": [
+  {
+   "kind": "Intro",
+   "start": 0.79,
+   "end": 18.39,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.44,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 18.39,
+   "end": 39.2,
+   "raw": "{\"lead_instrument\": \"synth pad\", \"other_instruments\": [\"electronic drums\", \"sub-bass\", \"arpeggiated synth lead\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 7, \"mood\": \"melancholic, longing\", \"function\": \"intro\"}",
+   "seconds": 1.5,
+   "new_tokens": 74,
+   "parsed": {
+    "lead_instrument": "synth pad",
+    "other_instruments": [
+     "electronic drums",
+     "sub-bass",
+     "arpeggiated synth lead"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 7.0,
+    "mood": "melancholic, longing",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 39.2,
+   "end": 45.5906,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 7, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.4,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 7.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 45.5906,
+   "end": 69.59,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.45,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth pads",
+     "synth leads"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 69.59,
+   "end": 101.5961,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 8, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "seconds": 1.47,
+   "new_tokens": 69,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pads"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 8.0,
+    "mood": "energetic, confident",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Groove",
+   "start": 101.5961,
+   "end": 106.4,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 8, \"mood\": \"uplifting, energetic\", \"function\": \"intro\"}",
+   "seconds": 1.79,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 8.0,
+    "mood": "uplifting, energetic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Breakdown",
+   "start": 106.4,
+   "end": 112.8,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 7, \"mood\": \"uplifting, energetic\", \"function\": \"intro\"}",
+   "seconds": 1.48,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 7.0,
+    "mood": "uplifting, energetic",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Build",
+   "start": 112.8,
+   "end": 119.1994,
+   "raw": "{\"lead_instrument\": \"synth lead\", \"other_instruments\": [\"drum machine\", \"bass synth\", \"pad synths\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.49,
+   "new_tokens": 70,
+   "parsed": {
+    "lead_instrument": "synth lead",
+    "other_instruments": [
+     "drum machine",
+     "bass synth",
+     "pad synths"
+    ],
+    "vocals": false,
+    "vocal_type": "none",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  },
+  {
+   "kind": "Drop",
+   "start": 119.1994,
+   "end": 173.5956,
+   "raw": "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth lead\", \"synth pads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "seconds": 1.61,
+   "new_tokens": 71,
+   "parsed": {
+    "lead_instrument": "synth bass",
+    "other_instruments": [
+     "drum machine",
+     "synth lead",
+     "synth pads"
+    ],
+    "vocals": true,
+    "vocal_type": "female sung",
+    "energy": 10.0,
+    "mood": "energetic, uplifting",
+    "function": "intro"
+   }
+  }
+ ]
+}
