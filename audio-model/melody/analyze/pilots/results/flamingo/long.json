@@ -1,0 +1,14 @@
+{
+ "longest song, 503 s": {
+  "seconds": 4.01,
+  "allocated_gb": 17.88,
+  "reserved_gb": 18.61,
+  "raw": "00:00-01:00 | Intro | A hypnotic, driving electronic beat with a deep, pulsating synth bassline and minimal melodic elements establishes a dark, immersive club atmosphere.\n01:00-02:00 | Build‑up | Subtle layering of percussive elements and atmospheric synth textures gradually increase tension, preparing the listener for the main section.\n02:00-03:30 | Main Groove |"
+ },
+ "20 minutes, the cap": {
+  "seconds": 6.91,
+  "allocated_gb": 21.26,
+  "reserved_gb": 22.58,
+  "raw": "00:00:00.00 | Intro | A deep, pulsating synth bassline and crisp electronic drums establish a hypnotic, driving groove.\n00:00:30.00 | Build‑up | Subtle filter sweeps and layered percussive elements increase tension, preparing for the main section.\n00:00:50.00 | Main Groove | The bassline and drums lock into a steady, dance‑floor‑ready"
+ }
+}

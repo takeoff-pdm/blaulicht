@@ -1,0 +1,53 @@
+[
+ {
+  "batch": 1,
+  "clips": 9,
+  "seconds": 15.9,
+  "same_as_batch_1": null,
+  "raw": [
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, anticipatory\", \"function\": \"build-up\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 7, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, uplifting\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, danceable\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}"
+  ]
+ },
+ {
+  "batch": 4,
+  "clips": 9,
+  "seconds": 6.6,
+  "same_as_batch_1": 6,
+  "raw": [
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, anticipatory\", \"function\": \"build-up\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"synth lead\", \"drum machine\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 7, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}"
+  ]
+ },
+ {
+  "batch": 8,
+  "clips": 9,
+  "seconds": 5.3,
+  "same_as_batch_1": 6,
+  "raw": [
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 7, \"mood\": \"driving, anticipatory\", \"function\": \"build-up\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"yes\", \"vocal_type\": \"spoken sample\", \"energy\": 7, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, danceable\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"hypnotic\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"synth leads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 10, \"mood\": \"energetic, driving\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\", \"percussion samples\"], \"vocals\": \"yes\", \"vocal_type\": \"female sung\", \"energy\": 10, \"mood\": \"energetic, confident\", \"function\": \"intro\"}",
+   "{\"lead_instrument\": \"synth bass\", \"other_instruments\": [\"drum machine\", \"synth pads\"], \"vocals\": \"no\", \"vocal_type\": \"none\", \"energy\": 5, \"mood\": \"dark, driving\", \"function\": \"intro\"}"
+  ]
+ }
+]

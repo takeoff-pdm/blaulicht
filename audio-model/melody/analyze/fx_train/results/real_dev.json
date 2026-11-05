@@ -1,0 +1,2089 @@
+{
+ "split": "dev",
+ "songs": 20,
+ "dsp": {
+  "riser": {
+   "drop": 0.071,
+   "null": 0.008,
+   "quiet_null": 0.011,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 8.87,
+   "lift_quiet": 6.45,
+   "diff_ci": [
+    -0.005,
+    0.152
+   ],
+   "lift_ci": [
+    0.0,
+    22.11
+   ],
+   "diff_quiet_ci": [
+    -0.008,
+    0.152
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    31.96
+   ],
+   "auc": 0.532,
+   "auc_quiet": 0.531,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.011,
+     "drop_ci": [
+      0.016,
+      0.179
+     ]
+    },
+    "0.03": null,
+    "0.05": null,
+    "0.1": null
+   }
+  },
+  "impact": {
+   "drop": 0.0,
+   "null": 0.003,
+   "quiet_null": 0.002,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 0.0,
+   "lift_quiet": 0.0,
+   "diff_ci": [
+    -0.005,
+    -0.001
+   ],
+   "lift_ci": [
+    0.0,
+    0.0
+   ],
+   "diff_quiet_ci": [
+    -0.007,
+    0.0
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    0.0
+   ],
+   "auc": 0.498,
+   "auc_quiet": 0.499,
+   "at_null_rate": {
+    "0.01": null,
+    "0.03": null,
+    "0.05": null,
+    "0.1": null
+   }
+  },
+  "per_min": {
+   "riser": 0.0,
+   "impact": 0.0
+  }
+ },
+ "gen_beats": {
+  "sources": [
+   "gen"
+  ],
+  "features": "beats",
+  "thresholds": [
+   0.12,
+   0.65,
+   0.5,
+   0.8,
+   0.9,
+   0.9
+  ],
+  "riser": {
+   "drop": 0.143,
+   "null": 0.031,
+   "quiet_null": 0.046,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 4.61,
+   "lift_quiet": 3.11,
+   "diff_ci": [
+    0.032,
+    0.214
+   ],
+   "lift_ci": [
+    2.06,
+    7.77
+   ],
+   "diff_quiet_ci": [
+    0.022,
+    0.189
+   ],
+   "lift_quiet_ci": [
+    1.41,
+    5.69
+   ],
+   "auc": 0.73,
+   "auc_quiet": 0.697,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.018,
+     "quiet_null": 0.024,
+     "drop_ci": [
+      0.0,
+      0.077
+     ]
+    },
+    "0.03": {
+     "drop": 0.054,
+     "quiet_null": 0.054,
+     "drop_ci": [
+      0.0,
+      0.16
+     ]
+    },
+    "0.05": {
+     "drop": 0.107,
+     "quiet_null": 0.092,
+     "drop_ci": [
+      0.04,
+      0.238
+     ]
+    },
+    "0.1": {
+     "drop": 0.286,
+     "quiet_null": 0.166,
+     "drop_ci": [
+      0.121,
+      0.429
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.004,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": 9.0,
+   "diff_ci": [
+    -0.006,
+    0.075
+   ],
+   "lift_ci": [
+    0.0,
+    29.27
+   ],
+   "diff_quiet_ci": [
+    -0.007,
+    0.077
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    29.96
+   ],
+   "auc": 0.698,
+   "auc_quiet": 0.783,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.013,
+     "drop_ci": [
+      0.0,
+      0.149
+     ]
+    },
+    "0.03": {
+     "drop": 0.161,
+     "quiet_null": 0.024,
+     "drop_ci": [
+      0.045,
+      0.242
+     ]
+    },
+    "0.05": {
+     "drop": 0.179,
+     "quiet_null": 0.039,
+     "drop_ci": [
+      0.075,
+      0.286
+     ]
+    },
+    "0.1": {
+     "drop": 0.339,
+     "quiet_null": 0.083,
+     "drop_ci": [
+      0.261,
+      0.453
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.6,
+    "active": 0.073,
+    "dur": 5.5,
+    "silent_songs": 1
+   },
+   "downlifter": {
+    "per_min": 0.15,
+    "active": 0.004,
+    "dur": 1.74,
+    "silent_songs": 10
+   },
+   "impact": {
+    "per_min": 0.85,
+    "active": 0.009,
+    "dur": 0.72,
+    "silent_songs": 4
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.56,
+    "silent_songs": 17
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 6.14,
+    "silent_songs": 19
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.96,
+    "silent_songs": 13
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.286,
+    "null": 0.136,
+    "quiet_null": 0.196,
+    "lift": 2.09,
+    "lift_quiet": 1.46
+   },
+   "rev": {
+    "drop": 0.804,
+    "null": 0.629,
+    "quiet_null": 0.627,
+    "lift": 1.28,
+    "lift_quiet": 1.28
+   },
+   "rev_down": {
+    "drop": 0.089,
+    "null": 0.014,
+    "quiet_null": 0.028,
+    "lift": 6.42,
+    "lift_quiet": 3.15
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.085
+ },
+ "gen_both": {
+  "sources": [
+   "gen"
+  ],
+  "features": "both",
+  "thresholds": [
+   0.1,
+   0.85,
+   0.88,
+   0.9,
+   0.65,
+   0.9
+  ],
+  "riser": {
+   "drop": 0.125,
+   "null": 0.029,
+   "quiet_null": 0.031,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 4.31,
+   "lift_quiet": 4.03,
+   "diff_ci": [
+    0.028,
+    0.187
+   ],
+   "lift_ci": [
+    1.93,
+    7.8
+   ],
+   "diff_quiet_ci": [
+    0.024,
+    0.188
+   ],
+   "lift_quiet_ci": [
+    1.59,
+    10.42
+   ],
+   "auc": 0.735,
+   "auc_quiet": 0.729,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.026,
+     "drop_ci": [
+      0.0,
+      0.104
+     ]
+    },
+    "0.03": {
+     "drop": 0.089,
+     "quiet_null": 0.063,
+     "drop_ci": [
+      0.018,
+      0.184
+     ]
+    },
+    "0.05": {
+     "drop": 0.125,
+     "quiet_null": 0.096,
+     "drop_ci": [
+      0.038,
+      0.236
+     ]
+    },
+    "0.1": {
+     "drop": 0.286,
+     "quiet_null": 0.139,
+     "drop_ci": [
+      0.119,
+      0.475
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.007,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": 5.14,
+   "diff_ci": [
+    -0.006,
+    0.073
+   ],
+   "lift_ci": [
+    0.0,
+    29.51
+   ],
+   "diff_quiet_ci": [
+    -0.008,
+    0.071
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    24.09
+   ],
+   "auc": 0.649,
+   "auc_quiet": 0.691,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.015,
+     "drop_ci": [
+      0.018,
+      0.121
+     ]
+    },
+    "0.03": {
+     "drop": 0.089,
+     "quiet_null": 0.015,
+     "drop_ci": [
+      0.036,
+      0.22
+     ]
+    },
+    "0.05": {
+     "drop": 0.232,
+     "quiet_null": 0.02,
+     "drop_ci": [
+      0.115,
+      0.317
+     ]
+    },
+    "0.1": {
+     "drop": 0.429,
+     "quiet_null": 0.044,
+     "drop_ci": [
+      0.268,
+      0.556
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.85,
+    "active": 0.075,
+    "dur": 5.04,
+    "silent_songs": 3
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 1.2,
+    "silent_songs": 11
+   },
+   "impact": {
+    "per_min": 0.26,
+    "active": 0.002,
+    "dur": 0.68,
+    "silent_songs": 8
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.8,
+    "silent_songs": 17
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 3.68,
+    "silent_songs": 16
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.38,
+    "silent_songs": 18
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.357,
+    "null": 0.128,
+    "quiet_null": 0.161,
+    "lift": 2.79,
+    "lift_quiet": 2.22
+   },
+   "rev": {
+    "drop": 0.839,
+    "null": 0.627,
+    "quiet_null": 0.545,
+    "lift": 1.34,
+    "lift_quiet": 1.54
+   },
+   "rev_down": {
+    "drop": 0.089,
+    "null": 0.007,
+    "quiet_null": 0.02,
+    "lift": 12.43,
+    "lift_quiet": 4.55
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.045
+ },
+ "gen_mel": {
+  "sources": [
+   "gen"
+  ],
+  "features": "mel",
+  "thresholds": [
+   0.16,
+   0.75,
+   0.66,
+   0.7,
+   0.95,
+   0.95
+  ],
+  "riser": {
+   "drop": 0.232,
+   "null": 0.03,
+   "quiet_null": 0.052,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.73,
+   "lift_quiet": 4.46,
+   "diff_ci": [
+    0.08,
+    0.355
+   ],
+   "lift_ci": [
+    3.97,
+    12.8
+   ],
+   "diff_quiet_ci": [
+    0.057,
+    0.327
+   ],
+   "lift_quiet_ci": [
+    2.05,
+    8.29
+   ],
+   "auc": 0.689,
+   "auc_quiet": 0.49,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.0,
+     "drop_ci": [
+      0.0,
+      0.083
+     ]
+    },
+    "0.03": {
+     "drop": 0.036,
+     "quiet_null": 0.022,
+     "drop_ci": [
+      0.0,
+      0.206
+     ]
+    },
+    "0.05": {
+     "drop": 0.107,
+     "quiet_null": 0.039,
+     "drop_ci": [
+      0.018,
+      0.29
+     ]
+    },
+    "0.1": {
+     "drop": 0.268,
+     "quiet_null": 0.102,
+     "drop_ci": [
+      0.113,
+      0.463
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.0,
+   "null": 0.005,
+   "quiet_null": 0.007,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 0.0,
+   "lift_quiet": 0.0,
+   "diff_ci": [
+    -0.008,
+    -0.002
+   ],
+   "lift_ci": [
+    0.0,
+    0.0
+   ],
+   "diff_quiet_ci": [
+    -0.014,
+    0.0
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    0.0
+   ],
+   "auc": 0.632,
+   "auc_quiet": 0.699,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.013,
+     "drop_ci": [
+      0.0,
+      0.05
+     ]
+    },
+    "0.03": {
+     "drop": 0.036,
+     "quiet_null": 0.024,
+     "drop_ci": [
+      0.0,
+      0.133
+     ]
+    },
+    "0.05": {
+     "drop": 0.089,
+     "quiet_null": 0.041,
+     "drop_ci": [
+      0.016,
+      0.178
+     ]
+    },
+    "0.1": {
+     "drop": 0.161,
+     "quiet_null": 0.081,
+     "drop_ci": [
+      0.033,
+      0.293
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.76,
+    "active": 0.092,
+    "dur": 6.16,
+    "silent_songs": 0
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 1.28,
+    "silent_songs": 18
+   },
+   "impact": {
+    "per_min": 0.6,
+    "active": 0.004,
+    "dur": 0.52,
+    "silent_songs": 5
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 1.06,
+    "silent_songs": 16
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.0,
+    "silent_songs": 20
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.0,
+    "silent_songs": 20
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.411,
+    "null": 0.217,
+    "quiet_null": 0.316,
+    "lift": 1.89,
+    "lift_quiet": 1.3
+   },
+   "rev": {
+    "drop": 0.375,
+    "null": 0.276,
+    "quiet_null": 0.455,
+    "lift": 1.36,
+    "lift_quiet": 0.82
+   },
+   "rev_down": {
+    "drop": 0.018,
+    "null": 0.005,
+    "quiet_null": 0.013,
+    "lift": 3.32,
+    "lift_quiet": 1.37
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.058
+ },
+ "yt_beats": {
+  "sources": [
+   "yt"
+  ],
+  "features": "beats",
+  "thresholds": [
+   0.06,
+   0.9,
+   0.2,
+   0.75,
+   0.2,
+   0.9
+  ],
+  "riser": {
+   "drop": 0.089,
+   "null": 0.028,
+   "quiet_null": 0.035,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 3.18,
+   "lift_quiet": 2.54,
+   "diff_ci": [
+    -0.004,
+    0.143
+   ],
+   "lift_ci": [
+    0.87,
+    7.21
+   ],
+   "diff_quiet_ci": [
+    -0.014,
+    0.137
+   ],
+   "lift_quiet_ci": [
+    0.66,
+    6.86
+   ],
+   "auc": 0.731,
+   "auc_quiet": 0.726,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.018,
+     "quiet_null": 0.028,
+     "drop_ci": [
+      0.0,
+      0.093
+     ]
+    },
+    "0.03": {
+     "drop": 0.054,
+     "quiet_null": 0.07,
+     "drop_ci": [
+      0.017,
+      0.175
+     ]
+    },
+    "0.05": {
+     "drop": 0.125,
+     "quiet_null": 0.105,
+     "drop_ci": [
+      0.044,
+      0.288
+     ]
+    },
+    "0.1": {
+     "drop": 0.268,
+     "quiet_null": 0.146,
+     "drop_ci": [
+      0.138,
+      0.419
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.054,
+   "null": 0.005,
+   "quiet_null": 0.004,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 10.8,
+   "lift_quiet": 13.5,
+   "diff_ci": [
+    -0.003,
+    0.104
+   ],
+   "lift_ci": [
+    0.0,
+    33.73
+   ],
+   "diff_quiet_ci": [
+    -0.003,
+    0.107
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    43.66
+   ],
+   "auc": 0.639,
+   "auc_quiet": 0.71,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.089,
+     "quiet_null": 0.013,
+     "drop_ci": [
+      0.0,
+      0.184
+     ]
+    },
+    "0.03": {
+     "drop": 0.214,
+     "quiet_null": 0.02,
+     "drop_ci": [
+      0.094,
+      0.411
+     ]
+    },
+    "0.05": {
+     "drop": 0.321,
+     "quiet_null": 0.039,
+     "drop_ci": [
+      0.16,
+      0.455
+     ]
+    },
+    "0.1": {
+     "drop": 0.357,
+     "quiet_null": 0.076,
+     "drop_ci": [
+      0.207,
+      0.476
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.76,
+    "active": 0.074,
+    "dur": 3.96,
+    "silent_songs": 4
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 4.02,
+    "silent_songs": 16
+   },
+   "impact": {
+    "per_min": 0.86,
+    "active": 0.011,
+    "dur": 0.72,
+    "silent_songs": 5
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.0,
+    "silent_songs": 20
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 2.9,
+    "silent_songs": 16
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.84,
+    "silent_songs": 13
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.357,
+    "null": 0.131,
+    "quiet_null": 0.172,
+    "lift": 2.73,
+    "lift_quiet": 2.08
+   },
+   "rev": {
+    "drop": 0.429,
+    "null": 0.489,
+    "quiet_null": 0.418,
+    "lift": 0.88,
+    "lift_quiet": 1.02
+   },
+   "rev_down": {
+    "drop": 0.107,
+    "null": 0.029,
+    "quiet_null": 0.035,
+    "lift": 3.67,
+    "lift_quiet": 3.07
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.037
+ },
+ "yt_both": {
+  "sources": [
+   "yt"
+  ],
+  "features": "both",
+  "thresholds": [
+   0.04,
+   0.95,
+   0.4,
+   0.9,
+   0.8,
+   0.6
+  ],
+  "riser": {
+   "drop": 0.071,
+   "null": 0.025,
+   "quiet_null": 0.041,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 2.84,
+   "lift_quiet": 1.73,
+   "diff_ci": [
+    -0.021,
+    0.127
+   ],
+   "lift_ci": [
+    0.0,
+    6.5
+   ],
+   "diff_quiet_ci": [
+    -0.042,
+    0.113
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    5.14
+   ],
+   "auc": 0.729,
+   "auc_quiet": 0.701,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.017,
+     "drop_ci": [
+      0.0,
+      0.123
+     ]
+    },
+    "0.03": {
+     "drop": 0.071,
+     "quiet_null": 0.052,
+     "drop_ci": [
+      0.028,
+      0.245
+     ]
+    },
+    "0.05": {
+     "drop": 0.214,
+     "quiet_null": 0.102,
+     "drop_ci": [
+      0.055,
+      0.314
+     ]
+    },
+    "0.1": {
+     "drop": 0.25,
+     "quiet_null": 0.17,
+     "drop_ci": [
+      0.148,
+      0.415
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.002,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": 18.0,
+   "diff_ci": [
+    -0.007,
+    0.091
+   ],
+   "lift_ci": [
+    0.0,
+    26.2
+   ],
+   "diff_quiet_ci": [
+    -0.004,
+    0.092
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    43.8
+   ],
+   "auc": 0.738,
+   "auc_quiet": 0.808,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.011,
+     "drop_ci": [
+      0.0,
+      0.138
+     ]
+    },
+    "0.03": {
+     "drop": 0.179,
+     "quiet_null": 0.024,
+     "drop_ci": [
+      0.075,
+      0.318
+     ]
+    },
+    "0.05": {
+     "drop": 0.232,
+     "quiet_null": 0.041,
+     "drop_ci": [
+      0.12,
+      0.411
+     ]
+    },
+    "0.1": {
+     "drop": 0.429,
+     "quiet_null": 0.076,
+     "drop_ci": [
+      0.245,
+      0.615
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.78,
+    "active": 0.054,
+    "dur": 4.16,
+    "silent_songs": 5
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 3.82,
+    "silent_songs": 14
+   },
+   "impact": {
+    "per_min": 0.65,
+    "active": 0.004,
+    "dur": 0.58,
+    "silent_songs": 6
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.0,
+    "silent_songs": 20
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 9.72,
+    "silent_songs": 18
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 1.82,
+    "silent_songs": 17
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.268,
+    "null": 0.123,
+    "quiet_null": 0.194,
+    "lift": 2.18,
+    "lift_quiet": 1.38
+   },
+   "rev": {
+    "drop": 0.571,
+    "null": 0.551,
+    "quiet_null": 0.431,
+    "lift": 1.04,
+    "lift_quiet": 1.32
+   },
+   "rev_down": {
+    "drop": 0.071,
+    "null": 0.035,
+    "quiet_null": 0.041,
+    "lift": 2.04,
+    "lift_quiet": 1.73
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.076
+ },
+ "yt_mel": {
+  "sources": [
+   "yt"
+  ],
+  "features": "mel",
+  "thresholds": [
+   0.18,
+   0.95,
+   0.58,
+   0.55,
+   0.65,
+   0.6
+  ],
+  "riser": {
+   "drop": 0.143,
+   "null": 0.031,
+   "quiet_null": 0.048,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 4.61,
+   "lift_quiet": 2.98,
+   "diff_ci": [
+    0.001,
+    0.26
+   ],
+   "lift_ci": [
+    1.04,
+    9.52
+   ],
+   "diff_quiet_ci": [
+    -0.019,
+    0.241
+   ],
+   "lift_quiet_ci": [
+    0.63,
+    6.57
+   ],
+   "auc": 0.662,
+   "auc_quiet": 0.566,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.02,
+     "drop_ci": [
+      0.0,
+      0.091
+     ]
+    },
+    "0.03": {
+     "drop": 0.054,
+     "quiet_null": 0.037,
+     "drop_ci": [
+      0.0,
+      0.143
+     ]
+    },
+    "0.05": {
+     "drop": 0.071,
+     "quiet_null": 0.061,
+     "drop_ci": [
+      0.0,
+      0.191
+     ]
+    },
+    "0.1": {
+     "drop": 0.161,
+     "quiet_null": 0.113,
+     "drop_ci": [
+      0.051,
+      0.29
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.006,
+   "quiet_null": 0.011,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 6.0,
+   "lift_quiet": 3.27,
+   "diff_ci": [
+    -0.008,
+    0.1
+   ],
+   "lift_ci": [
+    0.0,
+    22.27
+   ],
+   "diff_quiet_ci": [
+    -0.014,
+    0.09
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    9.32
+   ],
+   "auc": 0.558,
+   "auc_quiet": 0.593,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.011,
+     "drop_ci": [
+      0.0,
+      0.102
+     ]
+    },
+    "0.03": {
+     "drop": 0.054,
+     "quiet_null": 0.039,
+     "drop_ci": [
+      0.0,
+      0.182
+     ]
+    },
+    "0.05": {
+     "drop": 0.125,
+     "quiet_null": 0.061,
+     "drop_ci": [
+      0.052,
+      0.254
+     ]
+    },
+    "0.1": {
+     "drop": 0.232,
+     "quiet_null": 0.094,
+     "drop_ci": [
+      0.102,
+      0.369
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.88,
+    "active": 0.124,
+    "dur": 3.64,
+    "silent_songs": 1
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 5.44,
+    "silent_songs": 18
+   },
+   "impact": {
+    "per_min": 0.41,
+    "active": 0.002,
+    "dur": 0.36,
+    "silent_songs": 6
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.84,
+    "silent_songs": 14
+   },
+   "siren": {
+    "per_min": 0.09,
+    "active": 0.003,
+    "dur": 1.74,
+    "silent_songs": 10
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.92,
+    "silent_songs": 14
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.304,
+    "null": 0.22,
+    "quiet_null": 0.253,
+    "lift": 1.38,
+    "lift_quiet": 1.2
+   },
+   "rev": {
+    "drop": 0.268,
+    "null": 0.425,
+    "quiet_null": 0.499,
+    "lift": 0.63,
+    "lift_quiet": 0.54
+   },
+   "rev_down": {
+    "drop": 0.0,
+    "null": 0.0,
+    "quiet_null": 0.0,
+    "lift": null,
+    "lift_quiet": null
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.054
+ },
+ "both_beats": {
+  "sources": [
+   "gen",
+   "yt"
+  ],
+  "features": "beats",
+  "thresholds": [
+   0.2,
+   0.85,
+   0.54,
+   0.95,
+   0.9,
+   0.9
+  ],
+  "riser": {
+   "drop": 0.179,
+   "null": 0.029,
+   "quiet_null": 0.046,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 6.17,
+   "lift_quiet": 3.89,
+   "diff_ci": [
+    0.04,
+    0.28
+   ],
+   "lift_ci": [
+    2.48,
+    10.98
+   ],
+   "diff_quiet_ci": [
+    0.016,
+    0.263
+   ],
+   "lift_quiet_ci": [
+    1.43,
+    7.84
+   ],
+   "auc": 0.762,
+   "auc_quiet": 0.713,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.024,
+     "drop_ci": [
+      0.0,
+      0.109
+     ]
+    },
+    "0.03": {
+     "drop": 0.054,
+     "quiet_null": 0.044,
+     "drop_ci": [
+      0.0,
+      0.218
+     ]
+    },
+    "0.05": {
+     "drop": 0.143,
+     "quiet_null": 0.076,
+     "drop_ci": [
+      0.027,
+      0.294
+     ]
+    },
+    "0.1": {
+     "drop": 0.321,
+     "quiet_null": 0.157,
+     "drop_ci": [
+      0.154,
+      0.472
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.004,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": 9.0,
+   "diff_ci": [
+    -0.006,
+    0.083
+   ],
+   "lift_ci": [
+    0.0,
+    22.32
+   ],
+   "diff_quiet_ci": [
+    -0.008,
+    0.083
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    34.71
+   ],
+   "auc": 0.699,
+   "auc_quiet": 0.704,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.013,
+     "drop_ci": [
+      0.0,
+      0.159
+     ]
+    },
+    "0.03": {
+     "drop": 0.161,
+     "quiet_null": 0.02,
+     "drop_ci": [
+      0.058,
+      0.317
+     ]
+    },
+    "0.05": {
+     "drop": 0.214,
+     "quiet_null": 0.033,
+     "drop_ci": [
+      0.094,
+      0.411
+     ]
+    },
+    "0.1": {
+     "drop": 0.411,
+     "quiet_null": 0.081,
+     "drop_ci": [
+      0.231,
+      0.557
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.72,
+    "active": 0.071,
+    "dur": 4.06,
+    "silent_songs": 2
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 2.04,
+    "silent_songs": 15
+   },
+   "impact": {
+    "per_min": 0.65,
+    "active": 0.006,
+    "dur": 0.68,
+    "silent_songs": 6
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.0,
+    "silent_songs": 20
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 18.92,
+    "silent_songs": 19
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.9,
+    "silent_songs": 16
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.321,
+    "null": 0.115,
+    "quiet_null": 0.179,
+    "lift": 2.79,
+    "lift_quiet": 1.8
+   },
+   "rev": {
+    "drop": 0.714,
+    "null": 0.759,
+    "quiet_null": 0.71,
+    "lift": 0.94,
+    "lift_quiet": 1.01
+   },
+   "rev_down": {
+    "drop": 0.179,
+    "null": 0.044,
+    "quiet_null": 0.085,
+    "lift": 4.1,
+    "lift_quiet": 2.1
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.082
+ },
+ "both_both": {
+  "sources": [
+   "gen",
+   "yt"
+  ],
+  "features": "both",
+  "thresholds": [
+   0.16,
+   0.95,
+   0.52,
+   0.9,
+   0.7,
+   0.95
+  ],
+  "riser": {
+   "drop": 0.179,
+   "null": 0.031,
+   "quiet_null": 0.037,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 5.77,
+   "lift_quiet": 4.84,
+   "diff_ci": [
+    0.057,
+    0.26
+   ],
+   "lift_ci": [
+    3.22,
+    9.63
+   ],
+   "diff_quiet_ci": [
+    0.047,
+    0.26
+   ],
+   "lift_quiet_ci": [
+    2.16,
+    8.6
+   ],
+   "auc": 0.776,
+   "auc_quiet": 0.696,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.013,
+     "drop_ci": [
+      0.0,
+      0.145
+     ]
+    },
+    "0.03": {
+     "drop": 0.089,
+     "quiet_null": 0.046,
+     "drop_ci": [
+      0.0,
+      0.19
+     ]
+    },
+    "0.05": {
+     "drop": 0.161,
+     "quiet_null": 0.078,
+     "drop_ci": [
+      0.036,
+      0.241
+     ]
+    },
+    "0.1": {
+     "drop": 0.232,
+     "quiet_null": 0.166,
+     "drop_ci": [
+      0.113,
+      0.38
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.0,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": null,
+   "diff_ci": [
+    -0.005,
+    0.072
+   ],
+   "lift_ci": [
+    0.0,
+    17.78
+   ],
+   "diff_quiet_ci": [
+    0.0,
+    0.078
+   ],
+   "lift_quiet_ci": [
+    null,
+    null
+   ],
+   "auc": 0.709,
+   "auc_quiet": 0.785,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.009,
+     "drop_ci": [
+      0.0,
+      0.125
+     ]
+    },
+    "0.03": {
+     "drop": 0.161,
+     "quiet_null": 0.028,
+     "drop_ci": [
+      0.043,
+      0.312
+     ]
+    },
+    "0.05": {
+     "drop": 0.286,
+     "quiet_null": 0.035,
+     "drop_ci": [
+      0.133,
+      0.417
+     ]
+    },
+    "0.1": {
+     "drop": 0.411,
+     "quiet_null": 0.081,
+     "drop_ci": [
+      0.254,
+      0.549
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.7,
+    "active": 0.083,
+    "dur": 4.32,
+    "silent_songs": 1
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 2.36,
+    "silent_songs": 17
+   },
+   "impact": {
+    "per_min": 0.78,
+    "active": 0.007,
+    "dur": 0.62,
+    "silent_songs": 6
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.56,
+    "silent_songs": 18
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 2.06,
+    "silent_songs": 17
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.64,
+    "silent_songs": 18
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.339,
+    "null": 0.138,
+    "quiet_null": 0.222,
+    "lift": 2.46,
+    "lift_quiet": 1.53
+   },
+   "rev": {
+    "drop": 0.804,
+    "null": 0.701,
+    "quiet_null": 0.63,
+    "lift": 1.15,
+    "lift_quiet": 1.28
+   },
+   "rev_down": {
+    "drop": 0.161,
+    "null": 0.023,
+    "quiet_null": 0.05,
+    "lift": 6.89,
+    "lift_quiet": 3.21
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.074
+ },
+ "both_mel": {
+  "sources": [
+   "gen",
+   "yt"
+  ],
+  "features": "mel",
+  "thresholds": [
+   0.18,
+   0.9,
+   0.58,
+   0.8,
+   0.65,
+   0.85
+  ],
+  "riser": {
+   "drop": 0.161,
+   "null": 0.031,
+   "quiet_null": 0.041,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 5.19,
+   "lift_quiet": 3.93,
+   "diff_ci": [
+    0.03,
+    0.236
+   ],
+   "lift_ci": [
+    1.86,
+    9.94
+   ],
+   "diff_quiet_ci": [
+    0.022,
+    0.224
+   ],
+   "lift_quiet_ci": [
+    1.46,
+    8.58
+   ],
+   "auc": 0.705,
+   "auc_quiet": 0.53,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.035,
+     "drop_ci": [
+      0.0,
+      0.111
+     ]
+    },
+    "0.03": {
+     "drop": 0.071,
+     "quiet_null": 0.07,
+     "drop_ci": [
+      0.0,
+      0.173
+     ]
+    },
+    "0.05": {
+     "drop": 0.071,
+     "quiet_null": 0.109,
+     "drop_ci": [
+      0.0,
+      0.206
+     ]
+    },
+    "0.1": {
+     "drop": 0.179,
+     "quiet_null": 0.198,
+     "drop_ci": [
+      0.07,
+      0.293
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.018,
+   "null": 0.005,
+   "quiet_null": 0.009,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 3.6,
+   "lift_quiet": 2.0,
+   "diff_ci": [
+    -0.008,
+    0.055
+   ],
+   "lift_ci": [
+    0.0,
+    13.37
+   ],
+   "diff_quiet_ci": [
+    -0.012,
+    0.049
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    6.81
+   ],
+   "auc": 0.672,
+   "auc_quiet": 0.648,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.0,
+     "quiet_null": 0.009,
+     "drop_ci": [
+      0.0,
+      0.048
+     ]
+    },
+    "0.03": {
+     "drop": 0.143,
+     "quiet_null": 0.044,
+     "drop_ci": [
+      0.043,
+      0.192
+     ]
+    },
+    "0.05": {
+     "drop": 0.161,
+     "quiet_null": 0.063,
+     "drop_ci": [
+      0.086,
+      0.264
+     ]
+    },
+    "0.1": {
+     "drop": 0.304,
+     "quiet_null": 0.098,
+     "drop_ci": [
+      0.16,
+      0.444
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.98,
+    "active": 0.182,
+    "dur": 6.2,
+    "silent_songs": 1
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.82,
+    "silent_songs": 18
+   },
+   "impact": {
+    "per_min": 0.6,
+    "active": 0.004,
+    "dur": 0.4,
+    "silent_songs": 4
+   },
+   "horn": {
+    "per_min": 0.09,
+    "active": 0.001,
+    "dur": 0.68,
+    "silent_songs": 10
+   },
+   "siren": {
+    "per_min": 0.24,
+    "active": 0.039,
+    "dur": 1.8,
+    "silent_songs": 8
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.88,
+    "silent_songs": 18
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.339,
+    "null": 0.232,
+    "quiet_null": 0.373,
+    "lift": 1.46,
+    "lift_quiet": 0.91
+   },
+   "rev": {
+    "drop": 0.393,
+    "null": 0.377,
+    "quiet_null": 0.612,
+    "lift": 1.04,
+    "lift_quiet": 0.64
+   },
+   "rev_down": {
+    "drop": 0.018,
+    "null": 0.005,
+    "quiet_null": 0.013,
+    "lift": 3.32,
+    "lift_quiet": 1.37
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.065
+ },
+ "both_both_hn": {
+  "sources": [
+   "gen",
+   "yt"
+  ],
+  "features": "both",
+  "thresholds": [
+   0.18,
+   0.85,
+   0.58,
+   0.9,
+   0.8,
+   0.9
+  ],
+  "riser": {
+   "drop": 0.089,
+   "null": 0.029,
+   "quiet_null": 0.041,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 3.07,
+   "lift_quiet": 2.17,
+   "diff_ci": [
+    -0.01,
+    0.161
+   ],
+   "lift_ci": [
+    0.64,
+    6.95
+   ],
+   "diff_quiet_ci": [
+    -0.026,
+    0.148
+   ],
+   "lift_quiet_ci": [
+    0.43,
+    5.07
+   ],
+   "auc": 0.751,
+   "auc_quiet": 0.718,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.036,
+     "quiet_null": 0.022,
+     "drop_ci": [
+      0.0,
+      0.113
+     ]
+    },
+    "0.03": {
+     "drop": 0.089,
+     "quiet_null": 0.052,
+     "drop_ci": [
+      0.039,
+      0.17
+     ]
+    },
+    "0.05": {
+     "drop": 0.143,
+     "quiet_null": 0.089,
+     "drop_ci": [
+      0.064,
+      0.226
+     ]
+    },
+    "0.1": {
+     "drop": 0.232,
+     "quiet_null": 0.161,
+     "drop_ci": [
+      0.129,
+      0.36
+     ]
+    }
+   }
+  },
+  "impact": {
+   "drop": 0.036,
+   "null": 0.005,
+   "quiet_null": 0.002,
+   "n_drops": 56,
+   "n_null": 2228,
+   "n_quiet": 459,
+   "lift": 7.2,
+   "lift_quiet": 18.0,
+   "diff_ci": [
+    -0.006,
+    0.083
+   ],
+   "lift_ci": [
+    0.0,
+    22.23
+   ],
+   "diff_quiet_ci": [
+    -0.004,
+    0.086
+   ],
+   "lift_quiet_ci": [
+    0.0,
+    40.01
+   ],
+   "auc": 0.705,
+   "auc_quiet": 0.763,
+   "at_null_rate": {
+    "0.01": {
+     "drop": 0.071,
+     "quiet_null": 0.007,
+     "drop_ci": [
+      0.018,
+      0.156
+     ]
+    },
+    "0.03": {
+     "drop": 0.161,
+     "quiet_null": 0.026,
+     "drop_ci": [
+      0.058,
+      0.274
+     ]
+    },
+    "0.05": {
+     "drop": 0.25,
+     "quiet_null": 0.044,
+     "drop_ci": [
+      0.13,
+      0.327
+     ]
+    },
+    "0.1": {
+     "drop": 0.393,
+     "quiet_null": 0.085,
+     "drop_ci": [
+      0.26,
+      0.549
+     ]
+    }
+   }
+  },
+  "fire": {
+   "riser": {
+    "per_min": 0.72,
+    "active": 0.084,
+    "dur": 4.7,
+    "silent_songs": 5
+   },
+   "downlifter": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 2.24,
+    "silent_songs": 18
+   },
+   "impact": {
+    "per_min": 0.28,
+    "active": 0.002,
+    "dur": 0.68,
+    "silent_songs": 5
+   },
+   "horn": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.6,
+    "silent_songs": 18
+   },
+   "siren": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 4.94,
+    "silent_songs": 17
+   },
+   "revcym": {
+    "per_min": 0.0,
+    "active": 0.0,
+    "dur": 0.82,
+    "silent_songs": 19
+   }
+  },
+  "reversal": {
+   "fwd": {
+    "drop": 0.286,
+    "null": 0.136,
+    "quiet_null": 0.209,
+    "lift": 2.11,
+    "lift_quiet": 1.37
+   },
+   "rev": {
+    "drop": 0.821,
+    "null": 0.696,
+    "quiet_null": 0.597,
+    "lift": 1.18,
+    "lift_quiet": 1.38
+   },
+   "rev_down": {
+    "drop": 0.089,
+    "null": 0.025,
+    "quiet_null": 0.059,
+    "lift": 3.55,
+    "lift_quiet": 1.52
+   }
+  },
+  "share_of_events_within_0.2s_of_5s_multiple": 0.075
+ }
+}

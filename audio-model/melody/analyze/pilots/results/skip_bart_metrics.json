@@ -1,0 +1,563 @@
+{
+ "58e556af6855": {
+  "name": "Acraze - Do It To It",
+  "bpm": 125.0,
+  "frames": 2071,
+  "value": {
+   "mean": 149.1,
+   "std": 56.1,
+   "frame_step": 2.3,
+   "expected_std": 54.7
+  },
+  "drops_sampled": {
+   "drops": [
+    {
+     "time": 15.4,
+     "rise": 6.8,
+     "percentile": 97.0
+    },
+    {
+     "time": 61.5,
+     "rise": 0.7,
+     "percentile": 80.2
+    },
+    {
+     "time": 138.3,
+     "rise": -8.0,
+     "percentile": 22.0
+    }
+   ],
+   "mean_rise": -0.2
+  },
+  "drops_expected": {
+   "drops": [
+    {
+     "time": 15.4,
+     "rise": 7.9,
+     "percentile": 94.6
+    },
+    {
+     "time": 61.5,
+     "rise": 0.7,
+     "percentile": 91.4
+    },
+    {
+     "time": 138.3,
+     "rise": -7.2,
+     "percentile": 22.2
+    }
+   ],
+   "mean_rise": 0.5
+  },
+  "drops_audio_energy": {
+   "drops": [
+    {
+     "time": 15.4,
+     "rise": 60.5,
+     "percentile": 97.0
+    },
+    {
+     "time": 61.5,
+     "rise": 57.4,
+     "percentile": 99.8
+    },
+    {
+     "time": 138.3,
+     "rise": 45.1,
+     "percentile": 89.8
+    }
+   ],
+   "mean_rise": 54.3
+  },
+  "by_section_expected": {
+   "Intro": 129.1,
+   "Build": 150.1,
+   "Drop": 151.1,
+   "Breakdown": 153.5,
+   "Groove": 156.2,
+   "Outro": 139.3
+  },
+  "by_section_audio_energy": {
+   "Intro": 138.5,
+   "Build": 150.6,
+   "Drop": 207.2,
+   "Breakdown": 158.3,
+   "Groove": 210.0,
+   "Outro": 135.0
+  },
+  "corr_with_audio_energy_2s": {
+   "r": 0.4,
+   "percentile_among_time_shifts": 94.0
+  },
+  "beat_sampled": {
+   "acf_at_beat": -0.128,
+   "acf_neighbours_mean": -0.117,
+   "phase_lock": 0.009,
+   "phase_lock_detuned_mean": 0.015,
+   "phase_lock_detuned_max": 0.025
+  },
+  "beat_expected": {
+   "acf_at_beat": -0.078,
+   "acf_neighbours_mean": -0.067,
+   "phase_lock": 0.016,
+   "phase_lock_detuned_mean": 0.017,
+   "phase_lock_detuned_max": 0.027
+  },
+  "beat_audio_energy": {
+   "acf_at_beat": 0.143,
+   "acf_neighbours_mean": -0.061,
+   "phase_lock": 0.192,
+   "phase_lock_detuned_mean": 0.019,
+   "phase_lock_detuned_max": 0.063
+  },
+  "hue": {
+   "boundaries": 8,
+   "boundary_shift_median": 0.2,
+   "random_shift_median": 0.2,
+   "percentile_of_median": 56.5,
+   "share_of_boundaries_above_random_p90": 0.12
+  },
+  "seeds": {
+   "brightness_corr": 0.11,
+   "brightness_corr_shifted_60s": -0.07,
+   "hue_distance": 36.2,
+   "hue_distance_shifted_60s": 36.3
+  }
+ },
+ "fe0b3c607b1b": {
+  "name": "Hardwell - Spaceman",
+  "bpm": 128.0,
+  "frames": 1833,
+  "value": {
+   "mean": 86.4,
+   "std": 37.8,
+   "frame_step": 1.7,
+   "expected_std": 37.2
+  },
+  "drops_sampled": {
+   "drops": [
+    {
+     "time": 30.0,
+     "rise": 0.5,
+     "percentile": 75.2
+    },
+    {
+     "time": 120.0,
+     "rise": 3.8,
+     "percentile": 66.8
+    }
+   ],
+   "mean_rise": 2.1
+  },
+  "drops_expected": {
+   "drops": [
+    {
+     "time": 30.0,
+     "rise": 0.4,
+     "percentile": 79.2
+    },
+    {
+     "time": 120.0,
+     "rise": 3.6,
+     "percentile": 67.2
+    }
+   ],
+   "mean_rise": 2.0
+  },
+  "drops_audio_energy": {
+   "drops": [
+    {
+     "time": 30.0,
+     "rise": 42.1,
+     "percentile": 97.6
+    },
+    {
+     "time": 120.0,
+     "rise": 12.6,
+     "percentile": 81.6
+    }
+   ],
+   "mean_rise": 27.4
+  },
+  "by_section_expected": {
+   "Intro": 85.2,
+   "Build": 88.0,
+   "Drop": 88.7,
+   "Breakdown": 84.8,
+   "Groove": 83.8,
+   "Outro": 91.4
+  },
+  "by_section_audio_energy": {
+   "Intro": 161.6,
+   "Build": 188.7,
+   "Drop": 221.1,
+   "Breakdown": 197.0,
+   "Groove": 219.9,
+   "Outro": 197.7
+  },
+  "corr_with_audio_energy_2s": {
+   "r": 0.2,
+   "percentile_among_time_shifts": 80.7
+  },
+  "beat_sampled": {
+   "acf_at_beat": -0.132,
+   "acf_neighbours_mean": -0.117,
+   "phase_lock": 0.008,
+   "phase_lock_detuned_mean": 0.017,
+   "phase_lock_detuned_max": 0.025
+  },
+  "beat_expected": {
+   "acf_at_beat": -0.032,
+   "acf_neighbours_mean": -0.038,
+   "phase_lock": 0.008,
+   "phase_lock_detuned_mean": 0.021,
+   "phase_lock_detuned_max": 0.045
+  },
+  "beat_audio_energy": {
+   "acf_at_beat": 0.483,
+   "acf_neighbours_mean": 0.122,
+   "phase_lock": 0.351,
+   "phase_lock_detuned_mean": 0.013,
+   "phase_lock_detuned_max": 0.022
+  },
+  "hue": {
+   "boundaries": 5,
+   "boundary_shift_median": 0.6,
+   "random_shift_median": 0.2,
+   "percentile_of_median": 67.7,
+   "share_of_boundaries_above_random_p90": 0.2
+  },
+  "seeds": {
+   "brightness_corr": -0.22,
+   "brightness_corr_shifted_60s": 0.12,
+   "hue_distance": 19.7,
+   "hue_distance_shifted_60s": 19.6
+  }
+ },
+ "8a0e3b75f4a1": {
+  "name": "Charlotte de Witte - Doppler",
+  "bpm": 134.99,
+  "frames": 2770,
+  "value": {
+   "mean": 137.2,
+   "std": 58.7,
+   "frame_step": 4.2,
+   "expected_std": 55.6
+  },
+  "drops_sampled": {
+   "drops": [
+    {
+     "time": 48.9,
+     "rise": 17.8,
+     "percentile": 91.6
+    },
+    {
+     "time": 191.1,
+     "rise": 3.2,
+     "percentile": 78.2
+    },
+    {
+     "time": 248.0,
+     "rise": -1.2,
+     "percentile": 21.0
+    }
+   ],
+   "mean_rise": 6.6
+  },
+  "drops_expected": {
+   "drops": [
+    {
+     "time": 48.9,
+     "rise": 16.2,
+     "percentile": 90.6
+    },
+    {
+     "time": 191.1,
+     "rise": 2.1,
+     "percentile": 78.4
+    },
+    {
+     "time": 248.0,
+     "rise": -0.4,
+     "percentile": 20.4
+    }
+   ],
+   "mean_rise": 6.0
+  },
+  "drops_audio_energy": {
+   "drops": [
+    {
+     "time": 48.9,
+     "rise": 32.7,
+     "percentile": 87.4
+    },
+    {
+     "time": 191.1,
+     "rise": 48.0,
+     "percentile": 100.0
+    },
+    {
+     "time": 248.0,
+     "rise": 3.6,
+     "percentile": 59.8
+    }
+   ],
+   "mean_rise": 28.1
+  },
+  "by_section_expected": {
+   "Intro": 106.9,
+   "Breakdown": 133.9,
+   "Build": 137.1,
+   "Drop": 140.5,
+   "Groove": 140.5,
+   "Outro": 141.8
+  },
+  "by_section_audio_energy": {
+   "Intro": 205.1,
+   "Breakdown": 160.2,
+   "Build": 163.3,
+   "Drop": 204.7,
+   "Groove": 202.7,
+   "Outro": 127.1
+  },
+  "corr_with_audio_energy_2s": {
+   "r": 0.01,
+   "percentile_among_time_shifts": 63.7
+  },
+  "beat_sampled": {
+   "acf_at_beat": -0.116,
+   "acf_neighbours_mean": -0.092,
+   "phase_lock": 0.013,
+   "phase_lock_detuned_mean": 0.011,
+   "phase_lock_detuned_max": 0.024
+  },
+  "beat_expected": {
+   "acf_at_beat": -0.069,
+   "acf_neighbours_mean": -0.065,
+   "phase_lock": 0.014,
+   "phase_lock_detuned_mean": 0.013,
+   "phase_lock_detuned_max": 0.025
+  },
+  "beat_audio_energy": {
+   "acf_at_beat": 0.35,
+   "acf_neighbours_mean": 0.114,
+   "phase_lock": 0.372,
+   "phase_lock_detuned_mean": 0.01,
+   "phase_lock_detuned_max": 0.025
+  },
+  "hue": {
+   "boundaries": 9,
+   "boundary_shift_median": 0.1,
+   "random_shift_median": 0.1,
+   "percentile_of_median": 43.7,
+   "share_of_boundaries_above_random_p90": 0.11
+  },
+  "seeds": {
+   "brightness_corr": -0.05,
+   "brightness_corr_shifted_60s": -0.11,
+   "hue_distance": 41.4,
+   "hue_distance_shifted_60s": 41.4
+  }
+ },
+ "dcb7a7d3e846": {
+  "name": "Darude - Sandstorm",
+  "bpm": 136.1,
+  "frames": 2319,
+  "value": {
+   "mean": 63.0,
+   "std": 38.7,
+   "frame_step": 4.3,
+   "expected_std": 32.1
+  },
+  "drops_sampled": {
+   "drops": [
+    {
+     "time": 28.6,
+     "rise": -0.3,
+     "percentile": 24.4
+    }
+   ],
+   "mean_rise": -0.3
+  },
+  "drops_expected": {
+   "drops": [
+    {
+     "time": 28.6,
+     "rise": 1.3,
+     "percentile": 44.4
+    }
+   ],
+   "mean_rise": 1.3
+  },
+  "drops_audio_energy": {
+   "drops": [
+    {
+     "time": 28.6,
+     "rise": 47.3,
+     "percentile": 97.8
+    }
+   ],
+   "mean_rise": 47.3
+  },
+  "by_section_expected": {
+   "Intro": 55.1,
+   "Breakdown": 44.6,
+   "Build": 43.6,
+   "Drop": 45.4,
+   "Outro": 76.6
+  },
+  "by_section_audio_energy": {
+   "Intro": 64.8,
+   "Breakdown": 92.0,
+   "Build": 125.1,
+   "Drop": 149.7,
+   "Outro": 126.9
+  },
+  "corr_with_audio_energy_2s": {
+   "r": -0.08,
+   "percentile_among_time_shifts": 28.7
+  },
+  "beat_sampled": {
+   "acf_at_beat": -0.132,
+   "acf_neighbours_mean": -0.107,
+   "phase_lock": 0.015,
+   "phase_lock_detuned_mean": 0.02,
+   "phase_lock_detuned_max": 0.036
+  },
+  "beat_expected": {
+   "acf_at_beat": -0.14,
+   "acf_neighbours_mean": -0.114,
+   "phase_lock": 0.009,
+   "phase_lock_detuned_mean": 0.014,
+   "phase_lock_detuned_max": 0.021
+  },
+  "beat_audio_energy": {
+   "acf_at_beat": 0.263,
+   "acf_neighbours_mean": 0.098,
+   "phase_lock": 0.312,
+   "phase_lock_detuned_mean": 0.015,
+   "phase_lock_detuned_max": 0.026
+  },
+  "hue": {
+   "boundaries": 6,
+   "boundary_shift_median": 0.0,
+   "random_shift_median": 0.0,
+   "percentile_of_median": 0.0,
+   "share_of_boundaries_above_random_p90": 0.0
+  },
+  "seeds": {
+   "brightness_corr": 0.52,
+   "brightness_corr_shifted_60s": -0.3,
+   "hue_distance": 39.2,
+   "hue_distance_shifted_60s": 39.2
+  }
+ },
+ "6a67050f048d": {
+  "name": "Mika Heggemann - Bae If You Need Me (feat. Claudia Yang)",
+  "bpm": 150.0,
+  "frames": 1740,
+  "value": {
+   "mean": 79.4,
+   "std": 23.0,
+   "frame_step": 1.4,
+   "expected_std": 23.1
+  },
+  "drops_sampled": {
+   "drops": [
+    {
+     "time": 45.6,
+     "rise": -0.4,
+     "percentile": 34.4
+    },
+    {
+     "time": 119.2,
+     "rise": 0.8,
+     "percentile": 100.0
+    }
+   ],
+   "mean_rise": 0.2
+  },
+  "drops_expected": {
+   "drops": [
+    {
+     "time": 45.6,
+     "rise": -0.3,
+     "percentile": 40.2
+    },
+    {
+     "time": 119.2,
+     "rise": 1.1,
+     "percentile": 99.8
+    }
+   ],
+   "mean_rise": 0.4
+  },
+  "drops_audio_energy": {
+   "drops": [
+    {
+     "time": 45.6,
+     "rise": 42.4,
+     "percentile": 99.2
+    },
+    {
+     "time": 119.2,
+     "rise": 28.9,
+     "percentile": 82.8
+    }
+   ],
+   "mean_rise": 35.6
+  },
+  "by_section_expected": {
+   "Intro": 82.8,
+   "Breakdown": 79.9,
+   "Build": 79.2,
+   "Drop": 79.8,
+   "Groove": 77.8
+  },
+  "by_section_audio_energy": {
+   "Intro": 199.4,
+   "Breakdown": 189.9,
+   "Build": 183.1,
+   "Drop": 222.9,
+   "Groove": 220.8
+  },
+  "corr_with_audio_energy_2s": {
+   "r": -0.38,
+   "percentile_among_time_shifts": 0.0
+  },
+  "beat_sampled": {
+   "acf_at_beat": -0.127,
+   "acf_neighbours_mean": -0.103,
+   "phase_lock": 0.007,
+   "phase_lock_detuned_mean": 0.017,
+   "phase_lock_detuned_max": 0.026
+  },
+  "beat_expected": {
+   "acf_at_beat": -0.046,
+   "acf_neighbours_mean": -0.029,
+   "phase_lock": 0.021,
+   "phase_lock_detuned_mean": 0.017,
+   "phase_lock_detuned_max": 0.033
+  },
+  "beat_audio_energy": {
+   "acf_at_beat": 0.046,
+   "acf_neighbours_mean": -0.009,
+   "phase_lock": 0.042,
+   "phase_lock_detuned_mean": 0.019,
+   "phase_lock_detuned_max": 0.036
+  },
+  "hue": {
+   "boundaries": 7,
+   "boundary_shift_median": 0.2,
+   "random_shift_median": 0.1,
+   "percentile_of_median": 70.3,
+   "share_of_boundaries_above_random_p90": 0.29
+  },
+  "seeds": {
+   "brightness_corr": 0.26,
+   "brightness_corr_shifted_60s": -0.05,
+   "hue_distance": 36.0,
+   "hue_distance_shifted_60s": 36.0
+  }
+ }
+}
