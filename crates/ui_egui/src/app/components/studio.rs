@@ -355,28 +355,20 @@ fn paint_mini(
 }
 
 /// The page bar's Blackout (`.okblack`, 059): always filled red with white
-/// text, [`TARGET_SHOW`] tall, and a white 2px inset ring while Grand Master
-/// is at 0.
+/// text, [`TARGET_SHOW`] tall. It reads "Restore" while Grand Master is at 0
+/// (`blk()` in the mockup) and "Blackout" otherwise.
 pub fn blackout_button(ui: &mut Ui, on: bool) -> Response {
     const RED: Color32 = Color32::from_rgb(0xb8, 0x0f, 0x0f);
     const RED_HI: Color32 = Color32::from_rgb(0xd4, 0x0f, 0x0f);
     let t = studio(ui.ctx());
     let f = font(ui, Weight::Regular, TEXT);
-    let label = "Blackout";
+    let label = if on { "Restore" } else { "Blackout" };
     let w = text_width(ui, label, f.clone()) + 16.0;
     let (rect, response) = ui.allocate_exact_size(vec2(w, TARGET_SHOW), Sense::click());
     let fill = if response.hovered() { RED_HI } else { RED };
     let color = Color32::WHITE;
     let p = ui.painter();
     p.rect_filled(rect, 0.0, fill);
-    if on {
-        p.rect_stroke(
-            rect,
-            0.0,
-            Stroke::new(2.0_f32, Color32::WHITE),
-            StrokeKind::Inside,
-        );
-    }
     if response.has_focus() {
         p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, t.blue), StrokeKind::Inside);
     }

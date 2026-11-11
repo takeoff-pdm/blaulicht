@@ -1,0 +1,2 @@
+
+- Review fix: the Programmer page-bar button now reads "Restore" while Grand Master is 0 and "Blackout" otherwise, as `blk()` does in the mockup; the white inset ring is gone because the mockup never sets `.okblack.on` there. Checked in blenv desktop screenshots (both states). Kiosk Programmer is unchanged: the page bar is drawn only on the desktop density. Ran rustfmt on the changed file, plus clippy and tests for blaulicht-ui-egui (0 errors, 130 passed) inside blenv.
