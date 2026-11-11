@@ -42,6 +42,7 @@ pub mod pages;
 mod plugin_ui;
 mod popup;
 mod startup;
+mod studio_showcase;
 mod theme;
 mod ui;
 pub mod ui_tokens;

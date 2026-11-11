@@ -217,10 +217,8 @@ impl eframe::App for BlaulichtApp {
             {
                 if let Some(model) = &column.debug_data.beat_tracker.model {
                     let (beat, downbeat) = model_peak.unwrap_or_default();
-                    model_peak = Some((
-                        beat.max(model.beat_peak),
-                        downbeat.max(model.downbeat_peak),
-                    ));
+                    model_peak =
+                        Some((beat.max(model.beat_peak), downbeat.max(model.downbeat_peak)));
                 }
             }
             if let Some(last) = audio_data.columns.back() {
@@ -260,7 +258,14 @@ impl BlaulichtApp {
                 // First, so it spans the window under the sidebar.
                 self.show_desktop_status_bar(ui);
                 self.show_desktop_sidebar(ui);
-                egui::CentralPanel::default().show_inside(ui, |ui| self.main_page_ui(ui, ctx));
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    // Desktop only: the studio components showcase (058).
+                    if crate::app::studio_showcase::showcase_open(ctx) {
+                        crate::app::studio_showcase::showcase_ui(ui);
+                    } else {
+                        self.main_page_ui(ui, ctx);
+                    }
+                });
             }
         }
 

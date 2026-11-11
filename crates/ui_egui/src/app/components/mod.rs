@@ -22,6 +22,7 @@ mod selection_dialog;
 mod spectrogram;
 mod speed_knob;
 mod status_bar;
+pub mod studio;
 mod switch;
 mod text;
 mod text_input;
