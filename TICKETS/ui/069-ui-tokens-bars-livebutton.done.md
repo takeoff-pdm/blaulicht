@@ -23,8 +23,8 @@ The mockups settled several shared looks after 058 was written: 40px page bars a
 - The kiosk layout (`Density::Compact`) stays unchanged.
 
 ## Acceptance criteria
-- [ ] Matches the mockup at the same window size, both themes.
-- [ ] Every component above appears on at least one ported page in both themes.
+- [x] Matches the mockup at the same window size, both themes.
+- [x] Every component above appears on at least one ported page in both themes.
 - [x] A lit button keeps its width when toggled.
 
 ## Verification
@@ -75,3 +75,34 @@ The mockups settled several shared looks after 058 was written: 40px page bars a
     top row and the number scrub are only on the studio showcase, Identify only exists in the showcase (078), and
     the Setup/Programmer pages are far from `setup.html`/`programmer.html` until 075/080. Either close these
     criteria in those tickets or narrow them here; that is the user's call.
+- Second review fixes (2026-11-12), ticket closed:
+  - Setup › Fixtures is now ported on the desktop (`pages/setup/fixtures/desktop.rs`, called only when
+    `Density::of(ctx).is_compact()`, i.e. the desktop; the kiosk is `Density::Touch` and keeps its layout). Layout
+    as `setup.html` at 1500x950: Groups pane 210px, centre pane, Fixture pane 300px, 1px gutters, studio greys
+    (gutter 0x141516, list 0x17181a, pane 0x252628) instead of the navy page background.
+  - Page bar: muted "Selected group:" then the group name, the fixture count, and `Add fixture` / `Overrides` /
+    `Simulate` as 28px mini buttons 2px apart on the right. The kiosk toolbar keeps its labels; both call the
+    same `toggle_add_fixture` / `toggle_dmx_overrides` now.
+  - Pane headers: 40px `pane_header` "Groups" and "Fixture" (title-bar grey) on the real page.
+  - Group tree: full pane width, folder bands (`folder_band`) and member rows (`ListRow` with fixture count, tree
+    line, hairline). Folders sort by `(order, id)`, so the SOLI show reads STAGE, REST, BAR-WAIT, FOG, HEX like the
+    mockup. This is desktop only; Setup › Groups and the kiosk still sort by `(order, name)`. Unfiled groups
+    (LAMPS-OLD) come last; the mockup draws it under HEX, the showfile has it unfiled. Collapse state is shared
+    with Setup › Groups (`SETUP_GROUP_TREE`).
+  - Centre: filter field and the fixture table (Fixture, Type, Universe, Channels, Ch) like the mockup.
+  - Fixture pane: the editor with scrubbing `num_field`s (start address, universe, position, rotation; Save
+    applies), lit `Initialize`, Move up/down, Move to group, Show in Visualizer, Delete.
+  - Scrub, checked in blenv with xdotool press/move/release on the real page: +80px = +2.0 at step 0.1, with
+    Shift +0.2, Esc during a drag restores the start value. Esc did not work before: egui aborts the drag on Esc,
+    so `dragged()` was already false in that frame; `num_field` now checks Esc for any running scrub. Click, type
+    45, Enter edits a field.
+  - Light theme checked on the real page (bands, rows, page bar, lit Initialize with red dot).
+  - Identify: the lit button component is on real pages (Setup Fixtures Initialize, Programmer Exclusive preview).
+    Identify itself needs an engine command and is ticket 078. Dropdown folder groups: there is no dropdown yet
+    (071); it will reuse `folder_band`.
+  - Kiosk re-run: built 455b4cb (detached checkout in this worktree) and c5a43d5, 800x480, SPARTACUS_SOLI,
+    Setup and Programmer: 0 differing pixels.
+  - Still different from the mockup, outside this ticket: the desktop sidebar (200px, navy) and the status bar
+    belong to the shell (074, 084/085).
+  - Checks in the blenv container, `-p blaulicht-ui-egui`, CARGO_BUILD_JOBS=4: rustfmt clean on the touched files,
+    clippy no warning in `fixtures/desktop.rs` or `studio.rs` (pre-existing warnings elsewhere), tests 131 passed.
