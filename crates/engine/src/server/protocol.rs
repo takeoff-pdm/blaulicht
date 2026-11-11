@@ -12,8 +12,8 @@
 //!    ([`Encoding::Json`]).
 //! 3. The server answers [`ServerMessage::Welcome`] with the client's
 //!    [`ClientId`] and its own new operator [`SessionId`], or
-//!    [`ServerMessage::Rejected`] (wrong [`PROTOCOL_VERSION`], too many
-//!    clients) and closes the connection.
+//!    [`ServerMessage::Rejected`] (wrong [`PROTOCOL_VERSION`], missing or wrong
+//!    passcode, too many clients) and closes the connection.
 //! 4. Then the server sends, as things change: the show state
 //!    ([`ServerMessage::Show`]), the stage ([`ServerMessage::Stage`]), the
 //!    client's session ([`ServerMessage::Session`]), every system message
@@ -52,6 +52,7 @@
 
 use std::{
     collections::{BTreeSet, HashMap},
+    net::SocketAddr,
     path::PathBuf,
     sync::Arc,
 };
@@ -73,7 +74,7 @@ use crate::{
 
 /// The protocol version a client states in [`ClientMessage::Hello`]. The
 /// server rejects any other.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// How the messages of one connection are encoded; chosen by the frame type
 /// of the client's [`ClientMessage::Hello`].
@@ -166,6 +167,9 @@ pub enum ClientMessage {
     Hello {
         protocol_version: u32,
         streams: Vec<Stream>,
+        /// The engine's passcode, if it has one (`server_passcode` in
+        /// `config.toml`). Sent as is: the connection is not encrypted.
+        passcode: Option<String>,
     },
     /// A command in the client's session: a `ControlEvent` (also forwarded to
     /// plugins) or a `HostCommand`. `seq` is the client's own number for it;
@@ -238,6 +242,8 @@ pub enum ServerMessage {
     Rejected {
         protocol_version: u32,
         reason: String,
+        /// The passcode was missing or wrong: ask for it rather than retry.
+        passcode_required: bool,
     },
     /// The show state, sent when it changed, at most 10 times a second.
     Show(ShowSnapshot),
@@ -401,6 +407,36 @@ pub struct EngineStatus {
     pub artnet_receivers: Vec<ArtNetReceiver>,
     pub plugins: HashMap<u8, PluginState>,
     pub plugin_runtime_kinds: HashMap<u8, PluginRuntimeKind>,
+    pub remote_server: RemoteServerStatus,
+}
+
+/// The websocket server's settings and connected clients.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RemoteServerStatus {
+    /// Whether it accepts connections (the setting).
+    pub enabled: bool,
+    /// Where it listens right now.
+    pub listening: Option<SocketAddr>,
+    /// Why it can't listen, if it can't.
+    pub error: Option<String>,
+    pub passcode_set: bool,
+    /// The passcode, for the desk. Never leaves the engine.
+    #[serde(skip)]
+    pub passcode: Option<String>,
+    pub max_clients: u32,
+    pub sessions: Vec<RemoteSessionInfo>,
+}
+
+/// One connected remote client.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RemoteSessionInfo {
+    pub client: ClientId,
+    pub session: SessionId,
+    pub peer: SocketAddr,
+    pub connected_secs: u64,
+    pub sent_bytes: u64,
+    /// Its socket takes no more data right now.
+    pub backlogged: bool,
 }
 
 impl Default for EngineStatus {
@@ -412,6 +448,7 @@ impl Default for EngineStatus {
             artnet_receivers: Vec::new(),
             plugins: HashMap::new(),
             plugin_runtime_kinds: HashMap::new(),
+            remote_server: RemoteServerStatus::default(),
         }
     }
 }

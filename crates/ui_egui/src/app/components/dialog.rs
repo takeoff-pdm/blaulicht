@@ -365,7 +365,7 @@ impl Dialog {
 /// frame; the desktop (Compact density) uses the Console `surface` with a
 /// hairline border, the window radius and a soft shadow. The inner margin is
 /// the same, so dialog sizes stay valid.
-fn dialog_frame(ctx: &egui::Context) -> Frame {
+pub(crate) fn dialog_frame(ctx: &egui::Context) -> Frame {
     let color = ui_tokens::palette(ctx);
     use crate::app::ui_tokens::{self, Density};
     if Density::of(ctx).is_compact() {

@@ -1,38 +1,36 @@
-# 038 — Remaining pages in the Console style
+# 038 — Remaining desktop pages in the studio style
 
 | | |
 |---|---|
 | Epic | E9 Console UI |
-| Depends on | 033, 034, 035 |
+| Depends on | 058, 059 |
 | ABI / showfile | none |
 
-**Touches:** `crates/ui_egui/src/app/pages/system/*`, `audio.rs`, `view.rs`, `view_perf.rs`, `scene_graph.rs`, `visualizer/ui.rs`, `crates/ui_egui/src/app/plugin_ui.rs` (chrome only), `components/log.rs`
+**Touches:** `app/pages/system/*`, `audio.rs`, `view.rs`, `view_perf.rs`, `scene_graph.rs`, `visualizer/ui.rs`, `app/plugin_ui.rs`, `app/components/desktop_nav.rs`, `navbar.rs`
 
 ## Problem
-After 036 and 037 the other pages still use the old buttons, literals and dialogs. The design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) applies to every page.
+The other desktop pages should follow the agreed studio design.
 
 ## Scope
-- Move System tabs, Audio, View, View Performance, Scene graph, Logs and the visualizer's controls to PageHeader, ListRow, Button variants and the overlay component.
-- Remove remaining colour and size literals from these pages; leave the visualizer's 3D rendering colours alone (they are data).
-- Plugin UI windows: frame and title in the Console style; plugin content is untouched.
-- If this is too big for one session, split it per page as `TICKETS/README.md` describes.
+- General: Engine, About, Show, Problems with named actions, Patch, Application with Shut down set apart.
+- Plugins: list with Reload on crash, and the plugin UI embedded with a Pop out button.
+- MIDI & Serial, with Reconnect. Screens, Remote UI (turning access off warns about dropped clients), Logs, Audio.
+- Views (renamed from Scene Stacks on 2026-11-11) and Perform on the original layouts, with Grand Master, Set to 100% and Blackout spaced apart. Removing an overlay takes two presses.
+- Scene Graph and Visualizer controls. Leave 3D rendering and plugin-drawn content alone.
+- Renames as in `RULES.md`, with the sidebar heading "Live". Check page names in `crates/shared/src/page/` still parse, and append rather than reorder any enum.
+- Split per page if too big.
 
 ## Out of scope
-- Visualizer rendering, plugin-drawn content.
-
-## Key code
-- Page files — `crates/ui_egui/src/app/pages/`
-- Plugin windows — `crates/ui_egui/src/app/plugin_ui.rs`
+- DMX and Art-Net (062). The kiosk.
 
 ## Acceptance criteria
-- [ ] No page uses `ButtonSize` or the old `Dialog` frame colours.
-- [ ] `rg 'Color32::from_rgb|vec2\(' crates/ui_egui/src/app/pages` shows only data colours and intentional layout values, each with a comment.
+- [ ] Each problem has an action that reaches the fix.
+- [ ] A crashed plugin can be reloaded from General and Plugins.
+- [ ] Remote UI off warns and asks first.
 
 ## Verification
-- `cargo clippy --workspace --all-targets --all-features`, `cargo fmt --all --check` and `cargo test --workspace --all-features` are clean (run them in the blenv container).
-- Follow the `blaulicht-env` skill: run the app in blenv (`scripts/blenv run` and `run --desktop`), drive it with real clicks, and look at every screenshot yourself. Take before and after shots; keep them in `.blenv/shots/` and never commit them.
-- Compare against the design system's component previews and rules (Blaulicht Console, linked under Problem).
-- Before and after screenshots of each converted page at 800 × 480 and on desktop.
+- `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
+- UI: run with `--desktop` via `scripts/blenv` and compare screenshots against the mockup, in dark and light theme, at 1280x800 and 2560x1440. Confirm the 800x480 kiosk is unchanged.
 
 ## Notes
-<!-- Implementation notes, decisions, and follow-ups found while working. Keep this updated before renaming to .done.md. -->
+Mockups: `system.html`, `pages.html`. The Visualizer mockup is a 2D stand-in, so judge it against the real page. Remaining dummy actions in the mockup keep their current app behaviour.

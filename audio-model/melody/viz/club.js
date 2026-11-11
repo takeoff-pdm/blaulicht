@@ -57,7 +57,8 @@ RectAreaLightUniformsLib.init();
 const lab = window.MelodyLab;
 const host = document.getElementById("club");
 const hud = document.getElementById("clubhud");
-const opts = { strobes: true, smoke: "both", look: "club", dejavu: false, burn: false, countdown: false };
+const opts = { strobes: true, smoke: "both", look: "club", dejavu: false, burn: false, countdown: false, map: 0 };
+let syncMaps = () => {};  // the Human Lighter's map menu, when a new song loads
 document.getElementById("strobes").addEventListener("change", (e) => { opts.strobes = e.target.checked; });
 document.getElementById("smoke").addEventListener("change", (e) => { opts.smoke = e.target.value; });
 // the look (club_looks.mjs) and its toggles, remembered per browser. The A/B page has none of these controls and stays on Club.
@@ -67,7 +68,25 @@ document.getElementById("smoke").addEventListener("change", (e) => { opts.smoke 
   const sel = document.getElementById("look"), about = document.getElementById("lookabout");
   if (sel) {
     sel.innerHTML = LOOK_LIST.map((l) => `<option value="${l.id}" title="${l.about}">${l.name}</option>`).join("");
-    const say = () => { const l = LOOK_LIST.find((x) => x.id === sel.value); opts.look = l.id; if (about) about.textContent = l.about; };
+    const pick = document.getElementById("humanpick"), mapSel = document.getElementById("lookmap"), songSel = document.getElementById("looksong");
+    const say = () => { const l = LOOK_LIST.find((x) => x.id === sel.value); opts.look = l.id; if (about) about.textContent = l.about; if (pick) pick.style.display = l.id === "human" ? "inline-flex" : "none"; };
+    if (pick) {
+      const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+      fetch("/api/lightshows").then((r) => r.json()).then((list) => {
+        songSel.innerHTML = `<option value="">Songs with a map (${list.length})</option>` + list.map((s) => `<option value="${s.id}">${esc(s.name)}${s.maps > 1 ? ` (${s.maps} maps)` : ""}</option>`).join("");
+        if (lab.state.song) songSel.value = list.some((s) => s.id === lab.state.song.id) ? lab.state.song.id : "";
+      }).catch(() => {});
+      songSel.addEventListener("change", () => { if (songSel.value) window.loadSong(songSel.value); });
+      mapSel.addEventListener("change", () => { opts.map = +mapSel.value || 0; });
+      // the fit numbers: how the map's activity follows our loudness, first and second half; low or negative can mean it has drifted from our version
+      syncMaps = (song) => {
+        const maps = (song.lightshow || {}).maps || [];
+        opts.map = 0;
+        mapSel.innerHTML = maps.map((m, i) => `<option value="${i}" title="Follows the loudness ${m.fit[0]} then ${m.fit[1]}; covers ${Math.round(100 * Math.min(1, m.cover_share))}% of the song">Map ${m.map}${m.curated ? ", curated" : ""}${m.fit.some((x) => x != null && x < 0) ? ", may have drifted" : ""}</option>`).join("");
+        mapSel.style.display = maps.length > 1 ? "" : "none";
+        if ([...songSel.options].some((o) => o.value === song.id)) songSel.value = song.id; else songSel.value = "";
+      };
+    }
     if (LOOK_LIST.some((l) => l.id === kept("look"))) sel.value = kept("look");
     sel.addEventListener("change", () => { say(); keep("look", sel.value); });
     say();
@@ -304,7 +323,7 @@ function prepare(song) {
   return P;
 }
 
-// The show compiler's cues (viz/show_compile.py, from the offline analyzers), where a song has them:
+// The show compiler's cues (pipeline/show_compile.py, from the offline analyzers), where a song has them:
 //   pulses    the separated kick and snare drive the pulse (snares a little softer), hi-hats a rope
 //             sparkle, all checked against ADTOF's transcription; without DrumSep the drums stem's
 //             onsets stay;
@@ -969,7 +988,7 @@ function applyShow(S) {
   // always gets the same colours) or, outside hooks, per music change, and on chord changes
   const base = P.palette, look = (S.hook >= 0 ? S.hook : S.part >= 0 ? S.part : S.seg) + S.rootLead;
   const pal = look % 2 ? { ...base, primary: base.secondary, secondary: base.primary } : base;
-  const D = frame(P, S, desk, { look: opts.look, dejavu: opts.dejavu, burn: opts.burn, countdown: opts.countdown, pal, flash: FLASH });
+  const D = frame(P, S, desk, { look: opts.look, dejavu: opts.dejavu, burn: opts.burn, countdown: opts.countdown, map: opts.map, pal, flash: FLASH });
   // during the blackout and while the drop strobes, the VP1s are the only light in the room
   const dark = D.dark;
   ambient.intensity = dark ? 0 : 0.6 * D.ambient;
@@ -1105,7 +1124,7 @@ function loop(now) {
   if (dt > 0) frameDt += 0.05 * (dt - frameDt);
   updateWalker(dt);
   const song = lab.state.song;
-  if (song && song.id !== lastSongId) { P = prepare(song); lastSongId = song.id; }
+  if (song && song.id !== lastSongId) { P = prepare(song); lastSongId = song.id; syncMaps(song); }
   if (song && P) {
     if (fogHeld) fireFog(P, lab.analysisTime());
     // the frame drawn now reaches the screen about one frame later: show that moment
@@ -1118,5 +1137,5 @@ function loop(now) {
 requestAnimationFrame(loop);
 window.MelodyLab.club = { showAt: (t, p = P) => p && showAt(p, t), prepare, walker, setView,
   // for checks from the browser console: every fixture value of a frame
-  debug: { applyShow, desk, get P() { return P; }, set P(v) { P = v; }, opts,
+  debug: { applyShow, desk, get P() { return P; }, set P(v) { P = v; }, opts, draw: () => composer.render(), canvas: renderer.domElement,
     fixtures: { ambient, barLight, barLed, tubes, ups, spill, strip, stripLight, ceil, coves, vp1, flashLight, djSpot, smokeMat } } };

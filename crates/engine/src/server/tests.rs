@@ -262,6 +262,7 @@ fn a_stalled_client_neither_blocks_the_engine_nor_grows_without_bound() {
         &ClientMessage::Hello {
             protocol_version: PROTOCOL_VERSION,
             streams: Stream::ALL.to_vec(),
+            passcode: None,
         },
     );
     let stalled_info = || {
@@ -422,6 +423,7 @@ fn a_client_of_another_protocol_version_is_rejected() {
         &ClientMessage::Hello {
             protocol_version: PROTOCOL_VERSION + 1,
             streams: Vec::new(),
+            passcode: None,
         },
     );
     let reply = loop {
@@ -436,6 +438,7 @@ fn a_client_of_another_protocol_version_is_rejected() {
         ServerMessage::Rejected {
             protocol_version,
             reason,
+            ..
         } => {
             assert_eq!(protocol_version, PROTOCOL_VERSION);
             assert!(reason.contains("not supported"), "{reason}");
@@ -869,4 +872,107 @@ fn the_port_serves_large_files_to_slow_readers() {
     assert!(answer.starts_with(b"HTTP/1.1 200"));
     assert_eq!(answer.len() - split, wasm.len(), "the whole file arrives");
     assert!(answer[split..] == wasm[..]);
+}
+
+#[test]
+fn a_passcode_keeps_out_clients_without_it() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    engine
+        .app()
+        .set_remote_access(true, Some(" 1234 ".to_string()));
+
+    let none = RemoteClient::connect(server.local_addr(), &[])
+        .err()
+        .unwrap();
+    assert!(format!("{none:#}").contains("needs a passcode"), "{none:#}");
+    let wrong =
+        RemoteClient::connect_with_passcode(server.local_addr(), &[], Some("nope".to_string()))
+            .err()
+            .unwrap();
+    assert!(format!("{wrong:#}").contains("Wrong passcode"), "{wrong:#}");
+
+    let right =
+        RemoteClient::connect_with_passcode(server.local_addr(), &[], Some("1234".to_string()))
+            .expect("the right passcode connects");
+    assert!(right.is_connected());
+
+    // Changing it disconnects whoever was admitted under the old one.
+    engine
+        .app()
+        .set_remote_access(true, Some("5678".to_string()));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while right.is_connected() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!right.is_connected());
+}
+
+#[test]
+fn turning_remote_access_off_closes_the_port_and_on_reopens_it() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    let addr = server.local_addr();
+    let remote = RemoteClient::connect(addr, &[]).expect("connect");
+
+    engine.app().set_remote_access(false, None);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while (remote.is_connected() || TcpStream::connect(addr).is_ok()) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!remote.is_connected());
+    assert!(TcpStream::connect(addr).is_err());
+
+    engine.app().set_remote_access(true, None);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while TcpStream::connect(addr).is_err() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    RemoteClient::connect(addr, &[]).expect("connects again on the same port");
+}
+
+#[test]
+fn the_status_lists_sessions_but_never_the_passcode() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    engine
+        .app()
+        .set_remote_access(true, Some("1234".to_string()));
+    let remote = RemoteClient::connect_with_passcode(
+        server.local_addr(),
+        &[Stream::Status],
+        Some("1234".to_string()),
+    )
+    .expect("connect");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while remote.with_remote_server(|status| status.sessions.is_empty())
+        && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    remote.with_remote_server(|status| {
+        assert_eq!(status.sessions.len(), 1);
+        assert_eq!(status.sessions[0].client, remote.client());
+        assert!(status.passcode_set);
+        assert_eq!(status.passcode, None);
+    });
+}
+
+#[test]
+fn remote_access_settings_are_refused_from_a_remote_client() {
+    let mut engine = TestEngine::start(small_rig);
+    let server = engine.start_server(loopback());
+    let remote = connect(&mut engine, &server, &[]);
+    let outcome = round_trip(
+        &mut engine,
+        &remote,
+        BusBody::Host(HostCommand::SetRemoteAccess {
+            enabled: false,
+            passcode: None,
+        }),
+    );
+    assert_eq!(
+        outcome,
+        CommandOutcome::Refused(DESK_ONLY_REFUSAL.to_string())
+    );
 }

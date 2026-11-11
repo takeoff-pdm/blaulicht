@@ -1,0 +1,60 @@
+/* Setup pages: same panes as System. Tree, list, editor. */
+.tri { display: grid; gap: var(--gap); min-height: 0; grid-template-columns: 210px minmax(0, 1fr) 300px; }
+.duo { display: grid; gap: var(--gap); min-height: 0; grid-template-columns: 240px minmax(0, 1fr); }
+.row.leaf .v, .row.folder .v { font-size: 12px; }
+.frm { padding: 8px; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px 8px; align-items: center; }
+.frm label { color: var(--muted); font-size: 12px; }
+.frm input, .frm select { height: 24px; width: 100%; min-width: 0; background: var(--well); border: 1px solid var(--line); color: var(--strong); padding: 0 6px; font: 13px Plex, sans-serif; user-select: text; }
+.frm input.num { font: 12px PlexMono, monospace; }
+.frm .xyz { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.frm h4 { grid-column: 1 / -1; font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.msg { grid-column: 1 / -1; font-size: 12px; padding: 5px 8px; background: var(--well); }
+.msg.w { color: var(--warn); box-shadow: inset 2px 0 0 var(--warn); }
+.msg.o { color: var(--muted); box-shadow: inset 2px 0 0 var(--ok); }
+.wave { display: block; width: 100%; height: 150px; background: var(--well); }
+.wave polyline { fill: none; stroke: var(--data); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.wave line { stroke: var(--line); vector-effect: non-scaling-stroke; }
+.pad2 { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.swatch { height: 90px; box-shadow: inset 0 0 0 1px var(--line); }
+.rows tr.on td { background: var(--blue-dim); color: var(--strong); }
+.rows tr.sl { cursor: pointer; }
+.rows tr.warn td { color: var(--warn); }
+.confirm { color: var(--red); }
+/* Fixture position: plan view and labelled X/Y/Z fields. */
+.frm .fxplan { grid-column: 1 / -1; display: grid; gap: 4px; }
+.fxp-bar { display: flex; align-items: center; gap: 8px; } .fxp-bar small { color: var(--muted); font-size: 11px; margin-left: auto; }
+.fxp-seg { display: inline-flex; gap: 2px; } .fxp-seg .mini { height: 22px; padding: 0 8px; } .fxp-seg .mini.on { background: var(--blue-dim); color: var(--strong); }
+.fxp { width: 100%; height: auto; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); touch-action: none; }
+.fxp circle { fill: var(--scale); cursor: pointer; } .fxp circle.same { fill: var(--text); }
+.fxp circle.sel { fill: var(--blue); stroke: var(--strong); stroke-width: 1.5; cursor: grab; }
+.fxp .ax { stroke: var(--line); stroke-dasharray: 2 3; }
+.fxp .lbl { fill: var(--strong); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--well); stroke-width: 3px; }
+.fxp .axl { fill: var(--muted); font-size: 11px; pointer-events: none; }
+.frm .xyzc { display: grid; gap: 2px; min-width: 0; } .frm .xyzc small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frm .xyz { align-items: start; }
+.fxchn { display: flex; align-items: center; gap: 8px; } .fxchn #fxident { margin-left: auto; height: 24px; }
+.fxp-bar .fxp-open { margin-left: auto; }
+.fxp-seg .mini.ic, .fxp-bar .mini.ic { width: 24px; height: 22px; padding: 0; display: grid; place-items: center; font-size: 13px; }
+.fxp .gr { stroke: var(--hair); } .fxp .gr.ax { stroke: var(--line); stroke-dasharray: 3 3; }
+.fxp .nm { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--well); stroke-width: 3px; }
+.fxp { cursor: grab; } .fxp:active { cursor: grabbing; }
+.dlg.fxp-dlg { width: 900px; } .fxp-dlg .dlgb { gap: 8px; } .fxplan-big { display: grid; gap: 6px; }
+.fxp-dlg .fxp-fields { padding: 0; }
+.fxp.large { display: block; width: 100%; height: auto; max-height: calc(100vh - 230px); } .dlg.fxp-dlg { max-height: calc(100vh - 32px); overflow: auto; }
+.frm .fxacts { grid-column: 1 / -1; display: flex; gap: 4px; } .fxacts .mini { height: 24px; }
+/* Multi-select and Identify (Setup → Fixtures). Red marks the fixture being identified and wins over blue. */
+.rows tr.ident td { background: rgb(184 15 15 / .45) !important; color: #fff; }
+.rows tr.ident td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.frm .frz { grid-column: 1 / -1; color: var(--muted); font-size: 12px; margin: 0; }
+.frm input:disabled { opacity: .5; }
+.hsep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+.id-dlg { width: 360px; } .idn { display: flex; align-items: center; gap: 8px; font-size: 14px; } .idn b { flex: 1; color: var(--strong); font-weight: 500; }
+.idn .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: liveblink 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .idn .dot { animation: none; } }
+.rows tr[data-fx] { user-select: none; }
+.idpop { width: 270px; padding: 8px; gap: 8px; z-index: 50; }
+.idpop .idbtns, .idpop .idfoot { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.idpop .idfoot { grid-template-columns: 1fr auto; }
+.idpop .mini { height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.idpop small { color: var(--muted); font-size: 11px; }
+.idpop .idn .dot { animation: none; }

@@ -28,7 +28,7 @@ CHUNK = 30 * 32000
 def setup():
     from panns_inference import SoundEventDetection, labels
 
-    sed = SoundEventDetection(checkpoint_path=None, device="cuda")
+    sed = SoundEventDetection(checkpoint_path=None, device=common.device())
     idx = {name: labels.index(name) for name in WANT if name in labels}
     return sed, idx, labels
 

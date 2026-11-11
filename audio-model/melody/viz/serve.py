@@ -1,27 +1,21 @@
-"""Melody Lab: play a pre-analysed song in the browser with its analysis and a club light show.
+"""Melody Lab: play a compiled song in the browser with its analysis and a club light show.
 
-Serves `viewer.html` and `club.js`, the per-song analysis (`audio-model/data/melody/viz/<id>.json`,
-built on ae-charlie by `build_viz_data.py`), the song audio straight from its Rekordbox path,
-and what Rekordbox knows about the song (`rekordbox.json` from `rekordbox_show.py`: beat grid,
-BPM, key, phrases; the grid and phrases moved onto the drum hits of the audio, `grid.py`), plus
-bar sections and drops computed from the stem loudness (`sections.py`), and clean beat-synced
-melody and bass lines with chord roots and hooks (`melody_line.py`). Standard library only, bound to localhost; it only serves songs listed in
-songs.json. The viewer's labelling mode (`label.js`) reads and writes the hand labels in
-`audio-model/data/melody/labels/<id>.json` through `/api/labels/<id>`, in the order of `/api/labels/queue`.
+Serves `viewer.html` and `club.js`, the compiled songs (`audio-model/data/melody/compiled/<id>.json`, built by
+`audio-model/melody/pipeline/song.py`), and the song audio straight from its Rekordbox path. It works nothing out
+itself: compile a song and the next page load picks it up, with no restart. Standard library only, bound to
+localhost; it only serves songs in the compiled list. The viewer's labelling mode (`label.js`) reads and writes the
+hand labels in `audio-model/data/melody/labels/<id>.json` through `/api/labels/<id>`, in the order of `/api/labels/queue`.
 
     python3 audio-model/melody/viz/serve.py            # http://127.0.0.1:8765
     python3 audio-model/melody/viz/serve.py --open --port 8800
 """
 
 import argparse
-import base64
 import json
 import math
-import struct
 import mimetypes
 import os
 import random
-import sys
 import tempfile
 import threading
 import webbrowser
@@ -31,24 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-import grid  # noqa: E402
-import melody_line  # noqa: E402
-import sections  # noqa: E402
-import show_compile  # noqa: E402
-
 MODEL_DIR = HERE.parent.parent  # audio-model/
-DATA = MODEL_DIR / "data/melody/viz"
-REKORDBOX = DATA / "rekordbox.json"  # rekordbox_show.py
-LABELS = MODEL_DIR / "data/rekordbox_labels.json"  # older grid export, fallback
-# electronic or pop per song id: labelled by hand, since only 13 of the first 249 songs carry a
-# genre tag; edit the file to move a song. Songs not in it fall back to their genre tag, then to
-# Rekordbox's phrase mood ("high" is its club/EDM phrase set).
-GENRES = DATA / "genres.json"
-FEATURES = MODEL_DIR / "data/melody/features"  # <analyzer>/<id>.json, from analyze/sync.sh
-ELECTRONIC_TAGS = ("techno", "house", "trance", "dance", "electro", "edm", "hardstyle", "drum", "dubstep", "bass", "rave", "hard")
-POP_TAGS = ("pop", "rock", "schlager", "soul", "funk", "disco", "r&b", "hip hop", "hip-hop", "rap", "country", "folk", "jazz")
-# tags like "Music" or "People & Blogs" (YouTube categories) say nothing and fall through to the mood
+DATA = MODEL_DIR / "data/melody/viz"  # lightshows/index.json, for the Human Lighter's song menu
+COMPILED = MODEL_DIR / "data/melody/compiled"  # <id>.json and index.json, from pipeline/song.py
 STATIC = {"/": "viewer.html", "/index.html": "viewer.html", "/club.js": "club.js", "/label.js": "label.js", "/club_looks.mjs": "club_looks.mjs"}
 # Hand labels, the project's ground truth. The queue is a fixed random order over the electronic songs,
 # so that a prefix of it is an unbiased sample; not a .json, so a glob over the labels finds only labels.
@@ -61,29 +40,6 @@ FX_KINDS = ("riser", "downlifter", "impact", "airhorn", "siren", "other")
 MAX_LABEL_BYTES = 1_000_000
 DURATION_TOLERANCE = 0.1  # songs.json rounds the duration
 queue_lock = threading.Lock()
-
-
-def load_songs() -> tuple[list[dict], dict]:
-    songs = json.loads((DATA / "songs.json").read_text())
-    meta = {}
-    if LABELS.exists():
-        for t in json.loads(LABELS.read_text()):
-            meta[t["path"]] = {"bpm": t.get("bpm"), "beats": t.get("beats_s") or [], "beat_in_bar": t.get("beat_in_bar") or []}
-    if REKORDBOX.exists():
-        for t in json.loads(REKORDBOX.read_text()):
-            m = meta.setdefault(t["path"], {})
-            m.update({k: t[k] for k in ("bpm", "key", "mood", "genre", "phrases", "beats", "beat_in_bar") if t.get(k) is not None})
-    labels = json.loads(GENRES.read_text()) if GENRES.exists() else {}
-    for s in songs:
-        m = meta.get(s["path"], {})
-        s["has_beats"] = bool(m.get("beats"))
-        s["has_audio"] = Path(s["path"]).exists()
-        s["key"], s["bpm"] = m.get("key"), m.get("bpm")
-        tag = (m.get("genre") or "").lower()
-        s["genre"] = (labels.get(s["id"], {}).get("genre")
-                      or ("electronic" if any(k in tag for k in ELECTRONIC_TAGS) else "pop" if any(k in tag for k in POP_TAGS) else None)
-                      or ("electronic" if m.get("mood") == "high" else "pop"))
-    return songs, meta
 
 
 def _is_time(x) -> bool:
@@ -187,8 +143,7 @@ def label_queue(songs: list[dict], by_id: dict) -> dict:
 class Handler(BaseHTTPRequestHandler):
     songs: list[dict] = []
     by_id: dict = {}
-    meta: dict = {}
-    cache: dict = {}
+    stamp = -1
 
     def log_message(self, fmt, *args):  # quiet: only errors
         if not str(args[1] if len(args) > 1 else "").startswith(("2", "3")):
@@ -202,52 +157,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def similar(self, sid: str, n: int = 5) -> list:
-        """The songs that sound most alike (cosine of the CLAP song embeddings, analyze/embed.py)."""
-        if not hasattr(Handler, "_emb"):
-            emb = {}  # published only when complete: requests run on threads
-            for p in FEATURES.glob("embed/*.json"):
-                raw = base64.b64decode(json.loads(p.read_text()).get("embedding") or "")
-                v = struct.unpack(f"<{len(raw) // 2}e", raw)
-                norm = math.sqrt(sum(x * x for x in v)) or 1.0
-                emb[p.stem] = [x / norm for x in v]
-            Handler._emb = emb
-        me = Handler._emb.get(sid)
-        if not me:
-            return []
-        sims = sorted(((sum(a * b for a, b in zip(me, v)), k) for k, v in Handler._emb.items() if k != sid), reverse=True)[:n]
-        return [[k, self.by_id[k]["name"], round(s, 3)] for s, k in sims if k in self.by_id]
-
-    def analysis(self, song: dict) -> bytes:
-        if song["id"] not in self.cache:
-            doc = json.loads((DATA / f"{song['id']}.json").read_text())
-            m = self.meta.get(song["path"], {})
-            rb_beats, phrases = m.get("beats") or [], m.get("phrases") or []
-            # Rekordbox's grid, moved onto the drum hits of the audio we play (grid.py)
-            beats, shift = grid.align(doc, rb_beats) if rb_beats else ([], None)
-            if rb_beats:
-                phrases = [{**p, **{k: grid.warp(p[k], rb_beats, beats) for k in ("start", "end", "fill")}} for p in phrases]
-            doc["beats"] = {"bpm": m.get("bpm"), "beats": beats, "beat_in_bar": m.get("beat_in_bar") or [],
-                            "aligned": shift} if beats else None
-            doc["key"], doc["mood"], doc["phrases"] = m.get("key"), m.get("mood"), phrases
-            doc["show"] = sections.analyse(doc, beats, m.get("beat_in_bar") or []) if beats else {"bars": [], "drops": [], "sections": []}
-            # clean, beat-synced melody and bass lines, chord roots and hooks (melody_line.py)
-            doc["melody"] = melody_line.analyse(doc, beats, m.get("beat_in_bar") or [], m.get("key")) if beats else None
-            # the offline analyzers' features (audio-model/melody/analyze, synced from ae-charlie)
-            doc["features"] = {p.parent.name: json.loads(p.read_text()) for p in sorted(FEATURES.glob(f"*/{song['id']}.json"))}
-            (doc["features"].get("mt3") or {}).pop("notes", None)  # the viewer only draws when each instrument plays
-            (doc["features"].get("fxhead") or {}).pop("tracks", None)  # and only the effect head's events
-            doc["cues"] = show_compile.compile_show(doc)  # everything merged into one cue list
-            doc["similar"] = self.similar(song["id"])
-            self.cache[song["id"]] = json.dumps(doc, separators=(",", ":")).encode()
-        return self.cache[song["id"]]
+    @classmethod
+    def refresh(cls) -> None:
+        """The song list, read again whenever the compiler has changed it."""
+        index = COMPILED / "index.json"
+        stamp = index.stat().st_mtime_ns if index.exists() else 0
+        if stamp != cls.stamp:
+            songs = json.loads(index.read_text()) if stamp else []
+            for s in songs:
+                s["has_audio"] = Path(s["path"]).exists()
+            cls.songs, cls.by_id, cls.stamp = songs, {s["id"]: s for s in songs}, stamp
 
     def do_GET(self):
+        self.refresh()
         path = self.path.split("?", 1)[0]
         if path in STATIC:
             name = STATIC[path]
             ctype = "text/html; charset=utf-8" if name.endswith(".html") else "text/javascript; charset=utf-8"
             return self.send_bytes((HERE / name).read_bytes(), ctype)
+        if path == "/api/lightshows":
+            index = DATA / "lightshows/index.json"
+            return self.send_bytes(index.read_bytes() if index.exists() else b"[]", "application/json")
         if path == "/api/songs":
             return self.send_bytes(json.dumps(self.songs).encode(), "application/json")
         if path == "/api/labels/queue":
@@ -256,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[0] == "api" and parts[2] in self.by_id:
             song = self.by_id[parts[2]]
             if parts[1] == "analysis":
-                return self.send_bytes(self.analysis(song), "application/json")
+                return self.send_bytes((COMPILED / f"{song['id']}.json").read_bytes(), "application/json")
             if parts[1] == "audio" and song["has_audio"]:
                 audio = Path(song["path"])
                 ctype = mimetypes.guess_type(audio.name)[0] or "application/octet-stream"
@@ -267,6 +197,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
+        self.refresh()
         parts = self.path.split("?", 1)[0].strip("/").split("/")
         if not (len(parts) == 3 and parts[:2] == ["api", "labels"] and parts[2] in self.by_id):
             return self.send_error(HTTPStatus.NOT_FOUND)
@@ -293,13 +224,13 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--open", action="store_true", help="open the viewer in the default browser")
     args = ap.parse_args()
-    songs, meta = load_songs()
-    Handler.songs, Handler.meta = songs, meta
-    Handler.by_id = {s["id"]: s for s in songs}
+    Handler.refresh()
+    songs = Handler.songs
     url = f"http://127.0.0.1:{args.port}/"
-    print(f"{len(songs)} songs ({sum(s['genre'] == 'electronic' for s in songs)} electronic, {sum(s['has_audio'] for s in songs)} with audio, "
-          f"{sum(s['has_beats'] for s in songs)} with beat grids, {sum(bool(s['key']) for s in songs)} with keys) at {url}",
-          flush=True)
+    print(f"{len(songs)} compiled songs ({sum(s['genre'] == 'electronic' for s in songs)} electronic, {sum(s['has_audio'] for s in songs)} with audio, "
+          f"{sum(s['has_beats'] for s in songs)} with beat grids, {sum(bool(s['key']) for s in songs)} with keys) at {url}", flush=True)
+    if not songs:
+        print("Nothing compiled yet: python3 audio-model/melody/pipeline/song.py compile --all", flush=True)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     if args.open:
         webbrowser.open(url)

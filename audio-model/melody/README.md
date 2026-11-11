@@ -158,7 +158,7 @@ seeking and pausing work; while playing, the visuals subtract the audio output l
 
 | What | Drives |
 |---|---|
-| Rekordbox beat grid, aligned to the drum hits (`grid.py`) | all pacing; pattern cycles are 1, 2, 4 or 8 beats and only change on 2-bar boundaries, so motion stays in phase; the crowd bounces a little on the beat and sways over two beats, about one in six hops in drops. Rekordbox's grid sits about 29 ms after the kicks in the audio we play (median over the 249 mp3s, likely the 25 ms mp3 encoder + decoder delay that ffmpeg and the browser trim), 40-60 ms in a few songs, and live-played songs drift up to 100 ms against its constant tempo. `grid.py` moves every beat onto the nearby strong drum hits (local median over +-8 beats where they agree, smoothed, three passes): median offset 0 ms in every song afterwards, the spread in Mr. Brightside from 80 to 11 ms. Phrases move with it. The club also renders each frame for the moment it reaches the screen (one frame ahead) |
+| Rekordbox beat grid, aligned to the drum hits, or replaced where the beat trackers show it's wrong (`grid.py`, 14 of the 175 electronic songs) | all pacing; pattern cycles are 1, 2, 4 or 8 beats and only change on 2-bar boundaries, so motion stays in phase; the crowd bounces a little on the beat and sways over two beats, about one in six hops in drops. Rekordbox's grid sits about 29 ms after the kicks in the audio we play (median over the 249 mp3s, likely the 25 ms mp3 encoder + decoder delay that ffmpeg and the browser trim), 40-60 ms in a few songs, and live-played songs drift up to 100 ms against its constant tempo. `grid.py` moves every beat onto the nearby strong drum hits (local median over +-8 beats where they agree, smoothed, three passes): median offset 0 ms in every song afterwards, the spread in Mr. Brightside from 80 to 11 ms. Phrases move with it. The club also renders each frame for the moment it reaches the screen (one frame ahead) |
 | note grid | patterns don't glide: they jump 8 steps per cycle (sixteenths for 1-2 beat cycles, eighths for 4, quarters for 8), and every step starts a 60 ms flash; grooves jump a row per beat. Checked on a drop: every step lands on its sixteenth (within the 2 ms sampling), 64 of 68 strong drum hits within 15 ms of a step |
 | drum hits (onsets in the drums stem) | every pulse, decaying in about 70 ms and weighted towards kicks and snares (hats only sparkle): uplights, tube segments, coves and downlights go from near dark to full on the real hits, so a kick that drops out stops the pulse and a snare roll flickers; in builds the downlight row steps towards the stage on every hit, so rolls speed it up |
 | loudness (followers on the stems, fast attack, slow release) | the level inside a section: quiet moments dim; in grooves each spoke of the LED rope web meters one stem (bass, drums, other, vocals, mix) as a bar out from the hub, so you see which instruments play |
@@ -195,12 +195,13 @@ The song list shows electronic tracks only (124 of the 249; tick Pop to include 
 Strobes can be switched off under the club. Sections and drops come from `sections.py`: the
 hindsight drop rule of `audio-model/drops.py` on the drums + bass stem loudness per bar.
 
-Data: `viz/build_viz_data.py` (on ae-charlie) packs each song's notes (read back from the
-exported MIDI), contours and loudness into `audio-model/data/melody/viz/<id>.json` (~0.5 MB per
-song); `viz/rekordbox_show.py` exports beat grid, BPM, key and phrases for every song from a copy
-of the Rekordbox database into `rekordbox.json` (re-run after analysing new tracks);
-`serve.py` merges both, adds the sections, and serves the mp3 from its Rekordbox path (only songs
-in `songs.json`, bound to 127.0.0.1). three.js 0.160 loads from jsDelivr. The page keeps the song
+Data: the viewer only reads compiled songs, and `pipeline/README.md` has the whole path from Rekordbox to there:
+`song.py add` pulls one song and runs its analysis, including `pipeline/build_viz_data.py` on ae-charlie, which packs its
+notes (read back from the exported MIDI), contours and loudness (~0.5 MB per song);
+`pipeline/rekordbox_show.py` reads beat grid, BPM, key and phrases from a copy of the Rekordbox database;
+`pipeline/compile_song.py` merges them with the analyzers' features into `audio-model/data/melody/compiled/<id>.json`.
+`serve.py` serves that file and the mp3 from its Rekordbox path (only compiled songs, bound to 127.0.0.1), and
+picks up newly compiled songs without a restart. three.js 0.160 loads from jsDelivr. The page keeps the song
 in the URL (`#song=<id>`). Keys: Space, arrows (Shift for 1 s), +/-, 1-5.
 
 ## Show compiler
@@ -209,7 +210,7 @@ in the URL (`#song=<id>`). Keys: Space, arrows (Shift for 1 s), +/-, 1-5.
 trained effect detector, beats, style / mood tags, two chord trackers, four takes on structure, polyphonic and
 multi-instrument transcription, cleaner vocals, lyrics, two text-audio embeddings, stereo, timbre, risers /
 impacts / silences); see `analyze/README.md` for models, licences, timings and how each compares.
-`viz/show_compile.py` merges them per song into one cue list (builds with their real start and
+`pipeline/show_compile.py` merges them per song into one cue list (builds with their real start and
 intensity curve, the audio's own pre-drop silences, drum hits per piece checked against a second
 model, impacts, sound events, chord stabs, chords, structure parts on phrase lines, lyric lines,
 pump, stereo, a style preset, a beat-grid check), the viewer shows each as a lane, and the club
@@ -228,6 +229,7 @@ strobes stay on the drop, up to a bar, as the only light. Every look uses the so
 | Look | Follows | What it does | Beat depth | With the kick | Lamps lit, 95th pct | Drop / breakdown |
 |---|---|---|---|---|---|---|
 | **Club** (default) | everything | the original show, unchanged | .081 | +.69 | 31% | 1.8 |
+| **Club 2** | whichever part leads | Club without the clutter, one job per fixture: ceiling and walls the leading part, ropes the next one, uplights kick and snare, floor strip the bass, DJ spot the vocal. Patterns and colours hold through a section | see below | | | |
 | **Mixing Desk** | stems | drums the ceiling, bass the floor strip and uplights, synths the ropes, vocals the DJ spot and walls; no section logic | .040 | +.17 | 34% | 1.4 |
 | **Score** | notes, ahead of time | piano roll: notes cross the ceiling a row per eighth and land on the stage row as they sound; on the ropes the hub is now and the anchor a bar ahead | .035 | +.13 | 19% | 1.4 |
 | **Shockwave** | drum hits | a kick crosses the room in one beat, a snare rings out from the hub, chord stabs ring in, crashes and impacts roll back from the far wall | .151 | +.75 | 25% | 2.5 |
@@ -236,7 +238,33 @@ strobes stay on the drop, up to a bar, as the only light. Every look uses the so
 | **Stained Glass** | chords | each root owns an area of ceiling on a circle-of-fifths ring; minor or major picks the colour, far from the key goes white; no pulses | .004 | -.05 | 28% | 2.1 |
 | **Spotlight** | voice | Club steps back, starting just before someone sings; warm spot, rope glow on the pitch, chops flicker. Uses when a voice sounds, not Whisper's text | .062 | +.65 | 34% | 2.0 |
 | **Weather** | timbre | no beat: brightness lifts light from floor to ceiling, noise whitens it and fires the smoke (6 times a song), stereo moves it sideways | .001 | +.04 | 25% | 3.2 |
+| **Human Lighter** | a person's map | a community Beat Saber map's lighting replayed: back lasers on the stage wall and its spill, rings on a quarter of the ceiling (spin steps the rows, zoom swaps inner and outer lamps), lasers as 30% bands running along the ropes at the laser speed, track lights on the walls and floor strip. 25 songs, 38 maps; other songs stay on Club. Numbers from those 25 | .080 | +.21 | 25% | 1.3 |
 | **Director** | all of them | a look per section: a home look from the song's style on drops and grooves, Shockwave and Countdown in builds, Spotlight, Stained Glass or Weather in breakdowns. Time: Spotlight 26%, Shockwave 19, Breathing Room 14, Weather 14, Score 11, Kick Room 9, Stained Glass 4, Mixing Desk 2 | .056 | +.21 | 28% | 1.5 |
+
+Club 2 came from watching Human Lighter on Lean On: the human show looked calmer and followed the notes better. Map `29a78` follows the synth's chord stabs, while our melody line takes the vocal (all of it in both drops) and Club's flashes follow the snare and hi-hats. So each section's lead is the part (vocal, stabs or synth line) with enough notes and the steadiest rhythm from bar to bar; loudness can't tell, because on Lean On the vocal is at least as loud in every section. This is a heuristic tuned by eye on a few songs, and the lighters themselves disagree about what to follow. Over all songs it picks the synth line for about half the bars, the vocal for a third.
+
+On-screen brightness from the audience camera, in drops and grooves, correlated with each part per 16th (a rendered measurement in the browser, on three songs):
+
+| Song, look | Mean brightness | Leading part | Kick | Snare |
+|---|---|---|---|---|
+| Lean On, Club | .097 | stabs .35 | .44 | .65 |
+| Lean On, **Club 2** | .094 | stabs .66 | .10 | .28 |
+| Lean On, Human `29a78` | .148 | stabs .63 | .25 | .15 |
+| Ride It, Club | .074 | melody .26 | .68 | .52 |
+| Ride It, **Club 2** | .074 | melody .53 | -.09 | -.13 |
+| Ride It, Human | .192 | melody .26 | .39 | .21 |
+| Sandstorm, Club | .041 | melody .33 | .43 | .12 |
+| Sandstorm, **Club 2** | .024 | melody .55 | .20 | .04 |
+
+These were measured before Lean On's grid was corrected: Rekordbox's sat a 16th early, so Club's grid-stepped patterns ran off the kick on that song, and its row needs measuring again.
+
+Sandstorm shows the weak spot: with a single synth line and no stabs Club 2 is about half as bright as Club. Human Lighter stays brighter everywhere, because its lights stay on between events.
+
+Human Lighter is a reference to compare the other looks with, not a show to keep: it ignores the music and only plays what a person programmed. Colours become the song's pair, your strobe and blackout at each drop still apply, and Slow Burn and Countdown leave it alone. Parts of our version the map doesn't cover stay dark (16.7% of frames on average, up to 50% on a song). The flash and fade times (0.6 s, 1.5 s) are from memory of the game, and the fixture mapping is a choice. Lightshows are built from `decision/bs/maps/` by `decision/bs_lightshow.py` (`python3 audio-model/melody/decision/bs_lightshow.py`, then restart `serve.py`) into the gitignored `data/melody/viz/lightshows/`. Maps are other people's work, so they stay out of the repo; the viewer credits each by its BeatSaver link.
+
+Maps are aligned with one constant offset, so one made for a shorter edit can stay on the beat and lose the song's structure. The map menu's tooltips show how each follows our loudness in its first and second half, and marks a negative number as "may have drifted". That can also just be a lighter working against the loudness; nobody has checked by ear.
+
+`check_looks.mjs` also tests the replay against each map's raw events, working out the expected state separately from the look: 68,000 events right after they fire, 3,210 later states (a flash settling, a fade half gone and gone), 880 ring spins, 812 zooms and 186 laser speeds, with no mismatch. It skipped 2,173 events inside a blackout or strobe, and events with another of their group within 10 ms.
 
 Toggles:
 
@@ -262,7 +290,7 @@ Sections: I intro, U buildup, P drop, K breakdown, O outro, L silence. Q / E jum
 C splits (Shift: on a beat, Alt: free), X deletes, `,` `.` nudge a bar (Shift: a beat), drag moves, ⌘Z undoes. Effects: R riser, T downlifter,
 H air horn, N siren, V other (press twice to open and close), M impact, Shift+X removes. Enter saves as done and goes on (a second Enter if some boundaries weren't heard yet), Shift+Enter leaves it for later.
 
-The suggestions come from `viz/sections.py`, whose long outros are a known weak spot (`analyze/README.md`). Correct them rather than trust them.
+The suggestions come from `pipeline/sections.py`, whose long outros are a known weak spot (`analyze/README.md`). Correct them rather than trust them.
 
 ## Decision models
 
@@ -282,11 +310,12 @@ The suggestions come from `viz/sections.py`, whose long outros are a known weak 
 | `train_melody.py`, `melody_common.py` | training, data, metrics |
 | `online_melodia.py` | online Melodia baseline: salience + fixed-lag Viterbi, tuning, eval |
 | `eval_melody.py` | final evaluation + student MIDI |
-| `viz/build_viz_data.py`, `viz/rekordbox_show.py`, `viz/sections.py`, `viz/serve.py`, `viz/viewer.html`, `viz/club.js` | the viewer and club simulator |
+| `pipeline/` | from Rekordbox to a compiled song, with its own page (`ui.py`) and command (`song.py`), checks and corrections (`pipeline/README.md`) |
+| `viz/serve.py`, `viz/viewer.html`, `viz/club.js` | the viewer and club simulator |
 | `viz/club_looks.mjs` | the club's looks and toggles |
 | `viz/label.js` | the labelling mode |
-| `viz/show_compile.py`, `analyze/` | the show compiler and its analyzers, pilots (`analyze/pilots/`), effect head training (`analyze/fx_train/`), SongFormer fine-tune (`analyze/edm_finetune/`) |
-| `decision/` | plan layer, Beat Saber comparison and the A/B listening test |
+| `analyze/` | the analyzers, pilots (`analyze/pilots/`), effect head training (`analyze/fx_train/`), SongFormer fine-tune (`analyze/edm_finetune/`) |
+| `decision/` | plan layer, Beat Saber comparison and lightshow build, and the A/B listening test |
 | `../charlie/` | package versions, clone commits and run scripts from ae-charlie, and what's still only there |
 
 Everything ran on ae-charlie in `/localhome/sokrates/melody` (`code/`, `data/`, `out/`, `runs/`,

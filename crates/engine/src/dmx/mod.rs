@@ -1113,7 +1113,8 @@ impl DmxEngine {
                 last,
             } => self.set_artnet_receiver_universes_command(address, first, last),
             // `dispatch` forwards these to the persistence service.
-            HostCommand::SaveShowfile
+            HostCommand::SetRemoteAccess { .. }
+            | HostCommand::SaveShowfile
             | HostCommand::SaveShowfileAs(_)
             | HostCommand::LoadShowfile(_)
             | HostCommand::CloseShowfile

@@ -1,0 +1,56 @@
+/* Draft: the scene and its masters move into the page bar; the Scenes column goes. */
+.work.scenedraft { --bar: 40px; grid-template-columns: repeat(2, minmax(120px, 1fr)) 440px 196px 170px;
+  grid-template-areas: "tools tools tools tools tools" "groups fxcol faders colour gizmo" "groups fxcol lower lower lower"; }
+@media (max-width: 1399px) {
+  .work.scenedraft { grid-template-areas: "tools tools tools tools tools" "groups fxcol faders faders side" "groups fxcol colour gizmo side" "groups fxcol pals pals side"; }
+}
+.scenedraft .tools { height: var(--bar); gap: 14px; padding: 0 6px; }
+.scenedraft .tools #pgb { margin-left: auto; }
+.scenedraft .tools #lreset { margin-left: 0; }
+
+.pickwrap { position: relative; }
+.scenepick { height: 30px; min-width: 180px; max-width: 320px; display: flex; align-items: center; gap: 8px; padding: 0 8px; background: var(--ctl); color: var(--strong); }
+.scenepick:hover, .scenepick[aria-expanded="true"] { background: var(--ctl-hi); }
+.scenepick b { font-size: 14px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scenepick .sid { font: 12px PlexMono, monospace; color: var(--muted); }
+.scenepick i { margin-left: auto; font-size: 11px; color: var(--muted); }
+.scenepop { position: absolute; top: 34px; left: 0; z-index: 20; width: 300px; max-height: min(480px, 70vh); display: flex; flex-direction: column; background: var(--pane); box-shadow: 0 0 0 1px var(--line); }
+.scenepop[hidden] { display: none; }
+.scenepop .body { flex: 1; min-height: 0; overflow: auto; }
+.scenepop .empty { padding: 6px 8px; color: var(--muted); }
+
+.scenedraft .tools .knobs { padding: 0; border: 0; gap: 16px; }
+.scenedraft #masters .knob { grid-template-columns: 32px auto; }
+.scenedraft #masters .knob svg { width: 32px; height: 32px; }
+
+/* Picker styles to compare: ?picker=flat|raised|dim|drawer (raised is the default). */
+.picker-raised .scenepick[aria-expanded="true"] { background: var(--pop); box-shadow: 0 0 0 1px var(--popedge); }
+.picker-raised .scenepop { top: 30px; background: var(--pop); box-shadow: 0 0 0 1px var(--popedge), 0 10px 28px rgb(0 0 0 / .55); }
+.picker-raised .scenepop .body, .picker-raised .scenepop .fxfilter { background: none; }
+.picker-raised .scenepop .row:hover { background: var(--ctl-hi); }
+.picker-raised .scenepop .row.folder { background: none; }
+:root { --pop: #3a3c40; --popedge: #5a5c62; }
+:root[data-theme="light"] { --pop: #f7f7f8; --popedge: #9a9ca1; }
+
+.scrim { position: fixed; inset: 0; z-index: 15; background: rgb(0 0 0 / .55); }
+.scrim[hidden] { display: none; }
+.picker-dim .pickwrap { z-index: 20; }
+
+.picker-drawer .scenepop { position: fixed; width: auto; max-height: none; box-shadow: 1px 0 0 var(--line), 8px 0 24px rgb(0 0 0 / .4); }
+.scenepop .dhead { display: none; }
+.picker-drawer .scenepop .dhead { display: flex; height: 26px; flex: none; align-items: center; padding: 0 0 0 8px; background: var(--head); font-weight: 500; color: var(--strong); }
+.picker-drawer .scenepop .dhead button { margin-left: auto; width: 26px; height: 26px; display: grid; place-items: center; color: var(--muted); }
+
+/* Stronger raised picker, steps B2 to B4 (each adds to the one before). */
+:root { --pop2: #484a50; --pop2-hi: #575960; --popedge2: #74767d; --popedge3: #9a9ca3; }
+:root[data-theme="light"] { --pop2: #ffffff; --pop2-hi: #e8eefb; --popedge2: #7f8187; --popedge3: #5c5e64; }
+.picker-raised2 .scenepick[aria-expanded="true"], .picker-raised2 .scenepop { background: var(--pop2); }
+.picker-raised2 .scenepop .row:hover { background: var(--pop2-hi); }
+.picker-raised2 .scenepop .fxfilter input { background: var(--pane); }
+.picker-raised3 .scenepick[aria-expanded="true"] { box-shadow: 0 0 0 1px var(--popedge3), inset 0 1px 0 rgb(255 255 255 / .2); }
+.picker-raised3 .scenepop { box-shadow: 0 0 0 1px var(--popedge3), 0 0 0 3px rgb(0 0 0 / .5), inset 0 1px 0 rgb(255 255 255 / .2), 0 14px 36px rgb(0 0 0 / .7); }
+.picker-raised3 .scenepop .row.folder { background: rgb(0 0 0 / .18); }
+:root[data-theme="light"] .picker-raised3 .scenepop { box-shadow: 0 0 0 1px var(--popedge3), 0 14px 36px rgb(0 0 0 / .3); }
+:root[data-theme="light"] .picker-raised3 .scenepop .row.folder { background: rgb(0 0 0 / .06); }
+.picker-raised4 .pickwrap { z-index: 20; }
+.scrim.soft { background: rgb(0 0 0 / .35); }

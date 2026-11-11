@@ -1,41 +1,42 @@
-# 036 — Programmer in the Console layout
+# 036 — Programmer in the desktop studio layout
 
 | | |
 |---|---|
 | Epic | E9 Console UI |
-| Depends on | 033, 034, 035 |
+| Depends on | 058, 059 |
 | ABI / showfile | none |
 
-**Touches:** `crates/ui_egui/src/app/pages/programmer.rs`, `programmer_animations.rs`, `crates/ui_egui/src/app/components/fixtures_shared.rs` (`fixture_selection`, `scene_overview`), `fader.rs`, `knob.rs`, `speed_knob.rs`
+**Touches:** `app/pages/programmer.rs`, `programmer_animations.rs`, `app/components/fixtures_shared.rs`
 
 ## Problem
-The Programmer is the busiest page: seven equal toolbar buttons with cut labels, a scene column, group cards, horizontal sliders and round knobs. The concept page's direction A mockup and the design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) show the target layout (README "Layout patterns" → Programmer).
+The desktop Programmer should follow the agreed studio design.
 
 ## Scope
-- PageHeader with the focused scene as a picker (scene tree in a sheet or menu) and the actions Animations, Palettes, Scene animations, Limit to fixture, More, LIVE.
-- Kiosk: groups tree on the left; selection bar (name, fixture count, Limit, Clear), fixture chips and vertical **Faders** grouped by family in the middle; **Readouts** for scene master and speed plus the scene's changes (with Undo all) on the right.
-- Desktop: the same, plus the scene tree as a column on the left.
-- Faders: relative drag, tap on the value opens the numberpad sheet, value in `accent` when the scene has a change on that attribute.
-- Replace the knobs with Readouts.
+- Layout as `programmer.html`: Groups, Fixtures, then faders (440x320), colour picker (hue ring around a fixed triangle (pure hue right, white top left, black bottom left; it does not rotate), painted as one egui mesh with vertex colours) with editable RGB and XY pan and tilt pad in one row, with Palettes and the Scene pane (animations, Scene changes) below.
+- Below 1400px wide, wheel and pad stack under the faders, with Palettes under them and the Scene pane at full height. Below 1200px wide, the sidebar also collapses to icons.
+- The page bar holds the scene picker (a filterable popover of scene folders on pane surfaces, opening over the page dimmed by 55%), the scene's master intensity and speed knobs, Blackout, Reset layout and Exclusive preview, all the same height; Exclusive preview shows a blinking red dot while on. Panes resize and fold as in `RULES.md` > Resizable panes. Clear, Limit and Limit all sit in Fixtures, and Add sits in Animations.
+- Faders, wheel and pad keep their size and never fold on the rack (1400px and up).
+- Clicking, dragging or tabbing to a fader selects it and gives it focus, shown by a blue label (no border); arrow keys move a focused fader or knob by its smallest unit (1, one degree on Hue, 1% on intensity, one speed notch); held keys accelerate after 300 ms up to a cap of a 25th of the range per repeat, reached after about 2 s. Backspace or Delete undoes its changes from this session for the selected fixtures and removes changes this session added from Scene changes; with nothing to undo, it removes the scene's earlier changes for that value. Needs the scene state at load (or last save) kept in the UI or engine.
+- Double-clicking a fader's value or name, or a knob, turns its readout into a text field in place (egui `TextEdit` over the label). Enter or focus loss applies, Esc cancels, values clamp to range in the control's units.
+- Fixture filter, with a notice when it hides selected fixtures. Clear selection also clears it.
+- RGB applies on Enter or leaving the field; Esc cancels. Esc cancels a drag. No selection shows `--`.
+- Changed values are amber. Labels: Intensity, Exclusive preview.
+- Clear all, removing an animation, and removing a Scene changes group ask first, naming what is lost. Removing a single row does not. Removals that affect dependent pointer palettes name them.
+- Limit and Limit all stay as visible dummy buttons, with no action, until their behaviour is decided.
 
 ## Out of scope
-- New programmer features. Behaviour stays as it is; only layout and components change.
-
-## Key code
-- `programmer_ui` and the toolbar — `crates/ui_egui/src/app/pages/programmer.rs`
-- `toolbar_button_width`, `TOOLBAR_BUTTONS` — `programmer.rs:21,1187` (remove)
-- Faders and knobs — `crates/ui_egui/src/app/components/fader.rs`, `knob.rs`, `speed_knob.rs`
+- The kiosk. Undo. New engine features.
 
 ## Acceptance criteria
-- [ ] At 800 × 480 nothing is cut or overlapping, and all Programmer functions remain reachable.
-- [ ] Scene switching works from the header picker on the kiosk.
-- [ ] Fader and readout changes show up in `blctl state` exactly as before.
+- [ ] No clipping from 1100px wide; the page scrolls below that.
+- [ ] 500 fixtures, 50 palettes and 40-character names remain usable.
+- [ ] Typing an RGB value sends only the final value.
+- [ ] Clear all does nothing until confirmed, and the dialog shows the number of changes.
+- [ ] Fader, wheel, pad and RGB edits appear in Scene changes.
 
 ## Verification
-- `cargo clippy --workspace --all-targets --all-features`, `cargo fmt --all --check` and `cargo test --workspace --all-features` are clean (run them in the blenv container).
-- Follow the `blaulicht-env` skill: run the app in blenv (`scripts/blenv run` and `run --desktop`), drive it with real clicks, and look at every screenshot yourself. Take before and after shots; keep them in `.blenv/shots/` and never commit them.
-- Compare against the design system's component previews and rules (Blaulicht Console, linked under Problem).
-- Before and after screenshots of the Programmer at 800 × 480 and on desktop, plus the scene picker open, the numberpad sheet and Undo all.
+- `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
+- UI: run with `--desktop` via `scripts/blenv` and compare screenshots against the mockup, in dark and light theme, at 1280x800 and 2560x1440. Confirm the 800x480 kiosk is unchanged.
 
 ## Notes
-<!-- Implementation notes, decisions, and follow-ups found while working. Keep this updated before renaming to .done.md. -->
+Reference: open the named pages in `design/studio/` in a browser. `design/studio/RULES.md` holds the agreed rules. The mockups are the design source, but their JavaScript is throwaway.

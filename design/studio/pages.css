@@ -1,0 +1,232 @@
+/* Logs, Audio, Views, Performance, Scene Graph, Visualizer. Titled panes on one grid. */
+.pg { display: grid; gap: var(--gap); min-height: 0; min-width: 0; }
+.pg-logs { grid-template-columns: minmax(0, 1fr); grid-template-rows: 30px minmax(0, 1fr); }
+.pg-logs .pg-bar { gap: 6px; } .pg-logs .pg-bar .mini, .pg-logs .pg-bar .pg-input { height: 22px; min-height: 22px; } .lg-sp { flex: 1; }
+.pg-audio { grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "spec beat" "ctrl beat"; }
+.pg-views { grid-template-columns: 240px minmax(0, 1fr); }
+.pg-perf { grid-template-columns: minmax(0, 1fr) 190px; }
+.pg-graph { grid-template-columns: 210px minmax(0, 1fr) 280px; }
+.pg-vis { grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: 32px minmax(0, 1fr); }
+.pg-col { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; min-width: 0; }
+.pg-col > .pg-grow { flex: 1; min-height: 0; }
+.pg-tools { flex-wrap: wrap; }
+.pg-input { height: 22px; width: 150px; background: var(--well); border: 1px solid var(--line); color: var(--strong); padding: 0 6px; font: 12px Plex, sans-serif; user-select: text; }
+.lg-body { padding-bottom: 0; }
+.pg-log { width: 100%; border-collapse: collapse; table-layout: fixed; font: 12px/1.45 PlexMono, monospace; }
+.pg-log thead th { position: sticky; top: 0; z-index: 1; height: 22px; padding: 0 8px; background: var(--head); color: var(--muted); font: 600 10px Plex, sans-serif; letter-spacing: .06em; text-transform: uppercase; text-align: left; border-bottom: 1px solid var(--line); }
+.pg-log td { padding: 2px 8px; vertical-align: top; border-bottom: 1px solid var(--hair); }
+.pg-log tbody tr { cursor: default; box-shadow: inset 2px 0 0 transparent; }
+.pg-log tbody tr:nth-child(even) td { background: rgb(255 255 255 / .015); }
+.pg-log tbody tr:hover td { background: rgb(255 255 255 / .04); }
+.pg-log tbody tr.sl td { background: var(--blue-dim); color: var(--strong); }
+.pg-log .t { width: 104px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pg-log .t span { opacity: .55; }
+.pg-log .l { width: 74px; font: 600 10px/18px Plex, sans-serif; letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+.pg-log .l i { font-size: 12px; margin-right: 5px; vertical-align: -2px; }
+.pg-log .s { width: 84px; }
+.pg-log .s span { display: inline-block; padding: 0 5px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); font-size: 11px; line-height: 15px; }
+.pg-log .m { color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
+.pg-log .DEBUG .m, .pg-log .DEBUG .l { color: var(--scale); }
+.pg-log .WARN { box-shadow: inset 2px 0 0 var(--warn); } .pg-log .WARN .m, .pg-log .WARN .l { color: var(--warn); }
+.pg-log .ERROR { box-shadow: inset 2px 0 0 var(--red-text); } .pg-log .ERROR td { background: rgb(255 60 60 / .07); } .pg-log .ERROR .m, .pg-log .ERROR .l { color: var(--red-text); }
+.pg-log mark { background: rgb(242 177 76 / .35); color: var(--strong); border-radius: 1px; }
+.pg-log tr.none td { padding: 24px; text-align: center; color: var(--muted); font-family: Plex, sans-serif; border: 0; }
+.lg-foot { display: flex; gap: 16px; align-items: center; height: 22px; padding: 0 8px; background: var(--head); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lg-dot::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.lg-dot.WARN::before { background: var(--warn); } .lg-dot.ERROR::before { background: var(--red-text); }
+.lg-live { margin-left: auto; } .lg-live.on { color: var(--ok); } .lg-live.on::before { content: "\25CF  "; }
+.lg-search { position: relative; display: inline-flex; align-items: center; }
+.lg-search i { position: absolute; left: 6px; color: var(--muted); font-size: 12px; pointer-events: none; }
+.lg-search input { padding-left: 22px; width: 170px; }
+.lg-chips { display: inline-flex; gap: 2px; }
+.lg-cc { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; background: var(--well); border: 0; color: var(--muted); font: 11px PlexMono, monospace; cursor: pointer; }
+.lg-cc:hover { background: var(--ctl); } .lg-cc i { font-size: 12px; }
+.lg-cc.WARN { color: var(--warn); } .lg-cc.ERROR { color: var(--red-text); } .lg-cc.DEBUG { color: var(--scale); }
+.lg-cc.off { opacity: .35; }
+.lg-ic { display: inline-flex; align-items: center; gap: 5px; } .lg-ic i { font-size: 13px; }
+.pg-canvas { display: block; width: 100%; height: 100%; min-height: 0; background: var(--well); }
+.pg-wrap { flex: 1; min-height: 0; padding: 8px; display: flex; }
+.pg-bars { flex: 1; display: flex; align-items: flex-end; gap: 1px; background: var(--well); min-height: 120px; padding: 2px; }
+.pg-bars i { flex: 1; background: var(--data); min-width: 0; }
+.pg-ctrl { display: flex; gap: 8px; padding: 8px; align-items: stretch; height: 210px; }
+.pg-ctrl .strip { width: 64px; flex: none; max-width: none; }
+.pg-note { color: var(--muted); font-size: 12px; padding: 8px; }
+.pg-tag { font-size: 11px; color: var(--muted); font-weight: 400; }
+.pg-strips { display: flex; gap: 2px; background: var(--gutter); flex: 1; min-height: 0; overflow-x: auto; }
+.pg-strip { width: 132px; flex: none; background: var(--pane); display: flex; flex-direction: column; min-height: 0; }
+.pg-strip > b { display: block; padding: 6px 8px; background: var(--head); color: var(--strong); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-strip.live > b { box-shadow: inset 0 -2px 0 var(--blue); }
+.pg-strip .strip { flex: 1; width: auto; max-width: none; min-height: 0; padding: 8px 0 4px; }
+.pg-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 4px; }
+.pg-btns .mini { padding: 0; }
+.pg-add { flex: 1; background: var(--pane); padding: 8px; min-width: 160px; }
+.pg-gm { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.pg-gm .strip { flex: 1; width: auto; max-width: none; min-height: 0; padding: 8px 0 4px; }
+.pg-gm-b { display: grid; gap: 2px; padding: 8px; }
+.pg-black[aria-pressed="true"] { background: var(--red); color: #fff; }
+.pg-banner { padding: 6px 8px; background: var(--pane); font-size: 12px; color: var(--muted); box-shadow: inset 2px 0 0 var(--blue); flex: none; }
+.pg-node { fill: var(--ctl); stroke: var(--line); cursor: pointer; }
+.pg-node.on { stroke: var(--blue); stroke-width: 2; }
+.pg-gt { fill: var(--strong); font: 500 12px Plex, sans-serif; pointer-events: none; }
+.pg-gs { fill: var(--muted); font: 11px Plex, sans-serif; pointer-events: none; }
+.pg-edge { stroke: var(--muted); fill: none; stroke-width: 1.5; }
+.pg-el { fill: var(--muted); font: 11px Plex, sans-serif; }
+.pg-frm { padding: 8px; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 8px; align-items: center; }
+.pg-frm label { color: var(--muted); font-size: 12px; }
+.pg-frm .pg-input, .pg-frm select { width: 100%; }
+.pg-frm select { height: 24px; background: var(--well); border: 1px solid var(--line); color: var(--strong); }
+.pg-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 6px; background: var(--head); }
+.pg-bar .seg { display: inline-flex; gap: 2px; }
+.pg-bar label { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.pg-r { margin-left: auto; }
+.pg-fx { fill: var(--data); cursor: pointer; }
+.pg-fx.sl { fill: var(--strong); }
+.pg-beam { stroke: var(--data); stroke-opacity: .25; }
+.pg-room { fill: var(--pane); stroke: var(--line); }
+.pg-gridl { stroke: var(--line); stroke-opacity: .45; }
+.pg-lb { fill: var(--muted); font: 9px Plex, sans-serif; }
+
+/* Calmer spectrum: quiet bars with a bright peak, a small share of the page. */
+.pg-audio { grid-template-rows: minmax(150px, 28%) minmax(0, 1fr); }
+.pg-bars > * { background: var(--ctl-hi) !important; box-shadow: inset 0 2px 0 var(--data); }
+/* View Performance: short faders, hardware speed knob, scenes to add. */
+.pg-perf { grid-template-columns: minmax(0, 1fr) 220px 170px; }
+.pg-perf .track { flex: none; height: 240px; }
+.pg-perf .pg-strip .strip, .pg-gm .strip { flex: none; }
+.pg-strips { align-items: stretch; }
+.pg-gm { justify-content: flex-start; }
+.pgk { display: grid; justify-items: center; padding: 8px 4px 6px; cursor: ns-resize; touch-action: none; user-select: none; }
+.pgk svg { width: 52px; height: 52px; }
+.pgk b { font: 12px PlexMono, monospace; color: var(--strong); }
+.pgk span { font-size: 11px; color: var(--muted); }
+.pgk-t { stroke: var(--scale); stroke-width: 2; } .pgk-t.on { stroke: var(--strong); }
+.pgk-f { fill: var(--capface); stroke: var(--capedge); stroke-width: 2; }
+.pgk-p { stroke: var(--strong); stroke-width: 4; stroke-linecap: round; }
+.pg-perf .pg-strips { background: var(--pane); }
+.pg-perf .pg-strip { box-shadow: 2px 0 0 var(--gutter); }
+
+/* Layouts following the real Views, View Performance and Audio pages */
+.okp { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; min-width: 0; }
+.oktool { position: relative; }
+.oksep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.okr { margin-left: auto; }
+.oktabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.okgm { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.okgm .hft { width: 180px; height: 26px; }
+.okdel { margin-left: 4px; height: 24px; padding: 0 6px; background: none; color: var(--muted); font-size: 11px; } .okdel.arm { background: var(--red); color: #fff; }
+.okgm b { font: 12px PlexMono, monospace; color: var(--strong); width: 36px; }
+
+.okmenu { position: absolute; z-index: 9; top: 100%; left: 8px; width: 240px; padding: 8px; background: var(--head); box-shadow: 0 0 0 1px var(--line); display: grid; gap: 4px; }
+.okmenu b { color: var(--strong); font-weight: 500; }
+.okgrid { display: grid; grid-template-columns: repeat(auto-fill, 196px); gap: 2px; padding: 8px; }
+.okcard { background: var(--head); }
+.okcard > header { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 8px; color: var(--strong); }
+.okcard > header span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+small { font-weight: 400; }
+.okcard small, .okrow small { color: var(--muted); }
+.okdot { flex: none; margin-right: auto; width: 9px; height: 9px; border-radius: 50%; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
+.okdot.on { background: var(--ok); }
+.okctl { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; padding: 0 4px 8px; }
+.okbtns { display: grid; gap: 2px; } .okbtns .mini { padding: 0; height: 24px; font-size: 11px; }
+.ok { display: grid; justify-items: center; cursor: ns-resize; touch-action: none; user-select: none; }
+.ok svg { width: 46px; height: 46px; }
+.ok b { font: 11px PlexMono, monospace; color: var(--strong); }
+.ok span { font-size: 11px; color: var(--muted); }
+.okname { max-width: 420px; }
+.okrow { display: grid; grid-template-columns: minmax(120px, 260px) 70px 70px auto; justify-content: start; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.oknm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--strong); }
+.okdev { color: var(--strong); }
+.okspp { flex: none; height: clamp(120px, 25vh, 320px); }
+.okspec { flex: 1; min-height: 0; padding: 8px; }
+.okspec canvas { display: block; width: 100%; height: 100%; background: #0a0c16; }
+.hfs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 12px; }
+.hf { display: grid; grid-template-columns: 200px 36px auto; align-items: center; gap: 8px; }
+.hf b { font: 12px PlexMono, monospace; color: var(--strong); text-align: right; }
+.hf span { font-size: 12px; }
+.hft { position: relative; height: 32px; cursor: ew-resize; touch-action: none; }
+.hfs { position: absolute; left: 9px; right: 9px; top: 13px; height: 6px; background: #000; border: 1px solid var(--line); border-radius: 2px; }
+.hfl { position: absolute; left: 9px; right: 9px; top: 3px; bottom: 3px; background: repeating-linear-gradient(to right, var(--scale) 0 1px, transparent 1px calc((100% - 1px) / 10)); -webkit-mask: linear-gradient(#000 0 7px, transparent 7px 19px, #000 19px); mask: linear-gradient(#000 0 7px, transparent 7px 19px, #000 19px); }
+.hfc { position: absolute; top: 2px; bottom: 2px; width: 18px; left: calc(var(--p) * (100% - 18px)); background: var(--capface); border: 1px solid var(--capedge); border-radius: 3px; box-shadow: 0 2px 0 var(--capdrop); }
+.hfc u { position: absolute; top: 0; bottom: 0; left: 7px; width: 2px; background: var(--strong); }
+.okchk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.okinfo { position: fixed; z-index: 20; inset: 40px 60px 60px 240px; background: var(--pane); box-shadow: 0 0 0 1px var(--line), 0 0 0 100vmax rgba(0,0,0,.45); display: flex; flex-direction: column; overflow: auto; }
+.okinfo > header { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: var(--head); color: var(--strong); }
+.okic { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 2px; background: var(--gutter); flex: 1; }
+.okic section { background: var(--pane); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.okic h4 { font-size: 12px; font-weight: 500; color: var(--muted); }
+.okp > .pane:last-of-type { flex: 1 1 auto; min-height: 0; }
+.okp > .okspp { flex: none; }
+.okaudio > .okspp + .pane { flex: 1 1 auto; }
+.lg-lvbtn { height: 22px; min-width: 128px; } .lg-lvbtn > i:first-child { font-size: 12px; color: var(--muted); }
+.ddrow.lg-WARN > i:not(.ddck) { color: var(--warn); } .ddrow.lg-ERROR > i:not(.ddck) { color: var(--red-text); } .ddrow.lg-DEBUG > i:not(.ddck) { color: var(--scale); }
+/* Performance bar: same rules as the Programmer's page bar. 40px tall, 28px controls, Blackout and Exclusive preview on the right. */
+.okp > .oktool { height: var(--bar, 40px); gap: 14px; padding: 0 8px; }
+.okp > .oktool .mini { height: 28px; padding: 0 10px; }
+.okp > .oktool .oksep { height: 22px; margin: 0; }
+.okp > .oktool #gb { margin-left: auto; }
+.okgm { gap: 10px; }
+.okgm .hft { width: 200px; height: 28px; }
+.okgm b { width: 40px; }
+.okp > .oktool .okgr { width: 28px; padding: 0; margin-left: -8px; display: grid; place-items: center; font-size: 14px; }
+.okp > .oktool .okgr:disabled { opacity: .35; background: var(--ctl); }
+/* Horizontal fader: the Programmer's fader turned on its side. Same slot, ticks either side of it,
+   and the same cap: lit top edge, shaded bottom edge, drop shadow, grip ridges either side of the line. */
+.hft { --cw: 26px; }
+.hfs { left: calc(var(--cw) / 2); right: calc(var(--cw) / 2); top: calc(50% - 3px); height: 6px; }
+.hfl { left: calc(var(--cw) / 2); right: calc(var(--cw) / 2); top: 3px; bottom: 3px;
+  background: repeating-linear-gradient(to right, var(--scale) 0 1px, transparent 1px calc((100% - 1px) / 10));
+  -webkit-mask: linear-gradient(#000 0 calc(50% - 7px), transparent calc(50% - 7px) calc(50% + 7px), #000 calc(50% + 7px)); mask: linear-gradient(#000 0 calc(50% - 7px), transparent calc(50% - 7px) calc(50% + 7px), #000 calc(50% + 7px)); }
+.hfc { top: 1px; bottom: 3px; width: var(--cw); left: calc(var(--p) * (100% - var(--cw))); overflow: hidden;
+  background: var(--capface); border: 1px solid var(--capedge); border-radius: 3px; box-shadow: 0 2px 0 var(--capdrop), inset 0 2px 0 var(--caphi), inset 0 -3px 0 var(--caplo); }
+.hfc::before, .hfc::after { content: ""; position: absolute; top: 4px; bottom: 5px; width: 7px;
+  background: repeating-linear-gradient(to right, var(--caplo) 0 1px, var(--caphi) 1px 2px, transparent 2px 3px); }
+.hfc::before { left: 3px; } .hfc::after { right: 2px; }
+.hfc u { left: calc(50% - 1px); width: 2px; top: 0; bottom: 0; }
+.hft:hover .hfc { border-color: var(--strong); }
+.okgm .hft { --cw: 22px; height: 28px; }
+/* Views: list of views on the left in the shared list rows, the selected view on the right. */
+.okviews { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: var(--gap); min-height: 0; height: 100%; }
+.okvlist { display: flex; flex-direction: column; min-height: 0; }
+.okvlist > .body { flex: 1; overflow: auto; }
+.okvlist .row { box-shadow: inset 0 -1px 0 var(--hair); }
+.okvlist .row.on { box-shadow: inset 2px 0 0 var(--blue), inset 0 -1px 0 var(--hair); }
+.okviews > .okp { min-height: 0; }
+.okvdel { justify-self: start; margin-top: 8px; }
+/* Views: the active view's scenes in the folder list, with rows tall enough for knobs and Remove. */
+.okvmain { display: flex; flex-direction: column; min-height: 0; }
+.okvtree { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--line); }
+.okvtree .row.okbig { height: 72px; gap: 18px; padding-right: 10px; white-space: nowrap; }
+.okvtree .okbn { display: flex; flex-direction: column; gap: 2px; min-width: 120px; flex: 1 !important; color: var(--strong); font-size: 13px; }
+.okvtree .okbn small { font-size: 11px; color: var(--muted); }
+.okvtree .ok svg { width: 40px; height: 40px; }
+.okvtree .okbig .mini { height: 28px; }
+.okvdel.mini:not(:disabled) { color: var(--red-text); background: var(--ctl); }
+/* Columns: name, Intensity, Speed, Remove line up across folders; spare width stays on the right. */
+.okvtree .row.okbig { display: grid; grid-template-columns: minmax(140px, 260px) 64px 64px auto; justify-content: start; align-items: center; column-gap: 20px; }
+.okvtree .okbn { flex: none !important; min-width: 0; }
+.okvtree .okbig .mini { justify-self: start; margin-left: 8px; }
+.okvtree .row.okbig { grid-template-columns: minmax(140px, 260px) 64px 64px 1fr; }
+.okvtree .okbig .mini { justify-self: end; margin-left: 0; }
+.okvtree .okbig .mini[data-vrm]:hover { background: #b80f0f; color: #fff; }
+/* Views: the name is the pane title and edits in place; Delete lives on the selected list row. */
+.okvmain > header { gap: 6px; }
+.okvname { flex: 1; min-width: 0; max-width: 360px; height: 22px; margin-left: -6px; padding: 0 6px; background: none; border: 0; color: var(--strong); font: inherit; font-weight: 500; outline: none; box-shadow: none; }
+.okvname:hover { box-shadow: inset 0 0 0 1px var(--line); }
+.okvname:focus { background: var(--well); box-shadow: inset 0 0 0 1px var(--blue); }
+.okvmain > header .hr { margin-left: auto; }
+.okvx { margin-left: 6px; width: 20px; height: 20px; display: grid; place-items: center; font-size: 13px; color: var(--strong); opacity: .7; cursor: pointer; }
+.okvx:hover { opacity: 1; background: #b80f0f; color: #fff; }
+.okvtree { border-top: 0; }
+/* Views title: a 40px bar like the page bar, the name in a visible field with a pencil. */
+.okvmain > header { height: 40px; padding: 0 8px; box-shadow: inset 0 -1px 0 var(--line); }
+.okvmain > header .mini { height: 28px; padding: 0 10px; }
+.okvnl { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; max-width: 340px; cursor: text; }
+.okvname, .okvname:hover { flex: 1; height: 28px; margin: 0; padding: 0 28px 0 8px; font-size: 14px; font-weight: 500; color: var(--strong); background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
+.okvnl:hover .okvname { box-shadow: inset 0 0 0 1px var(--muted); }
+.okvname:focus { box-shadow: inset 0 0 0 1px var(--blue); }
+.okvnl i { position: absolute; right: 8px; font-size: 14px; color: var(--muted); pointer-events: none; }
+.okvnl:hover i, .okvname:focus + i { color: var(--strong); }
+.okvtree > .row.folder:first-child { margin-top: 0; }
+.okvlist > header { height: 40px; padding: 0 8px; box-shadow: inset 0 -1px 0 var(--line); } .okvlist > header .mini { height: 28px; padding: 0 10px; }
+.pg-log .s span { min-width: calc(7ch + 12px); box-sizing: border-box; text-align: center; }
+.lg-title { font-size: 13px; font-weight: 500; color: var(--strong); margin-right: 6px; } .lg-pane { display: flex; flex-direction: column; min-height: 0; }

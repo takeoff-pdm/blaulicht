@@ -65,6 +65,15 @@ impl RemoteClient {
     /// the engine answered. Fails if the engine can't be reached or rejects
     /// the client (for example another [`PROTOCOL_VERSION`]).
     pub fn connect(addr: impl ToSocketAddrs, streams: &[Stream]) -> anyhow::Result<Self> {
+        Self::connect_with_passcode(addr, streams, None)
+    }
+
+    /// [`Self::connect`] to an engine that may ask for a passcode.
+    pub fn connect_with_passcode(
+        addr: impl ToSocketAddrs,
+        streams: &[Stream],
+        passcode: Option<String>,
+    ) -> anyhow::Result<Self> {
         let addr = addr
             .to_socket_addrs()?
             .next()
@@ -85,6 +94,7 @@ impl RemoteClient {
         let hello = Encoding::Bincode.encode(&ClientMessage::Hello {
             protocol_version: PROTOCOL_VERSION,
             streams: streams.to_vec(),
+            passcode: passcode.clone(),
         })?;
         ws.send(into_message(hello))?;
         let welcome = loop {
@@ -134,13 +144,13 @@ impl RemoteClient {
             stop,
             io: Some(io),
         };
-        Ok(Self::with_transport(state, streams, transport))
+        Ok(Self::with_transport(state, streams, passcode, transport))
     }
 
     /// A new connection to the same engine with the same streams, in a new
     /// operator session (this one's is gone once it disconnected).
     pub fn reconnect(&self) -> anyhow::Result<Self> {
-        Self::connect(self.transport.addr, &self.streams())
+        Self::connect_with_passcode(self.transport.addr, &self.streams(), self.passcode())
     }
 
     /// Waits until the first show and session snapshots arrived (`true`), or

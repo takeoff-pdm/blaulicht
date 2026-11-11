@@ -1,0 +1,21 @@
+<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><title>Picker contrast</title><link rel="stylesheet" href="studio.css">
+<style>html,body{height:auto;overflow:auto}body{padding:16px;background:var(--gutter);color:var(--text)}h1{font-size:18px;font-weight:500;color:var(--strong)}p.i{margin:4px 0 12px;max-width:80ch}
+.vs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,720px),1fr));gap:14px}.v b{display:block;font-weight:500;color:var(--strong);margin-bottom:2px}.v p{margin:0 0 6px;color:var(--muted);max-width:80ch}
+.fr{position:relative;width:100%;aspect-ratio:16/10;overflow:hidden;background:#000}.fr iframe{position:absolute;left:0;top:0;width:1440px;height:900px;border:0;transform-origin:0 0}
+.v a{color:var(--blue);font-size:12px}.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}</style></head>
+<body><h1>Raised picker, contrast steps</h1>
+<p class="i">Only the open picker differs. Each frame is the real draft page at 1440x900, with the picker opened on load. Click inside a frame to try it, or open it full size. Each option adds to the one before it. Pick by code, like B3.</p>
+<div class="bar"><button class="mini" id="t">Switch to light theme</button></div>
+<div class="vs" id="vs"></div>
+<script>
+const V=[["B1","raised","A2 as it is now (current)","Popover one step lighter than the panes, with a thin edge and a soft shadow."],
+["B2","raised2","Clearly lighter surface","About two steps above the panes, with an even lighter hover, as in Atlassian's overlay tokens. The filter field turns dark for contrast."],
+["B3","raised3","Plus a stronger edge","B2 with a bright outline inside a dark ring, a 1px highlight along the top, darker folder bands and a deeper shadow, so the edge holds even over the colour wheel."],
+["B4","raised4","Plus a soft dim","B3 with the page dimmed by 35% behind it, much softer than A3, so it still feels like a menu."]];
+let theme="dark";
+const draw=()=>{document.getElementById("vs").innerHTML=V.map(([c,k,n,d])=>{const u=`programmer-scene.html?picker=${k}&open=1#${theme}`;return `<div class="v"><b>${c} ${n}</b><p>${d}</p><div class="fr"><iframe src="${u}" title="${c} ${n}"></iframe></div><a href="${u}" target="_blank">Open ${c} full size</a></div>`}).join("");fit();};
+const fit=()=>document.querySelectorAll(".fr").forEach(f=>f.querySelector("iframe").style.transform=`scale(${f.clientWidth/1440})`);
+addEventListener("resize",fit);
+document.getElementById("t").onclick=e=>{theme=theme==="dark"?"light":"dark";document.documentElement.dataset.theme=theme;e.target.textContent=theme==="dark"?"Switch to light theme":"Switch to dark theme";draw();};
+draw();
+</script></body></html>

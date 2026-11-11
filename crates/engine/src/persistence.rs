@@ -18,7 +18,8 @@
 //! - **Status.** It publishes [`SystemMessage::ShowfileStatus`] whenever the
 //!   status changes, and [`SystemMessage::ShowLoaded`] whenever another show
 //!   is loaded (both are replayed to late subscribers).
-//! - **Config.** It writes `last_open_showfile` and the global plugin state;
+//! - **Config.** It writes `last_open_showfile`, the remote access settings
+//!   (`HostCommand::SetRemoteAccess`) and the global plugin state;
 //!   the supervisor writes `default_audio_device` through the same
 //!   [`SharedConfig`], whose lock is a leaf.
 //! - **Frontend section.** The desk frontend publishes its screen layouts
@@ -139,6 +140,10 @@ enum Request {
         key: String,
         value: String,
     },
+    RemoteAccess {
+        enabled: bool,
+        passcode: Option<String>,
+    },
     /// The frontend closed; `main` waits for the service to finish.
     Stop,
 }
@@ -194,6 +199,10 @@ impl PersistenceLink {
                     generation,
                     section,
                 });
+                return Ok(Some(CommandOutcome::Ok { created: None }));
+            }
+            HostCommand::SetRemoteAccess { enabled, passcode } => {
+                self.send(Request::RemoteAccess { enabled, passcode });
                 return Ok(Some(CommandOutcome::Ok { created: None }));
             }
             HostCommand::SaveShowfile => ShowfileCommand::Save,
@@ -417,6 +426,16 @@ impl PersistenceService {
             Request::GlobalPluginState { key, value } => {
                 self.pending_plugin_state.insert(key, value);
             }
+            Request::RemoteAccess { enabled, passcode } => {
+                self.app.set_remote_access(enabled, passcode);
+                let passcode = self.app.remote_access().passcode;
+                if let Err(error) = self.config.update(|config| {
+                    config.server_enabled = enabled;
+                    config.server_passcode = passcode;
+                }) {
+                    tracing::error!("Failed to save the remote access settings: {error:#}");
+                }
+            }
             Request::Stop => {
                 self.flush_plugin_state();
                 // Closing the window without Quit still ends the show.
@@ -546,7 +565,15 @@ impl PersistenceService {
 
     /// Puts `parsed` into the engine as a new show with `file` as its
     /// showfile, and announces it.
-    fn install(&mut self, parsed: ParsedShowfile, file: Option<PathBuf>) {
+    fn install(&mut self, mut parsed: ParsedShowfile, file: Option<PathBuf>) {
+        {
+            let config = self
+                .config
+                .config
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            config::migrate_plugin_state_keys(&mut parsed.plugin_state, &config.plugins);
+        }
         self.app.set_grand_master_percent(100);
         let has_file = file.is_some();
         let section = {

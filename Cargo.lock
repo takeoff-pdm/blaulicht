@@ -600,6 +600,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "blaulicht-setlist"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "blaulicht-setlist-analyzer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blaulicht-audio-features",
+ "blaulicht-setlist",
+ "clap",
+ "serde_json",
+ "symphonia",
+]
+
+[[package]]
 name = "blaulicht-shared"
 version = "0.30.0"
 dependencies = [

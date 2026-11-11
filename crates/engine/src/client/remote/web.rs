@@ -6,7 +6,7 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 use js_sys::{ArrayBuffer, Uint8Array};
@@ -97,7 +97,7 @@ impl RemoteClient {
         streams: &[Stream],
         waker: impl Fn() + 'static,
     ) -> anyhow::Result<Self> {
-        Self::open_web(url.to_string(), streams, Rc::new(waker))
+        Self::open_web(url.to_string(), streams, None, Rc::new(waker))
     }
 
     /// A new connection to the same engine with the same streams and waker,
@@ -106,11 +106,17 @@ impl RemoteClient {
         Self::open_web(
             self.transport.url.clone(),
             &self.streams(),
+            self.passcode(),
             Rc::clone(&self.transport.waker),
         )
     }
 
-    fn open_web(url: String, streams: &[Stream], waker: Waker) -> anyhow::Result<Self> {
+    fn open_web(
+        url: String,
+        streams: &[Stream],
+        passcode: Option<String>,
+        waker: Waker,
+    ) -> anyhow::Result<Self> {
         let socket = WebSocket::new(&url)
             .map_err(|err| anyhow::anyhow!("Could not open a websocket to {url}: {err:?}"))?;
         socket.set_binary_type(BinaryType::Arraybuffer);
@@ -126,6 +132,7 @@ impl RemoteClient {
             let hello = encode(&ClientMessage::Hello {
                 protocol_version: PROTOCOL_VERSION,
                 streams: streams.to_vec(),
+                passcode: passcode.clone(),
             });
             Closure::<dyn FnMut()>::new(move || {
                 if let Some(hello) = &hello {
@@ -163,8 +170,19 @@ impl RemoteClient {
                             engine_version,
                         });
                     }
-                    Ok(ServerMessage::Rejected { reason, .. }) => {
-                        state.disconnect(&format!("the engine rejected the connection: {reason}"));
+                    Ok(ServerMessage::Rejected {
+                        reason,
+                        passcode_required,
+                        ..
+                    }) => {
+                        if passcode_required {
+                            state.passcode_refused.store(true, Ordering::SeqCst);
+                            state.disconnect(&reason);
+                        } else {
+                            state.disconnect(&format!(
+                                "the engine rejected the connection: {reason}"
+                            ));
+                        }
                         let _ = link.socket.close();
                     }
                     Ok(message) => {
@@ -214,6 +232,6 @@ impl RemoteClient {
             _on_close: on_close,
             _on_error: on_error,
         };
-        Ok(Self::with_transport(state, streams, transport))
+        Ok(Self::with_transport(state, streams, passcode, transport))
     }
 }

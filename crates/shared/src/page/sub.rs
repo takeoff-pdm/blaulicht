@@ -45,6 +45,8 @@ pub enum AppSubPage {
     // and Palettes pages (see `AppPage::moved_to`).
     Setup_Animations,
     Setup_Palettes,
+    // System page, added after Setup's so the existing indices stay.
+    System_Remote,
 }
 
 impl AppSubPage {
@@ -57,7 +59,8 @@ impl AppSubPage {
             | AppSubPage::System_Midi
             | AppSubPage::System_Serial
             | AppSubPage::System_Plugins
-            | AppSubPage::System_Screens => AppPage::System,
+            | AppSubPage::System_Screens
+            | AppSubPage::System_Remote => AppPage::System,
             AppSubPage::Setup_Fixtures
             | AppSubPage::Setup_Groups
             | AppSubPage::Setup_Scenes
@@ -76,6 +79,7 @@ impl AppSubPage {
             AppSubPage::System_Serial => "Serial",
             AppSubPage::System_Plugins => "Plugins",
             AppSubPage::System_Screens => "Screens",
+            AppSubPage::System_Remote => "Remote UI",
             AppSubPage::Setup_Fixtures => "Fixtures",
             AppSubPage::Setup_Groups => "Groups",
             AppSubPage::Setup_Scenes => "Scenes",
@@ -144,6 +148,7 @@ mod tests {
         assert_eq!(index(AppSubPage::Setup_Scenes), [9]);
         assert_eq!(index(AppSubPage::Setup_Animations), [10]);
         assert_eq!(index(AppSubPage::Setup_Palettes), [11]);
+        assert_eq!(index(AppSubPage::System_Remote), [12]);
 
         let event = MainUiEvent::NavigateSubPage(AppSubPage::System_Dmx);
         assert_eq!(

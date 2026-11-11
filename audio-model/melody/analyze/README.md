@@ -2,15 +2,15 @@
 
 Everything about a song that the light show can use, computed offline on ae-charlie
 (`/localhome/sokrates/melody`), one JSON per song and analyzer in `out/features/<analyzer>/<id>.json`.
-`viz/show_compile.py` merges them into one cue list per song (`doc.cues`), the viewer shows them as
+`pipeline/show_compile.py` merges them into one cue list per song (`doc.cues`), the viewer shows them as
 lanes under the stem lanes, and the club (`viz/club.js`) plays the cues.
 
     sh audio-model/melody/analyze/sync.sh push      # code to ae-charlie
     # on ae-charlie, in code/: <venv>/bin/python -m analyze.run <analyzer> [--jobs N | --shard i --num-shards n]
-    sh audio-model/melody/analyze/sync.sh pull      # features to audio-model/data/melody/features, then restart serve.py
+    sh audio-model/melody/analyze/sync.sh pull      # features to audio-model/data/melody/features, then pipeline/song.py compile --stale
 
 `run.py` skips songs already done at the analyzer's current `VERSION`, so a new playlist only costs
-its own songs. Every analyzer is optional for the compiler.
+its own songs. Every analyzer is optional for the compiler. To add one song, use `pipeline/song.py add`, which runs them in order on free GPUs (`pipeline/README.md`).
 
 | Analyzer | What it gives the show | Method | Weights licence | Env (ae-charlie) | 300 songs |
 |---|---|---|---|---|---|
@@ -95,7 +95,7 @@ Nothing above has ground truth yet. The labelling view (`http://127.0.0.1:8766/#
 
 - **Scoring:** `python -m analyze.fx_train.evaluate labels <fxhead features> audio-model/data/melody/labels` scores the effect head. The section analyzers still need a scorer.
 - **`edm_finetune/`:** SongFormer retrained on EDM labels. On the rule's own labels it agrees with the rule 81.6% of the time on 33 held-out songs (All-In-One mapped 55.4%, always "drop" 39.3%), which only shows the pipeline runs: it learned the rule. The `hand` path has only run on fake files.
-- **The rule's outros:** `viz/sections.py` calls everything after the last detected drop an outro, so a missed drop turns the rest of the song into one (Robin S 93%, Brejcha's Gravity 65%, Sandstorm 61%; 28 of 175 songs at 25% or more, median 9%). Real extended mixes have long outros too, so the labels should settle this before the rule changes. The labelling suggestions and the fine-tune's weak labels inherit it.
+- **The rule's outros:** `pipeline/sections.py` calls everything after the last detected drop an outro, so a missed drop turns the rest of the song into one (Robin S 93%, Brejcha's Gravity 65%, Sandstorm 61%; 28 of 175 songs at 25% or more, median 9%). Real extended mixes have long outros too, so the labels should settle this before the rule changes. The labelling suggestions and the fine-tune's weak labels inherit it.
 
 ## Not run
 

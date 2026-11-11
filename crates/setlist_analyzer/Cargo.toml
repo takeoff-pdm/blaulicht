@@ -1,0 +1,17 @@
+[package]
+name = "blaulicht-setlist-analyzer"
+version = "0.1.0"
+edition = "2021"
+description = "Offline analysis of a DJ's setlist into track maps for the setlist plugin"
+
+[dependencies]
+anyhow = "1.0.100"
+blaulicht-audio-features = { path = "../audio_features" }
+blaulicht-setlist = { path = "../setlist" }
+clap = { version = "4.5.21", features = ["derive"] }
+serde_json = "1"
+symphonia = { version = "0.5.5", features = ["mp3"] }
+
+[[bin]]
+name = "setlist-analyze"
+path = "src/main.rs"

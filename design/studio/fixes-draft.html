@@ -1,0 +1,257 @@
+<!doctype html>
+<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Proposed Fixes</title>
+<link rel="stylesheet" href="studio.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+html, body { height: 100%; overflow: hidden; }
+.app { height: 100vh; display: flex; flex-direction: column; gap: 2px; background: var(--gutter); }
+.app > .bar, .app > .status { flex: none; }
+.app > .status { height: 26px; }
+.mini.primary:disabled { background: none; color: var(--muted); }
+.bar { height: 30px; background: var(--head); display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--muted); font-size: 12px; }
+.bar b { color: var(--strong); font-weight: 500; font-size: 13px; margin-right: 8px; }
+.bar .end { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.mini.on { background: var(--blue-dim); color: var(--strong); }
+#strip { display: none; align-items: center; gap: 12px; padding: 6px 10px; background: #b80f0f; color: #fff; font-size: 13px; }
+#strip.show { display: flex; }
+#strip b { font-weight: 600; }
+.app > .status { grid-area: auto; }
+.scroll { flex: 1; overflow: auto; min-height: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2px; align-items: stretch; }
+.pane { min-height: 240px; }
+.pane > header small { margin-left: auto; }
+.pad { padding: 10px; display: grid; gap: 10px; align-content: start; }
+.why { font-size: 12px; color: var(--muted); line-height: 1.4; max-width: 70ch; }
+.why b { color: var(--text); font-weight: 500; }
+.ctlrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.big { height: 28px; }
+.fld { height: 24px; width: 64px; padding: 0 6px; font: 12px PlexMono, monospace; color: var(--strong); background: var(--well); border: 0; box-shadow: inset 0 0 0 1px var(--line); user-select: text; }
+.fld.wide { width: 100%; font: inherit; font-size: 12px; }
+.fld.bad { box-shadow: inset 0 0 0 1px var(--red-text); }
+.fld.pend { box-shadow: inset 0 0 0 1px var(--changed); }
+.lbl { font-size: 12px; color: var(--muted); }
+.val { font: 13px PlexMono, monospace; color: var(--strong); }
+.stale .val, .stale { color: var(--muted); }
+.list { background: var(--list); }
+.note { font-size: 12px; color: var(--muted); }
+.notice { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--warn); background: var(--pane); }
+.notice .mini { margin-left: auto; }
+.prob2 { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--list); box-shadow: inset 0 -1px 0 var(--hair); }
+.prob2 .t { flex: 1; min-width: 0; } .prob2 small { display: block; font-size: 11px; color: var(--muted); }
+.sq { width: 9px; height: 9px; flex: none; background: var(--red); }
+.tri { width: 11px; height: 10px; flex: none; background: var(--warn); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.okq { width: 9px; height: 9px; flex: none; background: var(--ok); }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px 8px; }
+td { padding: 4px 8px; box-shadow: inset 0 -1px 0 var(--hair); }
+td.n { color: var(--strong); }
+.status .cell.black { background: #b80f0f; color: #fff; font-weight: 600; }
+.status .cell.black:hover { background: #d40f0f; color: #fff; }
+.status button.cell { font: inherit; }
+.status .stale { opacity: .45; }
+.status .dirty { color: var(--changed); }
+.status .fail { color: var(--red-text); }
+.gm { display: flex; align-items: center; gap: 10px; }
+.track2 { position: relative; width: 220px; height: 28px; cursor: ew-resize; touch-action: none; }
+.track2 i { position: absolute; left: 9px; right: 9px; top: 12px; height: 4px; background: #000; box-shadow: 0 0 0 1px var(--line); }
+.track2 u { position: absolute; top: 2px; bottom: 2px; width: 18px; left: calc(var(--p) * (100% - 18px)); background: var(--capface); box-shadow: 0 0 0 1px var(--capedge); }
+.track2 u::after { content: ""; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--strong); }
+dialog { border: 0; padding: 0; background: none; color: inherit; margin: auto; }
+dialog::backdrop { background: rgb(0 0 0 / .55); }
+.dlg { position: static; }
+.toast { z-index: 60; }
+.toast .mini { margin-left: 12px; }
+.toast.withbtn { display: flex; align-items: center; }
+.hint { font-size: 11px; color: var(--muted); }
+.reset-far { margin-left: 28px; }
+</style></head><body>
+<div class="app">
+  <div class="bar"><b>Proposed fixes</b>Engine state to try:
+    <button class="mini on" data-conn="ok">Connected</button><button class="mini" data-conn="disc">Disconnected</button><button class="mini" data-conn="rest">Restarting</button>
+    <span class="end"><button class="mini" id="undo">Undo</button><button class="mini" id="redo">Redo</button><button class="mini" id="theme">Light theme</button></span></div>
+  <div id="strip" role="alert"></div>
+  <div class="scroll" id="main"><div class="grid">
+
+    <section class="pane"><header>1 Blackout is global and always visible</header><div class="pad">
+      <p class="why"><b>Was:</b> invisible on most pages, lost when changing page, strobed when held, blocked by text fields. <b>Now:</b> the status bar owns it on every page. <b>Cmd/Ctrl+B</b> works even while typing, ignores key repeat, and restores your level.</p>
+      <div class="ctlrow"><button class="mini okblack big" id="bk">Blackout</button><input class="fld wide" style="width:190px" placeholder="Click here, then press Cmd/Ctrl+B" aria-label="Test field"></div>
+      <div class="gm"><span class="lbl">Grand master</span><div class="track2" id="gm" role="slider" tabindex="0" aria-label="Grand master"><i></i><u></u></div><span class="val" id="gmv"></span><button class="mini reset-far" id="gmr">Set to 100%</button></div>
+      <p class="why">Press <b>Esc</b> while dragging to cancel and return to the starting value. Reset now sits away from Blackout and has a clear name.</p>
+    </div></section>
+
+    <section class="pane"><header>2 One honest connection state</header><div class="pad">
+      <p class="why"><b>Was:</b> disconnected still showed Saved, BPM and moving graphs, a banner hid the top row, and Blackout claimed success. <b>Now:</b> use the buttons at the top. The strip pushes content down instead of covering it, live values freeze and dim, and commands say they weren't sent.</p>
+      <div class="ctlrow"><span class="lbl">Last known level</span><span class="val" id="lvl"></span><span class="note" id="age"></span></div>
+      <p class="why">While disconnected, try Blackout or Save. Commands aren't queued, because replaying lighting actions later could be dangerous.</p>
+    </div></section>
+
+    <section class="pane"><header>3 One save state, with real undo</header><div class="pad">
+      <p class="why"><b>Was:</b> "Saved" stayed on after edits and failed saves, while Load and Close always claimed unsaved changes. Undo all wiped 316 changes for good. <b>Now:</b> status bar and dialogs read one state, and clearing changes can be undone with Cmd/Ctrl+Z.</p>
+      <div class="ctlrow"><span class="lbl">Scene changes</span><span class="val" id="chg"></span><button class="mini" id="edit">Change a value</button><button class="mini" id="clr">Clear all changes</button></div>
+      <div class="ctlrow"><button class="mini" id="save">Save</button><button class="mini" id="savebad">Save, simulate full disk</button><button class="mini" id="close">Close show</button></div>
+    </div></section>
+
+    <section class="pane"><header>4 Dialogs are properly modal</header><div class="pad">
+      <p class="why"><b>Was:</b> Tab escaped into the page, a second dialog could open on top, and clicking text broke Esc. <b>Now:</b> focus stays inside, the page behind is locked, and Cancel is the default. Blackout is the one exception: it still works, and the dialog confirms it.</p>
+      <div class="ctlrow"><button class="mini danger" id="sd">Shut down</button></div>
+    </div></section>
+
+    <section class="pane"><header>5 Add fixture has no dead ends</header><div class="pad">
+      <p class="why"><b>Was:</b> no group field, defaulted to the offline universe, accepted channel 99999, and the new fixture never appeared. <b>Now:</b> group is chosen up front, defaults avoid offline outputs, bad values block Add, and the row appears selected.</p>
+      <div class="ctlrow"><button class="mini" id="addfx">Add fixture</button><span class="note">MAC250E group</span></div>
+      <div class="list" id="fxtable"></div>
+    </div></section>
+
+    <section class="pane"><header>6 Problems can be fixed from where they appear</header><div>
+      <div class="prob2"><i class="sq"></i><span class="t">/dev/dmx_out1 is offline<small>Universe 1 isn't reaching this output</small></span><button class="mini" data-fix="uni">Open universe 1</button></div>
+      <div class="prob2" id="plg"><i class="tri"></i><span class="t">setlist crashed<small>The plugin stopped</small></span><button class="mini" id="reload">Reload plugin</button></div>
+      <div class="prob2"><i class="tri"></i><span class="t">Patch overlap at 22<small>DPACK #10 and New Fixture #1 share a channel</small></span><button class="mini" data-fix="ov">Show overlap</button></div>
+      <div class="prob2"><i class="tri"></i><span class="t">/dev/ttyACM0 disconnected<small>Serial device</small></span><button class="mini" data-fix="rec">Reconnect</button></div>
+      <div class="pad"><p class="why">Each button names its action. The status bar count matches this list, with 1 error and <span id="wn"></span> warnings shown separately.</p></div>
+    </div></section>
+
+    <section class="pane"><header>7 Animations show where they are used</header><div class="pad">
+      <p class="why"><b>Was:</b> nothing showed how to apply an animation. <b>Now:</b> the editor lists its uses and has an Add to scene action.</p>
+      <div class="lbl">Used in <span id="ucount"></span></div><div class="list" id="used"></div>
+      <div class="ctlrow"><button class="mini" id="assign">Add to scene WHITE</button></div>
+    </div></section>
+
+    <section class="pane"><header>8 RGB applies when you finish typing</header><div class="pad">
+      <p class="why"><b>Was:</b> typing 200 sent 2, then 20, then 200 to the lights, and tabbing through R wiped Saturation. <b>Now:</b> a field turns amber while pending. Enter or leaving it applies, Esc cancels, and an untouched field changes nothing.</p>
+      <div class="ctlrow"><span class="lbl">R</span><input class="fld" data-c="R" value="255"><span class="lbl">G</span><input class="fld" data-c="G" value="120"><span class="lbl">B</span><input class="fld" data-c="B" value="0"><i id="sw" style="width:24px;height:24px;display:block"></i></div>
+      <div class="note">Sent to fixtures: <span class="val" id="sent">none yet</span></div>
+    </div></section>
+
+    <section class="pane"><header>9 Selection stays honest</header><div class="fxfilter"><input id="flt" placeholder="Filter fixtures, try zzz" aria-label="Filter fixtures"></div>
+      <div id="hid"></div><div class="list" id="fxs"></div><div class="pad">
+      <div class="ctlrow"><span class="lbl" id="seltxt"></span><button class="mini" id="clear">Clear selection and filter</button></div>
+      <div class="ctlrow"><span class="lbl">Alpha</span><span class="val" id="alpha"></span></div>
+      <p class="why">Selected fixtures hidden by a filter are now called out. With nothing selected, values show a dash rather than 0, so it can't be mistaken for lights off.</p>
+    </div></section>
+
+    <section class="pane"><header>10 Deleting shows the consequences</header><div class="pad">
+      <p class="why"><b>Was:</b> deleting PRIMARY quietly left STAGE pointing at nothing. Remove, X and Clear had no safety net. <b>Now:</b> dependants are listed before you confirm, and small removals happen at once with Undo.</p>
+      <div class="ctlrow"><button class="mini" id="delp">Delete palette PRIMARY</button><button class="mini" id="rmo">Remove animation HUE</button><span class="note" id="rmstate"></span></div>
+    </div></section>
+
+    <section class="pane"><header>11 Names and numbers (your call)</header><div class="list"><table><thead><tr><th>Now</th><th>Proposed</th><th>Why it confused the tester</th></tr></thead><tbody>
+      <tr><td>Views</td><td class="n">Views</td><td>Guessed camera angles</td></tr>
+      <tr><td>View Performance</td><td class="n">Perform</td><td>Guessed metrics. This is also where Blackout was hidden</td></tr>
+      <tr><td>Devices</td><td class="n">MIDI &amp; Serial</td><td>Guessed DMX interfaces</td></tr>
+      <tr><td>Programmer</td><td class="n">Keep</td><td>Guessed code, but it's the standard lighting term. Add a tooltip</td></tr>
+      <tr><td>RST, OFF</td><td class="n">Reset, Off</td><td>RST unknown, and OFF is also a scene name</td></tr>
+      <tr><td>Alpha, Level</td><td class="n">Intensity</td><td>Alpha, Value and Master alpha all sounded like brightness</td></tr>
+      <tr><td>Live</td><td class="n">Exclusive preview</td><td>On in one page, off in another, and only explained by a banner</td></tr>
+      <tr><td>6, #1, (0)</td><td class="n">6 fixtures in tooltip, #1 only for IDs</td><td>The same form meant different things</td></tr>
+    </tbody></table></div></section>
+
+    <section class="pane"><header>12 Pending routing stays visible</header><div class="pad">
+      <p class="why"><b>Was:</b> unapplied routing silently survived leaving the tab. <b>Now:</b> the sidebar and status bar show a pending count until you apply or discard it. "One universe, several outputs" is written as a rule beside the matrix.</p>
+      <div class="ctlrow"><button class="mini" id="rt">Route universe 2 to DMX 0</button><button class="mini primary" id="rta" disabled>Apply</button><button class="mini" id="rtd" disabled>Discard</button></div>
+      <p class="note">A universe can go to several outputs, so clicking adds a route. Click a lit cell to remove it.</p>
+    </div></section>
+
+  </div></div>
+  <footer class="status" id="st"></footer>
+</div>
+
+<script>
+const $ = i => document.getElementById(i), mod = e => e.metaKey || e.ctrlKey;
+const S = { gm: 70, back: 70, conn: "ok", dirty: false, fail: false, changes: 316, warn: 3, pending: 0, rows: [1,2,3,4,5,6].map(n => `MAC250E-0 #${n}`), newRow: null, used: ["FOG-ON", "STATIC"], sel: new Set(["MAC250E-0 #1", "MAC250E-0 #2"]), alpha: 180, lastSeen: 0 };
+const undo = [], redo = [];
+const online = () => S.conn === "ok", black = () => S.gm === 0;
+
+function toast(t, bad, action) { const host = document.querySelector("dialog[open]") || document.body; const o = document.createElement("div"); o.className = "toast" + (bad ? " bad" : "") + (action ? " withbtn" : ""); o.textContent = t; if (action) { const b = document.createElement("button"); b.className = "mini"; b.textContent = action[0]; b.onclick = () => { action[1](); o.remove(); }; o.append(b); } host.append(o); setTimeout(() => o.remove(), action ? 6000 : 3000); }
+const notSent = what => toast(`${what} not sent: ${S.conn === "disc" ? "engine disconnected" : "engine restarting"}`, true);
+function act(label, doit, undoit) { doit(); undo.push({ label, doit, undoit }); redo.length = 0; draw(); }
+
+function statusBar() { const stale = online() ? "" : " stale";
+  const save = S.fail ? `<span class="fail"><i class="ph ph-warning-octagon"></i> Save failed</span>` : S.dirty ? `<span class="dirty">Unsaved changes</span>` : `<span class="dot"></span>Saved`;
+  $("st").innerHTML = (black() ? `<button class="cell black" id="stb" title="Restore Grand Master (Cmd/Ctrl+B)"><i class="ph-fill ph-prohibit"></i> BLACKOUT, press to restore ${S.back}%</button>` : "") +
+    `<span class="cell show"><i class="ph ph-file"></i><b>SPARTACUS_SOLI</b>${save}</span>` +
+    (online() ? `<a class="cell bad" href="#" data-fix="uni"><span class="dot bad"></span>DMX 1 offline</a>` : `<span class="cell bad"><span class="dot bad"></span>Engine ${S.conn === "disc" ? "disconnected" : "restarting"}</span>`) +
+    `<span class="cell${stale}">Audio ${online() ? "" : "--"}</span><span class="cell${stale}"><span class="tempo">${online() ? "128.0" : "---"}</span>BPM</span><span class="cell${stale}">Engine ${online() ? "1.0 ms" : "--"}</span>` +
+    `<span class="r">${S.pending ? `<span class="cell dirty">${S.pending} routing pending</span>` : ""}<a class="warn cell" href="#"><i class="ph ph-warning"></i>${S.warn} warning${S.warn === 1 ? "" : "s"}</a><span class="cell${stale}">Remote UI ${online() ? 1 : "--"}</span></span>`; }
+
+function draw() { statusBar();
+  document.querySelectorAll("[data-conn]").forEach(b => b.classList.toggle("on", b.dataset.conn === S.conn));
+  const sp = $("strip"); sp.classList.toggle("show", !online()); sp.innerHTML = online() ? "" : `<b><i class="ph ph-warning-octagon"></i> ${S.conn === "disc" ? "Engine disconnected" : "Engine restarting"}</b><span>${S.conn === "disc" ? "Reconnecting. Values below are the last known and may not match the lights." : "Output is paused. This usually takes a few seconds."}</span>`;
+  $("gm").style.setProperty("--p", S.gm / 100); $("gmv").textContent = S.gm + "%"; $("bk").textContent = black() ? "Restore" : "Blackout"; $("bk").classList.toggle("on", black()); $("gmr").disabled = S.gm === 100;
+  $("lvl").textContent = S.gm + "%"; $("lvl").parentElement.classList.toggle("stale", !online()); $("age").textContent = online() ? "live" : "last known, no longer updating";
+  $("chg").textContent = S.changes; $("clr").disabled = !S.changes;
+  $("undo").disabled = !undo.length; $("redo").disabled = !redo.length; $("undo").title = undo.length ? "Undo: " + undo.at(-1).label : ""; $("redo").title = redo.length ? "Redo: " + redo.at(-1).label : "";
+  $("wn").textContent = S.warn;
+  $("fxtable").innerHTML = S.rows.slice(-3).map(r => `<button class="fx" aria-pressed="${r === S.newRow}"><span class="nm">${r}</span></button>`).join("");
+  $("ucount").textContent = `(${S.used.length} scenes)`; $("used").innerHTML = S.used.map(u => `<div class="row leaf"><span class="cut">${u}</span></div>`).join(""); $("assign").disabled = S.used.includes("WHITE");
+  const q = $("flt").value.toLowerCase(), all = ["MAC250E-0 #1", "MAC250E-0 #2", "MAC250E-0 #3", "MAC250E-0 #4"], vis = all.filter(x => x.toLowerCase().includes(q)), hid = [...S.sel].filter(x => !vis.includes(x));
+  $("fxs").innerHTML = vis.map(x => `<button class="fx" data-s="${x}" aria-pressed="${S.sel.has(x)}"><span class="nm">${x}</span></button>`).join("") || `<p class="empty">No fixtures match this filter.</p>`;
+  $("hid").innerHTML = hid.length ? `<div class="notice"><i class="ph ph-warning"></i>${hid.length} selected fixture${hid.length > 1 ? "s" : ""} hidden by this filter<button class="mini" id="cf">Show all</button></div>` : "";
+  $("seltxt").textContent = S.sel.size ? `${S.sel.size} of ${all.length} selected` : "Nothing selected"; $("alpha").textContent = S.sel.size ? S.alpha : "--";
+  $("rt").disabled = S.pending > 0; $("rta").disabled = $("rtd").disabled = !S.pending; }
+
+/* Blackout */
+function toggleBlack() { if (!online()) return notSent(black() ? "Restore" : "Blackout"); if (black()) { S.gm = S.back; toast(`Grand Master restored to ${S.gm}%`); } else { S.back = S.gm; S.gm = 0; toast("Blackout on", true); } draw(); }
+$("bk").onclick = toggleBlack;
+$("gmr").onclick = () => { if (!online()) return notSent("Grand Master"); S.gm = 100; draw(); };
+addEventListener("keydown", e => {
+  if (mod(e) && e.key.toLowerCase() === "b") { e.preventDefault(); if (!e.repeat) toggleBlack(); return; }
+  if (e.target.matches("input,select,textarea")) return;
+  if (mod(e) && e.key.toLowerCase() === "z" && !document.querySelector("dialog[open]")) { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+}, true);
+
+/* Grand master drag, Esc cancels */
+$("gm").addEventListener("pointerdown", e => { if (!online()) return notSent("Grand Master"); const t = $("gm"), start = S.gm; t.setPointerCapture(e.pointerId); const set = v => { const r = t.getBoundingClientRect(); S.gm = Math.round(Math.max(0, Math.min(1, (v.clientX - r.left - 9) / (r.width - 18))) * 100); if (S.gm) S.back = S.gm; draw(); };
+  const end = () => { t.removeEventListener("pointermove", set); t.removeEventListener("pointerup", end); removeEventListener("keydown", esc, true); }, esc = k => { if (k.key === "Escape") { S.gm = start; draw(); end(); toast("Change cancelled"); } }; set(e); t.addEventListener("pointermove", set); t.addEventListener("pointerup", end); addEventListener("keydown", esc, true); });
+
+/* Connection */
+document.querySelectorAll("[data-conn]").forEach(b => b.onclick = () => { S.conn = b.dataset.conn; draw(); });
+
+/* Undo */
+function doUndo() { const a = undo.pop(); if (!a) return; a.undoit(); redo.push(a); toast("Undid: " + a.label); draw(); }
+function doRedo() { const a = redo.pop(); if (!a) return; a.doit(); undo.push(a); toast("Redid: " + a.label); draw(); }
+$("undo").onclick = doUndo; $("redo").onclick = doRedo;
+$("edit").onclick = () => { if (!online()) return notSent("Change"); act("change a value", () => { S.changes++; S.dirty = true; }, () => { S.changes--; }); };
+$("clr").onclick = () => { if (!online()) return notSent("Clear"); const n = S.changes; act(`clear ${n} changes`, () => { S.changes = 0; S.dirty = true; }, () => { S.changes = n; }); toast(`Cleared ${n} changes`, false, ["Undo", doUndo]); };
+
+/* Save */
+$("save").onclick = () => { if (!online()) return notSent("Save"); S.dirty = false; S.fail = false; toast("Saved SPARTACUS_SOLI"); draw(); };
+$("savebad").onclick = () => { if (!online()) return notSent("Save"); S.fail = true; draw(); dialog("Couldn't save the show", `<p>SPARTACUS_SOLI.json couldn't be written because the disk is full. Your changes are still in memory.</p>`, [["Cancel"], ["Save as..."]]); };
+$("close").onclick = () => { const unsaved = S.dirty || S.fail; dialog("Close SPARTACUS_SOLI?", `<p>Lights go dark until another show is loaded.</p>${unsaved ? `<p class="warnt"><i class="ph ph-warning"></i> This show has unsaved changes.</p>` : ""}`, unsaved ? [["Cancel"], ["Save and close"], ["Close without saving", "red-text"]] : [["Cancel"], ["Close show", "red-text"]]); };
+
+/* Dialogs: native modal gives a focus trap, a locked page and Esc. */
+function dialog(title, body, actions) { if (document.querySelector("dialog[open]")) return; const d = document.createElement("dialog"); d.innerHTML = `<div class="dlg" aria-label="${title}"><header>${title}</header><div class="dlgb">${body}</div><footer>${actions.map(([t, c], i) => `<button class="mini ${c || ""}" data-a="${i}">${t}</button>`).join("")}</footer></div>`;
+  d.addEventListener("close", () => d.remove()); d.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) { const keep = actions[+b.dataset.a][2]?.(d); if (keep !== false) d.close(); } }); document.body.append(d); d.showModal(); const first = d.querySelector("input,select") || d.querySelector("footer button"); first.focus(); return d; }
+$("sd").onclick = () => dialog("Shut down this device?", `<p>Lighting output stops and this device powers off. You'll need physical access to turn it back on.</p>`, [["Cancel"], ["Shut down", "fill-red", () => toast("Shutting down")]]);
+
+/* Add fixture */
+$("addfx").onclick = () => { if (!online()) return notSent("Add fixture"); const next = 508; const d = dialog("Add fixture", `<label class="dlgf">Type<select class="fld wide"><option>Martin MAC 250E (18 ch)</option><option>LiteCraft AT10 (8 ch)</option></select></label><label class="dlgf">Name<input class="fld wide" id="af-n" value="MAC250E-0 #7"></label><label class="dlgf">Group<select class="fld wide"><option>MAC250E</option><option>DIMMER</option><option>No group</option></select></label><label class="dlgf">Universe<select class="fld wide" id="af-u"><option value="2">2 (online, empty)</option><option value="0">0 (online, 37 free)</option><option value="1">1 (offline)</option></select></label><label class="dlgf">First channel<input class="fld wide" id="af-c" value="1" inputmode="numeric"></label><p class="note" id="af-m">Fits: channels 1-18 are free.</p>`, [["Cancel"], ["Add fixture", "primary", dd => { if (dd.querySelector("#af-a").disabled) return false; const n = dd.querySelector("#af-n").value.trim(); const prev = S.newRow; act("add " + n, () => { S.rows.push(n); S.newRow = n; S.dirty = true; }, () => { S.rows.pop(); S.newRow = prev; }); toast(`Added ${n} to MAC250E`); }]]);
+  if (!d) return; const add = d.querySelector('footer [data-a="1"]'); add.id = "af-a"; const chk = () => { const raw = d.querySelector("#af-c").value, c = /^\d+$/.test(raw) ? +raw : NaN, nm = d.querySelector("#af-n").value.trim(), u = d.querySelector("#af-u").value, ok = c >= 1 && c <= 495 && nm, m = d.querySelector("#af-m"); d.querySelector("#af-c").classList.toggle("bad", !(c >= 1 && c <= 495)); d.querySelector("#af-n").classList.toggle("bad", !nm); m.textContent = !nm ? "Enter a name." : !(c >= 1 && c <= 495) ? "First channel must be 1 to 495, so all 18 channels fit in the universe." : u === "1" ? `Fits on channels ${c}-${c + 17}, but universe 1 is offline.` : `Fits: channels ${c}-${c + 17} are free.`; m.style.color = ok && u !== "1" ? "" : "var(--warn)"; add.disabled = !ok; }; d.addEventListener("input", chk); };
+
+/* Problems */
+const fixMsg = { uni: "Would open DMX & Art-Net with universe 1 selected", ov: "Would open the map with channel 22 highlighted", rec: "Reconnecting /dev/ttyACM0" };
+document.addEventListener("click", e => { const f = e.target.closest("[data-fix]"); if (f) { e.preventDefault(); toast(fixMsg[f.dataset.fix]); } if (e.target.closest("#stb")) toggleBlack(); if (e.target.closest("#cf")) { $("flt").value = ""; draw(); } const s = e.target.closest("[data-s]"); if (s) { S.sel.has(s.dataset.s) ? S.sel.delete(s.dataset.s) : S.sel.add(s.dataset.s); draw(); } });
+$("reload").onclick = () => { if (!online()) return notSent("Reload"); $("plg").innerHTML = `<i class="okq"></i><span class="t">setlist reloaded<small>Running again</small></span>`; S.warn = 2; draw(); };
+
+/* Animation uses */
+$("assign").onclick = () => { if (!online()) return notSent("Add to scene"); act("add animation to WHITE", () => { S.used.push("WHITE"); S.dirty = true; }, () => { S.used.pop(); }); };
+
+/* RGB commit */
+const rgb = { R: 255, G: 120, B: 0 }, paint = () => $("sw").style.background = `rgb(${rgb.R},${rgb.G},${rgb.B})`; paint();
+document.querySelectorAll("[data-c]").forEach(i => { const c = i.dataset.c, commit = () => { i.classList.remove("pend"); const v = Math.max(0, Math.min(255, parseInt(i.value.replace(/\D/g, ""), 10))); if (Number.isNaN(v)) { i.value = rgb[c]; return; } i.value = v; if (v !== rgb[c]) { rgb[c] = v; paint(); $("sent").textContent = `R ${rgb.R}  G ${rgb.G}  B ${rgb.B}`; S.dirty = true; draw(); } };
+  i.addEventListener("focus", () => i.select()); i.addEventListener("input", () => { i.value = i.value.replace(/\D/g, ""); i.classList.toggle("pend", i.value !== String(rgb[c])); }); i.addEventListener("blur", commit); i.addEventListener("keydown", e => { if (e.key === "Enter") { commit(); i.select(); } if (e.key === "Escape") { i.value = rgb[c]; i.classList.remove("pend"); i.select(); } }); });
+
+/* Selection */
+$("flt").addEventListener("input", draw);
+$("clear").onclick = () => { S.sel.clear(); $("flt").value = ""; draw(); };
+
+/* Delete */
+$("delp").onclick = () => { if (!online()) return notSent("Delete"); dialog("Delete palette PRIMARY?", `<p class="warnt"><i class="ph ph-warning"></i> 1 palette follows PRIMARY and will stop working:</p><p>STAGE (pointer)</p><p class="note">Used in 2 scenes. You can undo this.</p>`, [["Cancel"], ["Delete palette", "red-text", () => toast("Deleted PRIMARY", false, ["Undo", () => toast("PRIMARY restored")])]]); };
+$("rmo").onclick = () => { if (!online()) return notSent("Remove"); $("rmo").disabled = true; $("rmstate").textContent = "HUE removed"; toast("Removed HUE", false, ["Undo", () => { $("rmo").disabled = false; $("rmstate").textContent = ""; }]); };
+
+/* Routing */
+$("rt").onclick = () => { S.pending = 1; draw(); }; $("rtd").onclick = () => { S.pending = 0; draw(); }; $("rta").onclick = () => { if (!online()) return notSent("Routing"); S.pending = 0; toast("Routing applied"); draw(); };
+
+$("theme").onclick = e => { const l = document.documentElement.dataset.theme !== "light"; document.documentElement.dataset.theme = l ? "light" : "dark"; e.target.textContent = l ? "Dark theme" : "Light theme"; };
+draw();
+</script></body></html>

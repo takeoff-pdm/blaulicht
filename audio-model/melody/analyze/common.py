@@ -28,6 +28,12 @@ import numpy as np
 ROOT = Path(os.environ.get("MELODY_ROOT", "/localhome/sokrates/melody"))
 SR = 44100
 FEATURES = ROOT / "out/features"
+
+
+def device(mps_ok: bool = True) -> str:
+    """MELODY_DEVICE (default cuda); on a Mac "mps", or "cpu" for models that are faster there or refuse mps."""
+    d = os.environ.get("MELODY_DEVICE", "cuda")
+    return "cpu" if d == "mps" and not mps_ok else d
 STEM_NAMES = ("mix", "drums", "bass", "vocals", "other")
 
 

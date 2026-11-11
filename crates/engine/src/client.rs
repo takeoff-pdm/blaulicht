@@ -27,6 +27,7 @@ use blaulicht_audio_engine::{AudioSpectrogram, SignalCollectorParams};
 use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator};
 
 use crate::{
+    server::protocol::RemoteServerStatus,
     audio::defs::AudioThreadControlSignal,
     dmx::{EngineState, SessionView},
     event::EventBusHandle,
@@ -133,6 +134,10 @@ pub trait EngineClient {
 
     /// Runs `f` on the Art-Net receivers, user-created and plugin-owned.
     fn with_artnet_receivers<R>(&self, f: impl FnOnce(&[ArtNetReceiver]) -> R) -> R;
+
+    /// Runs `f` on the websocket server's settings and clients. A remote
+    /// client never sees the passcode itself.
+    fn with_remote_server<R>(&self, f: impl FnOnce(&RemoteServerStatus) -> R) -> R;
 
     /// Runs `f` on the configured plugins, by plugin id.
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R;
@@ -349,6 +354,10 @@ impl EngineClient for LocalClient {
 
     fn with_artnet_receivers<R>(&self, f: impl FnOnce(&[ArtNetReceiver]) -> R) -> R {
         f(&read(&self.app.artnet_output).receivers)
+    }
+
+    fn with_remote_server<R>(&self, f: impl FnOnce(&RemoteServerStatus) -> R) -> R {
+        f(&read(&self.app.remote_server))
     }
 
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R {

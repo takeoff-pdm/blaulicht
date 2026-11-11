@@ -2,8 +2,10 @@
 //! protocol is in [`protocol`], the Rust client is
 //! [`crate::client::RemoteClient`]).
 //!
-//! - One listener thread accepts connections on `config.toml`'s `port`
-//!   (`server_enabled = false` turns it off). A plain HTTP request there
+//! - One listener thread accepts connections on `config.toml`'s `port`. It
+//!   follows `AppState::remote_access` while running: turned off
+//!   (`server_enabled = false`), it closes the port and disconnects every
+//!   client; with a passcode (`server_passcode`), `Hello` must state it. A plain HTTP request there
 //!   gets the web frontend's files ([`http`]); a websocket upgrade becomes a
 //!   remote client. Each client gets its own
 //!   thread, a [`ClientConnection`] (a fresh `ClientId::Remote`, a new
@@ -63,9 +65,9 @@ use crate::{
 };
 
 use protocol::{
-    fingerprint, ClientMessage, DmxUniverse, Encoding, EngineStatus, Frame, ServerMessage,
-    SessionSnapshot, ShowSnapshot, ShowState, SpectrogramColumn, SpectrogramUpdate, StageSnapshot,
-    Stream, WireSystemMessage, PROTOCOL_VERSION,
+    fingerprint, ClientMessage, DmxUniverse, Encoding, EngineStatus, Frame, RemoteServerStatus,
+    RemoteSessionInfo, ServerMessage, SessionSnapshot, ShowSnapshot, ShowState, SpectrogramColumn,
+    SpectrogramUpdate, StageSnapshot, Stream, WireSystemMessage, PROTOCOL_VERSION,
 };
 use snapshot::ShowBytes;
 
@@ -102,6 +104,13 @@ const STATUS_INTERVAL: Duration = Duration::from_millis(500);
 const PUBLISH_UI_INTERVAL: Duration = Duration::from_millis(250);
 /// How often a client thread updates its [`ClientInfo`].
 const INFO_INTERVAL: Duration = Duration::from_millis(100);
+/// How often the listener publishes `AppState::remote_server`.
+const STATUS_PUBLISH_INTERVAL: Duration = Duration::from_millis(250);
+/// How often the listener tries again to bind a port it could not get.
+const BIND_RETRY: Duration = Duration::from_secs(1);
+/// How long a wrong passcode holds up every passcode attempt, so guesses
+/// can't go faster than this, even in parallel.
+const WRONG_PASSCODE_DELAY: Duration = Duration::from_secs(1);
 
 /// How to run the server.
 #[derive(Clone, Debug)]
@@ -135,6 +144,7 @@ pub struct ClientInfo {
     pub client: ClientId,
     pub session: SessionId,
     pub peer: SocketAddr,
+    pub connected_at: Instant,
     pub encoding: Encoding,
     /// The socket takes no more data right now; updates wait.
     pub backlogged: bool,
@@ -155,6 +165,10 @@ struct Shared {
     hub: SystemHub,
     bus: EventBusHandle<BusMessage>,
     stop: AtomicBool,
+    /// Where it listens, or listened last.
+    addr: Mutex<SocketAddr>,
+    /// Held while a passcode is checked ([`WRONG_PASSCODE_DELAY`]).
+    passcode_turn: Mutex<()>,
     clients: Mutex<BTreeMap<u64, ClientSlot>>,
     /// The last show frame per encoding, shared by every client of that
     /// encoding.
@@ -208,26 +222,33 @@ impl Server {
         hub: SystemHub,
         bus: EventBusHandle<BusMessage>,
     ) -> io::Result<ServerHandle> {
-        let listener = TcpListener::bind(options.bind)?;
-        listener.set_nonblocking(true)?;
-        let addr = listener.local_addr()?;
+        let addr = options.bind;
         let shared = Arc::new(Shared {
             options,
             app,
             hub,
             bus,
             stop: AtomicBool::new(false),
+            addr: Mutex::new(addr),
+            passcode_turn: Mutex::new(()),
             clients: Mutex::new(BTreeMap::new()),
             show_frames: [Mutex::new(None), Mutex::new(None)],
         });
+        // Bound here so the port is known on return; failing that, the
+        // listener thread reports it and keeps trying.
+        let first_listener = shared
+            .app
+            .remote_access()
+            .enabled
+            .then(|| bind(&shared))
+            .transpose();
         let listener = {
             let shared = Arc::clone(&shared);
             thread::Builder::new()
                 .name("server".into())
-                .spawn(move || accept_loop(listener, shared))?
+                .spawn(move || accept_loop(first_listener, shared))?
         };
         Ok(ServerHandle {
-            addr,
             shared,
             listener: Some(listener),
         })
@@ -237,7 +258,6 @@ impl Server {
 /// A running server. Dropping it stops the server and disconnects every
 /// client.
 pub struct ServerHandle {
-    addr: SocketAddr,
     shared: Arc<Shared>,
     listener: Option<JoinHandle<()>>,
 }
@@ -245,7 +265,12 @@ pub struct ServerHandle {
 impl ServerHandle {
     /// The address it listens on (with the port the OS picked for port 0).
     pub fn local_addr(&self) -> SocketAddr {
-        self.addr
+        *lock(&self.shared.addr)
+    }
+
+    /// Whether it listens right now, and where.
+    pub fn listening(&self) -> Option<SocketAddr> {
+        read(&self.shared.app.remote_server).listening
     }
 
     /// The connected clients.
@@ -279,12 +304,60 @@ impl Drop for ServerHandle {
     }
 }
 
-fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
+/// Binds the server's address and remembers it (the OS picks a port for port
+/// 0; later binds keep that port).
+fn bind(shared: &Shared) -> io::Result<TcpListener> {
+    let addr = *lock(&shared.addr);
+    let listener = TcpListener::bind(addr)?;
+    listener.set_nonblocking(true)?;
+    *lock(&shared.addr) = listener.local_addr()?;
+    Ok(listener)
+}
+
+fn accept_loop(first: io::Result<Option<TcpListener>>, shared: Arc<Shared>) {
+    let mut bind_error = None;
+    let mut listener = match first {
+        Ok(listener) => listener,
+        Err(err) => {
+            report_bind_error(&shared, &mut bind_error, err);
+            None
+        }
+    };
     let mut clients: Vec<JoinHandle<()>> = Vec::new();
     let mut next_id = 0u64;
+    let mut next_bind = Instant::now() + BIND_RETRY;
+    let mut next_publish = Instant::now();
     while !shared.stop.load(Ordering::Relaxed) {
         clients.retain(|client| !client.is_finished());
-        match listener.accept() {
+        let now = Instant::now();
+        if !shared.app.remote_access().enabled {
+            if listener.take().is_some() {
+                tracing::info!("Remote clients are turned off");
+            }
+            bind_error = None;
+        } else if listener.is_none() && now >= next_bind {
+            next_bind = now + BIND_RETRY;
+            match bind(&shared) {
+                Ok(bound) => {
+                    tracing::info!(
+                        "Remote clients can connect to ws://{}/",
+                        *lock(&shared.addr)
+                    );
+                    listener = Some(bound);
+                    bind_error = None;
+                }
+                Err(err) => report_bind_error(&shared, &mut bind_error, err),
+            }
+        }
+        if now >= next_publish {
+            next_publish = now + STATUS_PUBLISH_INTERVAL;
+            publish_status(&shared, listener.is_some(), &bind_error);
+        }
+        let Some(bound) = &listener else {
+            thread::sleep(ACCEPT_POLL);
+            continue;
+        };
+        match bound.accept() {
             Ok((stream, peer)) => {
                 let shared = Arc::clone(&shared);
                 let id = next_id;
@@ -304,9 +377,52 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
             }
         }
     }
+    drop(listener);
     for client in clients {
         let _ = client.join();
     }
+    publish_status(&shared, false, &None);
+}
+
+/// Logs a failed bind once per distinct reason, not on every retry.
+fn report_bind_error(shared: &Shared, last: &mut Option<String>, err: io::Error) {
+    let message = format!("Could not listen on {}: {err}", *lock(&shared.addr));
+    if last.as_ref() != Some(&message) {
+        tracing::error!("Remote clients can't connect: {message}");
+    }
+    *last = Some(message);
+}
+
+fn publish_status(shared: &Shared, listening: bool, error: &Option<String>) {
+    let sessions = lock(&shared.clients)
+        .values()
+        .filter_map(|slot| match slot {
+            ClientSlot::Connected(info) => Some(RemoteSessionInfo {
+                client: info.client,
+                session: info.session,
+                peer: info.peer,
+                connected_secs: info.connected_at.elapsed().as_secs(),
+                sent_bytes: info.sent_bytes,
+                backlogged: info.backlogged,
+            }),
+            ClientSlot::Joining => None,
+        })
+        .collect();
+    let access = shared.app.remote_access();
+    let status = RemoteServerStatus {
+        enabled: access.enabled,
+        listening: listening.then(|| *lock(&shared.addr)),
+        error: error.clone(),
+        passcode_set: access.passcode.is_some(),
+        passcode: access.passcode,
+        max_clients: shared.options.max_clients as u32,
+        sessions,
+    };
+    *shared
+        .app
+        .remote_server
+        .write()
+        .unwrap_or_else(PoisonError::into_inner) = status;
 }
 
 /// The tungstenite settings both ends use.
@@ -372,21 +488,27 @@ fn connect(
         break (frame, hello);
     };
     let encoding = frame.encoding();
-    let reject = |ws: &mut WebSocket<TcpStream>, reason: String| -> anyhow::Result<()> {
+    let reject_as = |ws: &mut WebSocket<TcpStream>,
+                     reason: String,
+                     passcode_required: bool|
+     -> anyhow::Result<()> {
         tracing::info!("Rejected remote client {peer}: {reason}");
         let rejected = encoding.encode(&ServerMessage::Rejected {
             protocol_version: PROTOCOL_VERSION,
             reason,
+            passcode_required,
         })?;
         ws.send(into_message(rejected))?;
         ws.close(None)?;
         let _ = ws.flush();
         Ok(())
     };
-    let streams = match hello {
+    let reject = |ws: &mut WebSocket<TcpStream>, reason: String| reject_as(ws, reason, false);
+    let (streams, passcode) = match hello {
         Ok(ClientMessage::Hello {
             protocol_version,
             streams,
+            passcode,
         }) => {
             if protocol_version != PROTOCOL_VERSION {
                 reject(
@@ -397,7 +519,7 @@ fn connect(
                 )?;
                 return Ok(None);
             }
-            streams
+            (streams, passcode)
         }
         Ok(_) => {
             reject(&mut ws, "The first message must be Hello".to_string())?;
@@ -408,6 +530,25 @@ fn connect(
             return Ok(None);
         }
     };
+    let access = shared.app.remote_access();
+    if let Some(expected) = &access.passcode {
+        let refusal = match &passcode {
+            None => Some("This engine needs a passcode"),
+            Some(stated) => {
+                let _turn = lock(&shared.passcode_turn);
+                if stated == expected {
+                    None
+                } else {
+                    thread::sleep(WRONG_PASSCODE_DELAY);
+                    Some("Wrong passcode")
+                }
+            }
+        };
+        if let Some(refusal) = refusal {
+            reject_as(&mut ws, refusal.to_string(), true)?;
+            return Ok(None);
+        }
+    }
     {
         let mut clients = lock(&shared.clients);
         if clients.len() >= shared.options.max_clients {
@@ -446,6 +587,7 @@ fn connect(
     // The plugin tick hands its show bytes over while this lives.
     let _interest = shared.app.show_snapshots.want();
     let mut session = ClientSession::new(shared, id, ws, encoding, connection, peer, streams);
+    session.access_generation = access.generation;
     let reason = match session.run() {
         Ok(reason) => reason,
         Err(err) => format!("{err:#}"),
@@ -481,6 +623,8 @@ struct ClientSession<'a> {
     connection: ClientConnection,
     streams: HashSet<Stream>,
     info: ClientInfo,
+    /// The passcode generation it was admitted under.
+    access_generation: u64,
     /// Since when the socket takes no data, if it doesn't.
     backlogged_since: Option<Instant>,
     /// Messages taken from the hub but not yet written.
@@ -526,6 +670,7 @@ impl<'a> ClientSession<'a> {
             client: connection.id(),
             session: connection.session(),
             peer,
+            connected_at: now,
             encoding,
             backlogged: false,
             queued_system: 0,
@@ -544,6 +689,7 @@ impl<'a> ClientSession<'a> {
             connection,
             streams: streams.into_iter().collect(),
             info,
+            access_generation: 0,
             backlogged_since: None,
             carry: VecDeque::new(),
             pending_ui: None,
@@ -574,12 +720,14 @@ impl<'a> ClientSession<'a> {
     fn run(&mut self) -> anyhow::Result<String> {
         loop {
             if self.shared.stop.load(Ordering::Relaxed) {
-                let _ = self.ws.close(Some(CloseFrame {
-                    code: CloseCode::Away,
-                    reason: "The engine is stopping".into(),
-                }));
-                let _ = self.ws.flush();
-                return Ok("the server stopped".to_string());
+                return Ok(self.close("The engine is stopping"));
+            }
+            let access = self.shared.app.remote_access();
+            if !access.enabled {
+                return Ok(self.close("Remote access was turned off"));
+            }
+            if access.generation != self.access_generation {
+                return Ok(self.close("The passcode changed"));
             }
             let now = Instant::now();
             let mut busy = match self.receive()? {
@@ -618,6 +766,16 @@ impl<'a> ClientSession<'a> {
                 thread::sleep(IDLE_SLEEP);
             }
         }
+    }
+
+    /// Tells the client why the server ends its connection; returns the reason.
+    fn close(&mut self, reason: &'static str) -> String {
+        let _ = self.ws.close(Some(CloseFrame {
+            code: CloseCode::Away,
+            reason: reason.into(),
+        }));
+        let _ = self.ws.flush();
+        reason.to_string()
     }
 
     fn update_info(&mut self) {
@@ -1066,5 +1224,6 @@ fn engine_status(app: &AppState) -> EngineStatus {
         artnet_receivers: read(&app.artnet_output).receivers.clone(),
         plugins: read(&app.plugins).clone(),
         plugin_runtime_kinds: read(&app.plugin_runtime_kinds).clone(),
+        remote_server: read(&app.remote_server).clone(),
     }
 }

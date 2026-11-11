@@ -33,6 +33,52 @@ impl BlaulichtApp {
         })
     }
 
+    /// Popups a plugin marked fullscreen: modal over the whole app, whether or
+    /// not that plugin's UI is open. A plugin that is disabled or has crashed
+    /// no longer ticks, so its last ops never change; they must not leave a
+    /// modal up that nothing can close.
+    pub(crate) fn render_plugin_fullscreen_popups(&mut self, ctx: &Context) {
+        let plugin_ops: Vec<(u8, Vec<blaulicht_engine::ui_ops::WasmUiOp>)> = self
+            .client
+            .with_plugin_ui_ops(|ops| {
+                ops.iter()
+                    .filter(|(_, ops)| !fullscreen_popups(ops).is_empty())
+                    .map(|(id, ops)| (*id, ops.clone()))
+                    .collect()
+            });
+
+        for (plugin_id, ops) in plugin_ops {
+            let running = self.client.with_plugins(|plugins| {
+                plugins
+                    .get(&plugin_id)
+                    .is_some_and(|p| p.is_enabled() && !p.has_errored())
+            });
+            if !running || self.is_animation_plugin(plugin_id) {
+                continue;
+            }
+            for (popup_id, start, end) in fullscreen_popups(&ops) {
+                let client = &self.client;
+                let tabs_selected = &mut self.view_state.plugin_tabs_selected;
+                components::Dialog::new(
+                    format!("plugin_popup::{plugin_id}::{popup_id}"),
+                    egui::vec2(PLUGIN_POPUP_WIDTH, 160.0),
+                )
+                .with_backdrop()
+                .show(ctx, |ui| {
+                    render_popup_body(
+                        ui,
+                        &ops[..end],
+                        start,
+                        client,
+                        plugin_id,
+                        None,
+                        tabs_selected,
+                    );
+                });
+            }
+        }
+    }
+
     pub(crate) fn render_plugin_ui_contents(&mut self, ui: &mut egui::Ui, plugin_id: u8) {
         if self.is_animation_plugin(plugin_id) {
             ui.label("Animation plugin UI is available in the animation editor.");
@@ -200,6 +246,138 @@ impl BlaulichtApp {
             }
         }
     }
+}
+
+/// Width of a plugin popup, as far as the space it covers allows.
+const PLUGIN_POPUP_WIDTH: f32 = 420.0;
+
+/// Index of the `EndPopup` closing the popup whose body starts at `start`
+/// (`ops.len()` if the plugin never closed it).
+fn popup_end(ops: &[blaulicht_engine::ui_ops::WasmUiOp], start: usize) -> usize {
+    use blaulicht_engine::ui_ops::WasmUiOp as Op;
+    let mut depth = 1usize;
+    for (i, op) in ops.iter().enumerate().skip(start) {
+        match op {
+            Op::BeginPopup { .. } => depth += 1,
+            Op::EndPopup => {
+                depth -= 1;
+                if depth == 0 {
+                    return i;
+                }
+            }
+            _ => {}
+        }
+    }
+    ops.len()
+}
+
+/// The `(id, body start, body end)` of each outermost fullscreen popup, in any
+/// tab or container: fullscreen popups show no matter what.
+fn fullscreen_popups(ops: &[blaulicht_engine::ui_ops::WasmUiOp]) -> Vec<(u8, usize, usize)> {
+    use blaulicht_engine::ui_ops::WasmUiOp as Op;
+    let mut popups = Vec::new();
+    let mut i = 0;
+    while i < ops.len() {
+        if let Op::BeginPopup { id, fullscreen } = ops[i] {
+            let end = popup_end(ops, i + 1);
+            if fullscreen {
+                popups.push((id, i + 1, end));
+            }
+            i = end;
+        }
+        i += 1;
+    }
+    popups
+}
+
+/// Renders a popup body; `ops` ends where the body does.
+fn render_popup_body(
+    ui: &mut egui::Ui,
+    ops: &[blaulicht_engine::ui_ops::WasmUiOp],
+    start: usize,
+    client: &impl EngineClient,
+    plugin_id: u8,
+    animation_instance: Option<u64>,
+    tabs_selected: &mut PluginTabSelections,
+) {
+    let mut idx = start;
+    while idx < ops.len() {
+        render_plugin_ops(
+            ui,
+            ops,
+            &mut idx,
+            client,
+            plugin_id,
+            animation_instance,
+            tabs_selected,
+        );
+    }
+}
+
+/// A popup over the plugin's UI only: its backdrop covers what `ui` shows and
+/// leaves the rest of the app usable. It is drawn from the plugin UI's own
+/// rendering, so it disappears along with that.
+#[allow(clippy::too_many_arguments)]
+fn render_plugin_window_popup(
+    ui: &mut egui::Ui,
+    ops: &[blaulicht_engine::ui_ops::WasmUiOp],
+    start: usize,
+    popup_id: u8,
+    client: &impl EngineClient,
+    plugin_id: u8,
+    animation_instance: Option<u64>,
+    tabs_selected: &mut PluginTabSelections,
+) {
+    let ctx = ui.ctx().clone();
+    let covered = ui.clip_rect();
+    let id = egui::Id::new(("plugin_popup", plugin_id, animation_instance, popup_id));
+
+    let backdrop = egui::Area::new(id.with("backdrop"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(covered.min)
+        .interactable(true)
+        .show(&ctx, |ui| {
+            // Swallows clicks, so the widgets underneath can't be used.
+            ui.allocate_rect(
+                egui::Rect::from_min_size(covered.min, covered.size()),
+                egui::Sense::click(),
+            );
+            ui.painter()
+                .rect_filled(covered, 0.0, egui::Color32::from_black_alpha(180));
+        })
+        .response
+        .layer_id;
+    let window_layer = egui::LayerId::new(egui::Order::Foreground, id);
+    ctx.memory_mut(|mem| {
+        let areas = mem.areas_mut();
+        areas.move_to_top(backdrop);
+        areas.move_to_top(window_layer);
+    });
+
+    let width = PLUGIN_POPUP_WIDTH.min((covered.width() - 24.0).max(1.0));
+    egui::Window::new("plugin_popup")
+        .id(id)
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .fixed_pos(covered.center())
+        .fixed_size(egui::vec2(width, 0.0))
+        .frame(components::dialog_frame(&ctx))
+        .show(&ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                render_popup_body(
+                    ui,
+                    ops,
+                    start,
+                    client,
+                    plugin_id,
+                    animation_instance,
+                    tabs_selected,
+                );
+            });
+        });
 }
 
 /// Use the application's button geometry, expanding labels before truncating.
@@ -721,6 +899,33 @@ pub(crate) fn render_plugin_ops(
             }
             Op::BeginTab { .. } | Op::EndTab | Op::EndTabs => {
                 // Should be handled in BeginTabs
+                *idx += 1;
+            }
+            Op::BeginPopup { id, fullscreen } => {
+                let start = *idx + 1;
+                let end = popup_end(ops, start);
+                // Fullscreen ones belong to `render_plugin_fullscreen_popups`.
+                if !*fullscreen {
+                    render_plugin_window_popup(
+                        ui,
+                        &ops[..end],
+                        start,
+                        *id,
+                        client,
+                        plugin_id,
+                        animation_instance,
+                        tabs_selected,
+                    );
+                }
+                *idx = (end + 1).min(ops.len());
+            }
+            Op::EndPopup => {
+                // Should be handled in BeginPopup
+                *idx += 1;
+            }
+            Op::ProgressBar { permille, text } => {
+                let progress = (*permille).clamp(0, 1000) as f32 / 1000.0;
+                BlaulichtApp::draw_progress_bar(ui, progress, 18.0, text);
                 *idx += 1;
             }
             Op::BeginVertical => {

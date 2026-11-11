@@ -19,8 +19,10 @@ use std::sync::Arc;
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 
 pub mod beat_model;
+pub mod stem_model;
 
 pub use beat_model::{BeatActivation, BeatModel, ModelInfo};
+pub use stem_model::{StemFrame, StemInfo, StemModel};
 
 /// Bump when the output of [`MelFrontend`] changes, so cached features and
 /// trained models built on an older front end can be detected.

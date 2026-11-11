@@ -28,6 +28,8 @@ pub(crate) struct ConnectionUi {
     /// Why the last reconnect couldn't even start (the browser refused the
     /// URL), if it couldn't.
     error: Option<String>,
+    /// What is typed into the passcode prompt.
+    passcode_input: String,
 }
 
 impl BlaulichtApp {
@@ -51,6 +53,10 @@ impl BlaulichtApp {
             RemoteStatus::Connected => return false,
             RemoteStatus::Connecting => None,
             RemoteStatus::Disconnected(reason) => Some(reason),
+            RemoteStatus::PasscodeRequired(reason) => {
+                self.render_passcode_prompt(ctx, &reason);
+                return true;
+            }
         };
         // Keep the countdown moving and notice the socket's callbacks.
         ctx.request_repaint_after(Duration::from_millis(250));
@@ -104,6 +110,38 @@ impl BlaulichtApp {
             self.reconnect_remote();
         }
         true
+    }
+
+    /// Asks for the engine's passcode, and connects with what is entered.
+    fn render_passcode_prompt(&mut self, ctx: &Context, reason: &str) {
+        let mut submit = false;
+        let input = &mut self.connection_ui.passcode_input;
+        Dialog::new("Passcode required".to_string(), egui::vec2(380.0, 190.0))
+            .with_backdrop()
+            .show(ctx, |ui| {
+                ui.heading(RichText::new("Enter the engine's passcode").strong());
+                ui.label(RichText::new(reason).color(Color32::from_gray(150)));
+                ui.add_space(6.0);
+                let response = components::TextInput::new(240.0)
+                    .with_hint_text("Passcode")
+                    .with_password(true)
+                    .ui(ui, input);
+                // Read before taking the focus back, which clears `lost_focus`.
+                submit = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if ui.memory(|memory| memory.focused().is_none()) {
+                    response.request_focus();
+                }
+                ui.add_space(6.0);
+                submit |= components::button(ui, true, "Connect", ButtonSize::Medium);
+            });
+        let passcode = self.connection_ui.passcode_input.trim().to_string();
+        if submit && !passcode.is_empty() {
+            self.connection_ui.passcode_input.clear();
+            if let Some(remote) = self.client.remote() {
+                remote.set_passcode(Some(passcode));
+            }
+            self.reconnect_remote();
+        }
     }
 
     /// For System > General: this remote client's session and how long its

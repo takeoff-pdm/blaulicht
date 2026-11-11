@@ -63,6 +63,7 @@ impl AppPage {
                 AppSubPage::System_Midi,
                 AppSubPage::System_Serial,
                 AppSubPage::System_Screens,
+                AppSubPage::System_Remote,
             ],
             AppPage::Audio => &[],
             AppPage::Setup => &[

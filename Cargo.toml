@@ -42,6 +42,8 @@ members = [
     "./crates/audio_engine",
     "./crates/audio_features",
     "./crates/assets",
+    "./crates/setlist",
+    "./crates/setlist_analyzer",
     # "./blaulicht-analyzer",
 ]
 exclude = [
@@ -58,6 +60,7 @@ exclude = [
     "./crates/plugins/console",
     "./crates/plugins/player/",
     "./crates/plugins/udp_listener",
+    "./crates/plugins/forgedmx_sender",
     "./crates/plugins/led_tubes",
     "./crates/plugins/sample_animation_plugin",
     "./crates/plugins/chaos_animation_plugin",
@@ -66,5 +69,6 @@ exclude = [
     "./crates/plugins/pioneer_pro_dj_link",
     "./crates/plugins/julia_animation_plugin",
     "./crates/plugins/wasm_led_animation_plugin",
+    "./crates/plugins/setlist",
 ]
 resolver = "2"

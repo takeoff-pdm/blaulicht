@@ -17,7 +17,7 @@ GPU = True
 def setup():
     from beat_this.inference import Audio2Beats
 
-    return Audio2Beats(checkpoint_path="final0", device="cuda", dbn=False)
+    return Audio2Beats(checkpoint_path="final0", device=common.device(), dbn=False)
 
 
 def analyse(song, a2b):

@@ -364,7 +364,12 @@ fn draw_twin(
     ui::painter_text(GRID_X + GRID_W - 66, 8, 14, 235, 235, 240, 255, "APC mini");
 
     let (status, (sr, sg, sb)) = status.unwrap_or_else(|| {
-        if apc.is_connected() {
+        if apc.is_mock() {
+            (
+                format!("{} — MOCK hardware, virtual twin: click to play", apc.name()),
+                (120, 170, 240),
+            )
+        } else if apc.is_connected() {
             (
                 format!("{} — connected, twin mirrors LEDs", apc.name()),
                 (120, 220, 140),

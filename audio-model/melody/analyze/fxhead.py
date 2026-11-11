@@ -24,7 +24,7 @@ OUT_KIND = {"horn": "airhorn"}  # the name the hand labels use
 
 def setup():
     beats = bb.Beats()
-    head, ck = H.load(MODEL)
+    head, ck = H.load(MODEL, common.device())
     return beats, head, ck
 
 
@@ -32,7 +32,7 @@ def analyse(song, state):
     beats, head, ck = state
     x = bb.to_32k(common.stems(song)["mix"])
     emb, mel = bb.features(beats, x)
-    P = H.predict(head, ck, emb, mel)
+    P = H.predict(head, ck, emb, mel, common.device())
     tracks = {OUT_KIND.get(c, c): common.track(P[:, j]) for j, c in enumerate(CLASSES)}
     events = [[a, b, OUT_KIND.get(k, k), pk] for a, b, k, pk in H.events(P, ck["thresholds"])]
     minutes = len(P) / bb.FPS / 60

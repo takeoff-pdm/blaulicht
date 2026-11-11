@@ -4,7 +4,7 @@ Small files from the training host that can't be recreated, copied on 2026-11-05
 
 - `envs/<name>.txt`: the exact packages of each environment, read from what's installed, with the Python version on the first line. `<name>` is `/localhome/sokrates/melody/.venv-<name>`; `stems` is `/localhome/sokrates/stems/.venv`. Torch builds keep their suffix (`+cu128`), so install those from PyTorch's matching index.
 - `clones.txt`: the third-party repositories and the commit each is on. None has code changes.
-- `melody/`: run scripts from the melody folder on ae-charlie, and `teacher.py`, which `run_hegg.sh` calls. `melody/songformer/`: the install list that `audio-model/melody/analyze/edm_finetune/README.md` cites, plus its download and run scripts.
+- `melody/`: the run scripts that analysed the first 300 songs, from the melody folder on ae-charlie (new songs go through `audio-model/melody/pipeline/song.py` instead), and `teacher.py`, which `run_hegg.sh` calls. `melody/songformer/`: the install list that `audio-model/melody/analyze/edm_finetune/README.md` cites, plus its download and run scripts.
 - `stems/`: the stem project's pipeline scripts.
 
 The effect head's weights are in `audio-model/runs/fx_head/` on the Mac: gitignored, so a second copy but not in the repo. `best.pt` goes back to `models/fx_head/` on ae-charlie.

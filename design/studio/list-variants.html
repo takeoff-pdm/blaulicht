@@ -1,0 +1,32 @@
+<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>List Variants</title><link rel="stylesheet" href="studio.css"><script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+html,body{height:auto;overflow:auto}body{padding:16px;background:var(--gutter)}
+h1{font-size:18px;font-weight:500;color:var(--strong)}p.i{margin:4px 0 16px;color:var(--muted)}
+h2{font-size:14px;font-weight:500;color:var(--strong);margin:20px 0 2px}h2+p{color:var(--muted);margin-bottom:8px;font-size:12px}
+.vs{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}.v1{width:430px;max-width:100%}.v1>b{display:block;font-weight:500;color:var(--strong);margin-bottom:4px}.v1>span{display:block;font-size:12px;color:var(--muted);height:32px}
+.m{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--gutter)}.m .body{height:auto;overflow:hidden}
+/* A rows */.zebra .row.leaf:nth-child(even),.zebra .fx:nth-child(even){background:#1d1e20}:root[data-theme=light] .zebra .row.leaf:nth-child(even),:root[data-theme=light] .zebra .fx:nth-child(even){background:#e5e5e7}.zebra .row.on{background:var(--blue-dim)!important}.zebra .fx[aria-pressed=true]{background:var(--blue-tint)!important}
+.seps .row.leaf,.seps .fx{box-shadow:inset 0 -1px 0 #222325}.seps .row.on{box-shadow:inset 2px 0 0 var(--blue),inset 0 -1px 0 #222325}.seps .fx[aria-pressed=true]{box-shadow:inset 2px 0 0 var(--blue),inset 0 -1px 0 #222325}
+/* B ids */.idhide .v.sid{display:none}.idhover .v.sid{visibility:hidden}.idhover .row:hover .v.sid,.idhover .row.on .v.sid{visibility:visible}.idfaint .v.sid{opacity:.5}
+.idleft .row.leaf{gap:8px}.idleft .row.leaf .v.sid{order:-1;margin:0;width:24px;text-align:left}
+/* C folders */.fcaps .row.folder{height:22px;font-size:11px;letter-spacing:.06em;color:var(--muted);background:none;margin-top:8px}.fcaps .row.folder .fic{display:none}
+.fnoicon .row.folder .fic{display:none}.fstrong .row.folder{background:var(--ctl);box-shadow:inset 0 1px 0 rgb(255 255 255 / .07)}
+.fnoline .row.leaf::before{display:none}
+/* D selection */.soutline .fx[aria-pressed=true]{background:none;box-shadow:inset 0 0 0 1px var(--blue)}.sdot .fx[aria-pressed=true]{background:none;box-shadow:none;padding-left:22px;position:relative}.sdot .fx[aria-pressed=true]::before{content:"";position:absolute;left:8px;top:9px;width:6px;height:6px;background:var(--blue)}.sfill .fx[aria-pressed=true]{background:var(--blue-dim);box-shadow:none}
+.scheck .fx{padding-left:26px;position:relative}.scheck .fx::before{content:"";position:absolute;left:8px;top:6px;width:12px;height:12px;box-shadow:inset 0 0 0 1px var(--scale)}.scheck .fx[aria-pressed=true]{background:none;box-shadow:none}.scheck .fx[aria-pressed=true]::before{background:var(--blue);box-shadow:none}
+</style></head><body>
+<h1>List variants</h1><p class="i">Real rows from SPARTACUS_SOLI. Each row of options changes one thing against the current design, so options from different rows can be combined. <button class="mini" id="t">Light theme</button></p>
+<div id="o"></div>
+<script>
+const G=[["STAGE",[["AT10",12],["AT10 CHILL",4]]],["REST",[["VP1",5],["MAC250E",6,1],["DIMMER",13],["DPACK",6]]],["BAR-WAIT",[["WAIT WALL",2],["DPACK BAR",1]]]];
+const S=[["DEBUGS",[["OFF","#0"],["WHITE","#1",1]]],["STAGE-TOP",[["STATIC","#2"]]],["FOG",[["FOG-ON","#3"]]]];
+const tr=(d,c)=>d.map(([f,it])=>`<button class="row folder"><i class="ph-bold ph-caret-down"></i><i class="ph-fill ph-folder-open fic"></i><span class="cut">${f}</span></button>`+it.map(([n,v,on])=>`<button class="row leaf ${on?"on":""}"><span class="cut">${n}</span><span class="v ${c}">${v}</span></button>`).join("")).join("");
+const fx=()=>Array.from({length:6},(_,i)=>`<button class="fx" aria-pressed="${i<4}"><span class="nm">MAC250E-0 #${i+1}</span></button>`).join("");
+const pair=(cls,left)=>`<div class="m ${cls}"><div class="pane"><header>${left==="s"?"Scenes":"Groups"}</header><div class="body">${left==="s"?tr(S,"sid"):tr(G,"")}</div></div><div class="pane"><header>Fixtures</header><div class="body">${fx()}</div></div></div>`;
+const SEC=[["Rows","Whether long lists get extra help to follow a row across to its number.",[["A1 Plain (current)","No row shading.","","g"],["A2 Alternating","Every other row slightly lighter. Easiest to track, adds some texture.","zebra","g"],["A3 Hairlines","A faint line under each row. Tidier than alternating, a bit more ruled.","seps","g"]]],
+["Scene IDs","How much the #number shows beside each scene.",[["B1 Visible (current)","Always there, full strength.","","s"],["B2 Faint","Still there but recedes.","idfaint","s"],["B3 On hover or selected","Clean list, ID only when you need it.","idhover","s"],["B4 Left gutter","Numbers form their own column, like a cue list.","idleft","s"],["B5 Hidden","Cleanest. IDs only in a tooltip.","idhide","s"]]],
+["Folders","How strongly folders separate from their contents.",[["C1 Band and icon (current)","Light band with folder icon.","","g"],["C2 Stronger band","Brighter band with a top highlight, closest to the faders' depth.","fstrong","g"],["C3 Band, no icon","Quieter, relies on band and caret.","fnoicon","g"],["C4 Small section label","No band, tiny label. Very clean but least folder-like.","fcaps","g"],["C5 No tree line","Band and icon, without the vertical line.","fnoline","g"]]],
+["Included fixtures","Four of six fixtures are included here. Active rows stay bright blue.",[["D1 Tint and edge (current)","Dim blue with a bright left edge.","","g"],["D2 Marker only","No fill, small blue square. Avoids any block of colour.","sdot","g"],["D3 Checkbox","Explicit on and off, a little busier.","scheck","g"],["D4 Outline","Thin blue outline around each row.","soutline","g"],["D5 Solid fill (old)","The block you disliked, for comparison.","sfill","g"]]]];
+document.getElementById("o").innerHTML=SEC.map(([h,p,v])=>`<h2>${h}</h2><p>${p}</p><div class="vs">${v.map(([n,d,c,l])=>`<div class="v1"><b>${n}</b><span>${d}</span>${pair(c,l)}</div>`).join("")}</div>`).join("");
+document.getElementById("t").onclick=e=>{const l=document.documentElement.dataset.theme!=="light";document.documentElement.dataset.theme=l?"light":"dark";e.target.textContent=l?"Dark theme":"Light theme"};
+</script></body></html>

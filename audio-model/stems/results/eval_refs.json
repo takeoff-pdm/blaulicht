@@ -1,0 +1,97 @@
+{
+ "teacher/htdemucs_ft": {
+  "musdb_test": {
+   "usdr": {
+    "drums": 10.196,
+    "bass": 9.005,
+    "other": 6.197,
+    "vocals": 9.0,
+    "avg": 8.599
+   },
+   "csdr": {
+    "drums": 10.458,
+    "bass": 9.916,
+    "other": 7.4,
+    "vocals": 9.293,
+    "avg": 9.267
+   }
+  }
+ },
+ "baseline/dsp_hpss_bands": {
+  "musdb_test": {
+   "usdr": {
+    "drums": 1.961,
+    "bass": 0.61,
+    "other": 1.01,
+    "vocals": 2.107,
+    "avg": 1.422
+   },
+   "csdr": {
+    "drums": 1.765,
+    "bass": 0.522,
+    "other": 1.637,
+    "vocals": 2.091,
+    "avg": 1.504
+   }
+  },
+  "edm_test": {
+   "usdr_vs_teacher": {
+    "drums": 1.188,
+    "bass": -3.777,
+    "other": 1.051,
+    "vocals": -2.062,
+    "avg": -0.9
+   },
+   "env_corr": {
+    "drums": 0.561,
+    "bass": 0.745,
+    "other": 0.759,
+    "vocals": 0.727,
+    "avg": 0.698
+   },
+   "active_f1": {
+    "drums": 0.535,
+    "bass": 0.7,
+    "other": 0.75,
+    "vocals": 0.487,
+    "avg": 0.618
+   }
+  }
+ },
+ "oracle/irm_mono_mask": {
+  "musdb_test": {
+   "usdr": {
+    "drums": 8.64,
+    "bass": 6.695,
+    "other": 7.288,
+    "vocals": 9.336,
+    "avg": 7.99
+   },
+   "csdr": {
+    "drums": 7.92,
+    "bass": 6.158,
+    "other": 7.107,
+    "vocals": 8.266,
+    "avg": 7.363
+   }
+  }
+ },
+ "oracle/irm_stereo_mask": {
+  "musdb_test": {
+   "usdr": {
+    "drums": 8.859,
+    "bass": 6.843,
+    "other": 7.622,
+    "vocals": 9.672,
+    "avg": 8.249
+   },
+   "csdr": {
+    "drums": 8.132,
+    "bass": 6.285,
+    "other": 7.491,
+    "vocals": 8.623,
+    "avg": 7.633
+   }
+  }
+ }
+}

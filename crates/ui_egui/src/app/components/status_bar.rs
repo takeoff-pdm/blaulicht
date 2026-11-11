@@ -224,6 +224,9 @@ fn connection_section(ui: &mut Ui, info: &StatusBarInfo<'_>) {
         None => ("Local engine", color.ok, None),
         Some(RemoteStatus::Connected) => ("Connected", color.ok, None),
         Some(RemoteStatus::Connecting) => ("Connecting…", color.warn, None),
+        Some(RemoteStatus::PasscodeRequired(reason)) => {
+            ("Passcode required", color.warn, Some(reason.as_str()))
+        }
         Some(RemoteStatus::Disconnected(reason)) => {
             ("Disconnected", color.danger, Some(reason.as_str()))
         }

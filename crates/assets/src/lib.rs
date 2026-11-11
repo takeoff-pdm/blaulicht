@@ -91,3 +91,5 @@ pub fn add_plex_fonts(fonts: &mut egui::FontDefinitions) {
 //
 
 pub const LOGO_IMAGE: egui::ImageSource = egui::include_image!("../logo.svg");
+/// Only the "blaulicht" line of [`LOGO_IMAGE`], cropped to it.
+pub const LOGO_BLAULICHT_IMAGE: egui::ImageSource = egui::include_image!("../logo_blaulicht.svg");

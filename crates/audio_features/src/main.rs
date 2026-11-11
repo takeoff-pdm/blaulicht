@@ -2,8 +2,10 @@
 //!
 //! Reads mono little-endian f32 PCM on stdin and writes little-endian f32
 //! frames of `N_MELS` values on stdout, or with `--model` the beat and
-//! downbeat probabilities of each frame. Trailing samples that do not
-//! complete a hop produce no frame.
+//! downbeat probabilities of each frame, or with `--stems` the separated
+//! drums, bass, other and vocals (4 interleaved f32 per sample, delayed by
+//! the model latency). Trailing samples that do not complete a hop produce
+//! no frame.
 
 use std::{
     io::{self, Read, Write},
@@ -11,7 +13,7 @@ use std::{
 };
 
 use blaulicht_audio_features::{
-    BeatModel, MelFrontend, FEATURE_VERSION, FRAME_RATE, MEL_FMAX_HZ, MEL_FMIN_HZ, N_MELS,
+    stem_model::SOURCES, BeatModel, MelFrontend, StemModel, FEATURE_VERSION, FRAME_RATE, MEL_FMAX_HZ, MEL_FMIN_HZ, N_MELS,
 };
 use clap::Parser;
 
@@ -27,6 +29,9 @@ struct Args {
     /// the mel frames.
     #[arg(long)]
     model: Option<PathBuf>,
+    /// Run this exported stem model (44.1 kHz only) and write the stems.
+    #[arg(long, conflicts_with = "model")]
+    stems: Option<PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -54,6 +59,12 @@ fn main() -> anyhow::Result<()> {
             centers.join(", ")
         );
         return Ok(());
+    }
+
+    if let Some(path) = &args.stems {
+        anyhow::ensure!(args.sample_rate == 44_100, "the stem model runs at 44100 Hz");
+        let mut model = StemModel::load(path).map_err(anyhow::Error::msg)?;
+        return run_stems(&mut model);
     }
 
     let mut stdin = io::stdin().lock();
@@ -90,6 +101,33 @@ fn main() -> anyhow::Result<()> {
                     stdout.write_all(&value.to_le_bytes())?;
                 }
             }
+        }
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
+fn run_stems(model: &mut StemModel) -> anyhow::Result<()> {
+    let mut pcm = Vec::new();
+    io::stdin().lock().read_to_end(&mut pcm)?;
+    let samples: Vec<f32> =
+        pcm.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+    let mut frames = Vec::new();
+    let mut audio: [Vec<f32>; SOURCES] = Default::default();
+    let started = std::time::Instant::now();
+    model.push(&samples, &mut frames, Some(&mut audio));
+    let secs = samples.len() as f64 / 44_100.0;
+    eprintln!(
+        "{:.1} s of audio in {:.3} s (real-time factor {:.3}), latency {} samples",
+        secs,
+        started.elapsed().as_secs_f64(),
+        started.elapsed().as_secs_f64() / secs,
+        model.info().latency_samples()
+    );
+    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    for i in 0..audio[0].len() {
+        for stem in &audio {
+            stdout.write_all(&stem[i].to_le_bytes())?;
         }
     }
     stdout.flush()?;

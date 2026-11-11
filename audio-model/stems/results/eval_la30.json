@@ -1,0 +1,43 @@
+{
+ "la30/last": {
+  "musdb_test": {
+   "usdr": {
+    "drums": 6.577,
+    "bass": 4.242,
+    "other": 3.916,
+    "vocals": 6.197,
+    "avg": 5.233
+   },
+   "csdr": {
+    "drums": 6.417,
+    "bass": 4.202,
+    "other": 4.396,
+    "vocals": 5.522,
+    "avg": 5.134
+   }
+  },
+  "edm_test": {
+   "usdr_vs_teacher": {
+    "drums": 13.517,
+    "bass": 7.531,
+    "other": 5.606,
+    "vocals": 5.103,
+    "avg": 7.939
+   },
+   "env_corr": {
+    "drums": 0.96,
+    "bass": 0.929,
+    "other": 0.895,
+    "vocals": 0.931,
+    "avg": 0.929
+   },
+   "active_f1": {
+    "drums": 0.932,
+    "bass": 0.875,
+    "other": 0.88,
+    "vocals": 0.863,
+    "avg": 0.887
+   }
+  }
+ }
+}

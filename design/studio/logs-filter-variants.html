@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Logs filter variants</title>
+<link rel="stylesheet" href="studio.css"><link rel="stylesheet" href="system.css"><link rel="stylesheet" href="pages.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+body{overflow:auto;height:auto;background:var(--gutter);padding:16px 24px 60px;font:13px Plex,sans-serif;color:var(--text)}
+h1{font-size:18px;color:var(--strong);margin:0 0 4px} .intro{color:var(--muted);margin:0 0 20px}
+h2{font-size:14px;color:var(--strong);margin:28px 0 10px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.opt{margin:0 0 14px} .opt b{color:var(--blue);margin-right:8px} .opt p{margin:2px 0 6px;color:var(--muted)}
+.demo{width:1000px;height:190px;display:flex;flex-direction:column;background:var(--pane)}
+.demo .pane{flex:1;min-height:0}
+.th{float:right;margin-top:-4px}
+/* shared: uniform 22px controls */
+.demo .mini,.demo .pg-input{height:22px;min-height:22px}
+.tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;background:var(--pane);border-bottom:1px solid var(--line)}
+.tb .sp{flex:1}
+.pbar{display:flex;align-items:center;gap:6px;height:32px;padding:0 8px;background:var(--head);margin-bottom:2px}
+/* B2 quiet toggles */
+.q{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 7px;background:none;border:1px solid var(--line);color:var(--text);font-size:12px}
+.q .dt{width:7px;height:7px;border-radius:50%;background:var(--muted)} .q.WARN .dt{background:var(--warn)} .q.ERROR .dt{background:var(--red-text)} .q.DEBUG .dt{background:var(--scale)}
+.q .c{font:10px PlexMono,monospace;color:var(--muted)} .q.off{opacity:.4;text-decoration:line-through}
+/* B4 count chips */
+.cc{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 6px;background:var(--well);font:11px PlexMono,monospace;color:var(--muted)}
+.cc.WARN{color:var(--warn)} .cc.ERROR{color:var(--red-text)} .cc.off{opacity:.35} .cc i{font-size:12px}
+.ib{width:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:none} .ib:hover{background:var(--ctl)} .ib.on{color:var(--ok)}
+.lg-foot .mini{height:18px;min-height:18px;background:none;font-size:11px;padding:0 6px}
+</style></head><body>
+<h1>Logs filter row</h1><p class="intro">Pick one option per section, for example <code>A2 B2 C2</code>. Sections can be combined freely; a skipped section stays as it is (option 1).</p>
+<div id="out"></div>
+<script>
+const rows=[["08:47:02.162","INFO","engine","Supervisor started"],["08:47:02.204","WARN","midi",'Initial device enumeration failed: Other("MIDI support could not be initialized")'],["08:47:02.219","ERROR","dmx",'Could not establish link to DMX interface "/dev/dmx_out1" (baud = 250000): No such file or directory'],["08:47:02.220","INFO","dmx","Retrying in 5 s"]];
+const I={WARN:'<i class="ph-fill ph-warning"></i>',ERROR:'<i class="ph-fill ph-x-circle"></i>',INFO:'<i class="ph ph-info"></i>',DEBUG:'<i class="ph ph-bug"></i>'};
+const table=`<div class="body lg-body"><table class="pg-log"><thead><tr><th class="t">Time</th><th class="l">Level</th><th class="s">Source</th><th class="m">Message</th></tr></thead><tbody>${rows.map(l=>`<tr class="${l[1]}"><td class="t">${l[0].slice(0,8)}<span>${l[0].slice(8)}</span></td><td class="l">${I[l[1]]}${l[1]}</td><td class="s"><span>${l[2]}</span></td><td class="m">${l[3].replace(/</g,"&lt;")}</td></tr>`).join("")}</tbody></table></div>`;
+const LV=[["DEBUG","Debug",2,1],["INFO","Info",10,0],["WARN","Warn",2,0],["ERROR","Error",1,0]]; // 4th = off (Debug off to show the off state)
+const search=`<label class="lg-search"><i class="ph ph-magnifying-glass"></i><input class="pg-input" placeholder="Filter messages"></label>`;
+const src=`<select class="pg-input" style="width:110px"><option>All sources</option></select>`;
+const lev={
+ 1:`<span class="seg">${LV.map(([k,t,n,o])=>`<button class="mini lg-lv ${o?"":"primary"}">${t}<span class="lg-n ${k}">${n}</span></button>`).join("")}</span>`,
+ 2:`<span style="display:inline-flex;gap:4px">${LV.map(([k,t,n,o])=>`<button class="q ${k} ${o?"off":""}"><span class="dt"></span>${t}<span class="c">${n}</span></button>`).join("")}</span>`,
+ 3:`<select class="pg-input" style="width:130px"><option>Info and above</option><option>All levels</option><option>Warn and above</option><option>Errors only</option></select>`,
+ 4:`<span style="display:inline-flex;gap:2px">${LV.map(([k,t,n,o])=>`<button class="cc ${k} ${o?"off":""}" title="${t}">${I[k]}${n}</button>`).join("")}</span>`};
+const act={
+ 1:{bar:`<button class="mini lg-ic primary"><i class="ph ph-arrow-line-down"></i>Follow</button><button class="mini lg-ic"><i class="ph ph-copy"></i></button><button class="mini lg-ic"><i class="ph ph-trash"></i></button>`,foot:`<span class="lg-live on">Following</span>`},
+ 2:{bar:`<button class="mini ib on" title="Following"><i class="ph ph-arrow-line-down"></i></button><button class="mini ib" title="Copy"><i class="ph ph-copy"></i></button><button class="mini ib" title="Clear"><i class="ph ph-trash"></i></button>`,foot:`<span class="lg-live on">Following</span>`},
+ 3:{bar:``,foot:`<span class="lg-live on" style="margin-left:auto">Following</span><button class="mini">Pause</button><button class="mini">Copy</button><button class="mini">Clear</button>`}};
+const foot=f=>`<div class="lg-foot"><span>14 of 15 lines</span><span class="lg-dot WARN">2 warnings</span><span class="lg-dot ERROR">1 error</span>${f}</div>`;
+const tag=`<span class="pg-tag">Sample lines</span>`;
+function demo(A,B,C){const controls=search+lev[B]+src,a=act[C].bar;let h;
+ if(A===1)h=pane("Logs",table+foot(act[C].foot),tag+controls+a);
+ else if(A===2)h=`<section class="pane"><header><h3>Logs</h3>${tag}</header><div class="tb">${controls}<span class="sp"></span>${a}</div>${table}${foot(act[C].foot)}</section>`;
+ else h=`<div class="pbar">${controls}<span class="sp"></span>${a}</div>`+pane("Logs",table+foot(act[C].foot),tag);
+ return `<div class="demo">${h}</div>`;}
+function pane(t,body,tools){return `<section class="pane"><header><h3>${t}</h3><div class="tools" style="display:flex;gap:4px;align-items:center;margin-left:auto">${tools}</div></header>${body}</section>`;}
+const S=[["A","Where the filters sit",[[1,"Pane title bar (current)","Everything on one line next to the title. Compact, but crowded and it gets cut off at narrow widths."],[2,"Toolbar row under the title","Its own 30px row inside the pane, search on the left and actions on the right. Costs one row, reads like Xcode's or Console.app's filter bar (from memory)."],[3,"Page bar above the pane","Uses the page bar from RULES.md. Clean pane, but the rules reserve the page bar for page-level choices, and these filters only affect this pane."]],(n)=>demo(n,1,1)],
+["B","Level filter",[[1,"Blue segmented (current)","Clear on/off, but with every level on it's a wall of blue, and blue is supposed to mean selected."],[2,"Quiet toggles with dots","Outlined buttons with a level-coloured dot and count; off levels fade and get struck through. Calm by default."],[3,"Threshold dropdown","One control: Info and above, Warn and above … Least space; you can't show errors plus debug without info."],[4,"Icon count chips","Level icon plus count only, toggles on click. Smallest and doubles as a summary; needs tooltips for names."]],(n)=>demo(2,n,1)],
+["C","Follow / Copy / Clear",[[1,"Follow label + icons (current)","Follow spelled out and blue when on."],[2,"Icon-only","Three plain icon buttons; Follow turns green while following. Least noise, relies on tooltips."],[3,"In the footer","Actions move to the status strip at the bottom, next to the line counts. Top row is filters only."]],(n)=>demo(2,2,n)]];
+document.getElementById("out").innerHTML=S.map(([L,t,o,f])=>`<h2>${L}. ${t}</h2>`+o.map(([n,name,d])=>`<div class="opt"><div><b>${L}${n}</b>${name}</div><p>${d}</p>${f(n)}</div>`).join("")).join("");
+</script></body></html>

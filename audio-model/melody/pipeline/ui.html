@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melody Compiler</title>
+<style>
+  :root { --bg: #0e1014; --panel: #161920; --panel2: #1c2029; --line: #2a2f3a; --text: #d8dde6; --muted: #8a93a3; --accent: #5aa9ff; --warn: #f0b020; --bad: #ff6b7f; --good: #57c98a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 6px 0 0; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+  main { padding: 12px 16px 40px; display: grid; gap: 12px; max-width: 1400px; margin: 0 auto; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  a { color: var(--accent); }
+  input, select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  input[type=number] { width: 64px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #08111f; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .grow { flex: 1 1 220px; min-width: 0; }
+  .muted { color: var(--muted); }
+  .warn { color: var(--warn); } .bad { color: var(--bad); } .good { color: var(--good); }
+  .pill { padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th button { all: unset; cursor: pointer; } th button:focus-visible { outline: 2px solid var(--accent); }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr.song { cursor: pointer; } tr.song:hover td { background: var(--panel2); }
+  tr.open td { background: var(--panel2); }
+  td.name { width: 100%; min-width: 220px; overflow-wrap: anywhere; }
+  td.detail { background: var(--bg); padding: 10px 12px; cursor: default; }
+  .flag { display: flex; gap: 8px; padding: 2px 0; } .flag .at { flex: none; width: 52px; }
+  .task { border-top: 1px solid var(--line); padding: 6px 0; } .task:first-of-type { border-top: 0; }
+  pre { margin: 6px 0 0; padding: 8px; max-height: 220px; overflow: auto; background: var(--bg); border-radius: 6px; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0 0; padding: 8px 10px; } legend { color: var(--muted); padding: 0 4px; }
+  .note { flex: 1 1 200px; }
+  summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Melody Compiler</h1>
+  <span id="gateway" class="pill muted">ae-charlie: checking</span>
+  <span id="summary" class="muted grow"></span>
+  <button id="stale">Compile stale</button>
+  <button id="all">Compile all</button>
+  <a id="viewer" target="melody_viewer">Viewer</a>
+</header>
+<main>
+  <p id="gatewayhelp" class="warn" style="margin:0" hidden>The gateway to ae-charlie is closed, so analysis has to wait. Open it in a terminal with <code>ssh -fN ssh-proxy-gorilla</code>; it asks for your password. This page notices by itself, and then you can press Retry.</p>
+  <section aria-labelledby="addh">
+    <h2 id="addh">Add a song from Rekordbox</h2>
+    <form id="findform" class="row">
+      <input id="query" class="grow" type="search" placeholder="Words from the title or path" aria-label="Search Rekordbox" autocomplete="off">
+      <button class="primary" type="submit">Search</button>
+      <label title="btc, musicfm, mulan and mt3: they mostly feed viewer lanes"><input id="extra" type="checkbox"> Also the optional analyzers</label>
+    </form>
+    <div id="results"></div>
+  </section>
+  <section aria-labelledby="acth" id="activity" hidden>
+    <h2 id="acth">Activity</h2>
+    <div id="jobs"></div>
+    <div id="tasks"></div>
+  </section>
+  <section aria-labelledby="libh">
+    <div class="row" style="margin-bottom:8px">
+      <h2 id="libh" style="margin:0">Library</h2>
+      <input id="filter" class="grow" type="search" placeholder="Filter by name" aria-label="Filter the library" autocomplete="off">
+      <label><input id="flagged" type="checkbox"> To check</label>
+      <label><input id="stalerows" type="checkbox"> Stale</label>
+      <label><input id="fixedrows" type="checkbox"> Grid replaced</label>
+      <label><input id="withpop" type="checkbox"> Include pop</label>
+      <span id="shown" class="muted"></span>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr id="heads"></tr></thead>
+      <tbody id="songs"><tr><td class="muted">Loading the library…</td></tr></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const GRID = { rekordbox: "Rekordbox", corrected: "Replaced", hand: "By hand", unchecked: "Not checked", none: "None" };
+const COLUMNS = [["name", "Song"], ["bpm", "BPM"], ["grid", "Grid"], ["fit", "Trackers on grid"], ["drops", "Drops on a kick"], ["flags", "To check"], ["labels", "Labels"], ["stale", "State"]];
+const page = { songs: [], state: null, open: null, sort: "name", desc: false, stamp: null, running: new Set(), openLogs: new Set(), fix: {} };
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const data = await res.json().catch(() => ({ error: `The server answered ${res.status}` }));
+  if (!res.ok) throw new Error(data.error || `The server answered ${res.status}`);
+  return data;
+}
+async function run(body) {
+  try { await api("/api/run", body); } catch (e) { showNotice(e.message); }
+  poll();
+}
+function showNotice(text) {
+  const el = $("results");
+  el.insertAdjacentHTML("afterbegin", `<p class="bad">${esc(text)}</p>`);
+}
+
+// ---- add
+$("findform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("query").value.trim();
+  $("results").innerHTML = '<p class="muted">Reading Rekordbox…</p>';
+  try { renderResults(await api(`/api/find?q=${encodeURIComponent(q)}`)); }
+  catch (err) { $("results").innerHTML = `<p class="bad">${esc(err.message)}</p>`; }
+});
+function renderResults(hits) {
+  page.hits = hits;
+  if (!hits.length) { $("results").innerHTML = '<p class="muted">Nothing in Rekordbox matches that.</p>'; return; }
+  $("results").innerHTML = `<div class="scroll"><table style="margin-top:8px"><thead><tr><th>Song</th><th>BPM</th><th>Status</th><th></th></tr></thead><tbody>${hits.map((h, i) => {
+    const label = h.where === "analysed" ? "Run again" : "Add";
+    const note = { analysed: "Analysed. Running it again skips finished steps", new: "New", "no audio": "The audio isn't on this Mac" }[h.where];
+    return `<tr><td class="name" title="${esc(h.path)}">${esc(h.path.split("/").pop())}</td><td>${h.bpm ? h.bpm.toFixed(1) : "?"}</td><td class="${h.where === "no audio" ? "warn" : "muted"}" style="white-space:nowrap">${note}</td>
+      <td><button data-add="${i}" ${h.where === "no audio" ? "disabled" : ""}>${label}</button></td></tr>`;
+  }).join("")}</tbody></table></div>`;
+}
+$("results").addEventListener("click", (e) => {
+  const i = e.target.dataset?.add;
+  if (i !== undefined) run({ cmd: "add", path: page.hits[+i].path, extra: $("extra").checked });
+});
+
+// ---- what's going on
+function renderActivity() {
+  const st = page.state, jobs = st.jobs.filter((j) => j.state !== "compiled"), busy = new Set(st.tasks.filter((t) => t.running && t.song).map((t) => t.song));
+  $("jobs").innerHTML = jobs.map((j) => {
+    const steps = j.steps_total ? ` (${j.steps_done} of ${j.steps_total} steps${j.step ? `, now ${esc(j.step)}` : ""})` : j.step ? ` (now ${esc(j.step)})` : "";
+    const cls = /fail/.test(j.state) ? "bad" : /waiting/.test(j.state) ? "warn" : "";
+    let action = "";
+    if (!busy.has(j.id)) {
+      if (j.state === "analysing") action = `<button data-job="follow" data-id="${j.id}">Follow</button>`;
+      else if (j.state === "failed to compile") action = `<button data-job="fetch" data-id="${j.id}">Try again</button>`;
+      else action = `<button data-job="analyze" data-id="${j.id}">${j.state === "pulled" ? "Start" : "Retry"}</button>`;
+    }
+    const failed = j.analyzers_failed?.length ? ` <span class="warn">Failed: ${esc(j.analyzers_failed.join(", "))}</span>` : "";
+    return `<div class="row task"><span class="grow">${esc(j.name)}: <span class="${cls}">${esc(j.state)}</span>${steps}${failed}</span>${action}</div>`;
+  }).join("");
+  const recent = st.tasks.filter((t) => t.running || st.now - t.ended < 600);
+  $("tasks").innerHTML = recent.map((t) => {
+    const name = t.song ? page.songs.find((s) => s.id === t.song)?.name ?? st.jobs.find((j) => j.id === t.song)?.name : null;
+    const when = t.running ? `running ${clock(st.now - t.started)}` : t.rc === 0 ? "done" : t.rc === 3 ? "waiting for ae-charlie" : `failed (exit ${t.rc})`;
+    const cls = t.running ? "" : t.rc === 0 ? "good" : t.rc === 3 ? "warn" : "bad";
+    const last = t.lines[t.lines.length - 1] || "";
+    return `<details class="task" data-log="${t.id}" ${page.openLogs.has(t.id) ? "open" : ""}><summary>${esc(t.label)}${name && !t.label.includes(name) ? `: ${esc(name)}` : ""} · <span class="${cls}">${when}</span> <span class="muted">${esc(last.trim().slice(0, 110))}</span></summary><pre>${esc(t.lines.join("\n")) || "No output yet."}</pre></details>`;
+  }).join("");
+  $("activity").hidden = !jobs.length && !recent.length;
+}
+$("jobs").addEventListener("click", (e) => { const d = e.target.dataset; if (d?.job) run({ cmd: d.job, song: d.id, extra: $("extra").checked }); });
+$("tasks").addEventListener("toggle", (e) => { const id = +e.target.dataset?.log; if (id) { if (e.target.open) page.openLogs.add(id); else page.openLogs.delete(id); } }, true);
+
+// ---- library
+const value = (s, key) => {
+  const c = s.check || {};
+  return { name: s.name.toLowerCase(), bpm: s.bpm ?? -1, grid: c.grid ?? "", fit: c.trackers_on_grid ?? -1, drops: c.drops ?? -1, flags: c.flags?.length ?? -1, labels: c.labels ?? "", stale: s.stale ? 1 : 0 }[key];
+};
+function renderHeads() {
+  $("heads").innerHTML = COLUMNS.map(([k, n]) => `<th aria-sort="${page.sort === k ? (page.desc ? "descending" : "ascending") : "none"}"><button data-sort="${k}">${n}${page.sort === k ? (page.desc ? " ↓" : " ↑") : ""}</button></th>`).join("");
+}
+$("heads").addEventListener("click", (e) => {
+  const k = e.target.dataset?.sort;
+  if (!k) return;
+  page.desc = page.sort === k ? !page.desc : k === "flags" || k === "stale";
+  page.sort = k;
+  renderHeads(); renderSongs();
+});
+function visible() {
+  const q = $("filter").value.trim().toLowerCase();
+  const rows = page.songs.filter((s) => ($("withpop").checked || s.genre === "electronic") && (!q || s.name.toLowerCase().includes(q))
+    && (!$("flagged").checked || s.check?.flags?.length) && (!$("stalerows").checked || s.stale) && (!$("fixedrows").checked || s.check?.grid === "corrected" || s.check?.grid === "hand"));
+  const dir = page.desc ? -1 : 1;
+  return rows.sort((a, b) => { const x = value(a, page.sort), y = value(b, page.sort); return x < y ? -dir : x > y ? dir : a.name.localeCompare(b.name); });
+}
+function renderSongs() {
+  const rows = visible();
+  $("shown").textContent = `${rows.length} shown`;
+  $("songs").innerHTML = rows.map((s) => {
+    const c = s.check || {}, flags = c.flags?.length ?? 0, kick = c.drops_on_kick != null ? `${c.drops_on_kick} of ${c.drops}` : c.drops != null ? `${c.drops} drops` : "";
+    const fit = c.trackers_on_grid != null ? `${Math.round(c.trackers_on_grid * 100)}%` : "";
+    const open = page.open === s.id;
+    return `<tr class="song ${open ? "open" : ""}" data-id="${s.id}" tabindex="0" aria-expanded="${open}"><td class="name">${esc(s.name)}</td><td>${s.bpm ? (+s.bpm).toFixed(1) : ""}</td><td class="${c.grid === "corrected" || c.grid === "hand" ? "warn" : ""}">${esc(GRID[c.grid] ?? "")}</td><td>${fit}</td>
+      <td class="${c.drops_on_kick != null && c.drops_on_kick < c.drops ? "warn" : ""}">${kick}</td><td class="${flags ? "warn" : "muted"}">${flags || ""}</td><td class="muted">${esc(c.labels ?? "")}</td>
+      <td class="${!s.compiled || s.stale ? "warn" : "muted"}" style="white-space:nowrap">${!s.compiled ? "Not compiled" : s.stale ? "Stale" : "Fresh"}</td></tr>${open ? `<tr><td class="detail" colspan="${COLUMNS.length}" id="detail"></td></tr>` : ""}`;
+  }).join("") || `<tr><td class="muted" colspan="${COLUMNS.length}">No songs match.</td></tr>`;
+  if (page.open && rows.some((s) => s.id === page.open)) renderDetail(page.songs.find((s) => s.id === page.open));
+}
+for (const id of ["filter", "flagged", "stalerows", "fixedrows", "withpop"]) $(id).addEventListener("input", renderSongs);
+function toggle(id) { page.open = page.open === id ? null : id; renderSongs(); }
+$("songs").addEventListener("click", (e) => { const tr = e.target.closest("tr.song"); if (tr) toggle(tr.dataset.id); });
+$("songs").addEventListener("keydown", (e) => {
+  const tr = e.target.closest?.("tr.song");
+  if (tr && e.target === tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); const id = tr.dataset.id; toggle(id); document.querySelector(`tr.song[data-id="${id}"]`)?.focus(); }
+});
+
+async function renderDetail(s) {
+  const el = $("detail"), c = s.check || {}, viewer = page.state?.viewer ?? "", busy = page.state?.tasks.some((t) => t.running && t.song === s.id);
+  const flags = (c.flags || []).map((f) => `<div class="flag"><span class="at">${f.at != null ? `<a target="melody_viewer" href="${viewer}/#song=${s.id}&t=${f.at}">${clock(f.at)}</a>` : ""}</span><span>${esc(f.text)}</span></div>`).join("") || '<p class="muted" style="margin:0">Nothing to check.</p>';
+  el.innerHTML = `<div class="row" style="margin-bottom:8px">
+      <a target="melody_viewer" href="${viewer}/#song=${s.id}">Open in viewer</a>
+      <a target="melody_viewer" href="${viewer}/#song=${s.id}&label=1">Label it</a>
+      <button data-act="compile" ${busy ? "disabled" : ""}>Compile</button>
+      <button data-act="review" ${busy ? "disabled" : ""} title="Sends this song's numbers, not its audio, to Claude">LLM review, about $0.08</button>
+      <span class="muted grow">${c.reviewed ? "LLM reviewed. " : ""}${esc(s.id)}</span>
+    </div>
+    ${flags}
+    <fieldset><legend>Correct the grid</legend><form class="row" id="fixform">
+      <label>Use <select id="fixgrid"><option value="auto">The automatic choice</option><option value="rekordbox">Rekordbox's grid</option><option value="trackers">The beat trackers' grid</option></select></label>
+      <label>Move by <input id="fixshift" type="number" min="-16" max="16" value="0"> 16ths</label>
+      <label>Bars start <input id="fixbar" type="number" min="0" max="3" value="0"> beats later</label>
+      <input id="fixnote" class="note" placeholder="Why, for later" aria-label="Note">
+      <button class="primary" type="submit" ${busy ? "disabled" : ""}>Apply and compile</button>
+      <button type="button" id="fixclear" hidden ${busy ? "disabled" : ""}>Remove corrections</button>
+    </form></fieldset>`;
+  el.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => run({ cmd: b.dataset.act, song: s.id })));
+  $("fixform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    run({ cmd: "fix", song: s.id, grid: $("fixgrid").value, shift_16ths: parseInt($("fixshift").value, 10) || 0, bar_shift: parseInt($("fixbar").value, 10) || 0, note: $("fixnote").value });
+  });
+  $("fixclear").addEventListener("click", () => run({ cmd: "fix", song: s.id, clear: true }));
+  const fix = await api(`/api/corrections/${s.id}`).catch(() => ({}));
+  if (page.open !== s.id || !$("fixgrid")) return;
+  const g = fix.grid || {};
+  $("fixgrid").value = g.source || "auto"; $("fixshift").value = g.shift_16ths || 0; $("fixbar").value = g.bar_shift || 0; $("fixnote").value = fix.note || "";
+  $("fixclear").hidden = !fix.grid;
+}
+
+// ---- keeping up
+async function loadSongs() {
+  page.songs = await api("/api/songs");
+  const electronic = page.songs.filter((s) => s.genre === "electronic"), stale = page.songs.filter((s) => s.stale || !s.compiled);
+  $("summary").textContent = `${electronic.length} electronic songs, ${page.songs.length} with pop · ${electronic.filter((s) => s.check?.flags?.length).length} to check`;
+  $("stale").textContent = `Compile stale (${stale.length})`;
+  $("stale").disabled = !stale.length;
+  renderSongs();
+}
+async function poll() {
+  let st;
+  try { st = await api("/api/state"); } catch { $("gateway").textContent = "This page's server isn't answering"; $("gateway").className = "pill bad"; return; }
+  const running = new Set(st.tasks.filter((t) => t.running).map((t) => t.id));
+  const ended = [...page.running].some((id) => !running.has(id));
+  const changed = st.stamp !== page.stamp || ended;
+  const openTask = page.state?.tasks.some((t) => t.running && t.song === page.open) !== st.tasks.some((t) => t.running && t.song === page.open);
+  page.state = st; page.running = running; page.stamp = st.stamp;
+  $("gateway").textContent = st.gateway ? "ae-charlie: open" : "ae-charlie: gateway closed";
+  $("gateway").className = `pill ${st.gateway ? "good" : "warn"}`;
+  $("gatewayhelp").hidden = st.gateway;
+  $("viewer").href = st.viewer + "/";
+  const compiling = st.tasks.some((t) => t.running && t.label.startsWith("Compile "));
+  $("all").disabled = compiling; if (compiling) $("stale").disabled = true;
+  renderActivity();
+  if (changed) await loadSongs();
+  else if (openTask) renderSongs();
+}
+$("stale").addEventListener("click", () => run({ cmd: "compile", scope: "stale" }));
+$("all").addEventListener("click", () => run({ cmd: "compile", scope: "all" }));
+renderHeads();
+poll();
+setInterval(poll, 2500);
+window.addEventListener("focus", loadSongs);  // labelling in the viewer makes songs stale
+</script>
+</body>
+</html>

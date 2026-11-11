@@ -24,6 +24,7 @@ macro_rules! vlog {
     };
 }
 
+mod hardware;
 mod korg;
 mod korg_twin;
 mod legacy;
@@ -44,8 +45,9 @@ pub struct MidiAllPlugin {
 
 impl Plugin for MidiAllPlugin {
     fn initialize(&mut self, _input: TickInput) {
-        self.korg.init();
-        self.legacy_state.init();
+        let mode = hardware::load_mode();
+        self.korg.init(mode);
+        self.legacy_state.init(mode);
         println!("Initialized");
     }
 
@@ -56,6 +58,8 @@ impl Plugin for MidiAllPlugin {
         self.legacy_state.run(input.clone(), || {
             korg.render_twin(&input.events.events, input.id, input.clock)
         });
+        // The switch lives in the legacy Misc tab.
+        self.korg.midi.set_mode(self.legacy_state.hardware_mode());
         let legacy = &mut self.legacy_state;
         self.korg
             .run(input, |e| legacy.handle_mapped_input(MappingDevice::Korg, e));

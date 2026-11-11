@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scene picker draft</title>
+<script>if (location.hash === "#light") document.documentElement.dataset.theme = "light";</script>
+<link rel="stylesheet" href="studio.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<link rel="stylesheet" href="programmer-scene.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="nav">
+    <div class="logo"><img src="logo_blaulicht.svg" alt="blaulicht"><button class="fold" aria-label="Collapse the sidebar" title="Collapse the sidebar"><i class="ph ph-caret-double-left"></i></button></div>
+    <h2>System</h2>
+    <button><i class="ph ph-terminal-window"></i>Logs</button>
+    <button><i class="ph ph-gear"></i>System</button>
+    <button class="sub">General</button><button class="sub">DMX</button><button class="sub">Art-Net</button><button class="sub">Plugins</button><button class="sub">MIDI</button><button class="sub">Serial</button><button class="sub">Screens</button><button class="sub">Remote UI</button>
+    <h2>Setup</h2>
+    <button><i class="ph ph-waveform"></i>Audio</button>
+    <button><i class="ph ph-wrench"></i>Setup</button>
+    <button class="sub">Fixtures</button><button class="sub">Groups</button><button class="sub">Scenes</button><button class="sub">Animations</button><button class="sub">Palettes</button>
+    <h2>Live</h2>
+    <button><i class="ph ph-stack"></i>Views</button>
+    <button><i class="ph ph-game-controller"></i>Perform</button>
+    <button class="on"><i class="ph ph-faders"></i>Programmer</button>
+    <button><i class="ph ph-graph"></i>Scene Graph</button>
+    <button><i class="ph ph-cube-focus"></i>Visualizer</button>
+  </nav>
+
+  <main class="work scenedraft" data-panels="bl-panels-scene">
+    <div class="tools">
+      <div class="pickwrap">
+        <button class="scenepick" id="scenebtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="scenepop" title="Scene being edited"><b id="scenename"></b><span class="sid" id="sceneid"></span><i class="ph-bold ph-caret-down"></i></button>
+        <div class="scenepop" id="scenepop" hidden role="dialog" aria-label="Choose a scene">
+          <div class="dhead">Scenes<button id="sceneclose" aria-label="Close scenes" title="Close"><i class="ph ph-x"></i></button></div>
+          <div class="fxfilter"><input id="scenefilter" placeholder="Filter scenes" aria-label="Filter scenes"></div>
+          <div class="body" id="scenes"></div>
+        </div>
+      </div>
+      <div class="knobs" id="masters"></div>
+      <button class="mini okblack" id="pgb" title="Blackout (Cmd/Ctrl+B)">Blackout</button>
+      <button class="mini" id="lreset" title="Restore every pane's size and open every folded pane">Reset layout</button>
+      <button class="mini" id="llock" aria-pressed="false" title="Stop panes being resized or folded by accident during a show">Lock layout</button>
+      <button class="mini live" id="plv" aria-pressed="false" title="Exclusive preview: shows only this scene and suppresses overlays. Off by default.">Exclusive preview</button>
+    </div>
+    <section class="pane groups"><header>Groups</header><div class="body" id="groups"></div></section>
+    <section class="pane fxcol"><header>Fixtures<small id="count"></small></header><div class="fxfilter"><input data-filter="pfx" placeholder="Filter fixtures" aria-label="Filter fixtures"></div><div class="fxtools"><button class="mini" id="clear">Clear</button><button class="mini" title="Placeholder, no action yet">Limit</button><button class="mini" title="Placeholder, no action yet">Limit all</button></div><div class="body" id="fixtures"></div></section>
+    <section class="pane faders"><header id="selname">MAC250E</header>
+      <div class="bank" id="bank"></div>
+    </section>
+    <div class="below">
+        <div class="colourpane"><h3>Colour</h3><div class="wheel" id="wheel"><div class="dim"></div><div class="mark" id="mark"></div></div>
+          <div class="readout"><div class="preview" id="preview"></div><label>R<input id="cr" inputmode="numeric" maxlength="3" aria-label="Red, 0 to 255"></label><label>G<input id="cg" inputmode="numeric" maxlength="3" aria-label="Green, 0 to 255"></label><label>B<input id="cb" inputmode="numeric" maxlength="3" aria-label="Blue, 0 to 255"></label></div></div>
+        <div class="gizmopane"><h3>Pan / Tilt</h3>
+          <div class="xy" id="xy" tabindex="0" role="application" aria-label="Pan and tilt. Drag, or use the arrow keys.">
+            <i class="xh" id="xh"></i><i class="xv" id="xv"></i><div id="xymarks"></div><i class="xdot" id="xdot"></i></div>
+          <div class="gread"><span>Pan <b id="gpan"></b></span><span>Tilt <b id="gtilt"></b></span></div>
+          <button class="mini" id="gcentre">Centre</button></div>
+        <div class="lower">
+          <div class="pal"><h3>Palettes <small id="palcount"></small></h3><div id="pals"></div></div>
+      <section class="pane side">
+      <h3>Animations <small id="acount"></small><button class="mini">Add</button></h3><div id="anims"></div>
+      <h3>Scene changes <small id="ctotal"></small><button class="mini" id="undoall">Clear all</button></h3><div class="fill" id="changes"></div></section>
+        </div>
+      </div>
+  </main>
+
+  <footer class="status"></footer><script src="chrome.js"></script>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const tree = (el, items) => el.innerHTML = items.map(([n, v, kind]) => kind === "f"
+  ? `<button class="row folder"><i class="ph-bold ph-caret-down"></i>${n}<span class="v num">${v}</span></button>`
+  : `<button class="row leaf ${kind === "on" ? "on" : ""}">${n}<span class="v">${v}</span></button>`).join("");
+tree($("scenes"), [["DEBUGS", 2, "f"], ["OFF", "#0"], ["WHITE", "#1", "on"], ["FOG", 1, "f"], ["STAGE-TOP", 1, "f"]]);
+tree($("groups"), [["BAR-WAIT", 3, "f"], ["WAIT WALL", "2 FX"], ["DPACK BAR", "1 FX"], ["BAR HEX", "3 FX"], ["FOG", 1, "f"], ["FOG", "1 FX"], ["HEX", 4, "f"], ["HX-BASE", "4 FX"], ["HX-Truss", "8 FX"], ["Wall Left", "5 FX"], ["Wall Right", "5 FX"], ["REST", 4, "f"], ["VP1", "5 FX"], ["MAC250E", "6 FX", "on"], ["DIMMER", "13 FX"], ["DPACK", "6 FX"], ["STAGE", 2, "f"], ["AT10", "12 FX"], ["AT10 CHILL", "4 FX"]]);
+$("groups").onclick = $("scenes").onclick = e => { const d = e.target.closest(".row.folder");
+  if (d) { const i = d.querySelector("i"), open = i.classList.toggle("ph-caret-right"); i.classList.toggle("ph-caret-down", !open);
+    for (let n = d.nextElementSibling; n && n.classList.contains("leaf"); n = n.nextElementSibling) n.hidden = open; return; }
+  const r = e.target.closest(".row.leaf"); if (r) { r.parentElement.querySelectorAll(".on").forEach(x => x.classList.remove("on")); r.classList.add("on"); } };
+
+/* Nothing picked means the whole group; picking fixtures limits to them. */
+const count = () => { const all = document.querySelectorAll(".fx").length, n = document.querySelectorAll('.fx[aria-pressed="true"]').length;
+  $("count").textContent = n ? `${n}/${all}` : all; $("selname").textContent = currentGroup + (n ? ` (${n} of ${all} fixtures)` : ` (all ${all} fixtures)`); };
+let currentGroup = "MAC250E";
+const showFixtures = (name, total) => { currentGroup = name;
+  $("fixtures").innerHTML = Array.from({ length: total }, (_, i) => `<button class="fx" aria-pressed="false">${name} ${i + 1}<span class="id">#${i + 1}</span></button>`).join(""); count(); };
+$("fixtures").onclick = e => { const f = e.target.closest(".fx"); if (f) { f.setAttribute("aria-pressed", f.getAttribute("aria-pressed") !== "true"); count(); } };
+$("clear").onclick = () => { document.querySelectorAll(".fx").forEach(f => f.setAttribute("aria-pressed", false)); count(); };
+showFixtures("MAC250E", 6);
+$("groups").addEventListener("click", e => { const r = e.target.closest(".row.leaf"); if (r) showFixtures(r.firstChild.textContent, parseInt(r.querySelector(".v").textContent)); });
+
+/* Ranges as in the app: Hue is 0-360 degrees, the rest 0-255. */
+const maxOf = n => n === "Hue" ? 360 : 255;
+const faders = [["Alpha", 255, 1], ["Strobe", 0], ["Focus", 96, 0, 1], ["Tilt", 150, 1, 1], ["Pan", 128], ["Hue", 200, 1, 1], ["Saturation", 200, 1], ["Value", 255]];
+$("bank").innerHTML = faders.map(([n, v, ch, g]) => `<div class="strip ${ch ? "changed" : ""} ${g ? "group" : ""}" data-name="${n}">
+  <div class="track" style="--v:${v * 100 / maxOf(n)}"><div class="scale"></div><div class="mask"></div><div class="slot"></div><div class="cap"><i class="bevel"></i><i class="ridges"></i><i class="ridges low"></i><i class="ind"></i></div></div>
+  <span class="val num">${v}</span><span class="name">${n === "Saturation" ? "Sat" : n}</span></div>`).join("");
+const hsv = () => { const g = n => +document.querySelector(`[data-name=${n}] .val`).textContent / maxOf(n);
+  const [h, s, v] = [g("Hue") * 360, g("Saturation"), g("Value")], l = v * (1 - s / 2), sl = l === 0 || l === 1 ? 0 : (v - l) / Math.min(l, 1 - l);
+  $("preview").style.background = `hsl(${h} ${sl * 100}% ${l * 100}%)`;
+  const ang = g("Hue") * Math.PI * 2; $("mark").style.left = 50 + 50 * s * Math.sin(ang) + "%"; $("mark").style.top = 50 - 50 * s * Math.cos(ang) + "%";
+  $("wheel").style.setProperty("--dim", 1 - v); const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+  [["cr", f(5)], ["cg", f(3)], ["cb", f(1)]].forEach(([id, x]) => { if (document.activeElement !== $(id)) $(id).value = x; }); drawPad(); };
+hsv();
+$("bank").addEventListener("pointerdown", e => {
+  const t = e.target.closest(".track"); if (!t) return;
+  t.setPointerCapture(e.pointerId);
+  const set = ev => { const r = t.getBoundingClientRect(); const v = Math.max(0, Math.min(1, (r.bottom - 18 - ev.clientY) / (r.height - 36)));
+    t.style.setProperty("--v", v * 100); t.parentElement.querySelector(".val").textContent = Math.round(v * maxOf(t.parentElement.dataset.name)); t.parentElement.classList.add("changed"); hsv(); };
+  set(e); t.onpointermove = set; t.onpointerup = () => t.onpointermove = null;
+});
+
+const setFader = (n, v) => { const s = document.querySelector(`[data-name=${n}]`);
+  s.querySelector(".track").style.setProperty("--v", v * 100 / maxOf(n)); s.querySelector(".val").textContent = Math.round(v); s.classList.add("changed"); };
+$("wheel").addEventListener("pointerdown", e => { const w = $("wheel"); w.setPointerCapture(e.pointerId);
+  const set = ev => { const r = w.getBoundingClientRect(), R = r.width / 2, dx = ev.clientX - r.left - R, dy = ev.clientY - r.top - R;
+    let a = Math.atan2(dx, -dy) / (Math.PI * 2); if (a < 0) a += 1;
+    setFader("Hue", a * 360); setFader("Saturation", Math.min(1, Math.hypot(dx, dy) / R) * 255); hsv(); };
+  set(e); w.onpointermove = set; w.onpointerup = () => w.onpointermove = null; });
+
+/* XY pad: left to right is pan, top to bottom is tilt. Markers are the Position palettes. */
+function readVal(n) { return +document.querySelector(`[data-name=${n}] .val`).textContent; }
+function drawPad() { const x = readVal("Pan") / 2.55, y = readVal("Tilt") / 2.55;
+  $("xdot").style.left = $("xv").style.left = x + "%"; $("xdot").style.top = $("xh").style.top = y + "%";
+  $("gpan").textContent = readVal("Pan"); $("gtilt").textContent = readVal("Tilt"); }
+const setPad = (p, t) => { const cl = v => Math.max(0, Math.min(255, v)); setFader("Pan", cl(p)); setFader("Tilt", cl(t)); drawPad(); };
+const padAt = ev => { const r = $("xy").getBoundingClientRect(); setPad((ev.clientX - r.left) / r.width * 255, (ev.clientY - r.top) / r.height * 255); };
+$("xymarks").innerHTML = [["Centre", 128, 90], ["Audience", 128, 200], ["Floor", 40, 240]].map(([n, p, t]) =>
+  `<button class="xm" style="left:${p / 2.55}%;top:${t / 2.55}%" data-p="${p}" data-t="${t}" title="${n}: Pan ${p}, Tilt ${t}" aria-label="${n}"><span>${n}</span></button>`).join("");
+$("xy").addEventListener("pointerdown", e => { const m = e.target.closest(".xm");
+  if (m) { setPad(+m.dataset.p, +m.dataset.t); return; }
+  const xy = $("xy"); xy.setPointerCapture(e.pointerId); let lx = e.clientX, ly = e.clientY; if (!e.shiftKey) padAt(e);
+  xy.onpointermove = ev => { if (ev.shiftKey) { const r = xy.getBoundingClientRect(); setPad(readVal("Pan") + (ev.clientX - lx) * .2 * 255 / r.width, readVal("Tilt") + (ev.clientY - ly) * .2 * 255 / r.height); } else padAt(ev); lx = ev.clientX; ly = ev.clientY; };
+  xy.onpointerup = () => xy.onpointermove = null; });
+$("xy").addEventListener("keydown", e => { const s = e.shiftKey ? 10 : 1, d = { ArrowLeft: [-s, 0], ArrowRight: [s, 0], ArrowUp: [0, -s], ArrowDown: [0, s] }[e.key];
+  if (d) { e.preventDefault(); setPad(readVal("Pan") + d[0], readVal("Tilt") + d[1]); } });
+$("gcentre").onclick = () => setPad(127.5, 127.5);
+
+/* RGB fields: the engine stays HSV, so an edit converts and moves the faders. */
+function rgbToHsv(r, g, b) { const M = Math.max(r, g, b), d = M - Math.min(r, g, b);
+  let H = 0; if (d) H = M === r ? ((g - b) / d + 6) % 6 : M === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [H / 6, M ? d / M : 0, M / 255]; }
+const clampField = i => Math.max(0, Math.min(255, parseInt(i.value, 10) || 0));
+function applyRgb() { const [H, S, V] = rgbToHsv(clampField($("cr")), clampField($("cg")), clampField($("cb")));
+  /* A grey has no hue, so keep the hue it had. */
+  if (S > 0) setFader("Hue", H * 360);
+  setFader("Saturation", S * 255); setFader("Value", V * 255); hsv(); }
+["cr", "cg", "cb"].forEach(id => { const i = $(id);
+  i.addEventListener("focus", () => { i.dataset.was = i.value; i.select(); });
+  i.addEventListener("input", () => { i.value = i.value.replace(/\D/g, ""); i.classList.toggle("pend", i.value !== i.dataset.was); });
+  i.addEventListener("blur", () => { i.classList.remove("pend"); if (i.value !== i.dataset.was && i.value !== "") { applyRgb(); dispatchEvent(new Event("fadersync")); } hsv(); });
+  i.addEventListener("keydown", e => { const step = e.shiftKey ? 10 : 1;
+    if (e.key === "Enter") i.blur(); if (e.key === "Escape") { i.value = i.dataset.was; i.classList.remove("pend"); i.blur(); }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); i.value = Math.max(0, Math.min(255, clampField(i) + (e.key === "ArrowUp" ? step : -step))); applyRgb(); } }); });
+
+/* The PaletteKind variants. Pointers sit with what they resolve to. */
+const pos = (x, y) => `<b class="pos" style="--x:${x};--y:${y}"></b>`, col = c => `<b style="background:${c}"></b>`;
+const palData = [
+  ["Colour", [["PRIMARY", "H 26°", col("hsl(26 100% 50%)")], ["SECONDARY", "H 330°", col("hsl(330 100% 50%)")], ["STAGE", "-> PRIMARY", col("hsl(26 100% 50%)"), 1], ["Cold white", "S 8%", col("hsl(210 100% 96%)")], ["Blue", "H 207°", col("hsl(207 100% 50%)")]]],
+  ["Position", [["Centre", "P 128  T 90", pos(50, 35)], ["Audience", "P 128  T 200", pos(50, 78)], ["Floor", "P 40  T 240", pos(16, 94)]]],
+  ["Beam", [["Sharp", "F 220  S 0", ""], ["Soft", "F 60  S 0", ""], ["Fast strobe", "F 128  S 230", ""]]],
+  ["Single value", [["Half dim", "Alpha 128", ""], ["Tilt up", "Tilt 30", ""]]],
+];
+$("pals").innerHTML = '<div class="palrows">' + palData.map(([t, ps]) => `<h4>${t}</h4><div class="chips">${ps.map(([n, v, g, on]) =>
+  `<button class="chip" aria-pressed="${!!on}" title="${n}: ${v}">${g}<span class="nm">${n}</span>${v.startsWith("->") ? '<i class="ln ph ph-link"></i>' : ""}</button>`).join("")}</div>`).join("") + "</div>";
+/* Active palettes apply in order, so the number on a button means something. */
+let active = [...document.querySelectorAll('.chip[aria-pressed="true"]')];
+const pals = () => { document.querySelectorAll(".chip .order").forEach(o => o.remove());
+  active.forEach((c, i) => c.insertAdjacentHTML("beforeend", `<span class="order">${i + 1}</span>`));
+  $("palcount").textContent = active.length + " active"; };
+$("pals").onclick = e => { const c = e.target.closest(".chip"); if (!c) return;
+  const on = c.getAttribute("aria-pressed") !== "true"; c.setAttribute("aria-pressed", on);
+  active = on ? [...active, c] : active.filter(x => x !== c); pals(); };
+pals();
+
+/* Scene changes: every count below is computed from this sample. */
+const props = ["Alpha", "Tilt", "Hue", "Saturation", "Focus"];
+const short = { Alpha: "Alpha", Tilt: "Tilt", Hue: "Hue", Saturation: "Sat", Focus: "Focus" };
+const changeData = [["MAC250E", 6, 1], ["AT10", 12], ["HX-Truss", 8], ["DIMMER", 13]].map(([g, n, sel]) => ({ g, sel, fx: Array.from({ length: n }, (_, f) => ({ f: f + 1,
+  ps: props.slice(0, 2 + (f + 1) % 4).map(p => [p, ((f + 1) * 37 + p.length * 23) % 256]) })) }));
+const x = '<button class="x" aria-label="Remove"><i class="ph ph-x"></i></button>', caret = o => `<i class="caret ph-bold ph-caret-${o ? "down" : "right"}"></i>`;
+const openSet = new Set();
+function drawChanges() {
+  const total = changeData.reduce((a, g) => a + g.fx.reduce((b, f) => b + f.ps.length, 0), 0);
+  $("ctotal").textContent = total;
+  $("changes").innerHTML = '<div class="ctree">' + changeData.filter(g => g.fx.length).map((g, gi) => {
+    const n = g.fx.reduce((b, f) => b + f.ps.length, 0), o = openSet.has(g.g);
+    return `<div class="row g ${g.sel ? "sel" : ""}" data-k="${g.g}" data-g="${gi}">${caret(o)}${g.g}<span class="v num">${n}</span>${x}</div>` + (!o ? "" : g.fx.map((f, fi) => {
+      const k = g.g + "/" + f.f, fo = openSet.has(k);
+      return `<div class="row f" data-k="${k}" data-g="${gi}" data-f="${fi}">${caret(fo)}Fixture ${f.f}${fo ? "" : `<em>${f.ps.map(p => short[p[0]]).join(", ")}</em>`}<span class="v num">${f.ps.length}</span>${x}</div>` + (!fo ? "" :
+        f.ps.map((p, pi) => `<div class="row p" data-g="${gi}" data-f="${fi}" data-p="${pi}">${p[0]}<span class="v num">${p[1]}</span>${x}</div>`).join(""));
+    }).join(""));
+  }).join("") + "</div>";
+}
+$("changes").onclick = e => { const r = e.target.closest(".row"); if (!r) return; const { k, g, f, p } = r.dataset;
+  if (e.target.closest(".x")) { if (p !== undefined) changeData[g].fx[f].ps.splice(p, 1); else if (f !== undefined) changeData[g].fx.splice(f, 1); else changeData[g].fx = [];
+    changeData.forEach(G => G.fx = G.fx.filter(F => F.ps.length)); }
+  else if (k) openSet.has(k) ? openSet.delete(k) : openSet.add(k);
+  drawChanges(); };
+$("undoall").onclick = () => { changeData.forEach(G => G.fx = []); drawChanges(); };
+drawChanges();
+
+/* Knob: 90% sweep with the gap at the bottom, like components/knob.rs. */
+function knobSvg(t) {
+  const pt = (a, r) => [50 + r * Math.cos(a), 50 + r * Math.sin(a)].map(x => x.toFixed(2));
+  const start = Math.PI / 2 + Math.PI * .1, sweep = Math.PI * 1.8; let ticks = "";
+  for (let i = 0; i <= 12; i++) { const f = i / 12, a = start + sweep * f, [x1, y1] = pt(a, 41), [x2, y2] = pt(a, i % 3 ? 45 : 48);
+    ticks += `<line class="tick ${f <= t ? "lit" : ""}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; }
+  const a = start + sweep * t, [px, py] = pt(a, 29), [qx, qy] = pt(a, 12);
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">${ticks}<circle class="face" cx="50" cy="50" r="36"/><circle class="inner" cx="50" cy="50" r="26"/><line class="ptr" x1="${qx}" y1="${qy}" x2="${px}" y2="${py}"/></svg>`;
+}
+function knob(el, name, t, fmt, small) {
+  const draw = () => el.innerHTML = knobSvg(t) + `<span class="val num">${fmt(t)}</span>` + (name ? `<span class="name">${name}</span>` : "");
+  el.className = "knob" + (small ? " small" : ""); draw();
+  el.addEventListener("pointerdown", e => { el.setPointerCapture(e.pointerId); let y = e.clientY;
+    el.onpointermove = m => { t = Math.max(0, Math.min(1, t + (y - m.clientY) * .005)); y = m.clientY; draw(); };
+    el.onpointerup = () => el.onpointermove = null; });
+}
+$("masters").innerHTML = '<div id="k1"></div><div id="k2"></div>';
+knob($("k1"), "Master intensity", 1, t => Math.round(t * 100));
+knob($("k2"), "Master speed", .5, t => (2 ** ((t - .5) * 6)).toFixed(2) + "x");
+const animData = [["Hue chase", "MAC250E", true, .5], ["Tilt sweep", "AT10", false, .67]];
+$("anims").innerHTML = animData.map(([n, t, on]) => `<div class="anim ${on ? "" : "paused"}">
+  <button class="ib play" aria-pressed="${on}" aria-label="${on ? "Pause" : "Play"}" title="${on ? "Pause" : "Play"}"><i class="ph-fill ph-${on ? "pause" : "play"}"></i></button>
+  <div class="info">${n}<small>${t}</small></div>
+  <div class="ak"></div>
+  <button class="ib quiet" aria-label="Edit" title="Edit"><i class="ph ph-pencil-simple"></i></button>
+  <button class="ib quiet rm" aria-label="Remove" title="Remove"><i class="ph ph-x"></i></button></div>`).join("");
+document.querySelectorAll(".ak").forEach((k, i) => { knob(k, "", animData[i][3], t => (2 ** ((t - .5) * 6)).toFixed(2) + "x", true); });
+const animCount = () => { const n = document.querySelectorAll(".anim").length; $("acount").textContent = n; };
+$("anims").onclick = e => { const a = e.target.closest(".anim"); if (!a) return;
+  if (e.target.closest(".rm")) { a.remove(); animCount(); return; }
+  const p = e.target.closest(".play"); if (!p) return;
+  const on = p.getAttribute("aria-pressed") !== "true"; p.setAttribute("aria-pressed", on); p.title = on ? "Pause" : "Play"; p.setAttribute("aria-label", p.title);
+  a.classList.toggle("paused", !on); p.querySelector("i").className = `ph-fill ph-${on ? "pause" : "play"}`; };
+animCount();
+
+$("theme").onclick = e => { const light = document.documentElement.dataset.theme !== "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark"; e.target.textContent = light ? "Dark theme" : "Light theme"; };
+
+</script>
+<script src="data.js"></script>
+<script src="show.js"></script>
+<script src="programmer-scene.js"></script>
+<script src="panels.js"></script>
+</body>
+</html>

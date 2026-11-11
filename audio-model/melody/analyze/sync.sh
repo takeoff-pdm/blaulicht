@@ -1,6 +1,6 @@
 #!/bin/sh
-# Push the analyzer code to ae-charlie, or pull the features it wrote (restart serve.py afterwards:
-# it caches each song's analysis).
+# Push the analyzer code to ae-charlie, or pull the features it wrote (then pipeline/song.py compile --stale).
+# For one new song, pipeline/song.py does all of this itself.
 #   sh audio-model/melody/analyze/sync.sh push
 #   sh audio-model/melody/analyze/sync.sh pull
 set -e

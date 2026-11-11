@@ -17,12 +17,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const core = require("./core.cjs");
 const looks = await import("../viz/club_looks.mjs");
-const FEATURES = path.join(HERE, "../../data/melody/features");
+const COMPILED = path.join(HERE, "../../data/melody/compiled");  // pipeline/song.py
 const { prepare, showAt, beatPos, opts } = core;
-const { frame, makeDesk, LOOK_LIST, burnCount, ROPES, ROPE_PIX } = looks;
+const { frame, makeDesk, LOOK_LIST, burnCount, club2Plan, ROPES, ROPE_PIX } = looks;
 
 function load(id) {
-  const doc = JSON.parse(fs.readFileSync(path.join(HERE, "cache", `${id}.json`)));
+  const doc = JSON.parse(fs.readFileSync(path.join(COMPILED, `${id}.json`)));
   for (const v of Object.values(doc.notes)) v.sort((a, b) => a[0] - b[0]);
   doc.energyData = {}; doc.energyNorm = {};
   for (const [k, v] of Object.entries(doc.energy)) {
@@ -30,11 +30,6 @@ function load(id) {
     doc.energyData[k] = e;
     const sorted = Array.from(e).sort((a, b) => a - b);
     doc.energyNorm[k] = [sorted[Math.floor(sorted.length * 0.2)], sorted[Math.floor(sorted.length * 0.995)]];
-  }
-  doc.features = {};
-  for (const name of ["timbre", "vocals", "drumparts"]) {
-    const p = path.join(FEATURES, name, `${id}.json`);
-    if (fs.existsSync(p)) doc.features[name] = JSON.parse(fs.readFileSync(p));
   }
   return doc;
 }
@@ -245,6 +240,141 @@ function claims(song, dt) {
   return R;
 }
 
+// Human Lighter against each map's raw events: what the state rules say should be on the desk right after, and a while after, every
+// event, worked out here from the events alone. Frames in a blackout or strobe, and events with another one of their group too soon after, are skipped.
+function replay(song) {
+  const R = { maps: 0, events: 0, checked: 0, wrong_level: 0, wrong_colour: 0, after_checked: 0, wrong_after: 0, spins: 0, spin_same: 0, zooms: 0, zoom_same: 0, speeds: 0, speed_wrong: 0, per_minute: [], skipped_dark: 0 };
+  const maps = (song.lightshow || {}).maps || [];
+  const near = (a, b, tol = 0.03) => Math.abs(a - b) <= tol;
+  maps.forEach((m, mi) => {
+    Object.assign(opts, { dejavu: false, burn: false, countdown: false, look: "human" });
+    const P = prepare(song), D = makeDesk(), base = P.palette;
+    const at = (t) => { const S = showAt(P, t); frame(P, S, D, { look: "human", map: mi, pal: base, flash: [1, 1, 1] }); return !D.dark; };
+    const rope = (k) => { let v = 0; const px = D.ropes[k]; for (let i = 0; i < px.length; i++) v = Math.max(v, px[i]); return v; };
+    const lamp = () => { let v = 0; for (const L of D.ceil) v = Math.max(v, L.b); return v; };
+    const level = { 0: () => D.ups[0].b / 0.9, 1: lamp, 4: () => D.strip.b / 0.9 };
+    const hue = { 0: () => D.ups[0].h, 1: () => D.ceil[0].h, 4: () => D.strip.h };
+    const boosts = m.events.filter((e) => e[1] === 5), boostAt = (t) => { let on = false; for (const e of boosts) { if (e[0] > t) break; on = e[2] === 1; } return on; };
+    const byGroup = {}; for (const e of m.events) (byGroup[e[1]] = byGroup[e[1]] || []).push(e);
+    const inCover = (t) => t >= m.cover[0] && t <= m.cover[1];
+    R.maps++;
+    const lights = m.events.filter((e) => e[1] <= 4 && e[1] !== 5);
+    R.per_minute.push(lights.length / Math.max(1 / 60, (m.cover[1] - m.cover[0]) / 60));
+    for (const ty of [0, 1, 2, 3, 4]) {
+      const list = byGroup[ty] || [];
+      list.forEach((e, i) => {
+        R.events++;
+        const t = e[0], v = e[2], next = i + 1 < list.length ? list[i + 1][0] : Infinity;
+        if (next - t < 0.01 || !inCover(t + 0.002)) return;
+        if (!at(t + 0.002)) { R.skipped_dark++; return; }
+        R.checked++;
+        const kind = v === 0 ? 0 : ((v - 1) % 4) + 1, peak = kind === 2 || kind === 3;
+        if (ty === 2 || ty === 3) {  // lasers: lit or not, on their own ropes
+          const lit = rope(ty === 2 ? 1 : 0);
+          if ((v === 0) !== (lit < 1e-6)) R.wrong_level++;
+        } else {
+          const got = level[ty]();
+          const want = kind === 0 ? 0 : peak ? 1 : 0.55;
+          if (!near(got, want, peak ? 0.04 : 0.001)) R.wrong_level++;
+          if (kind !== 0) {
+            const wantHue = (v >= 5) !== boostAt(t + 0.002) ? base.secondary : base.primary;
+            if (hue[ty]() !== wantHue) R.wrong_colour++;
+          }
+          // then: a flash settles to on, a fade is gone after its 1.5 s and a quarter left halfway
+          if (kind === 2 && next - t > 0.8 && inCover(t + 0.75) && at(t + 0.75)) { R.after_checked++; if (!near(level[ty](), 0.55, 0.03)) R.wrong_after++; }
+          if (kind === 3 && next - t > 1.6 && inCover(t + 1.55)) {
+            if (at(t + 0.75)) { R.after_checked++; if (!near(level[ty](), 0.25, 0.01)) R.wrong_after++; }
+            if (at(t + 1.55)) { R.after_checked++; if (level[ty]() !== 0) R.wrong_after++; }
+          }
+        }
+      });
+    }
+    // ring spin and zoom must change which lamps are lit, while the rings stay on
+    const litSet = () => D.ceil.filter((L) => L.b > 1e-6).map((L) => L.r * 4 + L.c).join();
+    for (const [ty, key, same] of [[8, "spins", "spin_same"], [9, "zooms", "zoom_same"]]) {
+      for (const e of byGroup[ty] || []) {
+        // the rings must be lit on both sides of it, so no ring event right there, and the last one left them on or still fading
+        const ring = byGroup[1] || [], j = ring.findIndex((x) => x[0] > e[0] - 0.02);
+        if (j > -1 && ring[j][0] <= e[0] + 0.01) continue;
+        const lastRing = ring[(j < 0 ? ring.length : j) - 1];
+        if (!lastRing || lastRing[2] === 0 || !inCover(e[0])) continue;
+        if ([3, 7].includes(lastRing[2]) && e[0] - lastRing[0] > 1.4) continue;
+        if ((byGroup[ty] || []).some((x) => x !== e && Math.abs(x[0] - e[0]) < 0.015)) continue;  // two at once may cancel out
+        if (!at(e[0] - 0.01)) continue;
+        const a = litSet();
+        if (!at(e[0] + 0.002)) continue;
+        R[key]++;
+        if (a === litSet()) R[same]++;
+      }
+    }
+    // laser speed: over 0.1 s the 30% band moves by speed x 0.12 rope lengths a second, and not at all at speed 0
+    for (const e of (byGroup[12] || [])) {
+      const lights2 = byGroup[2] || [], lastLeft = [...lights2].reverse().find((x) => x[0] <= e[0]);
+      const nextEv = (byGroup[12] || []).find((x) => x[0] > e[0] + 1e-6), nextL = lights2.find((x) => x[0] > e[0]);
+      if (!lastLeft || ![1, 5].includes(lastLeft[2]) || !inCover(e[0]) || (nextEv && nextEv[0] < e[0] + 0.2) || (nextL && nextL[0] < e[0] + 0.2)) continue;
+      const first = () => { const px = D.ropes[1]; for (let i = 0; i < 100; i++) if (px[3 * i] + px[3 * i + 1] + px[3 * i + 2] > 0.2) return i; return -1; };
+      if (!at(e[0] + 0.02)) continue;
+      const a = first();
+      if (!at(e[0] + 0.12)) continue;
+      const b = first();
+      if (a <= 1 || b <= 1 || a > 65 || b > 65) continue;  // the band wraps round the rope's ends
+      R.speeds++;
+      if (Math.abs((b - a) / 100 - e[2] * 0.12 * 0.1) > 0.021) R.speed_wrong++;
+    }
+  });
+  Object.assign(opts, { dejavu: false, burn: false, countdown: false, look: "club" });
+  return R;
+}
+
+// Club 2's claims, per 16th of the song, against Club's: each fixture does one job, and looks hold through a section.
+function club2Claims(song) {
+  const R = { sections: {}, ceilRises: 0, ceilOnLead: 0, upRises: 0, upOnDrum: 0, ropeRises: 0, ropeOnSecond: 0, hold: {}, flips: {}, groups: {}, follow: {} };
+  Object.assign(opts, { dejavu: false, burn: false, countdown: false, look: "club2" });
+  const P0 = prepare(song), plan = club2Plan(P0), near = (a, t, w = 0.045) => { let l = 0, h = a.length; while (l < h) { const m = (l + h) >> 1; if (a[m] < t - w) l = m + 1; else h = m; } return l < a.length && a[l] <= t + w; };
+  const on = (part) => (plan.parts[part] || []).map((h) => h.t);
+  const series = { vocal: on("vocal"), stabs: on("stabs"), lead: on("lead"), drums: on("drums") };
+  const H = (song.cues || {}).hits || {}, kicks = (H.kick || []).map((h) => h[0]).sort((a, b) => a - b), snares = (H.snare || []).map((h) => h[0]).sort((a, b) => a - b);
+  const drum = (t) => near(kicks, t) || near(snares, t);
+  for (const s of plan.sections) { const b = (P0.beatPos(s.b) - P0.beatPos(s.a)) / 4; R.sections[s.lead] = (R.sections[s.lead] || 0) + b; }
+  const B = P0.beats, grid = []; for (let i = 0; i + 1 < B.length; i++) for (let k = 0; k < 4; k++) grid.push(B[i] + (B[i + 1] - B[i]) * k / 4);
+  for (const look of ["club2", "club"]) {
+    Object.assign(opts, { look });
+    const P = prepare(song), D = makeDesk();
+    const pal = (S) => { const b = P.palette, n = (S.hook >= 0 ? S.hook : S.part >= 0 ? S.part : S.seg) + S.rootLead; return n % 2 ? { ...b, primary: b.secondary, secondary: b.primary } : b; };
+    const read = (t) => {
+      const S = showAt(P, t); frame(P, S, D, { look, pal: pal(S), flash: [1, 1, 1] });
+      let ce = 0, ro = 0; const litHue = new Set(); const lit = [];
+      for (const L of D.ceil) { ce = Math.max(ce, L.b); lit.push(L.b >= 0.1); if (L.b >= 0.1) litHue.add(L.h); }
+      for (const px of D.ropes) for (let i = 0; i < px.length; i += 3) ro = Math.max(ro, px[i], px[i + 1], px[i + 2]);
+      return { S, dark: D.dark, ce, ro, up: Math.max(D.ups[0].b, D.ups[1].b, D.ups[2].b, D.ups[3].b), st: D.strip.b, co: D.cove[0].b, hue: [...litHue].sort().join(), upHue: D.ups[1].h, lit };
+    };
+    let flips = 0, groups = 0, cells = 0, hueChanges = 0, prevLit = null, prevHue = null, prevSec = null;
+    const seen = new Set();
+    for (const t of grid) {
+      if (t > song.duration) break;
+      const a = read(t - 0.02), b = read(t + 0.04), sec = leadAt2(plan, t + 0.04);
+      if (a.dark || b.dark) { prevLit = null; continue; }
+      cells++;
+      if (prevLit) for (let i = 0; i < b.lit.length; i++) if (b.lit[i] !== prevLit[i]) flips++;
+      prevLit = b.lit;
+      groups += ["ce", "ro", "up", "st", "co"].filter((k) => b[k] - a[k] > 0.05).length;
+      // a colour change on the ceiling inside a section (builds have their own whitening, the same hue)
+      const hue = b.hue;
+      if (hue) { if (prevHue && prevHue !== hue && prevSec === sec && !b.S.inBuild) hueChanges++; prevHue = hue; prevSec = sec; }
+      if (look === "club2" && !b.S.inBuild && !a.S.inBuild) {
+        if (b.ce - a.ce > 0.1) { R.ceilRises++; if (near(series[sec.lead], t)) R.ceilOnLead++; }
+        if (b.up - a.up > 0.1) { R.upRises++; if (drum(t)) R.upOnDrum++; }
+        if (sec.second && b.ro - a.ro > 0.1) { R.ropeRises++; if (near(series[sec.second], t)) R.ropeOnSecond++; }
+      }
+    }
+    const minutes = Math.max(1 / 60, cells * (60 / P.bpm / 4) / 60);
+    R.hold[look] = hueChanges / minutes; R.flips[look] = flips / minutes; R.groups[look] = groups / Math.max(1, cells);
+  }
+  Object.assign(opts, { dejavu: false, burn: false, countdown: false, look: "club" });
+  return R;
+}
+const leadAt2 = (plan, t) => { let i = 0; while (i + 1 < plan.sections.length && plan.sections[i + 1].a <= t + 1e-9) i++; return plan.sections[i]; };
+
 // a song the analysis gave nothing to: no cues, no features, no notes. Every look must still run and stay finite
 function bare(song) {
   const empty = { ...song, cues: {}, features: {}, melody: {}, notes: {}, phrases: [] };
@@ -294,15 +424,36 @@ if (args[0] === "--report") {
   const kinds = {}; for (const c of claimsAll) if (c.dejavu.type) kinds[c.dejavu.type] = (kinds[c.dejavu.type] || 0) + 1;
   console.log("dejavu: repeat share of song", m((c) => c.dejavu.repeat_share), "compared", sum((c) => c.dejavu.compared), "same pattern (median song)", m((c) => c.dejavu.same_pattern), "pooled", sum((c) => (c.dejavu.same_pattern ?? 0) * c.dejavu.compared) / Math.max(1, sum((c) => c.dejavu.compared)), "songs with over one strobe type", claimsAll.filter((c) => c.dejavu.strobe_types > 1).length, "types across songs", JSON.stringify(kinds));
   console.log("burn: bad start", sum((c) => c.burn.start_not_one), "all before biggest", sum((c) => c.burn.all_before_biggest), "count on biggest", m((c) => c.burn.count_on_biggest), "rationed", claimsAll.filter((c) => c.burn.strobes_rationed).length, "of", claimsAll.length, "undone", claimsAll.filter((c) => c.burn.undone_when_off).length);
+  const rs = claimsAll.map((c) => c.replay).filter((r) => r && r.maps), rsum = (k) => rs.reduce((a, r) => a + r[k], 0);
+  console.log("human replay: maps", rsum("maps"), "events", rsum("events"), "checked", rsum("checked"), "(in a blackout or strobe", rsum("skipped_dark") + ")", "wrong level", rsum("wrong_level"), "wrong colour", rsum("wrong_colour"), "| later state checks", rsum("after_checked"), "wrong", rsum("wrong_after"));
+  console.log("  ring spins", rsum("spins"), "no change", rsum("spin_same"), "| zooms", rsum("zooms"), "no change", rsum("zoom_same"), "| laser speeds", rsum("speeds"), "wrong", rsum("speed_wrong"), "| light events a minute, median map", median(rs.flatMap((r) => r.per_minute)));
+  const showIds = new Set(rows.filter((r) => r.combo === "human").map((r) => r.id));
+  if (showIds.size) {
+    console.log("on the", showIds.size, "songs with a map:  look, lampP95, lamp>25%, black%, depth, kickCorr, clubCorr, drop/breakdown");
+    for (const c of combos.filter((x) => !x.includes("+"))) {
+      const R = rows.filter((r) => r.combo === c && showIds.has(r.id));
+      if (!R.length) continue;
+      const ratio = median(R.map((r) => (r.byKind.Drop && r.byKind.Breakdown ? r.byKind.Drop / Math.max(1e-3, r.byKind.Breakdown) : null)));
+      console.log(" ", c.padEnd(10), median(R.map((r) => r.lampP95)).toFixed(2), (100 * mean(R.map((r) => r.lampOver25))).toFixed(1).padStart(6), (100 * mean(R.map((r) => r.blackShare))).toFixed(1).padStart(6), median(R.map((r) => r.depth)).toFixed(3).padStart(7), median(R.map((r) => r.kickCorr)).toFixed(2).padStart(6), (median(R.map((r) => r.clubCorr)) ?? 0).toFixed(2).padStart(6), (ratio ?? 0).toFixed(1).padStart(6));
+    }
+  }
+  const cs = claimsAll.map((c) => c.club2).filter(Boolean), csum = (k) => cs.reduce((a, r) => a + r[k], 0), leads = {};
+  for (const c of cs) for (const [k, v] of Object.entries(c.sections)) leads[k] = (leads[k] || 0) + v;
+  const allBars = Object.values(leads).reduce((a, b) => a + b, 0) || 1;
+  console.log("club 2: what leads, share of bars:", Object.entries(leads).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(100 * v / allBars).toFixed(0)}%`).join(", "));
+  console.log("  ceiling rises on the lead part", csum("ceilRises") ? (100 * csum("ceilOnLead") / csum("ceilRises")).toFixed(1) + "%" : "-", "of", csum("ceilRises"), "| uplight rises on a kick or snare", csum("upRises") ? (100 * csum("upOnDrum") / csum("upRises")).toFixed(1) + "%" : "-", "of", csum("upRises"), "| rope rises on the second part", csum("ropeRises") ? (100 * csum("ropeOnSecond") / csum("ropeRises")).toFixed(1) + "%" : "-", "of", csum("ropeRises"));
+  console.log("  median per song, club 2 vs club: ceiling colour changes inside a section per minute", median(cs.map((c) => c.hold.club2)).toFixed(1), "vs", median(cs.map((c) => c.hold.club)).toFixed(1), "| lamps switching per minute", median(cs.map((c) => c.flips.club2)).toFixed(0), "vs", median(cs.map((c) => c.flips.club)).toFixed(0), "| fixture groups rising per 16th", median(cs.map((c) => c.groups.club2)).toFixed(2), "vs", median(cs.map((c) => c.groups.club)).toFixed(2));
   console.log("no analysis at all: crashes", sum((c) => c.bare.crashes), "non-finite frames", sum((c) => c.bare.nan));
   console.log("countdown: builds", sum((c) => c.countdown.builds), "row came back", sum((c) => c.countdown.row_came_back));
   process.exit(0);
 }
 
-const all = fs.readdirSync(path.join(HERE, "cache")).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
+const index = JSON.parse(fs.readFileSync(path.join(COMPILED, "index.json"))).filter((s) => s.genre === "electronic" && s.has_audio && s.has_beats);
+const all = index.map((s) => s.id).sort();
 const [si, sn] = opt("--shard", "0/1").split("/").map(Number);
 const nSongs = +opt("--songs", all.length), dt = 1 / +opt("--fps", 25);
-const ids = all.filter((_, i) => i % Math.ceil(all.length / nSongs) === 0).slice(0, nSongs).filter((_, i) => i % sn === si);
+const onlyShows = args.includes("--only-shows");
+const ids = all.filter((id) => !onlyShows || fs.existsSync(path.join(COMPILED, "../viz/lightshows", `${id}.json`))).filter((_, i, a) => i % Math.ceil(a.length / nSongs) === 0).slice(0, nSongs).filter((_, i) => i % sn === si);
 const COMBOS = [...LOOK_LIST.map((l) => [l.id, l.id, {}]), ["club+dejavu", "club", { dejavu: true }], ["club+burn", "club", { burn: true }], ["club+countdown", "club", { countdown: true }],
   ...LOOK_LIST.slice(1).map((l) => [`${l.id}+all`, l.id, { dejavu: true, burn: true, countdown: true }])];
 const rows = [], claimRows = [];
@@ -310,12 +461,13 @@ for (const id of ids) {
   const song = load(id);
   let base = null;
   for (const [combo, look, tog] of COMBOS) {
+    if (look === "human" && !song.lightshow) continue;
     const { out } = run(song, look, tog, dt, base);
     if (combo === "club") base = out;
     const { series, ...rest } = out;
     rows.push({ id, combo, ...rest });
   }
-  claimRows.push({ id, ...claims(song, dt), bare: bare(song) });
+  claimRows.push({ id, ...claims(song, dt), bare: bare(song), replay: replay(song), club2: club2Claims(song) });
 }
 const result = { rows, claims: claimRows };
 const file = opt("--out", null);

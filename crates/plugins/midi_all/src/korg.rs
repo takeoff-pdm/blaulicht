@@ -1,6 +1,7 @@
 use blaulicht_plugin_framework::MidiEvent;
 use blaulicht_plugin_framework::{self as bpf, println};
 
+use crate::hardware::HardwareMode;
 use crate::legacy::virtual_midi::VirtualMidi;
 use blaulicht_shared::{
     AnimationSpeedModifier, ControlEvent, ControlEventMessage, EngineState, MainUiEvent,
@@ -83,8 +84,8 @@ impl Default for KorgSubSystem {
 //
 
 impl KorgSubSystem {
-    pub fn init(&mut self) {
-        self.midi = VirtualMidi::open(KORG_DEVICE_NAME);
+    pub fn init(&mut self, mode: HardwareMode) {
+        self.midi = VirtualMidi::open(KORG_DEVICE_NAME, mode);
         self.nano_init();
         println!("nanoKONTROL initialized");
     }

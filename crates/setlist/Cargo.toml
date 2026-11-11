@@ -1,0 +1,11 @@
+[package]
+name = "blaulicht-setlist"
+version = "0.1.0"
+edition = "2021"
+description = "Track maps from the offline setlist analyzer and the beat-locked cue follower the setlist plugin runs"
+
+# Also built for wasm32 by the setlist plugin (crates/plugins/setlist), so
+# keep the dependencies small and free of host-only crates.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

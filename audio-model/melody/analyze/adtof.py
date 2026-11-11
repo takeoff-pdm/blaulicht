@@ -34,7 +34,7 @@ def analyse(song, state):
     with tempfile.TemporaryDirectory(dir=str(common.ROOT / "tmp")) as d:
         wav, mid = f"{d}/drums.wav", f"{d}/drums.mid"
         sf.write(wav, drums, common.SR, subtype="FLOAT")
-        transcribe_to_midi(wav, mid, thresholds=[0.22, 0.24, 0.32, 0.22, 0.30], fps=100, device="cuda")
+        transcribe_to_midi(wav, mid, thresholds=[0.22, 0.24, 0.32, 0.22, 0.30], fps=100, device=common.device(mps_ok=False))
         pm = pretty_midi.PrettyMIDI(mid)
     hits = {k: [] for k in ("kick", "snare", "toms", "hh", "cymbals")}
     for inst in pm.instruments:

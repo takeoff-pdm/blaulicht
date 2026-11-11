@@ -256,12 +256,18 @@ impl PluginStateEnvelope {
     }
 }
 
-fn plugin_state_storage_key(state: &crate::state::AppState, plugin_id: u8) -> String {
+/// Where a plugin's state is stored. `file_key` is the plugin's file name
+/// without `.wasm`, which unlike its id survives reordering `[[plugins]]`.
+fn plugin_state_storage_key(
+    state: &crate::state::AppState,
+    plugin_id: u8,
+    file_key: &str,
+) -> String {
     match state.plugin_runtime_kinds.read().unwrap().get(&plugin_id) {
         Some(crate::state::PluginRuntimeKind::Animation { stable_key, .. }) => {
             format!("animation_plugin::{stable_key}")
         }
-        _ => format!("plugin_{plugin_id}"),
+        _ => file_key.to_owned(),
     }
 }
 
@@ -389,7 +395,7 @@ impl PluginManager {
                     .with_context(|| "failed to create wasm module")?;
                 modules.insert(plugin_name.clone(), module.clone());
 
-                let mut store = Store::new(&engine, PluginStoreData::new(plugin_id as u8));
+                let mut store = Store::new(&engine, PluginStoreData::new(plugin_id as u8, &plugin.file_path));
 
                 // instantiate the module
                 let instance = linker
@@ -585,6 +591,51 @@ impl PluginManager {
                         );
                         0
                     });
+            },
+        )?;
+
+        // Non-blocking HTTP GET: start returns a request id (u32::MAX on
+        // failure); poll returns -1 while pending, -2 for an unknown id, or the
+        // length of the JSON outcome written into the buffer.
+        let http_requests = Arc::new(std::sync::Mutex::new(super::http::HttpRequests::default()));
+        let requests = Arc::clone(&http_requests);
+        linker.func_wrap::<_, u32>(
+            "blaulicht",
+            "bl_http_get",
+            move |mut caller: Caller<'_, PluginStoreData>, url_ptr: i32, url_len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let mut url = vec![0u8; url_len.max(0) as usize];
+                memory
+                    .read(&caller, url_ptr as usize, &mut url)
+                    .expect("failed to read memory");
+                let url = String::from_utf8_lossy(&url).to_string();
+                requests.lock().unwrap().start(url).unwrap_or(u32::MAX)
+            },
+        )?;
+
+        let requests = Arc::clone(&http_requests);
+        linker.func_wrap::<_, i32>(
+            "blaulicht",
+            "bl_http_poll",
+            move |mut caller: Caller<'_, PluginStoreData>, id: u32, buf_ptr: i32, buf_len: i32| {
+                let outcome = match requests.lock().unwrap().poll(id) {
+                    super::http::Poll::Pending => return -1,
+                    super::http::Poll::Unknown => return -2,
+                    super::http::Poll::Done(outcome) => outcome,
+                };
+                let json = serde_json::to_vec(&outcome).unwrap_or_default();
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let len = json.len().min(buf_len.max(0) as usize);
+                memory
+                    .write(&mut caller, buf_ptr as usize, &json[..len])
+                    .expect("failed to write memory");
+                len as i32
             },
         )?;
 
@@ -2004,6 +2055,51 @@ impl PluginManager {
                 .or_default()
                 .push(WasmUiOp::EndTabs);
         })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_begin_popup",
+            move |plugin_id: i32, id: i32, fullscreen: i32| {
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::BeginPopup {
+                        id: id as u8,
+                        fullscreen: fullscreen != 0,
+                    });
+            },
+        )?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>("blaulicht", "ui_end_popup", move |plugin_id: i32| {
+            let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+            map.entry(plugin_id as u8)
+                .or_default()
+                .push(WasmUiOp::EndPopup);
+        })?;
+        let state_ref = Arc::clone(&self.state_ref);
+        linker.func_wrap::<_, ()>(
+            "blaulicht",
+            "ui_progress_bar",
+            move |mut caller: Caller<'_, PluginStoreData>,
+                  plugin_id: i32,
+                  permille: i32,
+                  ptr: i32,
+                  len: i32| {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("failed to find memory");
+                let mut buf = vec![0u8; len.max(0) as usize];
+                memory
+                    .read(&caller, ptr as usize, &mut buf)
+                    .expect("failed to read memory");
+                let text = String::from_utf8_lossy(&buf).to_string();
+                let mut map = state_ref.plugin_ui_ops_back.write().unwrap();
+                map.entry(plugin_id as u8)
+                    .or_default()
+                    .push(WasmUiOp::ProgressBar { permille, text });
+            },
+        )?;
 
         let mo = self.to_midi_devices.clone();
         linker.func_wrap::<_, ()>(
@@ -2374,7 +2470,11 @@ impl PluginManager {
                     .expect("failed to read memory");
 
                 let state_data = String::from_utf8_lossy(&buf).to_string();
-                let plugin_name = plugin_state_storage_key(&state_ref_for_save, plugin_id as u8);
+                let plugin_name = plugin_state_storage_key(
+                    &state_ref_for_save,
+                    plugin_id as u8,
+                    &caller.data().state_key,
+                );
                 let animation_instance = state_ref_for_save
                     .plugin_execution_instances
                     .read()
@@ -2437,7 +2537,11 @@ impl PluginManager {
                   location: i32,
                   buffer_ptr: i32,
                   buffer_len: i32| {
-                let plugin_name = plugin_state_storage_key(&state_ref_for_load, plugin_id as u8);
+                let plugin_name = plugin_state_storage_key(
+                    &state_ref_for_load,
+                    plugin_id as u8,
+                    &caller.data().state_key,
+                );
                 let animation_instance = state_ref_for_load
                     .plugin_execution_instances
                     .read()
@@ -2492,14 +2596,17 @@ impl PluginManager {
 #[cfg(feature = "wasmtime")]
 pub(crate) struct PluginStoreData {
     plugin_id: u8,
+    /// See [`plugin_state_storage_key`].
+    state_key: String,
     next_seq: CommandSeq,
 }
 
 #[cfg(feature = "wasmtime")]
 impl PluginStoreData {
-    pub(crate) fn new(plugin_id: u8) -> Self {
+    pub(crate) fn new(plugin_id: u8, file_path: &str) -> Self {
         Self {
             plugin_id,
+            state_key: super::plugin_display_name(file_path),
             next_seq: 1,
         }
     }
@@ -2739,7 +2846,7 @@ mod plugin_envelope_tests {
 
     #[test]
     fn plugin_events_carry_the_plugin_client_and_the_desk_session() {
-        let mut data = PluginStoreData::new(4);
+        let mut data = PluginStoreData::new(4, "plugins/test.wasm");
         let first = data.envelope(ControlEvent::SelectGroup(1));
         let second = data.envelope(ControlEvent::SelectGroup(2));
         assert_eq!(

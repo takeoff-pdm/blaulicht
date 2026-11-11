@@ -17,6 +17,7 @@ export const CEIL_ROWS = 8, CEIL_COLS = 4, ROPES = 5, ROPE_PIX = 100;
 
 export const LOOK_LIST = [
   { id: "club", name: "Club", about: "Everything at once: patterns from the melody, pulses from the drums, stems on the ropes." },
+  { id: "club2", name: "Club 2", about: "Club without the clutter: one job per fixture. The ceiling and walls play whichever part leads the section, the ropes the next one, kick and snare stay on the uplights, bass on the floor strip. Patterns and colours hold through a section." },
   { id: "mixer", name: "Mixing Desk", about: "Each stem owns its fixtures: drums the ceiling, bass the floor strip and uplights, synths the ropes, vocals the DJ spot and walls." },
   { id: "score", name: "Score", about: "A piano roll on the ceiling and ropes: notes travel towards the stage and land as they sound. The bass line runs on one rope and the floor strip." },
   { id: "shock", name: "Shockwave", about: "Each hit is a wave: kicks roll from the stage to the back, snares ring out from the rope hub, chord stabs ring in." },
@@ -25,6 +26,7 @@ export const LOOK_LIST = [
   { id: "glass", name: "Stained Glass", about: "Slow colour fields, no pulses: each chord root owns an area of the ceiling, minor or major picks the colour, far from the key goes white." },
   { id: "spot", name: "Spotlight", about: "The voice leads: the room dims just before someone sings, a warm spot and a rope glow follow them, and it returns when they stop." },
   { id: "weather", name: "Weather", about: "No beat: brightness lifts the light from floor to ceiling, noise brings haze and whiter light, the stereo position moves it sideways." },
+  { id: "human", name: "Human Lighter", about: "A person's lightshow for this song, from a community Beat Saber map, replayed on this rig: back lasers on the stage wall, rings on the ceiling, lasers on the ropes, track lights on the walls and floor strip. A reference to compare the other looks with. Songs without a map stay on Club." },
   { id: "director", name: "Director", about: "Picks a look per section from the analysis: a home look from the song's style for drops and grooves, Shockwave and Countdown in builds, Spotlight, Stained Glass or Weather in breakdowns." },
 ];
 
@@ -578,13 +580,177 @@ function drawWeather(P, S, A, D, X) {
   D.smoke = { h: base.primary, s, b: 0.05 + 0.35 * M };
 }
 
+// ---- Club 2: Club with the clutter taken out. One job per fixture, and nothing changes its mind inside a section:
+//   ceiling  only the part that leads this section (vocal, synth stabs or synth line), or the kick if nothing melodic is there
+//   walls    the same part, slower, so the room's overall light moves with it; and crashes and impacts
+//   ropes    the next part, quietly, as a 30% stretch per note
+//   uplights kick on the inner pair, snare on the outer pair, kept below the lead
+//   strip    the bass level
+//   DJ spot  the vocal
+// What leads: the part with enough notes and the steadiest rhythm from bar to bar. Loudness can't tell: on Lean On the vocal is
+// at least as loud as the synth in every section, but the synth's stabs repeat most steadily, and one lighter (map 29a78) follows those.
+// Tuned by eye on a few songs: it's a heuristic, and no ground truth says which part leads.
+const PART_NAME = { vocal: "vocal", stabs: "synth stabs", lead: "synth", drums: "drums" };
+function hookScore(P, list, a, b) {
+  const pa = P.beatPos(a), bars = (P.beatPos(b) - pa) / 4, n = Math.floor(bars);
+  const on = list.filter((h) => h.t >= a && h.t < b);
+  if (bars < 1 || !on.length) return 0;
+  const grid = Array.from({ length: Math.max(1, n) }, () => new Array(16).fill(0));
+  for (const h of on) { const x = (P.beatPos(h.t) - pa) / 4, i = Math.floor(x); if (i < n) grid[i][Math.round((x - i) * 16) % 16] = 1; }
+  let sum = 0, pairs = 0;
+  for (let i = 1; i < n; i++) {
+    let d = 0, u = 0, v = 0;
+    for (let k = 0; k < 16; k++) { d += grid[i][k] * grid[i - 1][k]; u += grid[i][k]; v += grid[i - 1][k]; }
+    if (u && v) { sum += d / Math.sqrt(u * v); pairs++; }
+  }
+  return Math.min(1, on.length / bars / 3) * (0.3 + 0.7 * (pairs ? sum / pairs : 0));
+}
+function leadPlan(P, X) {
+  if (X.leadPlan) return X.leadPlan;
+  const notes = P.song.notes || {}, C = P.song.cues || {};
+  const snap = (t) => { const p = P.beatPos(t), q = Math.round(p * 4) / 4; return Math.abs(p - q) * 60 / P.bpm <= 0.04 ? P.beatTime(q) : t; };
+  const pitched = (list) => (list || []).map((n) => ({ t: snap(n[0]), off: n[1], p: n[2], v: n[3] ?? 0.8 })).sort((a, b) => a.t - b.t);
+  const parts = {
+    vocal: pitched(notes.game), lead: pitched(notes.lead),
+    stabs: (C.stabs || []).map((s) => ({ t: s[0], off: s[0], p: null, v: Math.min(1, 0.45 + s[1] / 10) })).sort((a, b) => a.t - b.t),
+    drums: Array.from(X.kick.times, (t, i) => ({ t, off: t, p: null, v: X.kick.amps[i] })),
+  };
+  const range = {};
+  for (const k of ["vocal", "lead"]) { const s = parts[k].map((n) => n.p).sort((a, b) => a - b); range[k] = s.length ? [s[Math.floor(s.length * 0.1)], Math.max(s[Math.floor(s.length * 0.9)], s[Math.floor(s.length * 0.1)] + 1)] : [60, 72]; }
+  const secs = (P.sections || []).length ? P.sections : [{ start: 0, end: P.song.duration, kind: "Groove" }];
+  const seed = fnv(P.song.id || ""), kinds = ["Intro", "Groove", "Breakdown", "Build", "Drop", "Outro"];
+  let prev = null;
+  const sections = secs.map((s) => {
+    const short = (P.beatPos(s.end) - P.beatPos(s.start)) / 4 < 2;
+    const ranked = ["vocal", "stabs", "lead"].map((k) => [k, hookScore(P, parts[k], s.start, s.end)]).sort((a, b) => b[1] - a[1]);
+    const lead = short && prev ? prev.lead : ranked[0][1] >= 0.12 ? ranked[0][0] : "drums";
+    const second = short && prev ? prev.second : lead !== "drums" && ranked[1][1] >= 0.15 ? ranked[1][0] : null;
+    prev = { a: s.start, b: s.end, kind: s.kind, lead, second, scores: Object.fromEntries(ranked), shape: (seed + kinds.indexOf(s.kind) * 7) % 3 };
+    return prev;
+  });
+  X.leadPlan = { parts, range, sections, starts: sections.map((s) => s.a) };
+  return X.leadPlan;
+}
+export const club2Plan = (P) => leadPlan(P, shared(P));
+const leadAt = (Y, t) => Y.sections[Math.max(0, lowerBound(Y.starts, t + 1e-9) - 1)];
+function drawClub2(P, S, A, D, X) {
+  const Y = leadPlan(P, X), t = S.t, base = P.palette, sat = A.sat, sec = leadAt(Y, t), level = 0.3 + 0.7 * S.baseLevel;
+  const high = S.kind === "Drop" || S.kind === "Groove" || S.inBuild, main = high ? base.primary : base.secondary, under = high ? base.secondary : base.primary;
+  D.note = S.inBuild ? "build" : `ceiling: ${PART_NAME[sec.lead]}${sec.second ? ` · ropes: ${PART_NAME[sec.second]}` : ""}`;
+  // ceiling, walls and ropes
+  const p = S.buildProgress;
+  let wall = S.inBuild ? 0.05 + 0.3 * p : 0;
+  if (S.inBuild) {  // one row walking to the stage, a step per drum hit; the ropes close in on the hub
+    const row = CEIL_ROWS - 1 - (S.buildSteps % CEIL_ROWS), pulse = Math.max(S.hit, 0);
+    for (let c = 0; c < CEIL_COLS; c++) setLamp(D, row, c, (0.3 + 0.55 * p) * (0.5 + 0.5 * pulse), main, sat * (1 - 0.7 * p));
+    hslRGB(under, sat * (1 - 0.7 * p), 0.5, RGB);
+    for (const px of D.ropes) ropeRange(px, RGB, 1 - p, 1, 0.1 + 0.5 * pulse * (0.4 + 0.6 * p));
+  } else {
+    const list = Y.parts[sec.lead], last = lowerBound(list, t + 1e-9, (h) => h.t) - 1, first = lowerBound(list, sec.a, (h) => h.t);
+    const barLen = 240 / P.bpm, held = last >= 0 && t - list[last].t < 2 * barLen;  // lights stay as the last hit left them, like a person's "on": the room doesn't go out between hits
+    if (held) wall = list[last].v * (0.35 + 0.65 * Math.exp(-(t - list[last].t) * 2.5));
+    for (let i = last, k = 0; i >= 0 && k < 4; i--, k++) {
+      const h = list[i], age = t - h.t, env = Math.exp(-age * 6), b = Math.min(1, 1.25 * level * h.v * Math.max(env, h.off > t || (k === 0 && held) ? (high ? 0.5 : 0.35) : 0));
+      if (b < 0.02) continue;
+      const s = sat * (1 - 0.6 * env);
+      if (h.p != null) {  // a note: its row is its pitch; a full row in a drop, and two lamps taking turns when calm
+        const [lo, hi] = Y.range[sec.lead], row = clamp(Math.round((h.p - lo) / (hi - lo) * (CEIL_ROWS - 1)), 0, CEIL_ROWS - 1), side = i % 2;
+        if (high) for (let c = 0; c < CEIL_COLS; c++) setLamp(D, row, c, b, main, s);
+        else { setLamp(D, row, side ? 0 : 1, b, main, s); setLamp(D, row, side ? 2 : 3, b, main, s); }
+      } else {  // a stab or kick has no pitch: it steps along the section's shape, a full row in a drop, the inner lamps when calm
+        const n = i - first, cols = high && sec.shape !== 2 ? [0, 1, 2, 3] : [1, 2], tri = Math.abs(((n % 14) + 14) % 14 - 7);
+        const rows = sec.shape === 0 ? [((n % CEIL_ROWS) + CEIL_ROWS) % CEIL_ROWS] : sec.shape === 1 ? [tri] : [3 - ((n % 4) + 4) % 4, 4 + ((n % 4) + 4) % 4];
+        for (const r of rows) for (const c of cols) setLamp(D, r, c, b, main, s);
+      }
+    }
+    if (sec.second) {  // the next part: a 30% stretch per note, each on the next rope
+      const l2 = Y.parts[sec.second], j = lowerBound(l2, t + 1e-9, (h) => h.t) - 1;
+      hslRGB(under, sat, 0.5, RGB);
+      for (let i = j, k = 0; i >= 0 && k < 2; i--, k++) {
+        const h = l2[i], age = t - h.t, g = 0.5 * level * h.v * Math.max(Math.exp(-age * 8), h.off > t ? 0.3 : 0);
+        if (g < 0.01) continue;
+        const u = h.p != null ? clamp((h.p - Y.range[sec.second][0]) / (Y.range[sec.second][1] - Y.range[sec.second][0]), 0, 1) * 0.7 : hash3(i, 5, 11) * 0.7;
+        ropeRange(D.ropes[i % ROPES], RGB, u, u + 0.3, g);
+      }
+    }
+  }
+  // the drums on the uplights and spill, kept below the lead so they don't take over the room again
+  const kick = pulseAt(X.kick, t, 12), snare = pulseAt(X.snare, t, 14), crash = pulseAt(X.crash, t, 3.5), impact = pulseAt(X.impacts, t, 3);
+  D.ups.forEach((u, i) => { const inner = i === 1 || i === 2; u.h = under; u.s = inner ? sat : 0.3; u.b = (0.15 + (inner ? kick * 0.4 : snare * 0.35)) * level; });
+  D.spill.forEach((l) => { l.h = under; l.s = sat; l.b = (0.12 + kick * 0.25) * level; });
+  D.strip.h = under; D.strip.b = S.energy.bass * 0.6 * level;
+  D.cove.forEach((c) => { c.h = main; c.s = sat * (1 - 0.7 * Math.min(1, 2 * crash + impact)); c.b = wall * level + 0.6 * crash + 0.5 * impact; });
+  D.spot = S.energy.vocals * (high ? 0.6 : 1);
+  D.lens = 0.1;
+  D.smoke = { h: main, s: sat, b: 0.05 + 0.3 * level * Math.max(kick, 0.3) };
+}
+
+// ---- Human Lighter: a community map's lighting events, replayed. The game's state rules: a group stays as its last event left it.
+// Value 0 off; 1, 5 on; 2, 6 flash, then on; 3, 7 flash, then fade out; 4, 8 transition, held as on. 1-4 are one colour, 5-8 the
+// other, and a boost event swaps them; here they're the song's pair. The flash and fade times are approximate, from memory of the game.
+// Nothing here looks at the music: if it lines up, that's the mapper's doing. Toggles that reshape a show don't apply to it.
+const HUMAN_ON = 0.55, HUMAN_FLASH_S = 0.6, HUMAN_FADE_S = 1.5, LASER_RATE = 0.12, LASER_BAND = 0.3;
+function humanData(P, X, which) {
+  const maps = (P.song.lightshow || {}).maps || [], i = Math.max(0, Math.min(which || 0, maps.length - 1));
+  X.human = X.human || [];
+  if (X.human[i]) return X.human[i];
+  const m = maps[i], group = (ty) => { const e = m.events.filter((x) => x[1] === ty); return { t: Float64Array.from(e, (x) => x[0]), v: Int32Array.from(e, (x) => x[2]) }; };
+  // each laser speed event starts the lasers from a new place, as in the game, and sets how fast they run
+  const speed = (ty, side) => { const g = group(ty); return { ...g, p: Float64Array.from(g.t, (_, k) => hash3(k, side, 9)) }; };
+  X.human[i] = { map: m, back: group(0), ring: group(1), left: group(2), right: group(3), center: group(4), boost: group(5), spin: group(8).t, zoom: group(9).t, leftSpeed: speed(12, 1), rightSpeed: speed(13, 2) };
+  return X.human[i];
+}
+function humanLight(g, t) {
+  const i = lowerBound(g.t, t + 1e-9) - 1;
+  if (i < 0) return { b: 0, w: 0, red: false };
+  const v = g.v[i], age = t - g.t[i], red = v >= 5, kind = v === 0 ? 0 : ((v - 1) % 4) + 1;  // 1 on, 2 flash, 3 fade, 4 transition
+  const flash = Math.exp(-age / (HUMAN_FLASH_S / 3));
+  if (kind === 0) return { b: 0, w: 0, red };
+  if (kind === 2) return { b: HUMAN_ON + (1 - HUMAN_ON) * flash, w: flash, red };
+  if (kind === 3) { const a = age / HUMAN_FADE_S; return a >= 1 ? { b: 0, w: 0, red } : { b: (1 - a) * (1 - a), w: flash, red }; }
+  return { b: HUMAN_ON, w: 0, red };
+}
+function laserBand(px, rgb, spd, t, k, g) {  // a 30% stretch of the rope, running at the laser's speed
+  const i = lowerBound(spd.t, t + 1e-9) - 1, x = i >= 0 ? spd.p[i] + spd.v[i] * LASER_RATE * (t - spd.t[i]) : 0.5, a = (((x + k * 0.37) % 1) + 1) % 1;
+  ropeRange(px, rgb, a, Math.min(1, a + LASER_BAND), g);
+  if (a + LASER_BAND > 1) ropeRange(px, rgb, 0, a + LASER_BAND - 1, g);
+}
+function drawHuman(P, S, A, D, X) {
+  const Y = humanData(P, X, A.map), t = S.t, base = P.palette, sat = A.sat;
+  D.ambient = 0.6; D.lens = 0.08; D.spot = 0; D.smoke.b = 0.05;
+  if (t < Y.map.cover[0] || t > Y.map.cover[1]) return;  // no one lit this part of our version of the song
+  const bi = lowerBound(Y.boost.t, t + 1e-9) - 1, boost = bi >= 0 && Y.boost.v[bi] === 1;
+  const hue = (l) => (l.red !== boost ? base.secondary : base.primary), satOf = (l) => sat * (1 - 0.65 * l.w);
+  const back = humanLight(Y.back, t), ring = humanLight(Y.ring, t), left = humanLight(Y.left, t), right = humanLight(Y.right, t), center = humanLight(Y.center, t);
+  D.ups.forEach((u) => { u.b = back.b * 0.9; u.h = hue(back); u.s = satOf(back); });
+  D.spill.forEach((l) => { l.b = back.b * 0.7; l.h = hue(back); l.s = satOf(back); });
+  // rings: every other row, which ring spin steps along; ring zoom moves them between the inner and the outer lamps. A quarter of the ceiling.
+  const spin = lowerBound(Y.spin, t + 1e-9), zoom = lowerBound(Y.zoom, t + 1e-9);
+  for (const L of D.ceil) {
+    L.h = hue(ring); L.s = satOf(ring);
+    if ((L.r + spin) % 2 === 0 && (zoom % 2 ? L.c === 0 || L.c === 3 : L.c === 1 || L.c === 2)) { L.b = ring.b; L.sway = (spin % 2 ? 1 : -1) * 6; }
+  }
+  const leftRGB = hslRGB(hue(left), satOf(left), 0.5, [0, 0, 0]), rightRGB = hslRGB(hue(right), satOf(right), 0.5, [0, 0, 0]);
+  if (left.b > 0) { laserBand(D.ropes[1], leftRGB, Y.leftSpeed, t, 1, left.b); laserBand(D.ropes[3], leftRGB, Y.leftSpeed, t, 3, left.b); laserBand(D.ropes[2], leftRGB, Y.leftSpeed, t, 2, left.b * 0.5); }
+  if (right.b > 0) { laserBand(D.ropes[0], rightRGB, Y.rightSpeed, t, 0, right.b); laserBand(D.ropes[4], rightRGB, Y.rightSpeed, t, 4, right.b); laserBand(D.ropes[2], rightRGB, Y.rightSpeed, t, 2, right.b * 0.5); }
+  D.strip.h = hue(center); D.strip.b = center.b * 0.9;
+  D.cove.forEach((c) => { c.h = hue(center); c.s = satOf(center); c.b = center.b * 0.8; });
+  D.smoke = { h: hue(back), s: sat, b: 0.05 + 0.3 * Math.max(back.b, ring.b, center.b) };
+}
+const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+function humanInfo(P, t, which) {
+  const maps = P.song.lightshow.maps, m = maps[Math.max(0, Math.min(which || 0, maps.length - 1))];
+  const where = t < m.cover[0] ? ` · the map starts at ${fmtTime(m.cover[0])}` : t > m.cover[1] ? " · the map has ended" : "";
+  return `Human Lighter: ${m.name} · beatsaver.com/maps/${m.map}${where}`;
+}
+
 // ---- the looks by id, and which fixture groups Slow Burn hands them first
 const ORDER = {
-  club: ["ceil", "ropes", "ups", "cove", "strip", "spot"], mixer: ["ceil", "strip", "ropes", "ups", "cove", "spot"], score: ["ceil", "ropes", "ups", "strip", "cove", "spot"],
+  club: ["ceil", "ropes", "ups", "cove", "strip", "spot"], club2: ["ceil", "ups", "ropes", "strip", "cove", "spot"], mixer: ["ceil", "strip", "ropes", "ups", "cove", "spot"], score: ["ceil", "ropes", "ups", "strip", "cove", "spot"],
   shock: ["ceil", "ropes", "ups", "strip", "cove", "spot"], breath: ["cove", "ups", "ropes", "ceil", "strip", "spot"], kick: ["ceil", "ups", "strip", "ropes", "cove", "spot"],
   glass: ["ceil", "cove", "ropes", "ups", "spot", "strip"], spot: ["spot", "ceil", "ropes", "cove", "ups", "strip"], weather: ["ups", "cove", "ropes", "ceil", "strip", "spot"],
 };
-const DRAW = { club: drawClub, mixer: drawMixer, score: drawScore, shock: drawShock, breath: drawBreath, kick: drawKick, glass: drawGlass, spot: drawSpot, weather: drawWeather };
+const DRAW = { club: drawClub, club2: drawClub2, mixer: drawMixer, score: drawScore, shock: drawShock, breath: drawBreath, kick: drawKick, glass: drawGlass, spot: drawSpot, weather: drawWeather, human: drawHuman };
 const NAME = Object.fromEntries(LOOK_LIST.map((l) => [l.id, l.name]));
 
 // ---- Director: a look per section, from the analysis. The song's style gives the home look for its drops.
@@ -767,15 +933,16 @@ export function frame(P, S, D, o) {
     }
     return D;
   }
-  const director = o.look === "director", id = director ? directedLook(P, S.t, S.inBuild) : o.look;
+  const director = o.look === "director", hasShow = ((P.song.lightshow || {}).maps || []).length > 0;
+  const id = director ? directedLook(P, S.t, S.inBuild) : o.look === "human" && !hasShow ? "club" : o.look;
   const look = DRAW[id] ? id : "club", X = look === "club" ? null : shared(P);
   const anim = o.dejavu && CLUB_ANIMS.includes(S.anim) ? CLUB_ANIMS[(CLUB_ANIMS.indexOf(S.anim) + fnv(P.song.id || "")) % CLUB_ANIMS.length] : S.anim;
-  const A = { pal: o.pal, accent: o.pal.secondary, sat, kick, swap: S.energetic && S.lookBar % 2 === 1, anim };
+  const A = { pal: o.pal, accent: o.pal.secondary, sat, kick, swap: S.energetic && S.lookBar % 2 === 1, anim, map: o.map || 0 };
   D.anim = anim;
   D.smoke.h = o.pal.primary; D.smoke.s = sat; D.smoke.b = 0.07 + 0.3 * S.level * (0.35 + 0.65 * kick);
   DRAW[look](P, S, A, D, X);
-  if (o.burn) applyBurn(P, S, D, director ? ORDER.club : ORDER[look]);
-  if (o.countdown || director) applyCountdown(S, A, D);
-  D.info = director ? `Director: ${NAME[look]}` : NAME[look];
+  if (o.burn && look !== "human") applyBurn(P, S, D, director ? ORDER.club : ORDER[look]);
+  if ((o.countdown || director) && look !== "human") applyCountdown(S, A, D);
+  D.info = director ? `Director: ${NAME[look]}` : look === "human" ? humanInfo(P, S.t, o.map) : o.look === "human" ? "Club: this song has no Beat Saber map" : look === "club2" ? `Club 2 · ${D.note}` : NAME[look];
   return D;
 }

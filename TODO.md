@@ -89,13 +89,14 @@ Design system: [Blaulicht Console](https://claude.ai/artifact/ChF4HkbnuyT8byciza
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 032 | [UI tokens, density and theme foundation](TICKETS/032-ui-tokens-density.planned.md) | planned | — |
-| 033 | [Core components: Button variants, ListRow, Chip, Status](TICKETS/033-ui-core-components.planned.md) | planned | 032 |
-| 034 | [Sheets, context menus, toasts and engine refusal feedback](TICKETS/034-ui-overlays-feedback.planned.md) | planned | 032, 033 |
-| 035 | [Shell: page header with action overflow, nav rail and tab bar](TICKETS/035-ui-shell-header-nav.planned.md) | planned | 032, 033 |
-| 036 | [Programmer in the Console layout](TICKETS/036-ui-programmer-redesign.planned.md) | planned | 033, 034, 035 |
-| 037 | [Setup tabs as master–detail in the Console style](TICKETS/037-ui-setup-master-detail.planned.md) | planned | 033, 034, 035 |
-| 038 | [Remaining pages in the Console style](TICKETS/038-ui-remaining-pages.planned.md) | planned | 033, 034, 035 |
+| 036 | [Programmer in the desktop studio layout](TICKETS/036-ui-programmer-redesign.planned.md) | planned (superseded by E13) | 058, 059 |
+| 037 | [Setup pages in the desktop studio layout](TICKETS/037-ui-setup-master-detail.planned.md) | planned (superseded by E13) | 058, 059 |
+| 038 | [Remaining desktop pages in the studio style](TICKETS/038-ui-remaining-pages.planned.md) | planned (superseded by E13) | 058, 059 |
+| 058 | [Desktop studio components and list style](TICKETS/058-desktop-studio-components.planned.md) | planned | 056 |
+| 059 | [Status bar, global Blackout and connection state](TICKETS/059-desktop-status-bar-blackout-connection.planned.md) | planned | 058 |
+| 061 | [Per-machine universe to output routing](TICKETS/061-per-machine-output-routing.planned.md) | planned | — |
+| 062 | [DMX and Art-Net page: Map, Plan and Routing](TICKETS/062-dmx-map-plan-routing-page.planned.md) | planned | 058, 059, 061 |
+| 064 | [Show command replies in the desktop UI](TICKETS/064-desktop-command-replies.planned.md) | planned | 058, 059 |
 
 ### E10 — Decouple engine and frontends
 
@@ -127,6 +128,39 @@ Headless core, with the native UI as one frontend among several. Model, rules an
 | 055 | [Desktop / mobile layout setting with a desktop navigation sidebar](TICKETS/055-desktop-mobile-layout.done.md) | done | — |
 | 056 | [Desktop studio style: tokens, compact density, buttons, sidebar and status bar](TICKETS/056-desktop-studio-style.done.md) | done | 055 |
 
+### E12 — Mac analysis pipeline (faster than a song, during a show)
+
+| # | Ticket | Status | Depends on |
+|---|---|---|---|
+| 065 | [Validate Neural Engine lyrics (v2) against ae-charlie on real vocal stems](TICKETS/065-lyrics-ane-validate-vs-charlie.planned.md) | planned | — |
+| 066 | [Lyrics: whole decoder in one Neural Engine model](TICKETS/066-lyrics-ane-single-decoder-model.planned.md) | planned | 065 |
+| 067 | [Lyrics: speculative decoding with distil-large-v3](TICKETS/067-lyrics-ane-speculative-decoding.planned.md) | planned | 065, 066 |
+| 068 | [Lyrics: long-running worker for shows](TICKETS/068-lyrics-ane-show-worker.planned.md) | planned | 065 |
+
+### E13 — UI port (studio mockups to egui)
+Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 038.
+
+| # | Ticket | Status | Depends on |
+|---|---|---|---|
+| 069 | [Studio tokens, 40px bars, folder bands and lit buttons](TICKETS/ui/069-ui-tokens-bars-livebutton.planned.md) | planned | 058 |
+| 070 | [Stacked notifications](TICKETS/ui/070-ui-notifications.planned.md) | planned | 058 |
+| 071 | [One dropdown component](TICKETS/ui/071-ui-dropdown.planned.md) | planned | 058, 069 |
+| 072 | [Typing values in place and keyboard control of faders and knobs](TICKETS/ui/072-ui-value-entry-keyboard.planned.md) | planned | 058 |
+| 073 | [Drag items between folders in Setup lists](TICKETS/ui/073-ui-folder-tree-drag.planned.md) | planned | 069 |
+| 074 | [Status bar issues cell](TICKETS/ui/074-ui-status-bar-issues.planned.md) | planned | 059, 070 |
+| 075 | [Programmer layout, page bar and resizable panes](TICKETS/ui/075-ui-programmer-layout.planned.md) | planned | 069, 071, 072 |
+| 076 | [Programmer colour picker and Add animation](TICKETS/ui/076-ui-programmer-colour-animations.planned.md) | planned | 075 |
+| 077 | [Setup Fixtures: multi-select and Move to group](TICKETS/ui/077-ui-setup-fixtures-multiselect.planned.md) | planned | 069, 071, 073 |
+| 078 | [Identify panel and Initialize for a selection](TICKETS/ui/078-ui-setup-identify.planned.md) | planned | 077 |
+| 079 | [Fixture position view](TICKETS/ui/079-ui-setup-position-view.planned.md) | planned | 077 |
+| 080 | [Setup pages: title bars and detail panes](TICKETS/ui/080-ui-setup-pages-polish.planned.md) | planned | 069, 073 |
+| 081 | [Views page (formerly Scene Stacks)](TICKETS/ui/081-ui-views-page.planned.md) | planned | 069, 071 |
+| 082 | [Perform page bar and horizontal fader](TICKETS/ui/082-ui-perform-page.planned.md) | planned | 069 |
+| 083 | [Logs page](TICKETS/ui/083-ui-logs-page.planned.md) | planned | 071 |
+| 084 | [System General and Screens](TICKETS/ui/084-ui-system-general-screens.planned.md) | planned | 069, 074 |
+| 085 | [Visualizer and Scene Graph in the studio shell](TICKETS/ui/085-ui-visualizer-scenegraph-shell.planned.md) | planned | 069 |
+| 086 | [Plugins, MIDI & Serial, Remote UI and Audio pages](TICKETS/ui/086-ui-system-audio-pages.planned.md) | planned | 069, 071 |
+
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
 Items marked `→ TICKET NNN` are covered by that ticket.
@@ -134,8 +168,6 @@ Items marked `→ TICKET NNN` are covered by that ticket.
 - Web UI (054) follow-ups: the visualizer on the web (048 row 14: GLSL `300 es`, depth/MSAA, its two threads, stage models fetched from the engine host); showfile Load / Save As for remote UIs (needs a "list showfiles" request, since paths are the engine host's); a native remote desk (`blaulicht-core --connect host:port` with `AppClient::Remote`, mostly wiring); the web UI repaints at 60 fps like the desk even when idle, which costs battery on tablets; touch use was only tested with a mouse in desktop chromium (canvas zoom-to-fit, egui's hidden text input for the keyboard), not on a real tablet or phone.
 - Log lines replayed to a newly connected frontend (the hub keeps the last 1000) are stamped with the time they arrive, not when they were logged (`LogWindow::add_log` takes `Local::now()`): a web UI opened later shows the whole replay at one time (054). `SystemMessage::Log` has no timestamp yet.
 - The engine is compiled for wasm32 by the web build only "by accident" (048 row 13): lifecycle, main loop, plugin host, server and persistence compile but would fail at runtime in a browser. A `runtime` feature (or a light model crate) would let the compiler catch web-reachable runtime code.
-
-- 056 delivered the desktop (Compact) half of 032, 033 and 035: `app/ui_tokens.rs`, `Density`, IBM Plex, button variants, flat tree rows, the desktop nav. When those tickets run, align `ui_tokens` with the design system's `tokens.json` (056 could not read the artifact) and build the kiosk (Touch) side on the same tokens; see 056 Notes for what is left.
 
 - `crates/plugins/pioneer_pro_dj_link/Cargo.toml` has an absolute path dependency (`/home/mik/Downloads/prolink-test/prolink-rs`), so `make build_noopt` fails for it everywhere else.
 - Port `midi_all` hold-overlay / hold-alpha mappings to the bank stack once 020 is done.

@@ -8,10 +8,10 @@ const fs = require("fs");
 const path = require("path");
 const { prepare, showAt, beatPos, PAIRS } = require("./core.cjs");
 
-const HERE = __dirname, CACHE = path.join(HERE, "cache");
+const HERE = __dirname, COMPILED = path.join(HERE, "../../data/melody/compiled");  // pipeline/song.py
 
 function load(id, plan) {
-  const doc = JSON.parse(fs.readFileSync(path.join(CACHE, `${id}.json`)));
+  const doc = JSON.parse(fs.readFileSync(path.join(COMPILED, `${id}.json`)));
   for (const v of Object.values(doc.notes)) v.sort((a, b) => a[0] - b[0]);
   doc.energyData = {}; doc.energyNorm = {};
   for (const [k, v] of Object.entries(doc.energy)) {
@@ -20,10 +20,12 @@ function load(id, plan) {
     const sorted = Array.from(e).sort((a, b) => a - b);
     doc.energyNorm[k] = [sorted[Math.floor(sorted.length * 0.2)], sorted[Math.floor(sorted.length * 0.995)]];
   }
+  const tags = (doc.features || {}).tags || {};
+  doc.tags = { moods: tags.moods, styles: (tags.styles || []).slice(0, 5) };
   doc.plan = plan || null;
   return doc;
 }
-const ids = () => fs.readdirSync(CACHE).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
+const ids = () => JSON.parse(fs.readFileSync(path.join(COMPILED, "index.json"))).filter((s) => s.genre === "electronic" && s.has_audio && s.has_beats).map((s) => s.id).sort();
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 // features per segment and drop, sampled per sixteenth, for the plan generators

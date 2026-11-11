@@ -301,7 +301,9 @@ fn draw_twin(midi: &VirtualMidi, clock: u32) {
     ui::painter_text(LEFT_X + 44, 24, 6, 130, 136, 150, 255, "MOBILE MIDI CONTROLLER");
 
     // Status fits the left cluster (the strips start at STRIP_X).
-    let (status, (sr, sg, sb)) = if midi.is_connected() {
+    let (status, (sr, sg, sb)) = if midi.is_mock() {
+        ("MOCK hardware — virtual twin, click to play", (120, 170, 240))
+    } else if midi.is_connected() {
         ("connected — twin mirrors LEDs", (120, 220, 140))
     } else {
         ("NOT connected — virtual twin, click to play", (240, 170, 60))

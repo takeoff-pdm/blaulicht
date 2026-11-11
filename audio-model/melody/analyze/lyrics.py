@@ -13,6 +13,7 @@ vocal regions that yield no word with probability 0.4 or more, or are shorter th
 [[start, end, text]], chops [[start, end]], language.
 """
 
+import os
 import numpy as np
 from scipy.signal import resample_poly
 
@@ -34,9 +35,17 @@ def _phantom(text):
 
 
 def setup():
+    backend = os.environ.get("MELODY_WHISPER_BACKEND", "ctranslate2")
+    if backend in ("coreml", "coreml2"):
+        # Mac: faster-whisper's pipeline with Whisper large-v3 on the Neural Engine (audio-model/melody/ane)
+        import importlib
+
+        mod = importlib.import_module("analyze.coreml_whisper" + ("2" if backend == "coreml2" else ""))
+        return mod.load_model(os.environ["LYRICS_COREML_MODEL"], os.environ.get("LYRICS_COREML_UNITS", "ane"))
     from faster_whisper import WhisperModel
 
-    return WhisperModel("large-v3", device="cuda", compute_type="float16")
+    return WhisperModel("large-v3", device=os.environ.get("MELODY_WHISPER_DEVICE", "cuda"),
+                        compute_type=os.environ.get("MELODY_WHISPER_COMPUTE", "float16"))
 
 
 def analyse(song, model):
@@ -60,7 +69,7 @@ def analyse(song, model):
     lang = info.language if info.language_probability > 0.8 else max(("en", "de"), key=lambda k: probs.get(k, 0))
     words, lines = [], []
     for a, b in chunks:
-        segs, _ = model.transcribe(x[int(a * sr): int(b * sr)], language=lang, beam_size=5, temperature=0.0,
+        segs, _ = model.transcribe(x[int(a * sr): int(b * sr)], language=lang, beam_size=int(os.environ.get("MELODY_WHISPER_BEAM", "5")), temperature=0.0,
                                    condition_on_previous_text=False, word_timestamps=True, vad_filter=False)
         for s in segs:
             ws = s.words or []

@@ -24,7 +24,7 @@ GPU = True
 def setup():
     from allin1_infer import AllInOneSession, StemsInput
 
-    session = AllInOneSession(model="harmonix-all", device="cuda")
+    session = AllInOneSession(model="harmonix-all", device=common.device(mps_ok=False))
     session.load()
     return session, StemsInput
 

@@ -10,7 +10,9 @@ strength is the hit's level in the piece's own range (20th percentile .. 99.5th)
 level track per piece. The DrumSep weights carry no licence: research use only.
 """
 
+import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -37,6 +39,10 @@ def setup():
     sep = Separator(output_dir=str(TMP), model_file_dir=str(MODELS_DIR), output_format="WAV", log_level=30,
                     mdxc_params={"segment_size": 256, "override_model_segment_size": False, "batch_size": 4, "overlap": 2, "pitch_shift": 0})
     sep.load_model(model_filename=MODEL)
+    if os.environ.get("MELODY_COREML"):  # Mac backend: the network in Core ML (ane/backends.py)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ane"))
+        import backends
+        backends.drumsep(sep)
     return sep
 
 

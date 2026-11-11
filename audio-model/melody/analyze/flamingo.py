@@ -12,7 +12,7 @@ Output: `whole` (a free description and a section breakdown with timestamps, whi
 promise), `parts` (per part of `cues.parts`: lead and other instruments, vocals, energy, mood, function
 as parsed JSON, always with the raw text), and how long and how much GPU memory it took.
 
-`cues.parts` is made on the Mac by `viz/show_compile.py`, so run `pilots/export_context.py` and push
+`cues.parts` is made on the Mac by `pipeline/show_compile.py`, so run `pilots/export_context.py` and push
 before running this on new songs.
 """
 

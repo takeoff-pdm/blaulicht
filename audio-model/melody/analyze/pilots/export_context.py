@@ -1,6 +1,6 @@
 """On the Mac: copy what the pilots compare against from the viewer's read-only API to
 `pilots/context/<id>.json`; `sync.sh push` then takes it to ae-charlie, where `cues.parts` etc. don't exist
-(`viz/show_compile.py` makes them).
+(`pipeline/show_compile.py` makes them).
 
     python3 audio-model/melody/analyze/pilots/export_context.py [id ...]
 """

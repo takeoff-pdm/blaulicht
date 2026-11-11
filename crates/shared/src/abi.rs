@@ -25,7 +25,9 @@ use strum::EnumIter;
 //      and Palettes pages moved into Setup (ticket 010).
 // v19: Light gained `VarytecStarstrip10_10Chan` and MovingHead gained
 //      `MartinRushMH6Wash_14Chan`, so the encoded EngineState can hold new variants.
-pub const PLUGIN_ABI_VERSION: u32 = 19;
+// v20: AppSubPage gained `System_Remote`.
+// v21: bl_http_get / bl_http_poll host imports (non-blocking HTTP GET).
+pub const PLUGIN_ABI_VERSION: u32 = 21;
 
 #[derive(Clone, Encode, Decode, Default)]
 pub struct TickInput {

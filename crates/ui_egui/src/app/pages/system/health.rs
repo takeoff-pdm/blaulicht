@@ -277,6 +277,23 @@ impl BlaulichtApp {
             open_tab = Some(AppSubPage::System_Screens);
         }
 
+        let (remote_online, remote_sessions) = self.client.with_remote_server(|server| {
+            (server.listening.is_some(), server.sessions.len())
+        });
+        let remote_label = format!("Remote UI ({remote_sessions})");
+        if Self::render_compact_health_box(
+            ui,
+            &remote_label,
+            egui_phosphor::regular::GLOBE,
+            icon_size,
+            remote_online,
+            true,
+            dimensions,
+            left_inset,
+        ) {
+            open_tab = Some(AppSubPage::System_Remote);
+        }
+
         if let Some(subpage) = open_tab {
             self.open_subpage(subpage);
         }

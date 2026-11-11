@@ -10,6 +10,7 @@ pub struct TextInput {
     hint_text: Option<String>,
     monospace: bool,
     font_size_offset: f32,
+    password: bool,
 }
 
 impl TextInput {
@@ -20,6 +21,7 @@ impl TextInput {
             hint_text: None,
             monospace: true,
             font_size_offset: FONT_SIZE_OFFSET,
+            password: false,
         }
     }
 
@@ -48,11 +50,19 @@ impl TextInput {
         self
     }
 
+    /// Shows dots instead of what is typed.
+    pub fn with_password(mut self, password: bool) -> Self {
+        self.password = password;
+        self
+    }
+
     pub fn ui<T: TextBuffer>(&self, ui: &mut Ui, value: &mut T) -> Response {
         let (button_size, base_font_size) = self.button_size.dim();
         let font_size = base_font_size + self.font_size_offset;
 
-        let mut text_edit = TextEdit::singleline(value).vertical_align(Align::Center);
+        let mut text_edit = TextEdit::singleline(value)
+            .vertical_align(Align::Center)
+            .password(self.password);
 
         text_edit = if self.monospace {
             text_edit.font(FontId::monospace(font_size))

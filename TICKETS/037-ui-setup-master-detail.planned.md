@@ -1,39 +1,41 @@
-# 037 — Setup tabs as master–detail in the Console style
+# 037 — Setup pages in the desktop studio layout
 
 | | |
 |---|---|
 | Epic | E9 Console UI |
-| Depends on | 033, 034, 035 |
+| Depends on | 058, 059 |
 | ABI / showfile | none |
 
-**Touches:** `crates/ui_egui/src/app/pages/setup/{fixtures,groups,scenes,animations,palettes}.rs`, `crates/ui_egui/src/app/pages/animation_spec_editor.rs`
+**Touches:** `app/pages/setup/{fixtures,groups,scenes,animations,palettes}.rs`, `app/pages/animation_spec_editor.rs`
 
 ## Problem
-Each Setup tab has its own toolbar, button sizes and dialog style, and long forms run under the tab bar at 800 × 480. The design system **Blaulicht Console** (https://claude.ai/artifact/ChF4HkbnuyT8bycizagoja) defines the master–detail pattern (README "Layout patterns").
+The desktop Setup pages should follow the agreed studio design, and first-time testing found dead ends.
 
 ## Scope
-- Every Setup tab: list or tree on the left, details of the selection on the right, actions in the PageHeader, row actions on long-press or right-click.
-- Fixtures: the fixture editor as a scrollable detail form using standard fields.
-- Animations: the template editor as a scrollable detail form; the starter presets as a sheet.
-- Palettes: palette details with the editor; the pointer-palette target picker as a tree picker.
-- Replace abbreviations with full labels ("Rename scene", "Clone scene").
+- Layouts as `setup.html` and `animation-editor.html`, including the live patch check on Fixtures and a fixture filter.
+- Add fixture: group field, default avoiding offline outputs, validation that blocks Add, new row selected.
+- Patch numbers apply as a whole when leaving the field; invalid values are rejected with a message.
+- Animations show Used in and Add to scene.
+- Delete names its consequences. Every tab has a designed empty state.
 
 ## Out of scope
-- Programmer (036) and other pages (038).
-
-## Key code
-- Setup pages — `crates/ui_egui/src/app/pages/setup/`
-- Spec editor — `crates/ui_egui/src/app/pages/animation_spec_editor.rs`
+- The kiosk. Programmer (036).
 
 ## Acceptance criteria
-- [ ] All five tabs follow master–detail at both densities, with no content under the tab bar at 800 × 480.
-- [ ] Every action that existed before is still reachable.
+- [ ] Typing 99999 never moves a fixture.
+- [ ] Deleting a palette lists the pointers that follow it.
+- [ ] Deleting the last item of each kind shows the empty state with no error.
 
 ## Verification
-- `cargo clippy --workspace --all-targets --all-features`, `cargo fmt --all --check` and `cargo test --workspace --all-features` are clean (run them in the blenv container).
-- Follow the `blaulicht-env` skill: run the app in blenv (`scripts/blenv run` and `run --desktop`), drive it with real clicks, and look at every screenshot yourself. Take before and after shots; keep them in `.blenv/shots/` and never commit them.
-- Compare against the design system's component previews and rules (Blaulicht Console, linked under Problem).
-- Before and after screenshots of each Setup tab at 800 × 480 and on desktop.
+- `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
+- UI: run with `--desktop` via `scripts/blenv` and compare screenshots against the mockup, in dark and light theme, at 1280x800 and 2560x1440. Confirm the 800x480 kiosk is unchanged.
 
 ## Notes
-<!-- Implementation notes, decisions, and follow-ups found while working. Keep this updated before renaming to .done.md. -->
+Used in needs scene data per animation; check it is available to the client. The mockup list is sample data.
+
+## Fixtures: multi-select, move, Identify (mockup 2026-11-11)
+
+- Fixture table: click, Ctrl/Cmd+click, Shift+click. Several selected: the pane shows "N selected", per-fixture fields frozen as `--`.
+- Move to group: header button (group dropdown with filter) and dragging rows onto a group in the tree. No undo.
+- Identify: drop-down panel from the button with Previous/Next, "Transfer to selection" (stop and select only the identified fixture) and Stop; red row for the fixture flashing. Initialize applies to the whole selection.
+- Fixture position: 2D Top/Front view with zoom, pan, larger dialog; X/Y/Z captions; number fields scrub sideways.

@@ -23,6 +23,7 @@ use crate::{
     frontend_ui::FrontendUiMirror,
     persistence::PersistenceLink,
     plugin::{midi::MidiError, serial::SerialError},
+    server::protocol::RemoteServerStatus,
     server::snapshot::ShowSnapshots,
     ui_ops::WasmUiOp,
 };
@@ -301,6 +302,10 @@ pub struct AppState {
     /// external screens). Frontends publish to it by message; only the engine
     /// reads it.
     pub frontend_ui: FrontendUiMirror,
+    /// Who may connect to the server; it follows changes while running.
+    remote_access: RwLock<RemoteAccess>,
+    /// What the server reports, for frontends.
+    pub remote_server: RwLock<RemoteServerStatus>,
     pub plugin_state_storage: Arc<Mutex<HashMap<String, String>>>,
     pub plugin_state_storage_global: Arc<Mutex<HashMap<String, String>>>,
     pub spawned_commands: Arc<Mutex<SpawnedCommandRegistry>>,
@@ -324,7 +329,62 @@ impl DmxBuffer {
     }
 }
 
+/// Who may connect to the websocket server.
+#[derive(Clone, Debug)]
+pub struct RemoteAccess {
+    pub enabled: bool,
+    pub passcode: Option<String>,
+    /// Counts passcode changes; clients admitted under an older one are
+    /// disconnected.
+    pub generation: u64,
+}
+
+impl Default for RemoteAccess {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            passcode: None,
+            generation: 0,
+        }
+    }
+}
+
 impl AppState {
+    /// Who may connect right now.
+    pub fn remote_access(&self) -> RemoteAccess {
+        self.remote_access
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Changes who may connect; the running server follows. A blank passcode
+    /// means none.
+    pub fn set_remote_access(&self, enabled: bool, passcode: Option<String>) {
+        let passcode = passcode
+            .map(|passcode| passcode.trim().to_string())
+            .filter(|passcode| !passcode.is_empty());
+        {
+            let mut access = self
+                .remote_access
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if access.passcode != passcode {
+                access.generation += 1;
+            }
+            access.enabled = enabled;
+            access.passcode = passcode.clone();
+        }
+        // Frontends see the settings at once; the server fills in the rest.
+        let mut status = self
+            .remote_server
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        status.enabled = enabled;
+        status.passcode_set = passcode.is_some();
+        status.passcode = passcode;
+    }
+
     pub fn new(plugins: &[PluginConfig]) -> Self {
         let plugins_map = plugins
             .iter()
@@ -368,6 +428,8 @@ impl AppState {
             wasm_animation_editor_requests: RwLock::new(HashMap::new()),
             wasm_animation_instances_to_reset: Mutex::new(HashSet::new()),
             frontend_ui: FrontendUiMirror::new(),
+            remote_access: RwLock::new(RemoteAccess::default()),
+            remote_server: RwLock::new(RemoteServerStatus::default()),
             plugin_state_storage: Arc::new(Mutex::new(HashMap::new())),
             plugin_state_storage_global: Arc::new(Mutex::new(HashMap::new())),
             spawned_commands: Arc::new(Mutex::new(SpawnedCommandRegistry::new())),

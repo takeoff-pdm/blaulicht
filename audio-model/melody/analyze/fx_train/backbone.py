@@ -65,7 +65,7 @@ class Beats:
         from models.beats.BEATs_wrapper import BEATsWrapper
         from models.prediction_wrapper import PredictionsWrapper
 
-        self.model = PredictionsWrapper(BEATsWrapper(), checkpoint="BEATs_strong_1").eval().cuda()
+        self.model = PredictionsWrapper(BEATsWrapper(), checkpoint="BEATs_strong_1").eval().to(DEV)
         os.chdir(cwd)
         for p in self.model.parameters():
             p.requires_grad_(False)
@@ -75,10 +75,11 @@ class Beats:
         """(pieces, 250, 768) as float32 CPU array."""
         out = []
         for i in range(0, len(pieces), 48):
-            b = torch.from_numpy(pieces[i: i + 48]).cuda()
+            b = torch.from_numpy(pieces[i: i + 48]).to(DEV)
             mel = self.model.mel_forward(b)
-            with torch.autocast("cuda", dtype=torch.float16):
+            with torch.autocast(DEV, dtype=torch.float16):
                 x = self.model.model(mel)
+                x = x.cpu() if DEV == "mps" else x  # MPS has no adaptive pooling for these sizes
                 x = torch.nn.functional.adaptive_avg_pool1d(x.transpose(1, 2), FRAMES).transpose(1, 2)
             out.append(x.float().cpu().numpy())
         return np.concatenate(out)
@@ -88,8 +89,8 @@ class Beats:
         """PretrainedSED's own 447 classes: (pieces, 447, 250) probabilities, for the speech check."""
         out = []
         for i in range(0, len(pieces), 48):
-            b = torch.from_numpy(pieces[i: i + 48]).cuda()
-            with torch.autocast("cuda", dtype=torch.float16):
+            b = torch.from_numpy(pieces[i: i + 48]).to(DEV)
+            with torch.autocast(DEV, dtype=torch.float16):
                 s, _ = self.model(self.model.mel_forward(b))
             out.append(torch.sigmoid(s).float().cpu().numpy())
         return np.concatenate(out)

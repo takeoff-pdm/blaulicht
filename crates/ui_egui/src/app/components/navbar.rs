@@ -81,7 +81,8 @@ pub struct Navbar {
     pub current_page: AppPage,
     /// Selected tab per page. Pages without an entry show their default tab.
     subpages: HashMap<AppPage, AppSubPage>,
-    /// Desktop sidebar: pages whose sub-page section is unfolded.
+    /// Desktop sidebar: pages whose sub-page section is unfolded. All of them
+    /// until folded by hand.
     expanded: HashSet<AppPage>,
     /// The current page when [`Navbar::sync_sections`] last ran, so that it
     /// unfolds a section once per page change and a section folded by hand
@@ -96,7 +97,9 @@ impl Navbar {
         let mut navbar = Self {
             current_page: AppPage::Logs,
             subpages: HashMap::new(),
-            expanded: HashSet::new(),
+            expanded: AppPage::navbar_pages()
+                .filter(|page| !page.list_subpages().is_empty())
+                .collect(),
             synced_page: None,
             rail: false,
         };
@@ -466,6 +469,10 @@ mod tests {
     fn sections_unfold_once_per_page_change() {
         let mut navbar = Navbar::new(AppPage::Logs);
         navbar.sync_sections();
+        // Every section starts unfolded.
+        assert!(navbar.is_expanded(AppPage::System));
+        assert!(navbar.is_expanded(AppPage::Setup));
+        navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::System));
         assert!(!navbar.is_expanded(AppPage::System));
 
         // Navigation from elsewhere (an event, the mobile rail) unfolds the
@@ -491,10 +498,8 @@ mod tests {
         navbar.navigate_to(AppPage::System);
         navbar.sync_sections();
         assert!(navbar.is_expanded(AppPage::System));
-        assert!(navbar.is_expanded(AppPage::Setup));
-
-        navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::Setup));
         assert!(!navbar.is_expanded(AppPage::Setup));
+
         // Pages without sub-pages never unfold.
         navbar.sidebar_click(SidebarClick::ToggleSection(AppPage::Logs));
         assert!(!navbar.is_expanded(AppPage::Logs));

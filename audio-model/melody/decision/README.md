@@ -12,6 +12,7 @@ beam search or an LLM. Nobody has listened to any of this yet, so `ab.html` is w
   Drop rhythm is rules .58, another human .59, but 448 of 501 drop rhythm profiles are identical for rules and random, so the plan layer doesn't touch rhythm.
 - **Humans repeat a song's treatment across its drops and differ between songs** (.78 against .25). The rules do the reverse at strobe level, round robin between drops.
 - **The LLM** picks magenta + cyan on 28 of 40 songs, so keep the palette out of its hands. Mean $0.069 per song by the CLI's report, median 23 s.
+- **Before the grid correction.** The numbers above predate `pipeline/grid.py` replacing Rekordbox's grid on 14 songs, and weren't re-run. `structure/`, `bars/`, `checks/`, the random and beam plans and the A/B windows are regenerated. The LLM plans of 5 of them are still from the old grid (Adagio for Strings, Another Year Alone, Firestone, Take Control, Take Me To The Sky); Firestone is in the A/B test and now has 3 drops against the plan's 2.
 
 No published study compares learned lighting with a hand-tuned, beat-locked rule system. The only rule system Skip-BART and SeqLight were tested against is their authors' own emotion-based baseline, on rock and metal shows, shown as colour blocks or simulated lights.
 
@@ -33,7 +34,7 @@ Fourteen songs only detect large preferences: 11 of 14 passes 12% of the time at
 | File | What |
 |---|---|
 | `build_club.py`, `club_plan.js`, `core.cjs`, `harness.cjs` | a patched copy of `viz/club.js` that takes a plan, and the 50 fps check of the hard rules |
-| `build_cache.py`, `plan.py`, `plan_llm.py`, `compare_plans.py` | cue cache, validator, random and beam plans, LLM plans, comparison |
+| `plan.py`, `plan_llm.py`, `compare_plans.py` | validator, random and beam plans, LLM plans, comparison. Everything here reads the compiled songs (`pipeline/README.md`) |
 | `bs_match.py`, `bs_fetch.py`, `bs_compare.py`, `bs_rhythm.py` | Beat Saber maps of our songs (lighting events only, no audio kept) |
 | `make_trials.py`, `serve_ab.py`, `ab.html`, `analyse_ab.py` | the blind A/B test |
 | `check_looks.mjs` | every look and toggle of `viz/club_looks.mjs` against the hard rules (see the main README, Looks) |

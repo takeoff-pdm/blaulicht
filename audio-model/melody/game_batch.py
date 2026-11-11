@@ -10,6 +10,8 @@ dur2bd -> D3PM loop over the segmenter -> bd2dur -> estimator, on chunks cut at 
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -116,6 +118,10 @@ def main():
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     game = Game(args.model, args.device)
+    if os.environ.get("MELODY_COREML"):  # Mac backend: the segmenter's network in Core ML (ane/backends.py)
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "ane"))
+        import backends
+        backends.game(game)
     files = sorted(args.stems.glob("*.npy"))
     files = [f for f in files if not f.name.endswith(".tmp.npy")][: args.limit or None]
     files = [f for f in files if int(f.stem, 16) % args.num_shards == args.shard]

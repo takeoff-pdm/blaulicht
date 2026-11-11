@@ -132,6 +132,7 @@ impl Engine {
         });
 
         let app_state = Arc::new(AppState::new(&cfg.plugins));
+        app_state.set_remote_access(cfg.server_enabled, cfg.server_passcode.clone());
         // Attach the desk frontend before the engine starts, so plugin requests
         // sent during startup (e.g. creating an owned external screen) reach it.
         // Its hub subscription replays the startup stages and logs sent so far.
@@ -214,7 +215,9 @@ impl Engine {
         //
         // Remote clients.
         //
-        let server = if cfg.server_enabled {
+        // Always running: it follows the remote access settings, which the
+        // desk can change at any time.
+        let server = {
             let bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, cfg.port));
             let web_root =
                 crate::server::http::web_root(cfg.web_ui_dir.as_deref(), config_file.parent());
@@ -240,22 +243,21 @@ impl Engine {
                 event_bus_handle.clone(),
             ) {
                 Ok(server) => {
-                    info!(
-                        "Remote clients can connect to ws://{}/",
-                        server.local_addr()
-                    );
+                    if cfg.server_enabled {
+                        info!(
+                            "Remote clients can connect to ws://{}/",
+                            server.local_addr()
+                        );
+                    } else {
+                        info!("Remote clients are turned off (server_enabled = false)");
+                    }
                     Some(server)
                 }
                 Err(err) => {
-                    tracing::error!(
-                        "Remote clients can't connect: could not listen on {bind}: {err}"
-                    );
+                    tracing::error!("Could not start the remote client server: {err}");
                     None
                 }
             }
-        } else {
-            info!("Remote clients are turned off (server_enabled = false)");
-            None
         };
 
         Ok(Some(EngineHandle {
@@ -303,7 +305,7 @@ impl EngineHandle {
     /// Where remote clients connect (`crate::server`); `None` if the server
     /// is turned off or could not listen.
     pub fn server_addr(&self) -> Option<SocketAddr> {
-        self.server.as_ref().map(ServerHandle::local_addr)
+        self.server.as_ref().and_then(ServerHandle::listening)
     }
 
     /// Set once a client's `HostCommand::Quit` / `Restart` ran the shutdown

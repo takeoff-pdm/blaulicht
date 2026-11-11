@@ -40,7 +40,7 @@ def setup():
     from models.beats.BEATs_wrapper import BEATsWrapper
     from models.prediction_wrapper import PredictionsWrapper
 
-    model = PredictionsWrapper(BEATsWrapper(), checkpoint="BEATs_strong_1").eval().cuda()
+    model = PredictionsWrapper(BEATsWrapper(), checkpoint="BEATs_strong_1").eval().to(common.device())
     names = list(audioset_classes.as_strong_train_classes)
     return torch, model, names, {n: names.index(n) for n in WANT if n in names}
 
@@ -55,7 +55,7 @@ def analyse(song, state):
     scores = []
     with torch.no_grad():
         for i in range(0, len(pieces), 16):
-            batch = torch.from_numpy(np.stack(pieces[i: i + 16])).cuda()
+            batch = torch.from_numpy(np.stack(pieces[i: i + 16])).to(common.device())
             out, _ = model(model.mel_forward(batch))  # (batch, classes, frames)
             scores.append(torch.sigmoid(out).float().cpu().numpy())
     scores = np.concatenate(scores)

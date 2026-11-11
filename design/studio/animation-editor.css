@@ -1,0 +1,55 @@
+/* Animation editor. Titled panes on one grid; ae- prefix avoids clashes with studio.css. */
+.ae { display: grid; gap: var(--gap); min-height: 0; grid-template-columns: 240px minmax(0, 1fr); }
+.ae-main { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; min-width: 0; overflow: auto; }
+.ae-id { flex: none; }
+.ae-cols { flex: 1 0 auto; display: grid; gap: var(--gap); grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
+.ae-col { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.ae-col > .pane { flex: none; }
+.ae-col > .pane.ae-fill { flex: 1 0 auto; }
+.ae-col .pane > * { flex: none; }
+.ae-form { padding: 8px; display: grid; grid-template-columns: 96px minmax(0, 320px); gap: 6px 8px; align-items: center; }
+.ae-form label, .ae-l { color: var(--muted); font-size: 12px; }
+.ae-in { height: 24px; width: 100%; max-width: 320px; min-width: 0; background: var(--well); border: 1px solid var(--line); color: var(--strong); padding: 0 6px; font: 13px Plex, sans-serif; user-select: text; }
+.ae-in.n { font: 12px PlexMono, monospace; width: 84px; }
+.ae-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.ae-seg .mini.on { background: var(--blue-dim); color: var(--strong); }
+.ae-chk { display: flex; align-items: center; gap: 8px; }
+.ae-curve { display: block; width: 100%; height: 130px; background: var(--well); }
+.ae-curve polyline { fill: none; stroke: var(--data); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.ae-curve line { stroke: var(--line); vector-effect: non-scaling-stroke; }
+.ae-pad { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ae-note { color: var(--muted); font-size: 12px; }
+.ae-fns { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 2px; padding: 8px; }
+.ae-fn { background: var(--ctl); padding: 4px; text-align: center; font-size: 11px; color: var(--text); }
+.ae-fn:hover { background: var(--ctl-hi); }
+.ae-fn.on { background: var(--blue-dim); color: var(--strong); box-shadow: inset 0 0 0 1px var(--blue); }
+.ae-fn svg { display: block; width: 100%; height: 26px; margin-bottom: 2px; }
+.ae-fn polyline { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.ae-knobs { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 8px; }
+.ae-k { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 66px; touch-action: none; cursor: ns-resize; }
+.ae-k svg { width: 52px; height: 52px; display: block; }
+.ae-k .tk { stroke: var(--scale); stroke-width: 1.5; }
+.ae-k .tk.lit { stroke: var(--strong); }
+.ae-k .fc { fill: var(--capface); stroke: var(--capedge); stroke-width: 2; }
+.ae-k .in { fill: var(--capface); stroke: var(--caphi); stroke-width: 1.5; }
+.ae-k .pt { stroke: var(--strong); stroke-width: 3; stroke-linecap: round; }
+.ae-k b { font: 12px PlexMono, monospace; color: var(--strong); }
+.ae-k span { font-size: 11px; color: var(--muted); text-align: center; line-height: 12px; }
+.ae-meter { height: 12px; background: var(--well); position: relative; }
+.ae-meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); }
+.ae-meter u { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--warn); }
+.ae-lamps { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.ae-lamps i { height: 18px; background: var(--well); }
+.ae-lamps i.on { background: var(--ok); }
+.ae-del { color: var(--red); }
+.ae-sheet { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 20; padding: 16px; }
+.ae-dlg { width: min(620px, 100%); max-height: 86vh; display: flex; flex-direction: column; background: var(--pane); box-shadow: 0 0 0 1px var(--line); }
+.ae-dlg .ae-scroll { overflow: auto; min-height: 0; }
+.ae-cat { padding: 10px 8px 4px; }
+.ae-cat b { color: var(--strong); font-weight: 500; }
+.ae-cat small { display: block; font-size: 11px; color: var(--muted); }
+.ae-pre { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; padding: 5px 8px; text-align: left; column-gap: 8px; }
+.ae-pre:hover { background: var(--head); }
+.ae-pre b { font-weight: 500; color: var(--strong); }
+.ae-pre em { font-style: normal; font-size: 12px; color: var(--muted); }
+.ae-pre small { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }

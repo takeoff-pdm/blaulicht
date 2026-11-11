@@ -9,6 +9,7 @@ pub mod file_dialog;
 pub mod health;
 pub mod midi;
 pub mod misc;
+pub mod remote;
 pub mod screens;
 pub mod serial;
 pub mod showfile;
@@ -27,6 +28,8 @@ pub struct SystemUI {
     midi_dialog_open: bool,
     serial_dialog_open: bool,
     screens_dialog_open: bool,
+    remote_passcode_input: String,
+    remote_passcode_shown: bool,
     dmx_dialogs_open: [bool; NUM_DMX_UNIVERSES],
     new_artnet_address: String,
     new_artnet_port: String,
@@ -50,6 +53,8 @@ impl Default for SystemUI {
             midi_dialog_open: false,
             serial_dialog_open: false,
             screens_dialog_open: false,
+            remote_passcode_input: String::new(),
+            remote_passcode_shown: false,
             dmx_dialogs_open: [false; NUM_DMX_UNIVERSES],
             new_artnet_address: String::new(),
             new_artnet_port: "6454".to_string(),

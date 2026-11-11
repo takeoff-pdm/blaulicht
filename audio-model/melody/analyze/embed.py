@@ -50,10 +50,10 @@ def setup():
     import torch
     from transformers import ClapModel, ClapProcessor
 
-    model = ClapModel.from_pretrained(MODEL).to("cuda").eval()
+    model = ClapModel.from_pretrained(MODEL).to(common.device()).eval()
     proc = ClapProcessor.from_pretrained(MODEL)
     with torch.no_grad():
-        t = proc(text=list(PROMPTS.values()), return_tensors="pt", padding=True).to("cuda")
+        t = proc(text=list(PROMPTS.values()), return_tensors="pt", padding=True).to(common.device())
         te = _text(model, t)
         te = torch.nn.functional.normalize(te, dim=-1)
     return torch, model, proc, te
@@ -68,7 +68,7 @@ def analyse(song, state):
     with torch.no_grad():
         for i in range(0, len(starts), 16):
             batch = [x[s: s + win] for s in starts[i: i + 16]]
-            inp = proc(audio=batch, sampling_rate=SR, return_tensors="pt").to("cuda")
+            inp = proc(audio=batch, sampling_rate=SR, return_tensors="pt").to(common.device())
             e = _audio(model, inp)
             embs.append(torch.nn.functional.normalize(e, dim=-1))
     E = torch.cat(embs)

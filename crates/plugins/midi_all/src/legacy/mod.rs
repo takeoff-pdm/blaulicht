@@ -20,7 +20,7 @@ use map_range::MapRange;
 
 use crate::legacy::apc_midi::MidiDevice;
 
-// Plugin UI widget ids: 0 fans switch, 1 verbose switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
+// Plugin UI widget ids: 0 fans switch, 1 verbose switch, 2 mock hardware switch, 40 APC canvas, 41..44 tabs, 45..55 mapping
 // editor (mapping.rs), 70..74 view loop, 100.. mapping list rows, 230.. view loop rows. Tabs are a separate namespace
 // but stay out of those ranges anyway.
 const UI_TABS_ID: u8 = 41;
@@ -31,6 +31,8 @@ const UI_TAB_KORG: u8 = 38;
 const UI_TAB_VIEW_LOOP: u8 = 39;
 const UI_FANS_SWITCH_ID: u8 = 0;
 const UI_VERBOSE_SWITCH_ID: u8 = 1;
+const UI_MOCK_HARDWARE_SWITCH_ID: u8 = 2;
+use crate::hardware::{self, HardwareMode};
 use crate::legacy::virtual_midi::VirtualMidi;
 use crate::legacy::mapping::{ControlId, Mapping, MappingDevice, MappingEditor};
 use crate::legacy::view_loop::ViewLoop;
@@ -57,6 +59,7 @@ pub struct LegacyState {
     is_apc_init: bool,
 
     fans: bool,
+    hardware_mode: HardwareMode,
     // strobe_enabled: bool,
     // drums_enabled: bool,
     // drums_enabled_bef: bool,
@@ -89,7 +92,9 @@ pub struct LegacyState {
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
 
 impl LegacyState {
-    pub fn init(&mut self) {
+    pub fn init(&mut self, mode: HardwareMode) {
+        self.hardware_mode = mode;
+
         // bpf::send_event(ControlEvent::MiscEvent {
         //     descriptor: SET_VIDEO_INDEX,
         //     value: 0,
@@ -111,7 +116,7 @@ impl LegacyState {
         for dev in devices {
             // Never panics: a missing device runs virtual-only and (for the
             // APC) is driven through the on-screen digital twin.
-            let midi_handle = VirtualMidi::open(&dev.to_string());
+            let midi_handle = VirtualMidi::open(&dev.to_string(), mode);
             midi_handles.push((dev, Rc::new(midi_handle)));
         }
 
@@ -143,8 +148,35 @@ impl LegacyState {
     }
 
     pub fn set_fans(&mut self, v: bool) {
-        let _ = bpf::system(&format!("sudo fans {}", if v { "on" } else { "off" }));
+        let command = format!("sudo fans {}", if v { "on" } else { "off" });
+        match self.hardware_mode {
+            HardwareMode::Real => {
+                let _ = bpf::system(&command);
+            }
+            HardwareMode::Mock => println!("Mock hardware, not running: {command}"),
+        }
         self.fans = v;
+    }
+
+    pub fn hardware_mode(&self) -> HardwareMode {
+        self.hardware_mode
+    }
+
+    /// Applies and saves a mode picked at runtime. The Korg handle follows in
+    /// `MidiAllPlugin::run`. Going mock leaves the fans as they physically are;
+    /// going real applies the switch's position, which may have changed.
+    fn set_hardware_mode(&mut self, mode: HardwareMode) {
+        if self.hardware_mode == mode {
+            return;
+        }
+        self.hardware_mode = mode;
+        hardware::save_mode(mode);
+        for (_, handle) in &self.midi_handles {
+            handle.set_mode(mode);
+        }
+        if mode == HardwareMode::Real {
+            self.set_fans(self.fans);
+        }
     }
 
     /// `korg_tab` renders the nanoKONTROL twin tab (owned by the Korg
@@ -179,6 +211,11 @@ impl LegacyState {
             ui::begin_tab(UI_TABS_ID, UI_TAB_MISC, "Misc");
             ui::switch("Fans", UI_FANS_SWITCH_ID, self.fans);
             ui::switch("Verbose logging", UI_VERBOSE_SWITCH_ID, crate::verbose());
+            ui::switch(
+                "Mock hardware (no MIDI devices, no fan command)",
+                UI_MOCK_HARDWARE_SWITCH_ID,
+                self.hardware_mode == HardwareMode::Mock,
+            );
             ui::end_tab();
 
             ui::end_tabs();
@@ -192,6 +229,11 @@ impl LegacyState {
                         match id {
                             UI_FANS_SWITCH_ID => self.set_fans(value),
                             UI_VERBOSE_SWITCH_ID => crate::set_verbose(value),
+                            UI_MOCK_HARDWARE_SWITCH_ID => self.set_hardware_mode(if value {
+                                HardwareMode::Mock
+                            } else {
+                                HardwareMode::Real
+                            }),
                             _ => {}
                         }
                     }

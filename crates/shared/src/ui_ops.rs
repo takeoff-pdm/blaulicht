@@ -213,4 +213,17 @@ pub enum WasmUiOp {
     },
     EndTab,
     EndTabs,
+    // Popups. `fullscreen`: a modal over the whole app, shown even while the
+    // plugin's UI is closed. Otherwise it covers the plugin's UI and is only
+    // visible while that is open.
+    BeginPopup {
+        id: u8,
+        fullscreen: bool,
+    },
+    EndPopup,
+    /// `permille`: fill, 0..=1000.
+    ProgressBar {
+        permille: i32,
+        text: String,
+    },
 }

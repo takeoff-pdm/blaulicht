@@ -11,7 +11,7 @@ Writes data/<labels>/ next to this file:
     reference.json  what the evaluator compares with: sections, drops, beat grid
     manifest.json   counts, label shares, what was left out and why
 
-weak: the viewer's section rule (viz/sections.py, doc.show). Intro, Build, Drop, Breakdown, Outro map
+weak: the viewer's section rule (pipeline/sections.py, doc.show). Intro, Build, Drop, Breakdown, Outro map
 to their EDM labels. Groove has no EDM label, so it becomes NO_LABEL, which `edm_dataset.py` leaves out
 of the label loss: the rule doesn't say whether a Groove is a drop or a breakdown, so the model shouldn't
 be taught either. Songs where the rule finds no drop are left out of training (their labels mostly say

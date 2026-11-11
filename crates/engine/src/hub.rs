@@ -197,6 +197,14 @@ pub type CommandSeq = u64;
 /// the wire protocol: bump `server::protocol::PROTOCOL_VERSION`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HostCommand {
+    /// Sets whether the server accepts remote clients and the passcode they
+    /// must state (`None` or blank: none), and saves both in the config.
+    /// Turning it off disconnects every remote client; changing the passcode
+    /// disconnects them too, so they must state the new one. Desk only.
+    SetRemoteAccess {
+        enabled: bool,
+        passcode: Option<String>,
+    },
     /// Does nothing; the engine answers `Ok`. Lets a client check its command
     /// path end to end.
     Ping,
@@ -645,6 +653,7 @@ impl HostCommand {
             // commands are the persistence service's; it tracks the frontend
             // section itself.
             HostCommand::Ping
+            | HostCommand::SetRemoteAccess { .. }
             | HostCommand::SaveShowfile
             | HostCommand::SaveShowfileAs(_)
             | HostCommand::LoadShowfile(_)
@@ -666,9 +675,13 @@ impl HostCommand {
 impl HostCommand {
     /// Commands only the desk frontend may send; the engine refuses them
     /// from every other client. `SetFrontendSection` is the desk's own part
-    /// of the showfile (its screen layouts).
+    /// of the showfile (its screen layouts). `SetRemoteAccess` stays with the
+    /// desk so a remote client can't lock others out, or itself.
     pub fn is_desk_only(&self) -> bool {
-        matches!(self, HostCommand::SetFrontendSection { .. })
+        matches!(
+            self,
+            HostCommand::SetFrontendSection { .. } | HostCommand::SetRemoteAccess { .. }
+        )
     }
 
     /// Whether the command can change the fixture patch, so fixtures

@@ -1,6 +1,6 @@
 //! The desktop layout's navigation sidebar, styled like a studio app's
-//! browser: compact rows grouped under small section headers (PERFORM,
-//! SETUP, SYSTEM), Phosphor icons in `muted` that turn `accent` on the
+//! browser: compact rows grouped under small section headers (SYSTEM, SETUP,
+//! PERFORM, together the mobile rail's page order), Phosphor icons in `muted` that turn `accent` on the
 //! current entry, which also gets the `selection` fill and a 2px accent bar.
 //! Pages with sub-pages are foldable sections with their sub-pages indented
 //! underneath (an indent guide on the left). The header folds the sidebar to
@@ -25,8 +25,10 @@ pub const DESKTOP_SIDEBAR_WIDTH_RANGE: std::ops::RangeInclusive<f32> = 150.0..=3
 /// Width of the sidebar folded to an icon rail.
 pub const DESKTOP_RAIL_WIDTH: f32 = 44.0;
 
-/// Height of the header (logo, name, fold button).
+/// Height of the header (logo, fold button).
 const HEADER_HEIGHT: f32 = 40.0;
+/// Size of the logo: fits the narrowest sidebar next to the fold button.
+const LOGO_SIZE: egui::Vec2 = egui::vec2(98.0, 20.0);
 /// Left padding of the icons in the full sidebar.
 const ROW_PAD: f32 = 12.0;
 /// Width of the icon column; labels start after it.
@@ -35,21 +37,22 @@ const ICON_SIZE: f32 = 15.0;
 /// Width of a section's fold arrow, at the right end of its row.
 const FOLD_WIDTH: f32 = 24.0;
 
-/// The sidebar's groups in order. Pages missing here (a page added later)
+/// The sidebar's groups in order, which keeps the pages in the mobile rail's
+/// order ([`AppPage::navbar_pages`]). Pages missing here (a page added later)
 /// are listed after them, so every navbar page stays reachable.
 const GROUPS: &[(&str, &[AppPage])] = &[
+    ("System", &[AppPage::Logs, AppPage::System]),
+    ("Setup", &[AppPage::Audio, AppPage::Setup]),
     (
         "Perform",
         &[
-            AppPage::Programmer,
-            AppPage::ViewPerformance,
             AppPage::View,
+            AppPage::ViewPerformance,
+            AppPage::Programmer,
             AppPage::SceneGraph,
             AppPage::Visualizer,
         ],
     ),
-    ("Setup", &[AppPage::Setup, AppPage::Audio]),
-    ("System", &[AppPage::System, AppPage::Logs]),
 ];
 
 /// The sidebar's sections: a header and its navbar pages, in order.
@@ -174,7 +177,7 @@ fn nav_colors(ui: &Ui) -> NavColors {
     }
 }
 
-/// The header: the logo mark and name, and the button that folds the
+/// The header: the "blaulicht" logo, and the button that folds the
 /// sidebar to the rail (or unfolds it). Returns whether that was clicked.
 fn header(ui: &mut Ui, rail: bool) -> bool {
     let density = Density::of(ui.ctx());
@@ -197,20 +200,7 @@ fn header(ui: &mut Ui, rail: bool) -> bool {
         )
     };
     if !rail {
-        painter.text(
-            egui::pos2(rect.left() + ROW_PAD, rect.center().y),
-            Align2::LEFT_CENTER,
-            egui_phosphor::regular::SIREN,
-            density.font(Weight::Regular, 17.0),
-            colors.accent,
-        );
-        painter.text(
-            egui::pos2(rect.left() + ROW_PAD + ICON_COLUMN, rect.center().y),
-            Align2::LEFT_CENTER,
-            "Blaulicht",
-            density.font(Weight::SemiBold, 15.0),
-            colors.strong,
-        );
+        paint_logo(ui, rect);
     }
 
     let response = ui
@@ -226,7 +216,8 @@ fn header(ui: &mut Ui, rail: bool) -> bool {
             "Collapse the sidebar to icons"
         });
     let (icon, icon_color) = if rail {
-        // The rail's header is the logo; hovering shows it unfolds.
+        // The logo is unreadable at the rail's width, so its header is the
+        // siren mark; hovering shows it unfolds.
         if response.hovered() {
             (egui_phosphor::regular::CARET_DOUBLE_RIGHT, colors.strong)
         } else {
@@ -252,6 +243,24 @@ fn header(ui: &mut Ui, rail: bool) -> bool {
         icon_color,
     );
     response.clicked()
+}
+
+/// Paints the logo's "blaulicht" line at the left of `header`.
+fn paint_logo(ui: &Ui, header: Rect) {
+    let min = egui::pos2(
+        header.left() + ROW_PAD,
+        header.center().y - LOGO_SIZE.y / 2.0,
+    );
+    // The artwork's own blue in dark mode, plain black in light mode.
+    let tint = if ui.visuals().dark_mode {
+        Color32::WHITE
+    } else {
+        Color32::BLACK
+    };
+    egui::Image::new(blaulicht_assets::LOGO_BLAULICHT_IMAGE)
+        .tint(tint)
+        .show_loading_spinner(false)
+        .paint_at(ui, Rect::from_min_size(min, LOGO_SIZE));
 }
 
 fn color_line(ui: &Ui) -> Color32 {
@@ -737,16 +746,13 @@ mod tests {
     }
 
     #[test]
-    fn every_navbar_page_is_in_one_group() {
+    fn groups_list_every_navbar_page_in_the_mobile_order() {
         let listed: Vec<AppPage> = sidebar_groups()
             .into_iter()
             .flat_map(|(_, pages)| pages)
             .collect();
-        let mut expected: Vec<AppPage> = AppPage::navbar_pages().collect();
-        let mut sorted = listed.clone();
-        sorted.sort_by_key(|page| *page as usize);
-        expected.sort_by_key(|page| *page as usize);
-        assert_eq!(sorted, expected);
+        let expected: Vec<AppPage> = AppPage::navbar_pages().collect();
+        assert_eq!(listed, expected);
     }
 
     #[test]

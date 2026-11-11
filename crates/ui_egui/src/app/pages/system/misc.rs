@@ -396,6 +396,7 @@ impl BlaulichtApp {
                         self.remove_external_screen(index);
                     }
                 }
+                AppSubPage::System_Remote => self.render_remote_ui(ui),
                 // General is rendered by `render_system_general`; other
                 // pages' tabs never reach this page.
                 _ => {}

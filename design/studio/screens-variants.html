@@ -1,0 +1,61 @@
+<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><title>Screen ownership</title>
+<link rel="stylesheet" href="studio.css"><link rel="stylesheet" href="system.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+html,body{height:auto;overflow:auto}body{display:block;padding:16px;background:var(--gutter);color:var(--text)}
+h1{font-size:18px;font-weight:500;color:var(--strong);margin:0}h2{font-size:15px;font-weight:500;color:var(--strong);margin:24px 0 2px}p.i{margin:4px 0 12px;max-width:80ch}
+.vs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,760px),1fr));gap:16px}.v>b{display:block;font-weight:500;color:var(--strong)}.v>p{margin:0 0 6px;color:var(--muted)}
+.frame{height:300px;display:grid;background:var(--gutter)}.frame .md{height:100%}.frame .pane{min-height:0}.frame .mdright{min-height:0}
+.bar{display:flex;gap:8px;align-items:center;margin:10px 0}
+/* Shared bits used by several options. */
+.li .own{font-size:13px;color:var(--muted)} .li.on .own{color:var(--strong)}
+.li.two{height:38px;align-items:center} .li.two .nm{display:flex;flex-direction:column;gap:1px;line-height:1.2} .li.two .nm small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis} .li.on.two .nm small{color:var(--strong)}
+.chip{flex:none;display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;font-size:11px;color:var(--text);background:var(--ctl);box-shadow:inset 0 0 0 1px var(--line)}
+.li.on .chip{background:transparent;color:var(--strong);box-shadow:inset 0 0 0 1px var(--strong)}
+.li.grp{height:22px;font-size:11px;color:var(--muted);pointer-events:none;background:var(--head);font-weight:500}
+.banner{display:flex;align-items:center;gap:10px;margin:8px 8px 0;padding:8px 10px;background:var(--head);box-shadow:inset 3px 0 0 var(--blue)}
+.banner i{font-size:18px;color:var(--blue)} .banner div{flex:1;min-width:0} .banner b{display:block;font-weight:500;color:var(--strong)} .banner small{color:var(--muted);font-size:11px}
+.kvbox{padding:8px 8px 0}
+.blk{display:flex;flex-direction:column;gap:2px;padding:4px}
+.bl{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;text-align:left;background:var(--ctl);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.bl:hover{background:var(--ctl-hi)} .bl.on{background:var(--blue-dim);color:var(--strong);box-shadow:inset 3px 0 0 var(--blue),inset 0 0 0 1px var(--blue)}
+.bl .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;line-height:1.2} .bl .t b{font-weight:500;color:var(--strong)} .bl .t small{font-size:11px;color:var(--muted)} .bl.on .t small{color:var(--strong)}
+.bl .sq{flex:none;width:30px;height:30px;display:grid;place-items:center;font-size:16px;background:var(--well);color:var(--muted)} .bl .sq.pl{color:var(--blue)} .bl.on .sq{background:rgb(0 0 0/.25);color:var(--strong)}
+.bl .res{font:11px PlexMono,monospace;color:var(--muted)} .bl.on .res{color:var(--strong)}
+.screenprev{position:relative;overflow:hidden;min-height:0} .frame .mdright>.pane{flex:1;display:flex;flex-direction:column;min-height:0} .frame .screenprev div{width:auto;height:100%;max-width:100%}
+.badge{position:absolute;left:24px;top:24px;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;background:var(--pane);box-shadow:0 0 0 1px var(--line);color:var(--strong);font-size:12px}
+.badge i{color:var(--blue)}
+.screenprev .lock{position:absolute;inset:16px;display:grid;place-items:center;pointer-events:none}
+</style></head><body>
+<h1>Screen ownership</h1>
+<p class="i">The System → Screens page with sample screens: two are owned by a plugin (videowall, setlist) and two are plain output windows. Section A varies how the list shows the owner, section B how the selected screen's pane does. Pick one of each, like <code>A3 B2</code>; they combine. The selected screen in every option is the one owned by videowall.</p>
+<div class="bar"><button class="mini" id="t">Switch to light theme</button></div>
+<div id="out"></div>
+<script>
+const SC=[{w:1920,h:1080},{w:800,h:480,owner:"videowall"},{w:3840,h:2160,owner:"setlist"},{w:1280,h:720}],SEL=1;
+const pane=(t,b,c="",r="")=>`<section class="pane ${c}"><header>${t}${r?`<span class="hr">${r}</span>`:""}</header>${b}</section>`;
+const res=s=>`${s.w} x ${s.h}`;
+const LIST={
+ A1:()=>SC.map((s,i)=>`<button class="li ${i===SEL?"on":""}"><i class="d ok" style="--c:var(--ok)"></i><span class="nm">Screen ${i}</span><span class="v">${res(s)}</span></button>`).join(""),
+ A2:()=>SC.map((s,i)=>`<button class="li ${i===SEL?"on":""}"><i class="d ok" style="--c:var(--ok)"></i><span class="nm">Screen ${i}</span>${s.owner?'<i class="ph ph-plug own" title="Controlled by plugin '+s.owner+'"></i>':""}<span class="v">${res(s)}</span></button>`).join(""),
+ A3:()=>SC.map((s,i)=>`<button class="li two ${i===SEL?"on":""}"><i class="d ok" style="--c:var(--ok)"></i><span class="nm">Screen ${i}<small>${s.owner?`Plugin ${s.owner}, `:"Output window, "}${res(s)}</small></span></button>`).join(""),
+ A4:()=>SC.map((s,i)=>`<button class="li ${i===SEL?"on":""}"><i class="d ok" style="--c:var(--ok)"></i><span class="nm">Screen ${i}</span>${s.owner?`<span class="chip"><i class="ph ph-plug"></i>${s.owner}</span>`:`<span class="v">${res(s)}</span>`}</button>`).join(""),
+ A5:()=>{const g=(t,f)=>`<div class="li grp">${t}</div>`+SC.map((s,i)=>[s,i]).filter(([s])=>f(s)).map(([s,i])=>`<button class="li ${i===SEL?"on":""}"><i class="d ok" style="--c:var(--ok)"></i><span class="nm">Screen ${i}</span><span class="v">${s.owner||res(s)}</span></button>`).join("");return g("Output windows",s=>!s.owner)+g("Controlled by plugins",s=>s.owner);},
+ A6:()=>`<div class="blk">${SC.map((s,i)=>`<button class="bl ${i===SEL?"on":""}"><span class="t"><b>Screen ${i}</b><small>${s.owner?`Plugin ${s.owner}`:"Output window"}</small></span><span class="res">${res(s)}</span></button>`).join("")}</div>`,
+ A7:()=>`<div class="blk">${SC.map((s,i)=>`<button class="bl ${i===SEL?"on":""}"><span class="sq ${s.owner?"pl":""}"><i class="ph ph-${s.owner?"plug":"monitor"}"></i></span><span class="t"><b>Screen ${i}</b><small>${s.owner?`Plugin ${s.owner}`:"Output window"}, ${res(s)}</small></span></button>`).join("")}</div>`,
+};
+const s=SC[SEL],prev=extra=>`<div class="screenprev">${extra||""}<div class="mono" style="aspect-ratio:${s.w}/${s.h}">${res(s)}</div></div>`;
+const DET={
+ B1:()=>pane(`Screen ${SEL}`,prev(),"grow",`<span class="htag">Owned by plugin ${s.owner}</span>`),
+ B2:()=>pane(`Screen ${SEL}`,`<div class="banner"><i class="ph ph-plug"></i><div><b>Controlled by plugin ${s.owner}</b><small>The plugin draws this screen and decides its size. Change it in the plugin.</small></div><button class="mini" style="height:24px">Open plugin</button></div>`+prev(),"grow"),
+ B3:()=>pane(`Screen ${SEL}`,`<div class="kvbox"><dl class="kv"><dt>Controlled by</dt><dd><a href="#" style="color:var(--blue)">Plugin ${s.owner}</a></dd><dt>Size</dt><dd class="mono">${res(s)}</dd></dl></div>`+prev(),"grow"),
+ B4:()=>pane(`Screen ${SEL}`,prev(`<span class="badge"><i class="ph ph-plug"></i>Drawn by ${s.owner}</span>`),"grow",`<button class="mini">Open plugin</button>`),
+ B5:()=>pane(`<span class="hpre">Screen ${SEL}</span><i class="ph ph-plug" style="color:var(--blue);margin-right:4px"></i>${s.owner}`,prev(),"grow",`<button class="mini">Open plugin</button>`),
+};
+const frame=(a,b)=>`<div class="frame"><div class="md">${pane("Screens",`<div class="body">${LIST[a]()}</div>`,"",`<button class="mini">Add</button>`)}<div class="mdright">${DET[b]()}</div></div></div>`;
+const SEC=[["A","Screen list",[["A1","No marker (current)","Name and size only. You can't tell which screens a plugin controls without selecting each."],["A2","Plug icon","A small plug icon after the name of plugin screens. Compact, but you have to know the icon or hover it."],["A3","Second line","Each row says who controls it and the size: \"Plugin videowall, 800 x 480\". Clearest, but rows are 38px instead of 24px."],["A4","Plugin chip","Plugin screens show a chip with the plugin's name instead of the size. Readable at a glance; the size moves to the detail."],["A6","Blocks","A3 as separate blocks with padding and a 2px gap: who controls it under the name, size on the right. Easy to scan and click; about 46px per screen."],["A7","Blocks with icon","A6 with a square icon on the left, a monitor or a blue plug, and the size on the second line. Ownership reads from the icon before the text."],["A5","Grouped","Output windows and plugin screens in two sections, plugin name on the right. Good with many screens, heavier with two."]]],
+ ["B","Selected screen",[["B1","Header tag (current)","\"Owned by plugin videowall\" in grey at the right of the header. Easy to miss."],["B2","Banner","A blue-edged note above the preview explains that the plugin draws the screen, with Open plugin."],["B3","Detail row","\"Controlled by: Plugin videowall\" as a field with the size, above the preview. Quiet and consistent with other detail panes."],["B4","Badge on the preview","A label on the preview itself: \"Drawn by videowall\". Ties ownership to the picture; Open plugin in the header."],["B5","In the title","The title becomes \"Screen 1, plug icon, videowall\" with Open plugin in the header. Uses the header prefix pattern from Setup."]]]];
+const pairs={A:"B1",B:"A1"};
+document.getElementById("out").innerHTML=SEC.map(([k,t,os])=>`<h2>${k}. ${t}</h2><div class="vs">${os.map(([c,n,d])=>`<div class="v"><b>${c} ${n}</b><p>${d}</p>${k==="A"?frame(c,"B1"):frame("A1",c)}</div>`).join("")}</div>`).join("");
+document.getElementById("t").onclick=e=>{const r=document.documentElement,l=r.dataset.theme==="dark";r.dataset.theme=l?"light":"dark";e.target.textContent=l?"Switch to dark theme":"Switch to light theme";};
+</script></body></html>

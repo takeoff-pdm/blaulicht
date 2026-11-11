@@ -29,6 +29,7 @@ use crate::{
     state::AppState,
 };
 
+pub mod http;
 pub mod midi;
 pub(crate) mod profile;
 pub mod serial;

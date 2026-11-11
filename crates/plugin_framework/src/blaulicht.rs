@@ -33,6 +33,8 @@ extern "C" {
     ) -> u8;
 
     fn bl_open_udp_port(bind_port: u32) -> u8;
+    fn bl_http_get(url_ptr: *const u8, url_len: usize) -> u32;
+    fn bl_http_poll(id: u32, buf_ptr: *mut u8, buf_len: usize) -> i32;
     fn bl_open_udp_port_loopback(bind_port: u32) -> u8;
 
     fn bl_artnet_register_receiver(plugin_id: u8, addr_ptr: *const u8, addr_len: usize) -> u32;
@@ -221,6 +223,9 @@ extern "C" {
     fn ui_begin_tab(plugin_id: u8, tabs_id: u8, tab_id: u8, ptr: *const u8, len: usize);
     fn ui_end_tab(plugin_id: u8);
     fn ui_end_tabs(plugin_id: u8);
+    fn ui_begin_popup(plugin_id: u8, id: u8, fullscreen: i32);
+    fn ui_end_popup(plugin_id: u8);
+    fn ui_progress_bar(plugin_id: u8, permille: i32, ptr: *const u8, len: usize);
     fn ui_alert(plugin_id: u8, ptr: *const u8, len: usize, duration_ms: u32);
     fn ui_list_external_screens(plugin_id: u8, buffer_ptr: *mut u8, buffer_len: usize) -> u32;
     fn ui_create_external_screen(plugin_id: u8, width: i32, height: i32) -> i32;
@@ -458,6 +463,54 @@ pub fn send_udp(addr: &str, body: &[u8]) {
     unsafe { udp(addr.as_ptr(), addr.len(), body.as_ptr(), body.len()) }
 }
 
+/// Result of a finished [`HttpRequest`].
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct HttpResponse {
+    /// True for a 2xx status.
+    pub ok: bool,
+    /// HTTP status, 0 when no response arrived.
+    pub status: u16,
+    pub body: String,
+    /// Why the request failed (connect, timeout, ...); empty on success.
+    pub error: String,
+}
+
+/// A non-blocking HTTP GET started with [`http_get`]. Poll it on later ticks.
+#[derive(Debug)]
+pub struct HttpRequest {
+    id: u32,
+}
+
+const HTTP_RESPONSE_BUFFER: usize = 64 * 1024;
+
+/// Starts a plain `http://` GET on a host thread (never blocks the tick).
+/// Returns None when the host refuses (too many outstanding requests).
+pub fn http_get(url: &str) -> Option<HttpRequest> {
+    let id = unsafe { bl_http_get(url.as_ptr(), url.len()) };
+    (id != u32::MAX).then_some(HttpRequest { id })
+}
+
+impl HttpRequest {
+    /// None while the request is running; the response is returned once.
+    pub fn poll(&self) -> Option<HttpResponse> {
+        let mut buf = vec![0u8; HTTP_RESPONSE_BUFFER];
+        let len = unsafe { bl_http_poll(self.id, buf.as_mut_ptr(), buf.len()) };
+        match len {
+            -1 => None,
+            n if n < 0 => Some(HttpResponse {
+                error: "request unknown to host".into(),
+                ..Default::default()
+            }),
+            n => Some(
+                serde_json::from_slice(&buf[..n as usize]).unwrap_or_else(|e| HttpResponse {
+                    error: format!("bad host response: {e}"),
+                    ..Default::default()
+                }),
+            ),
+        }
+    }
+}
+
 pub fn bl_controls_log(x: u8, y: u8, msg: &str) {
     unsafe { controls_log(x, y, msg.as_ptr(), msg.len()) }
 }
@@ -480,7 +533,9 @@ pub mod ui {
         ui_begin as host_ui_begin, ui_begin_collapsing as host_ui_begin_collapsing,
         ui_begin_frame as host_ui_begin_frame, ui_begin_frame_styled as host_ui_begin_frame_styled,
         ui_begin_frame_styled_border as host_ui_begin_frame_styled_border,
-        ui_begin_horizontal as host_ui_begin_horizontal, ui_begin_tab as host_ui_begin_tab,
+        ui_begin_horizontal as host_ui_begin_horizontal, ui_begin_popup as host_ui_begin_popup,
+        ui_begin_tab as host_ui_begin_tab, ui_end_popup as host_ui_end_popup,
+        ui_progress_bar as host_ui_progress_bar,
         ui_begin_tabs as host_ui_begin_tabs, ui_begin_vertical as host_ui_begin_vertical,
         ui_button as host_ui_button, ui_button_styled as host_ui_button_styled,
         ui_checkbox as host_ui_checkbox, ui_color_picker as host_ui_color_picker,
@@ -958,6 +1013,30 @@ pub mod ui {
     }
     pub fn end_tabs() {
         unsafe { host_ui_end_tabs(unsafe { PLUGIN_ID }) };
+    }
+
+    /// Starts a popup; widgets up to [`end_popup`] go inside it. Like all
+    /// plugin UI it is immediate: call this every tick it should stay up, and
+    /// stop calling it to close it.
+    ///
+    /// `fullscreen`: a modal over the whole app, shown even while this
+    /// plugin's UI is closed. Otherwise it covers this plugin's UI and is only
+    /// visible while that is open. `id` must be unique among this plugin's
+    /// popups.
+    pub fn begin_popup(id: u8, fullscreen: bool) {
+        unsafe { host_ui_begin_popup(unsafe { PLUGIN_ID }, id, fullscreen as i32) };
+    }
+
+    pub fn end_popup() {
+        unsafe { host_ui_end_popup(unsafe { PLUGIN_ID }) };
+    }
+
+    /// `progress` is the filled share, 0.0..=1.0.
+    pub fn progress_bar(progress: f32, text: &str) {
+        let permille = (progress.clamp(0.0, 1.0) * 1000.0) as i32;
+        unsafe {
+            host_ui_progress_bar(unsafe { PLUGIN_ID }, permille, text.as_ptr(), text.len())
+        };
     }
 }
 

@@ -1,4 +1,6 @@
 port = 1234
+server_enabled = true
+server_passcode = "1234"
 dmx_out_devices = [
     "/dev/ttyUSB0",
     "/dev/dmx_out_0",
@@ -58,9 +60,15 @@ enabled = true
 enable_watcher = true
 
 [[plugins]]
+file_path = "../plugins/bundle_debug/forgedmx_sender.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
 file_path = "../plugins/bundle_debug/julia_animation_plugin.wasm"
 enabled = true
 enable_watcher = true
 
 [plugin_state]
-plugin_5 = '{"version":1,"user":"{\"log_beats\":true,\"ip\":\"\",\"mac\":\"\",\"auto_join\":false}","animation_instances":{}}'
+forgedmx_sender = '{"version":1,"user":"{\"host\":\"127.0.0.1\",\"port\":9000,\"api_port\":3000,\"enabled\":true}","animation_instances":{}}'
+pioneer_pro_dj_link = '{"version":1,"user":"{\"log_beats\":true,\"ip\":\"\",\"mac\":\"\",\"auto_join\":false}","animation_instances":{}}'

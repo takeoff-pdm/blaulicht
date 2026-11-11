@@ -44,7 +44,9 @@ use crate::{
         SUBSCRIBER_CAPACITY,
     },
     msg::{SystemMessage, TERMINAL_ONLY_LOG_TARGET},
-    server::protocol::{ClientMessage, EngineStatus, ServerMessage, SpectrogramUpdate, Stream},
+    server::protocol::{
+        ClientMessage, EngineStatus, RemoteServerStatus, ServerMessage, SpectrogramUpdate, Stream,
+    },
     state::{AppHealthState, ArtNetReceiver, PluginRuntimeKind, PluginState, NUM_DMX_UNIVERSES},
     ui_ops::WasmUiOp,
 };
@@ -94,6 +96,9 @@ pub enum RemoteStatus {
     Connected,
     /// The connection is gone, and why. It is not reopened.
     Disconnected(String),
+    /// The engine asks for a passcode: this one had none or the wrong one.
+    /// Retrying won't help until [`RemoteClient::set_passcode`].
+    PasscodeRequired(String),
 }
 
 /// What the engine said in its `Welcome`.
@@ -135,6 +140,8 @@ impl Inbox {
 
 /// What the transport writes and the frontend reads.
 struct RemoteState {
+    /// The engine refused this client's passcode (`RemoteStatus::PasscodeRequired`).
+    passcode_refused: AtomicBool,
     /// Set once, from the engine's `Welcome`.
     welcome: OnceLock<Welcome>,
     show: RwLock<EngineState>,
@@ -168,6 +175,7 @@ fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
 impl RemoteState {
     fn new() -> Self {
         Self {
+            passcode_refused: AtomicBool::new(false),
             welcome: OnceLock::new(),
             show: RwLock::new(EngineState::default()),
             show_digest: Mutex::new(None),
@@ -384,16 +392,24 @@ pub struct RemoteClient {
     state: Arc<RemoteState>,
     /// The streams it receives (for [`Self::reconnect`]).
     streams: Mutex<Vec<Stream>>,
+    /// The passcode it states (for [`Self::reconnect`]).
+    passcode: Mutex<Option<String>>,
     last_ui: Option<BTreeSet<u8>>,
     transport: Transport,
 }
 
 impl RemoteClient {
-    fn with_transport(state: Arc<RemoteState>, streams: &[Stream], transport: Transport) -> Self {
+    fn with_transport(
+        state: Arc<RemoteState>,
+        streams: &[Stream],
+        passcode: Option<String>,
+        transport: Transport,
+    ) -> Self {
         Self {
             next_seq: AtomicU64::new(1),
             state,
             streams: Mutex::new(streams.to_vec()),
+            passcode: Mutex::new(passcode),
             last_ui: None,
             transport,
         }
@@ -408,6 +424,15 @@ impl RemoteClient {
             .map(|welcome| welcome.engine_version.as_str())
     }
 
+    /// The passcode the next [`Self::reconnect`] states.
+    pub fn set_passcode(&self, passcode: Option<String>) {
+        *lock(&self.passcode) = passcode;
+    }
+
+    fn passcode(&self) -> Option<String> {
+        lock(&self.passcode).clone()
+    }
+
     /// `false` once the connection is gone (it is not reopened).
     pub fn is_connected(&self) -> bool {
         self.state.connected.load(Ordering::SeqCst)
@@ -417,7 +442,12 @@ impl RemoteClient {
     pub fn status(&self) -> RemoteStatus {
         if !self.is_connected() {
             let reason = lock(&self.state.disconnect_reason).clone();
-            RemoteStatus::Disconnected(reason.unwrap_or_else(|| DISCONNECTED.to_string()))
+            let reason = reason.unwrap_or_else(|| DISCONNECTED.to_string());
+            if self.state.passcode_refused.load(Ordering::SeqCst) {
+                RemoteStatus::PasscodeRequired(reason)
+            } else {
+                RemoteStatus::Disconnected(reason)
+            }
         } else if self.state.welcome.get().is_none() {
             RemoteStatus::Connecting
         } else {
@@ -521,6 +551,10 @@ impl EngineClient for RemoteClient {
 
     fn with_artnet_receivers<R>(&self, f: impl FnOnce(&[ArtNetReceiver]) -> R) -> R {
         f(&read(&self.state.status).artnet_receivers)
+    }
+
+    fn with_remote_server<R>(&self, f: impl FnOnce(&RemoteServerStatus) -> R) -> R {
+        f(&read(&self.state.status).remote_server)
     }
 
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R {

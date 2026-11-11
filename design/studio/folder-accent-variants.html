@@ -1,0 +1,33 @@
+<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><title>Folder row accent</title><link rel="stylesheet" href="studio.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>html,body{height:auto;overflow:auto}body{display:block;padding:16px;background:var(--gutter);color:var(--text)}h1{font-size:18px;font-weight:500;color:var(--strong);margin:0}h2{font-size:15px;font-weight:500;color:var(--strong);margin:22px 0 2px}p.i{margin:4px 0 12px;max-width:80ch}
+.vs{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}.v>b{display:block;font-weight:500;color:var(--strong)}.v>p{margin:0 0 6px;color:var(--muted);min-height:32px}
+.demo{display:grid;gap:8px}.demo .body,.demo .fill{max-height:none;overflow:visible}.demo .ddpop{position:static;max-width:none}.lbl{font-size:11px;color:var(--muted)}
+.bar{display:flex;gap:8px;align-items:center;margin:10px 0}
+/* Options. F = every folder row: list folders, Scene changes groups, dropdown groups. */
+.A2 :is(.row.folder,.ctree .g,.ddgroup){background:var(--head)}
+.A3 :is(.row.folder,.ctree .g,.ddgroup){background:var(--ctl)} .A3 :is(.row.folder,.ctree .g):hover{background:var(--ctl-hi)}
+.A4 :is(.row.folder,.ctree .g,.ddgroup){background:var(--head);box-shadow:inset 0 1px 0 var(--line)}
+.A5 :is(.row.folder,.ctree .g,.ddgroup){background:var(--head);box-shadow:inset 2px 0 0 var(--muted)}
+.B2 :is(.row.folder .fic,.ddgroup i){color:var(--strong)} .B2 :is(.row.folder i.ph-bold,.ctree .g .caret){color:var(--text)}
+.B3 :is(.row.folder,.ctree .g,.ddgroup){font-weight:600} .B3 :is(.row.folder .fic,.ddgroup i){color:var(--text)}
+.B4 :is(.row.folder,.ctree .g,.ddgroup){height:28px} .B4 :is(.row.folder .fic,.ddgroup i){color:var(--text);font-size:15px}
+</style></head><body>
+<h1>Folder row accent</h1>
+<p class="i">Every folder row in the studio: the Groups and Scenes lists, Scene changes, Add animation and dropdown groups. Section A varies the row surface, section B the icon and text. Pick one of each, like <code>A4 B2</code>; they combine.</p>
+<div class="bar"><button class="mini" id="t">Switch to light theme</button></div>
+<div id="out"></div>
+<script src="data.js"></script>
+<script>
+const S=window.SHOW,folded=new Set([S.folders.find(f=>f.kind==="Groups"&&S.groups.some(g=>g.folder===f.id)).id]);
+const list=()=>{let h="";S.folders.filter(f=>f.kind==="Groups").slice(0,3).forEach(f=>{const k=S.groups.filter(g=>g.folder===f.id),o=!folded.has(f.id);
+ h+=`<button class="row folder"><i class="ph-bold ph-caret-${o?"down":"right"}"></i><i class="ph-fill ph-folder${o?"-open":""} fic"></i>${f.name}<span class="v num">${o?"":k.length}</span></button>`;
+ if(o)h+=k.map((g,i)=>`<button class="row leaf ${i===1?"on":""}">${g.name}<span class="v">${g.fixtures.length}</span></button>`).join("")});return `<div class="body">${h}</div>`;};
+const tree=()=>`<div class="fill ctree">${S.groups.slice(0,4).map((g,i)=>`<div class="row g ${i===2?"sel":""}"><i class="caret ph-bold ph-caret-right"></i>${g.name}<span class="v num">${(i+1)*8}</span></div>`).join("")}</div>`;
+const dd=()=>`<div class="ddpop"><div class="ddlist"><div class="ddgroup"><i class="ph-fill ph-folder"></i>Intensity</div><button class="ddrow leaf on"><span class="ddl">Kick Flash</span><span class="ddm">Beat</span></button><button class="ddrow leaf"><span class="ddl">Bass Pump</span><span class="ddm">Frequency</span></button><div class="ddgroup"><i class="ph-fill ph-folder"></i>Strobe</div><button class="ddrow leaf"><span class="ddl">Strobe Stab</span><span class="ddm">Beat</span></button></div></div>`;
+const demo=c=>`<div class="demo ${c}"><span class="lbl">List (Groups)</span>${list()}<span class="lbl">Scene changes</span>${tree()}<span class="lbl">Dropdown</span>${dd()}</div>`;
+const SEC=[["A","Row surface",[["A1","Band (current)","Folder rows one hair lighter than the list. Easy to miss."],["A2","Title-bar grey","The pane header tone. Clearly a heading, still calm."],["A3","Control grey","As bright as a button. Strongest, but rows start to look clickable like buttons."],["A4","Title-bar grey + top line","A2 with a 1px line above each folder, so sections separate even when folded."],["A5","Title-bar grey + left spine","A2 with a grey 2px left edge, echoing the blue edge of the active row without the colour."]]],
+["B","Icon and text",[["B1","Muted icon (current)","Grey folder icon, medium-weight name."],["B2","Bright icon and caret","Folder icon and caret in the text colour, so the row reads as a header at a glance."],["B3","Semibold name","Heavier name and a lighter icon. Stronger hierarchy, slightly louder."],["B4","Taller row (28px)","Folders 4px taller than items, with a bigger icon. Uses more height in long lists."]]]];
+document.getElementById("out").innerHTML=SEC.map(([k,t,os])=>`<h2>${k}. ${t}</h2><div class="vs">${os.map(([c,n,d])=>`<div class="v"><b>${c} ${n}</b><p>${d}</p>${demo(c)}</div>`).join("")}</div>`).join("");
+document.getElementById("t").onclick=e=>{const r=document.documentElement,l=r.dataset.theme==="dark";r.dataset.theme=l?"light":"dark";e.target.textContent=l?"Switch to dark theme":"Switch to light theme";};
+</script></body></html>

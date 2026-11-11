@@ -17,7 +17,7 @@ use blaulicht_engine::{
     frontend_ui::FrontendUiSnapshot,
     hub::{BusBody, BusMessage, ClientId, CommandResult, CommandSeq, SessionId},
     msg::SystemMessage,
-    server::protocol::Stream,
+    server::protocol::{RemoteServerStatus, Stream},
     state::{AppHealthState, ArtNetReceiver, PluginRuntimeKind, PluginState},
     ui_ops::WasmUiOp,
 };
@@ -161,6 +161,10 @@ impl EngineClient for AppClient {
 
     fn with_artnet_receivers<R>(&self, f: impl FnOnce(&[ArtNetReceiver]) -> R) -> R {
         delegate!(self, c => c.with_artnet_receivers(f))
+    }
+
+    fn with_remote_server<R>(&self, f: impl FnOnce(&RemoteServerStatus) -> R) -> R {
+        delegate!(self, c => c.with_remote_server(f))
     }
 
     fn with_plugins<R>(&self, f: impl FnOnce(&HashMap<u8, PluginState>) -> R) -> R {

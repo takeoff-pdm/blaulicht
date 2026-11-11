@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Blaulicht System draft</title>
+<script>if (location.search === "?light") document.documentElement.dataset.theme = "light";</script>
+<link rel="stylesheet" href="studio.css">
+<link rel="stylesheet" href="system.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" id="nav"></nav>
+  <main class="syswork"><div id="content"></div></main>
+  <footer class="status"></footer><script src="chrome.js"></script>
+</div>
+<script src="sysdata.js"></script>
+<script>
+const $ = id => document.getElementById(id), D = window.SYS, M = window.META;
+const TABS = [["general", "General"], ["dmx", "DMX & Art-Net"], ["plugins", "Plugins"], ["devices", "MIDI & Serial"], ["screens", "Screens"], ["remote", "Remote UI"]];
+const ICON = { Logs: "terminal-window", System: "gear", Audio: "waveform", Setup: "wrench", "Views": "stack", "Perform": "game-controller", Programmer: "faders", "Scene Graph": "graph", Visualizer: "cube-focus" };
+const tab = () => location.hash === "#artnet" ? "dmx" : ["#midi", "#serial"].includes(location.hash) ? "devices" : TABS.find(t => "#" + t[0] === location.hash)?.[0] || "general";
+const item = n => `<button class="link" data-page="${n}"><i class="ph ph-${ICON[n]}"></i>${n}</button>`;
+
+const pretty = { AdjMegaHexPar: "ADJ Mega Hex Par", DimmerSingle: "Dimmer", LiteCraftMiniParAT10: "LiteCraft AT10", MartinMac250E: "Martin MAC 250E", VaryTechVP1: "Varytec VP1", FogMachineSingle: "Fog machine" };
+/* Patch page: read-only, every universe in one place. Output values are simulated. */
+let patchView = "map", planSort = "addr", planDir = 1, planQ = "", planFree = false, selFx = null, colorBy = "group", absAddr = false, freeN = 0;
+const PAL = ["#3f7fbf", "#b0793a", "#5f9e6e", "#9a6bb8", "#b85c6e", "#4ba3a3", "#a89b3f", "#7078c0", "#c07a50", "#5a8fa8", "#8aa050", "#b06a9c", "#6a9a8a", "#a07070", "#6f8fb0"];
+const hue = (k, arr) => PAL[Math.max(0, arr.indexOf(k)) % PAL.length];
+const GROUPS = [...new Set(M.patch.map(p => p.group))], TYPES = [...new Set(M.patch.map(p => p.type))];
+const fxColor = p => colorBy === "group" ? hue(p.group, GROUPS) : colorBy === "type" ? hue(p.type, TYPES) : "#8a8c92";
+const fxOf = u => M.patch.map((p, i) => ({ ...p, i })).filter(p => p.u === u).sort((a, b) => a.a - b.a);
+const chanMap = u => { const m = Array(512).fill(null); fxOf(u).forEach(p => { for (let c = p.a; c < p.a + p.n && c < 512; c++) (m[c] = m[c] || []).push(p); }); return m; };
+const rng = (u, a, n) => { const b = absAddr ? u * 512 : 0; return n > 1 ? `${a + b}-${a + b + n - 1}` : `${a + b}`; };
+const addr = (u, c) => absAddr ? u * 512 + c : `${u}:${c}`;
+/* Routing: which universes each output device sends. A DMX port carries one
+   universe, an Art-Net receiver can carry several. */
+const outputs = () => [...dmx.map((d, i) => ({ id: "d" + i, kind: "DMX", dest: d.port, err: d.err, on: true })), ...D.artnet.map((r, i) => ({ id: "a" + i, kind: "Art-Net", dest: r.address, rx: i, on: r.enabled }))];
+const routeChanges = () => { let n = 0; Object.keys(routes).forEach(k => { const a = routes[k], b = draft[k]; n += a.filter(x => !b.includes(x)).length + b.filter(x => !a.includes(x)).length; }); return n; };
+const outsOf = (u, r = routes) => outputs().filter(o => r[o.id].includes(u));
+const fxCount = u => M.patch.filter(p => p.u === u).length;
+function unis() { const nums = new Set(M.patch.map(p => p.u)); Object.values(routes).forEach(a => a.forEach(u => nums.add(u)));
+  return [...nums].sort((a, b) => a - b).map(u => { const o = outsOf(u), bad = o.find(x => x.err), live = o.filter(x => !x.err && x.on);
+    return { u, outs: o, kind: o.length ? [...new Set(o.map(x => x.kind))].join(" + ") : "No output", dest: o.length ? o.map(x => x.dest).join(", ") : "Not routed", state: !o.length ? "off" : bad ? "bad" : live.length ? "ok" : "off", err: bad ? bad.err : null }; }); }
+const strip = u => { const m = chanMap(u); let s = ""; for (let i = 0; i < 64; i++) { const b = m.slice(i * 8, i * 8 + 8); s += `<i class="${b.some(x => x && x.length > 1) ? "x" : b.some(Boolean) ? "u" : ""}"></i>`; } return s; };
+const freeRuns = m => { const r = []; let s = -1; for (let c = 0; c <= 512; c++) { if (c < 512 && !m[c]) { if (s < 0) s = c; } else if (s >= 0) { r.push([s, c - s]); s = -1; } } return r; };
+function gridHtml(u, m, f) { let h = ""; const place = c => `grid-column:${c % 32 + 1};grid-row:${Math.floor(c / 32) + 1}`;
+  const fr = new Set(); if (freeN > 0) freeRuns(m).filter(r => r[1] >= freeN).forEach(r => { for (let c = r[0]; c < r[0] + r[1]; c++) fr.add(c); });
+  m.forEach((o, c) => { if (!o) h += `<div class="fc ${fr.has(c) ? "fit" : ""}" style="${place(c)}" title="${addr(u, c)}: free"></div>`; });
+  fxOf(u).forEach(p => { let c = p.a, first = true; const end = Math.min(p.a + p.n, 512);
+    while (c < end) { const stop = Math.min(end, (Math.floor(c / 32) + 1) * 32), n = stop - c; let cells = ""; for (let k = c; k < stop; k++) cells += `<span class="cv" data-c="${k}"><i></i></span>`;
+      h += `<button class="block ${f && f.i === p.i ? "on" : ""} ${colorBy === "output" ? "byout" : ""}" data-fx="${p.i}" style="grid-column:${c % 32 + 1}/span ${n};grid-row:${Math.floor(c / 32) + 1};--c:${fxColor(p)}" title="${p.name}, ${addr(u, p.a)}, ${p.n} ch"><em>${first && n >= 3 ? p.name : first ? p.a : ""}</em><span class="cvs">${cells}</span></button>`; c = stop; first = false; } });
+  m.forEach((o, c) => { if (o && o.length > 1) h += `<button class="clash" data-fx="${o[0].i}" style="${place(c)}" title="Channel ${addr(u, c)}: ${o.map(x => x.name).join(" and ")}"><i class="ph-bold ph-warning"></i></button>`; });
+  return h; }
+function legend(u) { if (colorBy === "output") return '<span class="hint">Bars show each channel\'s output (simulated).</span>'; const k = colorBy === "group" ? [...new Set(fxOf(u).map(p => p.group))] : [...new Set(fxOf(u).map(p => p.type))];
+  return k.length ? k.map(x => `<span class="lg"><i style="background:${colorBy === "group" ? hue(x, GROUPS) : hue(x, TYPES)}"></i>${colorBy === "group" ? x : pretty[x]}</span>`).join("") : '<span class="hint">Nothing patched on this universe.</span>'; }
+function inspector(U, f, conf, used) { const free = freeRuns(chanMap(U.u)), big = free.reduce((a, r) => Math.max(a, r[1]), 0);
+  const list = conf.length ? `<h4 class="subhead">Problems</h4>${conf.map(x => `<button class="prob" data-c="${x.a}"><i class="d wrn"></i><span>Overlap at ${rng(U.u, x.a, x.b - x.a + 1)}<small>${x.x} and ${x.y}</small></span></button>`).join("")}` : "";
+  if (f) { const m = chanMap(U.u), hit = new Set(); for (let c = f.a; c < f.a + f.n; c++) (m[c] || []).forEach(o => o.i !== f.i && hit.add(o.name));
+    return `<div class="pad"><dl class="kv"><dt>Address</dt><dd class="mono">Universe ${U.u}, ${rng(U.u, f.a, f.n)}</dd><dt>Type</dt><dd>${pretty[f.type]}</dd><dt>Channels</dt><dd>${f.n}</dd><dt>Group</dt><dd>${f.group}</dd></dl>
+      ${hit.size ? `<p class="warnt">Overlaps ${[...hit].join(", ")}. Both fixtures receive the same channel.</p>` : ""}
+      <h4 class="subhead">Output (simulated)</h4><div class="vals" id="vals">${Array.from({ length: f.n }, (_, i) => `<span><small>${i + 1}</small><b data-v="${f.a + i}">0</b></span>`).join("")}</div>
+      <div class="acts"><button class="mini" data-go-prog>Select in Programmer</button><button class="mini" id="desel">Back to universe</button></div>${list}</div>`; }
+  return `<div class="pad"><dl class="kv"><dt>State</dt><dd>${U.state === "ok" ? st("ok", "Sending") : U.state === "bad" ? st("bad", "Offline") : st("off", U.outs.length ? "Disabled" : "Not routed")}</dd><dt>In use</dt><dd>${used} of 512</dd><dt>Largest gap</dt><dd>${big} channels</dd></dl>
+    <h4 class="subhead">Outputs</h4>${U.outs.map(o => `<div class="oline"><i class="d ${o.err ? "bad" : o.on ? "ok" : "off"}"></i><span>${o.kind}<small class="mono">${o.dest}</small></span></div>`).join("") || '<p class="warnt">This universe has no output.</p>'}
+    <div class="acts"><button class="mini" data-view="routing">Change routing</button></div>${list}<p class="hint">Click a fixture for details. Fixture addresses can't be changed here.</p></div>`; }
+const pageBar = () => `<div class="pagebar"><div class="vtabs" role="tablist">${[["map", "Map", "squares-four"], ["plan", "Plan", "table"], ["routing", "Routing", "git-fork"]].map(([k, n, ic]) => `<button role="tab" aria-selected="${patchView === k}" class="vtab ${patchView === k ? "on" : ""}" data-view="${k}"><i class="ph ph-${ic}"></i>${n}</button>`).join("")}</div><div class="pbr"><span class="pbl">Addresses</span><span class="seg">${[[false, "Per universe"], [true, "Absolute"]].map(([v, n]) => `<button class="mini ${absAddr === v ? "primary" : ""}" data-abs="${v}">${n}</button>`).join("")}</span></div></div>`;
+const clashIdx = () => { const s = new Set(); unis().forEach(U => chanMap(U.u).forEach(o => { if (o && o.length > 1) o.forEach(p => s.add(p.i)); })); return s; };
+const outCount = U => { const o = U ? U.outs : [], a = o.filter(x => x.kind === "Art-Net").length, d = o.filter(x => x.kind === "DMX").length; return [a ? `A ${a}` : "", d ? `D ${d}` : ""].filter(Boolean).join(" ") || "None"; };
+function planRows() { const q = planQ.toLowerCase(), cl = clashIdx(), out = new Map(unis().map(U => [U.u, U]));
+  let r = M.patch.map((p, i) => ({ kind: "fx", i, u: p.u, a: p.a, n: p.n, name: p.name, type: pretty[p.type], group: p.group, out: out.get(p.u), clash: cl.has(i) }));
+  if (planFree) unis().forEach(U => freeRuns(chanMap(U.u)).forEach(([a, n]) => r.push({ kind: "free", u: U.u, a, n, name: "Free", type: "", group: "", out: U, clash: false })));
+  if (q) r = r.filter(x => [x.name, x.type, x.group, x.out?.kind, x.out?.dest, x.u + ":" + x.a].join(" ").toLowerCase().includes(q));
+  const key = { addr: x => x.u * 1000 + x.a, name: x => x.name, type: x => x.type, group: x => x.group, n: x => x.n, out: x => (x.out?.outs.length || 0) }[planSort];
+  return r.sort((x, y) => { const a = key(x), b = key(y); return (a < b ? -1 : a > b ? 1 : (x.u * 1000 + x.a) - (y.u * 1000 + y.a)) * planDir; }); }
+function planBody() { const r = planRows(); let last = null, h = "";
+  r.forEach(x => { if (planSort === "addr" && x.u !== last) { last = x.u; const c = chanMap(x.u).filter(Boolean).length; h += `<tr class="uh"><td colspan="8">Universe ${x.u}<span>${x.out ? x.out.kind + ", " + x.out.dest : "No output"}, ${c} of 512 channels</span></td></tr>`; }
+    const s = x.out ? (x.out.state === "ok" ? ["ok", "Sending"] : x.out.state === "bad" ? ["bad", "Offline"] : ["off", "Disabled"]) : ["off", "No output"];
+    h += x.kind === "free" ? `<tr class="fr"><td class="mono">${x.u}</td><td class="mono">${rng(x.u, x.a, x.n)}</td><td class="r">${x.n}</td><td></td><td>Free</td><td></td><td class="mono dim" title="${x.out.dest}">${outCount(x.out)}</td><td></td></tr>`
+    : `<tr class="${x.clash ? "x" : ""} prow" data-plan="${x.i}"><td class="mono">${x.u}</td><td class="mono">${rng(x.u, x.a, x.n)}</td><td class="r">${x.n}</td><td class="dim">${x.group}</td><td>${x.clash ? '<i class="ph-bold ph-warning"></i> ' : ""}${x.name}</td><td class="dim">${x.type}</td><td class="mono dim" title="${x.out ? x.out.dest : ""}">${outCount(x.out)}</td><td>${st(s[0], s[1])}</td></tr>`; });
+  return h || '<tr><td colspan="8" class="dim">No fixtures match this filter.</td></tr>'; }
+function planSum() { const r = planRows().filter(x => x.kind === "fx"); return `${r.length} of ${M.patch.length} fixtures, ${r.reduce((a, x) => a + x.n, 0)} channels`; }
+function planView() { const th = (k, n, c = "") => `<th class="sortable ${c}" data-sort="${k}">${n}${planSort === k ? (planDir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  return `<div class="plan">` + pane("Patch plan", `<div class="body"><table class="rows plant"><thead><tr><th>Univ</th>${th("addr", "Channels")}${th("n", "Ch", "r")}${th("group", "Group")}${th("name", "Fixture")}${th("type", "Type")}${th("out", "Outputs")}<th>Status</th></tr></thead><tbody id="planbody">${planBody()}</tbody></table></div>`, "",
+    `<span id="plansum" class="mono">${planSum()}</span><label class="finder">Filter<input id="planq" class="wide" value="${planQ}" aria-label="Filter the patch plan" placeholder="Name, type, group"></label><button class="mini ${planFree ? "primary" : ""}" id="planfree">Free ranges</button>`) + `</div>`; }
+const uniRow = (x, i) => `<button class="uni2 ${i === sel.dmx ? "on" : ""}" data-uni="${i}"><span class="ut"><i class="d ${x.state}"></i><b>${x.u}</b><span class="us">${strip(x.u)}</span><span class="v mono">${chanMap(x.u).filter(Boolean).length}</span></span><small class="mono">${x.dest}</small></button>`;
+function routingView() { const O = outputs(), max = Math.max(15, ...M.patch.map(p => p.u), ...Object.values(draft).flat()), n = routeChanges();
+  const rows = Array.from({ length: max + 1 }, (_, u) => { const fc = fxCount(u), routed = outputs().some(o => draft[o.id].includes(u));
+    return `<tr class="${fc && !routed ? "unr" : ""}"><th class="rh"><b>${u}</b><span>${fc ? fc + (fc === 1 ? " fixture" : " fixtures") : "Empty"}</span></th>${O.map(o => { const on = draft[o.id].includes(u), was = routes[o.id].includes(u);
+      return `<td><button class="rc ${on ? "on" : ""} ${on !== was ? "chg" : ""}" data-route="${o.id}:${u}" aria-pressed="${on}" aria-label="Send universe ${u} to ${o.dest}" title="Universe ${u} to ${o.dest}${on !== was ? " (pending)" : ""}">${on ? '<i class="ph-bold ph-check"></i>' : ""}</button></td>`; }).join("")}<td class="rw">${fc && !routed ? "No output" : ""}</td></tr>`; }).join("");
+  return `<div class="plan">` + pane("Routing", `<div class="body"><table class="rmx"><thead><tr><th class="rh"></th>${O.map(o => `<th class="oc"><span class="ok2"><i class="d ${o.err ? "bad" : o.on ? "ok" : "off"}"></i>${o.kind}</span><b class="mono" title="${o.dest}">${o.dest}</b>${o.rx !== undefined ? sw(o.on, `data-an="${o.rx}" aria-label="Send to ${o.dest}"`) : '<small>One universe</small>'}</th>`).join("")}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`, "",
+    `<span class="hint">${(BL.setPending(n), n) ? `${n} pending ${n === 1 ? "change" : "changes"}` : "Click a cell to connect a universe to an output. Saved on this machine."}</span><button class="mini" id="rrevert" ${n ? "" : "disabled"}>Revert</button><button class="mini ${n ? "primary" : ""}" id="rapply" ${n ? "" : "disabled"}>Apply</button>`) + `</div>`; }
+function tickOutput() { if (tab() !== "dmx") return; const t = Date.now() / 1000; document.querySelectorAll(".cv").forEach(e => { const c = +e.dataset.c, v = (Math.sin(t * .6 + c * .37) + 1) / 2 * ((c * 7) % 5 ? 1 : .15); e.firstChild.style.height = v * 100 + "%"; });
+  document.querySelectorAll("[data-v]").forEach(e => { const c = +e.dataset.v; e.textContent = Math.round((Math.sin(t * .6 + c * .37) + 1) / 2 * ((c * 7) % 5 ? 1 : .15) * 255); }); }
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setInterval(tickOutput, 150);
+
+/* Sample state, not read from a running engine. */
+const dmx = D.dmx.map((p, i) => ({ u: i, port: p, err: i ? `Could not establish link to DMX interface "${p}" (baud = 250000): No such file or directory` : null }));
+const pname = p => p.split("/").pop().replace(".wasm", "");
+const plugins = D.plugins.map((p, i) => ({ ...p, id: i, name: pname(p.path), crashed: pname(p.path) === "setlist", open: false }));
+const midi = [["DDJ-400", "Connected"], ["APC mini mk2", "Connected"], ["Korg nanoKONTROL2", "Available"]];
+const serial = [["/dev/ttyUSB1", "Connected"], ["/dev/ttyACM0", "Disconnected"]];
+let screens = [{ w: 1920, h: 1080 }, { w: 800, h: 480, owner: "videowall" }];
+const remote = { enabled: true, pass: "4711", show: false, port: 1234, clients: [["192.168.50.23", "Web UI", "12 min"]] };
+let routes = {}; dmx.forEach((d, i) => routes["d" + i] = [d.u]); D.artnet.forEach((r, i) => { routes["a" + i] = []; for (let u = r.universes[0]; u <= r.universes[1]; u++) routes["a" + i].push(u); });
+let draft = JSON.parse(JSON.stringify(routes));
+const sel = { dmx: 0, plugins: 1, midi: 0, serial: 0, screens: 0 };
+const started = Date.now() - (3 * 3600 + 42 * 60) * 1000;
+const upt = () => { const s = Math.floor((Date.now() - started) / 1000), p = n => String(n).padStart(2, "0"); return `${Math.floor(s / 3600)}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`; };
+const pstat = p => !p.enabled ? ["off", "Disabled"] : p.crashed ? ["bad", "Crashed"] : ["ok", "Running"];
+const st = (c, t) => `<span class="state ${c}">${t}</span>`;
+const sw = (on, attr) => `<button class="sw" role="switch" aria-checked="${on}" ${attr}></button>`;
+const pane = (title, body, cls = "", right = "") => `<section class="pane ${cls}"><header>${title}${right ? `<span class="hr">${right}</span>` : ""}</header>${body}</section>`;
+const list = (title, kind, rows, right = "") => pane(title, `<div class="body">${rows.map((r, i) => `<button class="li ${sel[kind] === i ? "on" : ""}" data-sel="${kind}:${i}"><i class="d ${r[1]}"></i><span class="nm ${r[3] || ""}">${r[0]}</span>${r[2] ? `<span class="v">${r[2]}</span>` : ""}</button>`).join("") || '<p class="empty">Nothing here yet.</p>'}</div>`, "", right);
+/* Severity: red means output is at risk, amber needs attention, healthy shows nothing. */
+function problems() { const p = [];
+  outputs().filter(o => o.err).forEach(o => { const us = routes[o.id]; p.push({ sev: "bad", tab: "dmx", uni: us[0], text: `${o.dest} is offline`, sub: us.length ? `Universe ${us.join(", ")} isn't reaching this output` : "No universe is routed here" }); });
+  [...new Set(M.patch.map(x => x.u))].filter(u => !outsOf(u).length).forEach(u => p.push({ sev: "bad", tab: "dmx", uni: u, text: `Universe ${u} has no output`, sub: `${fxCount(u)} patched ${fxCount(u) === 1 ? "fixture isn't" : "fixtures aren't"} receiving anything` }));
+  plugins.filter(x => x.enabled && x.crashed).forEach(x => p.push({ sev: "wrn", tab: "plugins", plugin: x.id, text: `${x.name} crashed`, sub: "The plugin stopped and needs a reload" }));
+  M.conflicts.forEach(c => p.push({ sev: "wrn", tab: "dmx", uni: c.u, fx: c.x, text: `Patch overlap at ${c.a}`, sub: `${c.x} and ${c.y} share a channel on universe ${c.u}` }));
+  serial.filter(s => s[1] !== "Connected").forEach(s => p.push({ sev: "wrn", tab: "devices", text: `${s[0]} disconnected`, sub: "Serial device" }));
+  return p.sort((a, b) => (a.sev === "bad" ? 0 : 1) - (b.sev === "bad" ? 0 : 1)); }
+const sevOf = k => { const p = problems().filter(x => x.tab === k); return p.some(x => x.sev === "bad") ? "bad" : p.length ? "wrn" : null; };
+function drawNav() { const cur = tab();
+  $("nav").innerHTML = `<div class="logo"><img src="logo_blaulicht.svg" alt="blaulicht"><button class="fold" aria-label="Collapse the sidebar"><i class="ph ph-caret-double-left"></i></button></div>
+    <h2>System</h2>${item("Logs")}<button class="link" data-tab="general"><i class="ph ph-gear" style="color:var(--blue)"></i>System</button>
+    ${TABS.map(([k, n]) => `<button class="sub link ${k === cur ? "on" : ""}" data-tab="${k}">${n}${sevOf(k) ? `<i class="d ${sevOf(k)}" title="${problems().filter(x => x.tab === k).map(x => x.text).join(", ")}"></i>` : ""}</button>`).join("")}
+    <h2>Setup</h2>${item("Audio")}${item("Setup")}${["Fixtures", "Groups", "Scenes", "Animations", "Palettes"].map(n => `<button class="sub link" data-setup="${n.toLowerCase()}">${n}</button>`).join("")}
+    <h2>Live</h2>${item("Views")}${item("Perform")}${item("Programmer")}${item("Scene Graph")}${item("Visualizer")}`; }
+$("nav").onclick = e => { const su = e.target.closest("[data-setup]"); if (su) { location.href = su.dataset.setup === "animations" ? "animation-editor.html" : "setup.html#" + su.dataset.setup; return; } const b = e.target.closest("[data-tab],[data-page]"); if (!b) return;
+  if (b.dataset.tab) location.hash = b.dataset.tab; else if (b.dataset.page === "Programmer") location.href = "programmer.html"; else { const pg = {Logs:"logs",Audio:"audio","Views":"views","Perform":"performance","Scene Graph":"graph",Visualizer:"visualizer"}[b.dataset.page]; if (pg) location.href = "pages.html#" + pg; } };
+
+const VIEWS = {
+  general: () => { const n = M.conflicts.length + M.over.length, P = problems(), light = document.documentElement.dataset.theme === "light";
+    const act = x => x.plugin !== undefined ? "Reload plugin" : x.tab === "devices" ? "Open MIDI & Serial" : x.fx ? "Show overlap" : "Open universe " + x.uni;
+    /* Left: what needs attention, then the show. Right: the program itself. */
+    return `<div class="general"><div class="col gmain">` +
+    pane("Show", `<div class="pad"><dl class="kv"><dt>File</dt><dd>${M.file}</dd><dt>State</dt><dd>${st(...BL.saveState())}</dd><dt>Location</dt><dd class="mono path" title="${M.path}"><span>${M.path}</span></dd><dt>Modified</dt><dd>${M.modified}</dd><dt>Size</dt><dd>${M.size}, format ${M.format}</dd><dt>Room</dt><dd>${M.room.join(" x ")} m, ${M.stageobjects} stage objects</dd></dl>
+        <div class="gcols"><div><h4 class="subhead">Contents</h4><dl class="cnt">${M.counts.slice(0, 8).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>
+        <div><h4 class="subhead">Fixture types</h4><dl class="cnt">${M.types.map(([k, v]) => `<dt>${pretty[k] || k}</dt><dd>${v}</dd>`).join("")}</dl></div></div></div>`, "", `<button class="mini">Load</button><button class="mini">Save as</button><button class="mini primary">Save</button><i class="hsep"></i><button class="mini">Close</button>`) +
+    pane("Problems", (P.length ? `<div>${P.map((x, i) => `<div class="pbrow" data-prob="${i}"><i class="d ${x.sev}"></i><span><b>${x.text}</b><small>${x.sub}</small></span><button class="mini pact">${act(x)}</button></div>`).join("")}</div>` : `<div class="pstate"><i class="ph ph-check-circle"></i><div><b>No problems</b><small>Outputs, plugins and devices are all healthy</small></div></div>`) +
+      `<div class="gfoot"><span>Patch: ${M.patch.length} fixtures on ${M.universes.length} ${M.universes.length === 1 ? "universe" : "universes"}, ${n ? `${n} overlapping ${n === 1 ? "channel" : "channels"}` : "no overlaps"}</span><button class="mini" data-go="dmx">Open patch map</button></div>`, "fill", P.length ? `<span class="mono">${P.length}</span>` : "") +
+    `</div><div class="col gside">` +
+    pane("Engine", `<div class="pad"><div><div class="gh">Loop<b>1.0 ms</b></div><svg class="graph" id="g1" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline/></svg></div><div><div class="gh">Plugins<b>0.6 ms</b></div><svg class="graph" id="g2" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline/></svg></div></div>`, "", `<button class="mini">Debug</button><button class="mini">Reload</button>`) +
+    pane("About", `<div class="pad"><dl class="kv"><dt>Uptime</dt><dd class="mono" id="uptime">${upt()}</dd><dt>Version</dt><dd>${M.version}, plugin ABI ${M.abi}</dd><dt>Commit</dt><dd class="mono">${M.commit}, 2026-11-05</dd><dt>Audio input</dt><dd>${M.audio}, ${M.rate} Hz</dd><dt>Network port</dt><dd class="mono">${M.port}</dd></dl></div>`) +
+    pane("Application", `<div class="pad"><dl class="kv"><dt>Theme</dt><dd><span class="seg"><button class="mini ${light ? "primary" : ""}" id="tl">Light</button><button class="mini ${light ? "" : "primary"}" id="td">Dark</button></span></dd>
+        <dt>Program</dt><dd class="acts"><button class="mini">Restart</button><button class="mini">Quit</button></dd></dl>
+        <div class="gdanger"><div><b>Shut down this device</b><small>Powers off the computer running the engine. Asks first.</small></div><button class="mini danger">Shut down</button></div></div>`, "fill") + `</div></div>`; },
+  dmx: () => { if (patchView === "plan") return `<div class="pagewrap">${pageBar()}${planView()}</div>`; if (patchView === "routing") return `<div class="pagewrap">${pageBar()}${routingView()}</div>`; const list = unis(), U = list[sel.dmx] || list[0], u = U.u, fx = fxOf(u), m = chanMap(u), used = m.filter(Boolean).length, f = selFx !== null && M.patch[selFx]?.u === u ? { ...M.patch[selFx], i: selFx } : null;
+    const groups = []; for (let c = 0; c < 512; c += 32) groups.push(c);
+    const conf = M.conflicts.filter(c => c.u === u);
+    return `<div class="pagewrap">${pageBar()}<div class="patch">` +
+    pane("Universes", `<div class="body">${list.map(uniRow).join("")}</div>`) +
+    pane(`Universe ${u}`, `${U.err ? `<div class="errbar">${U.err}</div>` : ""}<div class="legend">${legend(u)}</div><div class="body"><div class="pm"><div class="pmrows">${groups.map(c => `<span class="mono">${addr(u, c)}</span>`).join("")}</div><div class="pmgrid" id="pm">${gridHtml(u, m, f)}</div></div></div>`, "pmpane",
+      `<span class="mono">${used} of 512</span><label class="finder">Find free<input id="free" inputmode="numeric" value="${freeN || ""}" placeholder="ch" aria-label="Find a free block of this many channels"></label><span class="seg">${["group", "type", "output"].map(k => `<button class="mini ${colorBy === k ? "primary" : ""}" data-color="${k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("")}</span>`) +
+    pane(f ? f.name : "Inspector", inspector(U, f, conf, used), "", "") + `</div></div>`; },
+  plugins: () => { const p = plugins[sel.plugins], s = pstat(p);
+    return `<div class="md">` + list("Plugins", "plugins", plugins.map(x => [x.name, pstat(x)[0]])) + `<div class="mdright">` +
+    pane(p.name, `<div class="pad"><dl class="kv"><dt>Status</dt><dd>${st(s[0], s[1])}</dd><dt>File</dt><dd class="mono">${p.path}</dd><dt>Reload on change</dt><dd>${p.watch ? "On" : "Off"}</dd></dl>${p.crashed ? '<p class="err">Sample error: the plugin trapped during its tick and was stopped.</p><button class="mini primary" data-reloadp>Reload plugin</button>' : ""}</div>`, "", `<button class="mini ${p.open ? "primary" : ""}" data-ui="${p.id}" ${p.enabled ? "" : "disabled"}>${p.open ? "Hide UI" : "Show UI"}</button>`) +
+    pane("Interface", `<div class="well">${p.open ? "The plugin's own interface would draw here." : p.enabled ? "Show UI to open this plugin's interface here." : "This plugin is disabled in config.toml."}</div>`, "grow", p.open ? `<button class="mini">Pop out</button>` : "") + `</div></div>`; },
+  devices: () => { const rows = [...midi.map(m => [m[0], "MIDI input", m[1], m[1] === "Connected" ? "ok" : "off", m[1] === "Connected" ? "2 s ago" : "None"]), ...serial.map(s => [s[0], "Serial", s[1], s[1] === "Connected" ? "ok" : "wrn", s[1] === "Connected" ? "1 s ago" : "4 min ago"])];
+    return `<div class="plan">` + pane("MIDI & Serial", `<div class="body"><table class="rows devtbl"><thead><tr><th>Device</th><th>Kind</th><th>Status</th><th>Last activity</th><th class="r"></th></tr></thead><tbody>${rows.map(r => `<tr><td class="name-c">${r[0]}</td><td class="dim">${r[1]}</td><td>${st(r[3], r[2])}</td><td class="dim">${r[4]}</td><td class="r">${r[2] === "Disconnected" ? '<button class="mini" data-recon>Reconnect</button>' : ""}</td></tr>`).join("")}</tbody></table></div>`, "", `<span class="mono">${rows.length}</span>`) + `</div>`; },
+  screens: () => { if (sel.screens >= screens.length) sel.screens = Math.max(0, screens.length - 1); const s = screens[sel.screens];
+    return `<div class="md">` + pane("Screens", `<div class="body">${screens.map((x, i) => `<button class="li scr ${sel.screens === i ? "on" : ""}" data-sel="screens:${i}"><i class="d ok"></i><span class="nm">Screen ${i}<small>${x.owner ? `<span class="own" title="Controlled by plugin ${x.owner}"><i class="ph ph-link"></i>${x.owner}</span>, ` : "Desk window, "}${x.w} x ${x.h}</small></span></button>`).join("") || '<p class="empty">Nothing here yet.</p>'}</div>`, "", `<button class="mini" id="addscreen">Add</button>`) + `<div class="mdright">` + (s ? pane(`Screen ${sel.screens}`, `<div class="screenprev"><div class="mono" style="aspect-ratio:${s.w}/${s.h}">${s.w} x ${s.h}</div></div>`, "grow", `<span class="htag">${s.owner ? "Owned by plugin " + s.owner : "Desk window"}</span>${s.owner ? "" : `<button class="mini" data-rm="${sel.screens}">Remove</button>`}`) : pane("Screens", '<p class="empty">No external screens. Add one to open another output window.</p>', "grow")) + `</div></div>`; },
+  remote: () => `<div class="grid remote">` +
+    pane("Web UI", `<div class="pad"><div class="bigaddr">http://192.168.50.10:${remote.port}/</div><p class="hint">${remote.enabled ? "Open this address on any device on the network." : "Remote connections are off."}</p></div>`, "a-addr", remote.enabled ? st("ok", "Listening") : st("off", "Off")) +
+    pane("Access", `<div class="pad"><dl class="kv"><dt>Remote control</dt><dd class="acts">${sw(remote.enabled, 'id="ren" aria-label="Allow remote connections"')}<span class="hint">${remote.enabled ? "Allowed" : "Off"}</span></dd><dt>Passcode</dt><dd class="acts"><input class="field" id="pc" aria-label="Passcode" type="${remote.show ? "text" : "password"}" value="${remote.pass}"><button class="mini" id="pcs">${remote.show ? "Hide" : "Show"}</button><button class="mini" id="pcr">Remove</button></dd></dl>${remote.pass ? "" : '<p class="err">Without a passcode, anyone on the network can operate the show.</p>'}</div>`, "a-access") +
+    pane(`Connected clients`, `<div class="body">${remote.clients.length ? `<table class="rows"><tr><th>Address</th><th>Client</th><th>Connected for</th></tr>${remote.clients.map(c => `<tr><td class="mono">${c[0]}</td><td>${c[1]}</td><td class="dim">${c[2]}</td></tr>`).join("")}</table>` : '<p class="empty">No remote UI is connected.</p>'}</div>`, "a-clients", `<span class="mono">${remote.clients.length}</span>`) + `</div>`,
+};
+function line(id) { const el = $(id); if (!el) return; el.querySelector("polyline").setAttribute("points", Array.from({ length: 80 }, (_, i) => `${i * 200 / 79},${(36 - Math.random() * 7).toFixed(1)}`).join(" ")); }
+function draw() { const y = document.querySelector(".pmpane .body")?.scrollTop; drawNav(); $("content").innerHTML = VIEWS[tab()](); line("g1"); line("g2"); tickOutput(); const b = document.querySelector(".pmpane .body"); if (b && y) b.scrollTop = y; }
+const theme = l => { document.documentElement.dataset.theme = l ? "light" : "dark"; $("theme").textContent = l ? "Dark theme" : "Light theme"; };
+if (location.search === "?light") theme(true);
+$("content").onclick = e => { const t = e.target, c = s => t.closest(s), an = c("[data-an]"), ui = c("[data-ui]"), rm = c("[data-rm]"), sl = c("[data-sel]"), go = c("[data-go]"), hr = c(".health-row");
+  const rt = c("[data-route]");
+  if (rt) { const [o, us] = rt.dataset.route.split(":"), u = +us, l = draft[o]; if (l.includes(u)) draft[o] = l.filter(x => x !== u); else draft[o] = o[0] === "d" ? [u] : [...l, u].sort((a, b) => a - b); return draw(); }
+  if (t.id === "rapply") { routes = JSON.parse(JSON.stringify(draft)); sel.dmx = 0; selFx = null; return draw(); }
+  if (t.id === "rrevert") { draft = JSON.parse(JSON.stringify(routes)); return draw(); }
+  const pb = c("[data-prob]");
+  if (pb) { const x = problems()[+pb.dataset.prob]; if (x.plugin !== undefined) { const pl = plugins.find(q => q.id === x.plugin) || plugins[x.plugin]; if (pl) pl.crashed = false; BL.pluginReloaded(); return draw(); } if (x.uni !== undefined) { sel.dmx = Math.max(0, unis().findIndex(U => U.u === x.uni)); patchView = "map"; selFx = x.fx ? M.patch.findIndex(p => p.name === x.fx && p.u === x.uni) : null; } const same = tab() === x.tab; location.hash = x.tab; if (same) draw(); return; }
+  const vw = c("[data-view]"), sr = c("[data-sort]"), pl = c("[data-plan]");
+  if (vw) { patchView = vw.dataset.view; return draw(); }
+  if (sr) { const k = sr.dataset.sort; if (planSort === k) planDir = -planDir; else { planSort = k; planDir = 1; } return draw(); }
+  if (t.id === "planfree") { planFree = !planFree; return draw(); }
+  if (pl) { selFx = +pl.dataset.plan; sel.dmx = Math.max(0, unis().findIndex(U => U.u === M.patch[selFx].u)); patchView = "map"; return draw(); }
+  const un = c("[data-uni]"), bl = c("[data-fx]"), col = c("[data-color]"), pr = c(".prob");
+  if (un) { sel.dmx = +un.dataset.uni; selFx = null; return draw(); }
+  if (pr) { selFx = M.patch.findIndex(p => p.name === M.conflicts[0].x); return draw(); }
+  if (bl) { selFx = +bl.dataset.fx; return draw(); }
+  if (col) { colorBy = col.dataset.color; return draw(); }
+  const ab = c("[data-abs]"); if (ab) { absAddr = ab.dataset.abs === "true"; return draw(); }
+  if (t.id === "desel") { selFx = null; return draw(); }
+  if (c("[data-go-prog]")) { location.href = "programmer.html"; return; }
+  if (hr) { location.hash = hr.dataset.tab; return; } if (go) { location.hash = go.dataset.go; return; }
+  if (sl) { const [k, i] = sl.dataset.sel.split(":"); sel[k] = +i; }
+  else if (an) D.artnet[+an.dataset.an].enabled = !D.artnet[+an.dataset.an].enabled;
+  else if (ui) { const p = plugins[+ui.dataset.ui]; p.open = !p.open; }
+  else if (rm) screens.splice(+rm.dataset.rm, 1);
+  else if (t.id === "addscreen") { screens.push({ w: 1920, h: 1080 }); sel.screens = screens.length - 1; }
+  else if (c("#ren")) remote.enabled = !remote.enabled;
+  else if (t.id === "pcs") remote.show = !remote.show;
+  else if (t.id === "pcr") remote.pass = "";
+  else if (t.id === "tl") return theme(true);
+  else if (t.id === "td") return theme(false);
+  else return;
+  draw(); };
+$("content").oninput = e => { if (e.target.id === "pc") remote.pass = e.target.value;
+  if (e.target.id === "planq") { planQ = e.target.value; $("planbody").innerHTML = planBody(); $("plansum").textContent = planSum(); }
+  if (e.target.id === "free") { freeN = Math.min(512, parseInt(e.target.value.replace(/\D/g, ""), 10) || 0); const U = unis()[sel.dmx], f = selFx !== null && M.patch[selFx]?.u === U.u ? { ...M.patch[selFx], i: selFx } : null; $("pm").innerHTML = gridHtml(U.u, chanMap(U.u), f); } };
+setInterval(() => { const u = $("uptime"); if (u) u.textContent = upt(); }, 1000);
+$("theme").onclick = () => theme(document.documentElement.dataset.theme !== "light");
+addEventListener("hashchange", draw); draw();
+
+if (BL.setlistOk()) plugins.forEach(p => { if (p.name === "setlist") p.crashed = false; });
+BL.onUni = u => { sel.dmx = Math.max(0, unis().findIndex(U => U.u === u)); patchView = "map"; if (location.hash !== "#dmx") location.hash = "dmx"; draw(); };
+document.addEventListener("click", e => { if (e.target.closest("[data-reloadp]")) { plugins.forEach(p => { if (p.crashed) p.crashed = false; }); BL.pluginReloaded(); draw(); } });
+try { const u = sessionStorage.getItem("bl-uni"); if (u !== null) { sessionStorage.removeItem("bl-uni"); sel.dmx = Math.max(0, unis().findIndex(U => U.u === +u)); } } catch {}
+draw();
+addEventListener("bl:save", () => draw());
+</script>
+</body>
+</html>

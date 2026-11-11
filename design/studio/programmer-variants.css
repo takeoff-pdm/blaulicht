@@ -1,0 +1,27 @@
+/* Options for programmer-variants.html. Only active with ?v= on programmer.html. */
+html[class*="v"] .work { --fw: 368px; --fh: 320px; }
+/* C: fader bank */
+html.vC2 .work { --fw: 440px; }
+html.vC3 .work { --fw: 440px; --fh: 420px; }
+html.vC4 .cap { left: calc(50% - 14px); width: 28px; }
+html.vC4 .strip .name { font-size: 11px; }
+html[class*="vC"]:not([class*="vA"]) .work { grid-template-rows: 30px var(--fh) minmax(0, 1fr); grid-template-columns: repeat(3, minmax(120px, 1fr)) var(--fw) minmax(220px, 280px); }
+html.vC2 .strip, html.vC3 .strip { max-width: none; }
+/* A: layout */
+html.vA2 .below, html.vA3 .below { display: contents; }
+html.vA2 .below > .colourpane, html.vA3 .below > .colourpane { grid-area: colour; }
+html.vA2 .below > .gizmopane, html.vA3 .below > .gizmopane { grid-area: gizmo; }
+html.vA2 .below > .pal, html.vA3 .below > .pal { grid-area: pals; }
+html.vA2 .work {
+  grid-template: 30px var(--fh) 282px minmax(0, 1fr) / repeat(3, minmax(120px, 1fr)) 196px calc(var(--fw) - 198px) minmax(220px, 280px);
+  grid-template-areas: "tools tools tools tools tools tools" "scenes groups fxcol faders faders side" "scenes groups fxcol colour gizmo side" "scenes groups fxcol pals pals side"; }
+html.vA3 .work {
+  grid-template: 30px max(var(--fh), 300px) minmax(0, 1fr) / repeat(3, minmax(120px, 1fr)) var(--fw) 196px 170px;
+  grid-template-areas: "tools tools tools tools tools tools" "scenes groups fxcol faders colour gizmo" "scenes groups fxcol pals side side"; }
+/* B: page bar */
+html.vB2 .tools > :nth-child(3) { order: 1; } html.vB2 .tools > :nth-child(4) { order: 2; } html.vB2 .tools > :nth-child(6) { order: 3; }
+html.vB2 .tools > :nth-child(1) { order: 4; margin-left: 16px; } html.vB2 .tools > :nth-child(2) { order: 5; } html.vB2 .tools > :nth-child(5) { order: 6; }
+html.vB2 .tools > .live { order: 7; } html.vB2 .tools > #pgb { order: 8; margin-left: 16px !important; }
+html.vB3 .tools > #pgb { margin-left: 0 !important; }
+html.vB3 .fxtools { display: flex; gap: 2px; padding: 0 4px 4px; background: var(--pane); flex: none; }
+html.vB3 .side h3 .mini + .mini { margin-left: 2px; }

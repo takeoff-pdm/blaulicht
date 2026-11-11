@@ -6,10 +6,12 @@
 //! shadow and injects events into the queue, so the rest of the plugin can
 //! treat a clicked pad exactly like a hardware press.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
 use blaulicht_plugin_framework::{println, MidiConnection, MidiEvent};
+
+use crate::hardware::HardwareMode;
 
 /// Device id reported when no hardware is attached. Matches
 /// `MidiConnection::dummy()` so it can never collide with a real handle.
@@ -20,9 +22,13 @@ const RECENT_CAPACITY: usize = 16;
 
 pub struct VirtualMidi {
     name: String,
-    hardware: Option<MidiConnection>,
+    hardware: Cell<Option<MidiConnection>>,
+    mode: Cell<HardwareMode>,
     /// Last velocity sent per note (note-on family status bytes).
     leds: RefCell<[u8; 128]>,
+    /// Status byte of that last send: the channel selects the APC's LED
+    /// behaviour, so replaying an LED needs it.
+    led_status: RefCell<[u8; 128]>,
     /// Last value seen per CC number, from hardware or from the twin.
     controls: RefCell<[u8; 128]>,
     /// Synthetic input injected by the twin UI, drained on the next `poll`.
@@ -34,9 +40,39 @@ pub struct VirtualMidi {
 }
 
 impl VirtualMidi {
-    /// Opens the hardware device if present; otherwise continues virtual-only.
-    pub fn open(name: &str) -> Self {
-        let hardware = match MidiConnection::open(name) {
+    /// In `Real` mode opens the hardware device if present and otherwise
+    /// continues virtual-only. `Mock` never touches the device.
+    pub fn open(name: &str, mode: HardwareMode) -> Self {
+        let midi = Self::disconnected(name);
+        midi.mode.set(mode);
+        midi.hardware.set(match mode {
+            HardwareMode::Real => midi.open_hardware(),
+            HardwareMode::Mock => {
+                println!("{name}: mock hardware, virtual only");
+                None
+            }
+        });
+        midi
+    }
+
+    /// A placeholder that never talks to hardware (for `Default` impls).
+    pub fn disconnected(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            hardware: Cell::new(None),
+            mode: Cell::new(HardwareMode::Real),
+            leds: RefCell::new([0; 128]),
+            led_status: RefCell::new([0; 128]),
+            controls: RefCell::new([0; 128]),
+            pending: RefCell::new(Vec::new()),
+            last_press: RefCell::new([0; 128]),
+            recent: RefCell::new(VecDeque::new()),
+        }
+    }
+
+    fn open_hardware(&self) -> Option<MidiConnection> {
+        let name = &self.name;
+        match MidiConnection::open(name) {
             Ok(conn) => {
                 println!("{name}: connected, handle id {}", conn.get_meta().device_id);
                 Some(conn)
@@ -45,30 +81,44 @@ impl VirtualMidi {
                 println!("{name}: not connected, virtual only ({err})");
                 None
             }
-        };
-
-        Self {
-            name: name.to_string(),
-            hardware,
-            leds: RefCell::new([0; 128]),
-            controls: RefCell::new([0; 128]),
-            pending: RefCell::new(Vec::new()),
-            last_press: RefCell::new([0; 128]),
-            recent: RefCell::new(VecDeque::new()),
         }
     }
 
-    /// A placeholder that never talks to hardware (for `Default` impls).
-    pub fn disconnected(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            hardware: None,
-            leds: RefCell::new([0; 128]),
-            controls: RefCell::new([0; 128]),
-            pending: RefCell::new(Vec::new()),
-            last_press: RefCell::new([0; 128]),
-            recent: RefCell::new(VecDeque::new()),
+    /// Switches at runtime. Leaving `Real` darkens the device's note LEDs, so
+    /// a frozen panel can't pass for a live one; entering it replays the
+    /// shadow, so the device shows what the twin showed.
+    pub fn set_mode(&self, mode: HardwareMode) {
+        if self.mode.replace(mode) == mode {
+            return;
         }
+
+        let leds = *self.leds.borrow();
+        let statuses = *self.led_status.borrow();
+        let lit = (0u8..128).filter(|&n| leds[n as usize] != 0);
+
+        match mode {
+            HardwareMode::Mock => {
+                if let Some(hw) = self.hardware.take() {
+                    for note in lit {
+                        hw.send(statuses[note as usize], note, 0);
+                    }
+                }
+                println!("{}: mock hardware, virtual only", self.name);
+            }
+            HardwareMode::Real => {
+                let hardware = self.open_hardware();
+                self.hardware.set(hardware);
+                if let Some(hw) = hardware {
+                    for note in lit {
+                        hw.send(statuses[note as usize], note, leds[note as usize]);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn is_mock(&self) -> bool {
+        self.mode.get() == HardwareMode::Mock
     }
 
     pub fn name(&self) -> &str {
@@ -76,11 +126,12 @@ impl VirtualMidi {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.hardware.is_some()
+        self.hardware.get().is_some()
     }
 
     pub fn device_id(&self) -> u8 {
         self.hardware
+            .get()
             .map(|h| h.get_meta().device_id)
             .unwrap_or(VIRTUAL_DEVICE_ID)
     }
@@ -90,14 +141,17 @@ impl VirtualMidi {
     pub fn send(&self, status: u8, kind: u8, value: u8) {
         if (kind as usize) < 128 {
             match status & 0xF0 {
-                0x90 => self.leds.borrow_mut()[kind as usize] = value,
+                0x90 => {
+                    self.leds.borrow_mut()[kind as usize] = value;
+                    self.led_status.borrow_mut()[kind as usize] = status;
+                }
                 0x80 => self.leds.borrow_mut()[kind as usize] = 0,
                 0xB0 => self.controls.borrow_mut()[kind as usize] = value,
                 _ => {}
             }
         }
 
-        if let Some(hw) = self.hardware {
+        if let Some(hw) = self.hardware.get() {
             hw.send(status, kind, value);
         }
     }
@@ -107,6 +161,7 @@ impl VirtualMidi {
     pub fn poll(&self, clock: u32) -> Vec<MidiEvent> {
         let mut events = self
             .hardware
+            .get()
             .map(|h| h.poll())
             .unwrap_or_default();
         events.append(&mut self.pending.borrow_mut());

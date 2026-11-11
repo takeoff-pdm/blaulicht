@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+COMPILED = HERE.parent.parent / "data/melody/compiled"  # pipeline/song.py
 DATA = HERE.parent.parent / "data/melody/viz"
 TRIALS = json.loads((HERE / "ab_trials.json").read_text())
 PATHS = {s["id"]: s["path"] for s in json.loads((DATA / "songs.json").read_text())}
@@ -58,7 +59,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ["api", "doc"]:  # /api/doc/<n>/<A|B>
             t = TRIALS[int(parts[2])]
             variant = t[parts[3]]
-            doc = json.loads((HERE / "cache" / f"{t['song']}.json").read_text())
+            doc = json.loads((COMPILED / f"{t['song']}.json").read_text())
             doc["plan"] = None if variant == "rules" else json.loads((HERE / "plans" / variant / f"{t['song']}.json").read_text())
             return self.send(json.dumps(doc, separators=(",", ":")).encode())
         if len(parts) == 3 and parts[:2] == ["api", "audio"] and parts[2] in PATHS:

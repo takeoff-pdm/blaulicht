@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Programmer draft</title>
+<script>if (location.hash === "#light") document.documentElement.dataset.theme = "light";</script>
+<link rel="stylesheet" href="studio.css">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<link rel="stylesheet" href="programmer-draft.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="nav">
+    <div class="logo"><img src="logo_blaulicht.svg" alt="blaulicht"><button class="fold" aria-label="Collapse the sidebar" title="Collapse the sidebar"><i class="ph ph-caret-double-left"></i></button></div>
+    <h2>System</h2>
+    <button><i class="ph ph-terminal-window"></i>Logs</button>
+    <button><i class="ph ph-gear"></i>System</button>
+    <button class="sub">General</button><button class="sub">DMX &amp; Art-Net</button><button class="sub">Plugins</button><button class="sub">MIDI &amp; Serial</button><button class="sub">Screens</button><button class="sub">Remote UI</button>
+    <h2>Setup</h2>
+    <button><i class="ph ph-waveform"></i>Audio</button>
+    <button><i class="ph ph-wrench"></i>Setup</button>
+    <button class="sub">Fixtures</button><button class="sub">Groups</button><button class="sub">Scenes</button><button class="sub">Animations</button><button class="sub">Palettes</button>
+    <h2>Live</h2>
+    <button><i class="ph ph-stack"></i>Views</button>
+    <button><i class="ph ph-game-controller"></i>Perform</button>
+    <button class="on"><i class="ph ph-faders"></i>Programmer</button>
+    <button><i class="ph ph-graph"></i>Scene Graph</button>
+    <button><i class="ph ph-cube-focus"></i>Visualizer</button>
+  </nav>
+
+  <main class="work draft" id="work">
+    <div class="scenebar">
+      <label>Scene<select id="scene" aria-label="Scene being edited"></select></label>
+      <div id="k1"></div><div id="k2"></div>
+      <button class="mini push" id="chg" aria-expanded="false" aria-controls="right"></button>
+      <button class="mini okblack push" id="pgb" title="Blackout (Cmd/Ctrl+B)">Blackout</button>
+      <button class="mini" id="plv" aria-pressed="false" title="Exclusive preview: shows only this scene and suppresses overlays. Off by default.">Exclusive preview</button>
+    </div>
+
+    <section class="pane selpane"><header>Selection<small id="count"></small></header>
+      <div class="fxfilter"><input id="filter" placeholder="Filter groups and fixtures" aria-label="Filter groups and fixtures"></div>
+      <div class="seltools"><button class="mini" id="clear">Clear</button><button class="mini" title="Placeholder, no action yet">Limit</button><button class="mini" title="Placeholder, no action yet">Limit all</button></div>
+      <div class="body seltree" id="tree"></div>
+    </section>
+
+    <div class="attrs">
+      <div class="attrhead" id="selname"></div>
+      <div class="fam"><h3>Intensity</h3><div class="bank" id="f-int"></div></div>
+      <div class="fam colourfam"><h3>Colour</h3><div class="cbody"><div class="cleft">
+          <div class="wheel" id="wheel"><div class="dim"></div><div class="mark" id="mark"></div></div>
+          <div class="fields"><div class="preview" id="preview"></div><label id="l-Hue">Hue<input data-a="Hue" inputmode="numeric" aria-label="Hue, 0 to 360"></label><label id="l-Saturation">Sat<input data-a="Saturation" inputmode="numeric" aria-label="Saturation, 0 to 255"></label></div>
+        </div><div class="bank" id="f-val"></div></div></div>
+      <div class="fam posfam"><h3>Position</h3>
+        <div class="xy" id="xy" tabindex="0" role="application" aria-label="Pan and tilt. Drag, or use the arrow keys."><i class="xh" id="xh"></i><i class="xv" id="xv"></i><i class="xdot" id="xdot"></i></div>
+        <div class="fields"><label id="l-Pan">Pan<input data-a="Pan" inputmode="numeric" aria-label="Pan, 0 to 255"></label><label id="l-Tilt">Tilt<input data-a="Tilt" inputmode="numeric" aria-label="Tilt, 0 to 255"></label></div>
+        <button class="mini" id="gcentre">Centre</button></div>
+      <div class="fam"><h3>Beam</h3><div class="bank" id="f-beam"></div></div>
+      <div class="palp colourpal"><h3>Colour palettes <small id="palcount"></small></h3><div class="chips" id="pals"></div></div>
+      <div class="palp"><h3>Position palettes</h3><p class="none">None in this show.</p></div>
+      <div class="palp"><h3>Beam palettes</h3><p class="none">None in this show.</p></div>
+    </div>
+
+    <section class="pane side" id="right"><h3>Changes <small id="ctotal"></small><button class="mini" id="undoall">Clear all</button></h3>
+      <div class="fill" id="changes"></div>
+      <h3>Animations <small id="acount"></small><button class="mini">Add</button></h3><div id="anims"></div></section>
+  </main>
+
+  <footer class="status"></footer><script src="chrome.js"></script>
+</div>
+<script src="data.js"></script>
+<script src="programmer-draft.js"></script>
+</body>
+</html>

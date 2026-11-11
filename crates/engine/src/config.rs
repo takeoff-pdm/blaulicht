@@ -37,6 +37,10 @@ pub struct Config {
     /// Whether the engine accepts remote clients at all.
     #[serde(default = "default_server_enabled")]
     pub server_enabled: bool,
+    /// What a remote client must state to connect. Unset: anyone who reaches
+    /// `port` may. Kept in plain text, and sent unencrypted by clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_passcode: Option<String>,
     /// The web frontend's bundle (`crates/web/build.sh`), served on `port`
     /// to plain HTTP requests. Relative to this file's folder. Unset: `web/`
     /// next to the binary, or one folder up (`target/web` in a checkout).
@@ -178,7 +182,7 @@ pub struct ParsedShowfile {
     /// Older showfiles stored the render base as the focused scene.
     migrate_legacy_base_scene: bool,
     artnet: ShowfileArtNetState,
-    plugin_state: HashMap<String, String>,
+    pub(crate) plugin_state: HashMap<String, String>,
     stage: StageScene,
     /// The desk frontend's section, if the file has one.
     pub ui: Option<ShowfileUiState>,
@@ -344,6 +348,7 @@ impl Default for Config {
         Self {
             port: 1234,
             server_enabled: default_server_enabled(),
+            server_passcode: None,
             web_ui_dir: None,
             dmx_out_devices: ["/dev/dmx_out0".to_string(), "/dev/dmx_out1".to_string()],
             default_audio_device: None,
@@ -379,6 +384,24 @@ pub fn config_path() -> Result<PathBuf> {
     Ok("~/blaulicht.toml".into())
 }
 
+/// Renames state saved under the old `plugin_<id>` keys to the file-name keys
+/// plugins use now, taking the id as the position in `plugins`. An entry whose
+/// new key is already taken stays as it is, unread: nothing is overwritten.
+pub fn migrate_plugin_state_keys(
+    plugin_state: &mut HashMap<String, String>,
+    plugins: &[PluginConfig],
+) {
+    for (id, plugin) in plugins.iter().enumerate() {
+        let key = crate::plugin::plugin_display_name(&plugin.file_path);
+        if plugin_state.contains_key(&key) {
+            continue;
+        }
+        if let Some(value) = plugin_state.remove(&format!("plugin_{id}")) {
+            plugin_state.insert(key, value);
+        }
+    }
+}
+
 pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
     // Either read or create a configuration file based on it's current existence
     let path = Path::new(&file_path);
@@ -390,7 +413,8 @@ pub fn read_config(file_path: PathBuf) -> Result<Option<Config>> {
                 file_path.to_string_lossy()
             );
             let content = fs::read_to_string(path)?;
-            let config = toml::from_str(&content)?;
+            let mut config: Config = toml::from_str(&content)?;
+            migrate_plugin_state_keys(&mut config.plugin_state, &config.plugins);
             Ok(Some(config))
         }
         false => {
@@ -461,6 +485,41 @@ pub fn write_config(file_path: PathBuf, config: Config) -> Result<Option<Config>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_plugin_state_keys_move_to_the_file_name() {
+        let plugin = |file_path: &str| PluginConfig {
+            file_path: file_path.to_string(),
+            enabled: false,
+            enable_watcher: false,
+        };
+        let plugins = [
+            plugin("bundle/a.wasm"),
+            plugin("bundle/b.wasm"),
+            plugin("bundle/c.wasm"),
+        ];
+        let mut state: HashMap<String, String> = [
+            ("plugin_0", "old a"),
+            ("plugin_1", "old b"),
+            ("b", "new b"),
+            ("plugin_9", "no such plugin"),
+            ("animation_plugin::x", "animation"),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+
+        migrate_plugin_state_keys(&mut state, &plugins);
+
+        assert_eq!(state["a"], "old a");
+        assert!(!state.contains_key("plugin_0"));
+        assert_eq!(state["b"], "new b", "a newer entry is not overwritten");
+        assert_eq!(state["plugin_1"], "old b");
+        assert_eq!(state["plugin_9"], "no such plugin");
+        assert_eq!(state["animation_plugin::x"], "animation");
+        assert!(!state.contains_key("c"));
+    }
+
     use blaulicht_shared::fixture::{
         light::Light,
         state::{Fixture, FixtureGroup, Position},

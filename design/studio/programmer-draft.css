@@ -1,0 +1,59 @@
+/* Draft: the Programmer rebuilt around scene, selection, attributes, result. */
+.work.draft { position: relative; grid-template-rows: 48px minmax(0, 1fr); grid-template-columns: clamp(220px, 16vw, 340px) minmax(0, 1fr) clamp(260px, 16vw, 380px); grid-template-areas: "top top top" "sel attrs right"; }
+.scenebar { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 8px; background: var(--head); min-width: 0; }
+.scenebar label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.scenebar select { height: 30px; min-width: 170px; padding: 0 6px; font: inherit; font-size: 14px; font-weight: 500; color: var(--strong); background: var(--ctl); border: 0; }
+.scenebar .knob { display: flex; flex-direction: row; align-items: center; gap: 6px; }
+.scenebar .knob svg { width: 34px; height: 34px; }
+.scenebar .knob .name { font-size: 12px; color: var(--muted); }
+.scenebar .push { margin-left: auto; }
+.scenebar .mini { height: 28px; padding: 0 10px; white-space: nowrap; }
+.scenebar #chg { display: none; }
+
+.draft .selpane { grid-area: sel; }
+.seltools { display: flex; gap: 2px; padding: 0 4px 4px; background: var(--list); flex: none; }
+.seltools .mini { padding: 0 6px; white-space: nowrap; }
+.seltree .row.leaf { padding-left: 8px; gap: 4px; }
+.seltree .tw { width: 18px; height: 24px; flex: none; display: grid; place-items: center; font-size: 10px; color: var(--muted); }
+.seltree .pick { flex: 1; min-width: 0; height: 24px; display: flex; align-items: center; text-align: left; overflow: hidden; }
+.seltree .pick .cut { flex: 1; }
+.seltree .fx { padding-left: 34px; }
+
+/* Each attribute family owns a column: its control on top, its palettes underneath. */
+.attrs { grid-area: attrs; min-width: 0; min-height: 0; display: grid; gap: var(--gap); grid-template-rows: 26px 316px minmax(0, 1fr); grid-template-columns: 76px minmax(236px, 3fr) minmax(176px, 2fr) 124px; }
+.attrhead { grid-column: 1 / -1; height: 26px; display: flex; align-items: center; padding: 0 8px; background: var(--head); font-weight: 500; color: var(--strong); white-space: nowrap; overflow: hidden; }
+.fam { background: var(--pane); min-width: 0; min-height: 0; padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.fam h3, .palp h3 { font-size: 13px; font-weight: 500; color: var(--strong); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.palp h3 small { font-weight: 400; font-size: 12px; color: var(--muted); }
+.fam .bank { padding: 0; min-height: 0; }
+.colourfam .cbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 176px 44px; justify-content: center; gap: 8px; }
+.colourfam .cleft { display: flex; flex-direction: column; gap: 8px; }
+.colourfam .wheel { align-self: center; }
+.fields { display: grid; grid-template-columns: 36px 1fr 1fr; gap: 2px; }
+.fields .preview { height: 40px; }
+.fields label { background: var(--well); text-align: center; padding-top: 3px; font-size: 11px; color: var(--muted); display: block; }
+.fields input { display: block; width: 100%; height: 19px; border: 0; background: none; text-align: center; font: 12px PlexMono, monospace; color: var(--strong); }
+.fields label.changed input { color: var(--changed); }
+.posfam .xy { width: 160px; height: 160px; flex: none; align-self: center; }
+.posfam .fields { grid-template-columns: 1fr 1fr; width: 160px; align-self: center; }
+.posfam #gcentre { align-self: center; }
+.palp { background: var(--pane); min-width: 0; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.palp.colourpal { grid-column: 1 / 3; }
+.palp .none { color: var(--muted); font-size: 12px; }
+.palp .chips { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.draft.none .attrs > :not(.attrhead) { opacity: .4; pointer-events: none; }
+
+.draft .side { grid-area: right; min-height: 0; }
+.draft .side .fill { flex: 1; min-height: 0; overflow: auto; }
+.draft .side #anims { flex: none; max-height: 40%; overflow: auto; }
+
+/* The right column gives way first, then the sidebar. */
+@media (max-width: 1299px) {
+  .work.draft { grid-template-columns: clamp(200px, 18vw, 240px) minmax(0, 1fr); grid-template-areas: "top top" "sel attrs"; }
+  .scenebar #chg { display: block; }
+  .scenebar #pgb { margin-left: 0; }
+  .draft .side { display: none; position: absolute; top: 48px; right: 0; bottom: 0; width: 300px; z-index: 5; box-shadow: -1px 0 0 var(--line); }
+  .draft.showright .side { display: flex; }
+  .scenebar #chg[aria-expanded="true"] { background: var(--blue-dim); color: var(--strong); }
+}
+@media (max-width: 899px) { .scenebar .knob .name { display: none; } }

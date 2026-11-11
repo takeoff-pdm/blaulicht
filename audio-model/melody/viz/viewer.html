@@ -105,6 +105,7 @@
 <body>
 <header>
   <span class="title">Melody Lab</span>
+  <a href="http://127.0.0.1:8767/" target="melody_compiler" style="color: var(--accent)">Compiler</a>
   <input type="search" id="filter" placeholder="Filter songs" autocomplete="off">
   <select id="song"></select>
   <label class="ctl" title="The list shows electronic tracks only; tick to include pop (labels in data/melody/viz/genres.json)"><input type="checkbox" id="withpop"> Pop</label>
@@ -142,6 +143,7 @@
     <div id="club"><div class="clubhud" id="clubhud"></div></div>
     <div class="clubbar">
       <label title="What the room listens to">Look <select id="look"></select></label>
+      <span id="humanpick" style="display: none; gap: 6px; align-items: center"><select id="looksong" title="Jump to a song that has a map"></select><select id="lookmap" title="Which person's lightshow"></select></span>
       <label title="When the same music returns, the lights repeat exactly, strobes included, and each song gets its own looks"><input type="checkbox" id="dejavu"> Déjà Vu</label>
       <label title="Rations the rig: one fixture group in the intro, another with each section, everything only on the biggest drop"><input type="checkbox" id="burn"> Slow Burn</label>
       <label title="Builds as a visible timer: lamps go out a row at a time, the last bar counts its beats, the ropes fill towards the hub"><input type="checkbox" id="countdown"> Countdown</label>
@@ -310,7 +312,8 @@ function b64(s) { const bin = atob(s); const u = new Uint8Array(bin.length); for
 async function loadSongs() {
   const res = await fetch("/api/songs");
   state.songs = await res.json();
-  const fromHash = new URLSearchParams(location.hash.slice(1)).get("song");
+  const hash = new URLSearchParams(location.hash.slice(1)), fromHash = hash.get("song");
+  state.jumpTo = parseFloat(hash.get("t"));
   const linked = state.songs.find((s) => s.id === fromHash);
   if (linked && linked.genre !== "electronic") $("withpop").checked = true;  // a linked pop song stays pickable
   fillSongList("");
@@ -369,6 +372,7 @@ async function loadSong(id) {
     $("play").disabled = false;
     $("overlay").style.display = "none";
     $("status").innerHTML = `<b>${doc.name}</b> · ${fmt(buffer.duration)} · decoded ${buffer.sampleRate} Hz`;
+    if (Number.isFinite(state.jumpTo)) { seek(state.jumpTo); state.jumpTo = NaN; }
   } catch (e) {
     if (token !== state.loadToken) return;
     $("overlay").textContent = "Could not load: " + e.message;
@@ -441,10 +445,16 @@ function renderTrackPanel() {
 function renderSongInfo(off) {
   const s = state.song, b = s.beats;
   const rows = [`Duration ${fmt(s.duration)}`];
-  rows.push(b && b.beats.length ? `Rekordbox grid: ${b.bpm?.toFixed?.(2) ?? "?"} BPM, ${b.beats.length} beats` : "No Rekordbox beat grid");
+  const chk = s.check || {};
+  const gridName = { rekordbox: "Rekordbox grid", corrected: "Grid corrected from the beat trackers", hand: "Grid corrected by hand", unchecked: "Rekordbox grid, not checked" }[chk.grid] || "Beat grid";
+  const gridFit = chk.trackers_on_grid != null ? `, ${Math.round(chk.trackers_on_grid * 100)}% of the trackers' beats on it` : "";
+  rows.push(b && b.beats.length ? `${gridName}: ${b.bpm?.toFixed?.(2) ?? "?"} BPM, ${b.beats.length} beats${gridFit}` : "No beat grid");
   if (b && b.aligned) rows.push(`Grid moved onto the drum hits: ${b.aligned.shift_ms} ms (${b.aligned.min_ms} to ${b.aligned.max_ms} ms over the song)`);
   rows.push(`Key ${s.key ?? "?"}${s.mood ? ` · ${s.mood} mood` : ""} (Rekordbox)`);
-  rows.push(`${(s.show?.drops || []).length} drops · ${(s.show?.sections || []).length} sections · ${(s.phrases || []).length} phrases`);
+  const onKick = chk.drops_on_kick != null ? ` (${chk.drops_on_kick} on a kick)` : "";
+  rows.push(`${(s.show?.drops || []).length} drops${onKick} · ${(s.show?.sections || []).length} sections · ${(s.phrases || []).length} phrases${chk.labels === "done" ? " · sections from your labels" : ""}`);
+  const esc = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  for (const f of chk.flags || []) rows.push(`To check${f.at != null ? ` at ${fmt(f.at)}` : ""}: ${esc(f.text)}`);
   const ml = s.melody?.stats?.line;
   if (ml) rows.push(`Melody line: ${ml.notes} notes (${Math.round(ml.vocal_share * 100)}% vocal, rest lead) · ${ml.hooks} hooks · ${s.melody.roots.length} chord-root changes`);
   const c = s.cues || {}, pr = c.preset || {};
@@ -775,6 +785,14 @@ requestAnimationFrame(frame);
 $("filter").addEventListener("input", (e) => fillSongList(e.target.value));
 $("withpop").addEventListener("change", () => fillSongList($("filter").value));
 $("song").addEventListener("change", (e) => { if (e.target.value) loadSong(e.target.value); e.target.blur(); });
+// the compiler's page links to a song, a moment in it (#song=<id>&t=<seconds>) or its labelling mode (&label=1)
+window.addEventListener("hashchange", () => {
+  const hash = new URLSearchParams(location.hash.slice(1)), id = hash.get("song");
+  if (hash.get("label") === "1") return location.reload();
+  state.jumpTo = parseFloat(hash.get("t"));
+  if (id && id !== state.song?.id && state.songs.some((s) => s.id === id)) { $("song").value = id; loadSong(id); }
+  else if (Number.isFinite(state.jumpTo)) { seek(state.jumpTo); state.jumpTo = NaN; }
+});
 $("play").addEventListener("click", () => state.playing ? pause() : play());
 $("zoom").addEventListener("input", (e) => { state.window = +e.target.value; $("zoomv").textContent = `${state.window} s`; });
 $("songvol").addEventListener("input", (e) => { if (songGain) songGain.gain.value = +e.target.value; });
