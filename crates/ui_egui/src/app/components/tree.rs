@@ -531,9 +531,13 @@ where
         let mut state = TreeState::<F>::load(ui.ctx(), self.id);
         let rows = visible_rows(self.items, &state.collapsed);
         let density = Density::of(ui.ctx());
-        let h = density.row_height() + 2.0;
+        // 24px rows like the mockup's `.row`; folder bands after the first
+        // row get a 2px gap above them (`.row.folder:not(:first-child)`).
+        let h = density.row_height();
+        let band_gap = 2.0;
         let toggle_width = 18.0;
-        let folder_icon = if self.compact { 0.0 } else { 20.0 };
+        // Every desktop tree shows the folder icon, narrow ones too.
+        let folder_icon = 20.0;
         // A child's label starts this much right of its parent's label.
         let indent_step = folder_icon + 12.0;
         let move_size = ButtonSize::Custom(0.0, 20.0, 12.0);
@@ -589,10 +593,14 @@ where
             indent + toggle_width + 2.0 + icon + label + 12.0 + detail + 6.0 <= full_width
         });
 
-        for row in &rows {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for (index, row) in rows.iter().enumerate() {
             let item = &self.items[row.item];
             let is_selected = self.selected.contains(&item.key);
             let is_folder = matches!(item.key, TreeKey::Folder(_));
+            if is_folder && index > 0 {
+                ui.add_space(band_gap);
+            }
             let indent = indent_width(
                 row.depth,
                 indent_step,
@@ -619,9 +627,13 @@ where
             // Background and selection bar from the indentation on (with a
             // 1px gap between rows), then the guides of the parents.
             let painter = ui.painter();
+            // Leaves keep a 1px gap below; folder bands fill the whole row.
             let item_rect = Rect::from_min_max(
                 egui::pos2(row_rect.left() + indent, row_rect.top()),
-                egui::pos2(row_rect.right(), row_rect.bottom() - 1.0),
+                egui::pos2(
+                    row_rect.right(),
+                    row_rect.bottom() - if is_folder { 0.0 } else { 1.0 },
+                ),
             );
             if is_selected {
                 painter.rect_filled(item_rect, 0.0, color.selection);
@@ -642,11 +654,18 @@ where
                 painter.rect_filled(item_rect, 0.0, color.surface_raised);
             }
             if is_folder {
+                // A filled 1px rect snapped to the pixel grid, so the line is
+                // not smeared over two pixel rows and lost in the band grey.
                 let band = ui_tokens::studio(ui.ctx());
-                painter.hline(
-                    item_rect.x_range(),
-                    item_rect.top() + 0.5,
-                    egui::Stroke::new(ui_tokens::HAIRLINE, band.line),
+                let ppp = ui.ctx().pixels_per_point();
+                let top = (item_rect.top() * ppp).round() / ppp;
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        egui::pos2(item_rect.left(), top),
+                        egui::pos2(item_rect.right(), top + ui_tokens::HAIRLINE),
+                    ),
+                    0.0,
+                    band.line,
                 );
             }
             if row.depth > 0 {
