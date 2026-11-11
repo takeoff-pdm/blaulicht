@@ -18,6 +18,9 @@ struct State {
     sw: [bool; 2],
     seg: usize,
     view: usize,
+    preview: bool,
+    identify: bool,
+    num: [f64; 2],
     name: String,
     last: &'static str,
 }
@@ -35,6 +38,9 @@ impl Default for State {
             sw: [true, false],
             seg: 0,
             view: 0,
+            preview: false,
+            identify: false,
+            num: [1.25, 90.0],
             name: "New scene".into(),
             last: "",
         }
@@ -91,6 +97,9 @@ pub fn showcase_ui(ui: &mut Ui) {
                         egui::Theme::Light
                     });
                 }
+                if studio::live_button(ui, "Exclusive preview", s.preview, TARGET_SHOW).clicked() {
+                    s.preview = !s.preview;
+                }
                 if studio::mini_button(ui, "Rename…", false, TARGET_SHOW).clicked() {
                     studio::open_modal(&ctx, Id::new("showcase_rename"));
                 }
@@ -102,7 +111,7 @@ pub fn showcase_ui(ui: &mut Ui) {
             },
         );
         ui.horizontal_top(|ui| {
-            pane_flush(ui, "Groups", 230.0, |ui| {
+            pane_flush(ui, None, "Groups", 230.0, |ui| {
                 studio::list_frame(ui, |ui| {
                     ui.set_width(230.0);
                     ui.set_min_height(394.0);
@@ -152,7 +161,7 @@ pub fn showcase_ui(ui: &mut Ui) {
                     }
                 });
             });
-            pane(ui, "Faders", 260.0, |ui| {
+            pane(ui, Some("Selected group:"), "STAGE", 260.0, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     for (i, name) in ["Intensity", "Strobe", "Hue", "Sat"].iter().enumerate() {
@@ -160,7 +169,7 @@ pub fn showcase_ui(ui: &mut Ui) {
                     }
                 });
             });
-            pane(ui, "Knobs and switches", 420.0, |ui| {
+            pane(ui, Some("Fixture:"), "MAC250E 1", 420.0, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 22.0;
                     studio::knob(
@@ -185,6 +194,24 @@ pub fn showcase_ui(ui: &mut Ui) {
                 }
                 ui.add_space(10.0);
                 studio::segmented(ui, &mut s.seg, &["Top", "Front", "Side"], TARGET_SHOW);
+                ui.add_space(10.0);
+                studio::pane_header(ui, None, "Number fields and lit buttons", false, |_| {});
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.label("Across (X)");
+                    studio::num_field(ui, &mut s.num[0], 0.05, -50.0..=50.0, 2, 72.0);
+                    ui.label("Rotation");
+                    studio::num_field(ui, &mut s.num[1], 1.0, -180.0..=180.0, 0, 64.0);
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    if studio::live_button(ui, "Identify", s.identify, TARGET_MIN).clicked() {
+                        s.identify = !s.identify;
+                    }
+                    let _ = studio::live_button(ui, "Initialize", false, TARGET_MIN);
+                });
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new("Changed value").color(t.changed));
                 ui.label(egui::RichText::new("Output at risk").color(t.red_text));
@@ -253,32 +280,41 @@ pub fn showcase_ui(ui: &mut Ui) {
     ctx.data_mut(|d| d.insert_temp(state_id(), s));
 }
 
-fn pane(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
-    pane_with(ui, title, width, 8, add);
+fn pane(ui: &mut Ui, prefix: Option<&str>, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
+    pane_with(ui, prefix, title, width, 8, add);
 }
 
 /// A pane whose list runs edge to edge under the header (`.pane > .body`).
-fn pane_flush(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
-    pane_with(ui, title, width, 0, add);
+fn pane_flush(
+    ui: &mut Ui,
+    prefix: Option<&str>,
+    title: &str,
+    width: f32,
+    add: impl FnOnce(&mut Ui),
+) {
+    pane_with(ui, prefix, title, width, 0, add);
 }
 
-fn pane_with(ui: &mut Ui, title: &str, width: f32, margin: i8, add: impl FnOnce(&mut Ui)) {
+/// A pane in the first row of a master-detail page: 40px header.
+fn pane_with(
+    ui: &mut Ui,
+    prefix: Option<&str>,
+    title: &str,
+    width: f32,
+    margin: i8,
+    add: impl FnOnce(&mut Ui),
+) {
     let t = tokens(ui.ctx());
     egui::Frame::new().fill(t.pane).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.set_width(width);
             ui.set_min_height(420.0);
             ui.spacing_mut().item_spacing.y = 0.0;
-            let (bar, _) = ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::hover());
-            ui.painter().rect_filled(bar, 0.0, t.head);
-            ui.painter().text(
-                egui::pos2(bar.left() + 8.0, bar.center().y),
-                egui::Align2::LEFT_CENTER,
-                title,
-                crate::app::ui_tokens::Density::of(ui.ctx())
-                    .font(crate::app::ui_tokens::Weight::Medium, 13.0),
-                t.strong,
-            );
+            studio::pane_header(ui, prefix, title, true, |ui| {
+                if prefix.is_some() {
+                    let _ = studio::mini_button(ui, "Edit", false, TARGET_SHOW);
+                }
+            });
             egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 4.0;

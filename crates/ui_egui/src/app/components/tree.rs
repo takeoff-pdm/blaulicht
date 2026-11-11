@@ -633,15 +633,28 @@ where
                     0.0,
                     color.accent,
                 );
+            } else if is_folder {
+                // Folder band (decision A4 B1): title-bar grey with a 1px
+                // line on top, `ctl` under the pointer.
+                let band = ui_tokens::studio(ui.ctx());
+                painter.rect_filled(item_rect, 0.0, if hovered { band.ctl } else { band.head });
             } else if hovered {
                 painter.rect_filled(item_rect, 0.0, color.surface_raised);
+            }
+            if is_folder {
+                let band = ui_tokens::studio(ui.ctx());
+                painter.hline(
+                    item_rect.x_range(),
+                    item_rect.top() + 0.5,
+                    egui::Stroke::new(ui_tokens::HAIRLINE, band.line),
+                );
             }
             if row.depth > 0 {
                 // One line per parent level, under that parent's caret.
                 let step = indent / row.depth as f32;
                 for level in 0..row.depth {
-                    let x = (row_rect.left() + step * level as f32 + toggle_width / 2.0).round()
-                        + 0.5;
+                    let x =
+                        (row_rect.left() + step * level as f32 + toggle_width / 2.0).round() + 0.5;
                     painter.vline(
                         x,
                         row_rect.y_range(),
@@ -719,22 +732,21 @@ where
                 color.text
             };
             if is_folder && folder_icon > 0.0 {
+                // Solid grey folder icon, open or closed like the band.
                 let icon = if row.collapsed {
-                    egui_phosphor::regular::FOLDER_SIMPLE
+                    egui_phosphor::fill::FOLDER
                 } else {
-                    egui_phosphor::regular::FOLDER_OPEN
-                };
-                let icon_color = if is_selected {
-                    color.accent
-                } else {
-                    color.muted
+                    egui_phosphor::fill::FOLDER_OPEN
                 };
                 ui.painter().text(
                     egui::pos2(x, row_rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     icon,
-                    density.font(Weight::Regular, 14.0),
-                    icon_color,
+                    egui::FontId::new(
+                        14.0,
+                        egui::FontFamily::Name(ui_tokens::PHOSPHOR_FILL_FAMILY.into()),
+                    ),
+                    ui_tokens::studio(ui.ctx()).muted,
                 );
                 x += folder_icon;
             }

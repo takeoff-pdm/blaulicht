@@ -1091,7 +1091,34 @@ impl BlaulichtApp {
 
                         ui.add_space(6.0);
 
-                        if components::button(ui, false, "Initialize", ButtonSize::Medium) {
+                        // Desktop: a lit button, on for the 10 s the
+                        // fixture initializes. The kiosk keeps its button.
+                        let init_id = egui::Id::new(("fixture_initializing", gid, fid));
+                        let init_clicked =
+                            if crate::app::ui_tokens::Density::of(ui.ctx()).is_compact() {
+                                let since: Option<f64> = ui.data(|d| d.get_temp(init_id));
+                                let now = ui.input(|i| i.time);
+                                let on = since.is_some_and(|t| now - t < 10.0);
+                                if on {
+                                    ui.ctx().request_repaint_after(Duration::from_millis(250));
+                                }
+                                let clicked = components::studio::live_button(
+                                    ui,
+                                    "Initialize",
+                                    on,
+                                    ButtonSize::Medium
+                                        .height_at(crate::app::ui_tokens::Density::Compact),
+                                )
+                                .clicked()
+                                    && !on;
+                                if clicked {
+                                    ui.data_mut(|d| d.insert_temp(init_id, now));
+                                }
+                                clicked
+                            } else {
+                                components::button(ui, false, "Initialize", ButtonSize::Medium)
+                            };
+                        if init_clicked {
                             let label = format!("Initializing `{}` (10 s)", self.new_fixture_name);
                             let init = HostCommand::InitFixtures(vec![(gid, fid)]);
                             self.send_setup_command(init, move |app, _| {

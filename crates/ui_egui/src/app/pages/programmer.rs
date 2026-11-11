@@ -55,6 +55,31 @@ impl BlaulichtApp {
         let owned = dmx_engine.live_owner() == Some(self.client.session());
         let any = dmx_engine.0.live_mode;
 
+        // Desktop: the lit button (`.livebtn`), its dot blinking while this
+        // session previews. The kiosk keeps its LIVE button below.
+        if Density::of(ui.ctx()).is_compact() {
+            let height = size
+                .height_at(Density::Compact)
+                .max(crate::app::ui_tokens::TARGET_MIN);
+            let response = components::studio::live_button(ui, "Exclusive preview", owned, height);
+            if response.clicked() {
+                self.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::ToggleLiveMode,
+                ));
+            }
+            response.on_hover_text(match (owned, any) {
+                (true, _) => "Only the selected scene renders. Click to return to the live rig.",
+                (false, true) => {
+                    "Another operator is previewing their scene; overlays are suppressed. Click to preview yours instead."
+                }
+                (false, false) => {
+                    "Edits go to the selected scene without affecting output. Click to preview it live."
+                }
+            });
+            return;
+        }
+
         // Scoped so the painter below can anchor the dot to the button's rect.
         let scope = ui.scope(|ui| components::button(ui, owned, "LIVE", size));
 
