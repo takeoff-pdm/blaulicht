@@ -26,10 +26,10 @@ Testing found Blackout only existed on View Performance, and that a lost connect
 - [x] Blackout is visible on every page and survives page changes.
 - [x] Holding the key toggles once; a typed `b` still goes into a focused field.
 - [x] Restore returns the previous level, including after changing Grand Master.
-- [ ] With the engine stopped, no cell shows a live value and Blackout reports it was not sent.
+- [x] With the engine stopped, no cell shows a live value and Blackout reports it was not sent.
 - [x] A failed save never leaves "Saved" showing.
 - [x] Load and Close warn about unsaved changes only when there are some.
-- [ ] Remote clients can't reach the hidden actions.
+- [x] Remote clients can't reach the hidden actions.
 
 ## Verification
 - `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
@@ -75,10 +75,32 @@ Mockup: any page with `?state=disconnected`, `?state=restarting` or `?remote`, a
   committed), clippy (no new warnings in touched files), `cargo test --all-features`: all run in the blenv
   container with CARGO_BUILD_JOBS=4, all pass.
 
-### Not verified / open
-- No remote client could be run: the web bundle needs wasm-bindgen-cli, which is not in the container, and
-  installing it plus a wasm build was too heavy for the laptop. So the offline strip, "not sent" notice, dimmed
-  cells and hidden Close for a remote client were not seen running (criteria 4 and 7 left unticked).
-- Only 1500x950 was checked (blenv's desktop window); 1280x800 and 2560x1440 not checked.
-- "Pending routing" cell not added: there is no pending-routing state in the client yet (062).
+### Review fixes (2026-11-11, desktop only)
+- Programmer page-bar Blackout now matches `.okblack`: always filled #b80f0f (hover #d40f0f), white
+  text, 28px, plus a white 2px inset ring while Grand Master is 0.
+- Messages: new `components/notes.rs`, a minimal desktop notification stack (bottom right above the
+  status bar, max 4, info 5 s paused on hover, errors stay with a close button, repeats count "x2").
+  Blackout shows "Blackout on" (error) and "Grand Master restored to N%" (info) from Ctrl+B, the status
+  cell and the page-bar button; offline it shows "Blackout not sent: engine disconnected" as an error
+  card instead of the centred popup. Kiosk keeps its popup path. 070 should grow this stack, not replace it.
+- "N routing pending" status cell added left of the issues (changed colour, opens DMX), from
+  `BlaulichtApp::routing_pending`. Nothing sets it yet: 062 owns the pending routing state. Verified
+  with a temporary count of 2 (reverted).
 
+### Verified after review (blenv)
+- 1500x950 desk: idle/on Blackout button, both toasts, restore to 100%, routing cell; vs programmer.html.
+- 1280x800 (desk window resized with xdotool) and 2560x1440 (web client in chromium on a second Xvfb
+  :10 in the container): status bar, toast and page bar fit; light theme checked at 2560x1440.
+- Remote client (web bundle via `blenv build web`, chromium in the container): General shows no
+  Load, Save-to, Close, Quit, Restart or Shutdown. Engine stopped (`blenv stop`): red offline strip on its
+  own row, page dimmed and disabled, status cells show `---`/`--`, sparklines stop, "Engine
+  disconnected" cell; Ctrl+B shows "Blackout not sent: engine disconnected". Matches
+  `?state=disconnected` (the app adds a reconnect countdown and a Reconnect now button).
+- Kiosk 800x480 Programmer screenshot is byte-identical to the decouple baseline.
+- rustfmt on touched files, `cargo clippy --all-targets --all-features` (no warnings in touched code),
+  `cargo test --all-features`: all in the blenv container with CARGO_BUILD_JOBS=4, all pass.
+- Note for blenv: the engine serves the web UI from `/build/target/debug/web`, `build web` writes
+  `/build/target/web`; a symlink in the container was needed.
+
+### Still open
+- The routing pending count has no source until 062.

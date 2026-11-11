@@ -112,6 +112,7 @@ impl BlaulichtApp {
             errors: health.errors,
             warnings: health.warnings,
             remote_sessions,
+            routing_pending: self.routing_pending,
         };
         match components::status_bar(ui, &info) {
             None => {}
@@ -128,7 +129,12 @@ impl BlaulichtApp {
         let black = self.client.grand_master_percent() == 0;
         if !link.is_online() {
             let what = if black { "Restore" } else { "Blackout" };
-            self.show_refusal(format!("{what} not sent: engine {}", link.word()));
+            let why = format!("{what} not sent: engine {}", link.word());
+            if self.layout.is_desktop() {
+                self.desk_notes.error(why);
+            } else {
+                self.show_refusal(why);
+            }
             return;
         }
         let level = if black {
@@ -137,6 +143,15 @@ impl BlaulichtApp {
             0
         };
         self.send_command(HostCommand::SetGrandMaster(level), |_, _| {});
+        // The mockup's messages (`chrome.js` toggleBlack).
+        if self.layout.is_desktop() {
+            if level == 0 {
+                self.desk_notes.error("Blackout on");
+            } else {
+                self.desk_notes
+                    .info(format!("Grand Master restored to {level}%"));
+            }
+        }
     }
 
     /// `Cmd/Ctrl+B` toggles Blackout from any page, inside text fields and

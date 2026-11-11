@@ -336,6 +336,10 @@ pub struct BlaulichtApp {
     /// Desktop: the Grand Master level Blackout restores, the last non-zero
     /// level seen while connected (059).
     blackout_restore: u8,
+    /// Desktop notifications (059; the full stack is 070).
+    desk_notes: crate::app::components::Notes,
+    /// Desktop status bar: routing changes not applied yet (set by 062).
+    pub(crate) routing_pending: usize,
     /// Desktop status bar: recent engine and plugin tick times (ms).
     status_sparks: crate::app::components::StatusSparks,
     /// The show the engine last announced (`SystemMessage::ShowLoaded`); 0
@@ -624,6 +628,8 @@ impl BlaulichtApp {
             save_status: SaveStatus::NoShowfile,
             saved_at: None,
             blackout_restore: 100,
+            desk_notes: Default::default(),
+            routing_pending: 0,
             status_sparks: Default::default(),
             show_generation: 0,
             published_frontend_section: None,

@@ -100,6 +100,9 @@ pub struct StatusBarInfo<'a> {
     pub warnings: usize,
     /// Connected Remote UI sessions.
     pub remote_sessions: usize,
+    /// Routing changes waiting for Apply or Discard. The routing page (062)
+    /// sets it; until then it stays 0 and the cell is hidden.
+    pub routing_pending: usize,
 }
 
 /// What a click on the status bar asks for.
@@ -552,6 +555,25 @@ impl Bar<'_> {
                 Some(format!("{}. Open the problem list.", split.join(", "))),
             ) {
                 *action = Some(StatusBarAction::Open(AppSubPage::System_System));
+            }
+        }
+
+        // Left of the issues (`chrome.js`: pending, issues, Remote UI).
+        if info.routing_pending > 0 {
+            let parts = vec![self.label(
+                format!("{} routing pending", info.routing_pending),
+                t.changed,
+            )];
+            if self.cell(
+                "routing",
+                parts,
+                true,
+                None,
+                true,
+                !online,
+                Some("Routing changes not applied yet. Open DMX to apply or discard.".to_owned()),
+            ) {
+                *action = Some(StatusBarAction::Open(AppSubPage::System_Dmx));
             }
         }
 

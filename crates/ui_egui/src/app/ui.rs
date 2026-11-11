@@ -154,6 +154,9 @@ impl eframe::App for BlaulichtApp {
         }
 
         self.render_popup(ctx);
+        if self.layout.is_desktop() {
+            self.desk_notes.show(ctx);
+        }
         self.render_plugin_fullscreen_popups(ctx);
         // The desktop layout shows it in its status bar.
         if !self.layout.is_desktop() {
