@@ -145,6 +145,169 @@ pub fn palette(ctx: &egui::Context) -> &'static Palette {
     }
 }
 
+/// The studio tokens of `design/studio/studio.css` (ticket 058): the
+/// neutral graphite palette of the desktop studio components in
+/// [`crate::app::components::studio`]. Desktop layout only; the kiosk never
+/// reads them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Studio {
+    /// Gaps between panes.
+    pub gutter: Color32,
+    /// Pane body.
+    pub pane: Color32,
+    /// Pane title bars, page bar, folder bands under the pointer.
+    pub head: Color32,
+    /// Recessed: fader slots, fields, switch tracks.
+    pub well: Color32,
+    /// Control at rest.
+    pub ctl: Color32,
+    /// Control under the pointer.
+    pub ctl_hi: Color32,
+    /// The 1px line: borders, folder band top line, tree line.
+    pub line: Color32,
+    pub text: Color32,
+    pub strong: Color32,
+    /// Secondary text, faint IDs, counts.
+    pub muted: Color32,
+    /// Selected only: the active row's edge, focus outline.
+    pub blue: Color32,
+    /// Fill of the active row (and pressed segments).
+    pub blue_dim: Color32,
+    /// Dimmed selection: an included row's fill on hover.
+    pub blue_tint: Color32,
+    /// A value changed in the Programmer.
+    pub changed: Color32,
+    /// Graphs and curves.
+    pub data: Color32,
+    /// Recessed list background.
+    pub list: Color32,
+    /// Folder band rows.
+    pub band: Color32,
+    /// Row hairlines.
+    pub hair: Color32,
+    /// Blackout and output at risk.
+    pub red: Color32,
+    /// Red that stays readable as text.
+    pub red_text: Color32,
+    pub ok: Color32,
+    pub warn: Color32,
+    /// Printed fader and knob scales.
+    pub scale: Color32,
+    /// Fader cap and knob face, its lit edge, shaded edge, outline and drop.
+    pub capface: Color32,
+    pub caphi: Color32,
+    pub caplo: Color32,
+    pub capedge: Color32,
+    pub capdrop: Color32,
+}
+
+const fn hex(rgb: u32) -> Color32 {
+    Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+}
+
+/// Studio tokens, dark theme (`:root` in `studio.css`).
+pub const STUDIO_DARK: Studio = Studio {
+    gutter: hex(0x141516),
+    pane: hex(0x252628),
+    head: hex(0x2f3033),
+    well: hex(0x1a1b1c),
+    ctl: hex(0x3a3b3f),
+    ctl_hi: hex(0x47494e),
+    line: hex(0x3a3b3e),
+    text: hex(0xd4d5d8),
+    strong: hex(0xf3f3f4),
+    muted: hex(0x9c9ea4),
+    blue: hex(0x3aa9ff),
+    blue_dim: hex(0x1f4f7a),
+    blue_tint: hex(0x1b2a38),
+    changed: hex(0xf2b14c),
+    data: hex(0xaeb0b5),
+    list: hex(0x17181a),
+    band: hex(0x2a2b2e),
+    hair: hex(0x232426),
+    red: hex(0xff1e1e),
+    red_text: hex(0xffa0a0),
+    ok: hex(0x4cc38a),
+    warn: hex(0xf2b14c),
+    scale: hex(0x6d6f75),
+    capface: hex(0x4c4e53),
+    caphi: hex(0x74767c),
+    caplo: hex(0x2d2e32),
+    capedge: hex(0x0e0f10),
+    capdrop: hex(0x0b0c0d),
+};
+
+/// Studio tokens, light theme (`:root[data-theme="light"]`).
+pub const STUDIO_LIGHT: Studio = Studio {
+    gutter: hex(0xa9abaf),
+    pane: hex(0xd9dadc),
+    head: hex(0xcbcccf),
+    well: hex(0xf0f0f1),
+    ctl: hex(0xeeeef0),
+    ctl_hi: hex(0xf6f6f7),
+    line: hex(0xb6b8bc),
+    text: hex(0x26272a),
+    strong: hex(0x000000),
+    muted: hex(0x505258),
+    blue: hex(0x0f6fd6),
+    blue_dim: hex(0xb5d6f7),
+    blue_tint: hex(0xdde9f5),
+    changed: hex(0x6f4600),
+    data: hex(0x4a4c51),
+    list: hex(0xeeeeef),
+    band: hex(0xd9dadc),
+    hair: hex(0xdcdcde),
+    red: hex(0xd40f0f),
+    red_text: hex(0xa00000),
+    ok: hex(0x16804f),
+    warn: hex(0x6f4600),
+    scale: hex(0x74767c),
+    capface: hex(0xeeeef0),
+    caphi: hex(0xffffff),
+    caplo: hex(0xb4b6bb),
+    capedge: hex(0x55575c),
+    capdrop: hex(0x8b8d92),
+};
+
+/// The studio tokens of the current theme of `ctx`.
+pub fn studio(ctx: &egui::Context) -> &'static Studio {
+    if ctx.global_style().visuals.dark_mode {
+        &STUDIO_DARK
+    } else {
+        &STUDIO_LIGHT
+    }
+}
+
+/// Minimum desktop hit target (`RULES.md`, Type and targets).
+pub const TARGET_MIN: f32 = 24.0;
+/// Hit target of controls used during a show.
+pub const TARGET_SHOW: f32 = 28.0;
+/// Smallest text size on the desktop.
+pub const TEXT_MIN: f32 = 11.0;
+/// Standard desktop text size.
+pub const TEXT: f32 = 12.0;
+/// Height of the one page bar.
+pub const PAGE_BAR_HEIGHT: f32 = 30.0;
+/// Height of a list or tree row and of a folder band.
+pub const LIST_ROW_HEIGHT: f32 = 24.0;
+
+/// WCAG contrast ratio of two opaque colours (1.0 to 21.0).
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    fn lum(c: Color32) -> f32 {
+        let ch = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+    }
+    let (la, lb) = (lum(a), lum(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
 /// Corner radius of controls (buttons, inputs, rows): egui's default 2 px.
 pub const RADIUS: u8 = 2;
 /// Corner radius of windows, menus and popups.
@@ -298,10 +461,7 @@ fn compact_text_styles(style: &mut Style) {
             TextStyle::Body,
             FontId::new(density.body_size(), FontFamily::Proportional),
         ),
-        (
-            TextStyle::Button,
-            density.button_font(),
-        ),
+        (TextStyle::Button, density.button_font()),
         (TextStyle::Heading, density.font(Weight::SemiBold, 16.0)),
         (
             TextStyle::Monospace,
@@ -414,11 +574,25 @@ pub fn desktop_style(theme: egui::Theme) -> Style {
     style
 }
 
+/// Font family of the solid Phosphor icons, registered by [`install_desktop`]
+/// (desktop only).
+pub const PHOSPHOR_FILL_FAMILY: &str = "phosphor-fill";
+
 /// Switches `ctx` to the desktop layout's look: the IBM Plex fonts (added to
 /// `fonts`, which the caller installs), the [`desktop_style`] for both themes
 /// and [`Density::Compact`].
 pub fn install_desktop(ctx: &egui::Context, fonts: &mut egui::FontDefinitions) {
     blaulicht_assets::add_plex_fonts(fonts);
+    // Solid Phosphor icons (`ph-fill`, open folder bands) in their own
+    // family, so the regular icons keep their outline glyphs.
+    fonts.font_data.insert(
+        PHOSPHOR_FILL_FAMILY.into(),
+        egui_phosphor::Variant::Fill.font_data().into(),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name(PHOSPHOR_FILL_FAMILY.into()),
+        vec![PHOSPHOR_FILL_FAMILY.into()],
+    );
     ctx.set_style_of(egui::Theme::Dark, desktop_style(egui::Theme::Dark));
     ctx.set_style_of(egui::Theme::Light, desktop_style(egui::Theme::Light));
     Density::Compact.set(ctx);
@@ -447,6 +621,25 @@ mod tests {
             touch.font(Weight::SemiBold, 14.0),
             FontId::proportional(14.0)
         );
+    }
+
+    #[test]
+    fn studio_text_meets_4_5_contrast() {
+        for t in [STUDIO_DARK, STUDIO_LIGHT] {
+            for bg in [t.pane, t.list, t.head, t.band, t.ctl, t.ctl_hi] {
+                for fg in [t.text, t.strong] {
+                    assert!(contrast_ratio(fg, bg) >= 4.5, "{fg:?} on {bg:?}");
+                }
+            }
+            // Muted text (IDs, counts, captions) never sits on a control.
+            for bg in [t.pane, t.list, t.head, t.band] {
+                assert!(contrast_ratio(t.muted, bg) >= 4.5, "muted on {bg:?}");
+            }
+            for fg in [t.red_text, t.changed, t.strong] {
+                assert!(contrast_ratio(fg, t.pane) >= 4.5, "{fg:?} on pane");
+            }
+            assert!(contrast_ratio(t.strong, t.blue_dim) >= 4.5);
+        }
     }
 
     #[test]
