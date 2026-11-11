@@ -299,3 +299,61 @@ impl BlaulichtApp {
         }
     }
 }
+
+/// What the desktop status bar reads about outputs and problems (059), from
+/// the same health data as the indicators above.
+pub(crate) struct HealthSummary {
+    /// The hardware DMX universes' health, as the indicators show them.
+    pub dmx_outputs: Vec<bool>,
+    /// Art-Net output health, `None` with no receiver enabled.
+    pub artnet: Option<bool>,
+    /// Offline outputs and crashed plugins.
+    pub errors: usize,
+    /// MIDI or serial devices in an error state.
+    pub warnings: usize,
+}
+
+impl BlaulichtApp {
+    pub(crate) fn health_summary(&self) -> HealthSummary {
+        let artnet_enabled = self
+            .client
+            .with_artnet_receivers(|receivers| receivers.iter().any(|receiver| receiver.enabled));
+        let plugins_broken = self.client.with_plugins(|plugins| {
+            plugins
+                .values()
+                .filter(|plugin| plugin.has_errored())
+                .count()
+        });
+        let (dmx_outputs, artnet_state, warnings) = self.client.with_health(|health| {
+            let midi = health
+                .midi_health
+                .devices
+                .values()
+                .filter(|state| matches!(state, MidiDeviceState::Error(_)))
+                .count();
+            let serial = health
+                .serial_health
+                .devices
+                .values()
+                .filter(|state| matches!(state, SerialDeviceState::Error(_)))
+                .count();
+            let dmx: Vec<bool> = health
+                .dmx_universes_healthy
+                .iter()
+                .take(2)
+                .map(|port| port.is_healthy())
+                .collect();
+            (dmx, health.artnet_health_state, midi + serial)
+        });
+        let artnet = artnet_enabled.then_some(artnet_state);
+        let errors = dmx_outputs.iter().filter(|ok| !**ok).count()
+            + usize::from(artnet == Some(false))
+            + plugins_broken;
+        HealthSummary {
+            dmx_outputs,
+            artnet,
+            errors,
+            warnings,
+        }
+    }
+}

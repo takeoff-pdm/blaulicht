@@ -333,6 +333,11 @@ pub struct BlaulichtApp {
     /// (`SystemMessage::ShowfileStatus`; the engine saves and autosaves).
     save_status: SaveStatus,
     saved_at: Option<SystemTime>,
+    /// Desktop: the Grand Master level Blackout restores, the last non-zero
+    /// level seen while connected (059).
+    blackout_restore: u8,
+    /// Desktop status bar: recent engine and plugin tick times (ms).
+    status_sparks: crate::app::components::StatusSparks,
     /// The show the engine last announced (`SystemMessage::ShowLoaded`); 0
     /// until the first.
     show_generation: u64,
@@ -618,6 +623,8 @@ impl BlaulichtApp {
             dmx_simulator: DmxSimulator::default(),
             save_status: SaveStatus::NoShowfile,
             saved_at: None,
+            blackout_restore: 100,
+            status_sparks: Default::default(),
             show_generation: 0,
             published_frontend_section: None,
             pending_lifecycle_action: None,

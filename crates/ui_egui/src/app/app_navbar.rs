@@ -5,7 +5,8 @@ use crate::app::{
     components::{self, NavChange, NavbarStatus},
     BlaulichtApp,
 };
-use blaulicht_engine::client::EngineClient;
+use blaulicht_engine::client::{EngineClient, RemoteStatus};
+use blaulicht_engine::hub::HostCommand;
 
 impl BlaulichtApp {
     /// The mobile layout's icon rail.
@@ -59,30 +60,111 @@ impl BlaulichtApp {
         }
     }
 
-    /// The desktop layout's status bar, as a bottom panel of `ui`. Read-only:
-    /// only cheap reads of state the client already holds.
+    /// Where the engine connection stands; the desk's own engine is always
+    /// online.
+    pub(crate) fn engine_link(&self) -> components::EngineLink {
+        match self.client.status() {
+            RemoteStatus::Connected => components::EngineLink::Online,
+            RemoteStatus::Connecting => components::EngineLink::Connecting,
+            RemoteStatus::Disconnected(_) | RemoteStatus::PasscodeRequired(_) => {
+                components::EngineLink::Disconnected
+            }
+        }
+    }
+
+    /// The desktop layout's status bar, as a bottom panel of `ui`. Only cheap
+    /// reads of state the client already holds; clicks open the page that
+    /// fixes a problem, or toggle Blackout.
     pub fn show_desktop_status_bar(&mut self, ui: &mut egui::Ui) {
+        let link = self.engine_link();
+        let grand_master = self.client.grand_master_percent();
+        // Remember the level Blackout restores: the last non-zero one, also
+        // when another client changed Grand Master.
+        if link.is_online() && grand_master > 0 {
+            self.blackout_restore = grand_master;
+        }
+        let loop_ms = self.tick_speeds.loop_total.as_secs_f32() * 1000.0;
+        let plugins_ms = self.tick_speeds.plugins.as_secs_f32() * 1000.0;
+        if link.is_online() {
+            self.status_sparks.sample(loop_ms, plugins_ms);
+        }
         let show_name = self
             .client
             .showfile_path()
             .as_deref()
             .map(blaulicht_engine::config::showfile_display_name);
         let live = self.client.with_show(|show| show.0.live_mode);
-        // The beat dot flashes for a moment after each beat.
-        let beat_flash = self.beat_marker_has_beat
-            && self.beat_marker_anchor_instant.elapsed() < std::time::Duration::from_millis(120);
+        let health = self.health_summary();
+        let remote_sessions = self
+            .client
+            .with_remote_server(|server| server.sessions.len());
         let info = components::StatusBarInfo {
+            blackout: (grand_master == 0).then_some(self.blackout_restore),
             show_name,
             save_status: &self.save_status,
+            link,
+            dmx_outputs: health.dmx_outputs,
+            artnet: health.artnet,
+            audio_level: (self.collector_snapshot.volume as f32 / 255.0).clamp(0.0, 1.0),
             bpm: self.collector_snapshot.bpm,
-            beat_index: self.beat_marker_has_beat.then_some(self.beat_marker_index),
-            beat_flash,
-            loop_ms: self.tick_speeds.loop_total.as_secs_f32() * 1000.0,
-            plugins_ms: self.tick_speeds.plugins.as_secs_f32() * 1000.0,
+            sparks: &self.status_sparks,
             live,
-            connection: self.client.is_remote().then(|| self.client.status()),
+            errors: health.errors,
+            warnings: health.warnings,
+            remote_sessions,
         };
-        components::status_bar(ui, &info);
+        match components::status_bar(ui, &info) {
+            None => {}
+            Some(components::StatusBarAction::ToggleBlackout) => self.toggle_blackout(),
+            Some(components::StatusBarAction::Open(subpage)) => self.open_subpage(subpage),
+        }
+    }
+
+    /// Blackout (desktop, 059): Grand Master to 0, or back to the level it
+    /// had (`blackout_restore`). Offline, nothing is sent or queued; a
+    /// notice says so.
+    pub(crate) fn toggle_blackout(&mut self) {
+        let link = self.engine_link();
+        let black = self.client.grand_master_percent() == 0;
+        if !link.is_online() {
+            let what = if black { "Restore" } else { "Blackout" };
+            self.show_refusal(format!("{what} not sent: engine {}", link.word()));
+            return;
+        }
+        let level = if black {
+            self.blackout_restore.max(1)
+        } else {
+            0
+        };
+        self.send_command(HostCommand::SetGrandMaster(level), |_, _| {});
+    }
+
+    /// `Cmd/Ctrl+B` toggles Blackout from any page, inside text fields and
+    /// behind dialogs. Key repeat is ignored, so holding it toggles once.
+    /// The event is taken out of the input, so a focused field never sees
+    /// it; a plain `b` is left alone. Desktop only.
+    pub(crate) fn handle_blackout_shortcut(&mut self, ctx: &Context) {
+        let mut pressed = false;
+        ctx.input_mut(|input| {
+            input.events.retain(|event| match event {
+                egui::Event::Key {
+                    key: egui::Key::B,
+                    pressed: down,
+                    repeat,
+                    modifiers,
+                    ..
+                } if modifiers.command && !modifiers.alt && !modifiers.shift => {
+                    if *down && !*repeat {
+                        pressed = true;
+                    }
+                    false
+                }
+                _ => true,
+            });
+        });
+        if pressed {
+            self.toggle_blackout();
+        }
     }
 
     /// Tells plugins about a navigation in this UI. Sent as `Web`, so it

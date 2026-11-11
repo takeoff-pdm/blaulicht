@@ -354,6 +354,36 @@ fn paint_mini(
     p.text(rect.center(), Align2::CENTER_CENTER, label, f, color);
 }
 
+/// The page bar's Blackout (`.okblack`, 059): red text on a control, filled
+/// red while Grand Master is at 0. Always [`TARGET_SHOW`] tall.
+pub fn blackout_button(ui: &mut Ui, on: bool) -> Response {
+    const RED: Color32 = Color32::from_rgb(0xb8, 0x0f, 0x0f);
+    const RED_HI: Color32 = Color32::from_rgb(0xd4, 0x0f, 0x0f);
+    let t = studio(ui.ctx());
+    let f = font(ui, Weight::Regular, TEXT);
+    let label = "Blackout";
+    let w = text_width(ui, label, f.clone()) + 16.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(w, TARGET_SHOW), Sense::click());
+    let (fill, color) = match (on, response.hovered()) {
+        (true, false) => (RED, Color32::WHITE),
+        (true, true) => (RED_HI, Color32::WHITE),
+        (false, false) => (t.ctl, t.red_text),
+        (false, true) => (t.ctl_hi, t.red_text),
+    };
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, fill);
+    if response.has_focus() {
+        p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, t.blue), StrokeKind::Inside);
+    }
+    p.text(rect.center(), Align2::CENTER_CENTER, label, f, color);
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, label));
+    response.on_hover_text(if on {
+        "Restore Grand Master (Cmd/Ctrl+B)"
+    } else {
+        "Grand Master to 0 (Cmd/Ctrl+B)"
+    })
+}
+
 /// The one page bar: 30px, title-bar grey, view tabs on the left and page
 /// actions on the right. Both closures lay out left to right.
 pub fn page_bar(ui: &mut Ui, left: impl FnOnce(&mut Ui), right: impl FnOnce(&mut Ui)) {

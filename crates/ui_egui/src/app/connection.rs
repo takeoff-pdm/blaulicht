@@ -68,6 +68,15 @@ impl BlaulichtApp {
             .unwrap_or(RECONNECT_INTERVAL);
         let mut reconnect = reason.is_some() && since_attempt >= RECONNECT_INTERVAL;
 
+        // Desktop (059): the strip above the page shows this instead, so
+        // nothing is covered; the page stays visible, dimmed and paused.
+        if self.layout.is_desktop() {
+            if reconnect {
+                self.reconnect_remote();
+            }
+            return false;
+        }
+
         let title = match reason {
             None => "Connecting",
             Some(_) => "Connection lost",
@@ -106,6 +115,87 @@ impl BlaulichtApp {
                 }
             });
 
+        if reconnect {
+            self.reconnect_remote();
+        }
+        true
+    }
+
+    /// Desktop: the red strip on its own row above the page while the engine
+    /// is offline. Returns `true` while it shows (the page is paused then).
+    pub(crate) fn desktop_offline_strip(&mut self, ui: &mut egui::Ui) -> bool {
+        let reason = match self.client.status() {
+            RemoteStatus::Connected | RemoteStatus::PasscodeRequired(_) => return false,
+            RemoteStatus::Connecting => None,
+            RemoteStatus::Disconnected(reason) => Some(reason),
+        };
+        let (title, body) = match &reason {
+            None => (
+                "Engine connecting",
+                "Values are the last known and may not match the lights.".to_string(),
+            ),
+            Some(_) => {
+                let since = self
+                    .connection_ui
+                    .last_attempt
+                    .map(|at| at.elapsed())
+                    .unwrap_or(RECONNECT_INTERVAL);
+                let left = RECONNECT_INTERVAL.saturating_sub(since).as_secs() + 1;
+                (
+                    "Engine disconnected",
+                    format!(
+                        "Reconnecting in {left} s. Values are the last known and may not match the lights."
+                    ),
+                )
+            }
+        };
+        let density = crate::app::ui_tokens::Density::of(ui.ctx());
+        let mut reconnect = false;
+        egui::Panel::top("desktop_offline_strip")
+            .resizable(false)
+            .exact_size(28.0)
+            .show_separator_line(false)
+            .frame(
+                egui::Frame::NONE
+                    .fill(Color32::from_rgb(0xb8, 0x0f, 0x0f))
+                    .inner_margin(egui::Margin::symmetric(10, 0)),
+            )
+            .show_inside(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    let strong = crate::app::ui_tokens::Weight::SemiBold;
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {title}",
+                            egui_phosphor::regular::WARNING_OCTAGON
+                        ))
+                        .font(density.font(strong, 12.0))
+                        .color(Color32::WHITE),
+                    );
+                    ui.label(
+                        RichText::new(body)
+                            .font(density.font(crate::app::ui_tokens::Weight::Regular, 12.0))
+                            .color(Color32::WHITE),
+                    );
+                    if let Some(error) = &self.connection_ui.error {
+                        ui.label(RichText::new(error).color(Color32::WHITE));
+                    }
+                    if reason.is_some() {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if crate::app::components::studio::mini_button(
+                                ui,
+                                "Reconnect now",
+                                false,
+                                crate::app::ui_tokens::TARGET_MIN,
+                            )
+                            .clicked()
+                            {
+                                reconnect = true;
+                            }
+                        });
+                    }
+                });
+            });
         if reconnect {
             self.reconnect_remote();
         }

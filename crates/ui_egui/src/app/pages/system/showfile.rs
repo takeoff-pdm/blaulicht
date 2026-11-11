@@ -31,6 +31,12 @@ impl BlaulichtApp {
             .with_backdrop()
             .show(ctx, |ui| {
                 ui.label("Loading this showfile will replace the current show.");
+                if self.layout.is_desktop() && self.save_status.has_unsaved_changes() {
+                    ui.label(
+                        egui::RichText::new("The current show has unsaved changes.")
+                            .color(egui::Color32::from_rgb(0xe0, 0xa1, 0x3a)),
+                    );
+                }
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     let needs_guard = self.save_status.has_unsaved_changes();
@@ -81,11 +87,21 @@ impl BlaulichtApp {
         if !self.system_ui_state.close_showfile_confirm_open {
             return;
         }
+        if self.layout.is_desktop() && self.client.is_remote() {
+            self.system_ui_state.close_showfile_confirm_open = false;
+            return;
+        }
 
         let response = Dialog::new("Close Showfile".to_string(), egui::vec2(320.0, 150.0))
             .with_backdrop()
             .show(ctx, |ui| {
-                ui.label("Close the current showfile? Unsaved changes will be lost.");
+                // Desktop (059): warn only when there is something to lose.
+                let text = if !self.layout.is_desktop() || self.save_status.has_unsaved_changes() {
+                    "Close the current showfile? Unsaved changes will be lost."
+                } else {
+                    "Close the current showfile? Lights go dark until another show is loaded."
+                };
+                ui.label(text);
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     let needs_guard = self.save_status.has_unsaved_changes();
@@ -155,13 +171,17 @@ impl BlaulichtApp {
             }
 
             let showfile_open = self.client.showfile_path().is_some();
-            if components::action_button(
-                ui,
-                showfile_open,
-                "Close Showfile",
-                button_size,
-                Some("No showfile is currently open"),
-            ) {
+            // Desktop (059): a remote UI can't close the show for everyone.
+            let hide_close = self.layout.is_desktop() && self.client.is_remote();
+            if !hide_close
+                && components::action_button(
+                    ui,
+                    showfile_open,
+                    "Close Showfile",
+                    button_size,
+                    Some("No showfile is currently open"),
+                )
+            {
                 self.system_ui_state.close_showfile_confirm_open = true;
             }
 
