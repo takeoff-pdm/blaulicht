@@ -24,6 +24,8 @@ use std::fmt;
 use std::time::Duration;
 use strum::IntoEnumIterator;
 
+mod desktop;
+
 #[cfg(test)]
 mod layout_tests {
     use crate::app::components::{self, ButtonSize};
@@ -727,6 +729,12 @@ impl BlaulichtApp {
 
         self.render_add_fixture_dialog(ctx, dmx_engine);
 
+        // Desktop: the `setup.html` layout. The kiosk keeps the touch layout below.
+        if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+            self.setup_fixtures_desktop_ui(ui, ctx, dmx_engine);
+            return;
+        }
+
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             self.fixture_toolbar(ui, dmx_engine);
         });
@@ -763,6 +771,40 @@ impl BlaulichtApp {
 
     fn fixture_toolbar(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         if components::button(ui, self.add_fixture_open, "Add Fixture", ButtonSize::Medium) {
+            self.toggle_add_fixture(dmx_engine);
+        }
+
+        components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
+
+        if components::button(
+            ui,
+            self.dmx_override_dialog_open,
+            "Show Overrides",
+            ButtonSize::Medium,
+        ) {
+            self.toggle_dmx_overrides();
+        }
+
+        components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
+
+        if components::button(ui, self.dmx_simulator.open, "Simulate", ButtonSize::Medium) {
+            self.dmx_simulator.open = !self.dmx_simulator.open;
+        }
+    }
+
+    /// Show Overrides: opens or closes the DMX override window.
+    fn toggle_dmx_overrides(&mut self) {
+        self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
+        if !self.dmx_override_dialog_open {
+            self.add_dmx_override_open = false;
+        }
+        self.close_dmx_override_numberpads();
+    }
+
+    /// Add Fixture: opens or closes the add dialog (a popup instead when
+    /// there is no group to add to).
+    fn toggle_add_fixture(&mut self, dmx_engine: &EngineState) {
+        {
             if dmx_engine.groups().is_empty() {
                 self.show_popup(PopupSpec::with_duration(
                     Duration::from_secs(3),
@@ -779,27 +821,6 @@ impl BlaulichtApp {
                     self.close_add_fixture_numberpads();
                 }
             }
-        }
-
-        components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
-
-        if components::button(
-            ui,
-            self.dmx_override_dialog_open,
-            "Show Overrides",
-            ButtonSize::Medium,
-        ) {
-            self.dmx_override_dialog_open = !self.dmx_override_dialog_open;
-            if !self.dmx_override_dialog_open {
-                self.add_dmx_override_open = false;
-            }
-            self.close_dmx_override_numberpads();
-        }
-
-        components::toolbar_separator(ui, ButtonSize::Medium.dim().0.y);
-
-        if components::button(ui, self.dmx_simulator.open, "Simulate", ButtonSize::Medium) {
-            self.dmx_simulator.open = !self.dmx_simulator.open;
         }
     }
 

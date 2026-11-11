@@ -664,7 +664,16 @@ pub fn num_field(
         });
     }
     if let Some(s) = scrub.as_mut() {
-        if response.dragged() && !s.cancelled {
+        // egui aborts the drag itself on Esc, so `dragged()` is already false
+        // in that frame: check Esc for any running scrub.
+        let esc_now = !s.cancelled && ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if esc_now {
+            s.cancelled = true;
+            if *value != s.start {
+                *value = s.start;
+                response.mark_changed();
+            }
+        } else if response.dragged() && !s.cancelled {
             let (x, shift, esc) = ui.input(|i| {
                 (
                     i.pointer.latest_pos().map_or(s.origin_x, |p| p.x),
