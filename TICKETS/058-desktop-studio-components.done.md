@@ -58,4 +58,16 @@ The studio mockups use one set of tokens and controls, but the egui desktop layo
 - Not verified: 1280x800 and 2560x1440 window sizes (only 1500x950 was captured); keyboard Enter on the focused
   primary button; tooltips on truncated names (code path only, not screenshotted). The existing pages do not use the
   new components yet; adopting them is up to the page tickets (036-038, 062, 069+).
+- Review fixes (second pass), checked with blenv `--desktop` 1500x950 in dark and light against `studio.css` and
+  programmer.html: the red dialog button now draws the 1px blue focus outline (with a 1px white line inside so it
+  reads on red); folder band labels are SemiBold (600); folder icons are solid Phosphor (`ph-fill`, open/closed per
+  band) from a desktop-only `phosphor-fill` font family (`egui-phosphor` `fill` feature, `PHOSPHOR_FILL_FAMILY`);
+  the showcase Groups list runs edge to edge under the pane header (`pane_flush`, no margin); small knobs put value
+  and name (11px muted) to the right, 6px apart, like `#masters .knob`; the horizontal fader's value follows the
+  track 6px away instead of sitting right-aligned in a 36px box (RULES.md names no spacing, so it uses the masters'
+  6px).
+- Kiosk after the fixes: 800x480 Programmer screenshot byte-identical to the build before them.
+- Checks (second pass) inside blenv with CARGO_BUILD_JOBS=4: rustfmt on touched files, `cargo clippy -p
+  blaulicht-ui-egui --all-targets --all-features` (no findings in the touched files), `cargo test -p
+  blaulicht-ui-egui --all-features` (130 passed).
 Reference: open the named pages in `design/studio/` in a browser. `design/studio/RULES.md` holds the agreed rules. The mockups are the design source, but their JavaScript is throwaway.

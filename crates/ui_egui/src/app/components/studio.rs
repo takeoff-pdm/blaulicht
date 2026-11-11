@@ -8,8 +8,8 @@
 //! minimum targets, 28px for show controls, 12px text with 11px minimum.
 
 use crate::app::ui_tokens::{
-    studio, Density, Studio, Weight, LIST_ROW_HEIGHT, PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW,
-    TEXT, TEXT_MIN,
+    studio, Density, Studio, Weight, LIST_ROW_HEIGHT, PAGE_BAR_HEIGHT, PHOSPHOR_FILL_FAMILY,
+    TARGET_MIN, TARGET_SHOW, TEXT, TEXT_MIN,
 };
 use egui::text::TextWrapping;
 use egui::{
@@ -270,16 +270,17 @@ pub fn folder_band(
         font(ui, Weight::Regular, TEXT_MIN),
         t.muted,
     );
+    // Solid icon (`ph-fill`), open or closed like the band.
     let folder = if open {
-        egui_phosphor::regular::FOLDER_OPEN
+        egui_phosphor::fill::FOLDER_OPEN
     } else {
-        egui_phosphor::regular::FOLDER
+        egui_phosphor::fill::FOLDER
     };
     p.text(
         pos2(rect.left() + 31.0, cy),
         Align2::CENTER_CENTER,
         folder,
-        font(ui, Weight::Regular, 14.0),
+        FontId::new(14.0, FontFamily::Name(PHOSPHOR_FILL_FAMILY.into())),
         t.muted,
     );
     let mut right = rect.right() - 8.0;
@@ -296,7 +297,7 @@ pub fn folder_band(
         ui,
         pos2(x, cy),
         name,
-        font(ui, Weight::Medium, TEXT + 1.0),
+        font(ui, Weight::SemiBold, TEXT + 1.0),
         t.strong,
         right - x,
     );
@@ -695,11 +696,16 @@ pub fn hfader(
                 t.strong,
                 false,
             );
-            let (vrect, _) = ui.allocate_exact_size(vec2(36.0, height), Sense::hover());
+            // Value right after the track, 6px apart like the masters'
+            // value and name (no fixed-width box).
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let text = format_value(*value, &range);
+            let vw = text_width(ui, &text, mono(TEXT));
+            let (vrect, _) = ui.allocate_exact_size(vec2(vw, height), Sense::hover());
             ui.painter().text(
-                pos2(vrect.right(), vrect.center().y),
-                Align2::RIGHT_CENTER,
-                format_value(*value, &range),
+                pos2(vrect.left(), vrect.center().y),
+                Align2::LEFT_CENTER,
+                text,
                 mono(TEXT),
                 t.strong,
             );
@@ -727,7 +733,7 @@ pub enum KnobSize {
 
 /// The hardware knob for masters and trims set occasionally: a printed
 /// 270° scale, a face with an inner ring and a pointer, value and name
-/// below. Drag up or down to turn it.
+/// below (to the right on a small knob). Drag up or down to turn it.
 pub fn knob(
     ui: &mut Ui,
     value: &mut f32,
@@ -740,13 +746,31 @@ pub fn knob(
         KnobSize::Normal => 58.0,
         KnobSize::Small => 44.0,
     };
-    let width = d.max(52.0);
-    let (rect, mut response) =
-        ui.allocate_exact_size(vec2(width, d + 34.0), Sense::click_and_drag());
+    let value_text = format_value(*value, &range);
+    // Small knobs (page bar masters) put the value and the name to the
+    // right of the knob, 6px apart (`#masters .knob`); normal knobs below.
+    let small = size == KnobSize::Small;
+    let name_font = if small {
+        font(ui, Weight::Regular, TEXT_MIN)
+    } else {
+        font(ui, Weight::Regular, TEXT)
+    };
+    let size_v = if small {
+        let tw =
+            text_width(ui, &value_text, mono(TEXT)).max(text_width(ui, name, name_font.clone()));
+        vec2(d + 6.0 + tw, d)
+    } else {
+        vec2(d.max(52.0), d + 34.0)
+    };
+    let (rect, mut response) = ui.allocate_exact_size(size_v, Sense::click_and_drag());
     if drag_value(&response, value, &range, -response.drag_delta().y, 150.0) {
         response.mark_changed();
     }
-    let c = pos2(rect.center().x, rect.top() + d / 2.0);
+    let c = if small {
+        pos2(rect.left() + d / 2.0, rect.center().y)
+    } else {
+        pos2(rect.center().x, rect.top() + d / 2.0)
+    };
     let r = d / 2.0;
     let frac = ((*value - range.start()) / (range.end() - range.start())).clamp(0.0, 1.0);
     let start = 135f32.to_radians();
@@ -775,21 +799,38 @@ pub fn knob(
     if response.hovered() || response.dragged() {
         p.circle_stroke(c, face + 1.0, Stroke::new(1.0_f32, t.strong));
     }
-    p.text(
-        pos2(c.x, rect.top() + d + 8.0),
-        Align2::CENTER_CENTER,
-        format_value(*value, &range),
-        mono(TEXT),
-        t.strong,
-    );
-    let name_color = if response.has_focus() { t.blue } else { t.text };
-    p.text(
-        pos2(c.x, rect.top() + d + 25.0),
-        Align2::CENTER_CENTER,
-        name,
-        font(ui, Weight::Regular, TEXT),
-        name_color,
-    );
+    if small {
+        let x = rect.left() + d + 6.0;
+        p.text(
+            pos2(x, c.y),
+            Align2::LEFT_BOTTOM,
+            value_text,
+            mono(TEXT),
+            t.strong,
+        );
+        let name_color = if response.has_focus() {
+            t.blue
+        } else {
+            t.muted
+        };
+        p.text(pos2(x, c.y), Align2::LEFT_TOP, name, name_font, name_color);
+    } else {
+        p.text(
+            pos2(c.x, rect.top() + d + 8.0),
+            Align2::CENTER_CENTER,
+            value_text,
+            mono(TEXT),
+            t.strong,
+        );
+        let name_color = if response.has_focus() { t.blue } else { t.text };
+        p.text(
+            pos2(c.x, rect.top() + d + 25.0),
+            Align2::CENTER_CENTER,
+            name,
+            name_font,
+            name_color,
+        );
+    }
     let v = *value as f64;
     response.widget_info(|| egui::WidgetInfo::slider(true, v, name));
     response
@@ -936,10 +977,14 @@ fn dialog_button(ui: &mut Ui, label: &str, danger: bool) -> Response {
         };
         ui.painter().rect_filled(rect, 0.0, fill);
         if response.has_focus() {
+            // The focus-visible outline (1px blue, inset), with a white
+            // line inside it so it reads on the red fill.
+            ui.painter()
+                .rect_stroke(rect, 0.0, Stroke::new(1.0_f32, t.blue), StrokeKind::Inside);
             ui.painter().rect_stroke(
-                rect,
+                rect.shrink(1.0),
                 0.0,
-                Stroke::new(1.0_f32, t.strong),
+                Stroke::new(1.0_f32, Color32::WHITE),
                 StrokeKind::Inside,
             );
         }

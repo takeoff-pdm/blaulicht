@@ -102,9 +102,10 @@ pub fn showcase_ui(ui: &mut Ui) {
             },
         );
         ui.horizontal_top(|ui| {
-            pane(ui, "Groups", 230.0, |ui| {
+            pane_flush(ui, "Groups", 230.0, |ui| {
                 studio::list_frame(ui, |ui| {
-                    ui.set_min_height(380.0);
+                    ui.set_width(230.0);
+                    ui.set_min_height(394.0);
                     let groups: [(&str, &[usize]); 2] =
                         [("STAGE", &[0, 1, 2]), ("REST", &[3, 4, 5])];
                     for (fi, (folder, items)) in groups.iter().enumerate() {
@@ -253,6 +254,15 @@ pub fn showcase_ui(ui: &mut Ui) {
 }
 
 fn pane(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
+    pane_with(ui, title, width, 8, add);
+}
+
+/// A pane whose list runs edge to edge under the header (`.pane > .body`).
+fn pane_flush(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
+    pane_with(ui, title, width, 0, add);
+}
+
+fn pane_with(ui: &mut Ui, title: &str, width: f32, margin: i8, add: impl FnOnce(&mut Ui)) {
     let t = tokens(ui.ctx());
     egui::Frame::new().fill(t.pane).show(ui, |ui| {
         ui.vertical(|ui| {
@@ -269,7 +279,7 @@ fn pane(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui)) {
                     .font(crate::app::ui_tokens::Weight::Medium, 13.0),
                 t.strong,
             );
-            egui::Frame::new().inner_margin(8).show(ui, |ui| {
+            egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 4.0;
                     add(ui)

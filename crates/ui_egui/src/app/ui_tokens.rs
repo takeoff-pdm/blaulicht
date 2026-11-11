@@ -574,11 +574,25 @@ pub fn desktop_style(theme: egui::Theme) -> Style {
     style
 }
 
+/// Font family of the solid Phosphor icons, registered by [`install_desktop`]
+/// (desktop only).
+pub const PHOSPHOR_FILL_FAMILY: &str = "phosphor-fill";
+
 /// Switches `ctx` to the desktop layout's look: the IBM Plex fonts (added to
 /// `fonts`, which the caller installs), the [`desktop_style`] for both themes
 /// and [`Density::Compact`].
 pub fn install_desktop(ctx: &egui::Context, fonts: &mut egui::FontDefinitions) {
     blaulicht_assets::add_plex_fonts(fonts);
+    // Solid Phosphor icons (`ph-fill`, open folder bands) in their own
+    // family, so the regular icons keep their outline glyphs.
+    fonts.font_data.insert(
+        PHOSPHOR_FILL_FAMILY.into(),
+        egui_phosphor::Variant::Fill.font_data().into(),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name(PHOSPHOR_FILL_FAMILY.into()),
+        vec![PHOSPHOR_FILL_FAMILY.into()],
+    );
     ctx.set_style_of(egui::Theme::Dark, desktop_style(egui::Theme::Dark));
     ctx.set_style_of(egui::Theme::Light, desktop_style(egui::Theme::Light));
     Density::Compact.set(ctx);
