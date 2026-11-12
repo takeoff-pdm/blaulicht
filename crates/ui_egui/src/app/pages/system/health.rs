@@ -300,13 +300,9 @@ impl BlaulichtApp {
     }
 }
 
-/// What the desktop status bar reads about outputs and problems (059), from
+/// What the desktop status bar's issues cell counts (059, 074), from
 /// the same health data as the indicators above.
 pub(crate) struct HealthSummary {
-    /// The hardware DMX universes' health, as the indicators show them.
-    pub dmx_outputs: Vec<bool>,
-    /// Art-Net output health, `None` with no receiver enabled.
-    pub artnet: Option<bool>,
     /// Offline outputs and crashed plugins.
     pub errors: usize,
     /// MIDI or serial devices in an error state.
@@ -349,11 +345,6 @@ impl BlaulichtApp {
         let errors = dmx_outputs.iter().filter(|ok| !**ok).count()
             + usize::from(artnet == Some(false))
             + plugins_broken;
-        HealthSummary {
-            dmx_outputs,
-            artnet,
-            errors,
-            warnings,
-        }
+        HealthSummary { errors, warnings }
     }
 }
