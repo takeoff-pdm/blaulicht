@@ -90,6 +90,9 @@ pub struct Navbar {
     synced_page: Option<AppPage>,
     /// Desktop sidebar: folded to an icon rail.
     rail: bool,
+    /// Desktop sidebar: shown as the rail this frame without changing
+    /// `rail` (the Programmer below 1200px, `RULES.md` decision 1).
+    force_rail: bool,
 }
 
 impl Navbar {
@@ -102,6 +105,7 @@ impl Navbar {
                 .collect(),
             synced_page: None,
             rail: false,
+            force_rail: false,
         };
         navbar.navigate_to(initial_page);
         navbar
@@ -149,7 +153,13 @@ impl Navbar {
 
     /// Desktop sidebar: whether it is folded to an icon rail.
     pub fn is_rail(&self) -> bool {
-        self.rail
+        self.rail || self.force_rail
+    }
+
+    /// Desktop sidebar: show it as the rail while `force` holds, keeping
+    /// the saved choice for when it no longer does. Call once per frame.
+    pub fn set_force_rail(&mut self, force: bool) {
+        self.force_rail = force;
     }
 
     /// Desktop sidebar: unfolds the current page's section when the current

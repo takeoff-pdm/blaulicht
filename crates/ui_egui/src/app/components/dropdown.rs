@@ -428,8 +428,10 @@ impl Popover<'_> {
         };
         let pop = Rect::from_min_size(pos2(x, y), vec2(width, h));
 
+        // Under the list: the list's own Foreground layer is not always
+        // drawn after a second Foreground layer.
         if self.options.dim {
-            ctx.layer_painter(LayerId::new(Order::Foreground, self.id.with("scrim")))
+            ctx.layer_painter(LayerId::new(Order::Middle, self.id.with("scrim")))
                 .rect_filled(screen, 0.0, Color32::from_black_alpha(140));
         }
 

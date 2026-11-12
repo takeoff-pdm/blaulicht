@@ -37,6 +37,8 @@ pub struct ProgrammerUi {
     pub master_alpha_held: Held<f32>,
     /// The focused scene's M. Speed while it is being turned.
     pub master_speed_held: Held<AnimationSpeedModifier>,
+    /// The desktop layout's state (ticket 075).
+    pub desktop: super::programmer_desktop::ProgrammerDesktop,
 }
 
 impl BlaulichtApp {
@@ -134,6 +136,17 @@ impl BlaulichtApp {
                 .unwrap_or_else(|| show.clone_for_ui())
         });
         let groups = dmx_engine.groups();
+
+        // Desktop (075): its own layout; the kiosk keeps the one below.
+        if Density::of(ctx).is_compact() {
+            self.refresh_active_palettes_cache(&dmx_engine);
+            self.render_scene_animations_dialog(ctx, &dmx_engine);
+            self.render_animation_presets_dialog(ctx, &dmx_engine);
+            self.render_undo_all_changes_dialog(ctx, &dmx_engine);
+            let _ = render_context;
+            self.programmer_desktop_ui(ui, ctx, &dmx_engine);
+            return;
+        }
 
         self.clear_selection_shortcut(ctx, &dmx_engine);
 
@@ -1193,7 +1206,7 @@ fn palette_assignment_tree(
 
 /// Tapping palette `id` in the palette dialog: unassign it if it is active
 /// for the selection, assign it otherwise.
-fn palette_toggle_event(active: &[u8], id: u8) -> ControlEvent {
+pub(super) fn palette_toggle_event(active: &[u8], id: u8) -> ControlEvent {
     if active.contains(&id) {
         ControlEvent::UnassignPaletteFromSelection(id)
     } else {
@@ -1234,6 +1247,11 @@ fn clear_selection_shortcut_allowed(
     selection_empty: bool,
 ) -> bool {
     !text_edit_focused && !modal_open && !selection_empty
+}
+
+/// [`sorted_changes`] for the desktop Scene pane.
+pub(super) fn sorted_changes_pub(changeset: &HashSet<FixtureSelector>) -> Vec<FixtureSelector> {
+    sorted_changes(changeset)
 }
 
 /// A scene's changes ordered by group, fixture and property.
