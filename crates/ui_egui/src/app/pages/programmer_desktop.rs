@@ -1096,7 +1096,7 @@ impl BlaulichtApp {
     }
 
     /// The selection's name for the fader bank: "MAC250E (all 6 fixtures)".
-    fn selection_name(dmx_engine: &EngineState) -> String {
+    pub(crate) fn selection_name(dmx_engine: &EngineState) -> String {
         let groups = dmx_engine.groups();
         let selection = dmx_engine.selection();
         if selection.is_empty() {
@@ -1205,11 +1205,63 @@ impl BlaulichtApp {
         let resolved = self.first_selected_state(dmx_engine);
         let rgb: RGBColor = resolved.color.into();
         let rect = ui.max_rect();
-        // The HSV wheel comes with ticket 076; the swatch opens egui's
-        // picker meanwhile, and R, G and B can be typed.
+        let (h, sat, val) = (
+            resolved.color.h as f32,
+            resolved.color.s as f32,
+            resolved.color.v as f32,
+        );
+        let frozen = |p: FixtureProperty| {
+            let scene = dmx_engine.curr_scene();
+            dmx_engine.get_selection().fixtures.iter().any(|k| {
+                scene
+                    .sink
+                    .fixture_states
+                    .get(k)
+                    .is_some_and(|s| s.slot(p).is_frozen())
+            })
+        };
+        let hue_ok = !frozen(FixtureProperty::ColorHue);
+        let sv_ok =
+            !frozen(FixtureProperty::ColorSaturation) && !frozen(FixtureProperty::ColorValue);
+        // Wheel under the title, centred; the readout right below it.
+        let wheel = Rect::from_min_size(
+            pos2(
+                rect.center().x - components::HSV_TRIANGLE_SIZE / 2.0,
+                rect.top() + STRIP + 4.0,
+            ),
+            vec2(components::HSV_TRIANGLE_SIZE, components::HSV_TRIANGLE_SIZE),
+        );
+        let mut wui = ui.new_child(egui::UiBuilder::new().max_rect(wheel));
+        let (wr, change) = components::hsv_triangle(&mut wui, h, sat, val, hue_ok, sv_ok);
+        if !hue_ok || !sv_ok {
+            wr.on_hover_text("Colour is set by a palette");
+        }
+        match change {
+            Some(components::HsvChange::Hue(nh)) if (nh.round() - h).abs() >= 1.0 => {
+                self.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    set_event(FixtureProperty::ColorHue, nh),
+                ));
+            }
+            Some(components::HsvChange::SatValue { s, v }) => {
+                for (p, old, new) in [
+                    (FixtureProperty::ColorSaturation, sat, s),
+                    (FixtureProperty::ColorValue, val, v),
+                ] {
+                    if ((new * 255.0).round() - (old * 255.0).round()).abs() >= 1.0 {
+                        self.client.send(ControlEventMessage::new(
+                            EventOriginator::Web,
+                            set_event(p, new * 255.0),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+        let w = rect.width().min(196.0) - 16.0;
         let row = Rect::from_min_size(
-            pos2(rect.left() + 8.0, rect.bottom() - 8.0 - 40.0),
-            vec2(rect.width() - 16.0, 40.0),
+            pos2(rect.center().x - w / 2.0, wheel.bottom() + 6.0),
+            vec2(w, 40.0),
         );
         let mut cui = ui.new_child(
             egui::UiBuilder::new()
@@ -1217,23 +1269,16 @@ impl BlaulichtApp {
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         cui.spacing_mut().item_spacing.x = 2.0;
-        let mut color = [
-            rgb.r as f32 / 255.0,
-            rgb.g as f32 / 255.0,
-            rgb.b as f32 / 255.0,
-        ];
-        cui.spacing_mut().interact_size = vec2(40.0, 40.0);
         let mut new: Option<(u8, u8, u8)> = None;
-        if cui.color_edit_button_rgb(&mut color).changed() {
-            new = Some((
-                (color[0] * 255.0).round() as u8,
-                (color[1] * 255.0).round() as u8,
-                (color[2] * 255.0).round() as u8,
-            ));
-        }
+        let (sw, _) = cui.allocate_exact_size(vec2(36.0, 40.0), Sense::hover());
+        cui.painter()
+            .rect_filled(sw, 0.0, Color32::from_rgb(rgb.r, rgb.g, rgb.b));
+        cui.painter()
+            .rect_stroke(sw, 0.0, Stroke::new(1.0_f32, t.line), StrokeKind::Inside);
+        let cell_w = ((w - 36.0 - 6.0) / 3.0).floor();
         let mut channels = [rgb.r, rgb.g, rgb.b];
         for (i, label) in ["R", "G", "B"].iter().enumerate() {
-            let (cell, _) = cui.allocate_exact_size(vec2(46.0, 40.0), Sense::hover());
+            let (cell, _) = cui.allocate_exact_size(vec2(cell_w, 40.0), Sense::hover());
             cui.painter().rect_filled(cell, 0.0, t.well);
             cui.painter().text(
                 pos2(cell.center().x, cell.top() + 9.0),
