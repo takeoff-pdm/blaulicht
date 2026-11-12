@@ -62,3 +62,15 @@ The mockup selects several fixtures and moves them between groups (`setup.html` 
   ("MartinMac250E", mockup "Martin MAC 250E"), as in the table before. Dragging groups between folders inside
   this page's group tree is not added (not in Scope). Not verified: a drag in a scrolled table or tree, and
   light-theme drag visuals (dark only).
+- Review fixes: picking a group in the tree (and the first group picked at startup) now clears the selection,
+  as setup.html does (`st.fx = null; st.fxs.clear()`): the pane shows "Fixture" and the "Select a fixture…"
+  hint instead of opening the group's first fixture (`pick_setup_group` in desktop.rs). The Patch/Position
+  headings of the editors use font weight Medium in `--muted`, as `.frm h4` (500, computed rgb(156,158,164)
+  in the mockup). Re-verified with blenv desktop screenshots (startup HX-BASE, DIMMER pick, click, Shift+click
+  of 3) against setup.html driven over CDP; kiosk Setup screenshot unchanged (desktop.rs is only drawn in
+  desktop density). Kept as is: drag visuals (40% dimmed carried rows, blue outline on the target group)
+  follow treedrag.js's intent rather than studio.css, which only styles `.row.dragsrc`/`.row.folder.dropin`;
+  Type stays `model_string()`; dim Ch values on unselected rows are table styling from before this ticket.
+  Full-workspace `cargo clippy --all-targets --all-features` (no errors, nothing in the touched file) and
+  `cargo test --all-features` (all pass) in the blenv container; `cargo fmt --check` lists only files this
+  ticket does not touch (same 92 diffs on the unchanged branch).

@@ -165,13 +165,7 @@ impl BlaulichtApp {
         // Pick a group so the page is never empty while groups exist.
         if self.add_fixture_group.is_none() {
             if let Some(gid) = dmx_engine.groups().keys().next().copied() {
-                let first = dmx_engine.groups()[&gid]
-                    .fixtures
-                    .keys()
-                    .next()
-                    .copied()
-                    .unwrap_or(0);
-                self.select_setup_fixture(dmx_engine, gid, first);
+                self.pick_setup_group(ctx, gid);
             }
         }
 
@@ -226,6 +220,14 @@ impl BlaulichtApp {
                 .then_some(vec![self.setup_fixture_id])
                 .unwrap_or_default(),
         }
+    }
+
+    /// Shows group `gid` with nothing selected, as picking a group in
+    /// setup.html does (`st.fx = null; st.fxs.clear()`).
+    fn pick_setup_group(&mut self, ctx: &Context, gid: u8) {
+        self.close_edit_fixture_numberpads();
+        self.add_fixture_group = Some(gid);
+        Self::store_fixture_selection(ctx, gid, BTreeSet::new());
     }
 
     fn store_fixture_selection(ctx: &Context, group: u8, ids: BTreeSet<u8>) {
@@ -386,13 +388,7 @@ impl BlaulichtApp {
             state.store(ui.ctx(), id);
         }
         if let Some(gid) = picked {
-            let first = dmx_engine
-                .groups()
-                .get(&gid)
-                .and_then(|g| g.fixtures.keys().next().copied())
-                .unwrap_or(0);
-            self.select_setup_fixture(dmx_engine, gid, first);
-            Self::store_fixture_selection(ui.ctx(), gid, BTreeSet::from([first]));
+            self.pick_setup_group(ui.ctx(), gid);
         }
         rows
     }
@@ -1123,7 +1119,8 @@ impl BlaulichtApp {
                 pos2(r.left(), r.bottom()),
                 Align2::LEFT_BOTTOM,
                 text,
-                f12.clone(),
+                // `.frm h4` is font-weight 500 in --muted.
+                density.font(Weight::Medium, 12.0),
                 t.muted,
             );
         };
