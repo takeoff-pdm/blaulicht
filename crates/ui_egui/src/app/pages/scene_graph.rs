@@ -1142,7 +1142,17 @@ impl BlaulichtApp {
                             .vertical_align(egui::Align::Center),
                     );
                     if create {
+                        // Select the suggested name so typing replaces it.
                         field.request_focus();
+                        let id = field.id;
+                        let mut edit = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                        let len = self.scene_graph_ui_state.new_graph_name.chars().count();
+                        edit.cursor
+                            .set_char_range(Some(egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(0),
+                                egui::text::CCursor::new(len),
+                            )));
+                        edit.store(ui.ctx(), id);
                     }
                     let (enter, escape) = ui.input(|i| {
                         (

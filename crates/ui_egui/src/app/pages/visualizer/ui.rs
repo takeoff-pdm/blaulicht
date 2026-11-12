@@ -3,10 +3,10 @@ use std::sync::Arc;
 use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_glow::CallbackFn;
 
+use crate::app::BlaulichtApp;
 use crate::app::components::dropdown;
 use crate::app::page::PageRenderContext;
 use crate::app::view_state::ScreenId;
-use crate::app::BlaulichtApp;
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand, ModelBytes};
 use blaulicht_engine::stage::{
@@ -16,13 +16,13 @@ use blaulicht_engine::stage::{
 use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
-use super::data::{collect_fixtures, fixture_pose, Pose, RenderSceneSnapshot};
+use super::data::{Pose, RenderSceneSnapshot, collect_fixtures, fixture_pose};
 use super::math::{
-    mat4_look_at, mat4_perspective, mat4_rotation_euler, mat4_transform_dir, project_point, Vec3,
+    Vec3, mat4_look_at, mat4_perspective, mat4_rotation_euler, mat4_transform_dir, project_point,
 };
 use super::state::{
-    EditorSnapshot, EditorTool, EditorView, SelectionKey, VisualizerMode, DEFAULT_CAMERA_PITCH,
-    DEFAULT_CAMERA_RADIUS, DEFAULT_CAMERA_YAW,
+    DEFAULT_CAMERA_PITCH, DEFAULT_CAMERA_RADIUS, DEFAULT_CAMERA_YAW, EditorSnapshot, EditorTool,
+    EditorView, SelectionKey, VisualizerMode,
 };
 
 impl BlaulichtApp {
@@ -1434,107 +1434,11 @@ impl BlaulichtApp {
         };
         let before_object = object.clone();
         let connected = self.visualizer_ui_state.stage.is_truss_connected(id);
-        ui.horizontal_wrapped(|ui| {
-            ui.text_edit_singleline(&mut object.name);
-            ui.checkbox(&mut object.visible, "Visible");
-            ui.checkbox(&mut object.locked, "Locked");
-            for (axis, label) in ["X", "Y", "Z"].into_iter().enumerate() {
-                ui.label(label);
-                ui.add(
-                    egui::DragValue::new(&mut object.transform.translation[axis])
-                        .speed(0.05)
-                        .suffix(" m"),
-                );
-            }
-            for (axis, label) in ["RX", "RY", "RZ"].into_iter().enumerate() {
-                ui.label(label);
-                ui.add(
-                    egui::DragValue::new(&mut object.transform.rotation[axis])
-                        .speed(0.5)
-                        .suffix(" deg"),
-                );
-            }
-            if let StageObjectKind::ProceduralTruss(spec) = &mut object.kind {
-                ui.add_enabled_ui(!connected, |ui| {
-                    if dropdown::is_desktop(ui) {
-                        let profiles: Vec<_> =
-                            TrussProfile::ALL.iter().map(|p| (*p, p.label())).collect();
-                        dropdown::select_value(
-                            ui,
-                            ("truss-profile", id),
-                            &mut spec.profile,
-                            &profiles,
-                            Some(120.0),
-                        );
-                        let parts: Vec<_> =
-                            TrussPart::ALL.iter().map(|p| (*p, p.label())).collect();
-                        dropdown::select_value(
-                            ui,
-                            ("truss-part", id),
-                            &mut spec.part,
-                            &parts,
-                            Some(120.0),
-                        );
-                    } else {
-                        dropdown::kiosk_combo(
-                            ui,
-                            ("truss-profile", id),
-                            None,
-                            spec.profile.label(),
-                            |ui| {
-                                for profile in TrussProfile::ALL {
-                                    ui.selectable_value(
-                                        &mut spec.profile,
-                                        profile,
-                                        profile.label(),
-                                    );
-                                }
-                            },
-                        );
-                        dropdown::kiosk_combo(
-                            ui,
-                            ("truss-part", id),
-                            None,
-                            spec.part.label(),
-                            |ui| {
-                                for part in TrussPart::ALL {
-                                    ui.selectable_value(&mut spec.part, part, part.label());
-                                }
-                            },
-                        );
-                    }
-                })
-                .response
-                .on_disabled_hover_text("Disconnect all endpoints before changing truss type");
-                if spec.part == TrussPart::Straight {
-                    ui.add_enabled(
-                        !connected,
-                        egui::DragValue::new(&mut spec.length_m)
-                            .range(0.25..=50.0)
-                            .speed(0.25)
-                            .suffix(" m"),
-                    )
-                    .on_disabled_hover_text("Disconnect all endpoints before changing length");
-                    spec.sanitize();
-                    let breakdown = spec
-                        .section_breakdown()
-                        .into_iter()
-                        .map(|length| format!("{length}m"))
-                        .collect::<Vec<_>>()
-                        .join(" + ");
-                    ui.label(breakdown);
-                }
-            } else {
-                for (axis, label) in ["SX", "SY", "SZ"].into_iter().enumerate() {
-                    ui.label(label);
-                    ui.add(
-                        egui::DragValue::new(&mut object.transform.scale[axis])
-                            .range(0.01..=1_000.0)
-                            .speed(0.05),
-                    );
-                }
-            }
-        });
+        if dropdown::is_desktop(ui) {
+            desktop_object_form(ui, id, &mut object, connected);
+        } else {
+            kiosk_object_row(ui, id, &mut object, connected);
+        }
         if matches!(object.kind, StageObjectKind::ProceduralTruss(_)) {
             ui.horizontal(|ui| {
                 if ui.button("Select Connected").clicked() {
@@ -1664,6 +1568,8 @@ impl BlaulichtApp {
 
     fn visualizer_top_ui(&mut self, ui: &mut egui::Ui) {
         let size = Vec2::new(ui.available_width(), ui.available_height().max(160.0));
+        // The desktop also shows the top view in View mode, read-only.
+        let editable = self.visualizer_ui_state.editor.mode == VisualizerMode::Edit;
         let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, Color32::from_rgb(13, 14, 20));
@@ -1889,7 +1795,7 @@ impl BlaulichtApp {
             );
         }
 
-        if response.drag_started_by(egui::PointerButton::Primary) {
+        if editable && response.drag_started_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
                 let hit = hit_test_top(
                     pointer,
@@ -1924,7 +1830,7 @@ impl BlaulichtApp {
                 }
             }
         }
-        if response.clicked_by(egui::PointerButton::Primary) {
+        if editable && response.clicked_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
                 let hit = hit_test_top(
                     pointer,
@@ -1946,7 +1852,7 @@ impl BlaulichtApp {
                 }
             }
         }
-        if response.dragged_by(egui::PointerButton::Primary) {
+        if editable && response.dragged_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
                 match self.visualizer_ui_state.editor.tool {
                     // Select only has `drag_last_world` set when the drag
@@ -1971,7 +1877,7 @@ impl BlaulichtApp {
                 }
             }
         }
-        if response.drag_stopped_by(egui::PointerButton::Primary) {
+        if editable && response.drag_stopped_by(egui::PointerButton::Primary) {
             if let (Some(start), Some(pointer)) = (
                 self.visualizer_ui_state.editor.box_select_start.take(),
                 response.interact_pointer_pos(),
@@ -2391,7 +2297,7 @@ impl BlaulichtApp {
         use crate::app::components::studio;
         use crate::app::pages::setup::duo;
         use crate::app::pages::system::desk;
-        use crate::app::ui_tokens::{studio as tokens, PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW};
+        use crate::app::ui_tokens::{PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW, studio as tokens};
         use egui::{pos2, vec2};
 
         let t = tokens(ui.ctx());
@@ -2449,6 +2355,8 @@ impl BlaulichtApp {
         let mut room_changed = false;
         let mut fit = false;
         let mut reset = false;
+        let top_view = self.visualizer_ui_state.editor.view == EditorView::Top;
+        let mut toggle_top = false;
         let mut undo = false;
         let mut redo = false;
         let mut bar = desk::pane_at(ui, bar_rect, t.pane, "visualizer-bar");
@@ -2471,13 +2379,6 @@ impl BlaulichtApp {
                 }
                 if editor.mode == VisualizerMode::Edit {
                     divider(ui, t.line);
-                    let mut view = usize::from(editor.view == EditorView::Top);
-                    studio::segmented(ui, &mut view, &["3D", "Top"], TARGET_SHOW);
-                    editor.view = if view == 1 {
-                        EditorView::Top
-                    } else {
-                        EditorView::Perspective
-                    };
                     const TOOLS: [EditorTool; 4] = [
                         EditorTool::Select,
                         EditorTool::Translate,
@@ -2534,6 +2435,14 @@ impl BlaulichtApp {
                 }
             },
             |ui| {
+                // As in the mockup: a Top toggle beside the camera buttons,
+                // reachable in View and Edit mode.
+                if studio::mini_button(ui, "Top", top_view, TARGET_SHOW)
+                    .on_hover_text("Switch between the 3D view and the top view")
+                    .clicked()
+                {
+                    toggle_top = true;
+                }
                 fit = studio::mini_button(ui, "Fit view", false, TARGET_SHOW).clicked();
                 reset = studio::mini_button(ui, "Reset cam", false, TARGET_SHOW).clicked();
             },
@@ -2547,6 +2456,13 @@ impl BlaulichtApp {
         if room_changed {
             self.visualizer_ui_state.stage.room.visible =
                 self.visualizer_ui_state.settings.show_room;
+        }
+        if toggle_top {
+            self.visualizer_ui_state.editor.view = if top_view {
+                EditorView::Perspective
+            } else {
+                EditorView::Top
+            };
         }
         if reset {
             reset_camera(&mut self.visualizer_ui_state);
@@ -2562,7 +2478,7 @@ impl BlaulichtApp {
 
         // The stage view.
         let editing = self.visualizer_ui_state.editor.mode == VisualizerMode::Edit;
-        let top = editing && self.visualizer_ui_state.editor.view == EditorView::Top;
+        let top = self.visualizer_ui_state.editor.view == EditorView::Top;
         let mut view = desk::pane_at(ui, view_rect, t.pane, "visualizer-view");
         studio::pane_header(
             &mut view,
@@ -2839,6 +2755,208 @@ fn unit(ui: &mut egui::Ui, text: &str) {
     ui.label(egui::RichText::new(text).font(f).color(t.muted));
 }
 
+/// The kiosk's object inspector: one wrapped row of every field.
+fn kiosk_object_row(ui: &mut egui::Ui, id: u64, object: &mut StageObject, connected: bool) {
+    ui.horizontal_wrapped(|ui| {
+        ui.text_edit_singleline(&mut object.name);
+        ui.checkbox(&mut object.visible, "Visible");
+        ui.checkbox(&mut object.locked, "Locked");
+        for (axis, label) in ["X", "Y", "Z"].into_iter().enumerate() {
+            ui.label(label);
+            ui.add(
+                egui::DragValue::new(&mut object.transform.translation[axis])
+                    .speed(0.05)
+                    .suffix(" m"),
+            );
+        }
+        for (axis, label) in ["RX", "RY", "RZ"].into_iter().enumerate() {
+            ui.label(label);
+            ui.add(
+                egui::DragValue::new(&mut object.transform.rotation[axis])
+                    .speed(0.5)
+                    .suffix(" deg"),
+            );
+        }
+        if let StageObjectKind::ProceduralTruss(spec) = &mut object.kind {
+            ui.add_enabled_ui(!connected, |ui| {
+                if dropdown::is_desktop(ui) {
+                    let profiles: Vec<_> =
+                        TrussProfile::ALL.iter().map(|p| (*p, p.label())).collect();
+                    dropdown::select_value(
+                        ui,
+                        ("truss-profile", id),
+                        &mut spec.profile,
+                        &profiles,
+                        Some(120.0),
+                    );
+                    let parts: Vec<_> = TrussPart::ALL.iter().map(|p| (*p, p.label())).collect();
+                    dropdown::select_value(
+                        ui,
+                        ("truss-part", id),
+                        &mut spec.part,
+                        &parts,
+                        Some(120.0),
+                    );
+                } else {
+                    dropdown::kiosk_combo(
+                        ui,
+                        ("truss-profile", id),
+                        None,
+                        spec.profile.label(),
+                        |ui| {
+                            for profile in TrussProfile::ALL {
+                                ui.selectable_value(&mut spec.profile, profile, profile.label());
+                            }
+                        },
+                    );
+                    dropdown::kiosk_combo(ui, ("truss-part", id), None, spec.part.label(), |ui| {
+                        for part in TrussPart::ALL {
+                            ui.selectable_value(&mut spec.part, part, part.label());
+                        }
+                    });
+                }
+            })
+            .response
+            .on_disabled_hover_text("Disconnect all endpoints before changing truss type");
+            if spec.part == TrussPart::Straight {
+                ui.add_enabled(
+                    !connected,
+                    egui::DragValue::new(&mut spec.length_m)
+                        .range(0.25..=50.0)
+                        .speed(0.25)
+                        .suffix(" m"),
+                )
+                .on_disabled_hover_text("Disconnect all endpoints before changing length");
+                spec.sanitize();
+                let breakdown = spec
+                    .section_breakdown()
+                    .into_iter()
+                    .map(|length| format!("{length}m"))
+                    .collect::<Vec<_>>()
+                    .join(" + ");
+                ui.label(breakdown);
+            }
+        } else {
+            for (axis, label) in ["SX", "SY", "SZ"].into_iter().enumerate() {
+                ui.label(label);
+                ui.add(
+                    egui::DragValue::new(&mut object.transform.scale[axis])
+                        .range(0.01..=1_000.0)
+                        .speed(0.05),
+                );
+            }
+        }
+    });
+}
+
+/// The desktop's object inspector: label/value rows like the mockup's
+/// `pg-frm`, so every axis keeps its value beside it in the 280px pane.
+fn desktop_object_form(ui: &mut egui::Ui, id: u64, object: &mut StageObject, connected: bool) {
+    use crate::app::pages::setup::duo;
+    const AXIS_W: f32 = 52.0;
+    let axes = |ui: &mut egui::Ui,
+                values: &mut [f32; 3],
+                labels: [&str; 3],
+                speed: f64,
+                suffix: &str,
+                range: Option<std::ops::RangeInclusive<f32>>| {
+        ui.spacing_mut().item_spacing.x = 3.0;
+        for (value, label) in values.iter_mut().zip(labels) {
+            let mut drag = egui::DragValue::new(value)
+                .speed(speed)
+                .prefix(format!("{label} "))
+                .suffix(suffix);
+            if let Some(range) = range.clone() {
+                drag = drag.range(range);
+            }
+            ui.add_sized([AXIS_W, ui.spacing().interact_size.y], drag);
+        }
+    };
+    duo::form_row(ui, "Name", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut object.name).desired_width(f32::INFINITY));
+    });
+    duo::form_row(ui, "Flags", |ui| {
+        ui.checkbox(&mut object.visible, "Visible");
+        ui.checkbox(&mut object.locked, "Locked");
+    });
+    duo::form_row(ui, "Position m", |ui| {
+        axes(
+            ui,
+            &mut object.transform.translation,
+            ["X", "Y", "Z"],
+            0.05,
+            "",
+            None,
+        );
+    });
+    duo::form_row(ui, "Rotation deg", |ui| {
+        axes(
+            ui,
+            &mut object.transform.rotation,
+            ["X", "Y", "Z"],
+            0.5,
+            "",
+            None,
+        );
+    });
+    if let StageObjectKind::ProceduralTruss(spec) = &mut object.kind {
+        let hint = "Disconnect all endpoints before changing truss type";
+        duo::form_row(ui, "Profile", |ui| {
+            ui.add_enabled_ui(!connected, |ui| {
+                let profiles: Vec<_> = TrussProfile::ALL.iter().map(|p| (*p, p.label())).collect();
+                dropdown::select_value(
+                    ui,
+                    ("truss-profile", id),
+                    &mut spec.profile,
+                    &profiles,
+                    Some(150.0),
+                );
+            })
+            .response
+            .on_disabled_hover_text(hint);
+        });
+        duo::form_row(ui, "Part", |ui| {
+            ui.add_enabled_ui(!connected, |ui| {
+                let parts: Vec<_> = TrussPart::ALL.iter().map(|p| (*p, p.label())).collect();
+                dropdown::select_value(ui, ("truss-part", id), &mut spec.part, &parts, Some(150.0));
+            })
+            .response
+            .on_disabled_hover_text(hint);
+        });
+        if spec.part == TrussPart::Straight {
+            duo::form_row(ui, "Length", |ui| {
+                ui.add_enabled(
+                    !connected,
+                    egui::DragValue::new(&mut spec.length_m)
+                        .range(0.25..=50.0)
+                        .speed(0.25)
+                        .suffix(" m"),
+                )
+                .on_disabled_hover_text("Disconnect all endpoints before changing length");
+            });
+            spec.sanitize();
+            let breakdown = spec
+                .section_breakdown()
+                .into_iter()
+                .map(|length| format!("{length}m"))
+                .collect::<Vec<_>>()
+                .join(" + ");
+            duo::form_row(ui, "Sections", |ui| duo::text(ui, breakdown));
+        }
+    } else {
+        duo::form_row(ui, "Scale", |ui| {
+            axes(
+                ui,
+                &mut object.transform.scale,
+                ["X", "Y", "Z"],
+                0.05,
+                "",
+                Some(0.01..=1_000.0),
+            );
+        });
+    }
+}
+
 /// A 1px vertical divider between groups of bar controls.
 fn divider(ui: &mut egui::Ui, color: Color32) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 24.0), Sense::hover());
@@ -3060,11 +3178,7 @@ fn hit_test_projected(
 }
 
 fn finite_or(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() {
-        value
-    } else {
-        fallback
-    }
+    if value.is_finite() { value } else { fallback }
 }
 
 fn normalize_angle(angle: f32) -> f32 {

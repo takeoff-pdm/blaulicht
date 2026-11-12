@@ -52,3 +52,16 @@ These two pages only need to match the shell, not the mockup exactly. Mockup: `d
   tickets' scope). Checks: cargo fmt --check, clippy and tests for `blaulicht-ui-egui` on the host
   (CARGO_BUILD_JOBS=4), 171 tests pass, no new clippy warnings in the touched files.
 
+- Review fixes (verified with kt, desktop 1500x950): the desktop object inspector is now label/value
+  rows (Name, Flags, Position m, Rotation deg, Scale or Profile/Part/Length/Sections for trusses),
+  each axis a prefixed drag value ("X 0.00") so values stay with their labels in the 280px pane; the
+  kiosk keeps its wrapped row (moved verbatim into `kiosk_object_row`). The 3D/Top segmented control
+  is replaced by a "Top" toggle on the right before Fit view / Reset cam, as in the mockup, usable in
+  View and Edit mode; in View mode the top view is read-only (primary-button select/drag gated on
+  Edit; the kiosk only shows the top view in Edit, so it is unaffected). Create in Scene Graph selects
+  the prefilled name, so typing "Test" + Enter creates "Test". The Node pane title already follows the
+  selected node's name: new nodes are simply named "Node" (renaming to "Intro" retitles the pane).
+- Kiosk: not re-shot; from the code the Compact path is unchanged (inspector branches on
+  `dropdown::is_desktop`, bar and Create changes live only in the desktop functions). Checks rerun on
+  the host with CARGO_BUILD_JOBS=4: cargo fmt, clippy and tests for `blaulicht-ui-egui` (171 pass, no
+  new clippy warnings in touched lines).
