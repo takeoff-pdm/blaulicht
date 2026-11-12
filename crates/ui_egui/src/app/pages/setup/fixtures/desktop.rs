@@ -10,10 +10,11 @@ use crate::app::ui_tokens::{studio as studio_tokens, Density, Weight, TARGET_MIN
 use crate::app::{BlaulichtApp, PopupSpec};
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::dmx::EngineState;
-use blaulicht_engine::hub::{CreatedId, HostCommand};
+use blaulicht_engine::hub::HostCommand;
 use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 use blaulicht_shared::folder::{FolderId, FolderKind};
-use egui::{pos2, vec2, Align2, Context, Rect, RichText, Sense, Stroke, StrokeKind, Ui};
+use egui::{pos2, vec2, Align2, Context, Id, Rect, RichText, Sense, Stroke, StrokeKind, Ui};
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 /// Width of the Groups pane (`setup.html`).
@@ -22,6 +23,115 @@ const GROUPS_W: f32 = 210.0;
 const FIXTURE_W: f32 = 300.0;
 /// The 1px gutter between panes.
 const GAP: f32 = 1.0;
+/// Label column of the Fixture pane's multi-selection form (`.frm`: 84px
+/// plus the gap).
+const FORM_LABEL_W: f32 = 86.0;
+
+/// The fixtures selected in the table (`st.fxs` in `setup.html`), kept in
+/// egui temp memory for the group it was made in. Another group (or none
+/// stored yet) means "the fixture in the editor".
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct FixtureSelection {
+    group: u8,
+    ids: BTreeSet<u8>,
+}
+
+fn selection_id() -> Id {
+    Id::new("setup_fixtures_selection")
+}
+
+/// A drag of fixture rows onto a group of the tree (`treedrag.js`): the
+/// fixtures it carries, from `group`.
+#[derive(Clone, Debug, Default)]
+struct FixtureDrag {
+    group: u8,
+    ids: Vec<u8>,
+    label: String,
+}
+
+fn drag_id() -> Id {
+    Id::new("setup_fixtures_drag")
+}
+
+/// The confirm step of Delete (`del("fx")` in the mockup), for this
+/// selection.
+fn delete_confirm_id() -> Id {
+    Id::new("setup_fixtures_delete_confirm")
+}
+
+/// Applies a click on fixture `id` of a table in `order` to `selected`
+/// (`setup.html`): a plain click selects only it, Ctrl/Cmd toggles it,
+/// Shift adds the range from the `anchor` (replacing the selection unless
+/// Ctrl/Cmd is held too). `anchor` is the fixture in the editor.
+fn click_select(
+    order: &[u8],
+    selected: &mut BTreeSet<u8>,
+    anchor: &mut Option<u8>,
+    id: u8,
+    toggle: bool,
+    range: bool,
+) {
+    let from = anchor.and_then(|a| order.iter().position(|x| *x == a));
+    let to = order.iter().position(|x| *x == id);
+    if let (true, Some(a), Some(b)) = (range, from, to) {
+        let (a, b) = if a <= b { (a, b) } else { (b, a) };
+        if !toggle {
+            selected.clear();
+        }
+        selected.extend(order[a..=b].iter().copied());
+    } else if toggle {
+        if !selected.remove(&id) {
+            selected.insert(id);
+        }
+        *anchor = if selected.contains(&id) {
+            Some(id)
+        } else {
+            order.iter().rev().find(|x| selected.contains(x)).copied()
+        };
+    } else {
+        selected.clear();
+        selected.insert(id);
+        *anchor = Some(id);
+    }
+}
+
+/// "Moved MAC250E-0 #1 to DIMMER" or "Moved 3 fixtures to DIMMER".
+fn moved_text(names: &[String], to: &str) -> String {
+    match names {
+        [one] => format!("Moved {one} to {to}"),
+        _ => format!("Moved {} fixtures to {to}", names.len()),
+    }
+}
+
+/// The Delete confirm label: "Confirm delete" for one fixture, "Delete N
+/// fixtures" for several.
+fn delete_label(count: usize) -> String {
+    if count > 1 {
+        format!("Delete {count} fixtures")
+    } else {
+        "Confirm delete".to_owned()
+    }
+}
+
+/// The Delete confirm (`.mini.confirm`): a 28px mini button with red text.
+fn confirm_button(ui: &mut Ui, label: &str) -> egui::Response {
+    let t = studio_tokens(ui.ctx());
+    let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), f.clone(), t.red_text);
+    let w = galley.size().x + 20.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(w, TARGET_SHOW), Sense::click());
+    let fill = if response.hovered() { t.ctl_hi } else { t.ctl };
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, fill);
+    if response.has_focus() {
+        p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, t.blue), StrokeKind::Inside);
+    }
+    p.text(rect.center(), Align2::CENTER_CENTER, label, f, t.red_text);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    response
+}
 
 /// The group folders of the desktop tree under `parent`, in `(order, id)`
 /// order: siblings nobody reordered keep the order they were made in, like
@@ -87,19 +197,173 @@ impl BlaulichtApp {
         let mut centre_ui = pane(centre_rect, t.list);
         let mut fixture_ui = pane(fixture_rect, t.pane);
 
-        self.desktop_groups_pane(&mut groups_ui, dmx_engine);
+        let group_rows = self.desktop_groups_pane(&mut groups_ui, dmx_engine);
         self.desktop_centre_pane(&mut centre_ui, dmx_engine);
         self.desktop_fixture_pane(&mut fixture_ui, ctx, dmx_engine);
+        self.desktop_fixture_drag(ui, dmx_engine, &group_rows, groups_rect);
+    }
+
+    /// The selected fixtures of the shown group, in table order. Without a
+    /// selection made in this group it is the fixture in the editor.
+    fn desktop_fixture_selection(&self, ctx: &Context, dmx_engine: &EngineState) -> Vec<u8> {
+        let Some(gid) = self.add_fixture_group else {
+            return Vec::new();
+        };
+        let Some(group) = dmx_engine.groups().get(&gid) else {
+            return Vec::new();
+        };
+        let stored: Option<FixtureSelection> = ctx.data(|d| d.get_temp(selection_id()));
+        match stored.filter(|s| s.group == gid) {
+            Some(s) => group
+                .fixtures
+                .keys()
+                .filter(|id| s.ids.contains(id))
+                .copied()
+                .collect(),
+            None => group
+                .fixtures
+                .contains_key(&self.setup_fixture_id)
+                .then_some(vec![self.setup_fixture_id])
+                .unwrap_or_default(),
+        }
+    }
+
+    fn store_fixture_selection(ctx: &Context, group: u8, ids: BTreeSet<u8>) {
+        ctx.data_mut(|d| d.insert_temp(selection_id(), FixtureSelection { group, ids }));
+        ctx.data_mut(|d| d.remove_temp::<bool>(delete_confirm_id()));
+    }
+
+    /// Moves fixtures `ids` of group `from` to group `to` (Move to group or
+    /// a drag onto the tree), keeping their patch. Clears the selection and
+    /// shows "Moved …" once the last move is done; there is no undo.
+    fn move_fixtures_to_group(
+        &mut self,
+        ctx: &Context,
+        dmx_engine: &EngineState,
+        from: u8,
+        ids: &[u8],
+        to: u8,
+    ) {
+        let groups = dmx_engine.groups();
+        let (Some(source), Some(target)) = (groups.get(&from), groups.get(&to)) else {
+            return;
+        };
+        if from == to {
+            return;
+        }
+        let ids: Vec<u8> = ids
+            .iter()
+            .filter(|id| source.fixtures.contains_key(id))
+            .copied()
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let names: Vec<String> = ids
+            .iter()
+            .map(|id| source.fixtures[id].name.to_string())
+            .collect();
+        let text = moved_text(&names, &target.name);
+        Self::store_fixture_selection(ctx, from, BTreeSet::new());
+        let last = ids.len() - 1;
+        for (i, fixture) in ids.into_iter().enumerate() {
+            let command = HostCommand::MoveFixtureToGroup {
+                group: from,
+                fixture,
+                target: to,
+            };
+            if i == last {
+                let (ctx, text) = (ctx.clone(), text.clone());
+                self.send_setup_command(command, move |_, _| {
+                    components::notify_info(&ctx, text);
+                });
+            } else {
+                self.send_setup_command(command, |_, _| {});
+            }
+        }
+    }
+
+    /// Fixture rows dragged onto a group of the tree (`treedrag.js`): the
+    /// target row is outlined, a ghost names what is carried, release
+    /// moves, Esc cancels.
+    fn desktop_fixture_drag(
+        &mut self,
+        ui: &mut Ui,
+        dmx_engine: &EngineState,
+        group_rows: &[(u8, Rect)],
+        groups_rect: Rect,
+    ) {
+        let ctx = ui.ctx().clone();
+        let Some(drag) = ctx.data(|d| d.get_temp::<FixtureDrag>(drag_id())) else {
+            return;
+        };
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            ctx.data_mut(|d| d.remove_temp::<FixtureDrag>(drag_id()));
+            ctx.request_repaint();
+            return;
+        }
+        let (pointer, down) = ctx.input(|i| (i.pointer.latest_pos(), i.pointer.primary_down()));
+        let target = pointer.filter(|p| groups_rect.contains(*p)).and_then(|p| {
+            group_rows
+                .iter()
+                .find(|(gid, rect)| *gid != drag.group && rect.contains(p))
+                .copied()
+        });
+        if !down {
+            ctx.data_mut(|d| d.remove_temp::<FixtureDrag>(drag_id()));
+            ctx.request_repaint();
+            if let Some((to, _)) = target {
+                self.move_fixtures_to_group(&ctx, dmx_engine, drag.group, &drag.ids, to);
+            }
+            return;
+        }
+        let t = studio_tokens(&ctx);
+        if let Some((_, rect)) = target {
+            ui.painter().with_clip_rect(groups_rect).rect_stroke(
+                rect,
+                0.0,
+                Stroke::new(1.0_f32, t.blue),
+                StrokeKind::Inside,
+            );
+        }
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        if let Some(pointer) = pointer {
+            // The ghost (`.treeghost`), like the folder trees' (073).
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                drag_id().with("ghost"),
+            ));
+            let ok = target.is_some();
+            let text = if ok { t.strong } else { t.muted };
+            let galley = painter.layout_no_wrap(
+                drag.label.clone(),
+                Density::of(&ctx).font(Weight::Regular, 12.0),
+                text,
+            );
+            let min = pointer + vec2(12.0, 8.0);
+            let rect = Rect::from_min_size(min, galley.size() + vec2(16.0, 6.0));
+            painter.rect_filled(rect, 0.0, t.ctl);
+            painter.rect_stroke(
+                rect,
+                0.0,
+                Stroke::new(1.0_f32, if ok { t.blue } else { t.line }),
+                StrokeKind::Outside,
+            );
+            painter.galley(min + vec2(8.0, 3.0), galley, text);
+        }
+        ctx.request_repaint();
     }
 
     /// The Groups pane: a 40px header and the folder tree, member rows with
-    /// their fixture count.
-    fn desktop_groups_pane(&mut self, ui: &mut Ui, dmx_engine: &EngineState) {
+    /// their fixture count. Returns the group rows drawn, as drop targets
+    /// for a fixture drag.
+    fn desktop_groups_pane(&mut self, ui: &mut Ui, dmx_engine: &EngineState) -> Vec<(u8, Rect)> {
         studio::pane_header(ui, None, "Groups", true, |_| {});
         let id = tree_id(SETUP_GROUP_TREE);
         let mut state = TreeState::<FolderId>::load(ui.ctx(), id);
         let mut picked = None;
         let mut toggled = None;
+        let mut rows = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("setup-fixtures-groups")
             .auto_shrink([false, false])
@@ -114,6 +378,7 @@ impl BlaulichtApp {
                     &mut first,
                     &mut picked,
                     &mut toggled,
+                    &mut rows,
                 );
             });
         if let Some(folder) = toggled {
@@ -127,7 +392,9 @@ impl BlaulichtApp {
                 .and_then(|g| g.fixtures.keys().next().copied())
                 .unwrap_or(0);
             self.select_setup_fixture(dmx_engine, gid, first);
+            Self::store_fixture_selection(ui.ctx(), gid, BTreeSet::from([first]));
         }
+        rows
     }
 
     /// One level of the group tree: folders (bands, then their contents when
@@ -142,6 +409,7 @@ impl BlaulichtApp {
         first: &mut bool,
         picked: &mut Option<u8>,
         toggled: &mut Option<FolderId>,
+        rows: &mut Vec<(u8, Rect)>,
     ) {
         let groups = dmx_engine.groups();
         for folder in child_folders(dmx_engine, parent) {
@@ -161,6 +429,7 @@ impl BlaulichtApp {
                     first,
                     picked,
                     toggled,
+                    rows,
                 );
             }
         }
@@ -176,6 +445,7 @@ impl BlaulichtApp {
                 })
                 .show(ui);
             *first = false;
+            rows.push((*gid, row.rect.intersect(ui.clip_rect())));
             if row.clicked() {
                 *picked = Some(*gid);
             }
@@ -292,7 +562,14 @@ impl BlaulichtApp {
             return;
         };
         let needle = filter.trim().to_lowercase();
+        let selected: BTreeSet<u8> = self
+            .desktop_fixture_selection(ui.ctx(), dmx_engine)
+            .into_iter()
+            .collect();
+        let dragging: Option<FixtureDrag> = ui.data(|d| d.get_temp(drag_id()));
         let mut picked = None;
+        let mut drag_from = None;
+        let mut order = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("setup-fixtures-table")
             .auto_shrink([false, false])
@@ -307,10 +584,18 @@ impl BlaulichtApp {
                     {
                         continue;
                     }
+                    order.push(*fid);
                     let (rect, response) =
-                        ui.allocate_exact_size(vec2(width, 24.0), Sense::click());
-                    let active = self.setup_fixture_id == *fid;
-                    let p = ui.painter();
+                        ui.allocate_exact_size(vec2(width, 24.0), Sense::click_and_drag());
+                    let active = selected.contains(fid);
+                    // `.row.dragsrc`: the carried rows at 40 %.
+                    let carried = dragging
+                        .as_ref()
+                        .is_some_and(|d| d.group == gid && d.ids.contains(fid));
+                    let mut p = ui.painter().clone();
+                    if carried {
+                        p.set_opacity(0.4);
+                    }
                     if active {
                         p.rect_filled(rect, 0.0, t.blue_dim);
                         p.rect_filled(
@@ -318,7 +603,7 @@ impl BlaulichtApp {
                             0.0,
                             t.blue,
                         );
-                    } else if response.hovered() {
+                    } else if response.hovered() && dragging.is_none() {
                         p.rect_filled(rect, 0.0, t.head);
                     }
                     let text = if active { t.strong } else { t.text };
@@ -362,12 +647,54 @@ impl BlaulichtApp {
                         text,
                     );
                     if response.clicked() {
-                        picked = Some(*fid);
+                        let m = ui.input(|i| i.modifiers);
+                        picked = Some((*fid, m.command || m.ctrl, m.shift));
+                    }
+                    if response.drag_started() {
+                        drag_from = Some(*fid);
                     }
                 }
             });
-        if let Some(fid) = picked {
-            self.select_setup_fixture(dmx_engine, gid, fid);
+        if let Some((fid, toggle, range)) = picked {
+            let mut sel = selected.clone();
+            let mut anchor = group
+                .fixtures
+                .contains_key(&self.setup_fixture_id)
+                .then_some(self.setup_fixture_id);
+            click_select(&order, &mut sel, &mut anchor, fid, toggle, range);
+            match anchor {
+                Some(a) if a != self.setup_fixture_id => {
+                    self.select_setup_fixture(dmx_engine, gid, a);
+                }
+                // Reload the editor when its fixture is the only one again.
+                Some(a) if sel.len() == 1 && selected.len() != 1 => {
+                    self.select_setup_fixture(dmx_engine, gid, a);
+                }
+                _ => {}
+            }
+            Self::store_fixture_selection(ui.ctx(), gid, sel);
+        }
+        if let Some(fid) = drag_from {
+            // A selected row carries the whole selection.
+            let ids: Vec<u8> = if selected.contains(&fid) {
+                selected.iter().copied().collect()
+            } else {
+                vec![fid]
+            };
+            let label = match ids.as_slice() {
+                [one] => group.fixtures[one].name.to_string(),
+                _ => format!("{} fixtures", ids.len()),
+            };
+            ui.data_mut(|d| {
+                d.insert_temp(
+                    drag_id(),
+                    FixtureDrag {
+                        group: gid,
+                        ids,
+                        label,
+                    },
+                )
+            });
         }
     }
 
@@ -377,13 +704,25 @@ impl BlaulichtApp {
     fn desktop_fixture_pane(&mut self, ui: &mut Ui, ctx: &Context, dmx_engine: &EngineState) {
         let t = studio_tokens(ui.ctx());
         let density = Density::of(ui.ctx());
-        studio::pane_header(ui, None, "Fixture", true, |_| {});
+        let ids = self.desktop_fixture_selection(ctx, dmx_engine);
+        let group = self
+            .add_fixture_group
+            .and_then(|gid| dmx_engine.groups().get(&gid).map(|g| (gid, g)));
+        self.desktop_fixture_header(ui, ctx, dmx_engine, &ids);
 
-        let selected = self.add_fixture_group.and_then(|gid| {
-            dmx_engine
-                .groups()
-                .get(&gid)
-                .and_then(|g| g.fixtures.get(&self.setup_fixture_id))
+        if let (Some((gid, group)), true) = (group, ids.len() > 1) {
+            let fixtures: Vec<_> = ids.iter().filter_map(|id| group.fixtures.get(id)).collect();
+            let mut body = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(ui.available_rect_before_wrap().shrink(8.0))
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            self.desktop_multi_editor(&mut body, gid, &ids, &fixtures);
+            return;
+        }
+        let selected = group.and_then(|(gid, g)| {
+            ids.first()
+                .and_then(|id| g.fixtures.get(id))
                 .map(|fix| (gid, fix.clone()))
         });
         let mut body = ui.new_child(
@@ -396,9 +735,12 @@ impl BlaulichtApp {
         let Some((gid, fix)) = selected else {
             ui.add(
                 egui::Label::new(
-                    RichText::new("Select a fixture to edit it, or add a new one.")
-                        .font(density.font(Weight::Regular, 12.0))
-                        .color(t.text),
+                    RichText::new(
+                        "Select a fixture to edit it, or add a new one. Ctrl or Cmd+click \
+                     selects several, Shift+click a range.",
+                    )
+                    .font(density.font(Weight::Regular, 12.0))
+                    .color(t.text),
                 )
                 .wrap(),
             );
@@ -546,11 +888,6 @@ impl BlaulichtApp {
                     self.swap_setup_fixtures(gid, fid, next);
                 }
             }
-            if studio::mini_button(ui, "Move to group", false, TARGET_MIN).clicked()
-                && dmx_engine.groups().len() > 1
-            {
-                self.move_fixture_group_dialog_open = true;
-            }
         });
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
@@ -577,51 +914,338 @@ impl BlaulichtApp {
             {
                 self.show_fixtures_in_visualizer([(gid, fid)]);
             }
-            if studio::mini_button(ui, "Delete", false, TARGET_MIN).clicked() {
-                self.delete_fixture = Some((gid, fid));
+        });
+    }
+
+    /// The Fixture pane's 40px title bar: "Fixture: <name>" or "Fixtures:
+    /// N selected", and for a selection Move to group (the group dropdown),
+    /// a divider and Delete with its confirm step naming the count.
+    fn desktop_fixture_header(
+        &mut self,
+        ui: &mut Ui,
+        ctx: &Context,
+        dmx_engine: &EngineState,
+        ids: &[u8],
+    ) {
+        let t = studio_tokens(ctx);
+        let Some(gid) = self.add_fixture_group else {
+            studio::pane_header(ui, None, "Fixture", true, |_| {});
+            return;
+        };
+        let groups = dmx_engine.groups();
+        let name = match ids {
+            [] => String::new(),
+            [one] => groups
+                .get(&gid)
+                .and_then(|g| g.fixtures.get(one))
+                .map(|f| f.name.to_string())
+                .unwrap_or_default(),
+            _ => format!("{} selected", ids.len()),
+        };
+        let (prefix, name) = match ids.len() {
+            0 => (None, "Fixture".to_owned()),
+            1 => (Some("Fixture:"), name),
+            _ => (Some("Fixtures:"), name),
+        };
+        let confirm = ctx.data(|d| d.get_temp::<bool>(delete_confirm_id()).unwrap_or(false));
+        // The confirm step needs the whole bar in a 300px pane.
+        let (prefix, name) = if confirm && !ids.is_empty() {
+            (None, String::new())
+        } else {
+            (prefix, name)
+        };
+        let mut move_button = None;
+        let (mut ask, mut delete, mut cancel) = (false, false, false);
+        let dd = Id::new("setup_fixtures_move_to_group");
+        studio::pane_header(ui, prefix, &name, true, |ui| {
+            if ids.is_empty() {
+                return;
+            }
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let open = components::dropdown::is_open(ui.ctx(), dd);
+            move_button = Some(studio::mini_button(ui, "Move to group", open, TARGET_SHOW));
+            // `.hsep`: a 1x16 line with 4px either side.
+            let (r, _) = ui.allocate_exact_size(vec2(9.0, 16.0), Sense::hover());
+            ui.painter()
+                .vline(r.center().x, r.y_range(), Stroke::new(1.0_f32, t.line));
+            if confirm {
+                delete = confirm_button(ui, &delete_label(ids.len())).clicked();
+                cancel = studio::mini_button(ui, "Cancel", false, TARGET_SHOW).clicked();
+            } else {
+                ask = studio::mini_button(ui, "Delete", false, TARGET_SHOW).clicked();
             }
         });
-
-        if self.move_fixture_group_dialog_open {
-            let options: Vec<(u8, String)> = dmx_engine
-                .groups()
-                .iter()
-                .filter(|(target, _)| **target != gid)
-                .map(|(target, g)| (*target, format!("{} | #{}", g.name, target)))
-                .collect();
-            let current = options.first().map(|(g, _)| *g).unwrap_or(gid);
-            let (target, changed) = components::id_selection_dialog(
-                ctx,
-                options,
-                current,
-                &mut self.move_fixture_group_dialog_open,
-                "Move Fixture To Group".to_string(),
-            );
-            if changed {
-                self.send_setup_command(
-                    HostCommand::MoveFixtureToGroup {
-                        group: gid,
-                        fixture: fid,
-                        target,
-                    },
-                    |app, created| {
-                        if let Some(CreatedId::Fixture { group, fixture }) = created {
-                            let moved = app.client.with_show(|show| {
-                                show.0
-                                    .groups
-                                    .get(&group)
-                                    .and_then(|g| g.fixtures.get(&fixture))
-                                    .cloned()
-                            });
-                            app.add_fixture_group = Some(group);
-                            app.setup_fixture_id = fixture;
-                            if let Some(fix) = moved {
-                                app.load_fixture_into_editor(&fix);
-                            }
-                        }
-                    },
-                );
+        if ask {
+            ctx.data_mut(|d| d.insert_temp(delete_confirm_id(), true));
+        }
+        if cancel {
+            ctx.data_mut(|d| d.remove_temp::<bool>(delete_confirm_id()));
+        }
+        if delete {
+            Self::store_fixture_selection(ctx, gid, BTreeSet::new());
+            let last = ids.len().saturating_sub(1);
+            for (i, fixture) in ids.iter().copied().enumerate() {
+                let command = HostCommand::DeleteFixture {
+                    group: gid,
+                    fixture,
+                };
+                if i == last {
+                    self.send_setup_command(command, move |app, _| {
+                        app.setup_fixture_id = app.client.with_show(|show| {
+                            show.0
+                                .groups
+                                .get(&gid)
+                                .and_then(|g| g.fixtures.keys().next().copied())
+                                .unwrap_or_default()
+                        });
+                    });
+                } else {
+                    self.send_setup_command(command, |_, _| {});
+                }
             }
         }
+        let Some(button) = move_button else {
+            return;
+        };
+        if button.clicked() {
+            components::dropdown::toggle(ctx, dd);
+        }
+        // Every other group, under its folder band, with its fixture count.
+        let folders = &dmx_engine.0.folders;
+        let mut targets: Vec<(String, u8, String, usize)> = groups
+            .iter()
+            .filter(|(id, _)| **id != gid)
+            .map(|(id, g)| {
+                let band = g
+                    .folder
+                    .and_then(|f| folders.get(&f))
+                    .map_or_else(|| "No folder".to_owned(), |f| f.name.clone());
+                (band, *id, g.name.clone(), g.fixtures.len())
+            })
+            .collect();
+        targets.sort_by(|a, b| a.0.cmp(&b.0));
+        let items: Vec<components::dropdown::Item> = targets
+            .iter()
+            .map(|(band, _, name, count)| {
+                components::dropdown::Item::new(name.clone())
+                    .group(band.clone())
+                    .meta(count.to_string())
+            })
+            .collect();
+        let picked = components::dropdown::Popover {
+            id: dd,
+            anchor: button.rect,
+            anchor_id: Some(button.id),
+            items: &items,
+            options: components::dropdown::Options {
+                width: Some(220.0),
+                placeholder: "Filter groups".into(),
+                ..Default::default()
+            },
+        }
+        .show_single(ctx, None);
+        if let components::dropdown::Outcome::Picked(i) = picked {
+            if let Some((_, to, _, _)) = targets.get(i) {
+                let to = *to;
+                self.move_fixtures_to_group(ctx, dmx_engine, gid, ids, to);
+            }
+        }
+    }
+
+    /// The Fixture pane body for several fixtures (`multiEditor` in
+    /// `setup.html`): count and type ("Mixed" for several types), the
+    /// per-fixture fields frozen as `--`, Identify and Initialize for the
+    /// whole selection.
+    fn desktop_multi_editor(
+        &mut self,
+        ui: &mut Ui,
+        gid: u8,
+        ids: &[u8],
+        fixtures: &[&blaulicht_shared::fixture::state::Fixture],
+    ) {
+        let t = studio_tokens(ui.ctx());
+        let density = Density::of(ui.ctx());
+        let f12 = density.font(Weight::Regular, 12.0);
+        let f13 = density.font(Weight::Regular, 13.0);
+        ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+        let label = |ui: &mut Ui, text: &str, height: f32| {
+            let (r, _) = ui.allocate_exact_size(vec2(FORM_LABEL_W, height), Sense::hover());
+            ui.painter().text(
+                pos2(r.left(), r.center().y),
+                Align2::LEFT_CENTER,
+                text,
+                f12.clone(),
+                t.muted,
+            );
+        };
+        let text_row = |ui: &mut Ui, name: &str, value: &str, font: egui::FontId| {
+            let w = ui.available_width();
+            let (r, _) = ui.allocate_exact_size(vec2(w, 16.0), Sense::hover());
+            let p = ui.painter();
+            p.text(
+                pos2(r.left(), r.center().y),
+                Align2::LEFT_CENTER,
+                name,
+                f12.clone(),
+                t.muted,
+            );
+            p.text(
+                pos2(r.left() + FORM_LABEL_W + 6.0, r.center().y),
+                Align2::LEFT_CENTER,
+                value,
+                font,
+                t.strong,
+            );
+        };
+        // `input.num:disabled`: well, line, "--", at half opacity.
+        let frozen = |ui: &mut Ui, width: f32, what: &str| {
+            let (r, resp) = ui.allocate_exact_size(vec2(width, TARGET_MIN), Sense::hover());
+            let mut p = ui.painter().clone();
+            p.set_opacity(0.5);
+            p.rect_filled(r, 0.0, t.well);
+            p.rect_stroke(r, 0.0, Stroke::new(1.0_f32, t.line), StrokeKind::Inside);
+            p.text(
+                pos2(r.left() + 7.0, r.center().y),
+                Align2::LEFT_CENTER,
+                "--",
+                egui::FontId::monospace(12.0),
+                t.strong,
+            );
+            resp.on_hover_text(format!("{what}, only for a single fixture"));
+        };
+        let heading = |ui: &mut Ui, text: &str| {
+            let w = ui.available_width();
+            // `.frm h4`: 6px margin, a line, 8px padding, the label.
+            let (r, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
+            ui.painter()
+                .hline(r.x_range(), r.top() + 8.5, Stroke::new(1.0_f32, t.line));
+            ui.painter().text(
+                pos2(r.left(), r.bottom()),
+                Align2::LEFT_BOTTOM,
+                text,
+                f12.clone(),
+                t.muted,
+            );
+        };
+
+        let types: BTreeSet<String> = fixtures.iter().map(|f| f.type_.model_string()).collect();
+        let kind = match types.len() {
+            1 => types.into_iter().next().unwrap_or_default(),
+            _ => "Mixed".to_owned(),
+        };
+        text_row(
+            ui,
+            "Fixtures",
+            &format!("{} selected", ids.len()),
+            f13.clone(),
+        );
+        text_row(ui, "Type", &kind, f13.clone());
+        heading(ui, "Patch");
+        for name in ["Universe", "Start channel"] {
+            ui.horizontal(|ui| {
+                label(ui, name, TARGET_MIN);
+                let w = ui.available_width();
+                frozen(ui, w, name);
+            });
+        }
+        text_row(ui, "Channels", "--", egui::FontId::monospace(12.0));
+        // `.msg.o`: well fill, a 2px ok edge, muted text.
+        let w = ui.available_width();
+        let (r, _) = ui.allocate_exact_size(vec2(w, 24.0), Sense::hover());
+        ui.painter().rect_filled(r, 0.0, t.well);
+        ui.painter()
+            .rect_filled(Rect::from_min_size(r.min, vec2(2.0, r.height())), 0.0, t.ok);
+        ui.painter().text(
+            pos2(r.left() + 8.0, r.center().y),
+            Align2::LEFT_CENTER,
+            "Universe and channels are set one fixture at a time.",
+            f12.clone(),
+            t.muted,
+        );
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            // Identify steps through the selection (078); the button is
+            // here so the row matches the mockup.
+            studio::live_button(ui, "Identify", false, TARGET_MIN)
+                .on_hover_text("Step through the selected fixtures and flash each one");
+            let init_id = Id::new(("fixtures_initializing", gid, ids.to_vec()));
+            let since: Option<f64> = ui.data(|d| d.get_temp(init_id));
+            let now = ui.input(|i| i.time);
+            let on = since.is_some_and(|t| now - t < 10.0);
+            if on {
+                ui.ctx().request_repaint_after(Duration::from_millis(250));
+            }
+            let init = studio::live_button(ui, "Initialize", on, TARGET_MIN).on_hover_text(
+                "Send the selected fixtures their start-up values, such as lamp on and reset",
+            );
+            if init.clicked() && !on {
+                ui.data_mut(|d| d.insert_temp(init_id, now));
+                let label = format!("Initializing {} fixtures (10 s)", ids.len());
+                let keys = ids.iter().map(|id| (gid, *id)).collect();
+                self.send_setup_command(HostCommand::InitFixtures(keys), move |app, _| {
+                    app.show_popup(PopupSpec::with_duration(Duration::from_secs(3), label));
+                });
+            }
+        });
+        heading(ui, "Position");
+        ui.label(
+            RichText::new("Select one fixture to position it.")
+                .font(f12.clone())
+                .color(t.muted),
+        );
+        for name in ["Position", "Rotation"] {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                label(ui, name, TARGET_MIN);
+                ui.add_space(4.0);
+                let w = ((ui.available_width() - 4.0) / 3.0).floor();
+                for _ in 0..3 {
+                    frozen(ui, w, name);
+                }
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn set(ids: &[u8]) -> BTreeSet<u8> {
+        ids.iter().copied().collect()
+    }
+
+    #[test]
+    fn click_ctrl_and_shift_select_like_the_mockup() {
+        let order = [0, 1, 2, 3, 4, 5];
+        let mut sel = BTreeSet::new();
+        let mut anchor = None;
+        click_select(&order, &mut sel, &mut anchor, 1, false, false);
+        assert_eq!((sel.clone(), anchor), (set(&[1]), Some(1)));
+        click_select(&order, &mut sel, &mut anchor, 3, false, true);
+        assert_eq!((sel.clone(), anchor), (set(&[1, 2, 3]), Some(1)));
+        click_select(&order, &mut sel, &mut anchor, 5, true, false);
+        assert_eq!((sel.clone(), anchor), (set(&[1, 2, 3, 5]), Some(5)));
+        click_select(&order, &mut sel, &mut anchor, 5, true, false);
+        assert_eq!((sel.clone(), anchor), (set(&[1, 2, 3]), Some(3)));
+        // Ctrl+Shift adds a range to the selection.
+        click_select(&order, &mut sel, &mut anchor, 5, true, true);
+        assert_eq!(sel, set(&[1, 2, 3, 4, 5]));
+        // Shift alone replaces it with the range.
+        click_select(&order, &mut sel, &mut anchor, 4, false, true);
+        assert_eq!(sel, set(&[3, 4]));
+        click_select(&order, &mut sel, &mut anchor, 0, false, false);
+        assert_eq!((sel, anchor), (set(&[0]), Some(0)));
+    }
+
+    #[test]
+    fn labels_name_the_count() {
+        assert_eq!(delete_label(1), "Confirm delete");
+        assert_eq!(delete_label(3), "Delete 3 fixtures");
+        assert_eq!(moved_text(&["A".into()], "FOG"), "Moved A to FOG");
+        assert_eq!(
+            moved_text(&["A".into(), "B".into(), "C".into()], "FOG"),
+            "Moved 3 fixtures to FOG"
+        );
     }
 }
