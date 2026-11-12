@@ -55,3 +55,21 @@
   host: the nightly toolchain has no clippy component and the stable clippy-driver can't build the
   nightly crates. The workspace-wide `cargo test --all-features` was not run (only ui_egui).
 
+- Review fixes (2026-11-12, kt 1500x950 against `pages.html#logs` / `#light`):
+  - Edge to edge: `draw_desktop` paints into the content rect expanded by the shell's 8px margin
+    (as `setup/duo.rs`), so the 30px bar starts at y=0 next to the sidebar, the footer sits on the
+    status bar and there is no right gutter.
+  - Row selection (`tr.sl`): rows sense clicks; a click selects (blue-dim fill replacing stripe and
+    error tint, strong time; strong level and message on Info rows, level colours kept as in the
+    CSS), a second click deselects. Selection is by a per-window sequence number on `LogEntry`, so
+    it survives new lines.
+  - Rows are 23px like the mockup (2px padding around the 18px level line plus the 1px border).
+    Source tags are outline only (1px line, no fill); the dark look was the stripe behind them.
+  - Light theme checked in kt via System > General > LIGHT (the switch exists there) against the
+    `pages.html#light` mockup; then switched back to DARK.
+  - Checks on the host with CARGO_BUILD_JOBS=4 after adding nightly `rustfmt`/`clippy` via rustup:
+    `cargo fmt` (only the log files kept; it also reformatted unrelated files, reverted),
+    `cargo clippy --all-targets --all-features` (no errors, no warnings in the log files;
+    pre-existing warnings elsewhere), workspace-wide `cargo test --all-features` passes.
+  - Kiosk: not re-shot; the review changes are all inside `draw_desktop`/`desktop.rs`, and the
+    only shared change (the `seq` field on `LogEntry`) is not drawn, so the Compact path is the same.

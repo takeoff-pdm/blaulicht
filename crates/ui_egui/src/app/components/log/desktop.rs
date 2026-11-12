@@ -282,18 +282,33 @@ fn highlighted(
     job
 }
 
-/// One log row. `striped` rows get the faint even-row fill.
+/// The key a row is selected by.
+pub(super) fn row_key(entry: &LogEntry) -> u64 {
+    entry.seq
+}
+
+/// One log row. `striped` rows get the faint even-row fill; `selected`
+/// rows the blue-dim fill and strong text (`tr.sl`). Click to (de)select.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn row(
     ui: &mut Ui,
     entry: &LogEntry,
     striped: bool,
+    selected: bool,
     source_col: f32,
     tag_width: f32,
     query: &str,
-) {
+) -> Response {
     let t = studio(ui.ctx());
     let dark = ui.ctx().global_style().visuals.dark_mode;
-    let (icon, fill_icon, level_color, message_color) = level_style(t, &entry.level);
+    let (icon, fill_icon, mut level_color, mut message_color) = level_style(t, &entry.level);
+    // `tr.sl td { color: strong }` beats `.t`, `.l` and `.m`, but not the
+    // level classes (`.WARN .m`, ...).
+    let time_color = if selected { t.strong } else { t.muted };
+    if selected && matches!(entry.level, LogLevel::Info) {
+        level_color = t.strong;
+        message_color = t.strong;
+    }
     let full_w = ui.available_width();
     let msg_x = TIME_COL + LEVEL_COL + source_col + CELL_PAD;
     let msg_w = (full_w - msg_x - CELL_PAD).max(40.0);
@@ -342,10 +357,12 @@ pub(super) fn row(
         trace_h = child.min_rect().height();
     }
 
-    let height = text_h + trace_h + 4.0;
-    let (rect, resp) = ui.allocate_exact_size(vec2(full_w, height), Sense::hover());
+    // `td { padding: 2px 8px }` around the 18px level line, plus the 1px
+    // row border: 23px for a one-line row.
+    let height = text_h.max(18.0) + trace_h + 5.0;
+    let (rect, resp) = ui.allocate_exact_size(vec2(full_w, height), Sense::click());
     let p = ui.painter();
-    let line_cy = rect.top() + 2.0 + LINE / 2.0;
+    let line_cy = rect.top() + 2.0 + 9.0;
 
     // Time: seconds in muted, milliseconds fainter (`.t span`).
     let secs = entry.timestamp.format("%H:%M:%S").to_string();
@@ -357,7 +374,7 @@ pub(super) fn row(
         Align2::LEFT_CENTER,
         &secs,
         f.clone(),
-        t.muted,
+        time_color,
     );
     let sw = text_width(ui, &secs, f.clone());
     p.text(
@@ -365,7 +382,7 @@ pub(super) fn row(
         Align2::LEFT_CENTER,
         &millis,
         f,
-        t.muted.gamma_multiply(0.55),
+        time_color.gamma_multiply(0.55),
     );
 
     // Level: icon and label.
@@ -409,17 +426,20 @@ pub(super) fn row(
     // row hairline.
     let white = |a: f32| Color32::from_white_alpha((a * 255.0) as u8);
     let mut fills = Vec::new();
-    if striped {
+    if selected {
+        // `tr.sl td` replaces the stripe and the error tint.
+        fills.push(t.blue_dim);
+    } else if striped {
         fills.push(if dark {
             white(0.015)
         } else {
             Color32::from_black_alpha(4)
         });
     }
-    if matches!(entry.level, LogLevel::Err) {
+    if matches!(entry.level, LogLevel::Err) && !selected {
         fills.push(Color32::from_rgba_unmultiplied(255, 60, 60, 18));
     }
-    if resp.hovered() {
+    if !selected && resp.hovered() {
         fills.push(if dark {
             white(0.04)
         } else {
@@ -443,6 +463,7 @@ pub(super) fn row(
         ));
     }
     ui.painter().set(background, egui::Shape::Vec(shapes));
+    resp
 }
 
 /// "No log lines match the filter." (`tr.none`).

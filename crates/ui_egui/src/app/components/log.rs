@@ -225,6 +225,10 @@ pub struct LogWindow {
     source_dialog_open: bool,
     /// Desktop level filter: which levels are shown, in `LogLevel` order.
     shown_levels: [bool; 4],
+    /// Desktop: the selected row's [`LogEntry::seq`] (`tr.sl`).
+    selected_row: Option<u64>,
+    /// Sequence number for the next entry.
+    next_seq: u64,
     // log_height: f32,
 }
 
@@ -235,6 +239,8 @@ pub struct LogEntry {
     pub message: String,
     pub additional: Option<String>,
     source: String,
+    /// Unique per window, so a selected row stays selected as lines scroll.
+    seq: u64,
 }
 
 fn log_entry_matches_source(entry: &LogEntry, selected_source: Option<&str>) -> bool {
@@ -271,6 +277,8 @@ impl LogWindow {
             selected_source: None,
             source_dialog_open: false,
             shown_levels: [true; 4],
+            selected_row: None,
+            next_seq: 0,
         }
     }
 
@@ -297,7 +305,9 @@ impl LogWindow {
             message,
             additional,
             source,
+            seq: self.next_seq,
         };
+        self.next_seq += 1;
 
         self.logs.push_back(entry);
 
@@ -317,10 +327,20 @@ impl LogWindow {
     /// The desktop Logs page (`design/studio/pages.html#logs`): a 30px bar
     /// with the title, search, level and source dropdowns, Follow, Copy and
     /// Clear; the log table; a footer with counts and the follow state.
-    fn draw_desktop(&mut self, ui: &mut egui::Ui) {
-        let t = studio(ui.ctx());
-        let full = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(full, 0.0, t.pane);
+    fn draw_desktop(&mut self, outer: &mut egui::Ui) {
+        let t = studio(outer.ctx());
+        // Edge to edge: out of the central panel's 8px margin, flush with
+        // the sidebar, the window top and the status bar.
+        let full = outer.max_rect().expand(8.0).intersect(outer.clip_rect());
+        outer.allocate_rect(outer.max_rect(), egui::Sense::hover());
+        outer.painter().rect_filled(full, 0.0, t.pane);
+        let mut page = outer.new_child(
+            egui::UiBuilder::new()
+                .max_rect(full)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        page.set_clip_rect(full);
+        let ui = &mut page;
         ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
         self.draw_desktop_bar(ui);
 
@@ -343,14 +363,33 @@ impl LogWindow {
                     .stick_to_bottom(self.auto_scroll)
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+                        let mut clicked = None;
                         for entry in self.logs.iter().filter(|e| self.desktop_shows(e)) {
-                            desktop::row(ui, entry, shown % 2 == 1, source_col, tag_width, &query);
+                            let key = desktop::row_key(entry);
+                            let selected = self.selected_row == Some(key);
+                            if desktop::row(
+                                ui,
+                                entry,
+                                shown % 2 == 1,
+                                selected,
+                                source_col,
+                                tag_width,
+                                &query,
+                            )
+                            .clicked()
+                            {
+                                clicked = Some(key);
+                            }
                             shown += 1;
                             match entry.level {
                                 LogLevel::Warn => warnings += 1,
                                 LogLevel::Err => errors += 1,
                                 _ => {}
                             }
+                        }
+                        if let Some(key) = clicked {
+                            // Clicking the selected row again deselects it.
+                            self.selected_row = (self.selected_row != Some(key)).then_some(key);
                         }
                         if shown == 0 {
                             desktop::empty(ui);
