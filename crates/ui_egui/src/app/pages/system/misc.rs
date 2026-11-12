@@ -96,7 +96,15 @@ impl BlaulichtApp {
             AppPage::System,
             render_context,
             |app, ui, subpage| match subpage {
+                AppSubPage::System_System if app.layout.is_desktop() => {
+                    app.render_system_general_desktop(ui)
+                }
                 AppSubPage::System_System => app.render_system_general(ui, render_context),
+                AppSubPage::System_Screens
+                    if app.layout.is_desktop() && !app.client.is_remote() =>
+                {
+                    app.render_screens_desktop(ui)
+                }
                 other => app.render_system_tab_content(ui, screen_id, other),
             },
         );

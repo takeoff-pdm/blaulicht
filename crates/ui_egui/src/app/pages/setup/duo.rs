@@ -24,7 +24,7 @@ const LABEL_W: f32 = 86.0;
 
 /// Splits the page into the list pane and the detail pane, edge to edge
 /// with the gutter colour between them, like Setup › Fixtures.
-pub(super) fn duo(ui: &mut Ui) -> (Ui, Ui) {
+pub(crate) fn duo(ui: &mut Ui) -> (Ui, Ui) {
     let t = studio_tokens(ui.ctx());
     let full = ui.max_rect().expand(8.0).intersect(ui.clip_rect());
     ui.allocate_rect(ui.max_rect(), Sense::hover());
@@ -48,14 +48,14 @@ pub(super) fn duo(ui: &mut Ui) -> (Ui, Ui) {
 }
 
 /// The bar buttons of a pane header: 28px, 2px apart.
-pub(super) fn bar_button(ui: &mut Ui, label: &str, pressed: bool) -> bool {
+pub(crate) fn bar_button(ui: &mut Ui, label: &str, pressed: bool) -> bool {
     ui.spacing_mut().item_spacing.x = 2.0;
     studio::mini_button(ui, label, pressed, TARGET_SHOW).clicked()
 }
 
 /// A padded area for a form or text below a header, `height` tall
 /// (`None`: what is left of the pane).
-pub(super) fn body<R>(ui: &mut Ui, height: Option<f32>, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn body<R>(ui: &mut Ui, height: Option<f32>, add: impl FnOnce(&mut Ui) -> R) -> R {
     let avail = ui.available_rect_before_wrap();
     let h = height.unwrap_or(avail.height()).min(avail.height());
     let rect = Rect::from_min_size(avail.min, vec2(avail.width(), h));
@@ -73,7 +73,7 @@ pub(super) fn body<R>(ui: &mut Ui, height: Option<f32>, add: impl FnOnce(&mut Ui
 
 /// The same area as [`body`] without padding, for an edge-to-edge
 /// [`table`].
-pub(super) fn flush<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn flush<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, Sense::hover());
     let mut child = ui.new_child(
@@ -92,13 +92,13 @@ const TEXT_ROW: f32 = 16.0;
 
 /// Height of a form with a Name field and `rows - 1` text rows, as laid
 /// out by [`body`], [`name_row`] and [`form_row`].
-pub(super) fn form_height(rows: usize) -> f32 {
+pub(crate) fn form_height(rows: usize) -> f32 {
     let rest = rows.saturating_sub(1) as f32;
     16.0 + TARGET_MIN + rest * (TEXT_ROW + ROW_GAP)
 }
 
 /// One form row: a muted label in the label column, then `add`.
-pub(super) fn form_row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+pub(crate) fn form_row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     ui.horizontal(|ui| {
@@ -119,7 +119,7 @@ const KV_W: f32 = 128.0;
 
 /// One row of a read-only term list (`.kv`): a muted term in a 128px
 /// column, then `add`, at least 16px tall.
-pub(super) fn kv_row(ui: &mut Ui, term: &str, add: impl FnOnce(&mut Ui)) {
+pub(crate) fn kv_row(ui: &mut Ui, term: &str, add: impl FnOnce(&mut Ui)) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     ui.horizontal(|ui| {
@@ -137,25 +137,25 @@ pub(super) fn kv_row(ui: &mut Ui, term: &str, add: impl FnOnce(&mut Ui)) {
 }
 
 /// Gap between [`kv_row`]s (`.kv` `gap: 4px`).
-pub(super) const KV_GAP: f32 = 4.0;
+pub(crate) const KV_GAP: f32 = 4.0;
 
 /// A 24px button chip in a [`kv_row`] (`dd > button.mini`).
-pub(super) fn chip(ui: &mut Ui, label: &str) -> bool {
+pub(crate) fn chip(ui: &mut Ui, label: &str) -> bool {
     studio::mini_button(ui, label, false, TARGET_MIN).clicked()
 }
 
 /// Row height of [`kv_row`].
-pub(super) const KV_ROW: f32 = TEXT_ROW;
+pub(crate) const KV_ROW: f32 = TEXT_ROW;
 
 /// Plain body text.
-pub(super) fn text(ui: &mut Ui, s: impl Into<String>) {
+pub(crate) fn text(ui: &mut Ui, s: impl Into<String>) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     ui.add(egui::Label::new(RichText::new(s).font(f).color(t.text)).wrap());
 }
 
 /// Muted help text.
-pub(super) fn note(ui: &mut Ui, s: impl Into<String>) {
+pub(crate) fn note(ui: &mut Ui, s: impl Into<String>) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     ui.add(egui::Label::new(RichText::new(s).font(f).color(t.muted)).wrap());
@@ -165,7 +165,7 @@ pub(super) fn note(ui: &mut Ui, s: impl Into<String>) {
 /// kept while the field has focus, Enter or leaving the field returns the
 /// new name (trimmed, not empty, different), Escape puts the old one back.
 /// `key` names the item, so switching items drops an unsaved edit.
-pub(super) fn name_row(ui: &mut Ui, key: Id, current: &str) -> Option<String> {
+pub(crate) fn name_row(ui: &mut Ui, key: Id, current: &str) -> Option<String> {
     let mut out = None;
     form_row(ui, "Name", |ui| {
         let id = key.with("name_field");
@@ -197,13 +197,13 @@ pub(super) fn name_row(ui: &mut Ui, key: Id, current: &str) -> Option<String> {
 }
 
 /// A lower pane: a 26px title bar over the rest of the pane.
-pub(super) fn lower_pane(ui: &mut Ui, title: &str) {
+pub(crate) fn lower_pane(ui: &mut Ui, title: &str) {
     studio::pane_header(ui, None, title, false, |_| {});
 }
 
 /// The detail pane of a selected folder: a "Folder:" bar with Rename and
 /// Delete over [`folder_details`]. Returns the dialog a button opened.
-pub(super) fn folder_desktop_pane(
+pub(crate) fn folder_desktop_pane(
     ui: &mut Ui,
     state: &EngineState,
     kind: FolderKind,
@@ -233,7 +233,7 @@ pub(super) fn folder_desktop_pane(
 
 /// How a cell of [`table`] is drawn.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Look {
+pub(crate) enum Look {
     Text,
     Muted,
     /// Numbers: 12px mono in the strong colour (`.mono`).
@@ -241,13 +241,13 @@ pub(super) enum Look {
 }
 
 /// A cell of [`table`]: its text and look.
-pub(super) type Cell = (String, Look);
+pub(crate) type Cell = (String, Look);
 
 /// Height of a [`table`] header row (`.rows th`).
 const TH_H: f32 = 22.0;
 
 /// The 12px mono font of numbers (`.mono`).
-pub(super) fn mono_font() -> egui::FontId {
+pub(crate) fn mono_font() -> egui::FontId {
     egui::FontId::new(12.0, egui::FontFamily::Monospace)
 }
 
@@ -256,7 +256,7 @@ pub(super) fn mono_font() -> egui::FontId {
 /// muted and mono cells); cells have 8px
 /// side padding. `cols` are the column starts as fractions of the width;
 /// text is cut to its column.
-pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>]) {
+pub(crate) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>]) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     let body = Density::of(ui.ctx()).font(Weight::Regular, 13.0);
@@ -299,7 +299,7 @@ pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>
 /// A header-less two-column `.rows` table, edge to edge in the pane: 24px
 /// rows of 13px text with the value right-aligned in mono (`td.r.mono`), no
 /// rules. Starts right under the pane header, like Setup › Scenes' Contents.
-pub(super) fn value_rows(ui: &mut Ui, rows: &[(&str, String)]) {
+pub(crate) fn value_rows(ui: &mut Ui, rows: &[(&str, String)]) {
     let t = studio_tokens(ui.ctx());
     let body = Density::of(ui.ctx()).font(Weight::Regular, 13.0);
     let width = ui.available_width();
@@ -323,4 +323,19 @@ pub(super) fn value_rows(ui: &mut Ui, rows: &[(&str, String)]) {
             (inner.width() - 48.0).max(0.0),
         );
     }
+}
+
+/// The fixture type as the studio shows it (`pretty` in `setup.html`),
+/// falling back to the model name for types the mockup does not list.
+pub(crate) fn type_label(model: &str) -> String {
+    match model {
+        "AdjMegaHexPar" => "ADJ Mega Hex Par",
+        "DimmerSingle" => "Dimmer",
+        "LiteCraftMiniParAT10" => "LiteCraft AT10",
+        "MartinMac250E" => "Martin MAC 250E",
+        "VaryTechVP1" => "Varytec VP1",
+        "FogMachineSingle" => "Fog machine",
+        other => other,
+    }
+    .to_owned()
 }

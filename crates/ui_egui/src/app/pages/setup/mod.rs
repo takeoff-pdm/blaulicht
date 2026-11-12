@@ -15,7 +15,7 @@
 //! [`BlaulichtApp::setup_ui`].
 
 mod animations;
-mod duo;
+pub(crate) mod duo;
 mod fixtures;
 mod groups;
 mod palettes;

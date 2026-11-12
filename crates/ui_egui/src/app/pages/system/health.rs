@@ -367,7 +367,16 @@ impl BlaulichtApp {
             (dmx, health.artnet_health_state, midi + serial)
         });
         let artnet = artnet_enabled.then_some(artnet_state);
-        HealthSummary::count(&dmx_outputs, artnet, plugins, device_errors)
+        let mut summary = HealthSummary::count(&dmx_outputs, artnet, plugins, device_errors);
+        // Patch overlaps are warnings in the desktop Problems list (084).
+        if self.layout.is_desktop() {
+            summary.warnings += self.client.with_show(|state| {
+                super::general::patch_summary(&state.0.groups)
+                    .overlaps
+                    .len()
+            });
+        }
+        summary
     }
 }
 

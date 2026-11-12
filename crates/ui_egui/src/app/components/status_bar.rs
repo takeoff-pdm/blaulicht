@@ -55,6 +55,16 @@ impl StatusSparks {
             series.push_back(value);
         }
     }
+
+    /// Recent engine loop times (ms), oldest first.
+    pub fn engine(&self) -> &VecDeque<f32> {
+        &self.engine
+    }
+
+    /// Recent plugin tick times (ms), oldest first.
+    pub fn plugins(&self) -> &VecDeque<f32> {
+        &self.plugins
+    }
 }
 
 /// Where the engine connection stands, for the status bar.

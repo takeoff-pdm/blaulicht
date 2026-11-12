@@ -4,6 +4,7 @@
 //! pane with the editor. Desktop only ([`Density::Compact`]); the kiosk keeps
 //! [`BlaulichtApp::setup_fixtures_ui`]'s touch layout.
 
+use super::super::duo::type_label;
 use crate::app::components::studio::{self, ListRow, ListRowState};
 use crate::app::components::{self, tree_id, TreeState, SETUP_GROUP_TREE};
 use crate::app::ui_tokens::{studio as studio_tokens, Density, Weight, TARGET_MIN, TARGET_SHOW};
@@ -188,21 +189,6 @@ fn moved_text(names: &[String], to: &str) -> String {
 
 /// The Delete confirm label: "Confirm delete" for one fixture, "Delete N
 /// fixtures" for several.
-/// The fixture type as the studio shows it (`pretty` in `setup.html`),
-/// falling back to the model name for types the mockup does not list.
-fn type_label(model: &str) -> String {
-    match model {
-        "AdjMegaHexPar" => "ADJ Mega Hex Par",
-        "DimmerSingle" => "Dimmer",
-        "LiteCraftMiniParAT10" => "LiteCraft AT10",
-        "MartinMac250E" => "Martin MAC 250E",
-        "VaryTechVP1" => "Varytec VP1",
-        "FogMachineSingle" => "Fog machine",
-        other => other,
-    }
-    .to_owned()
-}
-
 fn delete_label(count: usize) -> String {
     if count > 1 {
         format!("Delete {count} fixtures")
