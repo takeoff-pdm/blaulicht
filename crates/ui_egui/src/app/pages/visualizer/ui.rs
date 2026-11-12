@@ -53,6 +53,13 @@ impl BlaulichtApp {
     ) {
         self.sync_visualizer_stage();
         self.visualizer_import_dialog(ui.ctx());
+        // Desktop: page bar and panes (`pages.html#visualizer`). Tiles on
+        // dynamic screens (with sub-page tabs) and the kiosk keep the layout
+        // below.
+        if self.layout.is_desktop() && !render_context.shows_subpage_tabs() {
+            self.visualizer_desktop(ui, screen_id, render_context);
+            return;
+        }
         ui.heading("Visualizer");
         ui.add_space(4.0);
 
@@ -245,6 +252,22 @@ impl BlaulichtApp {
             }
         }
 
+        self.visualizer_canvas(ui, snapshot, screen_id, render_context, true);
+
+        ui.spacing_mut().item_spacing = spacing;
+    }
+
+    /// The 3D view, filling what is left of `ui`, with its status lines
+    /// below when `status_below` (the desktop shows them in the Stage pane,
+    /// see [`Self::visualizer_status`]). Returns the canvas id.
+    fn visualizer_canvas(
+        &mut self,
+        ui: &mut egui::Ui,
+        snapshot: RenderSceneSnapshot,
+        screen_id: ScreenId,
+        render_context: PageRenderContext,
+        status_below: bool,
+    ) -> egui::Id {
         let minimum_canvas_height = if render_context.is_dynamic() && render_context.short {
             80.0
         } else {
@@ -672,37 +695,38 @@ impl BlaulichtApp {
                 frame.snapshot.error.clone(),
             )
         });
-        if let Some((err,)) = shared_status {
-            ui.add_space(6.0);
-            if let Some(err) = err {
-                ui.colored_label(egui::Color32::LIGHT_RED, format!("Renderer error: {err}"));
-                if ui.small_button("Retry Renderer").clicked() {
-                    if let Ok(mut shared) = render_target.shared.lock() {
-                        shared.retry_renderer();
+        if status_below {
+            if let Some((err,)) = shared_status {
+                ui.add_space(6.0);
+                if let Some(err) = err {
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Renderer error: {err}"));
+                    if ui.small_button("Retry Renderer").clicked() {
+                        if let Ok(mut shared) = render_target.shared.lock() {
+                            shared.retry_renderer();
+                        }
                     }
                 }
-            }
-            if let Some((skipped, fixture_count, Some(err))) = frame_status {
-                ui.colored_label(egui::Color32::YELLOW, format!("Scene data: {err}"));
+                if let Some((skipped, fixture_count, Some(err))) = frame_status {
+                    ui.colored_label(egui::Color32::YELLOW, format!("Scene data: {err}"));
+                    if self.visualizer_ui_state.settings.show_diagnostics {
+                        ui.label(format!("Fixtures: {fixture_count}, skipped: {skipped}"));
+                    }
+                } else if let Some((skipped, fixture_count, None)) = frame_status {
+                    if self.visualizer_ui_state.settings.show_diagnostics {
+                        ui.label(format!("Fixtures: {fixture_count}, skipped: {skipped}"));
+                    }
+                }
+            } else if let Some((skipped, fixture_count, snapshot_error)) = frame_status {
+                ui.add_space(6.0);
+                if let Some(err) = snapshot_error {
+                    ui.colored_label(egui::Color32::YELLOW, format!("Scene data: {err}"));
+                }
                 if self.visualizer_ui_state.settings.show_diagnostics {
                     ui.label(format!("Fixtures: {fixture_count}, skipped: {skipped}"));
                 }
-            } else if let Some((skipped, fixture_count, None)) = frame_status {
-                if self.visualizer_ui_state.settings.show_diagnostics {
-                    ui.label(format!("Fixtures: {fixture_count}, skipped: {skipped}"));
-                }
-            }
-        } else if let Some((skipped, fixture_count, snapshot_error)) = frame_status {
-            ui.add_space(6.0);
-            if let Some(err) = snapshot_error {
-                ui.colored_label(egui::Color32::YELLOW, format!("Scene data: {err}"));
-            }
-            if self.visualizer_ui_state.settings.show_diagnostics {
-                ui.label(format!("Fixtures: {fixture_count}, skipped: {skipped}"));
             }
         }
-
-        ui.spacing_mut().item_spacing = spacing;
+        canvas_id
     }
 
     /// Keeps the working copy of the stage in step with the engine: replaced
@@ -920,56 +944,12 @@ impl BlaulichtApp {
             }
 
             ui.separator();
-            ui.menu_button("Add", |ui| {
-                for (label, kind) in [
-                    ("Platform", StageObjectKind::Platform),
-                    ("Wall", StageObjectKind::Wall),
-                    ("Speaker", StageObjectKind::Speaker),
-                    ("Screen", StageObjectKind::Screen),
-                    ("Box", StageObjectKind::Box),
-                ] {
-                    if ui.button(label).clicked() {
-                        let before = self.capture_visualizer_snapshot();
-                        let index = self.visualizer_ui_state.stage.objects.len() + 1;
-                        self.add_visualizer_object(StageObject::preset(kind, index), true);
-                        self.visualizer_ui_state.editor.push_undo(before);
-                        ui.close();
-                    }
-                }
-                ui.separator();
-                ui.menu_button("Truss", |ui| {
-                    for profile in TrussProfile::ALL {
-                        ui.menu_button(profile.label(), |ui| {
-                            for part in TrussPart::ALL {
-                                if ui.button(part.label()).clicked() {
-                                    let index = self.visualizer_ui_state.stage.objects.len() + 1;
-                                    let truss = StageObject::truss_preset(
-                                        index,
-                                        TrussSpec {
-                                            profile,
-                                            part,
-                                            ..Default::default()
-                                        },
-                                    );
-                                    let before = self.capture_visualizer_snapshot();
-                                    self.add_visualizer_object(truss, true);
-                                    self.visualizer_ui_state.editor.push_undo(before);
-                                    ui.close();
-                                }
-                            }
-                        });
-                    }
-                });
-            });
+            ui.menu_button("Add", |ui| self.visualizer_add_menu(ui));
             #[cfg(feature = "file-dialog")]
             let showfile = self
                 .client
                 .with_show(|show| show.showfile().map(|path| path.to_path_buf()));
-            let importing = self.visualizer_ui_state.import_receiver.is_some()
-                || self
-                    .visualizer_ui_state
-                    .import_reply
-                    .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
+            let importing = self.visualizer_importing();
             #[cfg(feature = "file-dialog")]
             if ui
                 .add_enabled(
@@ -978,19 +958,7 @@ impl BlaulichtApp {
                 )
                 .clicked()
             {
-                let mut dialog = egui_file_dialog::FileDialog::new()
-                    .add_file_filter_extensions("Binary glTF", vec!["glb"])
-                    .default_file_filter("Binary glTF")
-                    .as_modal(true)
-                    .default_size(egui::vec2(850.0, 540.0));
-                if let Some(parent) = showfile
-                    .as_deref()
-                    .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
-                {
-                    dialog = dialog.initial_directory(parent);
-                }
-                dialog.pick_file();
-                self.visualizer_ui_state.import_dialog = Some(dialog);
+                self.visualizer_open_import(showfile);
             }
             if importing {
                 ui.spinner();
@@ -999,120 +967,210 @@ impl BlaulichtApp {
                 ui.colored_label(Color32::LIGHT_RED, error);
             }
 
-            let selected_objects: Vec<u64> = self
-                .visualizer_ui_state
-                .editor
-                .selection
-                .iter()
-                .filter_map(|key| match key {
-                    SelectionKey::Object(id) => Some(*id),
-                    SelectionKey::Fixture(_, _) => None,
-                })
-                .collect();
-            let selected_fixture =
-                self.visualizer_ui_state
-                    .editor
-                    .selection
-                    .iter()
-                    .find_map(|key| match key {
-                        SelectionKey::Fixture(gid, fid) => Some((*gid, *fid)),
-                        SelectionKey::Object(_) => None,
-                    });
-            let selected_truss = selected_objects
-                .iter()
-                .copied()
-                .find(|id| self.visualizer_ui_state.stage.truss_spec(*id).is_some());
-            let can_attach = self.visualizer_ui_state.editor.selection.len() == 2
-                && selected_objects.len() == 1
-                && selected_fixture.is_some()
-                && selected_truss.is_some();
+            let sel = self.visualizer_selection_info();
             if ui
-                .add_enabled(can_attach, egui::Button::new("Attach"))
+                .add_enabled(sel.can_attach(), egui::Button::new("Attach"))
                 .on_disabled_hover_text("Select one fixture and one truss")
                 .clicked()
             {
-                let (gid, fid) = selected_fixture.unwrap();
-                let truss_id = selected_truss.unwrap();
-                let fixture_position = self
-                    .visualizer_fixture((gid, fid))
-                    .map(|(_, (position, _))| Vec3::new(position[0], position[1], position[2]));
-                let mount = fixture_position.and_then(|position| {
-                    let object = self.visualizer_ui_state.stage.objects.get(&truss_id)?;
-                    let spec = self.visualizer_ui_state.stage.truss_spec(truss_id)?;
-                    super::truss::nearest_mount(spec, &object.transform, position)
-                });
-                if let Some((branch, distance_m, _)) = mount {
-                    let before = self.capture_visualizer_snapshot();
-                    self.detach_fixture_from_truss(gid, fid);
-                    self.visualizer_ui_state.stage.fixture_attachments.push(
-                        FixtureTrussAttachment {
-                            group_id: gid,
-                            fixture_id: fid,
-                            truss_id,
-                            branch,
-                            distance_m,
-                            rotation_offset: [0.0; 3],
-                        },
-                    );
-                    self.visualizer_ui_state.editor.push_undo(before);
-                    self.commit_visualizer_stage();
-                }
-            }
-            let can_detach = selected_fixture.is_some_and(|key| {
-                self.visualizer_ui_state
-                    .stage
-                    .fixture_attachments
-                    .iter()
-                    .any(|attachment| {
-                        attachment.group_id == key.0 && attachment.fixture_id == key.1
-                    })
-            });
-            if ui
-                .add_enabled(can_detach, egui::Button::new("Detach"))
-                .clicked()
-            {
-                let before = self.capture_visualizer_snapshot();
-                let (gid, fid) = selected_fixture.unwrap();
-                self.detach_fixture_from_truss(gid, fid);
-                self.visualizer_ui_state.editor.push_undo(before);
-                self.commit_visualizer_stage();
-            }
-            let only_objects = !selected_objects.is_empty()
-                && selected_objects.len() == self.visualizer_ui_state.editor.selection.len();
-            if ui
-                .add_enabled(only_objects, egui::Button::new("Duplicate"))
-                .clicked()
-            {
-                let before = self.capture_visualizer_snapshot();
-                self.visualizer_ui_state.editor.selection.clear();
-                for &id in &selected_objects {
-                    if let Some(mut object) =
-                        self.visualizer_ui_state.stage.objects.get(&id).cloned()
-                    {
-                        object.transform.translation[0] += 0.5;
-                        object.transform.translation[2] += 0.5;
-                        self.add_visualizer_object(object, false);
-                    }
-                }
-                self.visualizer_ui_state.editor.push_undo(before);
+                self.visualizer_attach(&sel);
             }
             if ui
-                .add_enabled(only_objects, egui::Button::new("Delete"))
+                .add_enabled(
+                    self.visualizer_can_detach(&sel),
+                    egui::Button::new("Detach"),
+                )
                 .clicked()
             {
-                let before = self.capture_visualizer_snapshot();
-                for id in selected_objects.iter().copied() {
-                    self.visualizer_ui_state.stage.remove_object(id);
-                    self.visualizer_ui_state.stage_base.remove_object(id);
-                }
-                self.visualizer_ui_state.editor.selection.clear();
-                self.visualizer_ui_state.editor.push_undo(before);
-                self.send_stage_command(
-                    HostCommand::RemoveStageObjects(selected_objects),
-                    |_, _| {},
-                );
+                self.visualizer_detach(&sel);
+            }
+            if ui
+                .add_enabled(sel.only_objects(), egui::Button::new("Duplicate"))
+                .clicked()
+            {
+                self.visualizer_duplicate(&sel);
+            }
+            if ui
+                .add_enabled(sel.only_objects(), egui::Button::new("Delete"))
+                .clicked()
+            {
+                self.visualizer_delete(sel);
             }
         });
+    }
+
+    /// The Add menu's entries: stage objects and truss parts.
+    fn visualizer_add_menu(&mut self, ui: &mut egui::Ui) {
+        for (label, kind) in [
+            ("Platform", StageObjectKind::Platform),
+            ("Wall", StageObjectKind::Wall),
+            ("Speaker", StageObjectKind::Speaker),
+            ("Screen", StageObjectKind::Screen),
+            ("Box", StageObjectKind::Box),
+        ] {
+            if ui.button(label).clicked() {
+                let before = self.capture_visualizer_snapshot();
+                let index = self.visualizer_ui_state.stage.objects.len() + 1;
+                self.add_visualizer_object(StageObject::preset(kind, index), true);
+                self.visualizer_ui_state.editor.push_undo(before);
+                ui.close();
+            }
+        }
+        ui.separator();
+        ui.menu_button("Truss", |ui| {
+            for profile in TrussProfile::ALL {
+                ui.menu_button(profile.label(), |ui| {
+                    for part in TrussPart::ALL {
+                        if ui.button(part.label()).clicked() {
+                            let index = self.visualizer_ui_state.stage.objects.len() + 1;
+                            let truss = StageObject::truss_preset(
+                                index,
+                                TrussSpec {
+                                    profile,
+                                    part,
+                                    ..Default::default()
+                                },
+                            );
+                            let before = self.capture_visualizer_snapshot();
+                            self.add_visualizer_object(truss, true);
+                            self.visualizer_ui_state.editor.push_undo(before);
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// Whether a GLB import is being read or waits for the engine.
+    fn visualizer_importing(&self) -> bool {
+        self.visualizer_ui_state.import_receiver.is_some()
+            || self
+                .visualizer_ui_state
+                .import_reply
+                .is_some_and(|seq| self.reply_handlers.is_waiting(seq))
+    }
+
+    /// Opens the GLB file dialog next to the showfile.
+    #[cfg(feature = "file-dialog")]
+    fn visualizer_open_import(&mut self, showfile: Option<std::path::PathBuf>) {
+        let mut dialog = egui_file_dialog::FileDialog::new()
+            .add_file_filter_extensions("Binary glTF", vec!["glb"])
+            .default_file_filter("Binary glTF")
+            .as_modal(true)
+            .default_size(egui::vec2(850.0, 540.0));
+        if let Some(parent) = showfile
+            .as_deref()
+            .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+        {
+            dialog = dialog.initial_directory(parent);
+        }
+        dialog.pick_file();
+        self.visualizer_ui_state.import_dialog = Some(dialog);
+    }
+
+    fn visualizer_selection_info(&self) -> VisualizerSelection {
+        let selection = &self.visualizer_ui_state.editor.selection;
+        let objects: Vec<u64> = selection
+            .iter()
+            .filter_map(|key| match key {
+                SelectionKey::Object(id) => Some(*id),
+                SelectionKey::Fixture(_, _) => None,
+            })
+            .collect();
+        let fixture = selection.iter().find_map(|key| match key {
+            SelectionKey::Fixture(gid, fid) => Some((*gid, *fid)),
+            SelectionKey::Object(_) => None,
+        });
+        let truss = objects
+            .iter()
+            .copied()
+            .find(|id| self.visualizer_ui_state.stage.truss_spec(*id).is_some());
+        VisualizerSelection {
+            count: selection.len(),
+            objects,
+            fixture,
+            truss,
+        }
+    }
+
+    fn visualizer_can_detach(&self, sel: &VisualizerSelection) -> bool {
+        sel.fixture.is_some_and(|key| {
+            self.visualizer_ui_state
+                .stage
+                .fixture_attachments
+                .iter()
+                .any(|attachment| attachment.group_id == key.0 && attachment.fixture_id == key.1)
+        })
+    }
+
+    /// Mounts the selected fixture on the selected truss, at the nearest
+    /// point.
+    fn visualizer_attach(&mut self, sel: &VisualizerSelection) {
+        let (Some((gid, fid)), Some(truss_id)) = (sel.fixture, sel.truss) else {
+            return;
+        };
+        let fixture_position = self
+            .visualizer_fixture((gid, fid))
+            .map(|(_, (position, _))| Vec3::new(position[0], position[1], position[2]));
+        let mount = fixture_position.and_then(|position| {
+            let object = self.visualizer_ui_state.stage.objects.get(&truss_id)?;
+            let spec = self.visualizer_ui_state.stage.truss_spec(truss_id)?;
+            super::truss::nearest_mount(spec, &object.transform, position)
+        });
+        if let Some((branch, distance_m, _)) = mount {
+            let before = self.capture_visualizer_snapshot();
+            self.detach_fixture_from_truss(gid, fid);
+            self.visualizer_ui_state
+                .stage
+                .fixture_attachments
+                .push(FixtureTrussAttachment {
+                    group_id: gid,
+                    fixture_id: fid,
+                    truss_id,
+                    branch,
+                    distance_m,
+                    rotation_offset: [0.0; 3],
+                });
+            self.visualizer_ui_state.editor.push_undo(before);
+            self.commit_visualizer_stage();
+        }
+    }
+
+    fn visualizer_detach(&mut self, sel: &VisualizerSelection) {
+        let Some((gid, fid)) = sel.fixture else {
+            return;
+        };
+        let before = self.capture_visualizer_snapshot();
+        self.detach_fixture_from_truss(gid, fid);
+        self.visualizer_ui_state.editor.push_undo(before);
+        self.commit_visualizer_stage();
+    }
+
+    /// Copies the selected objects half a metre aside; the copies become
+    /// the selection.
+    fn visualizer_duplicate(&mut self, sel: &VisualizerSelection) {
+        let before = self.capture_visualizer_snapshot();
+        self.visualizer_ui_state.editor.selection.clear();
+        for &id in &sel.objects {
+            if let Some(mut object) = self.visualizer_ui_state.stage.objects.get(&id).cloned() {
+                object.transform.translation[0] += 0.5;
+                object.transform.translation[2] += 0.5;
+                self.add_visualizer_object(object, false);
+            }
+        }
+        self.visualizer_ui_state.editor.push_undo(before);
+    }
+
+    fn visualizer_delete(&mut self, sel: VisualizerSelection) {
+        let before = self.capture_visualizer_snapshot();
+        for id in sel.objects.iter().copied() {
+            self.visualizer_ui_state.stage.remove_object(id);
+            self.visualizer_ui_state.stage_base.remove_object(id);
+        }
+        self.visualizer_ui_state.editor.selection.clear();
+        self.visualizer_ui_state.editor.push_undo(before);
+        self.send_stage_command(HostCommand::RemoveStageObjects(sel.objects), |_, _| {});
     }
 
     /// Adds `object` to the stage; once the engine has it, it joins the
@@ -2315,6 +2373,499 @@ impl BlaulichtApp {
             .normalized(),
         );
         self.visualizer_ui_state.stage.sanitize();
+    }
+}
+
+/// Width of the desktop Selection and Stage column.
+const DESKTOP_SIDE_W: f32 = 280.0;
+
+impl BlaulichtApp {
+    /// Desktop: a 40px page bar with the mode, tools and view toggles, the
+    /// stage view on the left and Selection and Stage panes on the right.
+    fn visualizer_desktop(
+        &mut self,
+        ui: &mut egui::Ui,
+        screen_id: ScreenId,
+        render_context: PageRenderContext,
+    ) {
+        use crate::app::components::studio;
+        use crate::app::pages::setup::duo;
+        use crate::app::pages::system::desk;
+        use crate::app::ui_tokens::{studio as tokens, PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW};
+        use egui::{pos2, vec2};
+
+        let t = tokens(ui.ctx());
+        let full = desk::page_rect(ui);
+        let gap = 2.0;
+        let bar_rect = Rect::from_min_size(full.min, vec2(full.width(), PAGE_BAR_HEIGHT));
+        let side = Rect::from_min_max(
+            pos2(full.right() - DESKTOP_SIDE_W, bar_rect.bottom() + gap),
+            full.max,
+        );
+        let view_rect = Rect::from_min_max(
+            pos2(full.left(), bar_rect.bottom() + gap),
+            pos2(side.left() - gap, full.bottom()),
+        );
+
+        // Keyboard undo / redo, as in the kiosk's edit toolbar.
+        let editing = self.visualizer_ui_state.editor.mode == VisualizerMode::Edit;
+        if editing {
+            let (undo, redo) = ui.input(|input| {
+                let cmd = input.modifiers.command;
+                (
+                    cmd && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
+                    cmd && (input.key_pressed(egui::Key::Y)
+                        || (input.modifiers.shift && input.key_pressed(egui::Key::Z))),
+                )
+            });
+            if undo {
+                self.visualizer_undo();
+            }
+            if redo {
+                self.visualizer_redo();
+            }
+        }
+
+        self.visualizer_ui_state.settings.show_room = self.visualizer_ui_state.stage.room.visible;
+        self.visualizer_ui_state.settings.room_width = self.visualizer_ui_state.stage.room.width;
+        self.visualizer_ui_state.settings.room_depth = self.visualizer_ui_state.stage.room.depth;
+        self.visualizer_ui_state.settings.room_height = self.visualizer_ui_state.stage.room.height;
+
+        self.sync_visualizer_models();
+        let universes: Vec<Option<[u8; 513]>> = (0..NUM_DMX_UNIVERSES)
+            .map(|universe| self.client.with_dmx_universe(universe, |buffer| *buffer))
+            .collect();
+        let snapshot = self.client.with_show(|show| {
+            collect_fixtures(
+                show,
+                &universes,
+                &self.visualizer_ui_state.stage,
+                &self.visualizer_ui_state.fixture_drafts,
+                &self.visualizer_ui_state.model_cache,
+            )
+        });
+
+        // The page bar.
+        let mut room_changed = false;
+        let mut fit = false;
+        let mut reset = false;
+        let mut undo = false;
+        let mut redo = false;
+        let mut bar = desk::pane_at(ui, bar_rect, t.pane, "visualizer-bar");
+        studio::page_bar(
+            &mut bar,
+            |ui| {
+                // `segmented` lays out in a nested row; give it the bar
+                // buttons' height so it centres like them.
+                ui.spacing_mut().interact_size.y = TARGET_SHOW;
+                let editor = &mut self.visualizer_ui_state.editor;
+                let mut mode = usize::from(editor.mode == VisualizerMode::Edit);
+                if studio::segmented(ui, &mut mode, &["View", "Edit"], TARGET_SHOW).changed()
+                    || mode != usize::from(editor.mode == VisualizerMode::Edit)
+                {
+                    editor.mode = if mode == 1 {
+                        VisualizerMode::Edit
+                    } else {
+                        VisualizerMode::View
+                    };
+                }
+                if editor.mode == VisualizerMode::Edit {
+                    divider(ui, t.line);
+                    let mut view = usize::from(editor.view == EditorView::Top);
+                    studio::segmented(ui, &mut view, &["3D", "Top"], TARGET_SHOW);
+                    editor.view = if view == 1 {
+                        EditorView::Top
+                    } else {
+                        EditorView::Perspective
+                    };
+                    const TOOLS: [EditorTool; 4] = [
+                        EditorTool::Select,
+                        EditorTool::Translate,
+                        EditorTool::Rotate,
+                        EditorTool::Scale,
+                    ];
+                    let mut tool = TOOLS.iter().position(|t| *t == editor.tool).unwrap_or(0);
+                    studio::segmented(
+                        ui,
+                        &mut tool,
+                        &["Select", "Move", "Rotate", "Scale"],
+                        TARGET_SHOW,
+                    );
+                    editor.tool = TOOLS[tool];
+                    if studio::mini_button(ui, "Snap", editor.snap_enabled, TARGET_SHOW)
+                        .on_hover_text("Snap moves and rotations to the steps in the Stage pane")
+                        .clicked()
+                    {
+                        editor.snap_enabled = !editor.snap_enabled;
+                    }
+                    let can_undo = !editor.undo.is_empty();
+                    let can_redo = !editor.redo.is_empty();
+                    let add = studio::mini_button(ui, "Add", false, TARGET_SHOW);
+                    egui::Popup::menu(&add).show(|ui| self.visualizer_add_menu(ui));
+                    undo = ui
+                        .add_enabled_ui(can_undo, |ui| {
+                            studio::mini_button(ui, "Undo", false, TARGET_SHOW)
+                        })
+                        .inner
+                        .clicked();
+                    redo = ui
+                        .add_enabled_ui(can_redo, |ui| {
+                            studio::mini_button(ui, "Redo", false, TARGET_SHOW)
+                        })
+                        .inner
+                        .clicked();
+                }
+                divider(ui, t.line);
+                let settings = &mut self.visualizer_ui_state.settings;
+                for (label, on) in [
+                    ("Room", &mut settings.show_room),
+                    ("Grid", &mut settings.show_grid),
+                    ("Axes", &mut settings.show_axes),
+                    ("Beams", &mut settings.show_beams),
+                    ("Bodies", &mut settings.show_bodies),
+                    ("Labels", &mut settings.show_labels),
+                ] {
+                    if studio::mini_button(ui, label, *on, TARGET_SHOW).clicked() {
+                        *on = !*on;
+                        if label == "Room" {
+                            room_changed = true;
+                        }
+                    }
+                }
+            },
+            |ui| {
+                fit = studio::mini_button(ui, "Fit view", false, TARGET_SHOW).clicked();
+                reset = studio::mini_button(ui, "Reset cam", false, TARGET_SHOW).clicked();
+            },
+        );
+        if undo {
+            self.visualizer_undo();
+        }
+        if redo {
+            self.visualizer_redo();
+        }
+        if room_changed {
+            self.visualizer_ui_state.stage.room.visible =
+                self.visualizer_ui_state.settings.show_room;
+        }
+        if reset {
+            reset_camera(&mut self.visualizer_ui_state);
+        }
+        if fit {
+            self.visualizer_ui_state.camera_yaw = DEFAULT_CAMERA_YAW;
+            self.visualizer_ui_state.camera_pitch = DEFAULT_CAMERA_PITCH;
+            self.visualizer_ui_state.camera_radius =
+                (snapshot.bounds.radius * 1.5).clamp(3.0, 60.0);
+            self.visualizer_ui_state.free_camera = false;
+            self.visualizer_ui_state.camera_position = Vec3::new(0.0, 0.0, 0.0);
+        }
+
+        // The stage view.
+        let editing = self.visualizer_ui_state.editor.mode == VisualizerMode::Edit;
+        let top = editing && self.visualizer_ui_state.editor.view == EditorView::Top;
+        let mut view = desk::pane_at(ui, view_rect, t.pane, "visualizer-view");
+        studio::pane_header(
+            &mut view,
+            None,
+            if top {
+                "Stage, top view"
+            } else {
+                "Stage, 3D view"
+            },
+            false,
+            |_| {},
+        );
+        let body = view.available_rect_before_wrap().shrink(8.0);
+        let mut canvas = view.new_child(
+            egui::UiBuilder::new()
+                .id_salt("visualizer-canvas-body")
+                .max_rect(body)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        canvas.set_clip_rect(body.intersect(view.clip_rect()));
+        canvas.spacing_mut().item_spacing = vec2(6.0, 4.0);
+        let canvas_id = if top {
+            self.visualizer_top_ui(&mut canvas);
+            None
+        } else {
+            Some(self.visualizer_canvas(&mut canvas, snapshot, screen_id, render_context, false))
+        };
+
+        // Selection.
+        let sel_h = (side.height() * 0.55).round();
+        let sel_rect = Rect::from_min_size(side.min, vec2(side.width(), sel_h));
+        let stage_rect = Rect::from_min_max(pos2(side.left(), sel_rect.bottom() + gap), side.max);
+        let mut sel_ui = desk::pane_at(ui, sel_rect, t.pane, "visualizer-selection");
+        let sel = self.visualizer_selection_info();
+        let mut action = None;
+        let can_detach = self.visualizer_can_detach(&sel);
+        studio::pane_header(&mut sel_ui, None, "Selection", false, |_| {});
+        duo::body(&mut sel_ui, None, |ui| {
+            ui.spacing_mut().interact_size.y = TARGET_MIN;
+            if !editing {
+                duo::note(
+                    ui,
+                    "Switch to Edit to select and place fixtures and objects.",
+                );
+                return;
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (i, (label, enabled)) in [
+                    ("Attach", sel.can_attach()),
+                    ("Detach", can_detach),
+                    ("Duplicate", sel.only_objects()),
+                    ("Delete", sel.only_objects()),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let r = ui
+                        .add_enabled_ui(enabled, |ui| {
+                            studio::mini_button(ui, label, false, TARGET_MIN)
+                        })
+                        .inner;
+                    let r = if i == 0 {
+                        r.on_disabled_hover_text("Select one fixture and one truss")
+                    } else {
+                        r
+                    };
+                    if r.clicked() {
+                        action = Some(i);
+                    }
+                }
+            });
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical()
+                .id_salt("visualizer-selection-scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| self.visualizer_editor_inspector(ui));
+        });
+        match action {
+            Some(0) => self.visualizer_attach(&sel),
+            Some(1) => self.visualizer_detach(&sel),
+            Some(2) => self.visualizer_duplicate(&sel),
+            Some(3) => self.visualizer_delete(sel),
+            _ => {}
+        }
+
+        // Stage.
+        let mut stage_ui = desk::pane_at(ui, stage_rect, t.pane, "visualizer-stage");
+        studio::pane_header(&mut stage_ui, None, "Stage", false, |_| {});
+        let object_count = self.visualizer_ui_state.stage.objects.len();
+        let mut retry = false;
+        let status = canvas_id.map(|id| self.visualizer_status(screen_id, id));
+        duo::body(&mut stage_ui, None, |ui| {
+            ui.spacing_mut().interact_size.y = TARGET_MIN;
+            let settings = &mut self.visualizer_ui_state.settings;
+            let mut dims: Vec<(&str, &mut f32, f32)> = vec![
+                ("Width", &mut settings.room_width, MAX_ROOM_DIMENSION),
+                ("Depth", &mut settings.room_depth, MAX_ROOM_DIMENSION),
+            ];
+            if editing {
+                dims.push(("Height", &mut settings.room_height, 50.0));
+            }
+            for (label, value, max) in dims {
+                duo::form_row(ui, label, |ui| {
+                    let mut v = f64::from(*value);
+                    if studio::num_field(
+                        ui,
+                        &mut v,
+                        0.5,
+                        f64::from(MIN_ROOM_DIMENSION)..=f64::from(max),
+                        1,
+                        64.0,
+                    )
+                    .changed()
+                    {
+                        *value = v as f32;
+                        room_changed = true;
+                    }
+                    unit(ui, "m");
+                });
+            }
+            duo::form_row(ui, "Brightness", |ui| {
+                let mut pct = f64::from((settings.brightness * 100.0).round());
+                if studio::num_field(ui, &mut pct, 10.0, 50.0..=500.0, 0, 64.0).changed() {
+                    settings.brightness = (pct as f32 / 100.0).clamp(0.5, 5.0);
+                }
+                unit(ui, "%");
+            });
+            duo::form_row(ui, "Diagnostics", |ui| {
+                studio::switch(ui, &mut settings.show_diagnostics);
+            });
+            if editing {
+                let editor = &mut self.visualizer_ui_state.editor;
+                duo::form_row(ui, "Snap steps", |ui| {
+                    let mut pos = f64::from(editor.position_snap);
+                    if studio::num_field(ui, &mut pos, 0.05, 0.01..=10.0, 2, 64.0).changed() {
+                        editor.position_snap = pos as f32;
+                    }
+                    unit(ui, "m");
+                    let mut rot = f64::from(editor.rotation_snap);
+                    if studio::num_field(ui, &mut rot, 1.0, 1.0..=90.0, 0, 52.0).changed() {
+                        editor.rotation_snap = rot as f32;
+                    }
+                    unit(ui, "deg");
+                });
+            }
+            duo::form_row(ui, "Objects", |ui| duo::text(ui, object_count.to_string()));
+            if editing {
+                self.visualizer_desktop_import(ui);
+            }
+            if let Some(lines) = &status {
+                ui.add_space(6.0);
+                for (warning, line) in &lines.lines {
+                    if *warning {
+                        desk::error_text(ui, line);
+                    } else {
+                        duo::note(ui, line.as_str());
+                    }
+                }
+                if lines.renderer_error {
+                    retry = studio::mini_button(ui, "Retry renderer", false, TARGET_MIN).clicked();
+                }
+            }
+        });
+        if retry {
+            if let Some(id) = canvas_id {
+                let target = self
+                    .visualizer_ui_state
+                    .render_target(egui::Id::new((screen_id, id)));
+                if let Ok(mut shared) = target.shared.lock() {
+                    shared.retry_renderer();
+                };
+            }
+        }
+        if room_changed {
+            let settings = self.visualizer_ui_state.settings;
+            let room = &mut self.visualizer_ui_state.stage.room;
+            room.width = settings.room_width;
+            room.depth = settings.room_depth;
+            room.height = settings.room_height;
+            room.visible = settings.show_room;
+            self.commit_visualizer_stage();
+        }
+    }
+
+    /// The desktop Stage pane's Import GLB row.
+    fn visualizer_desktop_import(&mut self, ui: &mut egui::Ui) {
+        use crate::app::components::studio;
+        use crate::app::pages::system::desk;
+        use crate::app::ui_tokens::TARGET_MIN;
+        let importing = self.visualizer_importing();
+        #[cfg(feature = "file-dialog")]
+        {
+            let showfile = self
+                .client
+                .with_show(|show| show.showfile().map(|path| path.to_path_buf()));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let enabled = showfile.is_some() && !importing;
+                if ui
+                    .add_enabled_ui(enabled, |ui| {
+                        studio::mini_button(ui, "Import GLB", false, TARGET_MIN)
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.visualizer_open_import(showfile);
+                }
+                if importing {
+                    ui.spinner();
+                }
+            });
+        }
+        #[cfg(not(feature = "file-dialog"))]
+        if importing {
+            ui.spinner();
+        }
+        if let Some(error) = &self.visualizer_ui_state.import_error {
+            desk::error_text(ui, error);
+        }
+    }
+
+    /// The 3D view's status lines (renderer error, scene data problems,
+    /// diagnostics) for the desktop Stage pane.
+    fn visualizer_status(&mut self, screen_id: ScreenId, canvas_id: egui::Id) -> VisualizerStatus {
+        let diagnostics = self.visualizer_ui_state.settings.show_diagnostics;
+        let target = self
+            .visualizer_ui_state
+            .render_target(egui::Id::new((screen_id, canvas_id)));
+        let renderer_error = target
+            .shared
+            .lock()
+            .ok()
+            .and_then(|shared| shared.last_error.clone());
+        let frame = target.frame.lock().ok().map(|frame| {
+            (
+                frame.snapshot.skipped_fixtures,
+                frame.snapshot.fixtures.len(),
+                frame.snapshot.error.clone(),
+            )
+        });
+        let mut lines = Vec::new();
+        if let Some(err) = &renderer_error {
+            lines.push((true, format!("Renderer error: {err}")));
+        }
+        if let Some((skipped, count, error)) = frame {
+            if let Some(err) = error {
+                lines.push((true, format!("Scene data: {err}")));
+            }
+            if diagnostics {
+                lines.push((false, format!("Fixtures: {count}, skipped: {skipped}")));
+            }
+        }
+        VisualizerStatus {
+            lines,
+            renderer_error: renderer_error.is_some(),
+        }
+    }
+}
+
+/// Status lines under the desktop Stage pane: (is a warning, text).
+struct VisualizerStatus {
+    lines: Vec<(bool, String)>,
+    renderer_error: bool,
+}
+
+/// A muted unit after a number field.
+fn unit(ui: &mut egui::Ui, text: &str) {
+    let t = crate::app::ui_tokens::studio(ui.ctx());
+    let f = crate::app::ui_tokens::Density::of(ui.ctx()).font(
+        crate::app::ui_tokens::Weight::Regular,
+        crate::app::ui_tokens::TEXT,
+    );
+    ui.label(egui::RichText::new(text).font(f).color(t.muted));
+}
+
+/// A 1px vertical divider between groups of bar controls.
+fn divider(ui: &mut egui::Ui, color: Color32) {
+    let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 24.0), Sense::hover());
+    ui.painter().vline(
+        r.center().x.round() + 0.5,
+        r.y_range(),
+        Stroke::new(1.0_f32, color),
+    );
+}
+
+/// What the editor's selection holds, for the edit actions.
+struct VisualizerSelection {
+    count: usize,
+    objects: Vec<u64>,
+    fixture: Option<(u8, u8)>,
+    truss: Option<u64>,
+}
+
+impl VisualizerSelection {
+    /// One fixture and one truss.
+    fn can_attach(&self) -> bool {
+        self.count == 2 && self.objects.len() == 1 && self.fixture.is_some() && self.truss.is_some()
+    }
+
+    /// Only stage objects, at least one.
+    fn only_objects(&self) -> bool {
+        !self.objects.is_empty() && self.objects.len() == self.count
     }
 }
 

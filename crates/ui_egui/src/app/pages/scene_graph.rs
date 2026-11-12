@@ -259,6 +259,8 @@ pub struct SceneGraphViewer<'a> {
     pub pending_zoom_override: Option<f32>,
     /// Milliseconds until the active node's soonest time-based edge fires.
     pub active_countdown_ms: Option<u64>,
+    /// Canvas fill and border; `None` keeps the kiosk's dark greys.
+    pub canvas_colors: Option<(Color32, Color32)>,
 }
 
 #[allow(refining_impl_trait)]
@@ -394,7 +396,10 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
             Pos2::new(-CANVAS_HALF_EXTENT, -CANVAS_HALF_EXTENT),
             Pos2::new(CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
         );
-        painter.rect_filled(bounds, 0.0, Color32::from_gray(28));
+        let (fill, border) = self
+            .canvas_colors
+            .unwrap_or((Color32::from_gray(28), Color32::from_gray(90)));
+        painter.rect_filled(bounds, 0.0, fill);
         if let Some(background) = background {
             let clipped = painter.with_clip_rect(bounds);
             background.draw(&bounds, snarl_style, style, &clipped);
@@ -402,7 +407,7 @@ impl<'a> SnarlViewer<SnarlNode> for SceneGraphViewer<'a> {
         painter.rect_stroke(
             bounds,
             0.0,
-            Stroke::new(2.0, Color32::from_gray(90)),
+            Stroke::new(2.0_f32, border),
             egui::StrokeKind::Outside,
         );
     }
@@ -509,6 +514,10 @@ impl BlaulichtApp {
             ui.label("Not connected.");
             return;
         };
+        if self.layout.is_desktop() {
+            self.scene_graph_desktop(ui, snapshot);
+            return;
+        }
         self.render_scene_graph(ui, render_context, snapshot);
     }
 
@@ -559,20 +568,7 @@ impl BlaulichtApp {
             return;
         };
 
-        // Sync the snarl with the engine, and send what the operator changed
-        // on it (wires, dropped nodes).
-        let pointer_down = ui.input(|input| input.pointer.any_down());
-        let waiting = self
-            .scene_graph_ui_state
-            .edit_reply
-            .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
-        let edits = self
-            .scene_graph_ui_state
-            .sync(graph_id, &graph, pointer_down, waiting);
-        for edit in edits {
-            let seq = self.send_command(edit, |_, _| {});
-            self.scene_graph_ui_state.edit_reply = Some(seq);
-        }
+        self.scene_graph_sync(ui, graph_id, &graph);
 
         // Controls bar.
         let current_section = self.collector_snapshot.section_state;
@@ -638,21 +634,9 @@ impl BlaulichtApp {
 
         ui.separator();
 
-        // Keep nodes on the canvas while they are dragged.
-        let snarl = &mut self.scene_graph_ui_state.snarl;
-        let snarl_ids: Vec<egui_snarl::NodeId> = snarl.node_ids().map(|(id, _)| id).collect();
-        for snarl_id in snarl_ids {
-            if let Some(info) = snarl.get_node_info_mut(snarl_id) {
-                info.pos = Pos2::new(
-                    info.pos.x.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
-                    info.pos.y.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
-                );
-            }
-        }
+        self.scene_graph_clamp_nodes();
 
         // Use a vertical split in narrow dynamic tiles so both workspaces remain usable.
-        let pending_zoom_override =
-            std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
         let available = ui.available_size_before_wrap().max(egui::vec2(1.0, 1.0));
         let (workspace_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
         let gap = ui.spacing().item_spacing.x;
@@ -707,6 +691,55 @@ impl BlaulichtApp {
                 .max_rect(editor_rect)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
+        // Left: snarl graph.
+        self.scene_graph_canvas(&mut graph_ui, graph_id, &graph, active_countdown_ms, None);
+
+        // Right: node editor panel.
+        self.scene_graph_node_editor(&mut editor_ui, graph_id, &graph, &scene_names, true);
+    }
+
+    /// Syncs the snarl with the engine, and sends what the operator changed
+    /// on it (wires, dropped nodes).
+    fn scene_graph_sync(&mut self, ui: &Ui, graph_id: GraphId, graph: &SceneGraph) {
+        let pointer_down = ui.input(|input| input.pointer.any_down());
+        let waiting = self
+            .scene_graph_ui_state
+            .edit_reply
+            .is_some_and(|seq| self.reply_handlers.is_waiting(seq));
+        let edits = self
+            .scene_graph_ui_state
+            .sync(graph_id, graph, pointer_down, waiting);
+        for edit in edits {
+            let seq = self.send_command(edit, |_, _| {});
+            self.scene_graph_ui_state.edit_reply = Some(seq);
+        }
+    }
+
+    /// Keeps nodes on the canvas while they are dragged.
+    fn scene_graph_clamp_nodes(&mut self) {
+        let snarl = &mut self.scene_graph_ui_state.snarl;
+        let snarl_ids: Vec<egui_snarl::NodeId> = snarl.node_ids().map(|(id, _)| id).collect();
+        for snarl_id in snarl_ids {
+            if let Some(info) = snarl.get_node_info_mut(snarl_id) {
+                info.pos = Pos2::new(
+                    info.pos.x.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+                    info.pos.y.clamp(-CANVAS_HALF_EXTENT, CANVAS_HALF_EXTENT),
+                );
+            }
+        }
+    }
+
+    /// The snarl graph, filling what is left of `graph_ui`.
+    fn scene_graph_canvas(
+        &mut self,
+        graph_ui: &mut Ui,
+        graph_id: GraphId,
+        graph: &SceneGraph,
+        active_countdown_ms: Option<u64>,
+        canvas: Option<CanvasColors>,
+    ) {
+        let pending_zoom_override =
+            std::mem::take(&mut self.scene_graph_ui_state.pending_zoom_override);
         let viewport_rect =
             Rect::from_min_size(graph_ui.cursor().min, graph_ui.available_size_before_wrap());
 
@@ -716,9 +749,8 @@ impl BlaulichtApp {
         }
         let recenter_view = std::mem::take(&mut self.scene_graph_ui_state.recenter_view);
 
-        // Left: snarl graph.
         let mut viewer = SceneGraphViewer {
-            graph: &graph,
+            graph,
             graph_id,
             selected_node: &mut self.scene_graph_ui_state.selected_node,
             recenter_view,
@@ -726,16 +758,37 @@ impl BlaulichtApp {
             zoom_level: &mut self.scene_graph_ui_state.zoom_level,
             pending_zoom_override,
             active_countdown_ms,
+            canvas_colors: canvas.map(|c| (c.fill, c.border)),
         };
 
+        let desktop_style;
+        let style = match canvas {
+            Some(c) => {
+                let mut style = self.scene_graph_ui_state.style;
+                style.bg_pattern_stroke = Some(Stroke::new(1.0_f32, c.grid));
+                desktop_style = style;
+                &desktop_style
+            }
+            None => &self.scene_graph_ui_state.style,
+        };
         self.scene_graph_ui_state.snarl.show(
             &mut viewer,
-            &self.scene_graph_ui_state.style,
+            style,
             egui::Id::new("scene_graph_snarl"),
-            &mut graph_ui,
+            graph_ui,
         );
+    }
 
-        // Right: node editor panel.
+    /// The selected node's editor. `heading`: the node's name as a heading
+    /// first (the desktop pane has it in its title bar instead).
+    fn scene_graph_node_editor(
+        &mut self,
+        ui: &mut Ui,
+        graph_id: GraphId,
+        graph: &SceneGraph,
+        scene_names: &BTreeMap<u8, String>,
+        heading: bool,
+    ) {
         let Some(selected_node_id) = self.scene_graph_ui_state.selected_node else {
             return;
         };
@@ -744,7 +797,6 @@ impl BlaulichtApp {
             return;
         };
 
-        let ui = &mut editor_ui;
         let mut commands: Vec<HostCommand> = Vec::new();
         let node_param = |param| HostCommand::SetSceneGraphNode {
             graph: graph_id,
@@ -760,8 +812,10 @@ impl BlaulichtApp {
             _ => scene_node.name.clone(),
         };
 
-        ui.heading(&name);
-        ui.separator();
+        if heading {
+            ui.heading(&name);
+            ui.separator();
+        }
 
         ui.horizontal(|ui| {
             ui.label("Name:");
@@ -1022,6 +1076,273 @@ impl BlaulichtApp {
     }
 }
 
+/// Width of the desktop Graphs list (`pages.html#graph`).
+const DESKTOP_GRAPH_LIST_W: f32 = 210.0;
+/// Width of the desktop Node pane.
+const DESKTOP_NODE_PANE_W: f32 = 280.0;
+
+impl BlaulichtApp {
+    /// Desktop: the `pages.html#graph` layout, a Graphs list, the graph
+    /// canvas and the selected node's editor in three panes. The kiosk keeps
+    /// [`Self::render_scene_graph`].
+    fn scene_graph_desktop(&mut self, ui: &mut Ui, snapshot: GraphSnapshot) {
+        use crate::app::components::studio::{self, ListRow, ListRowState};
+        use crate::app::pages::setup::duo;
+        use crate::app::pages::system::desk;
+        use crate::app::ui_tokens::{
+            studio as tokens, Density, Weight, TARGET_MIN, TARGET_SHOW, TEXT,
+        };
+        use egui::{pos2, vec2, Sense};
+
+        let GraphSnapshot {
+            graphs,
+            focused,
+            countdown_ms,
+            scene_names,
+        } = snapshot;
+        let t = tokens(ui.ctx());
+        let full = desk::page_rect(ui);
+        let gap = 2.0;
+        let list_rect = Rect::from_min_size(full.min, vec2(DESKTOP_GRAPH_LIST_W, full.height()));
+        let node_rect = Rect::from_min_max(
+            pos2(full.right() - DESKTOP_NODE_PANE_W, full.top()),
+            full.max,
+        );
+        let canvas_rect = Rect::from_min_max(
+            pos2(list_rect.right() + gap, full.top()),
+            pos2(node_rect.left() - gap, full.bottom()),
+        );
+        let focused_id = focused.as_ref().map(|(id, _)| *id);
+
+        // Graphs.
+        let mut list = desk::pane_at(ui, list_rect, t.pane, "graph-list");
+        let adding = self.scene_graph_ui_state.add_graph_open;
+        let mut create = false;
+        studio::pane_header(&mut list, None, "Graphs", true, |ui| {
+            create = studio::mini_button(ui, "Create", adding, TARGET_SHOW).clicked();
+        });
+        if create {
+            let state = &mut self.scene_graph_ui_state;
+            state.add_graph_open = !state.add_graph_open;
+            if state.add_graph_open && state.new_graph_name.trim().is_empty() {
+                state.new_graph_name = "My Graph".to_owned();
+            }
+        }
+        if self.scene_graph_ui_state.add_graph_open {
+            let mut add = false;
+            let mut cancel = false;
+            duo::body(&mut list, Some(TARGET_MIN + 16.0), |ui| {
+                ui.horizontal(|ui| {
+                    let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+                    let field = ui.add_sized(
+                        vec2(ui.available_width() - 46.0, TARGET_MIN),
+                        egui::TextEdit::singleline(&mut self.scene_graph_ui_state.new_graph_name)
+                            .id(egui::Id::new("graph-new-name"))
+                            .font(f)
+                            .vertical_align(egui::Align::Center),
+                    );
+                    if create {
+                        field.request_focus();
+                    }
+                    let (enter, escape) = ui.input(|i| {
+                        (
+                            i.key_pressed(egui::Key::Enter),
+                            i.key_pressed(egui::Key::Escape),
+                        )
+                    });
+                    add = field.lost_focus() && enter;
+                    cancel = field.lost_focus() && escape;
+                    add |= studio::mini_button(ui, "Add", false, TARGET_MIN).clicked();
+                });
+            });
+            let name = self.scene_graph_ui_state.new_graph_name.trim().to_owned();
+            if add && !name.is_empty() {
+                // The engine focuses the new graph for this session.
+                self.send_command(HostCommand::CreateSceneGraph { name }, |_, _| {});
+                self.scene_graph_ui_state.add_graph_open = false;
+                self.scene_graph_ui_state.new_graph_name.clear();
+            } else if cancel {
+                self.scene_graph_ui_state.add_graph_open = false;
+            }
+        }
+        let mut pick = None;
+        egui::ScrollArea::vertical()
+            .id_salt("graph-list-scroll")
+            .auto_shrink([false, false])
+            .show(&mut list, |ui| {
+                if graphs.is_empty() {
+                    duo::body(ui, None, |ui| duo::note(ui, "This show has no graphs."));
+                }
+                for (gid, name) in &graphs {
+                    let selected = focused_id == Some(*gid);
+                    let state = if selected {
+                        ListRowState::Active
+                    } else {
+                        ListRowState::Idle
+                    };
+                    if ListRow::new(name).state(state).show(ui).clicked() && !selected {
+                        pick = Some(*gid);
+                    }
+                }
+            });
+        if let Some(gid) = pick {
+            self.client
+                .send_event(ControlEvent::SetFocusedSceneGraph(Some(gid)));
+            self.scene_graph_ui_state.selected_node = None;
+        }
+
+        // The graph.
+        let mut center = desk::pane_at(ui, canvas_rect, t.pane, "graph-canvas");
+        match &focused {
+            None => {
+                studio::pane_header(&mut center, None, "Scene graph", true, |_| {});
+                let body = center.available_rect_before_wrap().shrink(8.0);
+                center.painter().rect_filled(body, 0.0, t.well);
+                center.painter().text(
+                    body.center(),
+                    egui::Align2::CENTER_CENTER,
+                    if graphs.is_empty() {
+                        "Create a graph to chain scenes together, moving between them manually, after a time, or on beat events."
+                    } else {
+                        "Select a graph."
+                    },
+                    Density::of(center.ctx()).font(Weight::Regular, TEXT),
+                    t.text,
+                );
+            }
+            Some((graph_id, graph)) => {
+                let graph_id = *graph_id;
+                self.scene_graph_sync(&center, graph_id, graph);
+                let section = self.collector_snapshot.section_state;
+                let mut enabled = graph.enabled;
+                let mut add_node = false;
+                let mut auto_layout = false;
+                let mut delete = false;
+                let mut zoom = f64::from(self.scene_graph_ui_state.zoom_level) * 100.0;
+                let mut zoom_changed = false;
+                studio::pane_header(&mut center, None, &graph.name, true, |ui| {
+                    let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+                    let (text, color) = crate::app::components::section_label(section);
+                    // The kiosk's colours are for a dark background.
+                    let color = if ui.visuals().dark_mode {
+                        color
+                    } else {
+                        Color32::from_rgb(color.r() / 2, color.g() / 2, color.b() / 2)
+                    };
+                    ui.label(
+                        egui::RichText::new(text)
+                            .font(egui::FontId::monospace(TEXT))
+                            .color(color),
+                    );
+                    divider(ui, t.line);
+                    ui.label(egui::RichText::new("Enabled").font(f.clone()).color(t.text));
+                    if studio::switch(ui, &mut enabled).changed() {
+                        self.client
+                            .send_event(ControlEvent::SetSceneGraphEnabled(graph_id, enabled));
+                    }
+                    add_node = studio::mini_button(ui, "Add node", false, TARGET_SHOW).clicked();
+                    auto_layout =
+                        studio::mini_button(ui, "Auto layout", false, TARGET_SHOW).clicked();
+                    ui.label(egui::RichText::new("Zoom").font(f).color(t.text));
+                    zoom_changed =
+                        studio::num_field(ui, &mut zoom, 5.0, 10.0..=200.0, 0, 52.0).changed();
+                    divider(ui, t.line);
+                    delete = studio::mini_button(ui, "Delete graph", false, TARGET_SHOW).clicked();
+                });
+                if zoom_changed {
+                    self.scene_graph_ui_state.pending_zoom_override = Some((zoom / 100.0) as f32);
+                }
+                if add_node {
+                    let node_count = graph.nodes.len();
+                    self.send_command(
+                        HostCommand::AddSceneGraphNode {
+                            graph: graph_id,
+                            x: 200.0 * node_count as f32,
+                            y: 100.0,
+                        },
+                        |_, _| {},
+                    );
+                }
+                if delete {
+                    self.scene_graph_ui_state.delete_graph_id = Some(graph_id);
+                }
+                // The new positions go to the engine with the next sync, like a drag.
+                if auto_layout {
+                    auto_layout_graph(graph, &mut self.scene_graph_ui_state.snarl);
+                    self.scene_graph_ui_state.recenter_view = true;
+                }
+                self.scene_graph_clamp_nodes();
+                let body = center.available_rect_before_wrap().shrink(8.0);
+                center.allocate_rect(center.available_rect_before_wrap(), Sense::hover());
+                let mut canvas = center.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("graph-canvas-body")
+                        .max_rect(body)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                canvas.set_clip_rect(body.intersect(center.clip_rect()));
+                let colors = CanvasColors {
+                    fill: t.well,
+                    border: t.line,
+                    grid: t.hair,
+                };
+                self.scene_graph_canvas(&mut canvas, graph_id, graph, countdown_ms, Some(colors));
+            }
+        }
+
+        // The selected node.
+        let mut node = desk::pane_at(ui, node_rect, t.pane, "graph-node");
+        let selected = focused.as_ref().and_then(|(gid, graph)| {
+            let nid = self.scene_graph_ui_state.selected_node?;
+            let scene_node = graph.nodes.get(&nid)?;
+            let name = match &self.scene_graph_ui_state.name_edit {
+                Some((g, n, text)) if g == gid && *n == nid => text.clone(),
+                _ => scene_node.name.clone(),
+            };
+            Some((*gid, graph, name))
+        });
+        match selected {
+            Some((graph_id, graph, name)) => {
+                studio::pane_header(&mut node, None, &name, true, |_| {});
+                duo::body(&mut node, None, |ui| {
+                    ui.spacing_mut().interact_size.y = TARGET_MIN;
+                    egui::ScrollArea::vertical()
+                        .id_salt("graph-node-scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            self.scene_graph_node_editor(ui, graph_id, graph, &scene_names, false);
+                        });
+                });
+            }
+            None => {
+                studio::pane_header(&mut node, None, "Node", true, |_| {});
+                duo::body(&mut node, None, |ui| {
+                    duo::note(ui, "Select a node to edit it.")
+                });
+            }
+        }
+    }
+}
+
+/// The desktop canvas colours from the studio tokens; the kiosk keeps its
+/// fixed dark ones.
+#[derive(Clone, Copy)]
+struct CanvasColors {
+    fill: Color32,
+    border: Color32,
+    grid: Color32,
+}
+
+/// A 1px vertical divider between groups of bar controls.
+fn divider(ui: &mut Ui, color: Color32) {
+    let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 24.0), egui::Sense::hover());
+    ui.painter().vline(
+        r.center().x.round() + 0.5,
+        r.y_range(),
+        Stroke::new(1.0_f32, color),
+    );
+}
+
 /// Lays the graph out with a force simulation and moves the snarl's nodes
 /// there; the next sync sends the new positions.
 fn auto_layout_graph(graph: &SceneGraph, snarl: &mut Snarl<SnarlNode>) {
@@ -1105,6 +1426,7 @@ mod edit_tests {
                 zoom_level: &mut zoom,
                 pending_zoom_override: None,
                 active_countdown_ms: Some(1999),
+                canvas_colors: None,
             };
             let mut transform = egui::emath::TSTransform::IDENTITY;
             viewer.current_transform(&mut transform, &mut snarl);
