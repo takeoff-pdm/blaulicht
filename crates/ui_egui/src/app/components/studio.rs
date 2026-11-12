@@ -1184,7 +1184,7 @@ pub fn hfader(
 }
 
 /// Knob size: [`KnobSize::Normal`] (58px) for masters, [`KnobSize::Small`]
-/// (44px) beside the page bar's scene picker.
+/// (32px, `.prog #masters`) beside the page bar's scene picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KnobSize {
     Normal,
@@ -1303,7 +1303,7 @@ fn knob_impl(
     let t = studio(ui.ctx());
     let d: f32 = match size {
         KnobSize::Normal => 58.0,
-        KnobSize::Small => 44.0,
+        KnobSize::Small => 32.0,
     };
     let value_text = fmt(*value, &range);
     // Small knobs (page bar masters) put the value and the name to the

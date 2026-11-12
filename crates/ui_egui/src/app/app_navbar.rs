@@ -1,4 +1,4 @@
-use blaulicht_shared::{ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
+use blaulicht_shared::{AppPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent};
 use egui::Context;
 
 use crate::app::{
@@ -40,6 +40,11 @@ impl BlaulichtApp {
                 summary: &summary,
             });
         self.navbar.sync_sections();
+        // The Programmer needs the sidebar's width below 1200px.
+        let width = ui.ctx().content_rect().width();
+        self.navbar.set_force_rail(
+            self.navbar.page() == AppPage::Programmer && width < super::pages::SIDEBAR_RAIL_BELOW,
+        );
         let Some(click) = components::desktop_sidebar(ui, &self.navbar, status) else {
             return;
         };
