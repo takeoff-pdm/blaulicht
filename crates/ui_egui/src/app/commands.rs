@@ -23,7 +23,13 @@ impl BlaulichtApp {
     }
 
     /// Shows why the engine refused a command, as a 5 s popup with OK.
+    /// The desktop layout shows it as an error notification (070), which
+    /// stays until closed.
     pub(crate) fn show_refusal(&mut self, why: String) {
+        if self.layout.is_desktop() {
+            self.desk_notes.error(why);
+            return;
+        }
         self.show_popup(PopupSpec {
             label: why,
             label_size: Some(18.0),

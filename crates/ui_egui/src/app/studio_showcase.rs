@@ -3,6 +3,7 @@
 //! start with `BLAULICHT_STUDIO_SHOWCASE=1`. The kiosk never draws it.
 
 use crate::app::components::studio::{self, KnobSize, ListRow, ListRowState, ModalOutcome};
+use crate::app::components::{notify, notify_error, notify_info, Notice};
 use crate::app::ui_tokens::{studio as tokens, TARGET_MIN, TARGET_SHOW};
 use egui::{Id, Ui};
 
@@ -20,6 +21,7 @@ struct State {
     view: usize,
     preview: bool,
     identify: bool,
+    notes: u32,
     num: [f64; 2],
     name: String,
     last: &'static str,
@@ -40,6 +42,7 @@ impl Default for State {
             view: 0,
             preview: false,
             identify: false,
+            notes: 0,
             num: [1.25, 90.0],
             name: "New scene".into(),
             last: "",
@@ -59,6 +62,11 @@ pub fn showcase_open(ctx: &egui::Context) -> bool {
         ctx.data_mut(|d| d.insert_temp(state_id(), s.clone()));
     }
     s.open
+}
+
+/// Closes the showcase, so the page shows again.
+fn close_showcase(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(state_id()).open = false);
 }
 
 const NAMES: [&str; 6] = [
@@ -213,6 +221,34 @@ pub fn showcase_ui(ui: &mut Ui) {
                     let _ = studio::live_button(ui, "Initialize", false, TARGET_MIN);
                 });
                 ui.add_space(10.0);
+                studio::pane_header(ui, None, "Notifications", false, |_| {});
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    if studio::mini_button(ui, "Info", false, TARGET_MIN).clicked() {
+                        s.notes += 1;
+                        notify_info(&ctx, format!("Added New fixture {}", s.notes));
+                    }
+                    if studio::mini_button(ui, "Repeat", false, TARGET_MIN).clicked() {
+                        notify_info(&ctx, "Saved SPARTACUS_SOLI");
+                    }
+                    if studio::mini_button(ui, "Error", false, TARGET_MIN).clicked() {
+                        notify_error(&ctx, "Blackout not sent: engine disconnected");
+                    }
+                    if studio::mini_button(ui, "With action", false, TARGET_MIN).clicked() {
+                        notify(
+                            &ctx,
+                            Notice::info("Moved 3 fixtures to STAGE").action(
+                                "Show in Setup",
+                                |app, ctx| {
+                                    close_showcase(ctx);
+                                    app.show_subpage(blaulicht_shared::AppSubPage::Setup_Fixtures);
+                                },
+                            ),
+                        );
+                    }
+                });
+                ui.add_space(10.0);
                 ui.label(egui::RichText::new("Changed value").color(t.changed));
                 ui.label(egui::RichText::new("Output at risk").color(t.red_text));
                 ui.label(egui::RichText::new("Graph data").color(t.data));
@@ -238,6 +274,10 @@ pub fn showcase_ui(ui: &mut Ui) {
                 ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0));
             });
             // A second dialog cannot open on top of this one.
+            // Raised from the dialog: survives it closing (070).
+            if ui.button("Notify from dialog").clicked() {
+                notify_info(ui.ctx(), "Raised from a dialog");
+            }
             if ui.button("Open another dialog").clicked()
                 && !studio::open_modal(ui.ctx(), Id::new("showcase_delete"))
             {

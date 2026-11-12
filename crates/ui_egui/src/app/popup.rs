@@ -10,7 +10,13 @@ use web_time::Instant;
 const DEFAULT_POPUP_LABEL_SIZE: f32 = 24.0;
 
 impl BlaulichtApp {
+    /// Shows a short message. The desktop layout shows it as an info
+    /// notification (070); the kiosk keeps its popup.
     pub fn show_popup(&mut self, popup: PopupSpec) {
+        if self.layout.is_desktop() {
+            self.desk_notes.info(popup.label);
+            return;
+        }
         self.popup = Some(popup);
         self.popup_open_time = Instant::now();
     }

@@ -184,7 +184,7 @@ impl BlaulichtApp {
 
     /// Tells plugins about a navigation in this UI. Sent as `Web`, so it
     /// doesn't loop back into the UI.
-    fn notify_navigation(&self, event: MainUiEvent) {
+    pub(crate) fn notify_navigation(&self, event: MainUiEvent) {
         self.client.send(ControlEventMessage::new(
             EventOriginator::Web,
             ControlEvent::MainUi(event),

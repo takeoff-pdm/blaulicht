@@ -137,6 +137,10 @@ impl BlaulichtApp {
             HostCommand::ToggleAnimationPreset(preset),
             |app, outcome| {
                 if let CommandOutcome::Refused(why) = outcome {
+                    if app.layout.is_desktop() {
+                        app.desk_notes.error(why.clone());
+                        return;
+                    }
                     app.show_popup(PopupSpec::with_duration(
                         Duration::from_secs(3),
                         why.clone(),
