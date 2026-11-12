@@ -105,6 +105,15 @@ impl BlaulichtApp {
                 {
                     app.render_screens_desktop(ui)
                 }
+                AppSubPage::System_Plugins if app.layout.is_desktop() => {
+                    app.render_plugins_desktop(ui)
+                }
+                AppSubPage::System_Midi | AppSubPage::System_Serial if app.layout.is_desktop() => {
+                    app.render_devices_desktop(ui)
+                }
+                AppSubPage::System_Remote if app.layout.is_desktop() => {
+                    app.render_remote_desktop(ui)
+                }
                 other => app.render_system_tab_content(ui, screen_id, other),
             },
         );

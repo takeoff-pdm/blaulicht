@@ -179,3 +179,261 @@ fn format_bytes(bytes: u64) -> String {
         format!("{} KB", bytes >> 10)
     }
 }
+
+/// This machine's address on the network, for the Web UI pane: the local
+/// address the system would send from (a UDP `connect` sends nothing).
+#[cfg(not(target_arch = "wasm32"))]
+fn local_ip() -> Option<std::net::IpAddr> {
+    static IP: std::sync::OnceLock<Option<std::net::IpAddr>> = std::sync::OnceLock::new();
+    *IP.get_or_init(|| {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+        socket.connect("192.168.0.1:9").ok()?;
+        let ip = socket.local_addr().ok()?.ip();
+        (!ip.is_unspecified()).then_some(ip)
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn local_ip() -> Option<std::net::IpAddr> {
+    None
+}
+
+/// The address a browser opens for the web UI.
+fn web_address(status: &RemoteServerStatus, default_port: Option<u16>) -> String {
+    let addr = status.listening;
+    let port = addr.map(|a| a.port()).or(default_port);
+    let host = match addr.map(|a| a.ip()) {
+        Some(ip) if !ip.is_unspecified() && !ip.is_loopback() => Some(ip),
+        _ => local_ip(),
+    };
+    let host = host.map_or_else(|| "<this device>".to_string(), |ip| ip.to_string());
+    match port {
+        Some(port) => format!("http://{host}:{port}/"),
+        None => format!("http://{host}/"),
+    }
+}
+
+/// Column starts of the Connected clients table (`system.html` `.rows`).
+const CLIENT_COLS: [f32; 3] = [0.0, 0.445, 0.668];
+
+impl BlaulichtApp {
+    /// System › Remote UI on the desktop (086, `system.html#remote`): the
+    /// Web UI address and Access side by side over the connected clients.
+    /// Only the desk changes Access; a remote UI sees it read-only.
+    pub(super) fn render_remote_desktop(&mut self, ui: &mut Ui) {
+        use super::desk::{self, State};
+        use crate::app::components::studio;
+        use crate::app::pages::setup::duo;
+        use crate::app::ui_tokens::{studio as tokens, Density, Weight, TARGET_MIN, TEXT};
+        use egui::{pos2, vec2, Align2, Rect, Sense};
+
+        let t = tokens(ui.ctx());
+        let status = self.client.with_remote_server(RemoteServerStatus::clone);
+        let remote = self.client.is_remote();
+        let warn = status.enabled && !status.passcode_set;
+        let full = desk::page_rect(ui);
+        // Header, padding, two rows and their gap, padding; the warning
+        // adds a line.
+        let top_h = (26.0 + 8.0 + 2.0 * TARGET_MIN + 6.0 + 8.0 + if warn { 22.0 } else { 0.0 })
+            .max(26.0 + 8.0 + 36.0 + 6.0 + 16.0 + 8.0);
+        let half = ((full.width() - 1.0) / 2.0).floor();
+        let addr_rect = Rect::from_min_size(full.min, vec2(half, top_h));
+        let access_rect = Rect::from_min_max(
+            pos2(addr_rect.right() + 1.0, full.top()),
+            pos2(full.right(), full.top() + top_h),
+        );
+        let clients_rect =
+            Rect::from_min_max(pos2(full.left(), addr_rect.bottom() + 1.0), full.max);
+
+        // Web UI.
+        let mut addr = desk::pane_at(ui, addr_rect, t.pane, "remote-addr");
+        let (state, state_text) = if status.error.is_some() {
+            (State::Bad, "Error")
+        } else if !status.enabled {
+            (State::Off, "Off")
+        } else if status.listening.is_some() {
+            (State::Ok, "Listening")
+        } else {
+            (State::Warn, "Starting")
+        };
+        studio::pane_header(&mut addr, None, "Web UI", false, |ui| {
+            desk::state_label(ui, state, state_text);
+        });
+        if let Some(addr) = status.listening {
+            self.system_ui_state.remote_port = Some(addr.port());
+        }
+        let address = web_address(&status, self.system_ui_state.remote_port);
+        duo::body(&mut addr, None, |ui| {
+            let f = egui::FontId::monospace(16.0);
+            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
+            ui.painter().rect_filled(r, 0.0, t.well);
+            studio::paint_truncated(
+                ui,
+                pos2(r.left() + 8.0, r.center().y),
+                &address,
+                f,
+                t.strong,
+                r.width() - 16.0,
+            );
+            match &status.error {
+                Some(error) => desk::error_text(ui, error),
+                None => duo::note(
+                    ui,
+                    if status.enabled {
+                        "Open this address on any device on the network."
+                    } else {
+                        "Remote connections are off."
+                    },
+                ),
+            }
+        });
+
+        // Access.
+        let mut access = desk::pane_at(ui, access_rect, t.pane, "remote-access");
+        studio::pane_header(&mut access, None, "Access", false, |_| {});
+        let mut enabled = status.enabled;
+        let mut new_passcode = status.passcode.clone();
+        let mut changed = false;
+        duo::body(&mut access, None, |ui| {
+            let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+            access_row(ui, "Remote control", |ui| {
+                if remote {
+                    duo::text(ui, if status.enabled { "Allowed" } else { "Off" });
+                    return;
+                }
+                changed |= studio::switch(ui, &mut enabled).changed();
+                ui.add_space(4.0);
+                duo::note(ui, if enabled { "Allowed" } else { "Off" });
+            });
+            access_row(ui, "Passcode", |ui| {
+                if remote {
+                    duo::text(ui, if status.passcode_set { "Set" } else { "None" });
+                    return;
+                }
+                let current = status.passcode.clone().unwrap_or_default();
+                let id = ui.id().with("remote-passcode");
+                let mut buf: String = ui
+                    .data(|d| d.get_temp::<String>(id))
+                    .unwrap_or_else(|| current.clone());
+                let shown = self.system_ui_state.remote_passcode_shown;
+                let response = ui.add_sized(
+                    vec2(150.0, TARGET_MIN),
+                    egui::TextEdit::singleline(&mut buf)
+                        .id(id.with("edit"))
+                        .password(!shown)
+                        .hint_text("None")
+                        .font(f.clone())
+                        .vertical_align(egui::Align::Center),
+                );
+                if response.lost_focus() {
+                    let escaped = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    let typed = buf.trim();
+                    if !escaped && typed != current {
+                        new_passcode = (!typed.is_empty()).then(|| typed.to_string());
+                        changed = true;
+                    }
+                    ui.data_mut(|d| d.remove::<String>(id));
+                } else if response.has_focus() {
+                    ui.data_mut(|d| d.insert_temp(id, buf));
+                } else {
+                    ui.data_mut(|d| d.remove::<String>(id));
+                }
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.add_space(2.0);
+                if duo::chip(ui, if shown { "Hide" } else { "Show" }) {
+                    self.system_ui_state.remote_passcode_shown = !shown;
+                }
+                if ui
+                    .add_enabled_ui(status.passcode_set, |ui| duo::chip(ui, "Remove"))
+                    .inner
+                {
+                    new_passcode = None;
+                    changed = true;
+                }
+            });
+            if warn {
+                desk::error_text(
+                    ui,
+                    "Without a passcode, anyone on the network can operate the show.",
+                );
+            }
+        });
+        if changed && !remote {
+            self.client.send(HostCommand::SetRemoteAccess {
+                enabled,
+                passcode: new_passcode,
+            });
+        }
+
+        // Connected clients.
+        let mut clients = desk::pane_at(ui, clients_rect, t.pane, "remote-clients");
+        studio::pane_header(&mut clients, None, "Connected clients", false, |ui| {
+            let n = status.sessions.len().to_string();
+            let w = studio::text_width(ui, &n, duo::mono_font());
+            let (r, _) = ui.allocate_exact_size(vec2(w, 24.0), Sense::hover());
+            ui.painter().text(
+                pos2(r.left(), r.center().y),
+                Align2::LEFT_CENTER,
+                n,
+                duo::mono_font(),
+                t.strong,
+            );
+        });
+        if status.sessions.is_empty() {
+            duo::body(&mut clients, None, |ui| {
+                duo::note(ui, "No remote UI is connected.");
+            });
+            return;
+        }
+        let me = self.client.remote().map(|_| self.client.client());
+        let rows: Vec<Vec<duo::Cell>> = status
+            .sessions
+            .iter()
+            .map(|s| {
+                let mut client = "Remote UI".to_string();
+                if me == Some(s.client) {
+                    client.push_str(" (this UI)");
+                }
+                if s.backlogged {
+                    client.push_str(", backlogged");
+                }
+                vec![
+                    (s.peer.ip().to_string(), duo::Look::Mono),
+                    (client, duo::Look::Text),
+                    (desk::duration(s.connected_secs), duo::Look::Muted),
+                ]
+            })
+            .collect();
+        duo::flush(&mut clients, |ui| {
+            duo::table(
+                ui,
+                &["Address", "Client", "Connected for"],
+                &CLIENT_COLS,
+                &rows,
+            );
+        });
+    }
+}
+
+/// A row of the Access list: a muted term in the 128px column, then `add`,
+/// 24px tall for its controls.
+fn access_row(ui: &mut Ui, term: &str, add: impl FnOnce(&mut Ui)) {
+    let t = crate::app::ui_tokens::studio(ui.ctx());
+    let f = crate::app::ui_tokens::Density::of(ui.ctx())
+        .font(crate::app::ui_tokens::Weight::Regular, 12.0);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let (r, _) = ui.allocate_exact_size(
+            egui::vec2(128.0, crate::app::ui_tokens::TARGET_MIN),
+            egui::Sense::hover(),
+        );
+        ui.painter().text(
+            egui::pos2(r.left(), r.center().y),
+            egui::Align2::LEFT_CENTER,
+            term,
+            f,
+            t.muted,
+        );
+        add(ui);
+    });
+}

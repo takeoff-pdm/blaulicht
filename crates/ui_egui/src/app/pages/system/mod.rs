@@ -3,6 +3,7 @@ use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 
 pub mod artnet;
+pub mod desk;
 pub mod dmx;
 #[cfg(feature = "file-dialog")]
 pub mod file_dialog;
@@ -10,6 +11,7 @@ pub mod general;
 pub mod health;
 pub mod midi;
 pub mod misc;
+pub mod plugins;
 pub mod remote;
 pub mod screens;
 pub mod serial;
@@ -41,6 +43,11 @@ pub struct SystemUI {
     started: std::time::Instant,
     /// The desktop Screens list's selected screen.
     selected_screen: usize,
+    /// The desktop Plugins list's selected plugin.
+    selected_plugin: Option<u8>,
+    /// The port the remote server last listened on, for the Web UI
+    /// address while it is off.
+    remote_port: Option<u16>,
 }
 
 impl Default for SystemUI {
@@ -67,6 +74,8 @@ impl Default for SystemUI {
             artnet_universe_pads: HashMap::new(),
             started: std::time::Instant::now(),
             selected_screen: 0,
+            selected_plugin: None,
+            remote_port: None,
         }
     }
 }

@@ -277,6 +277,19 @@ impl MidiManager {
             }
         }
 
+        if !incoming_events.is_empty() {
+            let now = crate::state::unix_millis_now();
+            let mut health_state = self.app_state.health_data.write().unwrap();
+            for handle in self.connection_map.values() {
+                if incoming_events.iter().any(|e| e.device == handle.device_id) {
+                    health_state
+                        .midi_health
+                        .last_activity
+                        .insert(handle.device_name.clone(), now);
+                }
+            }
+        }
+
         //
         // Send any outgoing MIDI events.
         //

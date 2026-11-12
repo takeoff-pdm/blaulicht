@@ -89,6 +89,9 @@ pub struct MidiHealth {
     pub available_devices: Vec<String>,
     // pub errors: Vec<MidiHealthError>,
     pub devices: HashMap<String, MidiDeviceState>,
+    /// When each opened device last sent input, in Unix milliseconds.
+    #[serde(default)]
+    pub last_activity: HashMap<String, u64>,
 }
 
 impl MidiHealth {
@@ -109,6 +112,16 @@ pub enum SerialDeviceState {
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SerialHealth {
     pub devices: HashMap<String, SerialDeviceState>,
+    /// When each opened port last received data, in Unix milliseconds.
+    #[serde(default)]
+    pub last_activity: HashMap<String, u64>,
+}
+
+/// The current time in Unix milliseconds, for the health's `last_activity`.
+pub fn unix_millis_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 impl SerialHealth {
@@ -392,7 +405,8 @@ impl AppState {
             .map(|(i, v)| {
                 (
                     i as u8,
-                    PluginState::new(v.file_path.clone().into(), v.enabled),
+                    PluginState::new(v.file_path.clone().into(), v.enabled)
+                        .with_reload_on_change(v.enable_watcher),
                 )
             })
             .collect();
@@ -463,6 +477,10 @@ pub struct PluginState {
     pub path: Cow<'static, str>,
     pub flags: PluginFlags,
     pub logs: VecDeque<Cow<'static, str>>,
+    /// The engine reloads the plugin when its file changes
+    /// (`enable_watcher` in the config).
+    #[serde(default)]
+    pub reload_on_change: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -486,7 +504,13 @@ impl PluginState {
             path,
             flags: PluginFlags::from_enabled(enabled),
             logs: VecDeque::with_capacity(PLUGIN_LOG_LENGTH),
+            reload_on_change: false,
         }
+    }
+
+    pub fn with_reload_on_change(mut self, on: bool) -> Self {
+        self.reload_on_change = on;
+        self
     }
 
     pub fn set_errored(&mut self, v: bool) {

@@ -252,6 +252,10 @@ impl SerialManager {
                             .serial_health
                             .devices
                             .insert(port.port_path.clone(), SerialDeviceState::Open(1));
+                        health_state
+                            .serial_health
+                            .last_activity
+                            .insert(port.port_path.clone(), crate::state::unix_millis_now());
                     }
 
                     let sliced_buf = &buf[..n];

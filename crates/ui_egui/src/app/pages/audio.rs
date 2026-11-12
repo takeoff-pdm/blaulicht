@@ -806,6 +806,10 @@ impl BlaulichtApp {
         if self.audio_info_dialog_open {
             self.render_audio_info_dialog(ctx);
         }
+        if self.layout.is_desktop() {
+            self.render_audio_desktop(ui);
+            return;
+        }
 
         ui.horizontal(|ui| {
             let total_width = ui.available_width();
@@ -1143,6 +1147,201 @@ impl BlaulichtApp {
                 },
             );
         });
+    }
+}
+
+/// Track width of the desktop Input faders (`pages.html#audio` `.hf`).
+const DESKTOP_FADER_TRACK: f32 = 175.0;
+/// Height of the desktop spectrogram (`pages.html#audio`).
+const DESKTOP_SPECTROGRAM_HEIGHT: f32 = 196.0;
+
+impl BlaulichtApp {
+    /// Audio on the desktop (086, `pages.html#audio`): the current input
+    /// with Change device (the one dropdown) and Info in the page bar, the
+    /// spectrogram pane, and the Input pane with the horizontal Volume,
+    /// Gate and Boost faders and the Auto-calibrate switch. The kiosk keeps
+    /// its layout with the graphs and the BPM box.
+    fn render_audio_desktop(&mut self, ui: &mut egui::Ui) {
+        use super::system::desk;
+        use crate::app::components::{dropdown, studio};
+        use crate::app::pages::setup::duo;
+        use crate::app::ui_tokens::{
+            studio as tokens, Density, Weight, PAGE_BAR_HEIGHT, TARGET_SHOW, TEXT,
+        };
+        use egui::{pos2, Align2, Rect, Sense};
+
+        let t = tokens(ui.ctx());
+        let full = desk::page_rect(ui);
+        let bar_rect = Rect::from_min_size(full.min, vec2(full.width(), PAGE_BAR_HEIGHT));
+        let spec_h = 26.0 + 8.0 + DESKTOP_SPECTROGRAM_HEIGHT + 8.0;
+        let spec_rect = Rect::from_min_size(
+            pos2(full.left(), bar_rect.bottom() + 1.0),
+            vec2(full.width(), spec_h),
+        );
+        let input_rect = Rect::from_min_max(pos2(full.left(), spec_rect.bottom() + 1.0), full.max);
+
+        // The page bar.
+        let mut bar = desk::pane_at(ui, bar_rect, t.pane, "audio-bar");
+        let current = self.selected_audio_input.clone();
+        let mut options = self.available_audio_devices.clone();
+        options.extend(DummyInput::ALL.map(|dummy| dummy.name().to_owned()));
+        let shown = current
+            .clone()
+            .unwrap_or_else(|| DummyInput::Silence.name().to_owned());
+        let mut picked = None;
+        let mut info = false;
+        studio::page_bar(
+            &mut bar,
+            |ui| {
+                let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+                ui.label(egui::RichText::new("Current input").font(f).color(t.text));
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(&shown)
+                        .font(egui::FontId::monospace(TEXT + 1.0))
+                        .strong()
+                        .color(t.strong),
+                );
+                ui.add_space(6.0);
+                let change = studio::mini_button(ui, "Change device", false, TARGET_SHOW);
+                let dd = ui.id().with("audio-device-dd");
+                if change.clicked() {
+                    dropdown::toggle(ui.ctx(), dd);
+                }
+                let items = dropdown::items(&options);
+                if let dropdown::Outcome::Picked(i) = (dropdown::Popover {
+                    id: dd,
+                    anchor: change.rect,
+                    anchor_id: Some(change.id),
+                    items: &items,
+                    options: dropdown::Options {
+                        width: Some(240.0),
+                        ..Default::default()
+                    },
+                })
+                .show_single(ui.ctx(), options.iter().position(|o| *o == shown))
+                {
+                    picked = options.get(i).cloned();
+                }
+                // The divider between the input and Info.
+                let (r, _) = ui.allocate_exact_size(vec2(9.0, 24.0), Sense::hover());
+                ui.painter().vline(
+                    r.center().x.round() + 0.5,
+                    r.y_range(),
+                    egui::Stroke::new(1.0_f32, t.line),
+                );
+                info = studio::mini_button(ui, "Info", self.audio_info_dialog_open, TARGET_SHOW)
+                    .clicked();
+            },
+            |_| {},
+        );
+        if info {
+            self.audio_info_dialog_open = !self.audio_info_dialog_open;
+        }
+        if let Some(name) = picked {
+            if Some(&name) != current.as_ref() {
+                // The engine resolves the name, restarts on it and publishes
+                // `AudioSelected`; a vanished device is refused (popup).
+                self.send_command(
+                    HostCommand::SelectAudioInput { name: Some(name) },
+                    |_, _| {},
+                );
+            }
+        }
+
+        // The spectrogram.
+        let mut spec = desk::pane_at(ui, spec_rect, t.pane, "audio-spectrogram");
+        studio::pane_header(&mut spec, None, "Spectrogram", false, |ui| {
+            let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT - 1.0);
+            ui.label(egui::RichText::new("Last 60 s").font(f).color(t.muted));
+        });
+        let area = Rect::from_min_size(
+            spec.cursor().min + vec2(8.0, 8.0),
+            vec2(spec_rect.width() - 16.0, DESKTOP_SPECTROGRAM_HEIGHT),
+        );
+        let mut area_ui = spec.new_child(
+            egui::UiBuilder::new()
+                .id_salt("audio-spectrogram-area")
+                .max_rect(area),
+        );
+        let ring = &mut self.spectrogram_ring;
+        self.client.with_spectrogram(|data| {
+            if data.columns.is_empty() {
+                area_ui.painter().rect_filled(area, 0.0, t.well);
+                area_ui.painter().text(
+                    area.center(),
+                    Align2::CENTER_CENTER,
+                    "Waiting for audio…",
+                    Density::of(area_ui.ctx()).font(Weight::Regular, TEXT),
+                    t.muted,
+                );
+            } else {
+                ring.show(&mut area_ui, data, area.size());
+            }
+        });
+
+        // The input faders.
+        let mut input = desk::pane_at(ui, input_rect, t.pane, "audio-input");
+        studio::pane_header(&mut input, None, "Input", false, |_| {});
+        let (mut volume, mut gate, mut boost, mut auto_calibrate) =
+            self.client.with_audio_params(|params| {
+                (
+                    params.volume as f32,
+                    params.gate as f32,
+                    params.boost.unwrap_or(0) as f32,
+                    params.auto_calibrate,
+                )
+            });
+        let mut params = Vec::new();
+        duo::body(&mut input, Some(48.0), |ui| {
+            // Each control in its own 32px row, placed by hand so they share
+            // one centre line; x advances by what the previous one used.
+            let top = ui.cursor().top();
+            let right = ui.max_rect().right();
+            let mut x = ui.cursor().left() + 8.0;
+            let slot = |ui: &mut egui::Ui, salt: &str, x: f32, y: f32| {
+                let rect = Rect::from_min_max(pos2(x, y), pos2(right.max(x), y + 32.0));
+                ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt(("audio-input", salt))
+                        .max_rect(rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                )
+            };
+            let mut centre = top + 16.0;
+            for (name, value, range) in [
+                ("Volume", &mut volume, 1.0..=200.0),
+                ("Gate", &mut gate, 0.0..=100.0),
+                ("Boost", &mut boost, 0.0..=255.0),
+            ] {
+                let mut child = slot(ui, name, x, top);
+                let r = studio::hfader(&mut child, value, range, name, DESKTOP_FADER_TRACK);
+                // The track sits lower than the row's middle; the switch
+                // follows it.
+                centre = r.rect.center().y;
+                x += child.min_rect().width() + 24.0;
+                if r.changed() {
+                    params.push(match name {
+                        "Volume" => AudioParam::Volume(*value as u8),
+                        "Gate" => AudioParam::Gate(*value as u8),
+                        _ => {
+                            let boost = *value as u8;
+                            AudioParam::Boost((boost > 0).then_some(boost))
+                        }
+                    });
+                }
+            }
+            let mut child = slot(ui, "auto-calibrate", x, centre - 16.0);
+            child.spacing_mut().item_spacing.x = 8.0;
+            if studio::switch(&mut child, &mut auto_calibrate).changed() {
+                params.push(AudioParam::AutoCalibrate(auto_calibrate));
+            }
+            let f = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+            child.label(egui::RichText::new("Auto-calibrate").font(f).color(t.text));
+        });
+        for param in params {
+            self.set_audio_param(param);
+        }
     }
 }
 
