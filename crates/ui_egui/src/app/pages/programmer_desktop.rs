@@ -1874,7 +1874,7 @@ fn property_label(property: FixtureProperty) -> &'static str {
 
 /// Exclusive preview (`.livebtn`): lit while this session previews.
 /// Returns whether it was clicked.
-fn exclusive_preview_button(ui: &mut Ui, owned: bool, any: bool) -> bool {
+pub(crate) fn exclusive_preview_button(ui: &mut Ui, owned: bool, any: bool) -> bool {
     let response = studio::live_button(ui, "Exclusive preview", owned, TARGET_SHOW);
     let clicked = response.clicked();
     response.on_hover_text(match (owned, any) {
