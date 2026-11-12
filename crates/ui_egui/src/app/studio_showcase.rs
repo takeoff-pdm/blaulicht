@@ -2,8 +2,8 @@
 //! of the page on the desktop layout only. Toggle it with Ctrl+Shift+F12, or
 //! start with `BLAULICHT_STUDIO_SHOWCASE=1`. The kiosk never draws it.
 
-use crate::app::components::{notify, notify_error, notify_info, Notice};
 use crate::app::components::studio::{self, KnobSize, ListRow, ListRowState, ModalOutcome};
+use crate::app::components::{notify, notify_error, notify_info, Notice};
 use crate::app::ui_tokens::{studio as tokens, TARGET_MIN, TARGET_SHOW};
 use egui::{Id, Ui};
 
@@ -242,7 +242,7 @@ pub fn showcase_ui(ui: &mut Ui) {
                                 "Show in Setup",
                                 |app, ctx| {
                                     close_showcase(ctx);
-                                    app.open_subpage(blaulicht_shared::AppSubPage::Setup_Fixtures);
+                                    app.show_subpage(blaulicht_shared::AppSubPage::Setup_Fixtures);
                                 },
                             ),
                         );

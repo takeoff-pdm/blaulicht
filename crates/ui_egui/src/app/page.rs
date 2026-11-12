@@ -139,6 +139,17 @@ impl BlaulichtApp {
         ));
     }
 
+    /// Switches to `subpage` and the page that owns it, like a sidebar
+    /// click, and tells plugins.
+    pub(crate) fn show_subpage(&mut self, subpage: AppSubPage) {
+        let page_changed = self.navbar.page() != subpage.page();
+        self.navbar.navigate_to_subpage(subpage);
+        if page_changed {
+            self.notify_navigation(MainUiEvent::NavigatePage(subpage.page()));
+        }
+        self.notify_navigation(MainUiEvent::NavigateSubPage(subpage));
+    }
+
     /// Renders `page` with its sub-page tab bar along the bottom edge and calls
     /// `content` with the active tab and a `Ui` for the area above the bar.
     /// Without tabs in `render_context` (the desktop layout, where the sidebar

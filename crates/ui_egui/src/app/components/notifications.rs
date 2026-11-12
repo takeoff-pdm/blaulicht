@@ -229,7 +229,12 @@ impl Notifications {
             .show(ctx, |ui| {
                 ui.set_width(WIDTH);
                 ui.spacing_mut().item_spacing.y = 6.0;
-                for card in &mut self.cards {
+                let n = self.cards.len();
+                for (i, card) in self.cards.iter_mut().enumerate() {
+                    // Widget ids by slot from the bottom, so a card closing
+                    // or arriving between egui's passes keeps each rect's
+                    // id (no "changed id between passes" warnings).
+                    let slot = n - i;
                     let mut job = LayoutJob::default();
                     job.wrap.max_width = msg_w;
                     job.append(
@@ -255,7 +260,11 @@ impl Notifications {
                         );
                     }
                     let galley = ui.fonts_mut(|f| f.layout_job(job));
-                    let action_h = if card.action.is_some() { 6.0 + LINE } else { 0.0 };
+                    let action_h = if card.action.is_some() {
+                        6.0 + LINE
+                    } else {
+                        0.0
+                    };
                     let h = galley.size().y.max(LINE) + action_h + 2.0 * PAD_TOP;
                     let (rect, _) = ui.allocate_exact_size(vec2(WIDTH, h), Sense::hover());
                     let hovered = ui.rect_contains_pointer(rect);
@@ -285,11 +294,16 @@ impl Notifications {
 
                     // The action, as a blue link under the message.
                     if let Some((label, _)) = &card.action {
-                        let g = ui.painter().layout_no_wrap(label.clone(), link_font.clone(), t.blue);
+                        let g =
+                            ui.painter()
+                                .layout_no_wrap(label.clone(), link_font.clone(), t.blue);
                         let at = rect.min + vec2(msg_x, PAD_TOP + text_h + 6.0);
                         let link_rect = Rect::from_min_size(at, vec2(g.size().x, LINE));
-                        let link =
-                            ui.interact(link_rect, Id::new(("desk_note_act", card.id)), Sense::click());
+                        let link = ui.interact(
+                            link_rect,
+                            Id::new(("desk_note_act", slot)),
+                            Sense::click(),
+                        );
                         let y = link_rect.center().y - g.size().y / 2.0;
                         let p = ui.painter();
                         p.galley(egui::pos2(at.x, y), g.clone(), t.blue);
@@ -307,7 +321,7 @@ impl Notifications {
                         egui::pos2(rect.right() - PAD_RIGHT - CLOSE, rect.top() + PAD_TOP),
                         vec2(CLOSE, CLOSE),
                     );
-                    let x = ui.interact(x_rect, Id::new(("desk_note_x", card.id)), Sense::click());
+                    let x = ui.interact(x_rect, Id::new(("desk_note_x", slot)), Sense::click());
                     if card.error || hovered {
                         let p = ui.painter();
                         if x.hovered() {
@@ -363,10 +377,7 @@ mod tests {
         for i in 1..=5 {
             n.push_at(Notice::info(format!("n{i}")), now);
         }
-        assert_eq!(
-            texts(&n),
-            vec![("n2", 1), ("n3", 1), ("n4", 1), ("n5", 1)]
-        );
+        assert_eq!(texts(&n), vec![("n2", 1), ("n3", 1), ("n4", 1), ("n5", 1)]);
     }
 
     #[test]
@@ -411,9 +422,7 @@ mod tests {
     fn notify_is_a_no_op_on_the_kiosk() {
         let ctx = Context::default();
         notify_info(&ctx, "kiosk");
-        assert!(ctx
-            .data(|d| d.get_temp::<Queue>(queue_id()))
-            .is_none());
+        assert!(ctx.data(|d| d.get_temp::<Queue>(queue_id())).is_none());
         Density::Compact.set(&ctx);
         notify_info(&ctx, "desk");
         let q = ctx.data(|d| d.get_temp::<Queue>(queue_id())).unwrap();
