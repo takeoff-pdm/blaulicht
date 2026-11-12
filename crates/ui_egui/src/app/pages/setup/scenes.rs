@@ -19,12 +19,13 @@
 //! (`pages/programmer.rs`): its Scene Changes dialog and the Scene
 //! Animations dialog.
 
+use super::duo;
 #[cfg(doc)]
 use crate::app::components::SetupFolderUi;
 use crate::app::{
     components::{
-        self, folder_details, folder_path, scene_tree_items, ButtonSize, Dialog, FolderDialog,
-        Tree, TreeAction, TreeKey, DEFAULT_NEW_SCENE_NAME, SETUP_SCENE_TREE,
+        self, folder_details, folder_path, scene_tree_items, studio, ButtonSize, Dialog,
+        FolderDialog, Tree, TreeAction, TreeKey, DEFAULT_NEW_SCENE_NAME, SETUP_SCENE_TREE,
     },
     page::PageRenderContext,
     BlaulichtApp,
@@ -35,7 +36,7 @@ use blaulicht_engine::hub::HostCommand;
 use blaulicht_shared::{
     folder::{FolderItem, FolderKind},
     scene::BLANK_SCENE_ID,
-    ControlEvent, ControlEventMessage, EventOriginator,
+    AppPage, ControlEvent, ControlEventMessage, EventOriginator, MainUiEvent,
 };
 use egui::{Color32, Context, Frame, Key, Margin, RichText, TextBuffer};
 
@@ -58,6 +59,11 @@ impl BlaulichtApp {
         }
         self.setup_scenes_ui.drop_missing_folder(&dmx_engine.0);
 
+        if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+            self.setup_scenes_desktop_ui(ui, dmx_engine);
+            return;
+        }
+
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             self.scene_toolbar(ui, dmx_engine);
         });
@@ -74,6 +80,8 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.set_width(tree_width);
+                        components::column_header(ui, "Scenes:");
+                        ui.add_space(8.0);
                         self.setup_scene_tree(ui, dmx_engine);
                     },
                 );
@@ -86,6 +94,112 @@ impl BlaulichtApp {
                 });
             },
         );
+    }
+
+    /// Setup › Scenes on the desktop (`setup.html` `scenes()`): the tree
+    /// under a "Scenes" bar with Add and Folder, and the focused scene under
+    /// a "Scene:" bar with Clone, Open in Programmer and Delete, its name
+    /// editable in place and its contents below. No folder field (scenes
+    /// move by dragging in the tree) and no master intensity or speed.
+    fn setup_scenes_desktop_ui(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        let (mut list, mut detail) = duo::duo(ui);
+        let folder = self.setup_scenes_ui.folder;
+
+        let (mut add, mut new_folder) = (false, false);
+        let add_open = self.new_scene_dialog_open;
+        studio::pane_header(&mut list, None, "Scenes", true, |ui| {
+            add = duo::bar_button(ui, "Add", add_open);
+            new_folder = duo::bar_button(ui, "Folder", false);
+        });
+        if add {
+            self.new_scene_dialog_open = true;
+        }
+        if new_folder {
+            self.setup_scenes_ui.dialog = FolderDialog::create(FolderKind::Scenes, folder);
+        }
+        self.setup_scene_tree(&mut list, dmx_engine);
+
+        if let Some(folder) = folder {
+            if let Some(dialog) =
+                duo::folder_desktop_pane(&mut detail, &dmx_engine.0, FolderKind::Scenes, folder)
+            {
+                self.setup_scenes_ui.dialog = dialog;
+            }
+            return;
+        }
+        let Some((scene_id, scene)) = focused_user_scene(dmx_engine) else {
+            studio::pane_header(&mut detail, None, "Scene", true, |_| {});
+            duo::body(&mut detail, None, |ui| {
+                duo::note(ui, "Select a scene to edit it, or add a new one.")
+            });
+            return;
+        };
+
+        let (mut clone, mut open, mut delete) = (false, false, false);
+        let can_delete = dmx_engine
+            .0
+            .scenes
+            .keys()
+            .filter(|id| **id != BLANK_SCENE_ID)
+            .count()
+            > 1;
+        studio::pane_header(&mut detail, Some("Scene:"), &scene.name, true, |ui| {
+            clone = duo::bar_button(ui, "Clone", false);
+            open = duo::bar_button(ui, "Open in Programmer", false);
+            if can_delete {
+                delete = duo::bar_button(ui, "Delete", false);
+            }
+        });
+        let mut rename = None;
+        duo::body(&mut detail, Some(duo::form_height(1)), |ui| {
+            rename = duo::name_row(ui, ui.id().with(("scene", scene_id)), &scene.name);
+        });
+
+        let sink = &scene.sink;
+        let animations: usize = sink.active_animations.values().map(|a| a.len()).sum();
+        let palettes = sink
+            .palette_assignments
+            .values()
+            .filter(|p| !p.is_empty())
+            .count();
+        duo::lower_pane(&mut detail, "Contents");
+        duo::body(&mut detail, None, |ui| {
+            for (label, count) in [
+                ("Scene changes", sink.changeset.len()),
+                ("Active animations", animations),
+                ("Fixtures with palettes", palettes),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.set_height(crate::app::ui_tokens::TARGET_MIN);
+                    duo::text(ui, label);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        duo::text(ui, count.to_string());
+                    });
+                });
+            }
+        });
+
+        if let Some(name) = rename {
+            self.send_setup_command(
+                HostCommand::RenameScene {
+                    scene: scene_id,
+                    name,
+                },
+                |_, _| {},
+            );
+        }
+        if clone {
+            self.scene_dialog_target = scene_id;
+            self.clone_scene_dialog_open = true;
+        }
+        if delete {
+            self.scene_dialog_target = scene_id;
+            self.delete_scene_dialog_open = true;
+        }
+        if open {
+            self.navbar.navigate_to(AppPage::Programmer);
+            self.notify_navigation(MainUiEvent::NavigatePage(AppPage::Programmer));
+        }
     }
 
     fn scene_toolbar(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
@@ -153,8 +267,6 @@ impl BlaulichtApp {
     /// the folder picker for that row.
     fn setup_scene_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let state = &dmx_engine.0;
-        components::column_header(ui, "Scenes:");
-        ui.add_space(8.0);
 
         let items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
         if items.is_empty() {
@@ -172,7 +284,7 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 Tree::new(SETUP_SCENE_TREE, &items)
                     .selected(Some(selected))
-                    .with_move_button(true)
+                    .with_move_button(!crate::app::ui_tokens::Density::of(ui.ctx()).is_compact())
                     .drag_to_folders(false)
                     .show(ui)
             })
