@@ -51,7 +51,7 @@ pub fn paint_truncated(
 }
 
 /// Width of `text` in `font_id`.
-fn text_width(ui: &Ui, text: &str, font_id: FontId) -> f32 {
+pub fn text_width(ui: &Ui, text: &str, font_id: FontId) -> f32 {
     ui.painter()
         .layout_no_wrap(text.to_owned(), font_id, Color32::WHITE)
         .size()
@@ -384,6 +384,17 @@ pub fn mini_button(ui: &mut Ui, label: &str, pressed: bool, height: f32) -> Resp
     paint_mini(ui, t, rect, &response, label, f, pressed);
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, pressed, label));
+    response
+}
+
+/// A [`mini_button`] `width` wide, its label centred (the Identify panel's
+/// grid buttons).
+pub fn mini_button_w(ui: &mut Ui, label: &str, width: f32, height: f32) -> Response {
+    let t = studio(ui.ctx());
+    let f = font(ui, Weight::Regular, TEXT);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+    paint_mini(ui, t, rect, &response, label, f, false);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     response
 }
 

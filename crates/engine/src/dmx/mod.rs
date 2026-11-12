@@ -119,6 +119,9 @@ pub struct DmxEngine {
     /// Fixtures `HostCommand::InitFixtures` asked to initialize since the
     /// last frame; moved into `fixture_inits` after rendering.
     pending_fixture_inits: RefCell<Vec<(u8, u8)>>,
+    /// The fixture Identify flashes and when it was last asked for
+    /// (`HostCommand::IdentifyFixture`).
+    identify: Cell<Option<((u8, u8), Instant)>>,
 
     scene_graph_runtime: SceneGraphRuntime,
     animation_clock: animation::AnimationClockRuntime,
@@ -278,6 +281,12 @@ fn output_worker(
 
 const SETUP_SECS: u64 = 10;
 
+/// Whether the Identify flash is lit `ms` into the run: 250 ms on, 250 ms
+/// off.
+fn identify_on(ms: u128) -> bool {
+    (ms / 250) % 2 == 0
+}
+
 /// Why a desk-only command (`HostCommand::is_desk_only`) from another client
 /// is refused.
 pub const DESK_ONLY_REFUSAL: &str = "Only the desk frontend can send this command";
@@ -386,6 +395,7 @@ impl DmxEngine {
             setup_start_time: Instant::now(),
             fixture_inits: Vec::new(),
             pending_fixture_inits: RefCell::new(Vec::new()),
+            identify: Cell::new(None),
             scene_graph_runtime: SceneGraphRuntime::default(),
             animation_clock: animation::AnimationClockRuntime::default(),
             graph_overlay_scenes: Vec::new(),
@@ -439,6 +449,49 @@ impl DmxEngine {
 
         self.render_universes();
         self.run_fixture_inits();
+        self.run_identify();
+    }
+
+    /// Flashes the identified fixture: full white, on and off twice a
+    /// second, over everything else (grand master included).
+    pub(super) fn run_identify(&mut self) {
+        let Some((key, since)) = self.identify.get() else {
+            return;
+        };
+        if since.elapsed() >= crate::hub::IDENTIFY_TIMEOUT {
+            self.identify.set(None);
+            return;
+        }
+        let state = self.state_ref.dmx_engine.read().unwrap();
+        let Some(fix) = state
+            .0
+            .groups
+            .get(&key.0)
+            .and_then(|g| g.fixtures.get(&key.1))
+        else {
+            return;
+        };
+        let Some(universe) = self.state_ref.dmx_universes.get(fix.universe_no) else {
+            return;
+        };
+        // Each step starts lit.
+        let on = identify_on(since.elapsed().as_millis());
+        let resolved = ResolvedFixtureState {
+            color: blaulicht_shared::HSVColor {
+                h: 0.0,
+                s: 0.0,
+                v: 1.0,
+            },
+            alpha: if on { 255 } else { 0 },
+            ..ResolvedFixtureState::default()
+        };
+        fix.write(&resolved, &mut universe.write().unwrap().dmx_buffer);
+    }
+
+    /// The fixture Identify flashes right now.
+    #[cfg(test)]
+    pub(crate) fn identified_fixture(&self) -> Option<(u8, u8)> {
+        self.identify.get().map(|(key, _)| key)
     }
 
     /// Opens and closes the sessions the hub registered, applies every queued
@@ -1016,6 +1069,17 @@ impl DmxEngine {
                     state.move_stage_fixture((group, fixture), (to, new_id));
                 }
                 outcome
+            }
+            HostCommand::IdentifyFixture(None) => {
+                self.identify.set(None);
+                OK
+            }
+            HostCommand::IdentifyFixture(Some(key)) => {
+                if !state.has_fixtures(&[key]) {
+                    return CommandOutcome::Refused("Fixture not found".to_string());
+                }
+                self.identify.set(Some((key, Instant::now())));
+                OK
             }
             HostCommand::InitFixtures(fixtures) => {
                 if !state.has_fixtures(&fixtures) {

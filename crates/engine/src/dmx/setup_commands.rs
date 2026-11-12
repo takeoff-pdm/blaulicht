@@ -580,6 +580,28 @@ mod tests {
     }
 
     #[test]
+    fn identify_flashes_one_fixture_until_stopped() {
+        let mut h = TwoClients::start(small_rig);
+        let identify = HostCommand::IdentifyFixture(Some((0, 1)));
+        assert!(!identify.edits_show());
+        assert_eq!(h.engine.round_trip(&h.remote, identify), OK);
+        assert_eq!(h.engine.engine().identified_fixture(), Some((0, 1)));
+        // Stepping replaces the fixture.
+        let next = HostCommand::IdentifyFixture(Some((2, 0)));
+        assert_eq!(h.engine.round_trip(&h.remote, next), OK);
+        assert_eq!(h.engine.engine().identified_fixture(), Some((2, 0)));
+        let missing = HostCommand::IdentifyFixture(Some((9, 9)));
+        assert_eq!(
+            h.engine.round_trip(&h.remote, missing),
+            refused("Fixture not found")
+        );
+        assert_eq!(h.engine.engine().identified_fixture(), Some((2, 0)));
+        let stop = HostCommand::IdentifyFixture(None);
+        assert_eq!(h.engine.round_trip(&h.remote, stop), OK);
+        assert_eq!(h.engine.engine().identified_fixture(), None);
+    }
+
+    #[test]
     fn animation_templates_are_created_updated_and_deleted() {
         let mut h = TwoClients::start(small_rig);
         let create =
