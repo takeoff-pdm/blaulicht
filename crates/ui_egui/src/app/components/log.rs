@@ -8,7 +8,8 @@ use egui::{Context, RichText};
 use std::collections::{BTreeSet, VecDeque};
 use strum::IntoEnumIterator;
 
-use crate::app::components::{self, ButtonSize, Dialog};
+use crate::app::components::{self, dropdown, ButtonSize, Dialog};
+use crate::app::ui_tokens::studio;
 
 fn filter_button_label(filter_text: &str) -> String {
     if filter_text.is_empty() {
@@ -32,6 +33,16 @@ const LOG_TIME_COL_WIDTH: f32 = 60.0;
 const LOG_LEVEL_COL_WIDTH: f32 = 48.0;
 const LOG_SOURCE_COL_WIDTH: f32 = 84.0;
 const LOG_COL_GAP: f32 = 8.0;
+
+/// Index of `level` in `LogLevel` order.
+fn level_index(level: &LogLevel) -> usize {
+    match level {
+        LogLevel::Debug => 0,
+        LogLevel::Info => 1,
+        LogLevel::Warn => 2,
+        LogLevel::Err => 3,
+    }
+}
 
 fn log_level_label(level: &LogLevel) -> &'static str {
     match level {
@@ -182,6 +193,8 @@ pub struct LogWindow {
     select_dialog_open: bool,
     selected_source: Option<String>,
     source_dialog_open: bool,
+    /// Desktop level filter: which levels are shown, in `LogLevel` order.
+    shown_levels: [bool; 4],
     // log_height: f32,
 }
 
@@ -227,6 +240,7 @@ impl LogWindow {
             select_dialog_open: false,
             selected_source: None,
             source_dialog_open: false,
+            shown_levels: [true; 4],
         }
     }
 
@@ -260,6 +274,66 @@ impl LogWindow {
         // Keep only the latest logs
         if self.logs.len() > self.max_logs {
             self.logs.pop_front();
+        }
+    }
+
+    /// Desktop: the level filter as a multi-select dropdown with counts and
+    /// the source filter as a dropdown (`design/studio` Logs).
+    fn draw_desktop_filters(&mut self, ui: &mut egui::Ui) {
+        let t = studio(ui.ctx());
+        let mut counts = [0usize; 4];
+        for entry in &self.logs {
+            counts[level_index(&entry.level)] += 1;
+        }
+        let levels = [
+            ("Debug", egui_phosphor::regular::BUG, t.scale, false),
+            ("Info", egui_phosphor::regular::INFO, t.text, false),
+            ("Warn", egui_phosphor::fill::WARNING, t.warn, true),
+            ("Error", egui_phosphor::fill::X_CIRCLE, t.red_text, true),
+        ];
+        let list: Vec<dropdown::Item> = levels
+            .iter()
+            .zip(counts)
+            .map(|((label, icon, color, fill), n)| {
+                let item = dropdown::Item::new(*label).meta(n.to_string());
+                if *fill {
+                    item.icon_fill(icon, *color)
+                } else {
+                    item.icon(icon, *color)
+                }
+            })
+            .collect();
+        let shown: Vec<&str> = levels
+            .iter()
+            .zip(self.shown_levels)
+            .filter(|(_, on)| *on)
+            .map(|((l, _, _, _), _)| *l)
+            .collect();
+        let text = match shown.len() {
+            4 => "All levels".to_string(),
+            0 => "No levels".to_string(),
+            _ => shown.join(", "),
+        };
+        dropdown::multi_select(
+            ui,
+            "log_levels",
+            Some(egui_phosphor::regular::FUNNEL),
+            &text,
+            &list,
+            &mut self.shown_levels,
+            Some(128.0),
+        );
+
+        let sources = self.known_sources();
+        let mut list = vec![dropdown::Item::new("All sources").none()];
+        list.extend(sources.iter().map(dropdown::Item::new));
+        let current = match &self.selected_source {
+            None => Some(0),
+            Some(s) => sources.iter().position(|x| x == s).map(|i| i + 1),
+        };
+        let text = self.selected_source.as_deref().unwrap_or("All sources");
+        if let Some(i) = dropdown::select(ui, "log_source", &list, current, text, Some(110.0)) {
+            self.selected_source = i.checked_sub(1).map(|i| sources[i].clone());
         }
     }
 
@@ -299,69 +373,73 @@ impl LogWindow {
 
             ui.separator();
 
-            if components::button(
-                ui,
-                self.selected_log_level.is_some(),
-                "Filter Level",
-                BUTTON_SIZE,
-            ) {
-                self.select_dialog_open = true;
-            }
+            if dropdown::is_desktop(ui) {
+                self.draw_desktop_filters(ui);
+            } else {
+                if components::button(
+                    ui,
+                    self.selected_log_level.is_some(),
+                    "Filter Level",
+                    BUTTON_SIZE,
+                ) {
+                    self.select_dialog_open = true;
+                }
 
-            if self.select_dialog_open {
-                const ALL_LEVELS: &str = "All";
-                let mut options = LogLevel::iter()
-                    .map(|l| l.to_string())
-                    .collect::<Vec<String>>();
-                options.push(ALL_LEVELS.to_string());
-
-                let (new_log_level, changed) = components::selection_dialog(
-                    ctx,
-                    options,
-                    self.selected_log_level
-                        .as_ref()
+                if self.select_dialog_open {
+                    const ALL_LEVELS: &str = "All";
+                    let mut options = LogLevel::iter()
                         .map(|l| l.to_string())
-                        .unwrap_or_else(|| ALL_LEVELS.to_string()),
-                    &mut self.select_dialog_open,
-                    "Select Log Level".to_string(),
-                );
+                        .collect::<Vec<String>>();
+                    options.push(ALL_LEVELS.to_string());
 
-                if changed {
-                    self.selected_log_level = match new_log_level.as_str() {
-                        ALL_LEVELS => None,
-                        other => Some(LogLevel::from(other)),
+                    let (new_log_level, changed) = components::selection_dialog(
+                        ctx,
+                        options,
+                        self.selected_log_level
+                            .as_ref()
+                            .map(|l| l.to_string())
+                            .unwrap_or_else(|| ALL_LEVELS.to_string()),
+                        &mut self.select_dialog_open,
+                        "Select Log Level".to_string(),
+                    );
+
+                    if changed {
+                        self.selected_log_level = match new_log_level.as_str() {
+                            ALL_LEVELS => None,
+                            other => Some(LogLevel::from(other)),
+                        }
                     }
                 }
-            }
 
-            if components::button(
-                ui,
-                self.selected_source.is_some(),
-                "Filter Source",
-                BUTTON_SIZE,
-            ) {
-                self.source_dialog_open = true;
-            }
+                if components::button(
+                    ui,
+                    self.selected_source.is_some(),
+                    "Filter Source",
+                    BUTTON_SIZE,
+                ) {
+                    self.source_dialog_open = true;
+                }
 
-            if self.source_dialog_open {
-                const ALL_SOURCES: &str = "All";
-                let mut options = vec![ALL_SOURCES.to_string()];
-                options.extend(self.known_sources());
+                if self.source_dialog_open {
+                    const ALL_SOURCES: &str = "All";
+                    let mut options = vec![ALL_SOURCES.to_string()];
+                    options.extend(self.known_sources());
 
-                let (new_source, changed) = components::selection_dialog(
-                    ctx,
-                    options,
-                    self.selected_source
-                        .clone()
-                        .unwrap_or_else(|| ALL_SOURCES.to_string()),
-                    &mut self.source_dialog_open,
-                    "Select Log Source".to_string(),
-                );
+                    let (new_source, changed) = components::selection_dialog(
+                        ctx,
+                        options,
+                        self.selected_source
+                            .clone()
+                            .unwrap_or_else(|| ALL_SOURCES.to_string()),
+                        &mut self.source_dialog_open,
+                        "Select Log Source".to_string(),
+                    );
 
-                if changed {
-                    self.selected_source = match new_source.as_str() {
-                        ALL_SOURCES => None,
-                        other => Some(other.to_string()),
+                    if changed {
+                        self.selected_source = match new_source.as_str() {
+                            ALL_SOURCES => None,
+                            other => Some(other.to_string()),
+                        }
                     }
                 }
             }
@@ -424,6 +502,9 @@ impl LogWindow {
                     match &self.selected_log_level {
                         Some(level) if entry.level != *level => continue,
                         Some(_) | None => {}
+                    }
+                    if !self.shown_levels[level_index(&entry.level)] {
+                        continue;
                     }
 
                     if !log_entry_matches_source(entry, self.selected_source.as_deref())

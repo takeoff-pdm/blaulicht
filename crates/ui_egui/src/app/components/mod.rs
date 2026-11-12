@@ -4,6 +4,7 @@ mod clickable;
 mod color;
 mod desktop_nav;
 mod dialog;
+pub mod dropdown;
 mod fader;
 mod fixture_value_binding;
 mod fixtures_shared;

@@ -1,5 +1,5 @@
 use crate::app::{
-    components::{self, Dialog},
+    components::{self, dropdown, Dialog},
     BlaulichtApp,
 };
 use blaulicht_engine::client::EngineClient;
@@ -791,13 +791,26 @@ impl BlaulichtApp {
             ui.label("Speed:");
             let speed_idx = scene_node.master_speed.as_index();
             let mut idx = speed_idx;
-            egui::ComboBox::from_id_salt("node_speed")
-                .selected_text(scene_node.master_speed.as_str())
-                .show_ui(ui, |ui| {
-                    for (i, s) in AnimationSpeedModifier::ALL.iter().enumerate() {
-                        ui.selectable_value(&mut idx, i, s.as_str());
-                    }
-                });
+            if dropdown::is_desktop(ui) {
+                let list = dropdown::items(AnimationSpeedModifier::ALL.iter().map(|s| s.as_str()));
+                if let Some(i) =
+                    dropdown::select(ui, "node_speed", &list, Some(idx), "", Some(80.0))
+                {
+                    idx = i;
+                }
+            } else {
+                dropdown::kiosk_combo(
+                    ui,
+                    "node_speed",
+                    None,
+                    scene_node.master_speed.as_str(),
+                    |ui| {
+                        for (i, s) in AnimationSpeedModifier::ALL.iter().enumerate() {
+                            ui.selectable_value(&mut idx, i, s.as_str());
+                        }
+                    },
+                );
+            }
             if idx != speed_idx {
                 commands.push(node_param(SceneGraphNodeParam::MasterSpeed(
                     AnimationSpeedModifier::from_index(idx),
@@ -820,9 +833,26 @@ impl BlaulichtApp {
             });
         }
 
-        egui::ComboBox::from_id_salt("node_add_scene")
-            .selected_text("+ Add Scene")
-            .show_ui(ui, |ui| {
+        if dropdown::is_desktop(ui) {
+            let addable: Vec<u8> = scene_names
+                .keys()
+                .filter(|id| !scene_node.scenes.contains(id))
+                .copied()
+                .collect();
+            let list: Vec<dropdown::Item> = addable
+                .iter()
+                .map(|id| dropdown::Item::new(&scene_names[id]).meta(format!("#{id}")))
+                .collect();
+            let options = dropdown::Options {
+                placeholder: "Filter scenes".into(),
+                empty: "No more scenes to add.".into(),
+                ..Default::default()
+            };
+            if let Some(i) = dropdown::action(ui, "node_add_scene", "Add scene", &list, options) {
+                commands.push(node_param(SceneGraphNodeParam::AddScene(addable[i])));
+            }
+        } else {
+            dropdown::kiosk_combo(ui, "node_add_scene", None, "+ Add Scene", |ui| {
                 for (id, name) in scene_names.iter() {
                     if !scene_node.scenes.contains(id) && ui.selectable_label(false, name).clicked()
                     {
@@ -830,6 +860,7 @@ impl BlaulichtApp {
                     }
                 }
             });
+        }
 
         ui.add_space(12.0);
         ui.separator();
@@ -888,26 +919,40 @@ impl BlaulichtApp {
                     };
 
                     let prev = condition_idx;
-                    egui::ComboBox::from_id_salt(("edge_cond", to_id))
-                        .selected_text(match condition_idx {
-                            0 => "Manual",
-                            1 => "After Duration",
-                            2 => "After Beats",
-                            3 => "On Beat Drop",
-                            4 => "On Non-Beat",
-                            5 => "On Enter Drop",
-                            6 => "On Enter Breakdown",
-                            _ => "???",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut condition_idx, 0, "Manual");
-                            ui.selectable_value(&mut condition_idx, 1, "After Duration");
-                            ui.selectable_value(&mut condition_idx, 2, "After Beats");
-                            ui.selectable_value(&mut condition_idx, 3, "On Beat Drop");
-                            ui.selectable_value(&mut condition_idx, 4, "On Non-Beat");
-                            ui.selectable_value(&mut condition_idx, 5, "On Enter Drop");
-                            ui.selectable_value(&mut condition_idx, 6, "On Enter Breakdown");
-                        });
+                    const CONDITIONS: [&str; 7] = [
+                        "Manual",
+                        "After Duration",
+                        "After Beats",
+                        "On Beat Drop",
+                        "On Non-Beat",
+                        "On Enter Drop",
+                        "On Enter Breakdown",
+                    ];
+                    if dropdown::is_desktop(ui) {
+                        let list = dropdown::items(CONDITIONS);
+                        if let Some(i) = dropdown::select(
+                            ui,
+                            ("edge_cond", to_id),
+                            &list,
+                            Some(condition_idx),
+                            "",
+                            Some(160.0),
+                        ) {
+                            condition_idx = i;
+                        }
+                    } else {
+                        dropdown::kiosk_combo(
+                            ui,
+                            ("edge_cond", to_id),
+                            None,
+                            CONDITIONS.get(condition_idx).copied().unwrap_or("???"),
+                            |ui| {
+                                for (i, label) in CONDITIONS.iter().enumerate() {
+                                    ui.selectable_value(&mut condition_idx, i, *label);
+                                }
+                            },
+                        );
+                    }
 
                     let mut condition = edge.condition.clone();
                     if condition_idx != prev {

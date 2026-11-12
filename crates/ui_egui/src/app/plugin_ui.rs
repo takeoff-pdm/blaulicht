@@ -1,3 +1,4 @@
+use crate::app::components::dropdown;
 use crate::app::view_state::ScreenId;
 use crate::app::{components, view_state::PluginTabSelections, BlaulichtApp};
 use blaulicht_engine::client::EngineClient;
@@ -38,9 +39,8 @@ impl BlaulichtApp {
     /// no longer ticks, so its last ops never change; they must not leave a
     /// modal up that nothing can close.
     pub(crate) fn render_plugin_fullscreen_popups(&mut self, ctx: &Context) {
-        let plugin_ops: Vec<(u8, Vec<blaulicht_engine::ui_ops::WasmUiOp>)> = self
-            .client
-            .with_plugin_ui_ops(|ops| {
+        let plugin_ops: Vec<(u8, Vec<blaulicht_engine::ui_ops::WasmUiOp>)> =
+            self.client.with_plugin_ui_ops(|ops| {
                 ops.iter()
                     .filter(|(_, ops)| !fullscreen_popups(ops).is_empty())
                     .map(|(id, ops)| (*id, ops.clone()))
@@ -532,9 +532,23 @@ pub(crate) fn render_plugin_ops(
                     if !label.is_empty() {
                         ui.label(label);
                     }
-                    egui::ComboBox::from_id_salt(combo_id)
-                        .selected_text(selected_text)
-                        .show_ui(ui, |ui| {
+                    if dropdown::is_desktop(ui) {
+                        let list = dropdown::items(options);
+                        if let Some(i) = dropdown::select(
+                            ui,
+                            combo_id,
+                            &list,
+                            Some(current as usize),
+                            selected_text,
+                            None,
+                        ) {
+                            if i as u8 != current {
+                                current = i as u8;
+                                changed = true;
+                            }
+                        }
+                    } else {
+                        dropdown::kiosk_combo(ui, combo_id, None, selected_text, |ui| {
                             for (idx_opt, label) in options.iter().enumerate() {
                                 if ui
                                     .selectable_value(&mut current, idx_opt as u8, label)
@@ -544,6 +558,7 @@ pub(crate) fn render_plugin_ops(
                                 }
                             }
                         });
+                    }
                 });
 
                 if changed {
