@@ -447,9 +447,18 @@ impl BlaulichtApp {
             info_line(
                 ui,
                 &[
-                    ("peak", format!("{:.2}", debug_data.band_onset_peakiness[idx])),
-                    ("period", format!("{:.2}", debug_data.band_onset_periodicity[idx])),
-                    ("trans", format!("{:.2}", debug_data.band_transient_strength[idx])),
+                    (
+                        "peak",
+                        format!("{:.2}", debug_data.band_onset_peakiness[idx]),
+                    ),
+                    (
+                        "period",
+                        format!("{:.2}", debug_data.band_onset_periodicity[idx]),
+                    ),
+                    (
+                        "trans",
+                        format!("{:.2}", debug_data.band_transient_strength[idx]),
+                    ),
                     ("weight", format!("{:.2}", debug_data.band_weights[idx])),
                 ],
             );
@@ -510,9 +519,11 @@ impl BlaulichtApp {
                 ),
                 (
                     "tempo source",
-                    snapshot.tempo_source.map_or("analyzer".to_string(), |(owner, device)| {
-                        format!("external {owner}/{device}")
-                    }),
+                    snapshot
+                        .tempo_source
+                        .map_or("analyzer".to_string(), |(owner, device)| {
+                            format!("external {owner}/{device}")
+                        }),
                 ),
             ],
         );
@@ -760,7 +771,10 @@ impl BlaulichtApp {
                 ),
                 (
                     "down",
-                    format!("{:.2} / thr {:.2}", model.downbeat, model.downbeat_threshold),
+                    format!(
+                        "{:.2} / thr {:.2}",
+                        model.downbeat, model.downbeat_threshold
+                    ),
                 ),
             ],
         );
@@ -1150,8 +1164,10 @@ impl BlaulichtApp {
     }
 }
 
-/// Track width of the desktop Input faders (`pages.html#audio` `.hf`).
-const DESKTOP_FADER_TRACK: f32 = 175.0;
+/// Slot width of the desktop Input faders: the drawn scale runs from half
+/// a cap in to half a cap from the end, so 199 gives the mockup's 173px
+/// scale (`pages.html#audio`, ticks at +25..+198 from the pane edge).
+const DESKTOP_FADER_TRACK: f32 = 199.0;
 /// Height of the desktop spectrogram (`pages.html#audio`).
 const DESKTOP_SPECTROGRAM_HEIGHT: f32 = 196.0;
 
@@ -1309,8 +1325,8 @@ impl BlaulichtApp {
                 )
             };
             let mut centre = top + 16.0;
-            // Fixed slot offsets (mockup: 202, 515, 815, 1106), so values
-            // with more digits don't push the next control sideways.
+            // Fixed slot offsets so values with more digits don't push the
+            // next control sideways.
             for ((name, value, range), offset) in [
                 ("Volume", &mut volume, 1.0..=200.0),
                 ("Gate", &mut gate, 0.0..=100.0),
@@ -1326,7 +1342,12 @@ impl BlaulichtApp {
                     *value = v;
                 }
                 let mut child = slot(ui, name, left + offset, top);
-                let r = studio::hfader(&mut child, value, range, name, DESKTOP_FADER_TRACK);
+                let style = studio::HFaderStyle {
+                    track: vec2(DESKTOP_FADER_TRACK, 32.0),
+                    value_gap: INPUT_VALUE_GAP,
+                    ..Default::default()
+                };
+                let r = studio::hfader_with(&mut child, value, range, name, style);
                 if r.dragged() {
                     ui.data_mut(|d| d.insert_temp(held, *value));
                 } else {
@@ -1360,11 +1381,15 @@ impl BlaulichtApp {
     }
 }
 
-/// Offsets of the Volume, Gate and Boost faders from the Input row's left
-/// edge (mockup `pages.html#audio`: 202, 515, 815).
+/// Offsets of the Volume, Gate and Boost fader slots from the Input row's
+/// left edge: the drawn scales start 313 and 613px after Volume's, as in
+/// the mockup (`pages.html#audio`, pane-relative +25, +338, +637).
 const INPUT_SLOTS: [f32; 3] = [0.0, 313.0, 613.0];
-/// Offset of the Auto-calibrate switch (mockup: 1106).
-const INPUT_SWITCH: f32 = 904.0;
+/// Offset of the Auto-calibrate switch (mockup: pane-relative +928).
+const INPUT_SWITCH: f32 = 916.0;
+/// Extra gap between a fader track and its value, so the value sits 35px
+/// after the drawn scale like the mockup's (13px cap half + 6px + 17px).
+const INPUT_VALUE_GAP: f32 = 17.0;
 
 #[cfg(test)]
 mod spectrogram_ring_tests {

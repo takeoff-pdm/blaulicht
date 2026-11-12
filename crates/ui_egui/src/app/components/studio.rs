@@ -1161,6 +1161,8 @@ pub struct HFaderStyle<'a> {
     pub value_right: bool,
     /// Text after the value ("%" for the Grand master).
     pub suffix: &'a str,
+    /// Extra space between the track and the value (0 = the default 6px).
+    pub value_gap: f32,
     pub show_value: bool,
     pub show_name: bool,
 }
@@ -1173,6 +1175,7 @@ impl Default for HFaderStyle<'_> {
             value_width: 0.0,
             value_right: false,
             suffix: "",
+            value_gap: 0.0,
             show_value: true,
             show_name: true,
         }
@@ -1219,7 +1222,10 @@ pub fn hfader_with(
         let vw = text_width(ui, &text(*value), mono(TEXT)).max(style.value_width);
         // Typing in place over the value right of the track.
         let readout = Rect::from_min_size(
-            pos2(track.right() + 6.0, track.center().y - 8.0),
+            pos2(
+                track.right() + 6.0 + style.value_gap,
+                track.center().y - 8.0,
+            ),
             vec2(vw, 16.0),
         );
         if value_keys_and_typing(
@@ -1280,6 +1286,9 @@ pub fn hfader_with(
         // Value right after the track, 6px apart like the masters'
         // value and name (no fixed-width box).
         ui.spacing_mut().item_spacing.x = 6.0;
+        if style.value_gap > 0.0 {
+            ui.add_space(style.value_gap);
+        }
         if style.show_value {
             let (vrect, _) = ui.allocate_exact_size(vec2(vw, height), Sense::hover());
             if !editing {
