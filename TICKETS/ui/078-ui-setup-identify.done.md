@@ -42,7 +42,7 @@ Identify does not exist in egui; Initialize works on one fixture (`fxplan.js` Id
   (after Universe; Initialize moved out of the Save row) and the multi editor. The panel (`.idpop`, 270 px,
   4 px under the button) shows a steady red dot, name, "2 of 6", Previous/Next, Transfer to selection, Stop
   and the "Through …" hint; only the button's dot blinks. ←/→ step, Esc stops (not while a text field has
-  focus), a click outside the panel, its button and the fixture table stops, as does leaving the page or
+  focus), a click outside the panel, its button and the fixture rows stops (empty table space stops too), as does leaving the page or
   group. Several selected: steps through them from the first; one selected: through the group from it.
   The identified row is `rgb(184 15 15 / .45)` with white text and a 3 px red edge, over the blue selection.
   Transfer to selection stops and selects only that fixture. Initialize sends `InitFixtures` for every
@@ -73,3 +73,13 @@ Identify does not exist in egui; Initialize works on one fixture (`fxplan.js` Id
   #6, wrap), Right ×2 went to #2; Esc still stops. Kiosk Setup (800x480) screenshot still byte-identical
   (`cmp`) with the earlier kiosk shots. In the container (CARGO_BUILD_JOBS=4): rustfmt --check on
   desktop.rs, clippy --all-targets --all-features (nothing in desktop.rs), cargo test --all-features pass.
+- Review fix (outside click): the exemption was the whole table area, so a click on empty space below the
+  rows kept Identify running. Now only the visible fixture row rects (clipped to the scroll view) are
+  exempt, like `tr[data-fx]` in `fxplan.js`. Re-verified in blenv `--desktop` with SPARTACUS_SOLI,
+  MAC250E #2: a click on row #3 kept the panel open (2 of 6, #2 red); a click at (800,600) below the rows
+  stopped it (no red row, panel closed). Light theme compared side by side with setup.html in light
+  (headless Chrome over CDP, Identify open on #2): red row with the red edge, lit Identify button, panel
+  colours, "2 of 6", Next focus outline and hint match; the mockup's editor above the row (Patch, Channels,
+  conflict line) is still the out-of-scope editor port. Kiosk Setup (800x480) still byte-identical (`cmp`)
+  with the earlier kiosk shots. In the container (CARGO_BUILD_JOBS=4): rustfmt --check on desktop.rs,
+  clippy --all-targets --all-features (nothing in desktop.rs), cargo test --all-features pass.

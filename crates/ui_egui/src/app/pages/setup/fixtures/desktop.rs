@@ -98,9 +98,10 @@ fn identify_id() -> Id {
     Id::new("setup_fixtures_identify")
 }
 
-/// The fixture table's rect: clicks there don't close the Identify panel.
+/// The visible fixture row rects: clicks on them don't close the Identify
+/// panel (`fxplan.js` exempts `tr[data-fx]`, not empty table space).
 fn table_rect_id() -> Id {
-    Id::new("setup_fixtures_table_rect")
+    Id::new("setup_fixtures_row_rects")
 }
 
 /// What Identify steps through (`fxplan.js`): the selection when several
@@ -561,13 +562,15 @@ impl BlaulichtApp {
         ident.buttons = buttons;
 
         // A click outside the panel, its button and the fixture rows stops.
-        let table: Option<Rect> = ctx.data(|d| d.get_temp(table_rect_id()));
+        let rows: Vec<Rect> = ctx
+            .data(|d| d.get_temp(table_rect_id()))
+            .unwrap_or_default();
         let outside = ctx.input(|i| {
             i.pointer.any_pressed()
                 && i.pointer.interact_pos().is_some_and(|p| {
                     !area.response.rect.contains(p)
                         && !ident.anchor.contains(p)
-                        && !table.is_some_and(|r| r.contains(p))
+                        && !rows.iter().any(|r| r.contains(p))
                 })
         });
         if stop || outside {
@@ -965,7 +968,7 @@ impl BlaulichtApp {
             .data(|d| d.get_temp::<Identify>(identify_id()))
             .filter(|i| i.group == gid)
             .and_then(|i| i.fixture());
-        ui.data_mut(|d| d.insert_temp(table_rect_id(), ui.available_rect_before_wrap()));
+        let mut row_rects: Vec<Rect> = Vec::new();
         let mut picked = None;
         let mut drag_from = None;
         let mut order = Vec::new();
@@ -988,6 +991,10 @@ impl BlaulichtApp {
                     order.push(*fid);
                     let (rect, response) =
                         ui.allocate_exact_size(vec2(width, 24.0), Sense::click_and_drag());
+                    let shown = rect.intersect(ui.clip_rect());
+                    if shown.is_positive() {
+                        row_rects.push(shown);
+                    }
                     let active = selected.contains(fid);
                     // `.row.dragsrc`: the carried rows at 40 %.
                     let carried = dragging
@@ -1082,6 +1089,7 @@ impl BlaulichtApp {
                     }
                 }
             });
+        ui.data_mut(|d| d.insert_temp(table_rect_id(), row_rects));
         if let Some((fid, toggle, range)) = picked {
             let mut sel = selected.clone();
             let mut anchor = group
