@@ -36,13 +36,24 @@ The separate DMX offline cell is folded into one issues cell (`chrome.js` status
 - Fix: status bar clicks used `open_subpage`, which only changes the tab inside the current page, so clicking a
   cell from Logs did nothing. They now use `show_subpage` (switches page like a sidebar click). This applies to
   every status bar cell (Remote UI, routing, save failed).
-- "Plugin warnings": plugins have no warning state today (only `has_errored`, counted as an error). Warnings are
-  MIDI/serial devices in an error state, as before. A plugin warning state would be a separate ticket.
-- Verified in blenv `--desktop` (1500x950) against `system.html`: errors+warnings (dark and light), warnings only,
-  tooltip, click from Logs opens System > General. blenv always has 2 offline DMX universes (2 errors); the
-  warnings, and the warnings-only case, were produced by temporarily overriding the counts in `app_navbar.rs`
-  (reverted, not committed). Real MIDI/serial warnings were not reproduced in the container.
+- Rework after review: severities now follow the mockup's problem list (`system.html`, `problems()`):
+  offline outputs (hardware DMX, enabled Art-Net) are errors; an enabled plugin that crashed
+  ("needs a reload") and MIDI/serial devices in an error state are warnings. Counting moved into
+  `HealthSummary::count` with unit tests (offline universe + crashed plugin, warnings only,
+  disabled plugin / offline Art-Net). Nothing is overridden in code any more.
+- Verified in blenv `--desktop` (1500x950) with real states, no code overrides: a plugin
+  crashed for real by pointing chaos at `/state/chaos.wasm` (`--keep-config`) and overwriting it
+  with garbage, so the watcher reload is rejected ("Disabling plugin with error(s): (id=3)").
+  With the 2 default offline DMX universes: error + warning icons, "3 issues", tooltip
+  "2 errors, 1 warning. Open the problem list." Warnings only: DMX pointed at two ptys
+  (python `pty.openpty`, drained) so both universes are online: warning icon only, "1 issue",
+  tooltip "1 warning. ...", dark and light. Clicking the cell from Logs opens System > General.
+- Order: the right group is laid out right to left, so the issues cell shows left of Remote UI,
+  as in `chrome.js` (confirmed in the screenshots).
 - Kiosk: the status bar is desktop-only; kiosk System page screenshot matches the earlier decouple shot.
 - Checks run inside the blenv container (CARGO_BUILD_JOBS=4): `cargo fmt` (unrelated reformat hunks in other
   files dropped), `cargo clippy --all-targets --all-features` for ui_egui (no new warnings in touched code),
   `cargo test --all-features` in `crates/ui_egui` (145 passed). Full-workspace tests were not run.
+  Rework rerun in blenv (CARGO_BUILD_JOBS=4): `cargo fmt` (unrelated hunks dropped), clippy in
+  `crates/ui_egui` (no warnings in health.rs/status_bar.rs), `cargo test --all-features` in
+  `crates/ui_egui`: 148 passed. Kiosk System page after the rework matches the decouple shot.
