@@ -341,6 +341,9 @@ pub enum HostCommand {
     /// overlay stack. Answers `CreatedId::View`; refused with "Name is
     /// empty" or "View limit reached".
     CreateView { name: String },
+    /// As [`HostCommand::CreateView`], but the new view starts with no
+    /// overlays (the desktop Add view dialog).
+    CreateEmptyView { name: String },
     /// Deletes a view. Refused with "View not found" or "At least one view
     /// must remain".
     DeleteView(u8),
@@ -631,6 +634,7 @@ impl HostCommand {
             | HostCommand::UpdateAnimationTemplate { .. }
             | HostCommand::DeleteAnimationTemplate(_)
             | HostCommand::CreateView { .. }
+            | HostCommand::CreateEmptyView { .. }
             | HostCommand::DeleteView(_)
             | HostCommand::RenameView { .. }
             | HostCommand::AddViewOverlay { .. }

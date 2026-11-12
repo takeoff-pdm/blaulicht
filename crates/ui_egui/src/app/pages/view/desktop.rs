@@ -748,12 +748,15 @@ impl BlaulichtApp {
         }
         studio::close_modal(ctx, id);
         let shown = name.clone();
-        self.send_command(HostCommand::CreateView { name }, move |app, created| {
-            if let Some(CreatedId::View(id)) = created {
-                app.view_ui_state.selected_view_id = Some(id);
-            }
-            app.desk_notes.info(format!("Added view {shown}"));
-        });
+        self.send_command(
+            HostCommand::CreateEmptyView { name },
+            move |app, created| {
+                if let Some(CreatedId::View(id)) = created {
+                    app.view_ui_state.selected_view_id = Some(id);
+                }
+                app.desk_notes.info(format!("Added view {shown}"));
+            },
+        );
     }
 
     /// Delete view: asks first.

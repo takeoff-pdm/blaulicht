@@ -1591,7 +1591,8 @@ pub enum ModalOutcome {
 /// 30px title bar over a 55% dimmed page. Cancel takes focus when the dialog
 /// opens and is the default; Esc closes it; Tab cycles only through the
 /// dialog's own controls. `body` adds the fields; `primary` labels the
-/// confirming button (red when `danger`).
+/// confirming button (red when `danger`, else the primary blue). Cancel and
+/// the confirming button sit in a footer band.
 pub fn modal(
     ctx: &egui::Context,
     id: Id,
@@ -1630,13 +1631,21 @@ pub fn modal(
             egui::Frame::new()
                 .inner_margin(egui::Margin::symmetric(10, 12))
                 .show(ui, |ui| {
+                    ui.set_width(400.0);
                     ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
                     body(ui);
-                    ui.add_space(4.0);
+                });
+            // The footer band (`.dlg footer`): head fill, 8px/10px padding,
+            // the buttons on the right with 4px between them.
+            egui::Frame::new()
+                .fill(t.head)
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    ui.set_width(400.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        let ok = dialog_button(ui, primary, danger);
-                        let cancel = dialog_button(ui, "Cancel", false);
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let ok = dialog_button(ui, primary, danger, true);
+                        let cancel = dialog_button(ui, "Cancel", false, false);
                         if ui.memory(|m| m.focused()).is_none() {
                             cancel.request_focus();
                         }
@@ -1671,7 +1680,9 @@ pub fn modal(
     outcome
 }
 
-fn dialog_button(ui: &mut Ui, label: &str, danger: bool) -> Response {
+/// A dialog footer button: red when `danger`, else blue-dim (`.mini.primary`)
+/// when `primary`, else a plain mini button.
+fn dialog_button(ui: &mut Ui, label: &str, danger: bool, primary: bool) -> Response {
     let t = studio(ui.ctx());
     let f = font(ui, Weight::Regular, TEXT);
     let w = (text_width(ui, label, f.clone()) + 20.0).max(72.0);
@@ -1703,7 +1714,7 @@ fn dialog_button(ui: &mut Ui, label: &str, danger: bool) -> Response {
             Color32::WHITE,
         );
     } else {
-        paint_mini(ui, t, rect, &response, label, f, false);
+        paint_mini(ui, t, rect, &response, label, f, primary);
     }
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     response

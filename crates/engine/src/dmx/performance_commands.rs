@@ -45,8 +45,8 @@ impl EngineState {
     // Views.
     //
 
-    /// `HostCommand::CreateView`.
-    pub(super) fn create_view_command(&mut self, name: &str) -> CommandOutcome {
+    /// `HostCommand::CreateView` (`capture`) and `HostCommand::CreateEmptyView`.
+    pub(super) fn create_view_command(&mut self, name: &str, capture: bool) -> CommandOutcome {
         let name = name.trim();
         if name.is_empty() {
             return refused("Name is empty");
@@ -56,7 +56,11 @@ impl EngineState {
         };
         // A view captures what is playing, which is the overlay stack -- the
         // base slot belongs to BLANK.
-        let overlays = self.0.current_overlay_scenes.clone();
+        let overlays = if capture {
+            self.0.current_overlay_scenes.clone()
+        } else {
+            Vec::new()
+        };
         self.0
             .views
             .insert(id, View::new(name.to_string(), overlays));
@@ -764,6 +768,23 @@ mod tests {
         };
         let view = h.desk.with_show(|show| show.0.views[&chorus].clone());
         assert_eq!(view, View::new("Chorus".to_string(), vec![1, 2]));
+        let empty = HostCommand::CreateEmptyView {
+            name: "Bridge".to_string(),
+        };
+        assert!(empty.edits_show());
+        let CommandOutcome::Ok {
+            created: Some(CreatedId::View(bridge)),
+        } = h.engine.round_trip(&h.remote, empty)
+        else {
+            panic!("no empty view created");
+        };
+        let view = h.desk.with_show(|show| show.0.views[&bridge].clone());
+        assert_eq!(view, View::new("Bridge".to_string(), vec![]));
+        assert_eq!(
+            h.engine
+                .round_trip(&h.remote, HostCommand::DeleteView(bridge)),
+            OK
+        );
         assert_eq!(
             h.engine.round_trip(
                 &h.remote,
