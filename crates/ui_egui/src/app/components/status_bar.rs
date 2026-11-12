@@ -1,8 +1,9 @@
 //! The desktop layout's status bar (059): one strip along the bottom of the
 //! window, identical on every page. Cells in this order: Blackout (only while
 //! Grand Master is 0), showfile and save state, the engine connection when it
-//! is not healthy, outputs, audio, BPM, engine load, plugin load, then on the
-//! right the LIVE preview, problems and Remote UI. A healthy cell stays
+//! is not healthy, audio, BPM, engine load, plugin load, then on the right
+//! the LIVE preview, routing pending, one issues cell (074; offline outputs
+//! count as errors there) and Remote UI. A healthy cell stays
 //! quiet; a problem colours its cell, and clicking it opens the page that
 //! fixes it. Desktop only: the kiosk never draws this.
 
@@ -11,7 +12,7 @@ use std::time::Duration;
 
 use blaulicht_engine::persistence::SaveStatus;
 use blaulicht_shared::AppSubPage;
-use egui::{pos2, vec2, Align2, Color32, CursorIcon, FontId, Rect, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Color32, CursorIcon, FontFamily, FontId, Rect, Sense, Stroke, Ui};
 use egui_phosphor::regular as icons;
 use web_time::Instant;
 
@@ -87,15 +88,14 @@ pub struct StatusBarInfo<'a> {
     pub show_name: Option<String>,
     pub save_status: &'a SaveStatus,
     pub link: EngineLink,
-    /// Health of each hardware DMX output, then Art-Net (`None`: not used).
-    pub dmx_outputs: Vec<bool>,
-    pub artnet: Option<bool>,
     /// Audio input level, 0..1.
     pub audio_level: f32,
     pub bpm: f32,
     pub sparks: &'a StatusSparks,
     /// Some session previews its scene (LIVE): overlays are suppressed.
     pub live: bool,
+    /// Problems for the issues cell; output failures such as an offline
+    /// universe count as errors (`RULES.md`, Status bar).
     pub errors: usize,
     pub warnings: usize,
     /// Connected Remote UI sessions.
@@ -407,50 +407,6 @@ impl Bar<'_> {
             );
         }
 
-        // Outputs: a square per hardware DMX universe, then Art-Net.
-        if !info.dmx_outputs.is_empty() || info.artnet.is_some() {
-            let bad = info.dmx_outputs.iter().any(|ok| !ok) || info.artnet == Some(false);
-            let mut parts =
-                vec![self.label("Outputs", if bad && online { t.red_text } else { t.text })];
-            let mut lines = Vec::new();
-            for (i, ok) in info.dmx_outputs.iter().enumerate() {
-                parts.push(Part::Square(if !online {
-                    t.muted
-                } else if *ok {
-                    t.ok
-                } else {
-                    t.red
-                }));
-                lines.push(format!("DMX {i}: {}", if *ok { "OK" } else { "offline" }));
-            }
-            if let Some(ok) = info.artnet {
-                parts.push(Part::Square(if !online {
-                    t.muted
-                } else if ok {
-                    t.ok
-                } else {
-                    t.red
-                }));
-                lines.push(format!("Art-Net: {}", if ok { "OK" } else { "offline" }));
-            }
-            let target = if info.dmx_outputs.iter().any(|ok| !ok) || info.artnet.is_none() {
-                AppSubPage::System_Dmx
-            } else {
-                AppSubPage::System_ArtNet
-            };
-            if self.cell(
-                "outputs",
-                parts,
-                false,
-                None,
-                bad && online,
-                stale,
-                Some(lines.join("\n")),
-            ) {
-                *action = Some(StatusBarAction::Open(target));
-            }
-        }
-
         let level = if online { info.audio_level } else { 0.0 };
         self.cell(
             "audio",
@@ -526,12 +482,23 @@ impl Bar<'_> {
         if total > 0 {
             let mut parts = Vec::new();
             if info.errors > 0 {
-                parts.push(self.icon(icons::X_CIRCLE, t.red_text, 13.0));
+                // Solid icon (`ph-fill ph-x-circle`).
+                parts.push(Part::Text(
+                    egui_phosphor::fill::X_CIRCLE.to_owned(),
+                    FontId::new(
+                        13.0,
+                        FontFamily::Name(ui_tokens::PHOSPHOR_FILL_FAMILY.into()),
+                    ),
+                    t.red,
+                ));
             }
             if info.warnings > 0 {
+                if info.errors > 0 {
+                    // 4px between the two icons (`.probs` gap), 6px before the count.
+                    parts.push(Part::Space(-8.0));
+                }
                 parts.push(self.icon(icons::WARNING, t.warn, 13.0));
             }
-            parts.push(Part::Space(-2.0));
             parts.push(self.label(
                 format!("{total} issue{}", if total == 1 { "" } else { "s" }),
                 t.strong,

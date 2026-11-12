@@ -104,8 +104,6 @@ impl BlaulichtApp {
             show_name,
             save_status: &self.save_status,
             link,
-            dmx_outputs: health.dmx_outputs,
-            artnet: health.artnet,
             audio_level: (self.collector_snapshot.volume as f32 / 255.0).clamp(0.0, 1.0),
             bpm: self.collector_snapshot.bpm,
             sparks: &self.status_sparks,
@@ -118,7 +116,7 @@ impl BlaulichtApp {
         match components::status_bar(ui, &info) {
             None => {}
             Some(components::StatusBarAction::ToggleBlackout) => self.toggle_blackout(),
-            Some(components::StatusBarAction::Open(subpage)) => self.open_subpage(subpage),
+            Some(components::StatusBarAction::Open(subpage)) => self.show_subpage(subpage),
         }
     }
 
