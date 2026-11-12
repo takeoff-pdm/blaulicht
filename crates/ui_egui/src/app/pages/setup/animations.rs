@@ -8,17 +8,21 @@
 //! Applying templates and presets to a selection lives in the Programmer
 //! (`pages/programmer_animations.rs`), which does not call into this module.
 
+use super::duo;
+use crate::app::components::studio::{self, ListRow, ListRowState};
 use crate::app::{
     components::{self, button, ButtonSize, Dialog, Pagination},
     pages::AnimationEditState,
     BlaulichtApp,
 };
 use blaulicht_engine::{
-    client::EngineClient, hub::HostCommand, plugin::stable_animation_template_id,
+    client::EngineClient, dmx::animation::phaser, hub::HostCommand,
+    plugin::stable_animation_template_id,
 };
 use blaulicht_shared::{
-    AnimationPresetCategory, AnimationSpec, AnimationSpecBody, AnimationSpecBodyKind,
-    AnimationTemplate, FixtureProperty,
+    fixture::value::FixtureValue, AnimationPresetCategory, AnimationSpec, AnimationSpecBody,
+    AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate, FixtureProperty,
+    PhaserDuration, PhaserKind,
 };
 use egui::{Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use std::collections::BTreeMap;
@@ -422,6 +426,11 @@ impl BlaulichtApp {
         self.render_presets_dialog(ctx, ui);
         self.render_delete_animation_dialog(ctx, ui);
 
+        if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+            self.setup_animations_desktop_ui(ui, ctx);
+            return;
+        }
+
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
             render_context.primary_layout(),
@@ -491,89 +500,14 @@ impl BlaulichtApp {
                                 ui.heading("Animation Details");
                                 ui.add_space(4.0);
 
-                                // A template deleted elsewhere is no selection.
-                                let selected = self
-                                    .animation_ui_state
-                                    .selected_animation_id
-                                    .and_then(|id| templates.get(&id).map(|anim| (id, anim)));
-                                match selected {
-                                    Some((id, anim)) => {
-                                        // Load new value.
-                                        if self.animation_ui_state.selected_animation_id
-                                            != self.animation_ui_state.selected_animation_id_before
-                                        {
-                                            self.animation_ui_state
-                                                .edit_state
-                                                .load_state(anim.spec.clone());
-                                            if let AnimationSpecBody::WasmPlugin(wasm) =
-                                                &anim.spec.body
-                                            {
-                                                // The editor instance starts from the
-                                                // template's plugin state.
-                                                self.client.send(
-                                                    HostCommand::CloneAnimationInstanceState {
-                                                        plugin_key: wasm.plugin_key.clone(),
-                                                        source: stable_animation_template_id(
-                                                            &wasm.plugin_key,
-                                                            id,
-                                                        ),
-                                                        target: self
-                                                            .animation_ui_state
-                                                            .edit_state
-                                                            .wasm_editor_instance_id,
-                                                    },
-                                                );
-                                            }
-
-                                            self.animation_ui_state.selected_animation_id_before =
-                                                self.animation_ui_state.selected_animation_id;
-                                        }
-
-                                        let live_audio = self.live_audio_for_preview();
-
-                                        if let Some(value_changed) =
-                                            self.animation_ui_state.edit_state.show(
-                                                ui,
-                                                ctx,
-                                                &palettes_snapshot,
-                                                &live_audio,
-                                                &self.client,
-                                                &mut self.view_state.plugin_tabs_selected,
-                                                &selected_fixtures,
-                                                panel_max,
-                                            )
-                                        {
-                                            if let AnimationSpecBody::WasmPlugin(wasm) =
-                                                &value_changed.body
-                                            {
-                                                // And the template gets the editor's
-                                                // state back, before its new spec.
-                                                self.client.send(
-                                                    HostCommand::CloneAnimationInstanceState {
-                                                        plugin_key: wasm.plugin_key.clone(),
-                                                        source: self
-                                                            .animation_ui_state
-                                                            .edit_state
-                                                            .wasm_editor_instance_id,
-                                                        target: stable_animation_template_id(
-                                                            &wasm.plugin_key,
-                                                            id,
-                                                        ),
-                                                    },
-                                                );
-                                            }
-                                            self.client.send(
-                                                HostCommand::UpdateAnimationTemplate {
-                                                    id,
-                                                    spec: value_changed,
-                                                },
-                                            );
-                                        }
-                                    }
-                                    None => {
-                                        ui.label("No Animation Selected");
-                                    }
-                                }
+                                self.animation_template_editor(
+                                    ui,
+                                    ctx,
+                                    &templates,
+                                    &palettes_snapshot,
+                                    &selected_fixtures,
+                                    panel_max,
+                                );
                             });
                         });
                     },
@@ -581,4 +515,347 @@ impl BlaulichtApp {
             },
         );
     }
+    /// Setup › Animations on the desktop (`setup.html` `animations()`): the
+    /// templates under an "Animations" bar with Add and Presets (name and
+    /// property per row), and the selected template under an "Animation:"
+    /// bar with Delete: its name, property and kind, and a read-only Shape
+    /// pane ([`shape_pane`]).
+    fn setup_animations_desktop_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        let (templates, palettes_snapshot) = self
+            .client
+            .with_session(|show, _| (show.0.animation_templates.clone(), show.0.palettes.clone()))
+            .unwrap_or_default();
+        if self
+            .animation_ui_state
+            .selected_animation_id
+            .map_or(true, |id| !templates.contains_key(&id))
+        {
+            self.animation_ui_state.selected_animation_id = templates.keys().next().copied();
+        }
+        let (mut list, mut detail) = duo::duo(ui);
+
+        let (mut add, mut presets) = (false, false);
+        let (add_open, presets_open) = (
+            self.animation_ui_state.create_open,
+            self.animation_ui_state.presets_open,
+        );
+        studio::pane_header(&mut list, None, "Animations", true, |ui| {
+            add = duo::bar_button(ui, "Add", add_open);
+            presets = duo::bar_button(ui, "Presets", presets_open);
+        });
+        if add {
+            self.animation_ui_state.create_open = !self.animation_ui_state.create_open;
+            if !self.animation_ui_state.create_open {
+                self.animation_ui_state.close_selection_dialogs();
+            }
+        }
+        if presets {
+            self.animation_ui_state.presets_open = !self.animation_ui_state.presets_open;
+        }
+
+        let t = crate::app::ui_tokens::studio(ctx);
+        let small = crate::app::ui_tokens::Density::of(ctx)
+            .font(crate::app::ui_tokens::Weight::Regular, 12.0);
+        let mut picked = None;
+        egui::ScrollArea::vertical()
+            .id_salt("setup-animations-list")
+            .auto_shrink([false, false])
+            .show(&mut list, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                for (id, template) in &templates {
+                    let active = self.animation_ui_state.selected_animation_id == Some(*id);
+                    let state = if active {
+                        ListRowState::Active
+                    } else {
+                        ListRowState::Idle
+                    };
+                    let response = ListRow::new(&template.spec.name).state(state).show(ui);
+                    let property = format!("{:?}", template.spec.property);
+                    ui.painter().text(
+                        response.rect.right_center() - egui::vec2(8.0, 0.0),
+                        egui::Align2::RIGHT_CENTER,
+                        property,
+                        small.clone(),
+                        if active { t.strong } else { t.muted },
+                    );
+                    if response.clicked() {
+                        picked = Some(*id);
+                    }
+                }
+            });
+        if picked.is_some() {
+            self.animation_ui_state.selected_animation_id = picked;
+        }
+
+        let selected = self
+            .animation_ui_state
+            .selected_animation_id
+            .and_then(|id| templates.get(&id));
+        let Some(template) = selected else {
+            studio::pane_header(&mut detail, None, "Animation", true, |_| {});
+            duo::body(&mut detail, None, |ui| {
+                duo::note(ui, "Add an animation, or start from a preset.")
+            });
+            return;
+        };
+        let mut delete = false;
+        let delete_open = self.animation_ui_state.delete_confirm_open;
+        studio::pane_header(
+            &mut detail,
+            Some("Animation:"),
+            &template.spec.name,
+            true,
+            |ui| {
+                delete = duo::bar_button(ui, "Delete", delete_open);
+            },
+        );
+        if delete {
+            self.animation_ui_state.delete_confirm_open =
+                !self.animation_ui_state.delete_confirm_open;
+        }
+        let id = self
+            .animation_ui_state
+            .selected_animation_id
+            .unwrap_or_default();
+        let mut rename = None;
+        duo::body(&mut detail, Some(duo::form_height(3)), |ui| {
+            rename = duo::name_row(ui, ui.id().with(("animation", id)), &template.spec.name);
+            duo::form_row(ui, "Property", |ui| {
+                duo::text(ui, format!("{:?}", template.spec.property))
+            });
+            duo::form_row(ui, "Kind", |ui| {
+                let body = format!("{:?}", template.spec.body);
+                let kind = body.split(['(', ' ', '{']).next().unwrap_or_default();
+                duo::text(ui, kind.to_owned())
+            });
+        });
+        if let Some(name) = rename {
+            let mut spec = template.spec.clone();
+            spec.name = name.clone();
+            self.animation_ui_state.edit_state.working_state.name = name;
+            self.client
+                .send(HostCommand::UpdateAnimationTemplate { id, spec });
+        }
+        duo::lower_pane(&mut detail, "Shape");
+        duo::body(&mut detail, None, |ui| {
+            shape_pane(ui, template, &palettes_snapshot);
+        });
+    }
+
+    /// The editor of the selected template, or "No Animation Selected".
+    #[allow(clippy::too_many_arguments)]
+    fn animation_template_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &Context,
+        templates: &BTreeMap<u8, AnimationTemplate>,
+        palettes_snapshot: &BTreeMap<u8, blaulicht_shared::palette::Palette>,
+        selected_fixtures: &[(u8, u8)],
+        panel_max: egui::Pos2,
+    ) {
+        // A template deleted elsewhere is no selection.
+        let selected = self
+            .animation_ui_state
+            .selected_animation_id
+            .and_then(|id| templates.get(&id).map(|anim| (id, anim)));
+        match selected {
+            Some((id, anim)) => {
+                // Load new value.
+                if self.animation_ui_state.selected_animation_id
+                    != self.animation_ui_state.selected_animation_id_before
+                {
+                    self.animation_ui_state
+                        .edit_state
+                        .load_state(anim.spec.clone());
+                    if let AnimationSpecBody::WasmPlugin(wasm) = &anim.spec.body {
+                        // The editor instance starts from the
+                        // template's plugin state.
+                        self.client.send(HostCommand::CloneAnimationInstanceState {
+                            plugin_key: wasm.plugin_key.clone(),
+                            source: stable_animation_template_id(&wasm.plugin_key, id),
+                            target: self.animation_ui_state.edit_state.wasm_editor_instance_id,
+                        });
+                    }
+
+                    self.animation_ui_state.selected_animation_id_before =
+                        self.animation_ui_state.selected_animation_id;
+                }
+
+                let live_audio = self.live_audio_for_preview();
+
+                if let Some(value_changed) = self.animation_ui_state.edit_state.show(
+                    ui,
+                    ctx,
+                    palettes_snapshot,
+                    &live_audio,
+                    &self.client,
+                    &mut self.view_state.plugin_tabs_selected,
+                    selected_fixtures,
+                    panel_max,
+                ) {
+                    if let AnimationSpecBody::WasmPlugin(wasm) = &value_changed.body {
+                        // And the template gets the editor's
+                        // state back, before its new spec.
+                        self.client.send(HostCommand::CloneAnimationInstanceState {
+                            plugin_key: wasm.plugin_key.clone(),
+                            source: self.animation_ui_state.edit_state.wasm_editor_instance_id,
+                            target: stable_animation_template_id(&wasm.plugin_key, id),
+                        });
+                    }
+                    self.client.send(HostCommand::UpdateAnimationTemplate {
+                        id,
+                        spec: value_changed,
+                    });
+                }
+            }
+            None => {
+                ui.label("No Animation Selected");
+            }
+        }
+    }
+}
+
+/// The Shape pane of the desktop Animations page (`setup.html`
+/// `animations()`): a 150px preview of the curve drawn from the saved
+/// settings, then its settings as a read-only list.
+fn shape_pane(
+    ui: &mut egui::Ui,
+    template: &AnimationTemplate,
+    palettes: &BTreeMap<u8, blaulicht_shared::palette::Palette>,
+) {
+    let property = template.spec.property;
+    let literal = |v: &FixtureValue| match v {
+        FixtureValue::Literal(n) => n.to_string(),
+        _ => "Set by palette".to_owned(),
+    };
+    // Points of two cycles, x and y in 0..=1 (y up).
+    let (points, rows): (Vec<[f32; 2]>, Vec<(&str, String)>) = match &template.spec.body {
+        AnimationSpecBody::Phaser(p) => {
+            const N: usize = 400;
+            let raw: Vec<f32> = (0..=N)
+                .map(|i| {
+                    phaser::generate(p, i as f64 * 720.0 / N as f64, property, palettes) as f32
+                })
+                .collect();
+            let top = raw.iter().copied().fold(255.0_f32, f32::max);
+            let points = raw
+                .iter()
+                .enumerate()
+                .map(|(i, y)| [i as f32 / N as f32, y / top])
+                .collect();
+            let (curve, range) = match &p.kind {
+                PhaserKind::Mathematical(m) => (
+                    format!("{:?}", m.base),
+                    format!(
+                        "{} to {}",
+                        literal(&m.amplitude_min),
+                        literal(&m.amplitude_max)
+                    ),
+                ),
+                PhaserKind::Keyframed(_) => ("Keyframed".to_owned(), "--".to_owned()),
+            };
+            let duration = match p.time_total {
+                PhaserDuration::Fixed(ms) => format!("{ms} ms"),
+                PhaserDuration::Beat(m) => format!("{} beats", beats(m)),
+            };
+            (
+                points,
+                vec![
+                    ("Curve", curve),
+                    ("Range", range),
+                    ("Duration", duration),
+                    ("Sync", format!("{:?}", p.sync)),
+                ],
+            )
+        }
+        AnimationSpecBody::FlashAnimation(f) => {
+            let (on, off) = (f.on_time_ms.max(1) as f32, f.off_time_ms as f32);
+            let period = on + off;
+            let mut points = Vec::new();
+            for cycle in 0..2 {
+                let start = cycle as f32 * period;
+                for (x, y) in [
+                    (start, 1.0),
+                    (start + on, 1.0),
+                    (start + on, 0.0),
+                    (start + period, 0.0),
+                ] {
+                    points.push([x / (2.0 * period), y]);
+                }
+            }
+            (
+                points,
+                vec![
+                    (
+                        "Range",
+                        format!(
+                            "{} to {}",
+                            literal(&f.amplitude_min),
+                            literal(&f.amplitude_max)
+                        ),
+                    ),
+                    ("On", format!("{} ms", f.on_time_ms)),
+                    ("Off", format!("{} ms", f.off_time_ms)),
+                    (
+                        "Beat aligned",
+                        if f.beat_aligned { "Yes" } else { "No" }.to_owned(),
+                    ),
+                ],
+            )
+        }
+        AnimationSpecBody::WasmPlugin(_) | AnimationSpecBody::Wasm(_) => {
+            duo::note(
+                ui,
+                "This animation is drawn by a plugin, so its shape isn't known here.",
+            );
+            return;
+        }
+        _ => {
+            duo::note(
+                ui,
+                "This animation follows the audio, so its shape isn't known here.",
+            );
+            return;
+        }
+    };
+
+    // `.wave`: the well, a centre line and the curve.
+    let t = crate::app::ui_tokens::studio(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 150.0),
+        egui::Sense::hover(),
+    );
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, t.well);
+    painter.hline(
+        rect.x_range(),
+        rect.center().y.round() + 0.5,
+        egui::Stroke::new(1.0_f32, t.line),
+    );
+    // The mockup's viewBox: y from 58 (0) to 4 (1) of 60.
+    let line: Vec<egui::Pos2> = points
+        .iter()
+        .map(|[x, y]| {
+            egui::pos2(
+                rect.left() + x * rect.width(),
+                rect.top() + (58.0 - y * 54.0) / 60.0 * rect.height(),
+            )
+        })
+        .collect();
+    painter.add(egui::Shape::line(line, egui::Stroke::new(1.5_f32, t.data)));
+
+    ui.add_space(8.0);
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = duo::KV_GAP;
+        for (term, value) in rows {
+            duo::kv_row(ui, term, |ui| duo::text(ui, value));
+        }
+    });
+    ui.add_space(8.0);
+    duo::note(ui, "Curve drawn from the saved settings.");
+}
+
+/// A beat count like the mockup's "1/4 beats".
+fn beats(m: AnimationSpeedModifier) -> String {
+    format!("{m:?}").trim_start_matches('_').replace('_', "/")
 }

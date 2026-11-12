@@ -11,12 +11,13 @@
 //! and the details of the selected group or folder on the right. Every row has
 //! a "Move…" button that opens the folder picker ([`FolderDialog::Move`]).
 
+use super::duo::{self, folder_desktop_pane};
 #[cfg(doc)]
 use crate::app::components::SetupFolderUi;
 use crate::app::{
     components::{
-        self, folder_details, group_tree_items, ButtonSize, Dialog, FolderDialog, Tree, TreeAction,
-        TreeKey, DEFAULT_NEW_GROUP_NAME, SETUP_GROUP_TREE,
+        self, folder_details, group_tree_items, studio, ButtonSize, Dialog, FolderDialog, Tree,
+        TreeAction, TreeKey, DEFAULT_NEW_GROUP_NAME, SETUP_GROUP_TREE,
     },
     page::PageRenderContext,
     BlaulichtApp,
@@ -49,6 +50,11 @@ impl BlaulichtApp {
         // no selection, unless it was just created and is still on its way.
         self.setup_groups_ui.drop_missing_folder(&dmx_engine.0);
 
+        if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+            self.setup_groups_desktop_ui(ui, dmx_engine);
+            return;
+        }
+
         render_context.horizontal(ui, egui::Align::Min, |ui| {
             self.group_toolbar(ui, dmx_engine);
         });
@@ -65,6 +71,8 @@ impl BlaulichtApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.set_width(tree_width);
+                        components::column_header(ui, "Groups:");
+                        ui.add_space(8.0);
                         self.setup_group_tree(ui, dmx_engine);
                     },
                 );
@@ -134,13 +142,168 @@ impl BlaulichtApp {
         }
     }
 
+    /// Setup › Groups on the desktop (`setup.html` `groups()`): the tree
+    /// under a "Groups" bar with Add and Folder, and the selected group under
+    /// a "Group:" bar with its actions, its name editable in place, and its
+    /// fixtures below. A selected folder shows under a "Folder:" bar.
+    fn setup_groups_desktop_ui(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
+        // Pick a group so the page is never empty while groups exist.
+        if self.add_fixture_group.is_none() && self.setup_groups_ui.folder.is_none() {
+            if let Some((gid, group)) = dmx_engine.groups().iter().next() {
+                let first = group.fixtures.keys().next().copied().unwrap_or_default();
+                self.select_setup_fixture(dmx_engine, *gid, first);
+            }
+        }
+        let (mut list, mut detail) = duo::duo(ui);
+        let folder = self.setup_groups_ui.folder;
+
+        let (mut add, mut new_folder) = (false, false);
+        let add_open = self.add_group_open;
+        studio::pane_header(&mut list, None, "Groups", true, |ui| {
+            add = duo::bar_button(ui, "Add", add_open);
+            new_folder = duo::bar_button(ui, "Folder", false);
+        });
+        if add {
+            self.add_group_open = !self.add_group_open;
+        }
+        if new_folder {
+            self.setup_groups_ui.dialog = FolderDialog::create(FolderKind::Groups, folder);
+        }
+        self.setup_group_tree(&mut list, dmx_engine);
+
+        if let Some(folder) = folder {
+            self.setup_folder_desktop_pane(&mut detail, dmx_engine, folder);
+            return;
+        }
+        let groups = dmx_engine.groups();
+        let Some((group_id, group)) = self
+            .add_fixture_group
+            .and_then(|id| groups.get(&id).map(|group| (id, group)))
+        else {
+            studio::pane_header(&mut detail, None, "Group", true, |_| {});
+            duo::body(&mut detail, None, |ui| {
+                duo::note(ui, "Select a group to edit it, or add a new one.")
+            });
+            return;
+        };
+
+        let (mut edit, mut show, mut delete) = (false, false, false);
+        let delete_open = self.delete_group_open;
+        studio::pane_header(&mut detail, Some("Group:"), &group.name, true, |ui| {
+            edit = duo::bar_button(ui, "Edit fixtures", false);
+            if cfg!(feature = "visualizer") {
+                show = duo::bar_button(ui, "Show in Visualizer", false);
+            }
+            delete = duo::bar_button(ui, "Delete", delete_open);
+        });
+
+        let channels: usize = group.fixtures.values().map(|f| f.type_.footprint()).sum();
+        let mut types: Vec<(String, usize)> = Vec::new();
+        for fixture in group.fixtures.values() {
+            let name = fixture.type_.model_string();
+            match types.iter_mut().find(|(n, _)| *n == name) {
+                Some((_, count)) => *count += 1,
+                None => types.push((name, 1)),
+            }
+        }
+        let mut rename = None;
+        duo::body(&mut detail, Some(duo::form_height(3)), |ui| {
+            rename = duo::name_row(ui, ui.id().with(("group", group_id)), &group.name);
+            duo::form_row(ui, "Contains", |ui| {
+                duo::text(
+                    ui,
+                    format!(
+                        "{} {}, {channels} channels",
+                        group.fixtures.len(),
+                        if group.fixtures.len() == 1 {
+                            "fixture"
+                        } else {
+                            "fixtures"
+                        }
+                    ),
+                )
+            });
+            duo::form_row(ui, "Types", |ui| {
+                let list: Vec<String> = types.iter().map(|(n, c)| format!("{c} {n}")).collect();
+                duo::text(
+                    ui,
+                    if list.is_empty() {
+                        "--".into()
+                    } else {
+                        list.join(", ")
+                    },
+                )
+            });
+        });
+
+        duo::lower_pane(&mut detail, "Fixtures");
+        duo::flush(&mut detail, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("setup-group-fixtures")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let rows: Vec<Vec<duo::Cell>> = group
+                        .fixtures
+                        .values()
+                        .map(|fixture| {
+                            let first = fixture.start_addr;
+                            let last = first + fixture.type_.footprint().max(1) - 1;
+                            vec![
+                                (fixture.name.clone(), duo::Look::Text),
+                                (fixture.type_.model_string(), duo::Look::Muted),
+                                (fixture.universe_no.to_string(), duo::Look::Mono),
+                                (format!("{first}-{last}"), duo::Look::Mono),
+                            ]
+                        })
+                        .collect();
+                    duo::table(
+                        ui,
+                        &["Fixture", "Type", "Universe", "Channels"],
+                        &[0.0, 0.3, 0.63, 0.82],
+                        &rows,
+                    );
+                });
+        });
+
+        if let Some(name) = rename {
+            self.send_setup_command(
+                HostCommand::RenameGroup {
+                    group: group_id,
+                    name,
+                },
+                |_, _| {},
+            );
+        }
+        if edit {
+            self.open_subpage(AppSubPage::Setup_Fixtures);
+        }
+        if show {
+            let fixtures: Vec<_> = group.fixtures.keys().map(|fid| (group_id, *fid)).collect();
+            self.show_fixtures_in_visualizer(fixtures);
+        }
+        if delete {
+            self.delete_group_open = !self.delete_group_open;
+        }
+    }
+
+    /// The selected group folder on the desktop: a "Folder:" bar with
+    /// Rename and Delete over its details.
+    fn setup_folder_desktop_pane(
+        &mut self,
+        ui: &mut egui::Ui,
+        dmx_engine: &EngineState,
+        folder: FolderId,
+    ) {
+        if let Some(event) = folder_desktop_pane(ui, &dmx_engine.0, FolderKind::Groups, folder) {
+            self.setup_groups_ui.dialog = event;
+        }
+    }
+
     /// The tree of folders and groups. Tapping a group selects it (and its
     /// first fixture for the Fixtures tab); tapping a folder selects the
     /// folder; "Move…" opens the folder picker for that row.
     fn setup_group_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let state = &dmx_engine.0;
-        components::column_header(ui, "Groups:");
-        ui.add_space(8.0);
 
         if state.groups.is_empty() && !state.folders.values().any(|f| f.kind == FolderKind::Groups)
         {
@@ -148,7 +311,17 @@ impl BlaulichtApp {
             return;
         }
 
-        let items = group_tree_items(state);
+        let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
+        let mut items = group_tree_items(state);
+        if desktop {
+            components::desktop_folder_order(&mut items, &state.folders);
+            // The desktop list shows only the fixture count (`setup.html`).
+            for item in &mut items {
+                if let TreeKey::Leaf(id) = item.key {
+                    item.detail = state.groups.get(&id).map(|g| g.fixtures.len().to_string());
+                }
+            }
+        }
         let selected = match self.setup_groups_ui.folder {
             Some(folder) => Some(TreeKey::Folder(folder)),
             None => self.add_fixture_group.map(TreeKey::Leaf),
@@ -159,7 +332,8 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 Tree::new(SETUP_GROUP_TREE, &items)
                     .selected(selected)
-                    .with_move_button(true)
+                    .with_move_button(!desktop)
+                    .list_look(desktop)
                     .drag_to_folders(true)
                     .show(ui)
             })

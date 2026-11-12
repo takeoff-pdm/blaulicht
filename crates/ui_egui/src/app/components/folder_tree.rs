@@ -107,6 +107,25 @@ pub fn folder_tree_items<L>(
         .collect()
 }
 
+/// Re-sorts the folder items of `items` by `(order, id)` instead of
+/// `(order, name)`: siblings nobody reordered keep the order they were made
+/// in (show order), like the desktop mockups and the Setup › Fixtures tree.
+/// Desktop only; the kiosk keeps the alphabetical order. Leaves keep their
+/// places.
+pub fn desktop_folder_order<L>(
+    items: &mut [TreeItem<FolderId, L>],
+    folders: &BTreeMap<FolderId, Folder>,
+) {
+    let n = items
+        .iter()
+        .take_while(|i| matches!(i.key, TreeKey::Folder(_)))
+        .count();
+    items[..n].sort_by_key(|i| match i.key {
+        TreeKey::Folder(id) => (folders.get(&id).map_or(u16::MAX, |f| f.order), id),
+        TreeKey::Leaf(_) => (u16::MAX, FolderId::MAX),
+    });
+}
+
 /// The group tree: every groups folder, then every group as a leaf (by id),
 /// with the same detail line as the group tiles (`"4 FX | #3"`).
 pub fn group_tree_items(state: &EngineState) -> Vec<TreeItem<FolderId, u8>> {
