@@ -64,9 +64,9 @@ pub(super) fn resolve_selection(
 impl<'engine> EngineState {
     /// Cheap clone for read-only UI rendering: every scene except the
     /// currently focused one is replaced with an empty-sink placeholder
-    /// that keeps only the scene name. This avoids the wholesale deep-clone
-    /// of every scene's `fixture_states` (which is O(scenes * fixtures))
-    /// on every frame.
+    /// that keeps only the scene name, folder, masters and changeset. This
+    /// avoids the wholesale deep-clone of every scene's `fixture_states`
+    /// (which is O(scenes * fixtures)) on every frame.
     ///
     /// The returned `EngineState` must not be mutated — non-focused scenes
     /// have lost their state.
@@ -92,7 +92,8 @@ impl<'engine> EngineState {
                             sink: EngineSink {
                                 fixture_states: BTreeMap::new(),
                                 active_animations: HashMap::new(),
-                                changeset: HashSet::new(),
+                                // Kept (small): System › General counts every scene's changes.
+                                changeset: scene.sink.changeset.clone(),
                                 master_alpha_fader: scene.sink.master_alpha_fader,
                                 master_speed: scene.sink.master_speed,
                                 palette_assignments: BTreeMap::new(),

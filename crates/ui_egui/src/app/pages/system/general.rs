@@ -230,6 +230,8 @@ struct ShowInfo {
     location: Option<String>,
     modified: Option<String>,
     size: Option<String>,
+    /// The file's `format_version` on disk.
+    format: Option<u32>,
     room: String,
     contents: Vec<(&'static str, usize)>,
     types: Vec<(String, usize)>,
@@ -241,7 +243,7 @@ fn show_info(
     remote: bool,
 ) -> ShowInfo {
     let shared: &EngineState = &state.0;
-    let (file, location, modified, size) = match path {
+    let (file, location, modified, size, format) = match path {
         Some(path) => {
             let absolute = if remote {
                 path.to_path_buf()
@@ -258,14 +260,18 @@ fn show_info(
                     .to_string()
             });
             let size = meta.as_ref().map(|m| format_size(m.len()));
+            let format = meta
+                .as_ref()
+                .and_then(|m| showfile_format(&absolute, m.modified().ok()));
             (
                 path.file_name().map(|n| n.to_string_lossy().into_owned()),
                 Some(absolute.to_string_lossy().into_owned()),
                 modified,
                 size,
+                format,
             )
         }
-        None => (None, None, None, None),
+        None => (None, None, None, None, None),
     };
     let stage = state.stage();
     let room = format!(
@@ -290,6 +296,10 @@ fn show_info(
         ("Palettes", shared.palettes.len()),
         ("Views", shared.views.len()),
         ("Folders", shared.folders.len()),
+        (
+            "Scene changes",
+            shared.scenes.values().map(|s| s.sink.changeset.len()).sum(),
+        ),
     ];
     let mut types: BTreeMap<String, usize> = BTreeMap::new();
     for group in shared.groups.values() {
@@ -306,10 +316,40 @@ fn show_info(
         location,
         modified,
         size,
+        format,
         room,
         contents,
         types,
     }
+}
+
+/// The showfile's `format_version` as written on disk (a missing field is the
+/// legacy format 0). Parsed once per path and modification time.
+fn showfile_format(path: &Path, modified: Option<std::time::SystemTime>) -> Option<u32> {
+    #[derive(serde::Deserialize)]
+    struct Head {
+        #[serde(default)]
+        format_version: u32,
+    }
+    type Key = (std::path::PathBuf, Option<std::time::SystemTime>);
+    thread_local! {
+        static CACHE: std::cell::RefCell<Option<(Key, Option<u32>)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    let key = (path.to_path_buf(), modified);
+    CACHE.with_borrow_mut(|cache| {
+        if let Some((k, v)) = cache.as_ref() {
+            if *k == key {
+                return *v;
+            }
+        }
+        let v = std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Head>(&bytes).ok())
+            .map(|h| h.format_version);
+        *cache = Some((key, v));
+        v
+    })
 }
 
 fn trim_float(v: f32) -> String {
@@ -557,7 +597,11 @@ impl BlaulichtApp {
                         kv_row(ui, "Modified", |ui| value(ui, modified, false));
                     }
                     if let Some(size) = &info.size {
-                        kv_row(ui, "Size", |ui| value(ui, size, false));
+                        let size = match info.format {
+                            Some(format) => format!("{size}, format {format}"),
+                            None => size.clone(),
+                        };
+                        kv_row(ui, "Size", |ui| value(ui, &size, false));
                     }
                     kv_row(ui, "Room", |ui| value(ui, &info.room, false));
                     if let Some(line) = self.remote_status_line() {
@@ -794,8 +838,18 @@ impl BlaulichtApp {
         let reload_enabled = matches!(signal, AudioThreadControlSignal::CONTINUE);
         let (mut debug, mut reload) = (false, false);
         let debug_open = self.system_ui_state.debug_open;
-        let engine: Vec<f32> = self.status_sparks.engine().iter().copied().collect();
-        let plugins: Vec<f32> = self.status_sparks.plugins().iter().copied().collect();
+        let engine: Vec<f32> = self
+            .status_sparks
+            .engine_history()
+            .iter()
+            .copied()
+            .collect();
+        let plugins: Vec<f32> = self
+            .status_sparks
+            .plugins_history()
+            .iter()
+            .copied()
+            .collect();
         pane(
             ui,
             "Engine",
@@ -841,6 +895,13 @@ impl BlaulichtApp {
                 .listening
                 .map_or_else(|| "Off".to_string(), |addr| addr.port().to_string())
         });
+        let commit = env!("BLAULICHT_GIT_COMMIT");
+        let audio = self.selected_audio_input.as_deref().map(|name| {
+            match self.tick_speeds.audio_sample_rate {
+                Some(rate) => format!("{name}, {rate} Hz"),
+                None => name.to_string(),
+            }
+        });
         pane(
             ui,
             "About",
@@ -859,6 +920,12 @@ impl BlaulichtApp {
                             ),
                             false,
                         )
+                    });
+                    if !commit.is_empty() {
+                        kv_row(ui, "Commit", |ui| value(ui, commit, true));
+                    }
+                    kv_row(ui, "Audio input", |ui| {
+                        value(ui, audio.as_deref().unwrap_or("None"), false)
                     });
                     kv_row(ui, "Network port", |ui| value(ui, &port, true));
                 });
@@ -1006,7 +1073,8 @@ fn count_column(ui: &mut Ui, width: f32, title: &str, rows: &[(String, usize)]) 
 }
 
 /// A speed graph (`.graph`): the name and latest value over a well with the
-/// recent samples as a line, scaled to their peak.
+/// last 30 s as a line. The range is three times the history's peak (at
+/// least 1 ms), so steady loads draw a low, calm line like the mockup.
 fn speed_graph(ui: &mut Ui, t: &Studio, name: &str, samples: &[f32]) {
     let w = ui.available_width();
     let (head, _) = ui.allocate_exact_size(vec2(w, 18.0), Sense::hover());
@@ -1030,7 +1098,7 @@ fn speed_graph(ui: &mut Ui, t: &Studio, name: &str, samples: &[f32]) {
     if samples.len() < 2 {
         return;
     }
-    let peak = samples.iter().copied().fold(0.0_f32, f32::max).max(1.0) * 1.25;
+    let peak = (samples.iter().copied().fold(0.0_f32, f32::max) * 3.0).max(1.0);
     let inner = r.shrink2(vec2(0.0, 4.0));
     let step = inner.width() / (samples.len() - 1) as f32;
     let points: Vec<_> = samples

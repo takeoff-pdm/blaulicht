@@ -407,6 +407,7 @@ pub fn run(
             plugins: plugin_manager_tick_duration,
             audio_processing: audio_processor_speed,
             dmx: dmx_tick_durations,
+            audio_sample_rate: sample_rate,
         };
 
         system_message!(now, time_of_last_system_publish, system_out, {

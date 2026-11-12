@@ -38,6 +38,8 @@ pub struct TickSpeeds {
     pub plugins: Duration,
     pub audio_processing: Duration,
     pub dmx: DmxTickSpeeds,
+    /// Sample rate of the open audio input, `None` until it delivers.
+    pub audio_sample_rate: Option<u32>,
 }
 
 #[derive(Clone)]

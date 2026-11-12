@@ -40,9 +40,20 @@
   Problem actions: Open universe / Show overlap / Open patch map open System › DMX; Reload plugin
   sends `ReloadPlugins` (there is no per-plugin reload); MIDI and Serial are separate tabs here, so
   the buttons read "Open MIDI" / "Open Serial".
-- Not shown because the data isn't available in the UI: Size's "format N", Contents "Scene
-  changes" (`clone_for_ui` drops other scenes' changes), About "Commit" and "Audio input". Uptime
-  is the UI's, not the engine's. Follow-up if wanted.
+- Review fixes (now shown, as in the mockup): Size reads "518 KB, format 4" (the file's
+  `format_version` on disk, parsed once per path and mtime); Contents ends with "Scene changes"
+  (sum of every scene's changeset; `clone_for_ui` now keeps the small changeset of unfocused
+  scenes, which also fixes Setup › Scenes showing 0 changes for them); About has "Commit"
+  ("<short hash>, <commit date>" from a new `crates/ui_egui/build.rs`, row hidden without git) and
+  "Audio input" ("<device>, <rate> Hz": `TickSpeeds` gained `audio_sample_rate`, so
+  `PROTOCOL_VERSION` is now 4). The mockup's "pipewire" is the audio host; the app shows the
+  selected device name instead. Uptime is still the UI's, not the engine's.
+- Intentional deviation from the mockup: the serial/MIDI problem action reads "Open MIDI" or
+  "Open Serial" instead of "Open MIDI & Serial", because MIDI and Serial are separate sidebar
+  tabs in the app. Not seen live: kt has no MIDI or serial device problem rows.
+- Engine Loop/Plugins graphs keep 30 s of history (150 samples, separate from the status bar's
+  30-sample sparks) and scale to three times the history's peak (at least 1 ms), so they draw a
+  dense, low line across the full width. Checked in kt after ~35 s.
 - `setup::duo` helpers became `pub(crate)` and `type_label` moved there (shared with Fixtures).
 - Screens: master-detail like the mockup (list with Add, preview pane with "Desk window"/"Owned by
   plugin X" and Remove). Verified in kt with a temporary, uncommitted patch that skips drawing
@@ -53,6 +64,9 @@
   (opens the debug window), Light/Dark, Add, row select, Remove. Not clicked: Load/Save as (native
   dialog), Restart/Quit/Shut down.
 - Checks on the host with CARGO_BUILD_JOBS=4: `cargo fmt` (only touched files kept), `cargo clippy
-  -p blaulicht-ui-egui --all-targets --all-features` (no warnings in changed code; existing ones
-  elsewhere), `cargo test -p blaulicht-ui-egui --all-features` (169 passed). Workspace-wide clippy/test
-  not run.
+  -p blaulicht-ui-egui -p blaulicht-engine --all-targets --all-features` (no warnings in changed
+  code; existing ones elsewhere), `cargo test -p blaulicht-ui-egui -p blaulicht-engine
+  --all-features` (169 + 279 passed). Workspace-wide clippy/test not run.
+- Review fixes verified in kt (desktop 1500x950, SPARTACUS_SOLI.json copy), dark and light,
+  against the mockup shot. Kiosk not re-shot: the fixes only touch the desktop General page and
+  data (format/scene-change/audio fields, graph history); the Compact path draws no new rows.
