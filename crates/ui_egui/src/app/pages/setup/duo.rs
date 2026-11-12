@@ -65,14 +65,36 @@ pub(super) fn body<R>(ui: &mut Ui, height: Option<f32>, add: impl FnOnce(&mut Ui
             .max_rect(rect.shrink(8.0))
             .layout(egui::Layout::top_down(egui::Align::Min)),
     );
-    child.spacing_mut().item_spacing = vec2(6.0, 2.0);
+    child.spacing_mut().item_spacing = vec2(6.0, ROW_GAP);
+    // Text rows are 16px, not the 20px `interact_size` minimum.
+    child.spacing_mut().interact_size.y = TEXT_ROW;
     add(&mut child)
 }
 
-/// Height of a form with `rows` rows, as laid out by [`body`] and
-/// [`form_row`].
+/// The same area as [`body`] without padding, for an edge-to-edge
+/// [`table`].
+pub(super) fn flush<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let rect = ui.available_rect_before_wrap();
+    ui.allocate_rect(rect, Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    child.spacing_mut().item_spacing = vec2(0.0, 0.0);
+    add(&mut child)
+}
+
+/// Vertical gap between form rows (`.frm` `gap: 6px`).
+const ROW_GAP: f32 = 6.0;
+/// Height of a form row with text (not a field).
+const TEXT_ROW: f32 = 16.0;
+
+/// Height of a form with a Name field and `rows - 1` text rows, as laid
+/// out by [`body`], [`name_row`] and [`form_row`].
 pub(super) fn form_height(rows: usize) -> f32 {
-    16.0 + rows as f32 * TARGET_MIN + rows.saturating_sub(1) as f32 * 2.0
+    let rest = rows.saturating_sub(1) as f32;
+    16.0 + TARGET_MIN + rest * (TEXT_ROW + ROW_GAP)
 }
 
 /// One form row: a muted label in the label column, then `add`.
@@ -80,7 +102,7 @@ pub(super) fn form_row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     ui.horizontal(|ui| {
-        let (r, _) = ui.allocate_exact_size(vec2(LABEL_W, TARGET_MIN), Sense::hover());
+        let (r, _) = ui.allocate_exact_size(vec2(LABEL_W, TEXT_ROW), Sense::hover());
         ui.painter().text(
             pos2(r.left(), r.center().y),
             Align2::LEFT_CENTER,
@@ -91,6 +113,39 @@ pub(super) fn form_row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
         add(ui);
     });
 }
+
+/// Width of the term column of a read-only list (`setup.css` `.kv`).
+const KV_W: f32 = 128.0;
+
+/// One row of a read-only term list (`.kv`): a muted term in a 128px
+/// column, then `add`, at least 16px tall.
+pub(super) fn kv_row(ui: &mut Ui, term: &str, add: impl FnOnce(&mut Ui)) {
+    let t = studio_tokens(ui.ctx());
+    let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let (r, _) = ui.allocate_exact_size(vec2(KV_W, KV_ROW), Sense::hover());
+        ui.painter().text(
+            pos2(r.left(), r.center().y),
+            Align2::LEFT_CENTER,
+            term,
+            f,
+            t.muted,
+        );
+        add(ui);
+    });
+}
+
+/// Gap between [`kv_row`]s (`.kv` `gap: 4px`).
+pub(super) const KV_GAP: f32 = 4.0;
+
+/// A 24px button chip in a [`kv_row`] (`dd > button.mini`).
+pub(super) fn chip(ui: &mut Ui, label: &str) -> bool {
+    studio::mini_button(ui, label, false, TARGET_MIN).clicked()
+}
+
+/// Row height of [`kv_row`].
+pub(super) const KV_ROW: f32 = TEXT_ROW;
 
 /// Plain body text.
 pub(super) fn text(ui: &mut Ui, s: impl Into<String>) {
@@ -176,30 +231,63 @@ pub(super) fn folder_desktop_pane(
     }
 }
 
-/// A cell of [`table`]: its text and whether it is muted.
-pub(super) type Cell = (String, bool);
+/// How a cell of [`table`] is drawn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Look {
+    Text,
+    Muted,
+    /// Numbers: 12px mono in the strong colour (`.mono`).
+    Mono,
+}
 
-/// A read-only table (`.rows`): a muted header row, then 24px rows with a
-/// hairline under each. `cols` are the column starts as fractions of the
-/// width; text is cut to its column.
+/// A cell of [`table`]: its text and look.
+pub(super) type Cell = (String, Look);
+
+/// Height of a [`table`] header row (`.rows th`).
+const TH_H: f32 = 22.0;
+
+/// The 12px mono font of numbers (`.mono`).
+pub(super) fn mono_font() -> egui::FontId {
+    egui::FontId::new(12.0, egui::FontFamily::Monospace)
+}
+
+/// A number in the mono font and strong colour.
+pub(super) fn mono(ui: &mut Ui, s: impl Into<String>) {
+    let t = studio_tokens(ui.ctx());
+    ui.add(egui::Label::new(
+        RichText::new(s).font(mono_font()).color(t.strong),
+    ));
+}
+
+/// A read-only table (`.rows`), edge to edge in the pane: a 22px muted
+/// header row, then 24px rows with a hairline under each; cells have 8px
+/// side padding. `cols` are the column starts as fractions of the width;
+/// text is cut to its column.
 pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>]) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
     let width = ui.available_width();
-    let line = |ui: &mut Ui, cells: &mut dyn Iterator<Item = (&str, bool)>, rule: bool| {
-        let (rect, _) = ui.allocate_exact_size(vec2(width, TARGET_MIN), Sense::hover());
-        for (i, (s, muted)) in cells.enumerate() {
-            let x = rect.left() + cols[i] * width;
+    let line = |ui: &mut Ui, cells: &mut dyn Iterator<Item = (&str, Look)>, h: f32, rule: bool| {
+        let (rect, _) = ui.allocate_exact_size(vec2(width, h), Sense::hover());
+        let inner = rect.shrink2(vec2(8.0, 0.0));
+        let w = inner.width();
+        for (i, (s, look)) in cells.enumerate() {
+            let x = inner.left() + cols[i] * w;
             let end = cols
                 .get(i + 1)
-                .map_or(rect.right(), |c| rect.left() + c * width)
+                .map_or(inner.right(), |c| inner.left() + c * w)
                 - 8.0;
+            let (font, color) = match look {
+                Look::Text => (f.clone(), t.text),
+                Look::Muted => (f.clone(), t.muted),
+                Look::Mono => (mono_font(), t.strong),
+            };
             studio::paint_truncated(
                 ui,
                 pos2(x, rect.center().y),
                 s,
-                f.clone(),
-                if muted { t.muted } else { t.text },
+                font,
+                color,
                 (end - x).max(0.0),
             );
         }
@@ -211,8 +299,18 @@ pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>
             );
         }
     };
-    line(ui, &mut heads.iter().map(|h| (*h, true)), false);
+    line(
+        ui,
+        &mut heads.iter().map(|h| (*h, Look::Muted)),
+        TH_H,
+        false,
+    );
     for row in rows {
-        line(ui, &mut row.iter().map(|(s, m)| (s.as_str(), *m)), true);
+        line(
+            ui,
+            &mut row.iter().map(|(s, l)| (s.as_str(), *l)),
+            TARGET_MIN,
+            true,
+        );
     }
 }

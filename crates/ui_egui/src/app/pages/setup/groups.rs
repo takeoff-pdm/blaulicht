@@ -237,7 +237,7 @@ impl BlaulichtApp {
         });
 
         duo::lower_pane(&mut detail, "Fixtures");
-        duo::body(&mut detail, None, |ui| {
+        duo::flush(&mut detail, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("setup-group-fixtures")
                 .auto_shrink([false, false])
@@ -249,10 +249,10 @@ impl BlaulichtApp {
                             let first = fixture.start_addr;
                             let last = first + fixture.type_.footprint().max(1) - 1;
                             vec![
-                                (fixture.name.clone(), false),
-                                (fixture.type_.model_string(), true),
-                                (fixture.universe_no.to_string(), false),
-                                (format!("{first}-{last}"), false),
+                                (fixture.name.clone(), duo::Look::Text),
+                                (fixture.type_.model_string(), duo::Look::Muted),
+                                (fixture.universe_no.to_string(), duo::Look::Mono),
+                                (format!("{first}-{last}"), duo::Look::Mono),
                             ]
                         })
                         .collect();
@@ -311,7 +311,16 @@ impl BlaulichtApp {
             return;
         }
 
-        let items = group_tree_items(state);
+        let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
+        let mut items = group_tree_items(state);
+        if desktop {
+            // The desktop list shows only the fixture count (`setup.html`).
+            for item in &mut items {
+                if let TreeKey::Leaf(id) = item.key {
+                    item.detail = state.groups.get(&id).map(|g| g.fixtures.len().to_string());
+                }
+            }
+        }
         let selected = match self.setup_groups_ui.folder {
             Some(folder) => Some(TreeKey::Folder(folder)),
             None => self.add_fixture_group.map(TreeKey::Leaf),
@@ -322,7 +331,8 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 Tree::new(SETUP_GROUP_TREE, &items)
                     .selected(selected)
-                    .with_move_button(!crate::app::ui_tokens::Density::of(ui.ctx()).is_compact())
+                    .with_move_button(!desktop)
+                    .list_look(desktop)
                     .drag_to_folders(true)
                     .show(ui)
             })

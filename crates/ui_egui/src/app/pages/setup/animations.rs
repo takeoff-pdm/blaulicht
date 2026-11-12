@@ -16,11 +16,13 @@ use crate::app::{
     BlaulichtApp,
 };
 use blaulicht_engine::{
-    client::EngineClient, hub::HostCommand, plugin::stable_animation_template_id,
+    client::EngineClient, dmx::animation::phaser, hub::HostCommand,
+    plugin::stable_animation_template_id,
 };
 use blaulicht_shared::{
-    AnimationPresetCategory, AnimationSpec, AnimationSpecBody, AnimationSpecBodyKind,
-    AnimationTemplate, FixtureProperty,
+    fixture::value::FixtureValue, AnimationPresetCategory, AnimationSpec, AnimationSpecBody,
+    AnimationSpecBodyKind, AnimationSpeedModifier, AnimationTemplate, FixtureProperty,
+    PhaserDuration, PhaserKind,
 };
 use egui::{Context, FontId, Key, Label, RichText, TextEdit, Vec2};
 use std::collections::BTreeMap;
@@ -425,7 +427,7 @@ impl BlaulichtApp {
         self.render_delete_animation_dialog(ctx, ui);
 
         if crate::app::ui_tokens::Density::of(ctx).is_compact() {
-            self.setup_animations_desktop_ui(ui, ctx, panel_max);
+            self.setup_animations_desktop_ui(ui, ctx);
             return;
         }
 
@@ -515,23 +517,13 @@ impl BlaulichtApp {
     }
     /// Setup › Animations on the desktop (`setup.html` `animations()`): the
     /// templates under an "Animations" bar with Add and Presets (name and
-    /// property per row), and the selected template's editor under an
-    /// "Animation:" bar with Delete.
-    fn setup_animations_desktop_ui(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &Context,
-        panel_max: egui::Pos2,
-    ) {
-        let (templates, palettes_snapshot, selected_fixtures) = self
+    /// property per row), and the selected template under an "Animation:"
+    /// bar with Delete: its name, property and kind, and a read-only Shape
+    /// pane ([`shape_pane`]).
+    fn setup_animations_desktop_ui(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+        let (templates, palettes_snapshot) = self
             .client
-            .with_session(|show, me| {
-                (
-                    show.0.animation_templates.clone(),
-                    show.0.palettes.clone(),
-                    me.fixture_selection(&show.0.groups).fixtures,
-                )
-            })
+            .with_session(|show, _| (show.0.animation_templates.clone(), show.0.palettes.clone()))
             .unwrap_or_default();
         if self
             .animation_ui_state
@@ -646,19 +638,7 @@ impl BlaulichtApp {
         }
         duo::lower_pane(&mut detail, "Shape");
         duo::body(&mut detail, None, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("setup-animation-editor")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    self.animation_template_editor(
-                        ui,
-                        ctx,
-                        &templates,
-                        &palettes_snapshot,
-                        &selected_fixtures,
-                        panel_max,
-                    );
-                });
+            shape_pane(ui, template, &palettes_snapshot);
         });
     }
 
@@ -733,4 +713,149 @@ impl BlaulichtApp {
             }
         }
     }
+}
+
+/// The Shape pane of the desktop Animations page (`setup.html`
+/// `animations()`): a 150px preview of the curve drawn from the saved
+/// settings, then its settings as a read-only list.
+fn shape_pane(
+    ui: &mut egui::Ui,
+    template: &AnimationTemplate,
+    palettes: &BTreeMap<u8, blaulicht_shared::palette::Palette>,
+) {
+    let property = template.spec.property;
+    let literal = |v: &FixtureValue| match v {
+        FixtureValue::Literal(n) => n.to_string(),
+        _ => "Set by palette".to_owned(),
+    };
+    // Points of two cycles, x and y in 0..=1 (y up).
+    let (points, rows): (Vec<[f32; 2]>, Vec<(&str, String)>) = match &template.spec.body {
+        AnimationSpecBody::Phaser(p) => {
+            const N: usize = 400;
+            let raw: Vec<f32> = (0..=N)
+                .map(|i| {
+                    phaser::generate(p, i as f64 * 720.0 / N as f64, property, palettes) as f32
+                })
+                .collect();
+            let top = raw.iter().copied().fold(255.0_f32, f32::max);
+            let points = raw
+                .iter()
+                .enumerate()
+                .map(|(i, y)| [i as f32 / N as f32, y / top])
+                .collect();
+            let (curve, range) = match &p.kind {
+                PhaserKind::Mathematical(m) => (
+                    format!("{:?}", m.base),
+                    format!(
+                        "{} to {}",
+                        literal(&m.amplitude_min),
+                        literal(&m.amplitude_max)
+                    ),
+                ),
+                PhaserKind::Keyframed(_) => ("Keyframed".to_owned(), "--".to_owned()),
+            };
+            let duration = match p.time_total {
+                PhaserDuration::Fixed(ms) => format!("{ms} ms"),
+                PhaserDuration::Beat(m) => format!("{} beats", beats(m)),
+            };
+            (
+                points,
+                vec![
+                    ("Curve", curve),
+                    ("Range", range),
+                    ("Duration", duration),
+                    ("Sync", format!("{:?}", p.sync)),
+                ],
+            )
+        }
+        AnimationSpecBody::FlashAnimation(f) => {
+            let (on, off) = (f.on_time_ms.max(1) as f32, f.off_time_ms as f32);
+            let period = on + off;
+            let mut points = Vec::new();
+            for cycle in 0..2 {
+                let start = cycle as f32 * period;
+                for (x, y) in [
+                    (start, 1.0),
+                    (start + on, 1.0),
+                    (start + on, 0.0),
+                    (start + period, 0.0),
+                ] {
+                    points.push([x / (2.0 * period), y]);
+                }
+            }
+            (
+                points,
+                vec![
+                    (
+                        "Range",
+                        format!(
+                            "{} to {}",
+                            literal(&f.amplitude_min),
+                            literal(&f.amplitude_max)
+                        ),
+                    ),
+                    ("On", format!("{} ms", f.on_time_ms)),
+                    ("Off", format!("{} ms", f.off_time_ms)),
+                    (
+                        "Beat aligned",
+                        if f.beat_aligned { "Yes" } else { "No" }.to_owned(),
+                    ),
+                ],
+            )
+        }
+        AnimationSpecBody::WasmPlugin(_) | AnimationSpecBody::Wasm(_) => {
+            duo::note(
+                ui,
+                "This animation is drawn by a plugin, so its shape isn't known here.",
+            );
+            return;
+        }
+        _ => {
+            duo::note(
+                ui,
+                "This animation follows the audio, so its shape isn't known here.",
+            );
+            return;
+        }
+    };
+
+    // `.wave`: the well, a centre line and the curve.
+    let t = crate::app::ui_tokens::studio(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 150.0),
+        egui::Sense::hover(),
+    );
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, t.well);
+    painter.hline(
+        rect.x_range(),
+        rect.center().y.round() + 0.5,
+        egui::Stroke::new(1.0_f32, t.line),
+    );
+    // The mockup's viewBox: y from 58 (0) to 4 (1) of 60.
+    let line: Vec<egui::Pos2> = points
+        .iter()
+        .map(|[x, y]| {
+            egui::pos2(
+                rect.left() + x * rect.width(),
+                rect.top() + (58.0 - y * 54.0) / 60.0 * rect.height(),
+            )
+        })
+        .collect();
+    painter.add(egui::Shape::line(line, egui::Stroke::new(1.5_f32, t.data)));
+
+    ui.add_space(8.0);
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = duo::KV_GAP;
+        for (term, value) in rows {
+            duo::kv_row(ui, term, |ui| duo::text(ui, value));
+        }
+    });
+    ui.add_space(8.0);
+    duo::note(ui, "Curve drawn from the saved settings.");
+}
+
+/// A beat count like the mockup's "1/4 beats".
+fn beats(m: AnimationSpeedModifier) -> String {
+    format!("{m:?}").trim_start_matches('_').replace('_', "/")
 }

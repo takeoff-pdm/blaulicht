@@ -492,7 +492,7 @@ impl BlaulichtApp {
 
     /// Setup › Palettes on the desktop (`setup.html` `palettes()`): the tree
     /// under a "Palettes" bar with Add and Folder, and the selected palette
-    /// under a "Palette:" bar with Edit and Delete, its name editable in
+    /// under a "Palette:" bar with Delete, its name editable in
     /// place, its kind, and its value (or what it follows) below.
     fn setup_palettes_desktop_ui(&mut self, ui: &mut egui::Ui, state: &EngineState) {
         // Pick a palette so the page is never empty while palettes exist.
@@ -538,13 +538,9 @@ impl BlaulichtApp {
             return;
         };
 
-        let (mut edit, mut delete) = (false, false);
-        let (edit_open, delete_open) = (
-            self.palette_ui_state.edit_dialog_open,
-            self.palette_ui_state.delete_dialog_open,
-        );
+        let mut delete = false;
+        let delete_open = self.palette_ui_state.delete_dialog_open;
         studio::pane_header(&mut detail, Some("Palette:"), &palette.name, true, |ui| {
-            edit = duo::bar_button(ui, "Edit", edit_open);
             delete = duo::bar_button(ui, "Delete", delete_open);
         });
         let mut rename = None;
@@ -556,7 +552,7 @@ impl BlaulichtApp {
         });
 
         let mut color_update = None;
-        let mut unassign = false;
+        let mut pick_target = None;
         match &palette.kind {
             PaletteKind::Pointer {
                 target,
@@ -565,20 +561,23 @@ impl BlaulichtApp {
             } => {
                 duo::lower_pane(&mut detail, "Follows");
                 duo::body(&mut detail, None, |ui| {
-                    duo::form_row(ui, "Target", |ui| {
+                    ui.spacing_mut().item_spacing.y = duo::KV_GAP;
+                    duo::kv_row(ui, "Target", |ui| {
                         let name = state
                             .palettes
                             .get(target)
-                            .map_or_else(|| format!("#{target} (missing)"), |p| p.name.clone());
-                        duo::text(ui, name);
+                            .map_or_else(|| "Missing".to_owned(), |p| p.name.clone());
+                        if duo::chip(ui, &name) && state.palettes.contains_key(target) {
+                            pick_target = Some(*target);
+                        }
                     });
-                    duo::form_row(ui, "Applies to", |ui| {
+                    duo::kv_row(ui, "Applies to", |ui| {
                         duo::text(
                             ui,
                             property.map_or_else(|| "All properties".into(), |p| format!("{p:?}")),
                         )
                     });
-                    duo::form_row(ui, "Steps", |ui| {
+                    duo::kv_row(ui, "Steps", |ui| {
                         duo::text(
                             ui,
                             if ops.is_empty() {
@@ -588,8 +587,6 @@ impl BlaulichtApp {
                             },
                         )
                     });
-                    ui.add_space(8.0);
-                    unassign = Self::palette_unassign_desktop(ui);
                 });
             }
             _ => {
@@ -598,8 +595,6 @@ impl BlaulichtApp {
                     duo::form_row(ui, "Value", |ui| {
                         color_update = Self::render_palette_preview(ui, palette, &state.palettes);
                     });
-                    ui.add_space(8.0);
-                    unassign = Self::palette_unassign_desktop(ui);
                 });
             }
         }
@@ -616,29 +611,13 @@ impl BlaulichtApp {
                 ControlEvent::UpdatePalette(id, PaletteKind::Color(new_color)),
             ));
         }
-        if unassign {
-            self.client.send(ControlEventMessage::new(
-                EventOriginator::Web,
-                ControlEvent::UnassignPalette(id),
-            ));
-        }
-        if edit {
-            self.palette_ui_state.load_from_palette(palette);
-            self.palette_ui_state.edit_palette_id = Some(id);
-            self.palette_ui_state.edit_dialog_open = true;
+        if let Some(target) = pick_target {
+            self.palette_ui_state.selected_palette = Some(target);
         }
         if delete {
             self.palette_ui_state.delete_palette_id = Some(id);
             self.palette_ui_state.delete_dialog_open = true;
         }
-    }
-
-    /// The Unassign button with its note, on the desktop.
-    fn palette_unassign_desktop(ui: &mut egui::Ui) -> bool {
-        let clicked =
-            studio::mini_button(ui, "Unassign", false, crate::app::ui_tokens::TARGET_MIN).clicked();
-        duo::note(ui, "Unassign removes it from every fixture in every scene.");
-        clicked
     }
 
     /// Opens the Create Palette dialog with a fresh Color palette.
@@ -708,7 +687,19 @@ impl BlaulichtApp {
     /// Tapping a palette selects it, tapping a folder selects the folder,
     /// "Move…" opens the folder picker for that row.
     fn setup_palette_tree(&mut self, ui: &mut egui::Ui, state: &EngineState) {
-        let items = palette_tree_items(state, |_| true, |p| palette_kind_label(&p.kind));
+        let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
+        let mut items = palette_tree_items(state, |_| true, |p| palette_kind_label(&p.kind));
+        if desktop {
+            // The desktop list shows only the kind (`setup.html`).
+            for item in &mut items {
+                if let TreeKey::Leaf(id) = item.key {
+                    item.detail = state
+                        .palettes
+                        .get(&id)
+                        .map(|p| palette_kind_label(&p.kind).to_owned());
+                }
+            }
+        }
         if items.is_empty() {
             ui.label(RichText::new("No palettes defined.").weak());
             return;
@@ -724,7 +715,8 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 Tree::new(SETUP_PALETTE_TREE, &items)
                     .selected(selected)
-                    .with_move_button(!crate::app::ui_tokens::Density::of(ui.ctx()).is_compact())
+                    .with_move_button(!desktop)
+                    .list_look(desktop)
                     .drag_to_folders(false)
                     .show(ui)
             })

@@ -52,4 +52,25 @@ Small agreed changes on the other Setup pages (`setup.html`). Mockup: `design/st
   The whole-workspace `cargo test --all-features` was not run.
 - Not verified: Delete confirmations were not clicked through (to keep the show intact); group-tree right labels
   still read "N FX | #id" (mockup: count only), and the old-style create/clone dialogs are unchanged.
+- Review fixes (second pass), verified again in blenv `--desktop` with SPARTACUS_SOLI.json next to the mockup:
+  - Animations › Shape is now the mockup's read-only pane: a full-width 150px curve preview (well, centre line,
+    curve from `phaser::generate`, two cycles; flashes as on/off steps), then Curve / Range / Duration / Sync
+    (flashes: Range / On / Off / Beat aligned) and "Curve drawn from the saved settings." Plugin and audio
+    animations say their shape isn't known here. The old `AnimationEditState` editor is no longer shown on the
+    desktop, so desktop can rename and delete animations but not edit their settings (the kiosk editor stays);
+    editing belongs to the `animation-editor.html` port.
+  - Palettes: the bar has only Delete (no Edit), Follows has no Unassign button or note, Target is a button chip
+    that selects the target palette, and the Follows terms use a 128px column (`.kv`), values at pane + 136px.
+    Value palettes lost Unassign too (not in the mockup). Pointer palettes can't be edited on the desktop now.
+  - Lists: groups show only the fixture count, palettes only the kind; scenes keep `#id`.
+  - Trees (Groups, Scenes, Palettes) use the new `Tree::list_look` (desktop only): no folder counts, semibold
+    folder names, leaves 29px in behind one guide at 12px, selected row filled edge to edge in `blue_dim` with the
+    accent bar at the pane edge and a strong label and detail. Other desktop trees keep their look.
+  - Forms: text rows are 16px with 6px gaps (Name 60, Contains 86, Types 108 like the mockup). Groups' Fixtures
+    table is edge to edge with a 22px header and 24px rows; Universe/Channels and Scenes' Contents counts are
+    12px mono in the strong colour.
+- Kiosk after the fixes: the 800x480 Setup screenshot is byte-identical to the earlier ui/080/decouple one;
+  Groups tab unchanged by eye.
+- Checks after the fixes (blenv container): `cargo fmt -p blaulicht-ui-egui` clean, clippy has no new warnings in
+  touched files, `cargo test -p blaulicht-ui-egui --all-features` 145 passed. Workspace-wide tests not run.
 

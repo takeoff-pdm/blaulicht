@@ -173,7 +173,7 @@ impl BlaulichtApp {
                     ui.set_height(crate::app::ui_tokens::TARGET_MIN);
                     duo::text(ui, label);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        duo::text(ui, count.to_string());
+                        duo::mono(ui, count.to_string());
                     });
                 });
             }
@@ -268,6 +268,7 @@ impl BlaulichtApp {
     fn setup_scene_tree(&mut self, ui: &mut egui::Ui, dmx_engine: &EngineState) {
         let state = &dmx_engine.0;
 
+        let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
         let items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
         if items.is_empty() {
             ui.label(RichText::new("No scenes yet").color(Color32::GRAY));
@@ -284,7 +285,8 @@ impl BlaulichtApp {
             .show(ui, |ui| {
                 Tree::new(SETUP_SCENE_TREE, &items)
                     .selected(Some(selected))
-                    .with_move_button(!crate::app::ui_tokens::Density::of(ui.ctx()).is_compact())
+                    .with_move_button(!desktop)
+                    .list_look(desktop)
                     .drag_to_folders(false)
                     .show(ui)
             })

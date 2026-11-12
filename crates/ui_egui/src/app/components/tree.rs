@@ -355,6 +355,7 @@ pub struct Tree<'a, F, L> {
     toggle_width: f32,
     min_body_width: f32,
     compact: bool,
+    list_look: bool,
     /// `Some(allow_root)`: leaves can be dragged onto folders.
     drag: Option<bool>,
 }
@@ -376,6 +377,7 @@ where
             toggle_width: TOGGLE_WIDTH,
             min_body_width: MIN_BODY_WIDTH,
             compact: false,
+            list_look: false,
             drag: None,
         }
     }
@@ -412,6 +414,15 @@ where
     /// already mark folders) and less padding, so labels keep more room.
     pub fn compact(mut self, compact: bool) -> Self {
         self.compact = compact;
+        self
+    }
+
+    /// The Setup list look (`studio.css` `.row`, desktop only): folders
+    /// with a semibold label and no child count, leaves 29px in behind one
+    /// guide line, the selected row filled edge to edge in `blue_dim` with
+    /// the accent bar at the pane edge.
+    pub fn list_look(mut self, enabled: bool) -> Self {
+        self.list_look = enabled;
         self
     }
 
@@ -588,8 +599,31 @@ where
         let mut action = None;
         let mut toggled = None;
 
+        let list_look = self.list_look;
+        let min_body_width = self.min_body_width;
+        // `.row.leaf { padding-left: 29px }`, `.row { padding: 0 8px }`.
+        let indent_of = |row: &TreeRow, is_folder: bool| {
+            if list_look {
+                let nested = indent_step * row.depth.saturating_sub(1) as f32;
+                if is_folder {
+                    2.0 + indent_step * row.depth as f32
+                } else {
+                    9.0 + nested
+                }
+            } else {
+                indent_width(
+                    row.depth,
+                    indent_step,
+                    full_width,
+                    toggle_width,
+                    min_body_width,
+                )
+            }
+        };
         let label_font = |folder: bool| {
-            let weight = if folder {
+            let weight = if folder && list_look {
+                Weight::SemiBold
+            } else if folder {
                 Weight::Medium
             } else {
                 Weight::Regular
@@ -599,8 +633,8 @@ where
         let detail_font = density.font(Weight::Regular, density.small_size());
         let detail_of = |row: &TreeRow, item: &TreeItem<F, L>| match (&item.detail, item.key) {
             (Some(d), _) => Some(d.clone()),
-            (None, TreeKey::Folder(_)) => Some(row.child_count.to_string()),
-            (None, TreeKey::Leaf(_)) => None,
+            (None, TreeKey::Folder(_)) if !list_look => Some(row.child_count.to_string()),
+            (None, _) => None,
         };
         // Details show on every row or on none, so a narrow column does not
         // end up with a few rows that have them.
@@ -609,14 +643,8 @@ where
             let Some(detail) = detail_of(row, item) else {
                 return true;
             };
-            let indent = indent_width(
-                row.depth,
-                indent_step,
-                full_width,
-                toggle_width,
-                self.min_body_width,
-            );
             let is_folder = matches!(item.key, TreeKey::Folder(_));
+            let indent = indent_of(row, is_folder);
             let icon = if is_folder { folder_icon } else { 0.0 };
             let label = ui
                 .painter()
@@ -657,13 +685,7 @@ where
             if is_folder && index > 0 {
                 ui.add_space(band_gap);
             }
-            let indent = indent_width(
-                row.depth,
-                indent_step,
-                full_width,
-                toggle_width,
-                self.min_body_width,
-            );
+            let indent = indent_of(row, is_folder);
 
             let (row_rect, _) = ui.allocate_exact_size(egui::vec2(full_width, h), Sense::hover());
             let row_id = self.id.with(("row", row.item));
@@ -692,10 +714,21 @@ where
                 ),
             );
             if is_selected {
-                painter.rect_filled(item_rect, 0.0, color.selection);
+                // The list look fills the whole row (`.row.on`).
+                let sel_rect = if list_look {
+                    item_rect.with_min_x(row_rect.left())
+                } else {
+                    item_rect
+                };
+                let fill = if list_look {
+                    ui_tokens::studio(ui.ctx()).blue_dim
+                } else {
+                    color.selection
+                };
+                painter.rect_filled(sel_rect, 0.0, fill);
                 painter.rect_filled(
                     Rect::from_min_size(
-                        item_rect.left_top(),
+                        sel_rect.left_top(),
                         egui::vec2(ui_tokens::ACCENT_BAR, item_rect.height()),
                     ),
                     0.0,
@@ -732,7 +765,16 @@ where
                     band.line,
                 );
             }
-            if row.depth > 0 {
+            if list_look {
+                // One guide at 12px on nested leaves (`.row.leaf::before`).
+                if !is_folder && row.depth > 0 {
+                    painter.vline(
+                        (row_rect.left() + 12.0).round() + 0.5,
+                        row_rect.y_range(),
+                        egui::Stroke::new(ui_tokens::HAIRLINE, ui_tokens::studio(ui.ctx()).line),
+                    );
+                }
+            } else if row.depth > 0 {
                 // One line per parent level, under that parent's caret.
                 let step = indent / row.depth as f32;
                 for level in 0..row.depth {
@@ -832,6 +874,12 @@ where
                 x += folder_icon;
             }
             let detail = detail_of(row, item).filter(|_| show_details);
+            // `.on .v` is strong in the list look.
+            let detail_color = if list_look && is_selected {
+                color.text_strong
+            } else {
+                color.muted
+            };
             let label_font = label_font(is_folder);
             let label_galley =
                 ui.painter()
@@ -839,14 +887,14 @@ where
             if let Some(detail) = detail {
                 let detail_galley =
                     ui.painter()
-                        .layout_no_wrap(detail, detail_font.clone(), color.muted);
+                        .layout_no_wrap(detail, detail_font.clone(), detail_color);
                 // The detail goes first when there is no room for both.
                 if x + label_galley.size().x + 12.0 + detail_galley.size().x <= right {
                     let pos = egui::pos2(
                         right - detail_galley.size().x,
                         row_rect.center().y - detail_galley.size().y / 2.0,
                     );
-                    ui.painter().galley(pos, detail_galley, color.muted);
+                    ui.painter().galley(pos, detail_galley, detail_color);
                 }
             }
             paint_truncated_font(
