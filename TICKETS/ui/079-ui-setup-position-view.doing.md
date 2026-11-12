@@ -23,8 +23,8 @@ The mockup shows a 2D view of the rig next to the position fields (`fxplan.js`).
 - The kiosk layout (`Density::Compact`) stays unchanged.
 
 ## Acceptance criteria
-- [x] Matches the mockup at the same window size, both themes.
-- [x] Dragging a fixture in Front view changes only X and Y.
+- [ ] Matches the mockup at the same window size, both themes.
+- [ ] Dragging a fixture in Front view changes only X and Y.
 
 ## Verification
 - `cargo clippy --all-targets --all-features`, `cargo fmt`, `cargo test --all-features`.
@@ -32,7 +32,7 @@ The mockup shows a 2D view of the rig next to the position fields (`fxplan.js`).
 
 ## Notes
 - New component `app/components/position_view.rs` (`position_view`, `PlanDot`, `PlanSize`), drawn only by
-  the desktop Fixture pane (`pages/setup/fixtures/desktop.rs`, Density::Compact). The kiosk touch editor in
+  the desktop Fixture pane (`pages/setup/fixtures/desktop.rs`, Density::Desktop). The kiosk touch editor in
   `fixtures.rs` is untouched; kiosk Setup screenshot (800x480) still shows the touch layout.
 - Geometry follows `fxplan.js` in its viewBox units (268x190 small, 860x540 large), scaled to the width the
   pane gives: fit with 1 m margin, zoom 0.5-12 about the pointer (wheel/pinch) or the centre (-/+), Fit
@@ -55,3 +55,11 @@ The mockup shows a 2D view of the rig next to the position fields (`fxplan.js`).
   --all-features` (167 passed) in blenv. Not run: workspace-wide clippy/test (only ui_egui changed).
 - Not verified: pixel comparison of the kiosk against a decouple build (no decouple build made; the diff
   touches no kiosk code), trackpad pinch, label halo exactness.
+- Review fixes (2026-11-12): restored `child_folders`' doc comment (it had been attached to `form_heading`),
+  and the Notes and `desktop.rs` module doc now say Density::Desktop instead of Compact.
+- Back to .doing: the review could not verify the criteria. OrbStack/Docker is down (no
+  ~/.orbstack/run/docker.sock), and it was left stopped on purpose (16 GB Mac, load average around 9). Still to do
+  once Docker is up: blenv screenshots (small and large Top/Front views, both themes) against the mockup, drag,
+  zoom, pan and dot-click checks, a kiosk 800x480 comparison against a decouple build, and workspace-wide
+  `cargo clippy --all-targets --all-features` / `cargo test --all-features`. Only host rustfmt --check ran
+  on the two touched files.

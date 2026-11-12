@@ -1,7 +1,7 @@
 //! Setup › Fixtures on the desktop (`setup.html`): a Groups pane with the
 //! folder tree, the centre pane with the page bar ("Selected group:", count,
 //! Add fixture / Overrides / Simulate) and the fixture table, and the Fixture
-//! pane with the editor. Desktop only ([`Density::Compact`]); the kiosk keeps
+//! pane with the editor. Desktop only ([`Density::Desktop`]); the kiosk keeps
 //! [`BlaulichtApp::setup_fixtures_ui`]'s touch layout.
 
 use crate::app::components::position_view::{position_view, PlanDot, PlanSize};
@@ -232,9 +232,6 @@ fn confirm_button(ui: &mut Ui, label: &str) -> egui::Response {
     response
 }
 
-/// The group folders of the desktop tree under `parent`, in `(order, id)`
-/// order: siblings nobody reordered keep the order they were made in, like
-/// the mockup.
 /// `.frm h4`: 6px margin, a line, 8px padding, the label in medium --muted.
 fn form_heading(ui: &mut Ui, text: &str) {
     let t = studio_tokens(ui.ctx());
@@ -251,6 +248,9 @@ fn form_heading(ui: &mut Ui, text: &str) {
     );
 }
 
+/// The group folders of the desktop tree under `parent`, in `(order, id)`
+/// order: siblings nobody reordered keep the order they were made in, like
+/// the mockup.
 fn child_folders(state: &EngineState, parent: Option<FolderId>) -> Vec<FolderId> {
     let mut ids: Vec<(i64, FolderId)> = state
         .0
