@@ -277,9 +277,9 @@ impl BlaulichtApp {
             open_tab = Some(AppSubPage::System_Screens);
         }
 
-        let (remote_online, remote_sessions) = self.client.with_remote_server(|server| {
-            (server.listening.is_some(), server.sessions.len())
-        });
+        let (remote_online, remote_sessions) = self
+            .client
+            .with_remote_server(|server| (server.listening.is_some(), server.sessions.len()));
         let remote_label = format!("Remote UI ({remote_sessions})");
         if Self::render_compact_health_box(
             ui,
@@ -301,12 +301,37 @@ impl BlaulichtApp {
 }
 
 /// What the desktop status bar's issues cell counts (059, 074), from
-/// the same health data as the indicators above.
+/// the same health data as the indicators above. Severities follow the
+/// mockup's problem list (`design/studio/system.html`, `problems()`).
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct HealthSummary {
-    /// Offline outputs and crashed plugins.
+    /// Offline outputs: hardware DMX universes and an enabled Art-Net.
     pub errors: usize,
-    /// MIDI or serial devices in an error state.
+    /// Enabled plugins that crashed and need a reload, and MIDI or serial
+    /// devices in an error state.
     pub warnings: usize,
+}
+
+impl HealthSummary {
+    /// `dmx_outputs`: health of each hardware DMX output; `artnet`: `None`
+    /// when Art-Net is not used; `plugins`: (enabled, crashed) per plugin.
+    fn count(
+        dmx_outputs: &[bool],
+        artnet: Option<bool>,
+        plugins: impl IntoIterator<Item = (bool, bool)>,
+        device_errors: usize,
+    ) -> Self {
+        let errors =
+            dmx_outputs.iter().filter(|ok| !**ok).count() + usize::from(artnet == Some(false));
+        let crashed = plugins
+            .into_iter()
+            .filter(|(enabled, crashed)| *enabled && *crashed)
+            .count();
+        Self {
+            errors,
+            warnings: crashed + device_errors,
+        }
+    }
 }
 
 impl BlaulichtApp {
@@ -314,13 +339,13 @@ impl BlaulichtApp {
         let artnet_enabled = self
             .client
             .with_artnet_receivers(|receivers| receivers.iter().any(|receiver| receiver.enabled));
-        let plugins_broken = self.client.with_plugins(|plugins| {
+        let plugins: Vec<(bool, bool)> = self.client.with_plugins(|plugins| {
             plugins
                 .values()
-                .filter(|plugin| plugin.has_errored())
-                .count()
+                .map(|plugin| (plugin.is_enabled(), plugin.has_errored()))
+                .collect()
         });
-        let (dmx_outputs, artnet_state, warnings) = self.client.with_health(|health| {
+        let (dmx_outputs, artnet_state, device_errors) = self.client.with_health(|health| {
             let midi = health
                 .midi_health
                 .devices
@@ -342,9 +367,47 @@ impl BlaulichtApp {
             (dmx, health.artnet_health_state, midi + serial)
         });
         let artnet = artnet_enabled.then_some(artnet_state);
-        let errors = dmx_outputs.iter().filter(|ok| !**ok).count()
-            + usize::from(artnet == Some(false))
-            + plugins_broken;
-        HealthSummary { errors, warnings }
+        HealthSummary::count(&dmx_outputs, artnet, plugins, device_errors)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HealthSummary;
+
+    #[test]
+    fn offline_universe_and_crashed_plugin_give_an_error_and_a_warning() {
+        let s = HealthSummary::count(&[false, true], None, [(true, true), (true, false)], 0);
+        assert_eq!(
+            s,
+            HealthSummary {
+                errors: 1,
+                warnings: 1
+            }
+        );
+    }
+
+    #[test]
+    fn crashed_plugins_alone_are_warnings_only() {
+        let s = HealthSummary::count(&[true, true], Some(true), [(true, true), (true, true)], 1);
+        assert_eq!(
+            s,
+            HealthSummary {
+                errors: 0,
+                warnings: 3
+            }
+        );
+    }
+
+    #[test]
+    fn disabled_plugins_and_offline_artnet() {
+        let s = HealthSummary::count(&[], Some(false), [(false, true)], 0);
+        assert_eq!(
+            s,
+            HealthSummary {
+                errors: 1,
+                warnings: 0
+            }
+        );
     }
 }
