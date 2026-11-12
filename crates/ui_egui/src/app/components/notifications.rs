@@ -119,6 +119,13 @@ impl std::fmt::Debug for Notifications {
     }
 }
 
+/// Widget id derived from the widget's own rect. Cards move when one
+/// arrives or closes, and egui warns whenever a rect it saw last pass shows
+/// up with another id; keying by rect means a rect always has the same id.
+fn rect_id(salt: &str, rect: Rect) -> Id {
+    Id::new((salt, rect.min.x.round() as i32, rect.min.y.round() as i32))
+}
+
 type Queue = Arc<Mutex<Vec<Notice>>>;
 
 fn queue_id() -> Id {
@@ -229,12 +236,7 @@ impl Notifications {
             .show(ctx, |ui| {
                 ui.set_width(WIDTH);
                 ui.spacing_mut().item_spacing.y = 6.0;
-                let n = self.cards.len();
-                for (i, card) in self.cards.iter_mut().enumerate() {
-                    // Widget ids by slot from the bottom, so a card closing
-                    // or arriving between egui's passes keeps each rect's
-                    // id (no "changed id between passes" warnings).
-                    let slot = n - i;
+                for card in self.cards.iter_mut() {
                     let mut job = LayoutJob::default();
                     job.wrap.max_width = msg_w;
                     job.append(
@@ -265,7 +267,9 @@ impl Notifications {
                     } else {
                         0.0
                     };
-                    let h = galley.size().y.max(LINE) + action_h + 2.0 * PAD_TOP;
+                    // One row is as tall as the close button (the mockup's 22px grid
+                    // column), so a one-line card is 10 + 22 + 10 = 42px.
+                    let h = (galley.size().y.max(LINE) + action_h).max(CLOSE) + 2.0 * PAD_TOP;
                     let (rect, _) = ui.allocate_exact_size(vec2(WIDTH, h), Sense::hover());
                     let hovered = ui.rect_contains_pointer(rect);
                     let p = ui.painter();
@@ -301,7 +305,7 @@ impl Notifications {
                         let link_rect = Rect::from_min_size(at, vec2(g.size().x, LINE));
                         let link = ui.interact(
                             link_rect,
-                            Id::new(("desk_note_act", slot)),
+                            rect_id("desk_note_act", link_rect),
                             Sense::click(),
                         );
                         let y = link_rect.center().y - g.size().y / 2.0;
@@ -321,7 +325,7 @@ impl Notifications {
                         egui::pos2(rect.right() - PAD_RIGHT - CLOSE, rect.top() + PAD_TOP),
                         vec2(CLOSE, CLOSE),
                     );
-                    let x = ui.interact(x_rect, Id::new(("desk_note_x", slot)), Sense::click());
+                    let x = ui.interact(x_rect, rect_id("desk_note_x", x_rect), Sense::click());
                     if card.error || hovered {
                         let p = ui.painter();
                         if x.hovered() {
