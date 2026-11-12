@@ -79,7 +79,7 @@ pub fn narrow_tree_width(ctx: &Context) -> f32 {
 pub fn narrow_tree<'a, F, L>(id_salt: impl Hash, items: &'a [TreeItem<F, L>]) -> Tree<'a, F, L>
 where
     F: Copy + Ord + Send + Sync + 'static,
-    L: Copy + Ord,
+    L: Copy + Ord + Send + Sync + 'static,
 {
     Tree::new(id_salt, items)
         .toggle_width(24.0)
@@ -327,6 +327,36 @@ pub fn move_to_folder_event(
         item,
         folder: target,
     })
+}
+
+/// A leaf dropped onto a folder in a Setup tree (desktop drag,
+/// [`TreeAction::DropLeaf`]): the checked `MoveToFolder` for the caller to
+/// send. The target folder opens and "Moved X to Y" is shown; a move the
+/// engine would reject shows its error instead and returns `None`. There is
+/// no undo.
+pub fn drop_to_folder_event(
+    ctx: &Context,
+    state: &EngineState,
+    tree_salt: impl Hash,
+    item: FolderItem,
+    target: Option<FolderId>,
+) -> Option<ControlEvent> {
+    match move_to_folder_event(state, item, target) {
+        Ok(event) => {
+            if let Some(folder) = target {
+                expand_folder(ctx, tree_salt, folder);
+            }
+            let to = target
+                .and_then(|id| state.folders.get(&id))
+                .map_or_else(|| "no folder".to_string(), |f| f.name.clone());
+            components::notify_info(ctx, format!("Moved {} to {to}", item_name(state, item)));
+            Some(event)
+        }
+        Err(error) => {
+            components::notify_error(ctx, error);
+            None
+        }
+    }
 }
 
 //
@@ -1031,7 +1061,7 @@ pub fn tree_picker_dialog(
                     {
                         Some(TreeAction::SelectLeaf(leaf)) => picked = Some(leaf),
                         Some(TreeAction::TapFolder(f)) => toggle_folder(ui.ctx(), tree_salt, f),
-                        Some(TreeAction::MoveRequested(_)) | None => {}
+                        Some(TreeAction::MoveRequested(_) | TreeAction::DropLeaf(..)) | None => {}
                     }
                 });
         }
@@ -1207,6 +1237,28 @@ mod tests {
 
     /// Whatever the dialog accepts, the engine accepts, and the other way
     /// round (except no-op moves, which the dialog refuses).
+    #[test]
+    fn drop_sends_a_checked_move_and_opens_the_target() {
+        let ctx = Context::default();
+        let s = state();
+        let salt = "drop_test";
+        toggle_folder(&ctx, salt, 3);
+        assert!(TreeState::<FolderId>::load(&ctx, tree_id(salt)).is_collapsed(3));
+        let event = drop_to_folder_event(&ctx, &s, salt, FolderItem::Group(0), Some(3));
+        assert_eq!(
+            event.map(ev),
+            Some(ev(ControlEvent::MoveToFolder {
+                item: FolderItem::Group(0),
+                folder: Some(3),
+            }))
+        );
+        assert!(!TreeState::<FolderId>::load(&ctx, tree_id(salt)).is_collapsed(3));
+        // Out of every folder, and a no-op or a wrong kind sends nothing.
+        assert!(drop_to_folder_event(&ctx, &s, salt, FolderItem::Group(0), None).is_some());
+        assert!(drop_to_folder_event(&ctx, &s, salt, FolderItem::Group(0), Some(1)).is_none());
+        assert!(drop_to_folder_event(&ctx, &s, salt, FolderItem::Group(0), Some(4)).is_none());
+    }
+
     #[test]
     fn move_checks_match_the_engine() {
         let mut s = state();

@@ -563,6 +563,7 @@ impl BlaulichtApp {
                 Tree::new(SETUP_PALETTE_TREE, &items)
                     .selected(selected)
                     .with_move_button(true)
+                    .drag_to_folders(false)
                     .show(ui)
             })
             .inner;
@@ -581,6 +582,18 @@ impl BlaulichtApp {
                     TreeKey::Leaf(id) => FolderItem::Palette(id),
                 };
                 self.setup_palettes_ui.dialog = FolderDialog::move_item(state, item);
+            }
+            Some(TreeAction::DropLeaf(id, folder)) => {
+                if let Some(event) = components::drop_to_folder_event(
+                    ui.ctx(),
+                    state,
+                    SETUP_PALETTE_TREE,
+                    FolderItem::Palette(id),
+                    folder,
+                ) {
+                    self.client
+                        .send(ControlEventMessage::new(EventOriginator::Web, event));
+                }
             }
             None => {}
         }

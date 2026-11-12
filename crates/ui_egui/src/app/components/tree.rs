@@ -109,6 +109,35 @@ pub enum TreeAction<F, L> {
     TapFolder(F),
     /// The row's "Move…" button was tapped (only with [`Tree::with_move_button`]).
     MoveRequested(TreeKey<F, L>),
+    /// A leaf was dragged onto a folder, or onto an item in it (`Some`), or
+    /// below the folders (`None`, only with `allow_root`), and dropped there
+    /// (only with [`Tree::drag_to_folders`], desktop only). Never reported
+    /// for a drop where the leaf already is.
+    DropLeaf(L, Option<F>),
+}
+
+/// A leaf drag must move this far (in points) before it starts, so a click
+/// still selects.
+pub const TREE_DRAG_THRESHOLD: f32 = 5.0;
+
+/// The drag in progress in one tree, kept in egui temp memory.
+#[derive(Clone, Copy, Debug)]
+struct TreeDrag<L> {
+    leaf: L,
+    origin: egui::Pos2,
+    /// Moved past [`TREE_DRAG_THRESHOLD`].
+    active: bool,
+    /// Esc cancelled it; swallow the release.
+    cancelled: bool,
+}
+
+/// Where a drag would drop right now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DropTarget<F> {
+    /// Into this folder (its band is outlined).
+    Folder(F),
+    /// Out of every folder (the whole tree is outlined).
+    Root,
 }
 
 /// Session-lived collapse state, kept in egui temp memory under [`tree_id`].
@@ -326,12 +355,14 @@ pub struct Tree<'a, F, L> {
     toggle_width: f32,
     min_body_width: f32,
     compact: bool,
+    /// `Some(allow_root)`: leaves can be dragged onto folders.
+    drag: Option<bool>,
 }
 
 impl<'a, F, L> Tree<'a, F, L>
 where
     F: Copy + Ord + Send + Sync + 'static,
-    L: Copy + Ord,
+    L: Copy + Ord + Send + Sync + 'static,
 {
     /// `id_salt` names the tree's collapse state (see [`tree_id`]).
     pub fn new(id_salt: impl Hash, items: &'a [TreeItem<F, L>]) -> Self {
@@ -345,6 +376,7 @@ where
             toggle_width: TOGGLE_WIDTH,
             min_body_width: MIN_BODY_WIDTH,
             compact: false,
+            drag: None,
         }
     }
 
@@ -386,6 +418,16 @@ where
     /// Show a "Move…" button on every row, reported as [`TreeAction::MoveRequested`].
     pub fn with_move_button(mut self, enabled: bool) -> Self {
         self.move_button = enabled;
+        self
+    }
+
+    /// Leaves can be dragged onto a folder or onto any item in it (desktop
+    /// only; the kiosk tree ignores this), reported as
+    /// [`TreeAction::DropLeaf`]. With `allow_root`, a drop below the folders
+    /// (or onto a top-level item) moves the leaf out of every folder. Setup
+    /// lists only: live lists never move things by drag.
+    pub fn drag_to_folders(mut self, allow_root: bool) -> Self {
+        self.drag = Some(allow_root);
         self
     }
 
@@ -516,7 +558,7 @@ where
 impl<F, L> Tree<'_, F, L>
 where
     F: Copy + Ord + Send + Sync + 'static,
-    L: Copy + Ord,
+    L: Copy + Ord + Send + Sync + 'static,
 {
     /// The rows at Compact density (desktop): a tree like a file browser.
     /// Folders have a caret, a folder icon (not in [`Self::compact`] narrow
@@ -594,10 +636,24 @@ where
         });
 
         ui.spacing_mut().item_spacing.y = 0.0;
+        let drag = self.drag_frame(ui, &rows, h, band_gap, full_width);
+        // A finished or cancelled drag is not a click.
+        let swallow_clicks = drag
+            .as_ref()
+            .is_some_and(|d| d.state.active || d.state.cancelled);
+        let dragging = drag.as_ref().filter(|d| d.state.active);
+        let target = dragging.and_then(|d| d.target);
         for (index, row) in rows.iter().enumerate() {
             let item = &self.items[row.item];
             let is_selected = self.selected.contains(&item.key);
             let is_folder = matches!(item.key, TreeKey::Folder(_));
+            let is_target = matches!((item.key, target), (TreeKey::Folder(f), Some(DropTarget::Folder(t))) if f == t);
+            let is_drag_source =
+                matches!((item.key, dragging), (TreeKey::Leaf(l), Some(d)) if l == d.state.leaf);
+            let opacity = ui.opacity();
+            if is_drag_source {
+                ui.multiply_opacity(0.4);
+            }
             if is_folder && index > 0 {
                 ui.add_space(band_gap);
             }
@@ -647,10 +703,18 @@ where
                 );
             } else if is_folder {
                 // Folder band (decision A4 B1): title-bar grey with a 1px
-                // line on top, `ctl` under the pointer.
+                // line on top, `ctl` under the pointer, blue tint as a drop
+                // target.
                 let band = ui_tokens::studio(ui.ctx());
-                painter.rect_filled(item_rect, 0.0, if hovered { band.ctl } else { band.head });
-            } else if hovered {
+                let fill = if is_target {
+                    band.blue_tint
+                } else if hovered && dragging.is_none() {
+                    band.ctl
+                } else {
+                    band.head
+                };
+                painter.rect_filled(item_rect, 0.0, fill);
+            } else if hovered && dragging.is_none() {
                 painter.rect_filled(item_rect, 0.0, color.surface_raised);
             }
             if is_folder {
@@ -709,7 +773,7 @@ where
 
             // "Move…" on the hovered or selected row, at the right end.
             let mut right = body_rect.right() - 6.0;
-            if self.move_button && (hovered || is_selected) {
+            if self.move_button && (hovered || is_selected) && dragging.is_none() {
                 let galley_width = ui
                     .painter()
                     .layout_no_wrap(
@@ -724,19 +788,17 @@ where
                     egui::pos2(right - width / 2.0, row_rect.center().y),
                     egui::vec2(width, 20.0),
                 );
-                let clicked = ui
-                    .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                        components::studio_button(
-                            ui,
-                            components::ButtonVariant::Quiet,
-                            true,
-                            "Move…",
-                            move_size,
-                            None,
-                        )
-                        .clicked()
-                    })
-                    .inner;
+                // A child Ui, so the button does not move the rows below.
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                let clicked = components::studio_button(
+                    &mut child,
+                    components::ButtonVariant::Quiet,
+                    true,
+                    "Move…",
+                    move_size,
+                    None,
+                )
+                .clicked();
                 if clicked {
                     action = Some(TreeAction::MoveRequested(item.key));
                 }
@@ -805,11 +867,51 @@ where
                     &item.label,
                 )
             });
-            if body.clicked() {
+            if body.clicked() && !swallow_clicks {
                 action = Some(match item.key {
                     TreeKey::Folder(f) => TreeAction::TapFolder(f),
                     TreeKey::Leaf(l) => TreeAction::SelectLeaf(l),
                 });
+            }
+
+            if is_target {
+                // 1px blue outline inside the band (`.row.folder.dropin`).
+                ui.painter().rect_stroke(
+                    item_rect,
+                    0.0,
+                    egui::Stroke::new(ui_tokens::HAIRLINE, ui_tokens::studio(ui.ctx()).blue),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            ui.set_opacity(opacity);
+
+            // A press on a leaf may become a drag (see `drag_frame`).
+            if let (Some(_), TreeKey::Leaf(leaf), None) = (self.drag, item.key, &drag) {
+                if body.is_pointer_button_down_on() {
+                    let start = ui.input(|i| {
+                        (i.pointer.primary_down() && i.modifiers.is_none())
+                            .then(|| i.pointer.press_origin())
+                            .flatten()
+                    });
+                    if let Some(origin) = start {
+                        TreeDrag {
+                            leaf,
+                            origin,
+                            active: false,
+                            cancelled: false,
+                        }
+                        .store(ui.ctx(), self.id);
+                    }
+                }
+            }
+        }
+        if toggled.is_some() && swallow_clicks {
+            toggled = None;
+        }
+
+        if let Some(drag) = &drag {
+            if let Some(dropped) = self.finish_drag(ui, drag) {
+                action = Some(dropped);
             }
         }
 
@@ -820,6 +922,189 @@ where
         state.store(ui.ctx(), self.id);
 
         action
+    }
+}
+
+/// One frame of a leaf drag: its state and where it would drop.
+struct DragFrame<F, L> {
+    state: TreeDrag<L>,
+    target: Option<DropTarget<F>>,
+    /// The dragged leaf's folder, and its label.
+    from: Option<F>,
+    released: bool,
+    /// The visible tree area (outlined for [`DropTarget::Root`]).
+    area: Rect,
+}
+
+impl<L: Copy + Send + Sync + 'static> TreeDrag<L> {
+    fn id(tree: Id) -> Id {
+        tree.with("drag")
+    }
+
+    fn load(ctx: &Context, tree: Id) -> Option<Self> {
+        ctx.data(|d| d.get_temp(Self::id(tree)))
+    }
+
+    fn store(self, ctx: &Context, tree: Id) {
+        ctx.data_mut(|d| d.insert_temp(Self::id(tree), self));
+    }
+
+    fn clear(ctx: &Context, tree: Id) {
+        ctx.data_mut(|d| d.remove::<Self>(Self::id(tree)));
+    }
+}
+
+impl<F, L> Tree<'_, F, L>
+where
+    F: Copy + Ord + Send + Sync + 'static,
+    L: Copy + Ord + Send + Sync + 'static,
+{
+    /// The folder a leaf or folder item drops into: its parent, if that is
+    /// a folder of this tree.
+    fn parent_folder(&self, item: &TreeItem<F, L>) -> Option<F> {
+        item.parent
+            .filter(|p| self.items.iter().any(|i| i.key == TreeKey::Folder(*p)))
+    }
+
+    /// Advances the drag of this tree (threshold, Esc) and finds the drop
+    /// target under the pointer. Rows are laid out as in
+    /// [`Self::show_rows_compact`]: `h` high, `band_gap` above every folder
+    /// but the first row.
+    fn drag_frame(
+        &self,
+        ui: &mut Ui,
+        rows: &[TreeRow],
+        h: f32,
+        band_gap: f32,
+        width: f32,
+    ) -> Option<DragFrame<F, L>> {
+        let allow_root = self.drag?;
+        let mut state = TreeDrag::<L>::load(ui.ctx(), self.id)?;
+        let (pointer, down) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_down()));
+        if !state.active && !state.cancelled {
+            if pointer.is_some_and(|p| p.distance(state.origin) >= TREE_DRAG_THRESHOLD) {
+                state.active = true;
+            }
+        } else if state.active
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            state.active = false;
+            state.cancelled = true;
+        }
+        state.store(ui.ctx(), self.id);
+
+        let leaf = self
+            .items
+            .iter()
+            .find(|i| i.key == TreeKey::Leaf(state.leaf));
+        let Some(leaf) = leaf else {
+            TreeDrag::<L>::clear(ui.ctx(), self.id);
+            return None;
+        };
+        let from = self.parent_folder(leaf);
+
+        let top = ui.cursor().top();
+        let left = ui.cursor().left();
+        let clip = ui.clip_rect();
+        let mut y = top;
+        let mut target = None;
+        let pointer_in = pointer
+            .filter(|p| clip.contains(*p) && (left..=left + width).contains(&p.x) && p.y >= top);
+        for (index, row) in rows.iter().enumerate() {
+            let item = &self.items[row.item];
+            if matches!(item.key, TreeKey::Folder(_)) && index > 0 {
+                y += band_gap;
+            }
+            let rect = Rect::from_min_size(egui::pos2(left, y), egui::vec2(width, h));
+            y += h;
+            if pointer_in.is_some_and(|p| rect.contains(p)) {
+                target = Some(match item.key {
+                    TreeKey::Folder(f) => Some(DropTarget::Folder(f)),
+                    TreeKey::Leaf(_) => match self.parent_folder(item) {
+                        Some(f) => Some(DropTarget::Folder(f)),
+                        None => allow_root.then_some(DropTarget::Root),
+                    },
+                });
+                break;
+            }
+        }
+        let target = match target {
+            Some(t) => t,
+            None => pointer_in.and(allow_root.then_some(DropTarget::Root)),
+        };
+        let area = Rect::from_min_max(
+            egui::pos2(left, top.max(clip.top())),
+            egui::pos2(left + width, clip.bottom().max(y.min(clip.bottom()))),
+        );
+        Some(DragFrame {
+            state,
+            target,
+            from,
+            released: !down,
+            area,
+        })
+    }
+
+    /// Paints the drag (ghost, outlined tree, cursor) and, on release, ends
+    /// it and returns the drop.
+    fn finish_drag(&self, ui: &Ui, drag: &DragFrame<F, L>) -> Option<TreeAction<F, L>> {
+        let ctx = ui.ctx();
+        if drag.released {
+            TreeDrag::<L>::clear(ctx, self.id);
+            ctx.request_repaint();
+            if !drag.state.active {
+                return None;
+            }
+            let folder = match drag.target? {
+                DropTarget::Folder(f) => Some(f),
+                DropTarget::Root => None,
+            };
+            return (folder != drag.from).then_some(TreeAction::DropLeaf(drag.state.leaf, folder));
+        }
+        if !drag.state.active {
+            return None;
+        }
+        let band = ui_tokens::studio(ctx);
+        if drag.target == Some(DropTarget::Root) {
+            // `.body.dropin`: the whole tree outlined.
+            ui.painter().rect_stroke(
+                drag.area,
+                0.0,
+                egui::Stroke::new(ui_tokens::HAIRLINE, band.blue),
+                egui::StrokeKind::Inside,
+            );
+        }
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        // The ghost (`.treeghost`): the name in a box 12/8 px right and
+        // below the pointer, blue outline over a target, grey otherwise.
+        if let Some(pointer) = ui.input(|i| i.pointer.latest_pos()) {
+            let label = self
+                .items
+                .iter()
+                .find(|i| i.key == TreeKey::Leaf(drag.state.leaf))
+                .map(|i| i.label.clone())
+                .unwrap_or_default();
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                self.id.with("drag_ghost"),
+            ));
+            let ok = drag.target.is_some();
+            let text = if ok { band.strong } else { band.muted };
+            let galley =
+                painter.layout_no_wrap(label, Density::of(ctx).font(Weight::Regular, 12.0), text);
+            let min = pointer + egui::vec2(12.0, 8.0);
+            let rect = Rect::from_min_size(min, galley.size() + egui::vec2(16.0, 6.0));
+            painter.rect_filled(rect, 0.0, band.ctl);
+            painter.rect_stroke(
+                rect,
+                0.0,
+                egui::Stroke::new(ui_tokens::HAIRLINE, if ok { band.blue } else { band.line }),
+                egui::StrokeKind::Outside,
+            );
+            painter.galley(min + egui::vec2(8.0, 3.0), galley, text);
+        }
+        ctx.request_repaint();
+        None
     }
 }
 
