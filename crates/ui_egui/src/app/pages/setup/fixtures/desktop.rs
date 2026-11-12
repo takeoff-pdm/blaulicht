@@ -59,6 +59,9 @@ struct Identify {
     pass: u64,
     /// Focus Next once, when the panel opens.
     focus_next: bool,
+    /// The panel's buttons, from the last pass: while one of them (or
+    /// nothing) has focus, ← and → step instead of moving egui's focus.
+    buttons: Vec<Id>,
 }
 
 impl Identify {
@@ -86,6 +89,7 @@ impl Default for Identify {
             sent: 0.0,
             pass: 0,
             focus_next: false,
+            buttons: Vec::new(),
         }
     }
 }
@@ -353,6 +357,7 @@ impl BlaulichtApp {
                         sent: 0.0,
                         pass: ctx.cumulative_pass_nr(),
                         focus_next: true,
+                        ..Default::default()
                     };
                     self.send_identify(&ctx, &mut ident);
                     ctx.data_mut(|d| d.insert_temp(identify_id(), ident));
@@ -426,7 +431,25 @@ impl BlaulichtApp {
         let density = Density::of(ctx);
         let mut step = 0;
         let (mut stop, mut take) = (false, false);
-        if !ctx.egui_wants_keyboard_input() {
+        // The panel owns ← and → while nothing outside it has focus. Not
+        // `egui_wants_keyboard_input`: that is true whenever any widget has
+        // focus, and Next takes focus when the panel opens.
+        let focused = ctx.memory(|m| m.focused());
+        let ours = focused.map_or(true, |f| ident.buttons.contains(&f));
+        if let Some(f) = focused.filter(|_| ours) {
+            // Keep egui from moving the focus with the arrows.
+            ctx.memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    f,
+                    egui::EventFilter {
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        ..Default::default()
+                    },
+                )
+            });
+        }
+        if ours {
             ctx.input_mut(|i| {
                 if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) {
                     step += 1;
@@ -457,6 +480,7 @@ impl BlaulichtApp {
         } else {
             format!("Through {}", group.name)
         };
+        let mut buttons = Vec::new();
         let area = egui::Area::new(identify_id().with("panel"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
@@ -493,10 +517,13 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         let prev = format!("{} Previous", egui_phosphor::regular::CARET_LEFT);
                         let next = format!("Next {}", egui_phosphor::regular::CARET_RIGHT);
-                        if studio::mini_button_w(ui, &prev, half, TARGET_SHOW).clicked() {
+                        let p = studio::mini_button_w(ui, &prev, half, TARGET_SHOW);
+                        buttons.push(p.id);
+                        if p.clicked() {
                             step -= 1;
                         }
                         let n = studio::mini_button_w(ui, &next, w - 2.0 - half, TARGET_SHOW);
+                        buttons.push(n.id);
                         if ident.focus_next {
                             n.request_focus();
                         }
@@ -507,15 +534,18 @@ impl BlaulichtApp {
                     ui.horizontal(|ui| {
                         let f = density.font(Weight::Regular, 12.0);
                         let stop_w = studio::text_width(ui, "Stop", f) + 20.0;
-                        take = studio::mini_button_w(
+                        let tr = studio::mini_button_w(
                             ui,
                             "Transfer to selection",
                             w - 2.0 - stop_w,
                             TARGET_SHOW,
                         )
-                        .on_hover_text("Stop identifying and select only this fixture")
-                        .clicked();
-                        stop |= studio::mini_button_w(ui, "Stop", stop_w, TARGET_SHOW).clicked();
+                        .on_hover_text("Stop identifying and select only this fixture");
+                        buttons.push(tr.id);
+                        take = tr.clicked();
+                        let st = studio::mini_button_w(ui, "Stop", stop_w, TARGET_SHOW);
+                        buttons.push(st.id);
+                        stop |= st.clicked();
                     });
                     ui.add(
                         egui::Label::new(
@@ -528,6 +558,7 @@ impl BlaulichtApp {
                 });
             });
         ident.focus_next = false;
+        ident.buttons = buttons;
 
         // A click outside the panel, its button and the fixture rows stops.
         let table: Option<Rect> = ctx.data(|d| d.get_temp(table_rect_id()));

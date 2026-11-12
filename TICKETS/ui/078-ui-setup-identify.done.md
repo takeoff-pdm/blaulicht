@@ -64,3 +64,12 @@ Identify does not exist in egui; Initialize works on one fixture (`fxplan.js` Id
   (`scrollIntoView` in the mockup); with the mockup's group sizes the rows always fit.
 - Out of scope, noted: the single-fixture editor still lacks the mockup's Patch heading, Channels row,
   conflict message and position plan; that's the editor port, not this ticket.
+- Review fix (arrow keys): ←/→ did nothing, because the gate was `egui_wants_keyboard_input()`, which is
+  true whenever any widget has focus, and Next takes focus when the panel opens. Now the panel owns ←/→
+  while nothing or one of its own buttons has focus (a text field elsewhere keeps its arrows), and it sets
+  a focus-lock filter on its focused button so egui doesn't move the focus with the arrows. Re-verified in
+  blenv `--desktop` with SPARTACUS_SOLI, MAC250E, #2 selected: Right ×2 went from 2 of 6 to 4 of 6 with the
+  red row following; after a click inside the panel, Left ×3 went #4 to #1; after clicking Previous (#1 to
+  #6, wrap), Right ×2 went to #2; Esc still stops. Kiosk Setup (800x480) screenshot still byte-identical
+  (`cmp`) with the earlier kiosk shots. In the container (CARGO_BUILD_JOBS=4): rustfmt --check on
+  desktop.rs, clippy --all-targets --all-features (nothing in desktop.rs), cargo test --all-features pass.
