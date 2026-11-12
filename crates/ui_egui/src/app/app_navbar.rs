@@ -77,6 +77,7 @@ impl BlaulichtApp {
     /// fixes a problem, or toggle Blackout.
     pub fn show_desktop_status_bar(&mut self, ui: &mut egui::Ui) {
         let link = self.engine_link();
+        components::value_entry::set_engine_link(ui.ctx(), link);
         let grand_master = self.client.grand_master_percent();
         // Remember the level Blackout restores: the last non-zero one, also
         // when another client changed Grand Master.

@@ -29,6 +29,7 @@ mod switch;
 mod text;
 mod text_input;
 mod tree;
+pub mod value_entry;
 
 pub use button::*;
 pub use button_new::*;
