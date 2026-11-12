@@ -4,12 +4,15 @@ use crate::app::{
 };
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand};
+use blaulicht_shared::folder::FolderId;
 use blaulicht_shared::{
     scene::BLANK_SCENE_ID, view::View, AnimationSpeedModifier, ControlEvent, ControlEventMessage,
     EventOriginator,
 };
 use egui::{Context, FontId, Frame, Key, Margin, RichText, TextEdit, Vec2};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+mod desktop;
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
@@ -33,6 +36,14 @@ pub struct ViewUI {
     /// The Create View command waiting for its reply (the dialog closes on
     /// success).
     create_reply: Option<CommandSeq>,
+    /// Desktop: the title bar's name field while it is edited (view, text).
+    name_edit: Option<(u8, String)>,
+    /// Desktop: the Add view dialog's name.
+    add_name: String,
+    /// Desktop: focus and select the Add view name on the next frame.
+    add_focus: bool,
+    /// Desktop: scene folders closed in the view's scene list.
+    closed_folders: BTreeSet<FolderId>,
 }
 
 impl Default for ViewUI {
@@ -49,6 +60,10 @@ impl Default for ViewUI {
             alpha_held: Held::default(),
             speed_held: Held::default(),
             create_reply: None,
+            name_edit: None,
+            add_name: String::new(),
+            add_focus: false,
+            closed_folders: BTreeSet::new(),
         }
     }
 }
@@ -347,6 +362,12 @@ impl BlaulichtApp {
         ctx: &Context,
         render_context: crate::app::page::PageRenderContext,
     ) {
+        // Desktop: the `pages.html#views` layout. The kiosk keeps the touch
+        // layout below.
+        if crate::app::ui_tokens::Density::of(ctx).is_compact() {
+            self.view_desktop_ui(ui, ctx);
+            return;
+        }
         self.render_add_view_dialog(ctx);
         self.render_delete_view(ctx);
         self.render_overlay_picker_dialog(ctx);

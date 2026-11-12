@@ -75,6 +75,19 @@ impl EngineState {
         ok(None)
     }
 
+    /// `HostCommand::RenameView`.
+    pub(super) fn rename_view_command(&mut self, view: u8, name: &str) -> CommandOutcome {
+        let name = name.trim();
+        if name.is_empty() {
+            return refused("Name is empty");
+        }
+        let Some(view) = self.0.views.get_mut(&view) else {
+            return refused(VIEW_NOT_FOUND);
+        };
+        view.name = name.to_string();
+        ok(None)
+    }
+
     /// `HostCommand::AddViewOverlay`.
     pub(super) fn add_view_overlay_command(&mut self, view: u8, scene: u8) -> CommandOutcome {
         if scene == BLANK_SCENE_ID || !self.0.scenes.contains_key(&scene) {
@@ -759,6 +772,37 @@ mod tests {
                 }
             ),
             refused("Name is empty")
+        );
+
+        let rename = HostCommand::RenameView {
+            view: chorus,
+            name: " Verse ".to_string(),
+        };
+        assert!(rename.edits_show());
+        assert_eq!(h.engine.round_trip(&h.remote, rename), OK);
+        assert_eq!(
+            h.desk.with_show(|show| show.0.views[&chorus].name.clone()),
+            "Verse"
+        );
+        assert_eq!(
+            h.engine.round_trip(
+                &h.remote,
+                HostCommand::RenameView {
+                    view: chorus,
+                    name: " ".to_string()
+                }
+            ),
+            refused("Name is empty")
+        );
+        assert_eq!(
+            h.engine.round_trip(
+                &h.remote,
+                HostCommand::RenameView {
+                    view: 250,
+                    name: "X".to_string()
+                }
+            ),
+            refused("View not found")
         );
 
         // Overlays and their masters.

@@ -1109,6 +1109,7 @@ impl DmxEngine {
             }
             HostCommand::CreateView { name } => state.create_view_command(&name),
             HostCommand::DeleteView(view) => state.delete_view_command(view),
+            HostCommand::RenameView { view, name } => state.rename_view_command(view, &name),
             HostCommand::AddViewOverlay { view, scene } => {
                 state.add_view_overlay_command(view, scene)
             }
