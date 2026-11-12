@@ -150,7 +150,7 @@ Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 03
 | 074 | [Status bar issues cell](TICKETS/ui/074-ui-status-bar-issues.done.md) | done | 059, 070 |
 | 075 | [Programmer layout, page bar and resizable panes](TICKETS/ui/075-ui-programmer-layout.planned.md) | planned | 069, 071, 072 |
 | 076 | [Programmer colour picker and Add animation](TICKETS/ui/076-ui-programmer-colour-animations.planned.md) | planned | 075 |
-| 077 | [Setup Fixtures: multi-select and Move to group](TICKETS/ui/077-ui-setup-fixtures-multiselect.planned.md) | planned | 069, 071, 073 |
+| 077 | [Setup Fixtures: multi-select and Move to group](TICKETS/ui/077-ui-setup-fixtures-multiselect.doing.md) | doing | 069, 071, 073 |
 | 078 | [Identify panel and Initialize for a selection](TICKETS/ui/078-ui-setup-identify.planned.md) | planned | 077 |
 | 079 | [Fixture position view](TICKETS/ui/079-ui-setup-position-view.planned.md) | planned | 077 |
 | 080 | [Setup pages: title bars and detail panes](TICKETS/ui/080-ui-setup-pages-polish.planned.md) | planned | 069, 073 |
