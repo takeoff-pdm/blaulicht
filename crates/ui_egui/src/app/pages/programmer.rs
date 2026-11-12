@@ -58,10 +58,14 @@ impl BlaulichtApp {
         // Desktop: the lit button (`.livebtn`), its dot blinking while this
         // session previews. The kiosk keeps its LIVE button below.
         if Density::of(ui.ctx()).is_compact() {
-            let height = size
-                .height_at(Density::Compact)
-                .max(crate::app::ui_tokens::TARGET_MIN);
-            let response = components::studio::live_button(ui, "Exclusive preview", owned, height);
+            // In the page bar beside Blackout, at the show height.
+            let _ = size;
+            let response = components::studio::live_button(
+                ui,
+                "Exclusive preview",
+                owned,
+                crate::app::ui_tokens::TARGET_SHOW,
+            );
             if response.clicked() {
                 self.client.send(ControlEventMessage::new(
                     EventOriginator::Web,
@@ -166,6 +170,7 @@ impl BlaulichtApp {
                 |_| {},
                 |ui| {
                     toggle = components::studio::blackout_button(ui, black).clicked();
+                    self.live_mode_toggle(ui, &dmx_engine, ButtonSize::Medium);
                 },
             );
             if toggle {
@@ -328,6 +333,8 @@ impl BlaulichtApp {
                             // Pushed to the far right of the toolbar. The height
                             // is pinned to one button: a bare `with_layout` would
                             // claim the whole panel and centre the toggle in it.
+                            // The desktop has it in the page bar instead.
+                            if !Density::of(ui.ctx()).is_compact() {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(
                                     ui.available_width(),
@@ -338,6 +345,7 @@ impl BlaulichtApp {
                                     self.live_mode_toggle(ui, &dmx_engine, button_size);
                                 },
                             );
+                            }
                         });
 
                         ui.separator();
