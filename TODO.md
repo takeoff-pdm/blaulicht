@@ -145,7 +145,7 @@ Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 03
 | 069 | [Studio tokens, 40px bars, folder bands and lit buttons](TICKETS/ui/069-ui-tokens-bars-livebutton.done.md) | done | 058 |
 | 070 | [Stacked notifications](TICKETS/ui/070-ui-notifications.done.md) | done | 058 |
 | 071 | [One dropdown component](TICKETS/ui/071-ui-dropdown.done.md) | done | 058, 069 |
-| 072 | [Typing values in place and keyboard control of faders and knobs](TICKETS/ui/072-ui-value-entry-keyboard.planned.md) | planned | 058 |
+| 072 | [Typing values in place and keyboard control of faders and knobs](TICKETS/ui/072-ui-value-entry-keyboard.done.md) | done | 058 |
 | 073 | [Drag items between folders in Setup lists](TICKETS/ui/073-ui-folder-tree-drag.planned.md) | planned | 069 |
 | 074 | [Status bar issues cell](TICKETS/ui/074-ui-status-bar-issues.planned.md) | planned | 059, 070 |
 | 075 | [Programmer layout, page bar and resizable panes](TICKETS/ui/075-ui-programmer-layout.planned.md) | planned | 069, 071, 072 |

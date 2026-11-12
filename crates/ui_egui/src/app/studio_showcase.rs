@@ -14,7 +14,7 @@ struct State {
     active: usize,
     faders: [f32; 4],
     master: f32,
-    speed: f32,
+    speed: blaulicht_shared::AnimationSpeedModifier,
     gain: f32,
     sw: [bool; 2],
     seg: usize,
@@ -35,7 +35,7 @@ impl Default for State {
             active: 1,
             faders: [255.0, 0.0, 128.0, 64.0],
             master: 100.0,
-            speed: 1.0,
+            speed: blaulicht_shared::AnimationSpeedModifier::_1,
             gain: 0.0,
             sw: [true, false],
             seg: 0,
@@ -187,7 +187,7 @@ pub fn showcase_ui(ui: &mut Ui) {
                         "Intensity",
                         KnobSize::Normal,
                     );
-                    studio::knob(ui, &mut s.speed, 0.25..=4.0, "Speed", KnobSize::Normal);
+                    studio::speed_knob(ui, &mut s.speed, "Speed", KnobSize::Normal);
                     studio::knob(ui, &mut s.master, 0.0..=100.0, "Small", KnobSize::Small);
                 });
                 ui.add_space(10.0);

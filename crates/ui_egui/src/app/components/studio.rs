@@ -7,10 +7,12 @@
 //! drawing stays unchanged. All sizes follow `design/studio/RULES.md`: 24px
 //! minimum targets, 28px for show controls, 12px text with 11px minimum.
 
+use super::value_entry;
 use crate::app::ui_tokens::{
     studio, Density, Studio, Weight, LIST_ROW_HEIGHT, PAGE_BAR_HEIGHT, PANE_TITLE_HEIGHT,
     PHOSPHOR_FILL_FAMILY, TARGET_MIN, TARGET_SHOW, TEXT, TEXT_MIN,
 };
+use blaulicht_shared::AnimationSpeedModifier;
 use egui::text::TextWrapping;
 use egui::{
     pos2, text::LayoutJob, vec2, Align2, Color32, CornerRadius, FontFamily, FontId, Id, Pos2, Rect,
@@ -907,6 +909,61 @@ fn format_value(value: f32, range: &RangeInclusive<f32>) -> String {
     }
 }
 
+/// The smallest unit of a control: 1 on wide ranges (DMX values, percent,
+/// degrees), 0.01 on short ones, matching [`format_value`].
+fn unit_of(range: &RangeInclusive<f32>) -> f32 {
+    if range.end() - range.start() > 10.0 {
+        1.0
+    } else {
+        0.01
+    }
+}
+
+/// Moves `value` by `steps` units of `unit`, snapped to the unit and
+/// clamped. Returns whether it changed.
+fn nudge(value: &mut f32, range: &RangeInclusive<f32>, unit: f32, steps: f32) -> bool {
+    if steps == 0.0 {
+        return false;
+    }
+    let new = (((*value - range.start()) / unit).round() + steps) * unit + range.start();
+    let new = new.clamp(*range.start(), *range.end());
+    let changed = new != *value;
+    *value = new;
+    changed
+}
+
+/// Arrow keys (focused) and typing in place (double-click, see
+/// `value_entry`) for a control with a numeric readout. `edit_here` says
+/// whether a double-click this frame should open the field; `readout` is
+/// where the value is painted. Returns whether the value changed.
+#[allow(clippy::too_many_arguments)]
+fn value_keys_and_typing(
+    ui: &mut Ui,
+    t: &Studio,
+    response: &Response,
+    value: &mut f32,
+    range: &RangeInclusive<f32>,
+    unit: f32,
+    edit_here: bool,
+    shown: &str,
+    readout: Rect,
+    name: &str,
+    parse: &dyn Fn(&str) -> Option<f32>,
+) -> bool {
+    let mut changed = false;
+    let steps = value_entry::arrow_steps(ui, response, (range.end() - range.start()) / unit);
+    if !value_entry::is_editing(ui.ctx(), response.id) {
+        changed |= nudge(value, range, unit, steps);
+    }
+    if edit_here && response.double_clicked() {
+        value_entry::begin_edit(ui.ctx(), response.id, shown.to_owned(), name);
+    }
+    if let Some(text) = value_entry::edit_field(ui, t, response.id, readout) {
+        changed |= value_entry::apply_typed(&text, shown, value, range, parse);
+    }
+    changed
+}
+
 /// The vertical hardware fader for fixture attributes played live: printed
 /// scale, recessed slot, raised 36px cap, value and name below. `changed`
 /// colours the value and indicator amber.
@@ -926,8 +983,34 @@ pub fn fader(
     if drag_value(&response, value, &range, -response.drag_delta().y, travel) {
         response.mark_changed();
     }
-    let p = ui.painter();
     let cx = track.center().x.round();
+    // Double-click the value or the name below the track to type a value.
+    let shown = format_value(*value, &range);
+    let readout = Rect::from_center_size(
+        pos2(cx, track.bottom() + 9.0),
+        vec2(text_width(ui, &shown, mono(TEXT)), 16.0),
+    );
+    let on_text = response
+        .interact_pointer_pos()
+        .or(response.hover_pos())
+        .is_some_and(|p| p.y >= track.bottom());
+    if value_keys_and_typing(
+        ui,
+        t,
+        &response,
+        value,
+        &range,
+        unit_of(&range),
+        on_text,
+        &shown,
+        readout,
+        name,
+        &value_entry::parse_number,
+    ) {
+        response.mark_changed();
+    }
+    let editing = value_entry::is_editing(ui.ctx(), response.id);
+    let p = ui.painter();
     // Printed scale: 11 ticks either side of the slot.
     let scale = Rect::from_min_max(
         pos2(track.left() + 7.0, track.top() + 18.0),
@@ -962,13 +1045,15 @@ pub fn fader(
         true,
     );
     let val_color = if changed { t.changed } else { t.strong };
-    ui.painter().text(
-        pos2(cx, track.bottom() + 9.0),
-        Align2::CENTER_CENTER,
-        format_value(*value, &range),
-        mono(TEXT),
-        val_color,
-    );
+    if !editing {
+        ui.painter().text(
+            pos2(cx, track.bottom() + 9.0),
+            Align2::CENTER_CENTER,
+            format_value(*value, &range),
+            mono(TEXT),
+            val_color,
+        );
+    }
     let name_color = if response.has_focus() { t.blue } else { t.text };
     let cut = paint_truncated(
         ui,
@@ -1009,6 +1094,28 @@ pub fn hfader(
             if drag_value(&response, value, &range, response.drag_delta().x, travel) {
                 response.mark_changed();
             }
+            // Typing in place over the value right of the track.
+            let shown = format_value(*value, &range);
+            let readout = Rect::from_min_size(
+                pos2(track.right() + 6.0, track.center().y - 8.0),
+                vec2(text_width(ui, &shown, mono(TEXT)), 16.0),
+            );
+            if value_keys_and_typing(
+                ui,
+                t,
+                &response,
+                value,
+                &range,
+                unit_of(&range),
+                true,
+                &shown,
+                readout,
+                name,
+                &value_entry::parse_number,
+            ) {
+                response.mark_changed();
+            }
+            let editing = value_entry::is_editing(ui.ctx(), response.id);
             let p = ui.painter();
             let cy = track.center().y.round();
             let lx = track.left() + cw / 2.0;
@@ -1053,13 +1160,15 @@ pub fn hfader(
             let text = format_value(*value, &range);
             let vw = text_width(ui, &text, mono(TEXT));
             let (vrect, _) = ui.allocate_exact_size(vec2(vw, height), Sense::hover());
-            ui.painter().text(
-                pos2(vrect.left(), vrect.center().y),
-                Align2::LEFT_CENTER,
-                text,
-                mono(TEXT),
-                t.strong,
-            );
+            if !editing {
+                ui.painter().text(
+                    pos2(vrect.left(), vrect.center().y),
+                    Align2::LEFT_CENTER,
+                    text,
+                    mono(TEXT),
+                    t.strong,
+                );
+            }
             let name_color = if response.has_focus() { t.blue } else { t.text };
             ui.label(
                 egui::RichText::new(name)
@@ -1092,12 +1201,111 @@ pub fn knob(
     name: &str,
     size: KnobSize,
 ) -> Response {
+    let unit = unit_of(&range);
+    knob_impl(
+        ui,
+        value,
+        range,
+        name,
+        size,
+        KnobKind::Linear(unit),
+        &format_value,
+        &value_entry::parse_number,
+    )
+}
+
+/// The speed knob: the [`knob`] with one detent per
+/// [`AnimationSpeedModifier`], shown and typed as `1/4`, `1x`, `2x`. Arrow
+/// keys move one notch per press and never accelerate.
+pub fn speed_knob(
+    ui: &mut Ui,
+    speed: &mut AnimationSpeedModifier,
+    name: &str,
+    size: KnobSize,
+) -> Response {
+    let last = (AnimationSpeedModifier::ALL.len() - 1) as f32;
+    let mut index = speed.as_index() as f32;
+    let response = knob_impl(
+        ui,
+        &mut index,
+        0.0..=last,
+        name,
+        size,
+        KnobKind::Notched,
+        &|v, _| speed_label(AnimationSpeedModifier::from_index(v.round() as usize)),
+        &parse_speed,
+    );
+    let new = AnimationSpeedModifier::from_index(index.round().max(0.0) as usize);
+    let changed = new != *speed;
+    *speed = new;
+    let mut response = response;
+    if changed {
+        response.mark_changed();
+    }
+    response
+}
+
+/// `1/4`, `1/2`, `1x`, `2x`: fractions as they are, whole speeds with `x`.
+pub fn speed_label(speed: AnimationSpeedModifier) -> String {
+    let s = speed.as_str();
+    if s.contains('/') {
+        s.to_owned()
+    } else {
+        format!("{s}x")
+    }
+}
+
+/// Typed speed text to the index of the nearest speed notch: `1/4`,
+/// `0.25`, `2`, `2x` all work.
+fn parse_speed(text: &str) -> Option<f32> {
+    let s = text.trim().trim_end_matches(['x', 'X']).trim();
+    let v = match s.split_once('/') {
+        Some((a, b)) => a.trim().parse::<f32>().ok()? / b.trim().parse::<f32>().ok()?,
+        None => value_entry::parse_number(s)?,
+    };
+    if !v.is_finite() || v <= 0.0 {
+        return None;
+    }
+    let target = v.log2();
+    AnimationSpeedModifier::ALL
+        .iter()
+        .map(|m| {
+            let label = m.as_str();
+            let mv = match label.split_once('/') {
+                Some((a, b)) => a.parse::<f32>().unwrap_or(1.0) / b.parse::<f32>().unwrap_or(1.0),
+                None => label.parse::<f32>().unwrap_or(1.0),
+            };
+            ((mv.log2() - target).abs(), m.as_index())
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, i)| i as f32)
+}
+
+#[derive(Clone, Copy)]
+enum KnobKind {
+    /// Continuous, moved by this unit with the arrow keys.
+    Linear(f32),
+    /// Whole-number detents (speeds): drags snap, arrows move one notch.
+    Notched,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn knob_impl(
+    ui: &mut Ui,
+    value: &mut f32,
+    range: RangeInclusive<f32>,
+    name: &str,
+    size: KnobSize,
+    kind: KnobKind,
+    fmt: &dyn Fn(f32, &RangeInclusive<f32>) -> String,
+    parse: &dyn Fn(&str) -> Option<f32>,
+) -> Response {
     let t = studio(ui.ctx());
     let d: f32 = match size {
         KnobSize::Normal => 58.0,
         KnobSize::Small => 44.0,
     };
-    let value_text = format_value(*value, &range);
+    let value_text = fmt(*value, &range);
     // Small knobs (page bar masters) put the value and the name to the
     // right of the knob, 6px apart (`#masters .knob`); normal knobs below.
     let small = size == KnobSize::Small;
@@ -1114,23 +1322,65 @@ pub fn knob(
         vec2(d.max(52.0), d + 34.0)
     };
     let (rect, mut response) = ui.allocate_exact_size(size_v, Sense::click_and_drag());
-    if drag_value(&response, value, &range, -response.drag_delta().y, 150.0) {
-        response.mark_changed();
-    }
+    let unit = match kind {
+        KnobKind::Linear(unit) => {
+            if drag_value(&response, value, &range, -response.drag_delta().y, 150.0) {
+                response.mark_changed();
+            }
+            unit
+        }
+        KnobKind::Notched => {
+            // Drag a hidden continuous position and snap the value to it.
+            let acc_id = response.id.with("notch_drag");
+            let mut acc = if response.drag_started() {
+                *value
+            } else {
+                ui.data(|d| d.get_temp::<f32>(acc_id)).unwrap_or(*value)
+            };
+            if drag_value(&response, &mut acc, &range, -response.drag_delta().y, 150.0) {
+                let snapped = acc.round();
+                if snapped != *value {
+                    *value = snapped;
+                    response.mark_changed();
+                }
+            }
+            ui.data_mut(|d| d.insert_temp(acc_id, acc));
+            1.0
+        }
+    };
     let c = if small {
         pos2(rect.left() + d / 2.0, rect.center().y)
     } else {
         pos2(rect.center().x, rect.top() + d / 2.0)
     };
+    let shown = value_text.clone();
+    let vw = text_width(ui, &shown, mono(TEXT));
+    let readout = if small {
+        let x = rect.left() + d + 6.0;
+        Rect::from_min_size(pos2(x, c.y - 16.0), vec2(vw, 16.0))
+    } else {
+        Rect::from_center_size(pos2(c.x, rect.top() + d + 8.0), vec2(vw, 16.0))
+    };
+    if value_keys_and_typing(
+        ui, t, &response, value, &range, unit, true, &shown, readout, name, parse,
+    ) {
+        response.mark_changed();
+    }
+    let editing = value_entry::is_editing(ui.ctx(), response.id);
+    let value_text = fmt(*value, &range);
     let r = d / 2.0;
     let frac = ((*value - range.start()) / (range.end() - range.start())).clamp(0.0, 1.0);
     let start = 135f32.to_radians();
     let sweep = 270f32.to_radians();
     let p = ui.painter();
-    for i in 0..=10 {
-        let a = start + sweep * i as f32 / 10.0;
+    let ticks = match kind {
+        KnobKind::Notched => (range.end() - range.start()).round().max(1.0) as usize,
+        KnobKind::Linear(_) => 10,
+    };
+    for i in 0..=ticks {
+        let a = start + sweep * i as f32 / ticks as f32;
         let dir = vec2(a.cos(), a.sin());
-        let lit = (i as f32) / 10.0 <= frac + 1e-4;
+        let lit = (i as f32) / ticks as f32 <= frac + 1e-4;
         let color = if lit { t.strong } else { t.scale };
         p.line_segment(
             [c + dir * (r - 6.0), c + dir * (r - 1.0)],
@@ -1152,13 +1402,15 @@ pub fn knob(
     }
     if small {
         let x = rect.left() + d + 6.0;
-        p.text(
-            pos2(x, c.y),
-            Align2::LEFT_BOTTOM,
-            value_text,
-            mono(TEXT),
-            t.strong,
-        );
+        if !editing {
+            p.text(
+                pos2(x, c.y),
+                Align2::LEFT_BOTTOM,
+                value_text,
+                mono(TEXT),
+                t.strong,
+            );
+        }
         let name_color = if response.has_focus() {
             t.blue
         } else {
@@ -1166,13 +1418,15 @@ pub fn knob(
         };
         p.text(pos2(x, c.y), Align2::LEFT_TOP, name, name_font, name_color);
     } else {
-        p.text(
-            pos2(c.x, rect.top() + d + 8.0),
-            Align2::CENTER_CENTER,
-            value_text,
-            mono(TEXT),
-            t.strong,
-        );
+        if !editing {
+            p.text(
+                pos2(c.x, rect.top() + d + 8.0),
+                Align2::CENTER_CENTER,
+                value_text,
+                mono(TEXT),
+                t.strong,
+            );
+        }
         let name_color = if response.has_focus() { t.blue } else { t.text };
         p.text(
             pos2(c.x, rect.top() + d + 25.0),
@@ -1382,4 +1636,33 @@ mod tests {
     // The rules' minimum targets and text size, checked at compile time.
     const _: () = assert!(TARGET_MIN >= 24.0 && TARGET_SHOW >= 28.0);
     const _: () = assert!(TEXT_MIN >= 11.0 && PAGE_BAR_HEIGHT == 40.0 && PANE_TITLE_HEIGHT == 26.0);
+}
+
+#[cfg(test)]
+mod value_tests {
+    use super::*;
+
+    #[test]
+    fn speeds_parse_to_the_nearest_notch() {
+        let idx = |m: AnimationSpeedModifier| Some(m.as_index() as f32);
+        assert_eq!(parse_speed("1/4"), idx(AnimationSpeedModifier::_1_4));
+        assert_eq!(parse_speed("0.25"), idx(AnimationSpeedModifier::_1_4));
+        assert_eq!(parse_speed("2x"), idx(AnimationSpeedModifier::_2));
+        assert_eq!(parse_speed("100"), idx(AnimationSpeedModifier::_32));
+        assert_eq!(parse_speed("abc"), None);
+        assert_eq!(speed_label(AnimationSpeedModifier::_2), "2x");
+        assert_eq!(speed_label(AnimationSpeedModifier::_1_8), "1/8");
+    }
+
+    #[test]
+    fn nudge_moves_by_the_unit_and_clamps() {
+        let r = 0.0..=255.0;
+        let mut v = 254.0;
+        assert!(nudge(&mut v, &r, 1.0, 1.0));
+        assert_eq!(v, 255.0);
+        assert!(!nudge(&mut v, &r, 1.0, 10.0));
+        let mut s = 4.0;
+        assert!(nudge(&mut s, &(0.0..=9.0), 1.0, -1.0));
+        assert_eq!(s, 3.0);
+    }
 }
