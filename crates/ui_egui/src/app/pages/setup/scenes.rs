@@ -163,20 +163,15 @@ impl BlaulichtApp {
             .filter(|p| !p.is_empty())
             .count();
         duo::lower_pane(&mut detail, "Contents");
-        duo::body(&mut detail, None, |ui| {
-            for (label, count) in [
-                ("Scene changes", sink.changeset.len()),
-                ("Active animations", animations),
-                ("Fixtures with palettes", palettes),
-            ] {
-                ui.horizontal(|ui| {
-                    ui.set_height(crate::app::ui_tokens::TARGET_MIN);
-                    duo::text(ui, label);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        duo::mono(ui, count.to_string());
-                    });
-                });
-            }
+        duo::flush(&mut detail, |ui| {
+            duo::value_rows(
+                ui,
+                &[
+                    ("Scene changes", sink.changeset.len().to_string()),
+                    ("Active animations", animations.to_string()),
+                    ("Fixtures with palettes", palettes.to_string()),
+                ],
+            );
         });
 
         if let Some(name) = rename {
@@ -269,7 +264,10 @@ impl BlaulichtApp {
         let state = &dmx_engine.0;
 
         let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
-        let items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
+        let mut items = scene_tree_items(state, |id| id != BLANK_SCENE_ID);
+        if desktop {
+            components::desktop_folder_order(&mut items, &state.folders);
+        }
         if items.is_empty() {
             ui.label(RichText::new("No scenes yet").color(Color32::GRAY));
             return;

@@ -314,6 +314,7 @@ impl BlaulichtApp {
         let desktop = crate::app::ui_tokens::Density::of(ui.ctx()).is_compact();
         let mut items = group_tree_items(state);
         if desktop {
+            components::desktop_folder_order(&mut items, &state.folders);
             // The desktop list shows only the fixture count (`setup.html`).
             for item in &mut items {
                 if let TreeKey::Leaf(id) = item.key {

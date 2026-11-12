@@ -74,3 +74,17 @@ Small agreed changes on the other Setup pages (`setup.html`). Mockup: `design/st
 - Checks after the fixes (blenv container): `cargo fmt -p blaulicht-ui-egui` clean, clippy has no new warnings in
   touched files, `cargo test -p blaulicht-ui-egui --all-features` 145 passed. Workspace-wide tests not run.
 
+
+Review fixes (2026-11-12):
+- Groups and Scenes trees on the desktop list folders in show order
+  (`(order, id)`, like Setup › Fixtures) via `components::desktop_folder_order`:
+  STAGE, REST, BAR-WAIT, FOG, HEX and DEBUGS, STAGE-TOP, FOG, as in `setup.html`.
+  The kiosk keeps the alphabetical order.
+- Scenes Contents is a header-less `.rows` table (`duo::value_rows`): 24px rows
+  right under the Contents header, 13px regular labels, mono values right-aligned.
+- `duo::table` rows have no separator lines and 13px text cells (`.rows td`).
+- Verified with blenv screenshots against setup.html#groups/#scenes at 1500x950;
+  kiosk Setup screenshot is byte-identical to decouple, kiosk Groups tab unchanged.
+  fmt (touched files), clippy and tests run in the blenv container (no new warnings,
+  all tests pass). The container's `cargo fmt` rewrites unrelated files (rustfmt
+  version drift), so only the touched files were formatted.

@@ -251,23 +251,17 @@ pub(super) fn mono_font() -> egui::FontId {
     egui::FontId::new(12.0, egui::FontFamily::Monospace)
 }
 
-/// A number in the mono font and strong colour.
-pub(super) fn mono(ui: &mut Ui, s: impl Into<String>) {
-    let t = studio_tokens(ui.ctx());
-    ui.add(egui::Label::new(
-        RichText::new(s).font(mono_font()).color(t.strong),
-    ));
-}
-
 /// A read-only table (`.rows`), edge to edge in the pane: a 22px muted
-/// header row, then 24px rows with a hairline under each; cells have 8px
+/// header row, then 24px rows with no rules between them (13px text, 12px
+/// muted and mono cells); cells have 8px
 /// side padding. `cols` are the column starts as fractions of the width;
 /// text is cut to its column.
 pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>]) {
     let t = studio_tokens(ui.ctx());
     let f = Density::of(ui.ctx()).font(Weight::Regular, 12.0);
+    let body = Density::of(ui.ctx()).font(Weight::Regular, 13.0);
     let width = ui.available_width();
-    let line = |ui: &mut Ui, cells: &mut dyn Iterator<Item = (&str, Look)>, h: f32, rule: bool| {
+    let line = |ui: &mut Ui, cells: &mut dyn Iterator<Item = (&str, Look)>, h: f32| {
         let (rect, _) = ui.allocate_exact_size(vec2(width, h), Sense::hover());
         let inner = rect.shrink2(vec2(8.0, 0.0));
         let w = inner.width();
@@ -278,7 +272,7 @@ pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>
                 .map_or(inner.right(), |c| inner.left() + c * w)
                 - 8.0;
             let (font, color) = match look {
-                Look::Text => (f.clone(), t.text),
+                Look::Text => (body.clone(), t.text),
                 Look::Muted => (f.clone(), t.muted),
                 Look::Mono => (mono_font(), t.strong),
             };
@@ -291,26 +285,42 @@ pub(super) fn table(ui: &mut Ui, heads: &[&str], cols: &[f32], rows: &[Vec<Cell>
                 (end - x).max(0.0),
             );
         }
-        if rule {
-            ui.painter().hline(
-                rect.x_range(),
-                rect.bottom() - 0.5,
-                egui::Stroke::new(1.0_f32, t.line),
-            );
-        }
     };
-    line(
-        ui,
-        &mut heads.iter().map(|h| (*h, Look::Muted)),
-        TH_H,
-        false,
-    );
+    line(ui, &mut heads.iter().map(|h| (*h, Look::Muted)), TH_H);
     for row in rows {
         line(
             ui,
             &mut row.iter().map(|(s, l)| (s.as_str(), *l)),
             TARGET_MIN,
-            true,
+        );
+    }
+}
+
+/// A header-less two-column `.rows` table, edge to edge in the pane: 24px
+/// rows of 13px text with the value right-aligned in mono (`td.r.mono`), no
+/// rules. Starts right under the pane header, like Setup › Scenes' Contents.
+pub(super) fn value_rows(ui: &mut Ui, rows: &[(&str, String)]) {
+    let t = studio_tokens(ui.ctx());
+    let body = Density::of(ui.ctx()).font(Weight::Regular, 13.0);
+    let width = ui.available_width();
+    for (label, value) in rows {
+        let (rect, _) = ui.allocate_exact_size(vec2(width, TARGET_MIN), Sense::hover());
+        let inner = rect.shrink2(vec2(8.0, 0.0));
+        let painter = ui.painter();
+        painter.text(
+            pos2(inner.right(), rect.center().y),
+            Align2::RIGHT_CENTER,
+            value,
+            mono_font(),
+            t.strong,
+        );
+        studio::paint_truncated(
+            ui,
+            pos2(inner.left(), rect.center().y),
+            label,
+            body.clone(),
+            t.text,
+            (inner.width() - 48.0).max(0.0),
         );
     }
 }
