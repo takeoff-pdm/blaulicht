@@ -74,6 +74,8 @@ pub struct CollectorScratch {
     pub(crate) time_of_last_bpm_marker: usize, // Time marker
     pub(crate) beat_marker_ms: f64,
     pub(crate) beat_scheduler_initialized: bool,
+    /// Metronome anchor while a manual BPM is set: (bpm, time of the last beat).
+    pub(crate) manual_beat: Option<(f32, f64)>,
     pub(crate) num_beat_mismatches: usize,
     pub(crate) beat_needs_sync: bool,
 
@@ -164,6 +166,7 @@ impl CollectorScratch {
             time_of_last_bpm_marker: now,
             beat_marker_ms: now as f64,
             beat_scheduler_initialized: false,
+            manual_beat: None,
             num_beat_mismatches: 0,
             is_on_beat: false,
             actual_onset_peak: false,
@@ -638,10 +641,21 @@ where
 
         // Once the source has been silent long enough to be considered gone,
         // do not let the predictor synthesize beats from stale history.
+        // A manual BPM is a metronome: it keeps beating without audio.
+        let manual = self.manual_bpm();
         if has_new_frame
+            || manual.is_some()
             || self.current.source_status != blaulicht_shared::AudioSourceStatus::Disconnected
         {
             self.bass(now, has_new_frame)?;
+        }
+        self.current.manual_tempo = manual.is_some();
+        if let Some(bpm) = manual {
+            // Published every tick: without frames no Bpm signal goes out.
+            self.current.bpm = bpm;
+            self.current.time_between_beats_millis =
+                (60_000.0 / bpm).round().clamp(1.0, u16::MAX as f32) as u16;
+            self.current.bpm_confidence = 1.0;
         }
 
         if self.scratch.is_on_beat {
@@ -1038,6 +1052,38 @@ mod tests {
         assert_eq!(collector.current.beat_event_id, 0);
         assert_eq!(collector.scratch.bpm_estimate, 0.0);
         assert!(!collector.scratch.beat_scheduler_initialized);
+    }
+
+    #[test]
+    fn manual_bpm_beats_without_audio() {
+        let params = SignalCollectorParams { manual_bpm: Some(120.0), ..Default::default() };
+        let mut collector = SignalCollector::new(
+            params,
+            [CollectorOutputSpec::default()],
+            CollectorScratchParameters::default(),
+            StaticSourceForTest::default(),
+            0,
+        )
+        .unwrap();
+
+        // Ticks every 10 ms for 2.6 s with no audio frames: 120 BPM is a beat
+        // every 500 ms, the first one right away.
+        let mut beats = 0;
+        let mut last = 0;
+        for t in (600..=3_200).step_by(10) {
+            collector.tick(t).unwrap();
+            if collector.current.beat_event_id != last {
+                last = collector.current.beat_event_id;
+                beats += 1;
+            }
+        }
+        assert_eq!(
+            collector.current.source_status,
+            blaulicht_shared::AudioSourceStatus::Disconnected
+        );
+        assert_eq!(beats, 6, "beats at 600, 1100, ... 3100");
+        assert_eq!(collector.current.bpm, 120.0);
+        assert_eq!(collector.current.time_between_beats_millis, 500);
     }
 
     #[test]

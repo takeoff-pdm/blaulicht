@@ -322,7 +322,8 @@ impl MusicalBeatClock {
         }
         self.last_update_ms = now_ms;
 
-        let incoming_period = if audio.source_status != AudioSourceStatus::Disconnected
+        let incoming_period = if (audio.source_status != AudioSourceStatus::Disconnected
+            || audio.manual_tempo)
             && audio.time_between_beats_millis > 0
         {
             Some(audio.time_between_beats_millis as f64)

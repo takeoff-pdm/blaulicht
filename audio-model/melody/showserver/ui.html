@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Show Server</title>
+<style>
+  :root { --bg: #0e1014; --panel: #161920; --panel2: #1c2029; --line: #2a2f3a; --text: #d8dde6; --muted: #8a93a3; --accent: #5aa9ff; --warn: #f0b020; --bad: #ff6b7f; --good: #57c98a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 6px 0 0; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+  main { padding: 12px 16px 40px; display: grid; gap: 12px; max-width: 1400px; margin: 0 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  a { color: var(--accent); }
+  select, input { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+  input[type=number] { width: 52px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #08111f; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .muted { color: var(--muted); } .warn { color: var(--warn); } .bad { color: var(--bad); } .good { color: var(--good); }
+  .pill { padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 12px; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.name { width: 100%; overflow-wrap: anywhere; }
+  .decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .deck { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .deck.air { border-color: var(--good); }
+  .deck .title { font-weight: 600; margin: 4px 0 2px; overflow-wrap: anywhere; }
+  .crumbs button { all: unset; color: var(--accent); cursor: pointer; } .crumbs span { color: var(--muted); margin: 0 4px; }
+  .list button.link { all: unset; color: var(--text); cursor: pointer; display: block; padding: 3px 0; } .list button.link:hover { color: var(--accent); }
+  .scroll { max-height: 60vh; overflow: auto; }
+  .err { color: var(--bad); margin-top: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Show Server</h1>
+  <span id="bridge" class="pill muted">bridge …</span>
+  <span id="workers" class="row"></span>
+  <span class="muted" style="margin-left:auto">shows: <a href="/api/shows" target="_blank">/api/shows</a> · decks: <a href="/api/decks" target="_blank">/api/decks</a></span>
+</header>
+<main>
+  <section class="wide">
+    <h2>Decks</h2>
+    <div id="decks" class="decks"><span class="muted">No players seen yet.</span></div>
+  </section>
+
+  <section>
+    <h2>Browse</h2>
+    <div class="row">
+      <select id="media" aria-label="Player media"><option value="">Player media…</option></select>
+      <button id="refresh">Refresh</button>
+    </div>
+    <div id="crumbs" class="crumbs" style="margin:8px 0"></div>
+    <div id="browse" class="scroll list"></div>
+    <div id="browseErr" class="err"></div>
+  </section>
+
+  <section>
+    <h2>Queue</h2>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Track</th><th>State</th><th></th></tr></thead><tbody id="active"></tbody></table></div>
+    <h2 style="margin-top:14px">Finished</h2>
+    <div class="scroll"><table><thead><tr><th>Track</th><th>State</th><th></th></tr></thead><tbody id="done"></tbody></table></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+const STATE_CLASS = { ready: 'good', failed: 'bad', cancelled: 'muted', analysing: 'warn', downloading: 'warn', compiling: 'warn' };
+const stateText = (j) => {
+  if (!j) return '<span class="muted">not queued</span>';
+  let t = `<span class="pill ${STATE_CLASS[j.state] || 'muted'}">${esc(j.state)}</span>`;
+  if (j.step) t += ` <span class="muted">${esc(j.step)}${j.steps_total ? ` ${j.steps_done}/${j.steps_total}` : ''}</span>`;
+  if (j.error) t += `<div class="${j.state === 'failed' ? 'bad' : 'warn'}">${esc(j.error)}</div>`;
+  return t;
+};
+
+// ---- live state
+let decks = [];
+function renderDecks() {
+  if (!decks.length) { $('decks').innerHTML = '<span class="muted">No players seen yet.</span>'; return; }
+  $('decks').innerHTML = decks.map((d) => {
+    const m = d.meta || {};
+    const t = d.track;
+    const lists = (m.playlists || []).map((p) => esc(p.name)).join(', ');
+    return `<div class="deck ${d.on_air && d.playing ? 'air' : ''}">
+      <div class="row"><b>${esc(d.name)} ${d.deck}</b>
+        ${d.playing ? '<span class="pill good">playing</span>' : `<span class="pill muted">${esc(d.play_state)}</span>`}
+        ${d.on_air ? '<span class="pill good">on air</span>' : ''}
+        ${d.stale ? '<span class="pill warn" title="no status for a few seconds (WiFi?)">stale</span>' : ''}</div>
+      ${t ? `<div class="title">${esc(m.title || `track ${t.id}`)}</div>
+        <div class="muted">${esc(m.artist || '')} ${m.bpm ? `· ${m.bpm} BPM` : ''} ${m.duration ? `· ${fmt(m.duration)}` : ''}</div>
+        <div class="muted">${lists ? `in playlist: ${lists}` : ''}</div>
+        <div class="row" style="margin-top:4px">${d.show_ready ? `<a class="pill good" href="${d.show_url}" target="_blank">show ready</a>`
+          : d.job_state ? stateText({ state: d.job_state }) : `<button data-deck="${d.deck}">Analyse this track</button>`}</div>`
+        : '<div class="muted" style="margin-top:4px">no track loaded</div>'}
+    </div>`;
+  }).join('');
+}
+$('decks').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-deck]'); if (!b) return;
+  const d = decks.find((x) => x.deck === Number(b.dataset.deck));
+  b.disabled = true;
+  try { await api('/api/queue', { method: 'POST', body: JSON.stringify({ device: d.track.device, slot: d.track.slot, track_ids: [d.track.id] }) }); }
+  catch (err) { alert(err.message); b.disabled = false; }
+});
+
+function renderJobs(j) {
+  $('active').innerHTML = j.active.map((r, i) => `<tr>
+    <td class="muted">${i + 1}</td>
+    <td class="name">${esc(r.title)}<div class="muted">${esc(r.artist || '')}${r.playlist ? ` · ${esc(r.playlist)}` : ''}${r.deck_priority ? ' · <span class="good">on a deck</span>' : ''}</div></td>
+    <td>${stateText(r)}${r.worker ? ` <span class="muted">on ${esc(r.worker)}</span>` : ''}</td>
+    <td class="row"><button data-job="${r.id}" data-act="bump" title="move to the front">↑</button><button data-job="${r.id}" data-act="cancel">Cancel</button></td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">Nothing queued.</td></tr>';
+  $('done').innerHTML = j.done.slice(0, 100).map((r) => `<tr>
+    <td class="name">${esc(r.title)}<div class="muted">${esc(r.artist || '')}</div></td>
+    <td>${stateText(r)}</td>
+    <td class="row">${r.show_url ? `<a href="${r.show_url}" target="_blank">show</a>` : ''}${['failed', 'cancelled'].includes(r.state) ? `<button data-job="${r.id}" data-act="retry">Retry</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="muted">None yet.</td></tr>';
+}
+document.body.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-job]'); if (!b) return;
+  b.disabled = true;
+  try { await api(`/api/jobs/${b.dataset.job}/${b.dataset.act}`, { method: 'POST' }); } catch (err) { alert(err.message); }
+});
+
+function renderHealth(h) {
+  const ok = h.bridge === 'connected';
+  $('bridge').className = `pill ${ok ? 'good' : 'warn'}`;
+  $('bridge').textContent = `Pro DJ Link: ${h.bridge}`;
+  $('workers').innerHTML = h.workers.map((w) => `<label title="${esc(w.reason)}">
+    <input type="checkbox" data-worker="${esc(w.name)}" ${w.enabled ? 'checked' : ''}> ${esc(w.name)}
+    <input type="number" min="1" max="8" value="${w.concurrency}" data-conc="${esc(w.name)}" title="songs at once">
+    ${w.enabled && !w.available ? `<span class="warn">${esc(w.reason)}</span>` : ''}</label>`).join('');
+}
+$('workers').addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset.worker) api(`/api/workers/${t.dataset.worker}`, { method: 'PUT', body: JSON.stringify({ enabled: t.checked }) });
+  if (t.dataset.conc) api(`/api/workers/${t.dataset.conc}`, { method: 'PUT', body: JSON.stringify({ concurrency: Number(t.value) }) });
+});
+
+function connect() {
+  const es = new EventSource('/api/events');
+  es.addEventListener('decks', (e) => { decks = JSON.parse(e.data); renderDecks(); });
+  es.addEventListener('jobs', (e) => { renderJobs(JSON.parse(e.data)); if (cur.tracks) refreshTracks(); });
+  es.addEventListener('health', (e) => renderHealth(JSON.parse(e.data)));
+  es.onerror = () => { $('bridge').className = 'pill bad'; $('bridge').textContent = 'server unreachable'; };
+}
+
+// ---- browsing
+let cur = { device: null, slot: null, path: [], tracks: null };
+async function loadMedia() {
+  try {
+    const devs = await api('/api/devices');
+    const keep = $('media').value;
+    $('media').innerHTML = '<option value="">Player media…</option>' + devs.flatMap((d) =>
+      d.slots.map((s) => `<option value="${d.id}:${s.slot}">${esc(d.name)} ${d.id} · ${s.name}</option>`)).join('');
+    $('media').value = keep;
+  } catch (err) { $('browseErr').textContent = err.message; }
+}
+$('media').addEventListener('change', () => {
+  const [d, s] = $('media').value.split(':').map(Number);
+  cur = { device: d, slot: s, path: [], tracks: null };
+  if ($('media').value) openList();
+});
+$('refresh').addEventListener('click', () => { loadMedia(); if (cur.device) openList(); });
+
+async function openList() {
+  const at = cur.path[cur.path.length - 1];
+  $('browseErr').textContent = '';
+  $('browse').innerHTML = '<span class="muted">Loading… (the first time reads the stick\'s database over the network)</span>';
+  try {
+    const doc = await api(`/api/browse?device=${cur.device}&slot=${cur.slot}${at ? `&id=${at.id}` : ''}`);
+    renderCrumbs();
+    if (doc.tracks.length) { cur.tracks = doc.tracks; renderTracks(); return; }
+    cur.tracks = null;
+    const items = [...doc.folders, ...doc.playlists];
+    $('browse').innerHTML = items.map((p) => `<button class="link" data-id="${p.id}" data-name="${esc(p.name)}">${p.folder ? '📁' : '♫'} ${esc(p.name)}</button>`).join('')
+      || '<span class="muted">Empty.</span>';
+  } catch (err) { $('browse').innerHTML = ''; $('browseErr').textContent = err.message; }
+}
+function renderCrumbs() {
+  $('crumbs').innerHTML = [`<button data-depth="0">All playlists</button>`, ...cur.path.map((p, i) => `<span>/</span><button data-depth="${i + 1}">${esc(p.name)}</button>`)].join('');
+}
+$('crumbs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; cur.path = cur.path.slice(0, Number(b.dataset.depth)); openList(); });
+$('browse').addEventListener('click', async (e) => {
+  const b = e.target.closest('button.link');
+  if (b) { cur.path.push({ id: Number(b.dataset.id), name: b.dataset.name }); openList(); return; }
+  const q = e.target.closest('button[data-queue]'); if (!q) return;
+  q.disabled = true;
+  const pl = cur.path[cur.path.length - 1];
+  const body = { device: cur.device, slot: cur.slot, playlist: cur.path.map((p) => p.name).join(' / ') };
+  if (q.dataset.queue === 'all') body.playlist_id = pl.id;
+  else if (q.dataset.queue === 'sel') body.track_ids = [...document.querySelectorAll('input[data-track]:checked')].map((c) => Number(c.dataset.track));
+  else body.track_ids = [Number(q.dataset.queue)];
+  try { await api('/api/queue', { method: 'POST', body: JSON.stringify(body) }); refreshTracks(); }
+  catch (err) { $('browseErr').textContent = err.message; }
+  q.disabled = false;
+});
+async function refreshTracks() {
+  const at = cur.path[cur.path.length - 1];
+  if (!at) return;
+  try { cur.tracks = (await api(`/api/browse?device=${cur.device}&slot=${cur.slot}&id=${at.id}`)).tracks; renderTracks(); } catch {}
+}
+function renderTracks() {
+  const checked = new Set([...document.querySelectorAll('input[data-track]:checked')].map((c) => c.dataset.track));
+  $('browse').innerHTML = `<div class="row" style="margin-bottom:6px">
+      <button class="primary" data-queue="all">Analyse whole playlist</button><button data-queue="sel">Analyse selected</button>
+      <span class="muted">${cur.tracks.length} tracks</span></div>
+    <table><thead><tr><th></th><th>#</th><th>Track</th><th>BPM</th><th>State</th><th></th></tr></thead><tbody>
+    ${cur.tracks.map((t, i) => `<tr>
+      <td><input type="checkbox" data-track="${t.id}" ${checked.has(String(t.id)) ? 'checked' : ''} aria-label="select"></td>
+      <td class="muted">${i + 1}</td>
+      <td class="name">${esc(t.title)}<div class="muted">${esc(t.artist || '')} · ${fmt(t.duration)}</div></td>
+      <td>${t.bpm ?? ''}</td>
+      <td>${stateText(t.job)}</td>
+      <td>${t.job && t.job.show_url ? `<a href="${t.job.show_url}" target="_blank">show</a>` : !t.job || ['failed', 'cancelled'].includes(t.job.state) ? `<button data-queue="${t.id}">Analyse</button>` : ''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+connect();
+loadMedia();
+setInterval(() => { if (!$('media').value) loadMedia(); }, 5000);
+</script>
+</body>
+</html>

@@ -4,6 +4,11 @@ Runs `blaulicht-core` (egui, X11, Mesa llvmpipe) in a Debian container on a virt
 (Xvfb `:9`, 1600x1000, openbox) with VNC, `xdotool` and ImageMagick, so agents and people can
 screenshot and click the real UI without a monitor. One container per git worktree.
 
+
+> **On macOS, use `scripts/kt` (egui_kittest, no Docker) by default** and blenv only for what it
+> can't do: the visualizer's 3D view, window-level behaviour, pop-outs, file dialogs. See
+> [`KITTEST.md`](KITTEST.md).
+
 ```sh
 scripts/blenv up            # build image (first time), start container
 scripts/blenv build         # plugins (inspector + sample/animation set) + core (the desk)
@@ -35,7 +40,7 @@ server (`.mcp.json`, `uv run --script tools/blenv/mcp_server.py`) and the skill 
 
 Per instance (`blenv-<worktree>-<hash>`): container, volume `…-target` (`/build`, cargo
 target dirs) and `…-state` (`/state`: generated config, `app.log`, showfile copies, VNC
-password). The cargo registry volume `blenv-cargo` is shared by all instances. VNC is
+password). The cargo registry volume `blenv-cargo` and the sccache volume `blenv-sccache` (compiled dependencies, capped at 10 GB; `sccache --show-stats` in the container shows hits) are shared by all instances. VNC is
 published on a random `127.0.0.1` port, which `scripts/blenv vnc` prints.
 
 ## Notes

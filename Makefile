@@ -1,13 +1,15 @@
 DIR := ${CURDIR}
-VERSION = 0.30.0
+VERSION = 0.40.0
 BUILD_OUTPUT_DIR = blaulicht-dist
 # The desk binary (engine + egui UI); its package and binary keep the name
 # blaulicht-core. The engine-only binary is blaulicht-headless in the
 # blaulicht-engine package and is not part of the release archives yet.
 PACKAGE = blaulicht-core
 RUST_TARGET_DIR := $(if $(wildcard $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),./target)
-# Only allocate a TTY when we have one (e.g. not under CI or a non-interactive shell).
-DOCKER_TTY := $(shell [ -t 0 ] && echo -it || echo -i)
+# No TTY for the build containers: under `make -j` the parallel jobs get no
+# terminal on stdin, so `docker run -it` fails even from an interactive shell.
+# Keep cargo's colours anyway.
+DOCKER_TTY := -e CARGO_TERM_COLOR=always
 
 .PHONY: cargo-build-armhf cargo-build-armel cargo-build-x64 build-docker-cargo \
 		build-web build-archives build-archive-armhf build-archive-armel \
@@ -15,7 +17,7 @@ DOCKER_TTY := $(shell [ -t 0 ] && echo -it || echo -i)
 
 # For cross-compilation to X86_64 Musl
 cargo-build-x64:
-	docker run --rm $(DOCKER_TTY) \
+	docker run --rm --platform linux/amd64 $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUST_MIN_STACK=16777216 \
@@ -25,7 +27,7 @@ cargo-build-x64:
 
 # For cross-compilation to X86_64 Musl (HASWELL)
 cargo-build-x64-haswell:
-	docker run --rm $(DOCKER_TTY) \
+	docker run --rm --platform linux/amd64 $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	-e RUSTFLAGS="-C target-cpu=haswell" \
@@ -42,14 +44,23 @@ cargo-build-x64-haswell:
 # 	cargo build --release --target x86_64-unknown-linux-gnu
 
 cargo-build-x64-debug:
-	docker run --rm $(DOCKER_TTY) \
+	docker run --rm --platform linux/amd64 $(DOCKER_TTY) \
 	-v $(RUST_TARGET_DIR):/build \
 	-v `pwd`:/root/project \
 	blaulicht-cross \
 	cargo build --target x86_64-unknown-linux-gnu
 
+# Fast path: release haswell binary built natively on ae-charlie (gateway must be open).
+charlie-haswell:
+	scripts/charlie-haswell ./$(BUILD_OUTPUT_DIR)/blaulicht-x64-haswell
+
+# The same archive as build-archives, but with only the haswell binary from ae-charlie.
+charlie-archives: prepare-archives create-build-dir charlie-haswell
+	tar -cvzf dist/blaulicht-x86_64-all-linux-gnu.tar.gz ./$(BUILD_OUTPUT_DIR)
+	rm -rf $(BUILD_OUTPUT_DIR)
+
 build-docker-cargo:
-	docker build . -t blaulicht-cross:latest
+	docker build --platform linux/amd64 . -t blaulicht-cross:latest
 
 # For building distributable archive files
 prepare-archives:

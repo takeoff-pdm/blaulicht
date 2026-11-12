@@ -734,10 +734,15 @@ where
             );
         }
 
-        if tracker_active {
-            self.schedule_tracked_beat(now, tracker_onset);
+        if let Some(bpm) = self.manual_bpm() {
+            self.schedule_manual_beat(now, bpm);
         } else {
-            self.schedule_beat(now, onset_peak);
+            self.scratch.manual_beat = None;
+            if tracker_active {
+                self.schedule_tracked_beat(now, tracker_onset);
+            } else {
+                self.schedule_beat(now, onset_peak);
+            }
         }
 
         if has_new_frame {
@@ -780,6 +785,36 @@ where
         }
 
         Ok(())
+    }
+
+    /// The manual BPM override, when set to a usable tempo.
+    pub(crate) fn manual_bpm(&self) -> Option<f32> {
+        self.params.manual_bpm.filter(|b| b.is_finite() && (1.0..=1000.0).contains(b))
+    }
+
+    /// Manual BPM: a fixed metronome, independent of audio, silence and onsets,
+    /// so every consumer of beat events follows the set tempo. A new tempo
+    /// starts a fresh grid with an immediate beat.
+    pub(crate) fn schedule_manual_beat(&mut self, now: usize, bpm: f32) {
+        let now_f = now as f64;
+        let interval = 60_000.0 / bpm as f64;
+        self.scratch.bpm_estimate = bpm;
+        self.scratch.beat_interval_ms = interval as f32;
+        let fire_at = match self.scratch.manual_beat {
+            Some((b, last)) if b == bpm => {
+                if now_f < last + interval {
+                    return;
+                }
+                // At most one beat after a stall; stay on the grid.
+                last + ((now_f - last) / interval).floor() * interval
+            }
+            _ => now_f,
+        };
+        self.scratch.manual_beat = Some((bpm, fire_at));
+        self.scratch.is_on_beat = true;
+        self.scratch.beat_marker_ms = fire_at;
+        self.scratch.time_of_last_bpm_marker = fire_at.round() as usize;
+        self.scratch.beat_needs_sync = false;
     }
 
     /// Publish the tracker's predicted beats, muted once the bass gate has

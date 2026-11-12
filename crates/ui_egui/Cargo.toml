@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-ui-egui"
-version = "0.30.0"
+version = "0.40.0"
 authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]

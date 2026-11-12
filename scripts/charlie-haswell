@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Build the release haswell binary of blaulicht-core on ae-charlie (native
+# x86_64, 64 cores) and copy it back stripped. Much faster than the Docker
+# cross build on the Mac. Needs the ssh gateway to be open.
+#
+#   scripts/charlie-haswell [output path]   (default: blaulicht-dist/blaulicht-x64-haswell)
+#
+# Builds the desk (blaulicht-core) by default. For another binary set
+#   BL_PACKAGE=blaulicht-engine BL_BIN=blaulicht-headless BL_FEATURES=
+# (BL_FEATURES empty = the package's default features).
+#
+# Everything lives in /tmp/blb on the box (RAM-backed, wiped on reboot); the
+# first run after a reboot sets up the toolchain and -dev libraries again.
+set -euo pipefail
+HOST=${CHARLIE_HOST:-ae-charlie}
+OUT=${1:-blaulicht-dist/blaulicht-x64-haswell}
+cd "$(git rev-parse --show-toplevel)"
+
+rsync -az --delete \
+  --exclude /target --exclude /audio-model --exclude /.git --exclude /.claude \
+  --exclude /blaulicht-dist --exclude /dist --exclude node_modules --exclude /visualizer \
+  ./ "$HOST":/tmp/blb/src/
+
+PACKAGE=${BL_PACKAGE:-blaulicht-core}
+BIN=${BL_BIN:-blaulicht-core}
+FEATURES=${BL_FEATURES-wasmtime,audio,wayland,x11}
+
+ssh "$HOST" PACKAGE="$PACKAGE" BIN="$BIN" FEATURES="$FEATURES" 'bash -s' <<'REMOTE'
+set -euo pipefail
+B=/tmp/blb S=/tmp/blb/sysroot L=/tmp/blb/sysroot/usr/lib/x86_64-linux-gnu
+export RUSTUP_HOME=$B/rustup CARGO_HOME=$B/cargo
+if [ ! -f $L/pkgconfig/libsystemd.pc ]; then
+  echo ">> setting up -dev libraries in $S"
+  mkdir -p $B/debs $S && cd $B/debs
+  apt-get download libasound2-dev libdbus-1-dev libudev-dev libsystemd-dev >/dev/null
+  for d in *.deb; do dpkg-deb -x "$d" $S; done
+  # Point the dev symlinks at the runtime libraries installed on the box.
+  for f in libasound.so libdbus-1.so libudev.so libsystemd.so; do
+    ln -sf /usr/lib/x86_64-linux-gnu/"$(basename "$(readlink $L/$f)")" $L/$f
+  done
+  rm -f $L/libdbus-1.a
+fi
+if ! rustup run nightly cargo --version >/dev/null 2>&1; then
+  echo ">> installing nightly toolchain"
+  rustup toolchain install nightly --profile minimal
+  rustup target add --toolchain nightly x86_64-unknown-linux-gnu
+fi
+# The box runs a newer glibc than the devices (Debian 13: 2.41), so link
+# against glibc 2.36 with cargo-zigbuild instead of the box's own.
+if [ ! -x $B/zig/zig ]; then
+  echo ">> installing zig"
+  (cd $B && curl -sSL https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz | tar xJ \
+    && mv zig-x86_64-linux-0.14.1 zig)
+fi
+if [ ! -x $CARGO_HOME/bin/cargo-zigbuild ]; then
+  echo ">> installing cargo-zigbuild"
+  rustup run nightly cargo install --locked cargo-zigbuild
+fi
+export PATH=$B/zig:$CARGO_HOME/bin:$PATH
+export CARGO_TARGET_DIR=$B/target-zig RUST_MIN_STACK=16777216 RUSTFLAGS="-C target-cpu=haswell"
+export PKG_CONFIG_PATH=$L/pkgconfig:$S/usr/share/pkgconfig PKG_CONFIG_SYSROOT_DIR=$S PKG_CONFIG_ALLOW_CROSS=1
+cd $B/src
+rustup run nightly cargo zigbuild --package "$PACKAGE" --bin "$BIN" --release \
+  ${FEATURES:+--features=$FEATURES} --target x86_64-unknown-linux-gnu.2.36
+strip -o $B/out-haswell $CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/release/"$BIN"
+REMOTE
+
+mkdir -p "$(dirname "$OUT")"
+scp -q "$HOST":/tmp/blb/out-haswell "$OUT"
+ls -la "$OUT"

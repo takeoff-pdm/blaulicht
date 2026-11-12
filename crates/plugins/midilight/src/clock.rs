@@ -40,6 +40,7 @@ impl BeatClock {
             self.last_source = audio.tempo_source;
         }
         let valid_source = audio.tempo_source.is_some()
+            || audio.manual_tempo
             || matches!(audio.source_status, AudioSourceStatus::Active);
         let valid_tempo = audio.bpm.is_finite() && (20.0..=400.0).contains(&audio.bpm);
         if !valid_source || !valid_tempo || dt > 3_000.0 {

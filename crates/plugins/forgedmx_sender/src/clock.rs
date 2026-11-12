@@ -29,6 +29,7 @@ pub struct BeatTracker {
 
 pub fn valid_bpm(audio: &CollectedAudioSnapshot) -> Option<f32> {
     let active = audio.tempo_source.is_some()
+        || audio.manual_tempo
         || matches!(audio.source_status, AudioSourceStatus::Active);
     (active && audio.bpm.is_finite() && (BPM_MIN..=BPM_MAX).contains(&audio.bpm))
         .then_some(audio.bpm)

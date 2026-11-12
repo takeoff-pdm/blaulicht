@@ -68,6 +68,8 @@ install_runtime_files() {
     sudo chmod +x /usr/bin/shutdown.sh || exit 2
 
     sudo cp ./fans.sh /usr/bin/fans || exit 2
+    sudo cp ./tune.sh /usr/bin/blaulicht-tune || exit 2
+    sudo chmod 755 /usr/bin/blaulicht-tune || exit 2
     sudo cp ./limits.conf /etc/security/limits.d/99-blaulicht-thread-priority.conf || exit 2
 }
 
@@ -141,7 +143,7 @@ sudo apt install -y xterm || exit 2
 #
 #
 
-sudo apt install -y rsync curl btop wget jq libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 2
+sudo apt install -y rsync curl btop wget jq ethtool libxkbcommon-x11-0 x11-xserver-utils psmisc xserver-xorg-input-all openbox obconf devilspie2 || exit 2
 
 blaulicht_binary
 
@@ -166,6 +168,8 @@ echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/fans" | sudo tee /etc/sudoers.d/bla
 
 sudo chmod 440 /etc/sudoers.d/blaulicht-shutdown || exit 2
 sudo chmod 440 /etc/sudoers.d/blaulicht-fans || exit 2
+echo "blaulicht ALL=(ALL) NOPASSWD: /usr/bin/blaulicht-tune" | sudo tee /etc/sudoers.d/blaulicht-tune
+sudo chmod 440 /etc/sudoers.d/blaulicht-tune || exit 2
 
 #
 # Thread priority adjustments
@@ -184,6 +188,19 @@ sudo apt-get install tmux x11vnc -y || exit 2
 mkdir -p ~/.vnc || exit 2
 echo "$VNC_PASSWORD" >~/.vnc/passwd.txt
 chmod 600 ~/.vnc/passwd.txt || exit 2
+
+#
+# Background maintenance
+# NOTE: these timers fire at (partly random) times and cost seconds of CPU and disk,
+# which shows up as DMX/audio latency spikes during a show. Masked so package
+# upgrades can't re-enable them. Run them by hand when needed, e.g.
+# `sudo apt update && sudo apt upgrade`, `sudo fstrim -av`.
+# logrotate and systemd-tmpfiles-clean stay on: they're cheap and keep the disk from filling up.
+#
+for timer in apt-daily apt-daily-upgrade man-db e2scrub_all fstrim dpkg-db-backup; do
+    sudo systemctl disable --now "${timer}.timer" 2>/dev/null || true
+    sudo systemctl mask "${timer}.timer" || echo "[disable maintenance] WARNING: could not mask ${timer}.timer"
+done
 
 # Cleanup.
 sudo apt autoremove -y || echo "[cleanup] Failed"

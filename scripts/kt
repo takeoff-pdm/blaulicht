@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# kt: drive the desk UI headlessly in an egui_kittest harness (no window, no Docker).
+# Default for UI checks on macOS; see tools/blenv/KITTEST.md.
+#
+#   scripts/kt start [--layout desktop] [-c config.toml]   build + launch the driver
+#   scripts/kt click "Blackout" | tree [filter] | shot [png] | key ctrl+S | ...
+#   scripts/kt stop
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+id="$(printf %s "$root" | shasum | cut -c1-8)"
+sock="${KT_SOCKET:-${TMPDIR:-/tmp}/blaulicht-kt-$id.sock}"
+log="${TMPDIR:-/tmp}/blaulicht-kt-$id.log"
+features="${KT_FEATURES:-audio-mock wasmtime}"
+
+send() {
+    [ -S "$sock" ] || { echo "kt: not running (scripts/kt start)" >&2; exit 1; }
+    printf '%s\n' "$*" | nc -U "$sock"
+}
+
+case "${1:-help}" in
+start)
+    shift
+    if [ -S "$sock" ] && send help >/dev/null 2>&1; then echo "kt: already running ($sock)"; exit 0; fi
+    cd "$root"
+    nice -n "${KT_NICE:-10}" cargo build -q -p blaulicht-core --example kittest_drive \
+        --no-default-features --features "$features"
+    # Default config: the repo root's config.toml, like a normal desk run.
+    args=("$@")
+    printf '%s\n' "${args[@]}" | grep -qE '^(-c|--config-file)' || args+=(-c "$root/config.toml")
+    nohup "${CARGO_TARGET_DIR:-$root/target}/debug/examples/kittest_drive" \
+        --socket "$sock" "${args[@]}" >"$log" 2>&1 &
+    for _ in $(seq 1 300); do
+        grep -q 'kittest_drive: ready' "$log" 2>/dev/null && { echo "kt: ready ($sock, log $log)"; exit 0; }
+        kill -0 $! 2>/dev/null || { echo "kt: driver exited:" >&2; tail -20 "$log" >&2; exit 1; }
+        sleep 0.2
+    done
+    echo "kt: driver did not get ready in 60 s, see $log" >&2; exit 1 ;;
+stop)
+    send quit >/dev/null 2>&1 || true
+    sleep 1; rm -f "$sock"; echo "kt: stopped" ;;
+log|logs)
+    tail -n "${2:-50}" "$log" ;;
+*)
+    send "$*" ;;
+esac

@@ -56,6 +56,32 @@ def energy_100fps(x: np.ndarray, n_frames: int) -> np.ndarray:
     return np.clip((db + 60) / 60 * 255, 0, 255).astype(np.uint8)
 
 
+def song_doc(root: Path, gid: str, melodia_id: str, name: str, stems_path: Path) -> dict:
+    """One song's viewer data from the files under root/out. Also used by the Mac worker (showserver)."""
+    stems = np.load(stems_path, mmap_mode="r")
+    n = stems.shape[1]
+    n_frames = n // HOP + 1
+    keys = {"melodia": melodia_id, "game": gid, "lead": gid, "bass": gid, "student": gid}
+    notes = {t: midi_notes(root / "out" / t / f"{keys[t]}.mid") for t in TRACKS}
+    notes = {t: v_ for t, v_ in notes.items() if v_ is not None}
+    contours = {}
+    mel = np.load(root / "out/melodia" / f"{melodia_id}.npz")
+    contours["melodia"] = b64(cents_100fps(mel["f0"], int(mel["hop"]) / int(mel["sr"]), n_frames))
+    for t in ("lead", "bass"):
+        p = root / "out" / t / f"{gid}.npz"
+        if p.exists():
+            z = np.load(p)
+            contours[t] = b64(cents_100fps(z["f0"], int(z["hop"]) / int(z["sr"]), n_frames))
+    p = root / "out/student" / f"{gid}.npy"
+    if p.exists():
+        contours["student"] = b64(cents_100fps(np.load(p), 0.01, n_frames))
+    mix, drums, bass, vocals = (np.asarray(stems[i], np.float32) for i in range(4))
+    sources = {"mix": mix, "drums": drums, "bass": bass, "other": mix - drums - bass - vocals, "vocals": vocals}
+    energy = {k: b64(energy_100fps(x, n_frames)) for k, x in sources.items()}
+    return {"id": gid, "name": name, "duration": n / SR, "frames": n_frames, "fps": 100,
+            "notes": notes, "contours": contours, "energy": energy}
+
+
 def main():
     out = Path(sys.argv[1])
     only = sys.argv[3] if sys.argv[2:3] == ["--only"] else None
@@ -70,32 +96,12 @@ def main():
         if not stems_path.exists():
             print("no stems", v["path"], flush=True)
             continue
-        stems = np.load(stems_path, mmap_mode="r")
-        n = stems.shape[1]
-        n_frames = n // HOP + 1
-        keys = {"melodia": sid, "game": gid, "lead": gid, "bass": gid, "student": gid}
-        notes = {t: midi_notes(ROOT / "out" / t / f"{keys[t]}.mid") for t in TRACKS}
-        notes = {t: v_ for t, v_ in notes.items() if v_ is not None}
-        contours = {}
-        mel = np.load(ROOT / "out/melodia" / f"{sid}.npz")
-        contours["melodia"] = b64(cents_100fps(mel["f0"], int(mel["hop"]) / int(mel["sr"]), n_frames))
-        for t in ("lead", "bass"):
-            p = ROOT / "out" / t / f"{gid}.npz"
-            if p.exists():
-                z = np.load(p)
-                contours[t] = b64(cents_100fps(z["f0"], int(z["hop"]) / int(z["sr"]), n_frames))
-        p = ROOT / "out/student" / f"{gid}.npy"
-        if p.exists():
-            contours["student"] = b64(cents_100fps(np.load(p), 0.01, n_frames))
-        mix, drums, bass, vocals = (np.asarray(stems[i], np.float32) for i in range(4))
-        sources = {"mix": mix, "drums": drums, "bass": bass, "other": mix - drums - bass - vocals, "vocals": vocals}
-        energy = {k: b64(energy_100fps(x, n_frames)) for k, x in sources.items()}
-        doc = {"id": gid, "name": Path(v["path"]).stem, "duration": n / SR, "frames": n_frames, "fps": 100,
-               "notes": notes, "contours": contours, "energy": energy}
+        doc = song_doc(ROOT, gid, sid, Path(v["path"]).stem, stems_path)
+        n = round(doc["duration"] * SR)
         (out / f"{gid}.json").write_text(json.dumps(doc, separators=(",", ":")))
         songs.append({"id": gid, "name": Path(v["path"]).stem, "path": v["listed"], "duration": round(n / SR, 2),
-                      "tracks": sorted(notes)})
-        print(len(songs), doc["name"], {t: len(x) for t, x in notes.items()}, flush=True)
+                      "tracks": sorted(doc["notes"])})
+        print(len(songs), doc["name"], {t: len(x) for t, x in doc["notes"].items()}, flush=True)
     if only:
         if not songs:
             sys.exit(f"no stems or no index entry for {only}")

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Build the release haswell binary on ae-charlie, ship it to a device and
+# replace the installed blaulicht with it.
+#
+#   scripts/deploy-bl [ssh host]   (default: bl)
+#
+# Steps: scripts/charlie-haswell -> tar -> scp to <host>:~/ -> unpack there ->
+# check it links -> back up the old binary to ~/blaulicht.prev -> install over
+# $(which blaulicht). The running blaulicht keeps its old copy until it is
+# restarted (blaulicht.sh relaunches it on exit code 42).
+set -euo pipefail
+DEVICE=${1:-bl}
+SUDO_PASSWORD=blaulicht
+ARCHIVE=blaulicht-x86_64-haswell-linux-gnu.tar.gz
+cd "$(git rev-parse --show-toplevel)"
+
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+scripts/charlie-haswell "$STAGE/blaulicht-dist/blaulicht-x64-haswell"
+tar -czf "$STAGE/$ARCHIVE" -C "$STAGE" blaulicht-dist
+
+echo ">> copying to $DEVICE:~/$ARCHIVE"
+scp -q "$STAGE/$ARCHIVE" "$DEVICE":~/
+
+ssh "$DEVICE" SUDO_PASSWORD="$SUDO_PASSWORD" ARCHIVE="$ARCHIVE" 'bash -s' <<'REMOTE'
+set -euo pipefail
+cd ~
+rm -rf blaulicht-dist
+tar -xzf "$ARCHIVE"
+NEW=~/blaulicht-dist/blaulicht-x64-haswell
+if ldd "$NEW" | grep -q "not found"; then
+  echo "!! new binary is missing libraries on this device, not installing:" >&2
+  ldd "$NEW" | grep "not found" >&2
+  exit 1
+fi
+TARGET=$(which blaulicht)
+cp "$TARGET" ~/blaulicht.prev
+echo "$SUDO_PASSWORD" | sudo -S -p '' install -m 755 "$NEW" "$TARGET"
+echo ">> installed $(ls -la "$TARGET")"
+echo ">> previous binary saved as ~/blaulicht.prev"
+
+# Restart: stop the wrapper first so it does not drop into the rescue session
+# when blaulicht dies, then stop blaulicht and start a fresh wrapper.
+pkill -f /usr/bin/blaulicht.sh || true
+if pkill -x blaulicht; then
+  for _ in $(seq 20); do pgrep -x blaulicht >/dev/null || break; sleep 0.5; done
+  pkill -9 -x blaulicht || true
+fi
+# blaulicht.sh holds a logind inhibitor (systemd-inhibit), which logind only
+# grants inside the local desktop session, not over ssh. The rescue tmux
+# session belongs to the desktop session, so start the wrapper from there.
+if ! tmux has-session -t rescue 2>/dev/null; then
+  echo "!! no rescue tmux session on the device; start blaulicht.sh on the device itself" >&2
+  exit 1
+fi
+tmux new-window -d -t rescue -n blaulicht "blaulicht.sh 2>&1 | tee ~/blaulicht.log"
+sleep 5
+if pgrep -x blaulicht >/dev/null; then
+  echo ">> blaulicht restarted (log: ~/blaulicht.log)"
+else
+  echo "!! blaulicht is not running after restart, see ~/blaulicht.log:" >&2
+  tail -20 ~/blaulicht.log >&2
+  exit 1
+fi
+REMOTE

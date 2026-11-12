@@ -1,0 +1,15 @@
+{
+  "name": "showserver-prolink-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Pro DJ Link (prolink-connect) as local HTTP + SSE for the show server",
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "dependencies": {
+    "prolink-connect": "0.11.0"
+  },
+  "overrides": {
+    "better-sqlite3": "11.10.0"
+  }
+}

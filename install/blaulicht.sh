@@ -1,6 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
+# Options (passed on to blaulicht-tune, see install/tune.sh):
+#   --experimental-dmx-tuning  tune the FTDI DMX interfaces at start.
+#   --experimental-no-smt      turn Hyper-Threading off.
+#   --experimental-no-avahi    stop mDNS (avahi-daemon).
+TUNE_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --experimental-dmx-tuning | --experimental-no-smt | --experimental-no-avahi) TUNE_ARGS+=("$arg") ;;
+        *) printf '[blaulicht.sh] unknown argument: %s\n' "$arg" >&2; exit 2 ;;
+    esac
+done
+
 log() {
     printf '[blaulicht.sh] %s\n' "$*"
 }
@@ -12,6 +24,12 @@ setup_xserver_basics() {
     xset s noblank || true
 
     log "X server setup complete."
+}
+
+apply_low_latency_tuning() {
+    # Runtime-only host tuning (CPU clock, preemption, USB autosuspend, swappiness).
+    # Needs the NOPASSWD sudoers entry from install.sh; never blocks the start.
+    sudo -n /usr/bin/blaulicht-tune "${TUNE_ARGS[@]}" || log "blaulicht-tune failed or not permitted, continuing untuned."
 }
 
 configure_monitors_and_get_blaulicht_flags() {
@@ -63,13 +81,16 @@ launch_rescue_session() {
 #
 
 setup_xserver_basics
+apply_low_latency_tuning
 
 while true; do
     configure_monitors_and_get_blaulicht_flags
 
     log "Launching blaulicht ${BLAULICHT_FLAGS[*]:-<no flags>}"
     set +e
-    blaulicht "${BLAULICHT_FLAGS[@]}"
+    # Hold a logind inhibitor while running: closing the lid or idle doesn't suspend.
+    systemd-inhibit --what=handle-lid-switch:sleep:idle --who=blaulicht \
+        --why="Show running" --mode=block blaulicht "${BLAULICHT_FLAGS[@]}"
     exit_code=$?
     set -e
 

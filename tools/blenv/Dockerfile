@@ -22,11 +22,24 @@ RUN curl -sSf https://sh.rustup.rs | CARGO_HOME=/opt/cargo sh -s -- -y --profile
     && CARGO_HOME=/opt/cargo rustup component add rust-src clippy rustfmt \
     && chmod -R a+rX /opt/rustup /opt/cargo
 
+# sccache: compiled dependencies are shared between worktrees through the blenv-sccache
+# volume, so a fresh worktree doesn't rebuild every crate from scratch. Workspace crates
+# built incrementally are not cached (sccache skips them); dependencies are.
+ARG SCCACHE_VERSION=0.10.0
+RUN arch=$(uname -m) \
+    && curl -sSfL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${arch}-unknown-linux-musl.tar.gz" \
+        | tar -xz -C /tmp \
+    && install -m 755 /tmp/sccache-v${SCCACHE_VERSION}-${arch}-unknown-linux-musl/sccache /usr/local/bin/sccache \
+    && rm -rf /tmp/sccache-*
+
 # RUSTUP_TOOLCHAIN beats rust-toolchain.toml, so a pinned date is used instead of rustup
 # fetching whatever "nightly" is today.
 ENV RUSTUP_TOOLCHAIN=${RUST_NIGHTLY} \
     CARGO_HOME=/cargo \
     CARGO_TARGET_DIR=/build/target \
+    RUSTC_WRAPPER=/usr/local/bin/sccache \
+    SCCACHE_DIR=/sccache \
+    SCCACHE_CACHE_SIZE=10G \
     DISPLAY=:9 \
     LIBGL_ALWAYS_SOFTWARE=1 \
     RUST_MIN_STACK=16777216

@@ -5,7 +5,7 @@ dmx_out_devices = [
     "/dev/ttyUSB0",
     "/dev/dmx_out_0",
 ]
-default_audio_device = "BlackHole 2ch"
+default_audio_device = "MacBook Pro Microphone"
 run_setup_on_reload = false
 spectrogram_window_seconds = 10
 spectrogram_refresh_hz = 60
@@ -70,5 +70,5 @@ enabled = true
 enable_watcher = true
 
 [plugin_state]
-forgedmx_sender = '{"version":1,"user":"{\"host\":\"127.0.0.1\",\"port\":9000,\"api_port\":3000,\"enabled\":true}","animation_instances":{}}'
 pioneer_pro_dj_link = '{"version":1,"user":"{\"log_beats\":true,\"ip\":\"\",\"mac\":\"\",\"auto_join\":false}","animation_instances":{}}'
+forgedmx_sender = '{"version":1,"user":"{\"host\":\"127.0.0.1\",\"port\":9000,\"api_port\":3000,\"enabled\":true,\"primary_palette\":10,\"secondary_palette\":11}","animation_instances":{}}'

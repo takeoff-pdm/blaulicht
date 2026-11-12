@@ -26,7 +26,7 @@ use strum::EnumIter;
 // v19: Light gained `VarytecStarstrip10_10Chan` and MovingHead gained
 //      `MartinRushMH6Wash_14Chan`, so the encoded EngineState can hold new variants.
 // v20: AppSubPage gained `System_Remote`.
-// v21: bl_http_get / bl_http_poll host imports (non-blocking HTTP GET).
+// v21: bl_http_get / bl_http_poll host imports; CollectedAudioSnapshot.manual_tempo (non-blocking HTTP GET).
 pub const PLUGIN_ABI_VERSION: u32 = 21;
 
 #[derive(Clone, Encode, Decode, Default)]
@@ -137,6 +137,10 @@ pub struct CollectedAudioSnapshot {
     pub frame_age_ms: u32,
     #[serde(default)]
     pub source_status: AudioSourceStatus,
+    /// A manual BPM is set: `bpm` and the beat events come from a metronome,
+    /// so they are valid even while the source is silent or disconnected.
+    #[serde(default)]
+    pub manual_tempo: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]

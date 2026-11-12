@@ -29,6 +29,7 @@ from typing import List, Optional, Sequence, Tuple
 
 TOOLS_DIR = Path(__file__).resolve().parent
 CARGO_VOLUME = "blenv-cargo"
+SCCACHE_VOLUME = "blenv-sccache"
 LABEL = "blenv"
 MAIN_WINDOW = "blaulicht"
 DEFAULT_SETTLE_MS = 400
@@ -190,6 +191,7 @@ def up(inst: Instance, log=print) -> str:
             "--label", f"{LABEL}.root={inst.root}",
             "-v", f"{inst.root}:/work",
             "-v", f"{CARGO_VOLUME}:/cargo",
+            "-v", f"{SCCACHE_VOLUME}:/sccache",
             "-v", f"{inst.target_volume}:/build",
             "-v", f"{inst.state_volume}:/state",
             "-p", "127.0.0.1::5900",

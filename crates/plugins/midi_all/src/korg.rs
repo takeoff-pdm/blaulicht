@@ -21,6 +21,10 @@ pub const FADER_BYTES: [u8; COUNT_SELECT_BUTTONS as usize] = [2, 3, 4, 5, 6, 8, 
 pub const JOG_WHEEL_CC: u8 = 82;
 /// CC used by older/custom Korg Kontrol Editor scenes.
 const LEGACY_JOG_WHEEL_CC: u8 = 60;
+/// Jog wheel in the current Kontrol Editor scene: direction is the CC number,
+/// value is always 0. One event per detent.
+const JOG_WHEEL_INC_CC: u8 = 83;
+const JOG_WHEEL_DEC_CC: u8 = 85;
 
 fn jog_wheel_delta(cc: u8, value: u8) -> i32 {
     if cc == JOG_WHEEL_CC {
@@ -57,6 +61,13 @@ pub struct KorgSubSystem {
     scenes: Vec<u8>,
 
     dmx: EngineState,
+
+    /// Clock (ms), direction and fast-streak length of the previous jog
+    /// detent, for acceleration.
+    last_jog: Option<(u32, i32, u32)>,
+    /// Half-steps not yet sent: the wheel emits two events per detent, so each
+    /// event is worth half a step.
+    jog_half_steps: i32,
 }
 
 impl Default for KorgSubSystem {
@@ -66,6 +77,8 @@ impl Default for KorgSubSystem {
             midi: VirtualMidi::disconnected(KORG_DEVICE_NAME),
             active_groups: HashSet::new(),
             last_sync: 0,
+            last_jog: None,
+            jog_half_steps: 0,
 
             fader_vals: [0; COUNT_SELECT_BUTTONS as usize],
             fader_vals_updated: [false; COUNT_SELECT_BUTTONS as usize],
@@ -96,7 +109,7 @@ impl KorgSubSystem {
         self.sync(input.clock);
 
         let res = self.midi.poll(input.clock);
-        self.nano_in(res, mapped);
+        self.nano_in(res, input.clock, mapped);
         self.nano_out(&input.events.events);
 
         for i in 0..COUNT_SELECT_BUTTONS as usize {
@@ -111,7 +124,7 @@ impl KorgSubSystem {
 //
 
 impl KorgSubSystem {
-    fn nano_in(&mut self, ev: Vec<MidiEvent>, mut mapped: impl FnMut(&MidiEvent) -> bool) {
+    fn nano_in(&mut self, ev: Vec<MidiEvent>, now: u32, mut mapped: impl FnMut(&MidiEvent) -> bool) {
         // self.midi.send(0x90, 46, 127);
 
         // for i in 0..255 {
@@ -128,6 +141,23 @@ impl KorgSubSystem {
 
         for e in ev {
             // println!("KORG EVENT: {:?}", e);
+            // Jog wheel first, so a learned mapping on CC 83 can't swallow it.
+            if e.status == 176 && (e.kind == JOG_WHEEL_INC_CC || e.kind == JOG_WHEEL_DEC_CC) {
+                let dir = if e.kind == JOG_WHEEL_INC_CC { 1 } else { -1 };
+                let half_steps = self.jog_step(now, dir);
+                if self.jog_half_steps.signum() == -dir {
+                    self.jog_half_steps = 0;
+                }
+                self.jog_half_steps += dir * half_steps;
+                let delta = self.jog_half_steps / 2;
+                self.jog_half_steps %= 2;
+                if delta != 0 {
+                    bpf::send_event(ControlEvent::MainUi(MainUiEvent::NumberpadAdjust {
+                        delta,
+                    }));
+                }
+                continue;
+            }
             if mapped(&e) {
                 continue;
             }
@@ -201,6 +231,26 @@ impl KorgSubSystem {
                     vlog!("Unhandled MIDI from device {}: {:?}", self.midi.device_id(), e);
                 }
             }
+        }
+    }
+
+    /// Size, in half-steps, of one jog event. Only a sustained fast spin accelerates:
+    /// the step grows with the number of consecutive quick detents, so single
+    /// clicks and slow turns always move by 1. A pause or a direction change
+    /// resets the streak.
+    fn jog_step(&mut self, now: u32, dir: i32) -> i32 {
+        let streak = match self.last_jog {
+            Some((at, last_dir, streak)) if last_dir == dir && now.wrapping_sub(at) <= 60 => {
+                streak + 1
+            }
+            _ => 0,
+        };
+        self.last_jog = Some((now, dir, streak));
+        match streak {
+            0..=11 => 1,
+            12..=23 => 2,
+            24..=39 => 5,
+            _ => 10,
         }
     }
 

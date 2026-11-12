@@ -1,9 +1,13 @@
 ---
 name: blaulicht-env
-description: Run blaulicht-core headless in a per-worktree Docker container (Xvfb + VNC) and drive it with real clicks, drags, keys and screenshots via scripts/blenv or the blaulicht-env MCP tools. Use for visual verification of UI changes, interaction tests of pages and plugin UIs, and reproducing UI bugs without touching the user's screen.
+description: On macOS use scripts/kt (egui_kittest, tools/blenv/KITTEST.md) first; blenv is for the visualizer 3D view, window-level behaviour and Linux. Run blaulicht-core headless in a per-worktree Docker container (Xvfb + VNC) and drive it with real clicks, drags, keys and screenshots via scripts/blenv or the blaulicht-env MCP tools. Use for visual verification of UI changes, interaction tests of pages and plugin UIs, and reproducing UI bugs without touching the user's screen.
 ---
 
 # blaulicht-env (blenv)
+
+> **On macOS, use `scripts/kt` (egui_kittest, no Docker) by default** and blenv only for what it
+> can't do: the visualizer's 3D view, window-level behaviour, pop-outs, file dialogs. See
+> `tools/blenv/KITTEST.md`.
 
 `blenv` runs the real `blaulicht-core` desk (engine + egui UI on X11, software GL) in a Docker container
 on display `:9`. Each git worktree gets its own container, build cache and inspector port,

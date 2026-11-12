@@ -64,7 +64,10 @@ The agent verifies UI changes by running the app, navigating it, and looking at 
 6. **Limits on Wayland**: widgets cannot be clicked and grim only captures the visible workspace. If the user is on another workspace, or a check needs a real click, use the headless recipe below instead of stealing the screen.
 7. **Report**: state which pages were captured and what was checked. If a screenshot could not be taken or the session was locked, say so explicitly instead of claiming visual verification. Stop the app afterwards (`pkill -x blaulicht-core`).
 
-## Headless UI Verification in Docker (blenv), preferred
+## Headless UI Verification on macOS (kt, egui_kittest), preferred on macOS
+`scripts/kt` runs the engine and the real `BlaulichtApp` in an `egui_kittest` harness rendered offscreen with wgpu: no window, no Docker, the normal target dir. Loop: `scripts/kt start --layout desktop`, `tree [filter]` (widget labels and rects), `click <label>` / `click_at X Y` / `drag` / `type` / `key`, `shot <png>`, `stop`. The visualizer's 3D view is blank there and there are no extra viewports or file dialogs; use blenv for those. Details and the full when-to-use-which table: `tools/blenv/KITTEST.md` (relative to the repo root).
+
+## Headless UI Verification in Docker (blenv), preferred on Linux
 `scripts/blenv` runs the app in a per-worktree Docker container (Xvfb, software GL, VNC, xdotool) and works on any host with Docker, including macOS. Each worktree has its own display and inspector port, so parallel agents are fine. Loop: `scripts/blenv up`, `build`, `run [--desktop]`, `screenshot` (read the printed PNG), `click X Y` / `drag` / `key` / `type` in window-relative coordinates, `nav <Page>`, `blctl …`, `logs --grep ERROR`, then `stop` or `down`. The same operations are exposed as the `blaulicht-env` MCP tools (`.mcp.json`). Details: `.claude/skills/blaulicht-env/SKILL.md` and `tools/blenv/README.md` (paths relative to the repo root).
 
 ## Headless UI Verification with Real Clicks (Xvfb + VNC + xdotool), native NixOS host

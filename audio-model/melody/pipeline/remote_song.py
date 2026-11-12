@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One song through the analysis on ae-charlie: stems, melody, the analyzers, the viewer's data. Started by song.py.
 
-    nohup python3 code/pipeline/remote_song.py "/Users/mik/Music/x.mp3" [--extra] > logs/songs/<id>.log 2>&1 &
+    nohup python3 code/pipeline/remote_song.py "/Users/mik/Music/x.mp3" [--extra] [--slots N] > logs/songs/<id>.log 2>&1 &
 
 The audio must already be in audio/<that path>. Writes out/songs/<id>.json after every step, which is what song.py reads.
 Songs run one at a time, so later ones wait as "queued". A step that's already done is skipped, so running this
@@ -90,8 +90,20 @@ def main() -> int:
         job.status.update(state="failed", error=f"no audio at {job.audio}")
         job.save()
         return 1
-    lock = (ROOT / "tmp/run_song.lock").open("w")
-    fcntl.flock(lock, fcntl.LOCK_EX)  # one song at a time, the rest wait here as "queued"
+    # one song at a time by default, the rest wait here as "queued"; --slots N lets N run at once (show server)
+    slots = int(sys.argv[sys.argv.index("--slots") + 1]) if "--slots" in sys.argv else 1
+    lock = None
+    while lock is None:
+        for i in range(max(1, slots)):
+            f = (ROOT / ("tmp/run_song.lock" if i == 0 else f"tmp/run_song.{i}.lock")).open("w")
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock = f
+                break
+            except BlockingIOError:
+                f.close()
+        else:
+            time.sleep(5)
     job.status.update(state="running", running_since=time.time())
     job.save()
     with LISTS.open("a+") as f:  # melodia_batch.py rewrites its index from this list

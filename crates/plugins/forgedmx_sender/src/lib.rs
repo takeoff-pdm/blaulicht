@@ -6,13 +6,14 @@ mod clock;
 mod color;
 mod health;
 mod osc;
+mod view;
 
 use blaulicht_plugin_framework as bpf;
-use blaulicht_plugin_framework::{ui, HttpRequest, Plugin};
+use blaulicht_plugin_framework::{HttpRequest, Plugin};
 use blaulicht_shared::{ControlEvent, PluginUiEvent, TickInput};
 use clock::BeatTracker;
 use color::Rgb;
-use health::{Health, RemoteState};
+use health::{Health, OutageDetector, RateLimiter, RemoteState};
 use osc::Arg;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,14 @@ const CMB_SECONDARY: u8 = 8;
 
 const KEEPALIVE_MS: u32 = 5_000;
 const CHECK_MS: u32 = 2_000;
+/// A check still running after this long counts as failed, so a forgeDMX that
+/// accepts connections but never answers still shows as unreachable.
+const CHECK_TIMEOUT_MS: u32 = 5_000;
 const BPM_EPSILON: f32 = 0.5;
+/// While beats arrive they carry the BPM; standalone BPM messages are only
+/// needed when no beat went out for this long.
+const BEATLESS_MS: u32 = 2_000;
+const ALERT_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn default_api_port() -> u16 {
     3000
@@ -71,6 +79,7 @@ struct Check {
     remote: Option<RemoteState>,
     sync_source: Option<String>,
     health: Health,
+    outage: OutageDetector,
 }
 
 impl Default for Check {
@@ -84,6 +93,7 @@ impl Default for Check {
             remote: None,
             sync_source: None,
             health: Health::Unknown,
+            outage: OutageDetector::default(),
         }
     }
 }
@@ -100,7 +110,11 @@ struct ForgeDmxSender {
     last_sync: Option<u32>,
     last_bpm_sent: Option<f32>,
     last_beat: Option<clock::Beat>,
+    last_beat_at: Option<u32>,
     messages: u64,
+    /// forgeDMX's `messages` counter only counts clock messages (bpm, beat,
+    /// downbeat), not sync or color, so arrival is judged on these alone.
+    clock_messages: u64,
     check: Check,
     /// Color palettes of the show, refreshed every tick, as (id, name).
     palette_options: Vec<(u8, String)>,
@@ -108,11 +122,13 @@ struct ForgeDmxSender {
     colors: (Option<Rgb>, Option<Rgb>),
     /// Colors last sent to forgeDMX.
     sent_colors: (Option<Rgb>, Option<Rgb>),
+    /// Limits outage popups; kept across target changes on purpose.
+    alert_limiter: RateLimiter,
 }
 
 impl ForgeDmxSender {
     fn target(&self) -> String {
-        format!("{}:{}", self.state.host.trim(), self.state.port)
+        format!("{}:{}", udp_host(&self.state.host).unwrap_or_else(|| self.state.host.trim().into()), self.state.port)
     }
 
     fn api_url(&self, path: &str) -> String {
@@ -120,8 +136,16 @@ impl ForgeDmxSender {
     }
 
     fn send(&mut self, address: &str, args: &[Arg]) {
-        bpf::send_udp(&self.target(), &osc::message(address, args));
+        // The host resolves UDP targets on the engine thread, so only IP
+        // literals go out: a DNS name could stall every tick on a slow resolver.
+        let Some(host) = udp_host(&self.state.host) else {
+            return;
+        };
+        bpf::send_udp(&format!("{host}:{}", self.state.port), &osc::message(address, args));
         self.messages += 1;
+        if matches!(address, "/forgedmx/bpm" | "/forgedmx/beat" | "/forgedmx/downbeat") {
+            self.clock_messages += 1;
+        }
     }
 
     fn send_bpm(&mut self, bpm: f32) {
@@ -204,7 +228,10 @@ impl ForgeDmxSender {
                 let port = self.port_text.trim().parse::<u16>();
                 let api_port = self.api_port_text.trim().parse::<u16>();
                 match (port, api_port) {
-                    (Ok(port), Ok(api_port)) if port != 0 && api_port != 0 && !host.is_empty() => {
+                    _ if udp_host(host).is_none() => {
+                        self.error = "Host must be an IP address (or localhost)".into()
+                    }
+                    (Ok(port), Ok(api_port)) if port != 0 && api_port != 0 => {
                         self.state.host = host.to_string();
                         self.state.port = port;
                         self.state.api_port = api_port;
@@ -215,8 +242,10 @@ impl ForgeDmxSender {
                     _ => self.error = "Invalid host or port".into(),
                 }
             }
-            PluginUiEvent::Checkbox { id, checked } if *id == CHK_ENABLED => {
-                self.state.enabled = *checked;
+            PluginUiEvent::Checkbox { id, checked: on } | PluginUiEvent::Switch { id, value: on }
+                if *id == CHK_ENABLED =>
+            {
+                self.state.enabled = *on;
                 self.save();
                 self.restart();
             }
@@ -236,7 +265,19 @@ impl ForgeDmxSender {
     }
 
     fn run_check(&mut self, now: u32) {
-        if let Some(resp) = self.check.state_req.as_ref().and_then(HttpRequest::poll) {
+        let mut state_resp = self.check.state_req.as_ref().and_then(HttpRequest::poll);
+        let timed_out = self.check.state_req.is_some()
+            && state_resp.is_none()
+            && self.check.last_started.is_some_and(|t| now.wrapping_sub(t) >= CHECK_TIMEOUT_MS);
+        if timed_out {
+            // Abandon the request; the host thread ends on its own I/O timeout.
+            self.check.sync_req = None;
+            state_resp = Some(bpf::HttpResponse {
+                error: format!("no answer within {} s", CHECK_TIMEOUT_MS / 1000),
+                ..Default::default()
+            });
+        }
+        if let Some(resp) = state_resp {
             self.check.state_req = None;
             let sent_between = self.check.sent_at_start - self.check.sent_at_prev;
             self.check.health = if !resp.ok {
@@ -261,6 +302,12 @@ impl ForgeDmxSender {
                 }
             };
             self.check.sent_at_prev = self.check.sent_at_start;
+            if self.check.outage.observe(&self.check.health) && self.alert_limiter.allow(now) {
+                let popup = format!("forgeDMX disconnected: {}", self.check.health.short_reason());
+                bpf::ui::alert_for(&popup, ALERT_DURATION);
+                let log = format!("forgeDMX disconnected. {}", self.check.health.text());
+                bpf::bl_log(&log, blaulicht_shared::LogLevel::Warn);
+            }
         }
         if let Some(resp) = self.check.sync_req.as_ref().and_then(HttpRequest::poll) {
             self.check.sync_req = None;
@@ -271,79 +318,10 @@ impl ForgeDmxSender {
         let due = self.check.last_started.is_none_or(|t| now.wrapping_sub(t) >= CHECK_MS);
         if !in_flight && due {
             self.check.last_started = Some(now);
-            self.check.sent_at_start = self.messages;
+            self.check.sent_at_start = self.clock_messages;
             self.check.state_req = bpf::http_get(&self.api_url("state"));
             self.check.sync_req = bpf::http_get(&self.api_url("sync"));
         }
-    }
-
-    fn render_ui(&self) {
-        ui::begin();
-        ui::label_styled("forgeDMX Sender", 18, false);
-        ui::label("Sends BPM and beats to forgeDMX (OSC over UDP).");
-        ui::separator();
-        ui::begin_horizontal();
-        ui::text_edit("Host", ID_HOST, &self.host_text);
-        ui::text_edit("OSC port", ID_PORT, &self.port_text);
-        ui::text_edit("API port", ID_API_PORT, &self.api_port_text);
-        ui::button("Apply", BTN_APPLY);
-        ui::end_horizontal();
-        let mut names = vec!["None".to_string()];
-        names.extend(self.palette_options.iter().map(|(id, name)| format!("{id}: {name}")));
-        ui::begin_horizontal();
-        ui::combo_box("Primary (A)", CMB_PRIMARY, &names, self.index_for_palette(self.state.primary_palette));
-        ui::combo_box("Secondary (B)", CMB_SECONDARY, &names, self.index_for_palette(self.state.secondary_palette));
-        ui::end_horizontal();
-        for (label, id) in [("Primary", self.state.primary_palette), ("Secondary", self.state.secondary_palette)] {
-            if let Some(id) = id.filter(|id| !self.palette_options.iter().any(|(p, _)| p == id)) {
-                ui::label(&format!("{label} palette {id} no longer exists or is not a color palette."));
-            }
-        }
-        ui::begin_horizontal();
-        ui::checkbox("Enabled", CHK_ENABLED, self.state.enabled);
-        ui::button("Resend sync", BTN_RESYNC);
-        ui::end_horizontal();
-        if !self.error.is_empty() {
-            ui::label(&format!("ERROR: {}", self.error));
-        }
-        ui::separator();
-        if !self.state.enabled {
-            ui::label("Disabled");
-            return;
-        }
-
-        let health = &self.check.health;
-        let prefix = if health.is_error() { "ERROR: " } else { "" };
-        ui::label_styled(&format!("{prefix}{}", health.text()), 14, true);
-        if let Some(r) = &self.check.remote {
-            let bpm = r.bpm.map_or("-".into(), |b| format!("{b:.1}"));
-            let beat = r.beat_in_bar.map_or("-".into(), |b| b.to_string());
-            let age = r.last_beat_age.map_or("-".into(), |a| format!("{a:.2} s"));
-            ui::label(&format!(
-                "forgeDMX has: BPM {bpm} | beat {beat} | last beat {age} ago | {} messages",
-                r.messages
-            ));
-        }
-        if let Some(src) = &self.check.sync_source {
-            if !src.eq_ignore_ascii_case("api") {
-                ui::label(&format!(
-                    "forgeDMX sync source is {src}, so its visuals don't follow this clock yet."
-                ));
-            }
-        }
-
-        let bpm = self.last_bpm_sent.map_or("-".into(), |b| format!("{b:.1}"));
-        let beat = self.last_beat.map_or("-".into(), |b| {
-            format!("{}{}", b.position, if b.estimated { " (counted)" } else { "" })
-        });
-        ui::label(&format!(
-            "Sending to {}: BPM {bpm} | beat {beat} | {} messages",
-            self.target(),
-            self.messages
-        ));
-        let a = self.colors.0.map_or("unchanged".into(), color::hex);
-        let b = self.colors.1.map_or("derived from A".into(), color::hex);
-        ui::label(&format!("Colors: A {a} | B {b}"));
     }
 }
 
@@ -380,6 +358,7 @@ impl Plugin for ForgeDmxSender {
                 self.send("/forgedmx/beat", &[Arg::Int(beat.position as i32), Arg::Float(bpm)]);
                 self.last_bpm_sent = Some(bpm);
                 self.last_beat = Some(beat);
+                self.last_beat_at = Some(now);
             }
             let due = self.last_sync.is_none_or(|t| now.wrapping_sub(t) >= KEEPALIVE_MS);
             // Keep-alive resends the colors too, so a restarted forgeDMX gets them.
@@ -391,7 +370,8 @@ impl Plugin for ForgeDmxSender {
                     self.send_bpm(bpm);
                 }
             } else if let Some(bpm) = update.bpm {
-                if self.last_bpm_sent.is_none_or(|b| (b - bpm).abs() > BPM_EPSILON) {
+                let beatless = self.last_beat_at.is_none_or(|t| now.wrapping_sub(t) >= BEATLESS_MS);
+                if beatless && self.last_bpm_sent.is_none_or(|b| (b - bpm).abs() > BPM_EPSILON) {
                     self.send_bpm(bpm);
                 }
             }
@@ -406,4 +386,29 @@ impl Plugin for ForgeDmxSender {
 #[no_mangle]
 extern "C" fn main() {
     bpf::hook_plugin(Box::new(ForgeDmxSender::default()));
+}
+
+/// The UDP target host as an IP literal; None for names that would need DNS.
+fn udp_host(host: &str) -> Option<String> {
+    let host = host.trim();
+    if host.eq_ignore_ascii_case("localhost") {
+        return Some("127.0.0.1".into());
+    }
+    host.parse::<std::net::IpAddr>().ok().map(|ip| match ip {
+        std::net::IpAddr::V6(v6) => format!("[{v6}]"),
+        v4 => v4.to_string(),
+    })
+}
+
+#[cfg(test)]
+mod host_tests {
+    use super::udp_host;
+
+    #[test]
+    fn accepts_only_ip_literals() {
+        assert_eq!(udp_host(" 192.168.1.20 ").as_deref(), Some("192.168.1.20"));
+        assert_eq!(udp_host("localhost").as_deref(), Some("127.0.0.1"));
+        assert_eq!(udp_host("::1").as_deref(), Some("[::1]"));
+        assert_eq!(udp_host("forgedmx.local"), None);
+    }
 }

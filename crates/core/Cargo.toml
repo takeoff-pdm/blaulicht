@@ -1,6 +1,6 @@
 [package]
 name = "blaulicht-core"
-version = "0.30.0"
+version = "0.40.0"
 authors = ["MikMuellerDev"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
@@ -40,3 +40,9 @@ debug = false      # Strip debug symbols for this crate to speed up linking
 opt-level = 0
 codegen-units = 16
 debug = false      # Strip debug symbols for this crate to speed up linking
+
+[dev-dependencies]
+eframe = { version = "0.34.1", default-features = false }
+egui = { version = "0.34.1", default-features = false }
+egui_kittest = { version = "0.34.1", features = ["wgpu", "eframe", "snapshot"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

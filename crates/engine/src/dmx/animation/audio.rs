@@ -231,7 +231,7 @@ impl AudioModulationRuntime {
         let valid = health.is_valid();
 
         let pulse = matches!(spec.signal, AudioModulationSignal::BeatPulse)
-            .then(|| self.poll_pulse(&audio.snapshot, valid));
+            .then(|| self.poll_pulse(&audio.snapshot, valid || audio.snapshot.manual_tempo));
 
         let raw = match pulse {
             Some(fired) => f64::from(u8::from(fired)),

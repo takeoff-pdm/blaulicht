@@ -493,8 +493,13 @@ pub fn http_get(url: &str) -> Option<HttpRequest> {
 impl HttpRequest {
     /// None while the request is running; the response is returned once.
     pub fn poll(&self) -> Option<HttpResponse> {
-        let mut buf = vec![0u8; HTTP_RESPONSE_BUFFER];
-        let len = unsafe { bl_http_poll(self.id, buf.as_mut_ptr(), buf.len()) };
+        // Polled every tick while pending: don't zero 64 KB each time.
+        let mut buf: Vec<u8> = Vec::with_capacity(HTTP_RESPONSE_BUFFER);
+        let len = unsafe { bl_http_poll(self.id, buf.as_mut_ptr(), buf.capacity()) };
+        if len > 0 {
+            // The host wrote exactly `len` bytes.
+            unsafe { buf.set_len(len as usize) };
+        }
         match len {
             -1 => None,
             n if n < 0 => Some(HttpResponse {

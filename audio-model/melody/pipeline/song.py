@@ -134,7 +134,7 @@ def pull(listed: str) -> dict:
 
 
 # ---- 2. analyze
-def start(job: dict, extra: bool) -> None:
+def start(job: dict, extra: bool, slots: int = 1) -> None:
     """Code and audio to ae-charlie, then the job, which keeps running there if the gateway closes."""
     try:
         rsync("--exclude", "__pycache__", "--exclude", "pilots", "--exclude", "edm_finetune", "--exclude", "fx_train", f"{lib.HERE.parent}/analyze/", f"{HOST}:{REMOTE}/code/analyze/")
@@ -142,7 +142,7 @@ def start(job: dict, extra: bool) -> None:
         rsync(str(lib.HERE / "remote_song.py"), str(lib.HERE / "build_viz_data.py"), f"{HOST}:{REMOTE}/code/pipeline/")
         rsync(job["listed"], f"{HOST}:{REMOTE}/audio{job['listed']}")
         # the old status goes first, so following the new job can't read the last run's "done" or "failed"
-        r = ssh(f"cd {REMOTE} && rm -f out/songs/{job['id']}.json && nohup python3 code/pipeline/remote_song.py {shlex.quote(job['listed'])} {'--extra' if extra else ''} > logs/songs/{job['id']}.log 2>&1 < /dev/null &")
+        r = ssh(f"cd {REMOTE} && rm -f out/songs/{job['id']}.json && nohup python3 code/pipeline/remote_song.py {shlex.quote(job['listed'])} {'--extra' if extra else ''} {f'--slots {slots}' if slots > 1 else ''} > logs/songs/{job['id']}.log 2>&1 < /dev/null &")
     except GatewayClosed:
         write_job(job, state="waiting for ae-charlie", step=None, steps_done=0, steps_total=None)
         print(f"Waiting for ae-charlie: the gateway is closed. {OPEN_IT}")
@@ -221,13 +221,20 @@ def fetch(job: dict) -> int:
     except GatewayClosed:
         print(f"Waiting for ae-charlie: the gateway is closed. {OPEN_IT}")
         return 3
+    return register_and_compile(job, st.get("failed") or [])
+
+
+def register_and_compile(job: dict, analyzers_failed: list[str]) -> int:
+    """With viz/<id>.json and the features in place: the song into songs.json, then compile it."""
+    sid = job["id"]
     doc = json.loads((lib.DATA / f"{sid}.json").read_text())
     with lib.shared_lists():
-        songs = [s for s in json.loads((lib.DATA / "songs.json").read_text()) if s["id"] != sid]
+        songs_file = lib.DATA / "songs.json"
+        songs = [s for s in json.loads(songs_file.read_text()) if s["id"] != sid] if songs_file.exists() else []
         songs.append({"id": sid, "name": doc["name"], "path": job["listed"], "duration": round(doc["duration"], 2), "tracks": sorted(doc["notes"])})
-        lib.write_atomic(lib.DATA / "songs.json", json.dumps(sorted(songs, key=lambda s: Path(s["path"]).stem.lower()), indent=1, ensure_ascii=False))
+        lib.write_atomic(songs_file, json.dumps(sorted(songs, key=lambda s: Path(s["path"]).stem.lower()), indent=1, ensure_ascii=False))
     failed = compile_songs([sid], 1)
-    write_job(job, state="failed to compile" if failed else "compiled", step=None, analyzers_failed=st.get("failed") or [])
+    write_job(job, state="failed to compile" if failed else "compiled", step=None, analyzers_failed=analyzers_failed)
     if failed:
         return 1
     print_song(sid)
