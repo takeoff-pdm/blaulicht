@@ -349,7 +349,9 @@ impl Popover<'_> {
                         st.scroll = true;
                     }
                 }
-                for (mods, only) in [(Modifiers::NONE, false), (Modifiers::ALT, true)] {
+                // ALT first: `consume_key` matches modifiers logically, so a
+                // NONE pattern would also eat Alt+Enter as a plain toggle.
+                for (mods, only) in [(Modifiers::ALT, true), (Modifiers::NONE, false)] {
                     if i.consume_key(mods, Key::Enter)
                         || (!filter && i.consume_key(mods, Key::Space))
                     {

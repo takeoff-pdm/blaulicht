@@ -69,3 +69,11 @@ The mockup uses one popover for every choice list (`chrome.js` `BL.dropdown`); e
   with a ComboBox op in the default setup); they use the same `select` as the verified ones. Esc inside a modal may
   also reach the modal's own Esc handling if that runs earlier in the frame.
 
+- Review fix: Alt+Enter toggled the active row instead of picking only it, because the key loop tried
+  `Modifiers::NONE` first and egui's `consume_key` matches modifiers logically (NONE also matches Alt). The loop
+  now tries `Modifiers::ALT` first. Re-verified in blenv --desktop on Logs levels: all checked, hover Warn,
+  alt+Return -> only Warn checked, label "Warn"; then Return on Error -> "Warn, Error" (plain toggle still works).
+  Alt-click (reads `modifiers.alt`) is still untested in blenv: `blenv click` has no modifier option.
+  Checks: fmt (blenv; no diff in dropdown.rs, pre-existing drift in other crates), clippy --all-targets
+  --all-features -p blaulicht-ui-egui (blenv, clean), cargo test --all-features -p blaulicht-ui-egui (host,
+  CARGO_BUILD_JOBS=4, 139 passed). Kiosk untouched: the change is key handling inside the desktop-only dropdown.
