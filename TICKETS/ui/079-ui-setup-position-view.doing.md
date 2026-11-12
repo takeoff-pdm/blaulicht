@@ -61,5 +61,5 @@ The mockup shows a 2D view of the rig next to the position fields (`fxplan.js`).
   ~/.orbstack/run/docker.sock), and it was left stopped on purpose (16 GB Mac, load average around 9). Still to do
   once Docker is up: blenv screenshots (small and large Top/Front views, both themes) against the mockup, drag,
   zoom, pan and dot-click checks, a kiosk 800x480 comparison against a decouple build, and workspace-wide
-  `cargo clippy --all-targets --all-features` / `cargo test --all-features`. Only host rustfmt --check ran
-  on the two touched files.
+  `cargo fmt`, `cargo clippy --all-targets --all-features` and `cargo test --all-features`. None ran: there is
+  no rustfmt on the host, and the fixes only touch comments.
