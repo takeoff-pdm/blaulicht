@@ -562,7 +562,8 @@ impl BlaulichtApp {
                             Some(TreeAction::TapFolder(folder)) => {
                                 components::folder_tap_event(&dmx_engine.0, folder)
                             }
-                            Some(TreeAction::MoveRequested(_)) | None => None,
+                            Some(TreeAction::MoveRequested(_) | TreeAction::DropLeaf(..))
+                            | None => None,
                         };
                         if let Some(msg) = msg {
                             self.client

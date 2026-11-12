@@ -173,6 +173,7 @@ impl BlaulichtApp {
                 Tree::new(SETUP_SCENE_TREE, &items)
                     .selected(Some(selected))
                     .with_move_button(true)
+                    .drag_to_folders(false)
                     .show(ui)
             })
             .inner;
@@ -197,6 +198,18 @@ impl BlaulichtApp {
                 };
                 self.setup_scenes_ui.dialog = FolderDialog::move_item(state, item);
             }
+            Some(TreeAction::DropLeaf(id, folder)) => {
+                if let Some(event) = components::drop_to_folder_event(
+                    ui.ctx(),
+                    state,
+                    SETUP_SCENE_TREE,
+                    FolderItem::Scene(id),
+                    folder,
+                ) {
+                    self.client
+                        .send(ControlEventMessage::new(EventOriginator::Web, event));
+                }
+            }
             None => {}
         }
     }
@@ -212,11 +225,15 @@ impl BlaulichtApp {
         ui.add_space(6.0);
         ui.label(RichText::new(&scene.name).size(18.0).strong());
         ui.add_space(6.0);
-        ui.label(format!(
-            "In: {}",
-            folder_path(&dmx_engine.0.folders, scene.folder)
-        ));
-        ui.add_space(6.0);
+        // The desktop has no folder field: scenes move by dragging them in
+        // the tree.
+        if !crate::app::ui_tokens::Density::of(ui.ctx()).is_compact() {
+            ui.label(format!(
+                "In: {}",
+                folder_path(&dmx_engine.0.folders, scene.folder)
+            ));
+            ui.add_space(6.0);
+        }
         ui.label(
             RichText::new("Clone, rename and delete act on the selected scene.")
                 .size(12.0)
