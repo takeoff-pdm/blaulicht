@@ -105,6 +105,21 @@ fn moved_text(names: &[String], to: &str) -> String {
 
 /// The Delete confirm label: "Confirm delete" for one fixture, "Delete N
 /// fixtures" for several.
+/// The fixture type as the studio shows it (`pretty` in `setup.html`),
+/// falling back to the model name for types the mockup does not list.
+fn type_label(model: &str) -> String {
+    match model {
+        "AdjMegaHexPar" => "ADJ Mega Hex Par",
+        "DimmerSingle" => "Dimmer",
+        "LiteCraftMiniParAT10" => "LiteCraft AT10",
+        "MartinMac250E" => "Martin MAC 250E",
+        "VaryTechVP1" => "Varytec VP1",
+        "FogMachineSingle" => "Fog machine",
+        other => other,
+    }
+    .to_owned()
+}
+
 fn delete_label(count: usize) -> String {
     if count > 1 {
         format!("Delete {count} fixtures")
@@ -189,7 +204,10 @@ impl BlaulichtApp {
         };
         let mut groups_ui = pane(groups_rect, t.list);
         let mut centre_ui = pane(centre_rect, t.list);
-        let mut fixture_ui = pane(fixture_rect, t.pane);
+        // `.body` is `--list` in every pane (studio.css); the header bar
+        // paints its own `--pane`/`--head`. In light the `.mini` buttons
+        // (`--ctl`) then sit on the body with no visible fill.
+        let mut fixture_ui = pane(fixture_rect, t.list);
 
         let group_rows = self.desktop_groups_pane(&mut groups_ui, dmx_engine);
         self.desktop_centre_pane(&mut centre_ui, dmx_engine);
@@ -573,10 +591,12 @@ impl BlaulichtApp {
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                 let mono = egui::FontId::monospace(12.0);
                 for (fid, fix) in &group.fixtures {
-                    let model = fix.type_.model_string();
+                    let raw = fix.type_.model_string();
+                    let model = type_label(&raw);
                     if !needle.is_empty()
                         && !fix.name.to_lowercase().contains(&needle)
                         && !model.to_lowercase().contains(&needle)
+                        && !raw.to_lowercase().contains(&needle)
                     {
                         continue;
                     }
@@ -603,6 +623,8 @@ impl BlaulichtApp {
                         p.rect_filled(rect, 0.0, t.head);
                     }
                     let text = if active { t.strong } else { t.text };
+                    // `td.dim` (Type, Ch): muted unless the row is selected.
+                    let dim = if active { t.strong } else { t.muted };
                     let col = |i: usize| rect.left() + 8.0 + cols[i] * (width - 16.0);
                     let cy = rect.center().y;
                     let footprint = fix.type_.footprint();
@@ -619,7 +641,7 @@ impl BlaulichtApp {
                         Align2::LEFT_CENTER,
                         &model,
                         f.clone(),
-                        text,
+                        dim,
                     );
                     p.text(
                         pos2(col(2), cy),
@@ -640,7 +662,7 @@ impl BlaulichtApp {
                         Align2::RIGHT_CENTER,
                         footprint.to_string(),
                         f.clone(),
-                        text,
+                        dim,
                     );
                     if response.clicked() {
                         let m = ui.input(|i| i.modifiers);
@@ -768,7 +790,7 @@ impl BlaulichtApp {
         });
         row(ui, "Type", &mut |ui| {
             ui.label(
-                RichText::new(fix.type_.model_string())
+                RichText::new(type_label(&fix.type_.model_string()))
                     .font(density.font(Weight::Regular, 12.0))
                     .color(t.text),
             );
@@ -1125,7 +1147,10 @@ impl BlaulichtApp {
             );
         };
 
-        let types: BTreeSet<String> = fixtures.iter().map(|f| f.type_.model_string()).collect();
+        let types: BTreeSet<String> = fixtures
+            .iter()
+            .map(|f| type_label(&f.type_.model_string()))
+            .collect();
         let kind = match types.len() {
             1 => types.into_iter().next().unwrap_or_default(),
             _ => "Mixed".to_owned(),
@@ -1210,6 +1235,13 @@ mod selection_tests {
 
     fn set(ids: &[u8]) -> BTreeSet<u8> {
         ids.iter().copied().collect()
+    }
+
+    #[test]
+    fn type_label_follows_the_mockup_names() {
+        assert_eq!(type_label("MartinMac250E"), "Martin MAC 250E");
+        assert_eq!(type_label("DimmerSingle"), "Dimmer");
+        assert_eq!(type_label("SomethingNew"), "SomethingNew");
     }
 
     #[test]

@@ -74,3 +74,18 @@ The mockup selects several fixtures and moves them between groups (`setup.html` 
   Full-workspace `cargo clippy --all-targets --all-features` (no errors, nothing in the touched file) and
   `cargo test --all-features` (all pass) in the blenv container; `cargo fmt --check` lists only files this
   ticket does not touch (same 92 diffs on the unchanged branch).
+- Second review fixes: (1) the Fixture pane body is now `--list` like every `.body` in studio.css (it was
+  `--pane`); the header bar keeps its own colour. In light the Identify/Initialize `.mini` buttons (`--ctl`
+  #eeeef0) now sit on the #eeeeef body with no visible fill, as in setup.html#light; dark gives body
+  rgb(23,24,26) and buttons rgb(58,59,63), the mockup's computed values (checked over CDP). (2) Fixture table:
+  Type and Ch use `--muted` on unselected rows (`.rows td.dim`), `--strong` on selected ones. (3) Type names
+  follow the mockup's `pretty` map via `type_label` ("Martin MAC 250E", "Dimmer", "LiteCraft AT10", ...;
+  unknown models fall back to `model_string()`), in the table, the multi-select Type field and the Add fixture
+  Type row; the filter matches both spellings. Re-verified in blenv `--desktop` 1500x950, MAC250E with
+  Shift+click of 3 rows, dark and light, against setup.html driven over CDP. Kiosk Setup (800x480)
+  byte-identical (`cmp`) with decouple. Checks in the blenv container (CARGO_BUILD_JOBS=4): `rustfmt --check`
+  on the touched file, full `cargo clippy --all-targets --all-features` (nothing in the touched file),
+  `cargo test --all-features` (all pass, new `type_label_follows_the_mockup_names`).
+- Out of scope, noted: the sidebar labels/grouping (SYSTEM/SETUP/PERFORM, DMX and Art-Net apart, "View
+  Performance") differ from the mockup ("DMX & Art-Net", "MIDI & Serial", "Live", "Perform"); that is shell
+  work for another ticket.
