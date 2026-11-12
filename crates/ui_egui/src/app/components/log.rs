@@ -357,6 +357,11 @@ impl LogWindow {
         let query = self.filter_text.clone();
         let scroll_output = ui
             .allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
+                // Rows stop at the header's bottom and the footer's top: the
+                // ScrollArea widens its clip by `clip_rect_margin`, so pin
+                // the clip to the body itself.
+                let body = ui.max_rect().intersect(ui.clip_rect());
+                ui.set_clip_rect(body);
                 egui::ScrollArea::vertical()
                     .id_salt("log_desktop_scroll")
                     .auto_shrink([false, false])

@@ -73,3 +73,10 @@
     pre-existing warnings elsewhere), workspace-wide `cargo test --all-features` passes.
   - Kiosk: not re-shot; the review changes are all inside `draw_desktop`/`desktop.rs`, and the
     only shared change (the `seq` field on `LogEntry`) is not drawn, so the Compact path is the same.
+
+Review fix (2026-11-12): log rows drew through the sticky header and under the footer. The
+body clip is now pinned to the body rect before the ScrollArea (which widens its clip by
+`clip_rect_margin`), so rows cut at the header's bottom (y=52) and the footer's top (y=902).
+Checked in kt at 1500x950 with Follow at the end and Paused at the top. Kiosk path untouched
+(change is inside `draw_desktop` only). fmt clean for touched files, clippy and tests pass
+(host, CARGO_BUILD_JOBS=4); `cargo fmt --check` still reports older diffs in other crates.
