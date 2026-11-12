@@ -159,7 +159,7 @@ Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 03
 | 083 | [Logs page](TICKETS/ui/083-ui-logs-page.done.md) | done | 071 |
 | 084 | [System General and Screens](TICKETS/ui/084-ui-system-general-screens.done.md) | done | 069, 074 |
 | 085 | [Visualizer and Scene Graph in the studio shell](TICKETS/ui/085-ui-visualizer-scenegraph-shell.planned.md) | planned | 069 |
-| 086 | [Plugins, MIDI & Serial, Remote UI and Audio pages](TICKETS/ui/086-ui-system-audio-pages.doing.md) | doing | 069, 071 |
+| 086 | [Plugins, MIDI & Serial, Remote UI and Audio pages](TICKETS/ui/086-ui-system-audio-pages.done.md) | done | 069, 071 |
 
 ## Inbox
 Raw ideas that are not ticketed yet. Add new notes here, and turn them into tickets once they are clear.
