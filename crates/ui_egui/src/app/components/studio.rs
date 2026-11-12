@@ -96,6 +96,8 @@ pub struct ListRow<'a> {
     pub state: ListRowState,
     /// Inside a folder: indented, with the tree line.
     pub in_folder: bool,
+    /// Muted text on the right, such as a category.
+    pub note: Option<&'a str>,
 }
 
 impl<'a> ListRow<'a> {
@@ -106,7 +108,12 @@ impl<'a> ListRow<'a> {
             count: None,
             state: ListRowState::Idle,
             in_folder: false,
+            note: None,
         }
+    }
+    pub fn note(mut self, note: &'a str) -> Self {
+        self.note = Some(note);
+        self
     }
     pub fn id(mut self, id: &'a str) -> Self {
         self.id = Some(id);
@@ -195,6 +202,18 @@ impl<'a> ListRow<'a> {
             );
             right -= 8.0;
         }
+        if let Some(note) = self.note {
+            let f = font(ui, Weight::Regular, TEXT);
+            right -= text_width(ui, note, f.clone());
+            ui.painter().text(
+                pos2(right, rect.center().y),
+                Align2::LEFT_CENTER,
+                note,
+                f,
+                side_color,
+            );
+            right -= 8.0;
+        }
         let mut x = left;
         if let Some(id) = self.id {
             let f = mono(TEXT_MIN);
@@ -242,6 +261,22 @@ pub fn folder_band(
     open: bool,
     first: bool,
 ) -> Response {
+    let count = count.filter(|_| !open).map(|c| c.to_string());
+    folder_band_with(ui, name, count.as_deref(), false, open, first, None)
+}
+
+/// A [`folder_band`] with free text on the right (`note`, shown open or
+/// closed; mono when `mono_note`) and an optional muted icon after the name
+/// (such as a link for "set by a palette").
+pub fn folder_band_with(
+    ui: &mut Ui,
+    name: &str,
+    note: Option<&str>,
+    mono_note: bool,
+    open: bool,
+    first: bool,
+    icon: Option<(&str, &str)>,
+) -> Response {
     let t = studio(ui.ctx());
     if !first {
         ui.add_space(2.0);
@@ -286,28 +321,47 @@ pub fn folder_band(
         t.muted,
     );
     let mut right = rect.right() - 8.0;
-    if let (Some(count), false) = (count, open) {
-        let text = count.to_string();
-        let f = font(ui, Weight::Regular, TEXT);
-        right -= text_width(ui, &text, f.clone());
+    if let Some(text) = note {
+        let f = if mono_note {
+            mono(TEXT)
+        } else {
+            font(ui, Weight::Regular, TEXT)
+        };
+        right -= text_width(ui, text, f.clone());
         ui.painter()
             .text(pos2(right, cy), Align2::LEFT_CENTER, text, f, t.muted);
         right -= 8.0;
     }
     let x = rect.left() + 44.0;
+    let name_font = font(ui, Weight::SemiBold, TEXT + 1.0);
+    let icon_w = if icon.is_some() { 18.0 } else { 0.0 };
     let cut = paint_truncated(
         ui,
         pos2(x, cy),
         name,
-        font(ui, Weight::SemiBold, TEXT + 1.0),
+        name_font.clone(),
         t.strong,
-        right - x,
+        right - x - icon_w,
     );
-    let response = if cut {
+    let mut response = if cut {
         response.on_hover_text(name)
     } else {
         response
     };
+    if let Some((glyph, tip)) = icon {
+        let nx = x + text_width(ui, name, name_font).min(right - x - icon_w) + 6.0;
+        let ir = Rect::from_min_size(pos2(nx, cy - 7.0), vec2(14.0, 14.0));
+        ui.painter().text(
+            ir.center(),
+            Align2::CENTER_CENTER,
+            glyph,
+            font(ui, Weight::Regular, TEXT),
+            t.muted,
+        );
+        if ui.rect_contains_pointer(ir) {
+            response = response.on_hover_text(tip);
+        }
+    }
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, true, open, name)
     });

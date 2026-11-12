@@ -11,7 +11,12 @@
 //! stays on the Animations page.
 
 use crate::app::{
-    components::{self, ButtonSize, Dialog, TextInput},
+    components::{
+        self,
+        studio::{self, ListRow, ListRowState},
+        ButtonSize, Dialog, TextInput,
+    },
+    ui_tokens::{studio as studio_tokens, Density, TARGET_MIN, TEXT},
     BlaulichtApp, PopupSpec,
 };
 use blaulicht_engine::{
@@ -26,7 +31,7 @@ use blaulicht_shared::{
     scene::{FixtureSelection, Scene},
     AnimationPreset, AnimationPresetCategory, AnimationTemplate, ControlEvent, FixtureProperty,
 };
-use egui::{Color32, Context, RichText};
+use egui::{pos2, vec2, Align2, Color32, Context, FontId, Id, RichText, Sense, Stroke};
 use std::{
     collections::{BTreeMap, HashSet},
     time::Duration,
@@ -39,6 +44,40 @@ pub struct AnimationPresetsUi {
     pub open: bool,
     /// The "Save as preset" form, while it is open.
     pub save: Option<SaveAnimationPreset>,
+    /// Desktop: the property folders that are collapsed.
+    pub shut: HashSet<FixtureProperty>,
+}
+
+/// The desktop dialog's folders: the fader each preset drives, in bank order.
+const FOLDERS: [(FixtureProperty, &str); 7] = [
+    (FixtureProperty::Alpha, "Intensity"),
+    (FixtureProperty::Strobe, "Strobe"),
+    (FixtureProperty::Focus, "Focus"),
+    (FixtureProperty::ColorHue, "Hue"),
+    (FixtureProperty::ColorValue, "Value"),
+    (FixtureProperty::Pan, "Pan"),
+    (FixtureProperty::Tilt, "Tilt"),
+];
+
+/// One desktop folder: its property, label and presets with their category.
+type Folder = (
+    FixtureProperty,
+    &'static str,
+    Vec<(AnimationPreset, &'static str)>,
+);
+
+/// The presets in folder order.
+fn presets_by_folder() -> Vec<Folder> {
+    FOLDERS
+        .iter()
+        .map(|(property, label)| {
+            let presets = AnimationPresetCategory::iter()
+                .flat_map(|c| c.presets().map(move |p| (p, c.label())).collect::<Vec<_>>())
+                .filter(|(p, _)| p.property() == *property)
+                .collect();
+            (*property, *label, presets)
+        })
+        .collect()
 }
 
 /// An active animation that is about to be saved as a template.
@@ -180,6 +219,10 @@ impl BlaulichtApp {
         dmx_engine: &EngineState,
     ) {
         if !self.programmer_ui_state.animation_presets.open {
+            return;
+        }
+        if Density::of(ctx).is_compact() {
+            self.render_add_animation_desktop(ctx, dmx_engine);
             return;
         }
 
@@ -457,6 +500,231 @@ impl BlaulichtApp {
         }
     }
 
+    /// Desktop "Add animation" (`show.js`): presets in folders by the fader
+    /// they drive; a click adds one to the selection, a second removes it.
+    /// Done (or Esc) closes.
+    fn render_add_animation_desktop(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        const WIDTH: f32 = 440.0;
+        let t = studio_tokens(ctx);
+        let scene = dmx_engine.curr_scene();
+        let selection = dmx_engine.get_selection().sorted();
+        let has_selection = !dmx_engine.selection().is_empty();
+        let templates = &dmx_engine.0.animation_templates;
+        let active_ids: HashSet<u8> = selection_animations(scene, &selection)
+            .map(|a| a.keys().copied().collect())
+            .unwrap_or_default();
+        let frozen = frozen_properties(scene, &selection);
+        let saved = saved_templates(templates);
+        let who = if has_selection {
+            format!(
+                "{} in {}. Click to add, click again to remove.",
+                Self::selection_name(dmx_engine),
+                scene.name
+            )
+        } else {
+            "Select groups or fixtures first.".to_string()
+        };
+        let mut close = false;
+        let mut toggle: Option<AnimationPreset> = None;
+        let mut toggle_saved: Option<(u8, bool)> = None;
+        let mut flip: Option<FixtureProperty> = None;
+        let shut = &self.programmer_ui_state.animation_presets.shut;
+        let shown = egui::Modal::new(Id::new("programmer_add_animation"))
+            .backdrop_color(Color32::from_black_alpha(140))
+            .frame(
+                egui::Frame::new()
+                    .fill(t.pane)
+                    .stroke(Stroke::new(1.0_f32, t.line)),
+            )
+            .show(ctx, |ui| {
+                ui.set_width(WIDTH);
+                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                let (bar, _) = ui.allocate_exact_size(vec2(WIDTH, 30.0), Sense::hover());
+                ui.painter().rect_filled(bar, 0.0, t.head);
+                ui.painter().text(
+                    pos2(bar.left() + 10.0, bar.center().y),
+                    Align2::LEFT_CENTER,
+                    "Add animation",
+                    FontId::proportional(TEXT + 1.0),
+                    t.strong,
+                );
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(10, 12))
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+                        ui.label(RichText::new(&who).size(TEXT).color(t.muted));
+                        egui::Frame::new()
+                            .fill(t.well)
+                            .stroke(Stroke::new(1.0_f32, t.line))
+                            .show(ui, |ui| {
+                                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                                egui::ScrollArea::vertical()
+                                    .id_salt("programmer_add_animation_list")
+                                    .max_height(520.0)
+                                    .auto_shrink([false, true])
+                                    .show(ui, |ui| {
+                                        let mut first = true;
+                                        let mut folder =
+                                            |ui: &mut egui::Ui,
+                                             key: Option<FixtureProperty>,
+                                             name: &str,
+                                             on: usize,
+                                             total: usize,
+                                             locked: bool|
+                                             -> bool {
+                                                let open =
+                                                    !matches!(key, Some(k) if shut.contains(&k));
+                                                let note = if has_selection && on > 0 {
+                                                    Some(format!("{on} on"))
+                                                } else if !open {
+                                                    Some(total.to_string())
+                                                } else {
+                                                    None
+                                                };
+                                                let r = studio::folder_band_with(
+                                                    ui,
+                                                    name,
+                                                    note.as_deref(),
+                                                    true,
+                                                    open,
+                                                    first,
+                                                    locked.then_some((
+                                                        egui_phosphor::regular::LINK,
+                                                        "Set by a palette",
+                                                    )),
+                                                );
+                                                first = false;
+                                                if r.clicked() {
+                                                    flip = key;
+                                                }
+                                                open
+                                            };
+                                        let leaf =
+                                            |ui: &mut egui::Ui,
+                                             name: &str,
+                                             note: &str,
+                                             on: bool,
+                                             off: Option<String>,
+                                             tip: &str|
+                                             -> bool {
+                                                let state = if on {
+                                                    ListRowState::Active
+                                                } else {
+                                                    ListRowState::Idle
+                                                };
+                                                let r = ui
+                                                    .add_enabled_ui(off.is_none(), |ui| {
+                                                        ListRow::new(name)
+                                                            .note(note)
+                                                            .state(state)
+                                                            .in_folder(true)
+                                                            .show(ui)
+                                                    })
+                                                    .inner;
+                                                let r = match off {
+                                                    Some(why) => r.on_disabled_hover_text(why),
+                                                    None => r.on_hover_text(tip),
+                                                };
+                                                r.clicked()
+                                            };
+                                        for (property, label, presets) in presets_by_folder() {
+                                            let is_on = |p: AnimationPreset| {
+                                                preset_template_id(templates, p)
+                                                    .is_some_and(|id| active_ids.contains(&id))
+                                            };
+                                            let on =
+                                                presets.iter().filter(|(p, _)| is_on(*p)).count();
+                                            let locked = frozen.contains(&property);
+                                            if !folder(
+                                                ui,
+                                                Some(property),
+                                                label,
+                                                on,
+                                                presets.len(),
+                                                locked,
+                                            ) {
+                                                continue;
+                                            }
+                                            for (preset, category) in presets {
+                                                let p_on = has_selection && is_on(preset);
+                                                let off = if !has_selection {
+                                                    Some("Nothing selected".to_string())
+                                                } else if !p_on && locked {
+                                                    Some(format!("{label} is set by a palette"))
+                                                } else {
+                                                    None
+                                                };
+                                                if leaf(
+                                                    ui,
+                                                    preset.label(),
+                                                    category,
+                                                    p_on,
+                                                    off,
+                                                    preset.description(),
+                                                ) {
+                                                    toggle = Some(preset);
+                                                }
+                                            }
+                                        }
+                                        // Saved templates, as before (one row each), after the presets.
+                                        if !saved.is_empty() {
+                                            let on = saved
+                                                .iter()
+                                                .filter(|(id, ..)| active_ids.contains(id))
+                                                .count();
+                                            folder(ui, None, "Saved", on, saved.len(), false);
+                                            for (id, name, property) in &saved {
+                                                let is_on = active_ids.contains(id);
+                                                let off = if !has_selection {
+                                                    Some("Nothing selected".to_string())
+                                                } else if !is_on && frozen.contains(property) {
+                                                    Some(format!("{property} is set by a palette"))
+                                                } else {
+                                                    None
+                                                };
+                                                if leaf(
+                                                    ui,
+                                                    name,
+                                                    &property.to_string(),
+                                                    is_on && has_selection,
+                                                    off,
+                                                    &format!("Template #{id}"),
+                                                ) {
+                                                    toggle_saved = Some((*id, is_on));
+                                                }
+                                            }
+                                        }
+                                    });
+                            });
+                    });
+                let (foot, _) = ui.allocate_exact_size(vec2(WIDTH, 40.0), Sense::hover());
+                ui.painter().rect_filled(foot, 0.0, t.head);
+                let mut fui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(foot.shrink2(vec2(10.0, 8.0)))
+                        .layout(egui::Layout::right_to_left(egui::Align::Center)),
+                );
+                if studio::mini_button(&mut fui, "Done", true, TARGET_MIN).clicked() {
+                    close = true;
+                }
+            });
+        if let Some(k) = flip {
+            let shut = &mut self.programmer_ui_state.animation_presets.shut;
+            if !shut.remove(&k) {
+                shut.insert(k);
+            }
+        }
+        if let Some(preset) = toggle {
+            self.toggle_preset(preset);
+        }
+        if let Some((id, is_on)) = toggle_saved {
+            self.send_animation_event(toggle_animation_event(id, is_on));
+        }
+        if close || shown.should_close() {
+            self.programmer_ui_state.animation_presets.open = false;
+        }
+    }
+
     /// "Save as preset": names the new template (prefilled with a free name).
     fn render_save_animation_preset_dialog(
         &mut self,
@@ -576,5 +844,15 @@ mod tests {
             .map(|(_, label, _)| label)
             .collect();
         assert_eq!(labels, vec!["#4".to_string(), "Color".to_string()]);
+    }
+
+    #[test]
+    fn every_preset_is_in_one_folder() {
+        use strum::IntoEnumIterator;
+        let n: usize = super::presets_by_folder().iter().map(|f| f.2.len()).sum();
+        assert_eq!(n, AnimationPreset::iter().count());
+        let intensity = &super::presets_by_folder()[0];
+        assert_eq!(intensity.1, "Intensity");
+        assert_eq!(intensity.2[0], (AnimationPreset::KickFlash, "Beat"));
     }
 }
