@@ -155,7 +155,7 @@ Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 03
 | 079 | [Fixture position view](TICKETS/ui/079-ui-setup-position-view.planned.md) | planned | 077 |
 | 080 | [Setup pages: title bars and detail panes](TICKETS/ui/080-ui-setup-pages-polish.done.md) | done | 069, 073 |
 | 081 | [Views page (formerly Scene Stacks)](TICKETS/ui/081-ui-views-page.planned.md) | planned | 069, 071 |
-| 082 | [Perform page bar and horizontal fader](TICKETS/ui/082-ui-perform-page.planned.md) | planned | 069 |
+| 082 | [Perform page bar and horizontal fader](TICKETS/ui/082-ui-perform-page.doing.md) | doing | 069 |
 | 083 | [Logs page](TICKETS/ui/083-ui-logs-page.planned.md) | planned | 071 |
 | 084 | [System General and Screens](TICKETS/ui/084-ui-system-general-screens.planned.md) | planned | 069, 074 |
 | 085 | [Visualizer and Scene Graph in the studio shell](TICKETS/ui/085-ui-visualizer-scenegraph-shell.planned.md) | planned | 069 |
