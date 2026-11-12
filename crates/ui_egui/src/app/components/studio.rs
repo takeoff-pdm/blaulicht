@@ -98,6 +98,9 @@ pub struct ListRow<'a> {
     pub in_folder: bool,
     /// Muted text on the right, such as a category.
     pub note: Option<&'a str>,
+    /// Width kept free at the right end for the caller's own control (the
+    /// Views list's delete icon).
+    pub reserve: f32,
 }
 
 impl<'a> ListRow<'a> {
@@ -109,10 +112,15 @@ impl<'a> ListRow<'a> {
             state: ListRowState::Idle,
             in_folder: false,
             note: None,
+            reserve: 0.0,
         }
     }
     pub fn note(mut self, note: &'a str) -> Self {
         self.note = Some(note);
+        self
+    }
+    pub fn reserve(mut self, width: f32) -> Self {
+        self.reserve = width;
         self
     }
     pub fn id(mut self, id: &'a str) -> Self {
@@ -188,7 +196,7 @@ impl<'a> ListRow<'a> {
         let active = self.state == ListRowState::Active;
         let name_color = if active { t.strong } else { t.text };
         let side_color = if active { t.strong } else { t.muted };
-        let mut right = rect.right() - 8.0;
+        let mut right = rect.right() - 8.0 - self.reserve;
         if let Some(count) = self.count {
             let text = count.to_string();
             let f = font(ui, Weight::Regular, TEXT);
@@ -1249,11 +1257,13 @@ pub fn hfader(
 }
 
 /// Knob size: [`KnobSize::Normal`] (58px) for masters, [`KnobSize::Small`]
-/// (32px, `.prog #masters`) beside the page bar's scene picker.
+/// (32px, `.prog #masters`) beside the page bar's scene picker, [`KnobSize::Row`] (40px,
+/// value and name below) in a 72px list row (Views).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KnobSize {
     Normal,
     Small,
+    Row,
 }
 
 /// The hardware knob for masters and trims set occasionally: a printed
@@ -1369,12 +1379,19 @@ fn knob_impl(
     let d: f32 = match size {
         KnobSize::Normal => 58.0,
         KnobSize::Small => 32.0,
+        KnobSize::Row => 40.0,
+    };
+    // Below the knob: the value's and the name's centre lines.
+    let (value_dy, name_dy) = if size == KnobSize::Row {
+        (d + 7.0, d + 20.0)
+    } else {
+        (d + 8.0, d + 25.0)
     };
     let value_text = fmt(*value, &range);
     // Small knobs (page bar masters) put the value and the name to the
     // right of the knob, 6px apart (`#masters .knob`); normal knobs below.
     let small = size == KnobSize::Small;
-    let name_font = if small {
+    let name_font = if small || size == KnobSize::Row {
         font(ui, Weight::Regular, TEXT_MIN)
     } else {
         font(ui, Weight::Regular, TEXT)
@@ -1383,6 +1400,8 @@ fn knob_impl(
         let tw =
             text_width(ui, &value_text, mono(TEXT)).max(text_width(ui, name, name_font.clone()));
         vec2(d + 6.0 + tw, d)
+    } else if size == KnobSize::Row {
+        vec2(64.0, d + 27.0)
     } else {
         vec2(d.max(52.0), d + 34.0)
     };
@@ -1424,7 +1443,7 @@ fn knob_impl(
         let x = rect.left() + d + 6.0;
         Rect::from_min_size(pos2(x, c.y - 16.0), vec2(vw, 16.0))
     } else {
-        Rect::from_center_size(pos2(c.x, rect.top() + d + 8.0), vec2(vw, 16.0))
+        Rect::from_center_size(pos2(c.x, rect.top() + value_dy), vec2(vw, 16.0))
     };
     if value_keys_and_typing(
         ui, t, &response, value, &range, unit, true, &shown, readout, name, parse,
@@ -1442,25 +1461,37 @@ fn knob_impl(
         KnobKind::Notched => (range.end() - range.start()).round().max(1.0) as usize,
         KnobKind::Linear(_) => 10,
     };
+    // The row knob has a tighter scale around a larger face.
+    let (tick_in, face_in) = if size == KnobSize::Row {
+        (4.0, 5.0)
+    } else {
+        (6.0, 9.0)
+    };
     for i in 0..=ticks {
         let a = start + sweep * i as f32 / ticks as f32;
         let dir = vec2(a.cos(), a.sin());
-        let lit = (i as f32) / ticks as f32 <= frac + 1e-4;
+        // The row knob's printed scale is unlit (`.okvtree .ok`).
+        let lit = size != KnobSize::Row && (i as f32) / ticks as f32 <= frac + 1e-4;
         let color = if lit { t.strong } else { t.scale };
         p.line_segment(
-            [c + dir * (r - 6.0), c + dir * (r - 1.0)],
+            [c + dir * (r - tick_in), c + dir * (r - 1.0)],
             Stroke::new(1.5_f32, color),
         );
     }
-    let face = r - 9.0;
+    let face = r - face_in;
     p.circle_filled(c, face, t.capface);
-    p.circle_stroke(c, face, Stroke::new(2.0_f32, t.capedge));
-    p.circle_stroke(c, face * 0.62, Stroke::new(1.5_f32, t.caphi));
+    if size == KnobSize::Row {
+        // A flat face with a hairline edge.
+        p.circle_stroke(c, face, Stroke::new(1.0_f32, t.capedge));
+    } else {
+        p.circle_stroke(c, face, Stroke::new(2.0_f32, t.capedge));
+        p.circle_stroke(c, face * 0.62, Stroke::new(1.5_f32, t.caphi));
+    }
     let a = start + sweep * frac;
     let dir = vec2(a.cos(), a.sin());
     p.line_segment(
         [c + dir * (face * 0.25), c + dir * (face - 3.0)],
-        Stroke::new(3.0_f32, t.strong),
+        Stroke::new(if size == KnobSize::Row { 2.0_f32 } else { 3.0 }, t.strong),
     );
     if response.hovered() || response.dragged() {
         p.circle_stroke(c, face + 1.0, Stroke::new(1.0_f32, t.strong));
@@ -1485,16 +1516,22 @@ fn knob_impl(
     } else {
         if !editing {
             p.text(
-                pos2(c.x, rect.top() + d + 8.0),
+                pos2(c.x, rect.top() + value_dy),
                 Align2::CENTER_CENTER,
                 value_text,
                 mono(TEXT),
                 t.strong,
             );
         }
-        let name_color = if response.has_focus() { t.blue } else { t.text };
+        let name_color = if response.has_focus() {
+            t.blue
+        } else if size == KnobSize::Row {
+            t.muted
+        } else {
+            t.text
+        };
         p.text(
-            pos2(c.x, rect.top() + d + 25.0),
+            pos2(c.x, rect.top() + name_dy),
             Align2::CENTER_CENTER,
             name,
             name_font,
@@ -1554,7 +1591,8 @@ pub enum ModalOutcome {
 /// 30px title bar over a 55% dimmed page. Cancel takes focus when the dialog
 /// opens and is the default; Esc closes it; Tab cycles only through the
 /// dialog's own controls. `body` adds the fields; `primary` labels the
-/// confirming button (red when `danger`).
+/// confirming button (red when `danger`, else the primary blue). Cancel and
+/// the confirming button sit in a footer band.
 pub fn modal(
     ctx: &egui::Context,
     id: Id,
@@ -1593,13 +1631,21 @@ pub fn modal(
             egui::Frame::new()
                 .inner_margin(egui::Margin::symmetric(10, 12))
                 .show(ui, |ui| {
+                    ui.set_width(400.0);
                     ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
                     body(ui);
-                    ui.add_space(4.0);
+                });
+            // The footer band (`.dlg footer`): head fill, 8px/10px padding,
+            // the buttons on the right with 4px between them.
+            egui::Frame::new()
+                .fill(t.head)
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    ui.set_width(400.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        let ok = dialog_button(ui, primary, danger);
-                        let cancel = dialog_button(ui, "Cancel", false);
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let ok = dialog_button(ui, primary, danger, true);
+                        let cancel = dialog_button(ui, "Cancel", false, false);
                         if ui.memory(|m| m.focused()).is_none() {
                             cancel.request_focus();
                         }
@@ -1634,7 +1680,9 @@ pub fn modal(
     outcome
 }
 
-fn dialog_button(ui: &mut Ui, label: &str, danger: bool) -> Response {
+/// A dialog footer button: red when `danger`, else blue-dim (`.mini.primary`)
+/// when `primary`, else a plain mini button.
+fn dialog_button(ui: &mut Ui, label: &str, danger: bool, primary: bool) -> Response {
     let t = studio(ui.ctx());
     let f = font(ui, Weight::Regular, TEXT);
     let w = (text_width(ui, label, f.clone()) + 20.0).max(72.0);
@@ -1666,7 +1714,7 @@ fn dialog_button(ui: &mut Ui, label: &str, danger: bool) -> Response {
             Color32::WHITE,
         );
     } else {
-        paint_mini(ui, t, rect, &response, label, f, false);
+        paint_mini(ui, t, rect, &response, label, f, primary);
     }
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     response

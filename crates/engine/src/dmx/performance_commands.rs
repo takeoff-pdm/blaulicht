@@ -45,8 +45,8 @@ impl EngineState {
     // Views.
     //
 
-    /// `HostCommand::CreateView`.
-    pub(super) fn create_view_command(&mut self, name: &str) -> CommandOutcome {
+    /// `HostCommand::CreateView` (`capture`) and `HostCommand::CreateEmptyView`.
+    pub(super) fn create_view_command(&mut self, name: &str, capture: bool) -> CommandOutcome {
         let name = name.trim();
         if name.is_empty() {
             return refused("Name is empty");
@@ -56,7 +56,11 @@ impl EngineState {
         };
         // A view captures what is playing, which is the overlay stack -- the
         // base slot belongs to BLANK.
-        let overlays = self.0.current_overlay_scenes.clone();
+        let overlays = if capture {
+            self.0.current_overlay_scenes.clone()
+        } else {
+            Vec::new()
+        };
         self.0
             .views
             .insert(id, View::new(name.to_string(), overlays));
@@ -72,6 +76,19 @@ impl EngineState {
             return refused("At least one view must remain");
         }
         self.0.views.remove(&view);
+        ok(None)
+    }
+
+    /// `HostCommand::RenameView`.
+    pub(super) fn rename_view_command(&mut self, view: u8, name: &str) -> CommandOutcome {
+        let name = name.trim();
+        if name.is_empty() {
+            return refused("Name is empty");
+        }
+        let Some(view) = self.0.views.get_mut(&view) else {
+            return refused(VIEW_NOT_FOUND);
+        };
+        view.name = name.to_string();
         ok(None)
     }
 
@@ -751,6 +768,23 @@ mod tests {
         };
         let view = h.desk.with_show(|show| show.0.views[&chorus].clone());
         assert_eq!(view, View::new("Chorus".to_string(), vec![1, 2]));
+        let empty = HostCommand::CreateEmptyView {
+            name: "Bridge".to_string(),
+        };
+        assert!(empty.edits_show());
+        let CommandOutcome::Ok {
+            created: Some(CreatedId::View(bridge)),
+        } = h.engine.round_trip(&h.remote, empty)
+        else {
+            panic!("no empty view created");
+        };
+        let view = h.desk.with_show(|show| show.0.views[&bridge].clone());
+        assert_eq!(view, View::new("Bridge".to_string(), vec![]));
+        assert_eq!(
+            h.engine
+                .round_trip(&h.remote, HostCommand::DeleteView(bridge)),
+            OK
+        );
         assert_eq!(
             h.engine.round_trip(
                 &h.remote,
@@ -759,6 +793,37 @@ mod tests {
                 }
             ),
             refused("Name is empty")
+        );
+
+        let rename = HostCommand::RenameView {
+            view: chorus,
+            name: " Verse ".to_string(),
+        };
+        assert!(rename.edits_show());
+        assert_eq!(h.engine.round_trip(&h.remote, rename), OK);
+        assert_eq!(
+            h.desk.with_show(|show| show.0.views[&chorus].name.clone()),
+            "Verse"
+        );
+        assert_eq!(
+            h.engine.round_trip(
+                &h.remote,
+                HostCommand::RenameView {
+                    view: chorus,
+                    name: " ".to_string()
+                }
+            ),
+            refused("Name is empty")
+        );
+        assert_eq!(
+            h.engine.round_trip(
+                &h.remote,
+                HostCommand::RenameView {
+                    view: 250,
+                    name: "X".to_string()
+                }
+            ),
+            refused("View not found")
         );
 
         // Overlays and their masters.

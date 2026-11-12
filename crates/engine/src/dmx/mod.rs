@@ -1107,8 +1107,10 @@ impl DmxEngine {
                 self.state_ref.set_grand_master_percent(percent);
                 OK
             }
-            HostCommand::CreateView { name } => state.create_view_command(&name),
+            HostCommand::CreateView { name } => state.create_view_command(&name, true),
+            HostCommand::CreateEmptyView { name } => state.create_view_command(&name, false),
             HostCommand::DeleteView(view) => state.delete_view_command(view),
+            HostCommand::RenameView { view, name } => state.rename_view_command(view, &name),
             HostCommand::AddViewOverlay { view, scene } => {
                 state.add_view_overlay_command(view, scene)
             }
