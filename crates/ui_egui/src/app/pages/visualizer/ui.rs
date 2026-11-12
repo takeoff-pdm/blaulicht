@@ -3,10 +3,10 @@ use std::sync::Arc;
 use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_glow::CallbackFn;
 
-use crate::app::BlaulichtApp;
 use crate::app::components::dropdown;
 use crate::app::page::PageRenderContext;
 use crate::app::view_state::ScreenId;
+use crate::app::BlaulichtApp;
 use blaulicht_engine::client::EngineClient;
 use blaulicht_engine::hub::{CommandSeq, CreatedId, HostCommand, ModelBytes};
 use blaulicht_engine::stage::{
@@ -16,13 +16,13 @@ use blaulicht_engine::stage::{
 use blaulicht_engine::state::NUM_DMX_UNIVERSES;
 
 use super::constants::{MAX_ROOM_DIMENSION, MIN_ROOM_DIMENSION};
-use super::data::{Pose, RenderSceneSnapshot, collect_fixtures, fixture_pose};
+use super::data::{collect_fixtures, fixture_pose, Pose, RenderSceneSnapshot};
 use super::math::{
-    Vec3, mat4_look_at, mat4_perspective, mat4_rotation_euler, mat4_transform_dir, project_point,
+    mat4_look_at, mat4_perspective, mat4_rotation_euler, mat4_transform_dir, project_point, Vec3,
 };
 use super::state::{
-    DEFAULT_CAMERA_PITCH, DEFAULT_CAMERA_RADIUS, DEFAULT_CAMERA_YAW, EditorSnapshot, EditorTool,
-    EditorView, SelectionKey, VisualizerMode,
+    EditorSnapshot, EditorTool, EditorView, SelectionKey, VisualizerMode, DEFAULT_CAMERA_PITCH,
+    DEFAULT_CAMERA_RADIUS, DEFAULT_CAMERA_YAW,
 };
 
 impl BlaulichtApp {
@@ -2297,7 +2297,7 @@ impl BlaulichtApp {
         use crate::app::components::studio;
         use crate::app::pages::setup::duo;
         use crate::app::pages::system::desk;
-        use crate::app::ui_tokens::{PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW, studio as tokens};
+        use crate::app::ui_tokens::{studio as tokens, PAGE_BAR_HEIGHT, TARGET_MIN, TARGET_SHOW};
         use egui::{pos2, vec2};
 
         let t = tokens(ui.ctx());
@@ -3178,7 +3178,11 @@ fn hit_test_projected(
 }
 
 fn finite_or(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() { value } else { fallback }
+    if value.is_finite() {
+        value
+    } else {
+        fallback
+    }
 }
 
 fn normalize_angle(angle: f32) -> f32 {
