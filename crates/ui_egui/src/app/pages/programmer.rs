@@ -165,8 +165,30 @@ impl BlaulichtApp {
         if Density::of(ctx).is_compact() {
             let black = self.client.grand_master_percent() == 0;
             let mut toggle = false;
+            // Flush with the content area like Setup's page bar: the page
+            // frame's 8px margin is drawn over, and the content below
+            // starts under the bar.
+            let top = ui.cursor().top();
+            let full = ui.max_rect().expand(8.0).intersect(ui.clip_rect());
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(full.left(), top - 8.0),
+                egui::vec2(full.width(), crate::app::ui_tokens::PAGE_BAR_HEIGHT),
+            );
+            ui.allocate_exact_size(
+                egui::vec2(
+                    ui.available_width(),
+                    crate::app::ui_tokens::PAGE_BAR_HEIGHT - 8.0,
+                ),
+                egui::Sense::hover(),
+            );
+            let mut bar_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(bar_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            bar_ui.set_clip_rect(bar_rect);
             components::studio::page_bar(
-                ui,
+                &mut bar_ui,
                 |_| {},
                 |ui| {
                     toggle = components::studio::blackout_button(ui, black).clicked();

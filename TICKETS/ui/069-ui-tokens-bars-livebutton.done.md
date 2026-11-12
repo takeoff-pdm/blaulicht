@@ -118,3 +118,8 @@ The mockups settled several shared looks after 058 was written: 40px page bars a
   - Checks in the blenv container, `-p blaulicht-ui-egui`, CARGO_BUILD_JOBS=4: rustfmt `--check` clean on all
     touched files; clippy has no new warning (two pre-existing ones in untouched Programmer code); tests 131 passed.
   - Not re-verified after the replay: light theme of the moved Exclusive preview button, scrub Shift/Esc.
+- Review fix: the desktop Programmer page bar is now flush like Setup Fixtures' (drawn over the page frame's
+  8px margin, 40px at y 0-40 across the content width, x 200-1500 at 1500x950, bottom line only); content
+  starts under it. Verified with a blenv desktop screenshot against programmer.html; kiosk Programmer
+  screenshot unchanged (no page bar, LIVE in the toolbar). Checks in the blenv container, CARGO_BUILD_JOBS=4:
+  rustfmt clean on programmer.rs, clippy no new warnings, `cargo test --all-features` all passed.
