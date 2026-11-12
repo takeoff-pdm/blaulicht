@@ -337,7 +337,7 @@ pub struct BlaulichtApp {
     /// level seen while connected (059).
     blackout_restore: u8,
     /// Desktop notifications (059; the full stack is 070).
-    desk_notes: crate::app::components::Notes,
+    desk_notes: crate::app::components::Notifications,
     /// Desktop status bar: routing changes not applied yet (set by 062).
     pub(crate) routing_pending: usize,
     /// Desktop status bar: recent engine and plugin tick times (ms).

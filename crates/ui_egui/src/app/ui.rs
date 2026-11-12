@@ -155,7 +155,6 @@ impl eframe::App for BlaulichtApp {
 
         self.render_popup(ctx);
         if self.layout.is_desktop() {
-            self.desk_notes.show(ctx);
         }
         self.render_plugin_fullscreen_popups(ctx);
         // The desktop layout shows it in its status bar.
@@ -246,6 +245,13 @@ impl eframe::App for BlaulichtApp {
             .update(self.tick_speeds.plugins.as_micros() as i32);
 
         self.render_main_screen(ui);
+        // Desktop (070): the notification stack, over pages and dialogs.
+        // Actions clicked on a card run with the app.
+        if self.layout.is_desktop() {
+            for action in self.desk_notes.show(ctx) {
+                action(self, ctx);
+            }
+        }
         self.finish_jog_adjustment(ctx);
         self.publish_ui_mirror();
         self.publish_frontend_section();
