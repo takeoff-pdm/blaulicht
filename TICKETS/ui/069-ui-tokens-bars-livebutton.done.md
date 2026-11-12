@@ -106,3 +106,15 @@ The mockups settled several shared looks after 058 was written: 40px page bars a
     belong to the shell (074, 084/085).
   - Checks in the blenv container, `-p blaulicht-ui-egui`, CARGO_BUILD_JOBS=4: rustfmt clean on the touched files,
     clippy no warning in `fixtures/desktop.rs` or `studio.rs` (pre-existing warnings elsewhere), tests 131 passed.
+- Replayed onto decouple f20d6e4 (2026-11-12): the earlier ui/069 (ccf6067) was based on 455b4cb and was never
+  merged; its commits were cherry-picked onto current decouple (059 merged). One conflict in `studio.rs`
+  (059's `blackout_button` next to 069's `paint_title_bar`), both kept. The page bar is now 40px with 059's
+  Blackout. Follow-up fix: on the desktop, Exclusive preview moved from the Programmer toolbar row into the page
+  bar beside Blackout, at 28px (`RULES.md` decision 1); the kiosk keeps LIVE in its toolbar.
+  - Checked in blenv at 1500x950 (dark, no showfile): page bar with Blackout and Exclusive preview; click turns
+    the engine's `live_mode` on, dot red, button width unchanged (1362-1484 px both states); Setup Fixtures
+    desktop layout renders as before.
+  - Kiosk (800x480, Programmer and Setup) against decouple f20d6e4: byte-identical screenshots.
+  - Checks in the blenv container, `-p blaulicht-ui-egui`, CARGO_BUILD_JOBS=4: rustfmt `--check` clean on all
+    touched files; clippy has no new warning (two pre-existing ones in untouched Programmer code); tests 131 passed.
+  - Not re-verified after the replay: light theme of the moved Exclusive preview button, scrub Shift/Esc.
