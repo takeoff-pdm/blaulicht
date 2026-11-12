@@ -3,6 +3,7 @@ use std::sync::Arc;
 use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_glow::CallbackFn;
 
+use crate::app::components::dropdown;
 use crate::app::page::PageRenderContext;
 use crate::app::view_state::ScreenId;
 use crate::app::BlaulichtApp;
@@ -39,7 +40,8 @@ impl BlaulichtApp {
         editor.mode = VisualizerMode::Edit;
         editor.view = EditorView::Top;
         editor.tool = EditorTool::Select;
-        self.navbar.navigate_to(blaulicht_shared::AppPage::Visualizer);
+        self.navbar
+            .navigate_to(blaulicht_shared::AppPage::Visualizer);
     }
 
     pub fn visualizer_ui(
@@ -1396,20 +1398,53 @@ impl BlaulichtApp {
             }
             if let StageObjectKind::ProceduralTruss(spec) = &mut object.kind {
                 ui.add_enabled_ui(!connected, |ui| {
-                    egui::ComboBox::from_id_salt(("truss-profile", id))
-                        .selected_text(spec.profile.label())
-                        .show_ui(ui, |ui| {
-                            for profile in TrussProfile::ALL {
-                                ui.selectable_value(&mut spec.profile, profile, profile.label());
-                            }
-                        });
-                    egui::ComboBox::from_id_salt(("truss-part", id))
-                        .selected_text(spec.part.label())
-                        .show_ui(ui, |ui| {
-                            for part in TrussPart::ALL {
-                                ui.selectable_value(&mut spec.part, part, part.label());
-                            }
-                        });
+                    if dropdown::is_desktop(ui) {
+                        let profiles: Vec<_> =
+                            TrussProfile::ALL.iter().map(|p| (*p, p.label())).collect();
+                        dropdown::select_value(
+                            ui,
+                            ("truss-profile", id),
+                            &mut spec.profile,
+                            &profiles,
+                            Some(120.0),
+                        );
+                        let parts: Vec<_> =
+                            TrussPart::ALL.iter().map(|p| (*p, p.label())).collect();
+                        dropdown::select_value(
+                            ui,
+                            ("truss-part", id),
+                            &mut spec.part,
+                            &parts,
+                            Some(120.0),
+                        );
+                    } else {
+                        dropdown::kiosk_combo(
+                            ui,
+                            ("truss-profile", id),
+                            None,
+                            spec.profile.label(),
+                            |ui| {
+                                for profile in TrussProfile::ALL {
+                                    ui.selectable_value(
+                                        &mut spec.profile,
+                                        profile,
+                                        profile.label(),
+                                    );
+                                }
+                            },
+                        );
+                        dropdown::kiosk_combo(
+                            ui,
+                            ("truss-part", id),
+                            None,
+                            spec.part.label(),
+                            |ui| {
+                                for part in TrussPart::ALL {
+                                    ui.selectable_value(&mut spec.part, part, part.label());
+                                }
+                            },
+                        );
+                    }
                 })
                 .response
                 .on_disabled_hover_text("Disconnect all endpoints before changing truss type");

@@ -7,8 +7,8 @@
 
 use crate::app::{
     components::{
-        self, palette_binding_button, ButtonSize, HFader, Numberpad, PaletteBindingAction,
-        PaletteBindingState,
+        self, dropdown, palette_binding_button, ButtonSize, HFader, Numberpad,
+        PaletteBindingAction, PaletteBindingState,
     },
     BlaulichtApp,
 };
@@ -292,23 +292,45 @@ impl AnimationEditState {
                 .collect()
         });
 
-        egui::ComboBox::from_label("Animation plugin")
-            .selected_text(
-                registered
-                    .iter()
-                    .find(|(_, key, _)| key == &wasm.plugin_key)
-                    .map(|(_, _, name)| name.as_str())
-                    .unwrap_or(if wasm.plugin_key.is_empty() {
-                        "Select plugin"
-                    } else {
-                        "Plugin unavailable"
-                    }),
-            )
-            .show_ui(ui, |ui| {
-                for (_, key, name) in &registered {
-                    ui.selectable_value(&mut wasm.plugin_key, key.clone(), name);
+        let current = registered
+            .iter()
+            .position(|(_, key, _)| key == &wasm.plugin_key);
+        let selected_text =
+            current
+                .map(|i| registered[i].2.as_str())
+                .unwrap_or(if wasm.plugin_key.is_empty() {
+                    "Select plugin"
+                } else {
+                    "Plugin unavailable"
+                });
+        if dropdown::is_desktop(ui) {
+            ui.horizontal(|ui| {
+                ui.label("Animation plugin");
+                let list = dropdown::items(registered.iter().map(|(_, _, name)| name));
+                if let Some(i) = dropdown::select(
+                    ui,
+                    "Animation plugin",
+                    &list,
+                    current,
+                    selected_text,
+                    Some(200.0),
+                ) {
+                    wasm.plugin_key = registered[i].1.clone();
                 }
             });
+        } else {
+            dropdown::kiosk_combo(
+                ui,
+                "Animation plugin",
+                Some("Animation plugin"),
+                selected_text,
+                |ui| {
+                    for (_, key, name) in &registered {
+                        ui.selectable_value(&mut wasm.plugin_key, key.clone(), name);
+                    }
+                },
+            );
+        }
 
         if let Some((plugin_id, _, _)) = registered
             .iter()
