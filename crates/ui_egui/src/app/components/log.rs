@@ -9,7 +9,9 @@ use std::collections::{BTreeSet, VecDeque};
 use strum::IntoEnumIterator;
 
 use crate::app::components::{self, dropdown, ButtonSize, Dialog};
-use crate::app::ui_tokens::studio;
+use crate::app::ui_tokens::{studio, Density, Weight};
+
+mod desktop;
 
 fn filter_button_label(filter_text: &str) -> String {
     if filter_text.is_empty() {
@@ -182,6 +184,34 @@ fn draw_log_row(ui: &mut egui::Ui, entry: &LogEntry, striped: bool) {
     }
 }
 
+/// The level dropdown's label: "All levels", the shown levels, or "No
+/// levels".
+fn level_filter_label(shown: &[bool; 4]) -> String {
+    const NAMES: [&str; 4] = ["Debug", "Info", "Warn", "Error"];
+    let on: Vec<&str> = NAMES
+        .iter()
+        .zip(shown)
+        .filter(|(_, on)| **on)
+        .map(|(n, _)| *n)
+        .collect();
+    match on.len() {
+        4 => "All levels".to_string(),
+        0 => "No levels".to_string(),
+        _ => on.join(", "),
+    }
+}
+
+/// One line as copied by Copy: time, level, source and message.
+fn log_line_text(entry: &LogEntry) -> String {
+    format!(
+        "{} {} {} {}",
+        entry.timestamp.format("%H:%M:%S%.3f"),
+        log_level_label(&entry.level),
+        entry.source,
+        entry.message.trim_end()
+    )
+}
+
 /// A log window component that displays scrolling log messages
 pub struct LogWindow {
     pub logs: VecDeque<LogEntry>,
@@ -195,6 +225,10 @@ pub struct LogWindow {
     source_dialog_open: bool,
     /// Desktop level filter: which levels are shown, in `LogLevel` order.
     shown_levels: [bool; 4],
+    /// Desktop: the selected row's [`LogEntry::seq`] (`tr.sl`).
+    selected_row: Option<u64>,
+    /// Sequence number for the next entry.
+    next_seq: u64,
     // log_height: f32,
 }
 
@@ -205,6 +239,8 @@ pub struct LogEntry {
     pub message: String,
     pub additional: Option<String>,
     source: String,
+    /// Unique per window, so a selected row stays selected as lines scroll.
+    seq: u64,
 }
 
 fn log_entry_matches_source(entry: &LogEntry, selected_source: Option<&str>) -> bool {
@@ -241,6 +277,8 @@ impl LogWindow {
             selected_source: None,
             source_dialog_open: false,
             shown_levels: [true; 4],
+            selected_row: None,
+            next_seq: 0,
         }
     }
 
@@ -267,7 +305,9 @@ impl LogWindow {
             message,
             additional,
             source,
+            seq: self.next_seq,
         };
+        self.next_seq += 1;
 
         self.logs.push_back(entry);
 
@@ -277,10 +317,137 @@ impl LogWindow {
         }
     }
 
-    /// Desktop: the level filter as a multi-select dropdown with counts and
-    /// the source filter as a dropdown (`design/studio` Logs).
-    fn draw_desktop_filters(&mut self, ui: &mut egui::Ui) {
+    /// Whether `entry` passes the desktop filters (levels, source, text).
+    fn desktop_shows(&self, entry: &LogEntry) -> bool {
+        self.shown_levels[level_index(&entry.level)]
+            && log_entry_matches_source(entry, self.selected_source.as_deref())
+            && log_entry_matches_filter(entry, &self.filter_text)
+    }
+
+    /// The desktop Logs page (`design/studio/pages.html#logs`): a 30px bar
+    /// with the title, search, level and source dropdowns, Follow, Copy and
+    /// Clear; the log table; a footer with counts and the follow state.
+    fn draw_desktop(&mut self, outer: &mut egui::Ui) {
+        let t = studio(outer.ctx());
+        // Edge to edge: out of the central panel's 8px margin, flush with
+        // the sidebar, the window top and the status bar.
+        let full = outer.max_rect().expand(8.0).intersect(outer.clip_rect());
+        outer.allocate_rect(outer.max_rect(), egui::Sense::hover());
+        outer.painter().rect_filled(full, 0.0, t.pane);
+        let mut page = outer.new_child(
+            egui::UiBuilder::new()
+                .max_rect(full)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        page.set_clip_rect(full);
+        let ui = &mut page;
+        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+        self.draw_desktop_bar(ui);
+
+        let sources = self.known_sources();
+        let tag_width = desktop::source_tag_width(ui, &sources);
+        let source_col = (tag_width + 2.0 * desktop::CELL_PAD).max(desktop::SOURCE_COL);
+        desktop::header(ui, source_col);
+
+        let foot_h = desktop::FOOT_HEIGHT;
+        let body_h = (ui.available_height() - foot_h).max(0.0);
+        let mut shown = 0usize;
+        let mut warnings = 0usize;
+        let mut errors = 0usize;
+        let query = self.filter_text.clone();
+        let scroll_output = ui
+            .allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
+                // Rows stop at the header's bottom and the footer's top: the
+                // ScrollArea widens its clip by `clip_rect_margin`, so pin
+                // the clip to the body itself.
+                let body = ui.max_rect().intersect(ui.clip_rect());
+                ui.set_clip_rect(body);
+                egui::ScrollArea::vertical()
+                    .id_salt("log_desktop_scroll")
+                    .auto_shrink([false, false])
+                    .stick_to_bottom(self.auto_scroll)
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+                        let mut clicked = None;
+                        for entry in self.logs.iter().filter(|e| self.desktop_shows(e)) {
+                            let key = desktop::row_key(entry);
+                            let selected = self.selected_row == Some(key);
+                            if desktop::row(
+                                ui,
+                                entry,
+                                shown % 2 == 1,
+                                selected,
+                                source_col,
+                                tag_width,
+                                &query,
+                            )
+                            .clicked()
+                            {
+                                clicked = Some(key);
+                            }
+                            shown += 1;
+                            match entry.level {
+                                LogLevel::Warn => warnings += 1,
+                                LogLevel::Err => errors += 1,
+                                _ => {}
+                            }
+                        }
+                        if let Some(key) = clicked {
+                            // Clicking the selected row again deselects it.
+                            self.selected_row = (self.selected_row != Some(key)).then_some(key);
+                        }
+                        if shown == 0 {
+                            desktop::empty(ui);
+                        }
+                    })
+            })
+            .inner;
+
+        const AUTO_SCROLL_EPSILON: f32 = 2.0;
+        let max_offset_y =
+            (scroll_output.content_size.y - scroll_output.inner_rect.height()).max(0.0);
+        let at_bottom = scroll_output.state.offset.y >= max_offset_y - AUTO_SCROLL_EPSILON;
+        // Scrolling up pauses Follow; scrolling back to the end resumes it.
+        let scrolled = ui.rect_contains_pointer(scroll_output.inner_rect)
+            && ui.input(|i| i.smooth_scroll_delta.y != 0.0);
+        if scrolled && self.auto_scroll != at_bottom {
+            self.auto_scroll = at_bottom;
+        }
+
+        desktop::footer(
+            ui,
+            shown,
+            self.logs.len(),
+            warnings,
+            errors,
+            self.auto_scroll,
+        );
+    }
+
+    fn draw_desktop_bar(&mut self, ui: &mut egui::Ui) {
         let t = studio(ui.ctx());
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), desktop::BAR_HEIGHT),
+            egui::Sense::hover(),
+        );
+        ui.painter().rect_filled(rect, 0.0, t.head);
+        let inner = rect.shrink2(egui::vec2(6.0, 0.0));
+        let mut bar = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(inner)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        let bar = &mut bar;
+        bar.spacing_mut().item_spacing.x = 6.0;
+
+        bar.add(egui::Label::new(
+            RichText::new("Logs")
+                .font(Density::of(bar.ctx()).font(Weight::Medium, 13.0))
+                .color(t.strong),
+        ));
+        bar.add_space(6.0);
+        desktop::search(bar, &mut self.filter_text);
+
         let mut counts = [0usize; 4];
         for entry in &self.logs {
             counts[level_index(&entry.level)] += 1;
@@ -303,25 +470,17 @@ impl LogWindow {
                 }
             })
             .collect();
-        let shown: Vec<&str> = levels
-            .iter()
-            .zip(self.shown_levels)
-            .filter(|(_, on)| *on)
-            .map(|((l, _, _, _), _)| *l)
-            .collect();
-        let text = match shown.len() {
-            4 => "All levels".to_string(),
-            0 => "No levels".to_string(),
-            _ => shown.join(", "),
-        };
+        let text = level_filter_label(&self.shown_levels);
+        // `min-width: 128px`, growing with a longer label.
+        let fit = desktop::level_button_width(bar, &text);
         dropdown::multi_select(
-            ui,
+            bar,
             "log_levels",
             Some(egui_phosphor::regular::FUNNEL),
             &text,
             &list,
             &mut self.shown_levels,
-            Some(128.0),
+            Some(fit),
         );
 
         let sources = self.known_sources();
@@ -332,8 +491,46 @@ impl LogWindow {
             Some(s) => sources.iter().position(|x| x == s).map(|i| i + 1),
         };
         let text = self.selected_source.as_deref().unwrap_or("All sources");
-        if let Some(i) = dropdown::select(ui, "log_source", &list, current, text, Some(110.0)) {
+        if let Some(i) = dropdown::select(bar, "log_source", &list, current, text, Some(110.0)) {
             self.selected_source = i.checked_sub(1).map(|i| sources[i].clone());
+        }
+
+        // Actions flush right: Follow, Copy, Clear.
+        let actions_w = desktop::actions_width(bar);
+        let gap = (bar.available_width() - actions_w).max(0.0);
+        bar.add_space(gap);
+        if desktop::icon_button(
+            bar,
+            egui_phosphor::regular::ARROW_LINE_DOWN,
+            Some("Follow"),
+            self.auto_scroll,
+            "Follow new lines",
+        )
+        .clicked()
+        {
+            self.auto_scroll = !self.auto_scroll;
+        }
+        if desktop::icon_button(
+            bar,
+            egui_phosphor::regular::COPY,
+            None,
+            false,
+            "Copy visible lines",
+        )
+        .clicked()
+        {
+            let text = self
+                .logs
+                .iter()
+                .filter(|e| self.desktop_shows(e))
+                .map(log_line_text)
+                .collect::<Vec<_>>()
+                .join("\n");
+            bar.ctx().copy_text(text);
+        }
+        if desktop::icon_button(bar, egui_phosphor::regular::TRASH, None, false, "Clear").clicked()
+        {
+            self.clear_logs();
         }
     }
 
@@ -342,6 +539,11 @@ impl LogWindow {
     }
 
     pub fn draw(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+        if dropdown::is_desktop(ui) {
+            self.draw_desktop(ui);
+            return;
+        }
+
         // Controls
         ui.horizontal_wrapped(|ui| {
             const BUTTON_SIZE: ButtonSize = ButtonSize::Medium;
@@ -373,9 +575,7 @@ impl LogWindow {
 
             ui.separator();
 
-            if dropdown::is_desktop(ui) {
-                self.draw_desktop_filters(ui);
-            } else {
+            {
                 if components::button(
                     ui,
                     self.selected_log_level.is_some(),
@@ -503,9 +703,6 @@ impl LogWindow {
                         Some(level) if entry.level != *level => continue,
                         Some(_) | None => {}
                     }
-                    if !self.shown_levels[level_index(&entry.level)] {
-                        continue;
-                    }
 
                     if !log_entry_matches_source(entry, self.selected_source.as_deref())
                         || !log_entry_matches_filter(entry, &self.filter_text)
@@ -548,7 +745,8 @@ impl LogWindow {
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_button_label, log_entry_matches_filter, log_entry_matches_source, LogWindow,
+        filter_button_label, level_filter_label, log_entry_matches_filter,
+        log_entry_matches_source, LogWindow,
     };
     use blaulicht_shared::LogLevel;
 
@@ -602,5 +800,27 @@ mod tests {
             .logs
             .iter()
             .all(|entry| log_entry_matches_source(entry, None)));
+    }
+
+    #[test]
+    fn level_dropdown_label_and_hiding_debug() {
+        assert_eq!(level_filter_label(&[true; 4]), "All levels");
+        assert_eq!(level_filter_label(&[false; 4]), "No levels");
+        assert_eq!(
+            level_filter_label(&[false, true, true, true]),
+            "Info, Warn, Error"
+        );
+
+        let mut window = LogWindow::new(10);
+        window.add_log(LogLevel::Debug, "d".to_string(), None, "a".to_string());
+        window.add_log(LogLevel::Info, "i".to_string(), None, "a".to_string());
+        window.shown_levels[0] = false;
+        let shown: Vec<_> = window
+            .logs
+            .iter()
+            .filter(|e| window.desktop_shows(e))
+            .map(|e| e.message.as_str())
+            .collect();
+        assert_eq!(shown, vec!["i"]);
     }
 }
