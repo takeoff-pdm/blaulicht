@@ -40,6 +40,84 @@ fn selection_id() -> Id {
     Id::new("setup_fixtures_selection")
 }
 
+/// A running Identify (`fxplan.js`): the fixtures it steps through, in
+/// table order, the one flashing, and where its panel hangs from.
+#[derive(Clone, Debug)]
+struct Identify {
+    group: u8,
+    list: Vec<u8>,
+    i: usize,
+    /// Through the selection (several selected) or through the group.
+    through_selection: bool,
+    /// The Identify button the panel drops down from.
+    anchor: Rect,
+    /// When the flash was last sent (`input.time`); it is repeated before
+    /// the engine's `IDENTIFY_TIMEOUT`.
+    sent: f64,
+    /// The pass the button was last drawn in; a panel whose button is gone
+    /// (another page, another selection) stops.
+    pass: u64,
+    /// Focus Next once, when the panel opens.
+    focus_next: bool,
+}
+
+impl Identify {
+    fn fixture(&self) -> Option<u8> {
+        self.list.get(self.i).copied()
+    }
+
+    /// Moves `k` steps through the list, wrapping around.
+    fn step(&mut self, k: i32) {
+        let n = self.list.len() as i32;
+        if n > 0 {
+            self.i = (self.i as i32 + k).rem_euclid(n) as usize;
+        }
+    }
+}
+
+impl Default for Identify {
+    fn default() -> Self {
+        Self {
+            group: 0,
+            list: Vec::new(),
+            i: 0,
+            through_selection: false,
+            anchor: Rect::NOTHING,
+            sent: 0.0,
+            pass: 0,
+            focus_next: false,
+        }
+    }
+}
+
+fn identify_id() -> Id {
+    Id::new("setup_fixtures_identify")
+}
+
+/// The fixture table's rect: clicks there don't close the Identify panel.
+fn table_rect_id() -> Id {
+    Id::new("setup_fixtures_table_rect")
+}
+
+/// What Identify steps through (`fxplan.js`): the selection when several
+/// are selected, otherwise the whole group starting at the selected one.
+/// Returns the list, the start index and whether it is the selection.
+fn identify_list(group: &[u8], selected: &[u8]) -> (Vec<u8>, usize, bool) {
+    if selected.len() > 1 {
+        (selected.to_vec(), 0, true)
+    } else {
+        let start = selected
+            .first()
+            .and_then(|s| group.iter().position(|x| x == s))
+            .unwrap_or(0);
+        (group.to_vec(), start, false)
+    }
+}
+
+/// The identified fixture's row (`.rows tr.ident`): dark red at 45 %, white
+/// text, a 3px red edge. It wins over the blue selection.
+const IDENT_ROW: egui::Color32 = egui::Color32::from_rgba_premultiplied(83, 7, 7, 115);
+
 /// A drag of fixture rows onto a group of the tree (`treedrag.js`): the
 /// fixtures it carries, from `group`.
 #[derive(Clone, Debug, Default)]
@@ -213,6 +291,277 @@ impl BlaulichtApp {
         self.desktop_centre_pane(&mut centre_ui, dmx_engine);
         self.desktop_fixture_pane(&mut fixture_ui, ctx, dmx_engine);
         self.desktop_fixture_drag(ui, dmx_engine, &group_rows, groups_rect);
+        self.desktop_identify_panel(ctx, dmx_engine);
+    }
+
+    /// Stops Identify: the panel closes and the flash ends.
+    fn stop_identify(&mut self, ctx: &Context) {
+        if ctx
+            .data_mut(|d| d.remove_temp::<Identify>(identify_id()))
+            .is_some()
+        {
+            self.send_command(HostCommand::IdentifyFixture(None), |_, _| {});
+        }
+    }
+
+    /// Sends the flash for the fixture `ident` is on.
+    fn send_identify(&mut self, ctx: &Context, ident: &mut Identify) {
+        if let Some(fid) = ident.fixture() {
+            ident.sent = ctx.input(|i| i.time);
+            self.send_command(
+                HostCommand::IdentifyFixture(Some((ident.group, fid))),
+                |_, _| {},
+            );
+        }
+    }
+
+    /// The Identify and Initialize row under Patch (`.fxacts`): lit buttons
+    /// for `ids`, the selected fixtures of group `gid`.
+    fn desktop_identify_row(&mut self, ui: &mut Ui, dmx_engine: &EngineState, gid: u8, ids: &[u8]) {
+        let ctx = ui.ctx().clone();
+        let ident: Option<Identify> = ctx.data(|d| d.get_temp(identify_id()));
+        let single = ids.len() == 1;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let ident_tip = if single {
+                "Flash this fixture so you can find it on the rig"
+            } else {
+                "Step through the selected fixtures and flash each one"
+            };
+            let button = studio::live_button(ui, "Identify", ident.is_some(), TARGET_MIN)
+                .on_hover_text(ident_tip);
+            if let Some(mut ident) = ident.clone() {
+                ident.anchor = button.rect;
+                ident.pass = ctx.cumulative_pass_nr();
+                ctx.data_mut(|d| d.insert_temp(identify_id(), ident));
+            }
+            if button.clicked() {
+                if ident.is_some() {
+                    self.stop_identify(&ctx);
+                } else if !self.engine_link().is_online() {
+                    let why = format!("Identify not sent: engine {}", self.engine_link().word());
+                    self.desk_notes.error(why);
+                } else if let Some(group) = dmx_engine.groups().get(&gid) {
+                    let order: Vec<u8> = group.fixtures.keys().copied().collect();
+                    let (list, i, through_selection) = identify_list(&order, ids);
+                    let mut ident = Identify {
+                        group: gid,
+                        list,
+                        i,
+                        through_selection,
+                        anchor: button.rect,
+                        sent: 0.0,
+                        pass: ctx.cumulative_pass_nr(),
+                        focus_next: true,
+                    };
+                    self.send_identify(&ctx, &mut ident);
+                    ctx.data_mut(|d| d.insert_temp(identify_id(), ident));
+                }
+            }
+
+            // Lit for the 10 s the fixtures initialize.
+            let init_id = if single {
+                Id::new(("fixture_initializing", gid, ids[0]))
+            } else {
+                Id::new(("fixtures_initializing", gid, ids.to_vec()))
+            };
+            let since: Option<f64> = ui.data(|d| d.get_temp(init_id));
+            let now = ui.input(|i| i.time);
+            let on = since.is_some_and(|t| now - t < 10.0);
+            if on {
+                ui.ctx().request_repaint_after(Duration::from_millis(250));
+            }
+            let init_tip = if single {
+                "Send the fixture its start-up values, such as lamp on and reset"
+            } else {
+                "Send the selected fixtures their start-up values, such as lamp on and reset"
+            };
+            let init =
+                studio::live_button(ui, "Initialize", on, TARGET_MIN).on_hover_text(init_tip);
+            if init.clicked() && !on {
+                if !self.engine_link().is_online() {
+                    let why = format!("Initialize not sent: engine {}", self.engine_link().word());
+                    self.desk_notes.error(why);
+                    return;
+                }
+                ui.data_mut(|d| d.insert_temp(init_id, now));
+                let label = if single {
+                    format!("Initializing `{}` (10 s)", self.new_fixture_name)
+                } else {
+                    format!("Initializing {} fixtures (10 s)", ids.len())
+                };
+                let keys = ids.iter().map(|id| (gid, *id)).collect();
+                self.send_setup_command(HostCommand::InitFixtures(keys), move |app, _| {
+                    app.show_popup(PopupSpec::with_duration(Duration::from_secs(3), label));
+                });
+            }
+        });
+    }
+
+    /// The Identify panel (`.ddpop.idpop`) under its button: the flashing
+    /// fixture and "2 of 3", Previous/Next (and the arrow keys), Transfer
+    /// to selection and Stop (and Esc, and a click outside).
+    fn desktop_identify_panel(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        let Some(mut ident) = ctx.data(|d| d.get_temp::<Identify>(identify_id())) else {
+            return;
+        };
+        let group = dmx_engine.groups().get(&ident.group);
+        // The button is gone, or so is the group: stop.
+        if ident.pass + 1 < ctx.cumulative_pass_nr()
+            || group.is_none()
+            || self.add_fixture_group != Some(ident.group)
+        {
+            self.stop_identify(ctx);
+            return;
+        }
+        let group = group.expect("checked above");
+        ident.list.retain(|id| group.fixtures.contains_key(id));
+        if ident.list.is_empty() {
+            self.stop_identify(ctx);
+            return;
+        }
+        ident.i = ident.i.min(ident.list.len() - 1);
+
+        let t = studio_tokens(ctx);
+        let density = Density::of(ctx);
+        let mut step = 0;
+        let (mut stop, mut take) = (false, false);
+        if !ctx.egui_wants_keyboard_input() {
+            ctx.input_mut(|i| {
+                if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) {
+                    step += 1;
+                }
+                if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) {
+                    step -= 1;
+                }
+                if i.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+                    stop = true;
+                }
+            });
+        }
+
+        const W: f32 = 270.0;
+        let screen = ctx.content_rect();
+        let pos = pos2(
+            ident.anchor.left().min(screen.right() - 280.0),
+            ident.anchor.bottom() + 4.0,
+        );
+        let name = ident
+            .fixture()
+            .and_then(|f| group.fixtures.get(&f))
+            .map(|f| f.name.to_string())
+            .unwrap_or_default();
+        let count = format!("{} of {}", ident.i + 1, ident.list.len());
+        let through = if ident.through_selection {
+            "Through the selected fixtures".to_owned()
+        } else {
+            format!("Through {}", group.name)
+        };
+        let area = egui::Area::new(identify_id().with("panel"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::NONE
+                    .fill(t.pane)
+                    .stroke(Stroke::new(1.0_f32, t.line))
+                    .inner_margin(8.0);
+                frame.show(ui, |ui| {
+                    ui.set_width(W - 16.0);
+                    ui.spacing_mut().item_spacing = vec2(2.0, 8.0);
+                    let w = ui.available_width();
+                    // `.idn`: a steady red dot, the name, "2 of 3".
+                    let (r, _) = ui.allocate_exact_size(vec2(w, 20.0), Sense::hover());
+                    let p = ui.painter();
+                    p.circle_filled(pos2(r.left() + 5.0, r.center().y), 5.0, t.red);
+                    let count_g =
+                        p.layout_no_wrap(count.clone(), egui::FontId::monospace(12.0), t.text);
+                    let cw = count_g.size().x;
+                    p.galley(
+                        pos2(r.right() - cw, r.center().y - count_g.size().y / 2.0),
+                        count_g,
+                        t.text,
+                    );
+                    studio::paint_truncated(
+                        ui,
+                        pos2(r.left() + 18.0, r.center().y),
+                        &name,
+                        density.font(Weight::Medium, 14.0),
+                        t.strong,
+                        (w - 18.0 - cw - 8.0).max(0.0),
+                    );
+                    let half = ((w - 2.0) / 2.0).floor();
+                    ui.horizontal(|ui| {
+                        let prev = format!("{} Previous", egui_phosphor::regular::CARET_LEFT);
+                        let next = format!("Next {}", egui_phosphor::regular::CARET_RIGHT);
+                        if studio::mini_button_w(ui, &prev, half, TARGET_SHOW).clicked() {
+                            step -= 1;
+                        }
+                        let n = studio::mini_button_w(ui, &next, w - 2.0 - half, TARGET_SHOW);
+                        if ident.focus_next {
+                            n.request_focus();
+                        }
+                        if n.clicked() {
+                            step += 1;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let f = density.font(Weight::Regular, 12.0);
+                        let stop_w = studio::text_width(ui, "Stop", f) + 20.0;
+                        take = studio::mini_button_w(
+                            ui,
+                            "Transfer to selection",
+                            w - 2.0 - stop_w,
+                            TARGET_SHOW,
+                        )
+                        .on_hover_text("Stop identifying and select only this fixture")
+                        .clicked();
+                        stop |= studio::mini_button_w(ui, "Stop", stop_w, TARGET_SHOW).clicked();
+                    });
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!("{through}. ← and → step, Esc stops."))
+                                .font(density.font(Weight::Regular, 11.0))
+                                .color(t.muted),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+        ident.focus_next = false;
+
+        // A click outside the panel, its button and the fixture rows stops.
+        let table: Option<Rect> = ctx.data(|d| d.get_temp(table_rect_id()));
+        let outside = ctx.input(|i| {
+            i.pointer.any_pressed()
+                && i.pointer.interact_pos().is_some_and(|p| {
+                    !area.response.rect.contains(p)
+                        && !ident.anchor.contains(p)
+                        && !table.is_some_and(|r| r.contains(p))
+                })
+        });
+        if stop || outside {
+            self.stop_identify(ctx);
+            return;
+        }
+        if take {
+            let fid = ident.fixture();
+            let gid = ident.group;
+            self.stop_identify(ctx);
+            if let Some(fid) = fid {
+                self.select_setup_fixture(dmx_engine, gid, fid);
+                Self::store_fixture_selection(ctx, gid, BTreeSet::from([fid]));
+            }
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        if step != 0 {
+            ident.step(step);
+            self.send_identify(ctx, &mut ident);
+        } else if now - ident.sent >= 1.0 {
+            self.send_identify(ctx, &mut ident);
+        }
+        ctx.request_repaint_after(Duration::from_millis(500));
+        ctx.data_mut(|d| d.insert_temp(identify_id(), ident));
     }
 
     /// The selected fixtures of the shown group, in table order. Without a
@@ -581,6 +930,11 @@ impl BlaulichtApp {
             .into_iter()
             .collect();
         let dragging: Option<FixtureDrag> = ui.data(|d| d.get_temp(drag_id()));
+        let identified = ui
+            .data(|d| d.get_temp::<Identify>(identify_id()))
+            .filter(|i| i.group == gid)
+            .and_then(|i| i.fixture());
+        ui.data_mut(|d| d.insert_temp(table_rect_id(), ui.available_rect_before_wrap()));
         let mut picked = None;
         let mut drag_from = None;
         let mut order = Vec::new();
@@ -612,7 +966,15 @@ impl BlaulichtApp {
                     if carried {
                         p.set_opacity(0.4);
                     }
-                    if active {
+                    let ident = identified == Some(*fid);
+                    if ident {
+                        p.rect_filled(rect, 0.0, IDENT_ROW);
+                        p.rect_filled(
+                            Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
+                            0.0,
+                            t.red,
+                        );
+                    } else if active {
                         p.rect_filled(rect, 0.0, t.blue_dim);
                         p.rect_filled(
                             Rect::from_min_size(rect.min, vec2(2.0, rect.height())),
@@ -622,9 +984,21 @@ impl BlaulichtApp {
                     } else if response.hovered() && dragging.is_none() {
                         p.rect_filled(rect, 0.0, t.head);
                     }
-                    let text = if active { t.strong } else { t.text };
+                    let text = if ident {
+                        egui::Color32::WHITE
+                    } else if active {
+                        t.strong
+                    } else {
+                        t.text
+                    };
                     // `td.dim` (Type, Ch): muted unless the row is selected.
-                    let dim = if active { t.strong } else { t.muted };
+                    let dim = if ident {
+                        egui::Color32::WHITE
+                    } else if active {
+                        t.strong
+                    } else {
+                        t.muted
+                    };
                     let col = |i: usize| rect.left() + 8.0 + cols[i] * (width - 16.0);
                     let cy = rect.center().y;
                     let footprint = fix.type_.footprint();
@@ -655,7 +1029,11 @@ impl BlaulichtApp {
                         Align2::LEFT_CENTER,
                         format!("{:03}-{:03}", fix.start_addr, end),
                         mono.clone(),
-                        t.strong,
+                        if ident {
+                            egui::Color32::WHITE
+                        } else {
+                            t.strong
+                        },
                     );
                     p.text(
                         pos2(rect.right() - 8.0, cy),
@@ -735,7 +1113,7 @@ impl BlaulichtApp {
                     .max_rect(ui.available_rect_before_wrap().shrink(8.0))
                     .layout(egui::Layout::top_down(egui::Align::Min)),
             );
-            self.desktop_multi_editor(&mut body, gid, &ids, &fixtures);
+            self.desktop_multi_editor(&mut body, dmx_engine, gid, &ids, &fixtures);
             return;
         }
         let selected = group.and_then(|(gid, g)| {
@@ -813,6 +1191,8 @@ impl BlaulichtApp {
             );
         });
         self.new_fixture_uni = uni.round() as usize;
+        // Identify and Initialize, their own row under the patch fields.
+        self.desktop_identify_row(ui, dmx_engine, gid, &[fid]);
         for (label, value, step, decimals, range) in [
             (
                 "Position X",
@@ -909,24 +1289,6 @@ impl BlaulichtApp {
         });
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-            // Lit for the 10 s the fixture initializes.
-            let init_id = egui::Id::new(("fixture_initializing", gid, fid));
-            let since: Option<f64> = ui.data(|d| d.get_temp(init_id));
-            let now = ui.input(|i| i.time);
-            let on = since.is_some_and(|t| now - t < 10.0);
-            if on {
-                ui.ctx().request_repaint_after(Duration::from_millis(250));
-            }
-            if studio::live_button(ui, "Initialize", on, TARGET_MIN).clicked() && !on {
-                ui.data_mut(|d| d.insert_temp(init_id, now));
-                let label = format!("Initializing `{}` (10 s)", self.new_fixture_name);
-                self.send_setup_command(
-                    HostCommand::InitFixtures(vec![(gid, fid)]),
-                    move |app, _| {
-                        app.show_popup(PopupSpec::with_duration(Duration::from_secs(3), label));
-                    },
-                );
-            }
             if cfg!(feature = "visualizer")
                 && studio::mini_button(ui, "Show in Visualizer", false, TARGET_MIN).clicked()
             {
@@ -1073,10 +1435,11 @@ impl BlaulichtApp {
     /// The Fixture pane body for several fixtures (`multiEditor` in
     /// `setup.html`): count and type ("Mixed" for several types), the
     /// per-fixture fields frozen as `--`, Identify and Initialize for the
-    /// whole selection.
+    /// whole selection (`desktop_identify_row`).
     fn desktop_multi_editor(
         &mut self,
         ui: &mut Ui,
+        dmx_engine: &EngineState,
         gid: u8,
         ids: &[u8],
         fixtures: &[&blaulicht_shared::fixture::state::Fixture],
@@ -1184,31 +1547,7 @@ impl BlaulichtApp {
             f12.clone(),
             t.muted,
         );
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            // Identify steps through the selection (078); the button is
-            // here so the row matches the mockup.
-            studio::live_button(ui, "Identify", false, TARGET_MIN)
-                .on_hover_text("Step through the selected fixtures and flash each one");
-            let init_id = Id::new(("fixtures_initializing", gid, ids.to_vec()));
-            let since: Option<f64> = ui.data(|d| d.get_temp(init_id));
-            let now = ui.input(|i| i.time);
-            let on = since.is_some_and(|t| now - t < 10.0);
-            if on {
-                ui.ctx().request_repaint_after(Duration::from_millis(250));
-            }
-            let init = studio::live_button(ui, "Initialize", on, TARGET_MIN).on_hover_text(
-                "Send the selected fixtures their start-up values, such as lamp on and reset",
-            );
-            if init.clicked() && !on {
-                ui.data_mut(|d| d.insert_temp(init_id, now));
-                let label = format!("Initializing {} fixtures (10 s)", ids.len());
-                let keys = ids.iter().map(|id| (gid, *id)).collect();
-                self.send_setup_command(HostCommand::InitFixtures(keys), move |app, _| {
-                    app.show_popup(PopupSpec::with_duration(Duration::from_secs(3), label));
-                });
-            }
-        });
+        self.desktop_identify_row(ui, dmx_engine, gid, ids);
         heading(ui, "Position");
         ui.label(
             RichText::new("Select one fixture to position it.")
@@ -1265,6 +1604,21 @@ mod selection_tests {
         assert_eq!(sel, set(&[3, 4]));
         click_select(&order, &mut sel, &mut anchor, 0, false, false);
         assert_eq!((sel, anchor), (set(&[0]), Some(0)));
+    }
+
+    #[test]
+    fn identify_steps_through_the_selection_or_the_group() {
+        let group = [0, 1, 2, 3];
+        assert_eq!(identify_list(&group, &[1, 3]), (vec![1, 3], 0, true));
+        assert_eq!(identify_list(&group, &[2]), (group.to_vec(), 2, false));
+        let mut ident = Identify {
+            list: vec![1, 3],
+            ..Default::default()
+        };
+        ident.step(-1);
+        assert_eq!(ident.fixture(), Some(3));
+        ident.step(1);
+        assert_eq!(ident.fixture(), Some(1));
     }
 
     #[test]

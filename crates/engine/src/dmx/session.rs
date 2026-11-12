@@ -990,6 +990,21 @@ mod engine_tests {
         ]
     }
 
+    #[test]
+    fn identify_flashes_its_fixture_white_over_the_show() {
+        let mut h = Harness::new();
+        let dark = rendered_rgb(&mut h);
+        h.engine.identify.set(Some(((0, 0), Instant::now())));
+        h.engine.render_universes();
+        h.engine.run_identify();
+        let buffer = h.app.dmx_universes[0].read().unwrap();
+        assert_eq!(buffer.dmx_buffer[1..=3], [255, 255, 255]);
+        // The other fixture of the group keeps the show's output.
+        assert_eq!(buffer.dmx_buffer[4..=6], [dark[0], dark[1], dark[2]]);
+        drop(buffer);
+        assert!(crate::dmx::identify_on(0) && !crate::dmx::identify_on(300));
+    }
+
     /// Desk focus 0 is blue, `REMOTE`'s focus 2 is red, and nothing plays.
     fn preview_harness() -> Harness {
         let h = Harness::new();

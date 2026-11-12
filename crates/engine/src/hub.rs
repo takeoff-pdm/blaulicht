@@ -542,7 +542,17 @@ pub enum HostCommand {
     /// As [`HostCommand::Quit`], then the process exits with code 42 (its
     /// launcher starts it again).
     Restart { save: bool },
+    /// Flashes fixture `(group, fixture)` (Setup › Fixtures › Identify) on
+    /// top of the running show, or stops flashing (`None`). Only one fixture
+    /// flashes at a time; the flash stops by itself after
+    /// [`IDENTIFY_TIMEOUT`] without a repeat, so a client that vanishes
+    /// can't leave it on. Refused with "Fixture not found".
+    IdentifyFixture(Option<(u8, u8)>),
 }
+
+/// How long an [`HostCommand::IdentifyFixture`] flash lasts without the
+/// client repeating it.
+pub const IDENTIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// One audio analysis parameter ([`HostCommand::SetAudioParam`]).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -667,7 +677,8 @@ impl HostCommand {
             | HostCommand::ReloadPlugins
             | HostCommand::CloneAnimationInstanceState { .. }
             | HostCommand::KeepAnimationEditorAlive { .. }
-            | HostCommand::InitFixtures(_) => false,
+            | HostCommand::InitFixtures(_)
+            | HostCommand::IdentifyFixture(_) => false,
         }
     }
 }
