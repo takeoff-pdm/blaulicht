@@ -41,3 +41,11 @@ The rest of 038: these pages exist in the mockup (`system.html#plugins`, `#devic
 - Kiosk: 800x480 kt shots of Audio, System General and Plugins show the old layouts; not pixel-diffed against a decouple build, the Compact paths are unchanged in code.
 - Checks on the host with CARGO_BUILD_JOBS=4: clippy --all-targets --all-features (no new warnings), cargo test --all-features (all pass). `cargo fmt` with the host nightly reformats many untouched files on decouple; that churn was reverted and only the touched code is formatted (pre-existing kiosk hunks in audio.rs left as they were).
 
+
+### Review fixes
+
+- Audio > Input faders keep a local value in egui temp memory while dragged, so the engine's lagging echo no longer eats the drag delta. kt: drags of 59 px then 90 px on Gate moved it 0 -> 95 with the handle under the pointer (151 px travel).
+- Audio > Input controls sit at fixed offsets (0, 313, 613, switch 904 from the row's left, the mockup's 202/515/815/1106 spacing). Boost and Auto-calibrate stay put when Gate's value gains a digit; only Gate's own name moves after its value, as in the mockup.
+- MIDI & Serial: the body under the table head (rows and the empty area, and the empty-state note) is painted in `t.list`. Remote UI > Connected clients: the whole body (table or "No remote UI is connected.") is on `t.list`. Checked with kt shots at 1500x950.
+- All changes are in desktop-only functions (render_audio_desktop, render_devices_desktop, render_remote_desktop); the Compact paths are untouched.
+- Checks on the host with CARGO_BUILD_JOBS=4: clippy -p blaulicht-ui-egui --all-targets --all-features (nothing in the touched files), cargo test -p blaulicht-ui-egui --all-features (171 pass). fmt churn outside the touched code left out again.

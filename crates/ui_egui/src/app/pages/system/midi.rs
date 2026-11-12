@@ -309,6 +309,9 @@ impl BlaulichtApp {
             );
         });
         if rows.is_empty() {
+            // `.body` is the darker list colour (studio.css `--list`).
+            pane.painter()
+                .rect_filled(pane.available_rect_before_wrap(), 0.0, t.list);
             duo::body(&mut pane, None, |ui| {
                 duo::note(
                     ui,
@@ -337,6 +340,9 @@ impl BlaulichtApp {
                 t.muted,
             );
         }
+        // The rows, and the empty area under them, sit on the list colour.
+        pane.painter()
+            .rect_filled(pane.available_rect_before_wrap(), 0.0, t.list);
         let now = blaulicht_engine::state::unix_millis_now();
         let mut reconnect = false;
         for (index, row) in rows.iter().enumerate() {

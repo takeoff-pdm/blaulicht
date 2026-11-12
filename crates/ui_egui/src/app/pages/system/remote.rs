@@ -379,6 +379,10 @@ impl BlaulichtApp {
                 t.strong,
             );
         });
+        // `.body` (table or empty note) is the darker list colour.
+        clients
+            .painter()
+            .rect_filled(clients.available_rect_before_wrap(), 0.0, t.list);
         if status.sessions.is_empty() {
             duo::body(&mut clients, None, |ui| {
                 duo::note(ui, "No remote UI is connected.");

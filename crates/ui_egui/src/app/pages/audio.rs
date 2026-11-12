@@ -1298,7 +1298,7 @@ impl BlaulichtApp {
             // one centre line; x advances by what the previous one used.
             let top = ui.cursor().top();
             let right = ui.max_rect().right();
-            let mut x = ui.cursor().left() + 8.0;
+            let left = ui.cursor().left() + 4.0;
             let slot = |ui: &mut egui::Ui, salt: &str, x: f32, y: f32| {
                 let rect = Rect::from_min_max(pos2(x, y), pos2(right.max(x), y + 32.0));
                 ui.new_child(
@@ -1309,17 +1309,32 @@ impl BlaulichtApp {
                 )
             };
             let mut centre = top + 16.0;
-            for (name, value, range) in [
+            // Fixed slot offsets (mockup: 202, 515, 815, 1106), so values
+            // with more digits don't push the next control sideways.
+            for ((name, value, range), offset) in [
                 ("Volume", &mut volume, 1.0..=200.0),
                 ("Gate", &mut gate, 0.0..=100.0),
                 ("Boost", &mut boost, 0.0..=255.0),
-            ] {
-                let mut child = slot(ui, name, x, top);
+            ]
+            .into_iter()
+            .zip(INPUT_SLOTS)
+            {
+                // While dragging, keep the local value: the engine's echo
+                // lags a frame or more, and the fader is delta-based.
+                let held = egui::Id::new(("audio-input-held", name));
+                if let Some(v) = ui.data(|d| d.get_temp::<f32>(held)) {
+                    *value = v;
+                }
+                let mut child = slot(ui, name, left + offset, top);
                 let r = studio::hfader(&mut child, value, range, name, DESKTOP_FADER_TRACK);
+                if r.dragged() {
+                    ui.data_mut(|d| d.insert_temp(held, *value));
+                } else {
+                    ui.data_mut(|d| d.remove::<f32>(held));
+                }
                 // The track sits lower than the row's middle; the switch
                 // follows it.
                 centre = r.rect.center().y;
-                x += child.min_rect().width() + 24.0;
                 if r.changed() {
                     params.push(match name {
                         "Volume" => AudioParam::Volume(*value as u8),
@@ -1331,7 +1346,7 @@ impl BlaulichtApp {
                     });
                 }
             }
-            let mut child = slot(ui, "auto-calibrate", x, centre - 16.0);
+            let mut child = slot(ui, "auto-calibrate", left + INPUT_SWITCH, centre - 16.0);
             child.spacing_mut().item_spacing.x = 8.0;
             if studio::switch(&mut child, &mut auto_calibrate).changed() {
                 params.push(AudioParam::AutoCalibrate(auto_calibrate));
@@ -1344,6 +1359,12 @@ impl BlaulichtApp {
         }
     }
 }
+
+/// Offsets of the Volume, Gate and Boost faders from the Input row's left
+/// edge (mockup `pages.html#audio`: 202, 515, 815).
+const INPUT_SLOTS: [f32; 3] = [0.0, 313.0, 613.0];
+/// Offset of the Auto-calibrate switch (mockup: 1106).
+const INPUT_SWITCH: f32 = 904.0;
 
 #[cfg(test)]
 mod spectrogram_ring_tests {
