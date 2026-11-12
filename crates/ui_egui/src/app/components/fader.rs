@@ -1,3 +1,5 @@
+use super::studio;
+use crate::app::ui_tokens::Density;
 use egui::{Color32, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Ui, Widget};
 
 /// A vertical fader widget, like a MIDI/DMX control.
@@ -160,6 +162,18 @@ impl<'a> HFader<'a> {
 
 impl<'a> Widget for HFader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
+        // Desktop (082): the studio horizontal fader, the vertical fader on
+        // its side (`.hf`). The kiosk keeps the drawing below.
+        if Density::of(ui.ctx()).is_compact() {
+            let name = self.label.unwrap_or_default();
+            let style = studio::HFaderStyle {
+                value_width: 36.0,
+                value_right: true,
+                show_value: self.show_value,
+                ..Default::default()
+            };
+            return studio::hfader_with(ui, self.value, self.range, &name, style);
+        }
         let font = TextStyle::Body.resolve(ui.style());
         let text_width = |text: String| {
             ui.painter()

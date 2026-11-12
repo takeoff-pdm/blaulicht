@@ -1138,6 +1138,39 @@ pub fn fader(
     response
 }
 
+/// How a [`hfader_with`] is laid out. [`HFaderStyle::default`] is the
+/// Audio fader (`.hf`): a 200x32 track with a 26px cap, the value and the
+/// name after it.
+#[derive(Debug, Clone, Copy)]
+pub struct HFaderStyle<'a> {
+    /// Track size; the cap travels its full width.
+    pub track: egui::Vec2,
+    /// Cap width (`--cw`): 26px, 22px in the Grand master bar.
+    pub cap: f32,
+    /// Minimum width of the value column (0 = the value's own width).
+    pub value_width: f32,
+    /// Right-align the value in its column (`.hf b`).
+    pub value_right: bool,
+    /// Text after the value ("%" for the Grand master).
+    pub suffix: &'a str,
+    pub show_value: bool,
+    pub show_name: bool,
+}
+
+impl Default for HFaderStyle<'_> {
+    fn default() -> Self {
+        Self {
+            track: vec2(200.0, 32.0),
+            cap: 26.0,
+            value_width: 0.0,
+            value_right: false,
+            suffix: "",
+            show_value: true,
+            show_name: true,
+        }
+    }
+}
+
 /// The horizontal fader for long-range values with a level feel (audio
 /// gain): the vertical fader on its side, then the value and the name.
 pub fn hfader(
@@ -1147,105 +1180,123 @@ pub fn hfader(
     name: &str,
     track_width: f32,
 ) -> Response {
+    let style = HFaderStyle {
+        track: vec2(track_width, 32.0),
+        ..Default::default()
+    };
+    hfader_with(ui, value, range, name, style)
+}
+
+/// [`hfader`] with an explicit [`HFaderStyle`]: the vertical fader's slot,
+/// printed scale above and below it, and its cap turned on its side.
+pub fn hfader_with(
+    ui: &mut Ui,
+    value: &mut f32,
+    range: RangeInclusive<f32>,
+    name: &str,
+    style: HFaderStyle<'_>,
+) -> Response {
     let t = studio(ui.ctx());
-    let height = 32.0;
-    let ui_id = ui
-        .horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            let (track, mut response) =
-                ui.allocate_exact_size(vec2(track_width, height), Sense::click_and_drag());
-            let cw = 26.0;
-            let travel = track.width() - cw;
-            if drag_value(&response, value, &range, response.drag_delta().x, travel) {
-                response.mark_changed();
-            }
-            // Typing in place over the value right of the track.
-            let shown = format_value(*value, &range);
-            let readout = Rect::from_min_size(
-                pos2(track.right() + 6.0, track.center().y - 8.0),
-                vec2(text_width(ui, &shown, mono(TEXT)), 16.0),
+    let height = style.track.y;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        let (track, mut response) = ui.allocate_exact_size(style.track, Sense::click_and_drag());
+        let cw = style.cap;
+        let travel = track.width() - cw;
+        if drag_value(&response, value, &range, response.drag_delta().x, travel) {
+            response.mark_changed();
+        }
+        let text = |v: f32| format!("{}{}", format_value(v, &range), style.suffix);
+        let shown = format_value(*value, &range);
+        let vw = text_width(ui, &text(*value), mono(TEXT)).max(style.value_width);
+        // Typing in place over the value right of the track.
+        let readout = Rect::from_min_size(
+            pos2(track.right() + 6.0, track.center().y - 8.0),
+            vec2(vw, 16.0),
+        );
+        if value_keys_and_typing(
+            ui,
+            t,
+            &response,
+            value,
+            &range,
+            unit_of(&range),
+            style.show_value,
+            &shown,
+            readout,
+            name,
+            &value_entry::parse_number,
+        ) {
+            response.mark_changed();
+        }
+        let editing = value_entry::is_editing(ui.ctx(), response.id);
+        let p = ui.painter();
+        let cy = track.center().y.round();
+        let lx = track.left() + cw / 2.0;
+        let rx = track.right() - cw / 2.0;
+        // Ticks above and below the slot, 7px from it (`.hfl` mask).
+        for i in 0..=10 {
+            let x = (lx + (rx - lx) * i as f32 / 10.0).round() + 0.5;
+            p.vline(
+                x,
+                (track.top() + 3.0)..=(cy - 7.0),
+                Stroke::new(1.0_f32, t.scale),
             );
-            if value_keys_and_typing(
-                ui,
-                t,
-                &response,
-                value,
-                &range,
-                unit_of(&range),
-                true,
-                &shown,
-                readout,
-                name,
-                &value_entry::parse_number,
-            ) {
-                response.mark_changed();
-            }
-            let editing = value_entry::is_editing(ui.ctx(), response.id);
-            let p = ui.painter();
-            let cy = track.center().y.round();
-            let lx = track.left() + cw / 2.0;
-            let rx = track.right() - cw / 2.0;
-            for i in 0..=10 {
-                let x = (lx + (rx - lx) * i as f32 / 10.0).round() + 0.5;
-                p.vline(
-                    x,
-                    (track.top() + 3.0)..=(track.top() + 10.0),
-                    Stroke::new(1.0_f32, t.scale),
-                );
-                p.vline(
-                    x,
-                    (track.bottom() - 10.0)..=(track.bottom() - 3.0),
-                    Stroke::new(1.0_f32, t.scale),
-                );
-            }
-            let slot = Rect::from_min_max(pos2(lx, cy - 3.0), pos2(rx, cy + 3.0));
-            p.rect_filled(slot, CornerRadius::same(2), Color32::BLACK);
-            p.rect_stroke(
-                slot,
-                CornerRadius::same(2),
-                Stroke::new(1.0_f32, t.line),
-                StrokeKind::Inside,
+            p.vline(
+                x,
+                (cy + 7.0)..=(track.bottom() - 3.0),
+                Stroke::new(1.0_f32, t.scale),
             );
-            let frac = ((*value - range.start()) / (range.end() - range.start())).clamp(0.0, 1.0);
-            let cap = Rect::from_min_max(
-                pos2(track.left() + frac * travel, track.top() + 1.0),
-                pos2(track.left() + frac * travel + cw, track.bottom() - 3.0),
-            );
-            paint_cap(
-                ui,
-                t,
-                cap,
-                response.hovered() || response.dragged(),
-                t.strong,
-                false,
-            );
-            // Value right after the track, 6px apart like the masters'
-            // value and name (no fixed-width box).
-            ui.spacing_mut().item_spacing.x = 6.0;
-            let text = format_value(*value, &range);
-            let vw = text_width(ui, &text, mono(TEXT));
+        }
+        let slot = Rect::from_min_max(pos2(lx, cy - 3.0), pos2(rx, cy + 3.0));
+        p.rect_filled(slot, CornerRadius::same(2), Color32::BLACK);
+        p.rect_stroke(
+            slot,
+            CornerRadius::same(2),
+            Stroke::new(1.0_f32, t.line),
+            StrokeKind::Inside,
+        );
+        let frac = ((*value - range.start()) / (range.end() - range.start())).clamp(0.0, 1.0);
+        let cap = Rect::from_min_max(
+            pos2(track.left() + frac * travel, track.top() + 1.0),
+            pos2(track.left() + frac * travel + cw, track.bottom() - 3.0),
+        );
+        paint_cap(
+            ui,
+            t,
+            cap,
+            response.hovered() || response.dragged(),
+            t.strong,
+            false,
+        );
+        // Value right after the track, 6px apart like the masters'
+        // value and name (no fixed-width box).
+        ui.spacing_mut().item_spacing.x = 6.0;
+        if style.show_value {
             let (vrect, _) = ui.allocate_exact_size(vec2(vw, height), Sense::hover());
             if !editing {
-                ui.painter().text(
-                    pos2(vrect.left(), vrect.center().y),
-                    Align2::LEFT_CENTER,
-                    text,
-                    mono(TEXT),
-                    t.strong,
-                );
+                let (pos, align) = if style.value_right {
+                    (pos2(vrect.right(), vrect.center().y), Align2::RIGHT_CENTER)
+                } else {
+                    (pos2(vrect.left(), vrect.center().y), Align2::LEFT_CENTER)
+                };
+                ui.painter()
+                    .text(pos, align, text(*value), mono(TEXT), t.strong);
             }
+        }
+        if style.show_name && !name.is_empty() {
             let name_color = if response.has_focus() { t.blue } else { t.text };
             ui.label(
                 egui::RichText::new(name)
                     .font(font(ui, Weight::Regular, TEXT))
                     .color(name_color),
             );
-            let v = *value as f64;
-            response.widget_info(|| egui::WidgetInfo::slider(true, v, name));
-            response
-        })
-        .inner;
-    ui_id
+        }
+        let v = *value as f64;
+        response.widget_info(|| egui::WidgetInfo::slider(true, v, name));
+        response
+    })
+    .inner
 }
 
 /// Knob size: [`KnobSize::Normal`] (58px) for masters, [`KnobSize::Small`]

@@ -1,3 +1,8 @@
+use crate::app::components::studio;
+use crate::app::pages::programmer_desktop::exclusive_preview_button;
+use crate::app::ui_tokens::{
+    studio as studio_tokens, Density, Weight, PAGE_BAR_HEIGHT, TARGET_SHOW, TEXT,
+};
 use crate::app::{
     components::{self, ButtonSize, Knob, SpeedKnob, TreeItem},
     BlaulichtApp,
@@ -8,7 +13,7 @@ use blaulicht_shared::{
     folder::FolderId, scene::BLANK_SCENE_ID, AnimationSpeedModifier, ControlEvent,
     ControlEventMessage, EventOriginator,
 };
-use egui::{Color32, Context, Margin, Pos2};
+use egui::{vec2, Align2, Color32, Context, FontId, Margin, Pos2, Rect, Sense};
 
 const DEFAULT_NEW_VIEW_NAME: &str = "New View";
 const VIEWS_PER_PAGE: usize = 5;
@@ -188,6 +193,98 @@ impl BlaulichtApp {
         }
     }
 
+    /// The desktop page bar (`pages.html#performance`, `.okp > .oktool`):
+    /// Add overlay, the Grand master fader with its value and a reset icon,
+    /// and Blackout and Exclusive preview on the right.
+    fn view_perf_page_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        can_add_overlay: bool,
+        grand_master: u8,
+        preview_owned: bool,
+        preview_any: bool,
+    ) {
+        let t = studio_tokens(ui.ctx());
+        let mut add = false;
+        let mut level: Option<u8> = None;
+        let mut reset = false;
+        let mut blackout = false;
+        let mut preview = false;
+        studio::page_bar(
+            ui,
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 14.0;
+                add = ui
+                    .add_enabled_ui(can_add_overlay, |ui| {
+                        studio::mini_button(ui, "Add overlay", false, TARGET_SHOW)
+                    })
+                    .inner
+                    .on_disabled_hover_text("Every scene is already an overlay")
+                    .clicked();
+                let (sep, _) = ui.allocate_exact_size(vec2(1.0, 22.0), Sense::hover());
+                ui.painter().rect_filled(sep, 0.0, t.line);
+                ui.spacing_mut().item_spacing.x = 10.0;
+                ui.label(
+                    egui::RichText::new("Grand master")
+                        .font(Density::of(ui.ctx()).font(Weight::Regular, TEXT))
+                        .color(t.muted),
+                );
+                // While dragging, the fader follows the pointer rather than
+                // the engine's echo of the last level sent.
+                let drag_id = egui::Id::new("view_perf_gm_drag");
+                let mut value = ui
+                    .data(|d| d.get_temp::<f32>(drag_id))
+                    .unwrap_or(grand_master as f32);
+                let style = studio::HFaderStyle {
+                    track: vec2(200.0, 28.0),
+                    cap: 22.0,
+                    value_width: 40.0,
+                    suffix: "%",
+                    show_name: false,
+                    ..Default::default()
+                };
+                let response =
+                    studio::hfader_with(ui, &mut value, 0.0..=100.0, "Grand master", style);
+                if response.dragged() {
+                    ui.data_mut(|d| d.insert_temp(drag_id, value));
+                } else {
+                    ui.data_mut(|d| d.remove::<f32>(drag_id));
+                }
+                if response.changed() {
+                    let v = value.round() as u8;
+                    if v != grand_master {
+                        level = Some(v);
+                    }
+                }
+                ui.add_space(-4.0);
+                reset = gm_reset_button(ui, grand_master != 100);
+            },
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 14.0;
+                blackout = studio::blackout_button(ui, grand_master == 0).clicked();
+                preview = exclusive_preview_button(ui, preview_owned, preview_any);
+            },
+        );
+        if add {
+            self.view_perf_ui_state.overlay_picker_open = true;
+        }
+        if let Some(v) = level {
+            self.client.send(HostCommand::SetGrandMaster(v));
+        }
+        if reset {
+            self.client.send(HostCommand::SetGrandMaster(100));
+        }
+        if blackout {
+            self.toggle_blackout();
+        }
+        if preview {
+            self.client.send(ControlEventMessage::new(
+                EventOriginator::Web,
+                ControlEvent::ToggleLiveMode,
+            ));
+        }
+    }
+
     pub fn view_perf_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -229,16 +326,44 @@ impl BlaulichtApp {
             (live_mode, cards, available)
         });
         let grand_master = self.client.grand_master_percent();
+        let desktop = self.layout.is_desktop();
+        let (preview_owned, preview_any) = self.client.with_show(|show| {
+            (
+                show.live_owner() == Some(self.client.session()),
+                show.0.live_mode,
+            )
+        });
 
         if self.dmx_simulator.open {
             let groups = self.client.with_show(|show| show.groups().clone());
             self.render_dmx_simulation_dialog(ctx, &groups);
         }
 
+        if desktop {
+            // Desktop (082): the Programmer's 40px page bar, edge to edge
+            // over the page frame's margin.
+            let full = ui.max_rect().expand(8.0).intersect(ui.clip_rect());
+            let bar = Rect::from_min_size(full.min, vec2(full.width(), PAGE_BAR_HEIGHT));
+            let mut bar_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(bar)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            self.view_perf_page_bar(
+                &mut bar_ui,
+                !available_overlay_scenes.is_empty(),
+                grand_master,
+                preview_owned,
+                preview_any,
+            );
+            ui.add_space(bar.bottom() - ui.cursor().top() + 8.0);
+        }
+
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
+                if !desktop {
                 render_context.horizontal(ui, egui::Align::Min, |ui| {
                     let can_add_overlay = !available_overlay_scenes.is_empty();
                     if components::action_button(
@@ -287,8 +412,9 @@ impl BlaulichtApp {
                         }
                     }
                 });
+                }
 
-                if live_mode {
+                if live_mode && !desktop {
                     ui.add_space(2.0);
                     ui.label(
                         egui::RichText::new(
@@ -299,7 +425,9 @@ impl BlaulichtApp {
                     );
                 }
 
-                ui.separator();
+                if !desktop {
+                    ui.separator();
+                }
 
                 // 1. Define your card width (adjust to match your frame content)
                 let padding = 10.0;
@@ -352,4 +480,40 @@ impl BlaulichtApp {
 
         self.render_view_perf_overlay_picker_dialog(ctx, &available_overlay_scenes);
     }
+}
+
+/// The Grand master reset icon (`.okgr`): a 28px square, greyed at 100 %.
+/// Returns whether it was clicked.
+fn gm_reset_button(ui: &mut egui::Ui, enabled: bool) -> bool {
+    let t = studio_tokens(ui.ctx());
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(TARGET_SHOW, TARGET_SHOW), sense);
+    let hovered = enabled && response.hovered();
+    let fill = if hovered { t.ctl_hi } else { t.ctl };
+    let color = if hovered { t.strong } else { t.text };
+    let alpha = if enabled { 1.0 } else { 0.35 };
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, fill.gamma_multiply(alpha));
+    p.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE,
+        FontId::proportional(14.0),
+        color.gamma_multiply(alpha),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, "Reset Grand master")
+    });
+    response
+        .on_hover_text(if enabled {
+            "Set Grand master to 100%"
+        } else {
+            "Grand master is already at 100%"
+        })
+        .clicked()
+        && enabled
 }
