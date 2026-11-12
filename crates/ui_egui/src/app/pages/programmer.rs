@@ -131,6 +131,23 @@ impl BlaulichtApp {
         // Main UI start.
         //
 
+        // Desktop (059): the page bar with Blackout. The kiosk keeps its
+        // layout.
+        if Density::of(ctx).is_compact() {
+            let black = self.client.grand_master_percent() == 0;
+            let mut toggle = false;
+            components::studio::page_bar(
+                ui,
+                |_| {},
+                |ui| {
+                    toggle = components::studio::blackout_button(ui, black).clicked();
+                },
+            );
+            if toggle {
+                self.toggle_blackout();
+            }
+        }
+
         ui.allocate_ui_with_layout(
             egui::vec2(ui.available_width(), ui.available_height()), // fixed width, max height
             render_context.primary_layout(),

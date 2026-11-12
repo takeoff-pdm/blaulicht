@@ -274,11 +274,17 @@ impl BlaulichtApp {
                         self.client.send(HostCommand::SetGrandMaster(100));
                     }
                     if components::button(ui, grand_master == 0, "BLACKOUT", ButtonSize::Medium) {
-                        self.client.send(HostCommand::SetGrandMaster(if grand_master == 0 {
+                        // Desktop (059): restores the previous level, and
+                        // says so when the engine is offline.
+                        if self.layout.is_desktop() {
+                            self.toggle_blackout();
+                        } else {
+                            self.client.send(HostCommand::SetGrandMaster(if grand_master == 0 {
                             100
                         } else {
                             0
                         }));
+                        }
                     }
                 });
 

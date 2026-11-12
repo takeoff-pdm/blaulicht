@@ -93,7 +93,7 @@ Design system: [Blaulicht Console](https://claude.ai/artifact/ChF4HkbnuyT8byciza
 | 037 | [Setup pages in the desktop studio layout](TICKETS/037-ui-setup-master-detail.planned.md) | planned (superseded by E13) | 058, 059 |
 | 038 | [Remaining desktop pages in the studio style](TICKETS/038-ui-remaining-pages.planned.md) | planned (superseded by E13) | 058, 059 |
 | 058 | [Desktop studio components and list style](TICKETS/058-desktop-studio-components.done.md) | done | 056 |
-| 059 | [Status bar, global Blackout and connection state](TICKETS/059-desktop-status-bar-blackout-connection.planned.md) | planned | 058 |
+| 059 | [Status bar, global Blackout and connection state](TICKETS/059-desktop-status-bar-blackout-connection.done.md) | done (remote client unverified) | 058 |
 | 061 | [Per-machine universe to output routing](TICKETS/061-per-machine-output-routing.planned.md) | planned | — |
 | 062 | [DMX and Art-Net page: Map, Plan and Routing](TICKETS/062-dmx-map-plan-routing-page.planned.md) | planned | 058, 059, 061 |
 | 064 | [Show command replies in the desktop UI](TICKETS/064-desktop-command-replies.planned.md) | planned | 058, 059 |

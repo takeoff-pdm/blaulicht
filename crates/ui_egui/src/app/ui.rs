@@ -138,6 +138,12 @@ impl eframe::App for BlaulichtApp {
             theme::set_theme(ctx, theme::BLUE);
         }
 
+        // Desktop (059): Blackout from any page, before any widget sees
+        // the key.
+        if self.layout.is_desktop() {
+            self.handle_blackout_shortcut(ctx);
+        }
+
         if self.render_connection_notice(ctx) {
             return;
         }
@@ -148,6 +154,9 @@ impl eframe::App for BlaulichtApp {
         }
 
         self.render_popup(ctx);
+        if self.layout.is_desktop() {
+            self.desk_notes.show(ctx);
+        }
         self.render_plugin_fullscreen_popups(ctx);
         // The desktop layout shows it in its status bar.
         if !self.layout.is_desktop() {
@@ -255,10 +264,16 @@ impl BlaulichtApp {
                 egui::CentralPanel::default().show(ctx, |ui| self.main_page_ui(ui, ctx));
             }
             UiLayout::Desktop => {
-                // First, so it spans the window under the sidebar.
+                // First, so they span the window over and under the sidebar.
+                let offline = self.desktop_offline_strip(ui);
                 self.show_desktop_status_bar(ui);
                 self.show_desktop_sidebar(ui);
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    // Offline: live values dim and controls pause (059).
+                    if offline {
+                        ui.disable();
+                        ui.set_opacity(0.6);
+                    }
                     // Desktop only: the studio components showcase (058).
                     if crate::app::studio_showcase::showcase_open(ctx) {
                         crate::app::studio_showcase::showcase_ui(ui);

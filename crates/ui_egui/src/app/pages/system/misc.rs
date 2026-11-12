@@ -3,6 +3,7 @@ use crate::app::{
     view_state::{PluginOpenState, ScreenId},
     BlaulichtApp, GuardedLifecycleAction, PopupSpec,
 };
+use blaulicht_engine::persistence::SaveStatus;
 use blaulicht_engine::{
     audio::defs::AudioThreadControlSignal, client::EngineClient, hub::HostCommand,
     state::NUM_DMX_UNIVERSES,
@@ -170,6 +171,30 @@ impl BlaulichtApp {
                         );
                     }
                 });
+
+                // Desktop (059): the same save state as the status bar, with
+                // the reason a save failed.
+                if self.layout.is_desktop() {
+                    let (text, color) = match &self.save_status {
+                        SaveStatus::NoShowfile => (None, Color32::GRAY),
+                        SaveStatus::Clean => (Some("Saved".to_string()), ui.visuals().text_color()),
+                        SaveStatus::Dirty => (
+                            Some("Unsaved changes".to_string()),
+                            Color32::from_rgb(0xe0, 0xa1, 0x3a),
+                        ),
+                        SaveStatus::Saving => (
+                            Some("Saving…".to_string()),
+                            Color32::from_rgb(0xe0, 0xa1, 0x3a),
+                        ),
+                        SaveStatus::Failed(error) => (
+                            Some(format!("Save failed: {error}")),
+                            Color32::from_rgb(0xf0, 0x5a, 0x5a),
+                        ),
+                    };
+                    if let Some(text) = text {
+                        ui.label(egui::RichText::new(text).color(color));
+                    }
+                }
 
                 if let Some(line) = self.remote_status_line() {
                     ui.label(
