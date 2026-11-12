@@ -208,3 +208,212 @@ impl BlaulichtApp {
             });
     }
 }
+
+/// Column starts of the device table, as fractions of its width
+/// (`system.html` `.devtbl`).
+const DEVICE_COLS: [f32; 4] = [0.0, 0.283, 0.445, 0.607];
+
+/// One row of the desktop MIDI & Serial table.
+struct DeviceRow {
+    name: String,
+    kind: &'static str,
+    state: super::desk::State,
+    status: &'static str,
+    /// The error, as the status tooltip.
+    detail: Option<String>,
+    last_activity: Option<u64>,
+}
+
+impl BlaulichtApp {
+    /// System › MIDI & Serial on the desktop (086, `system.html#devices`):
+    /// one table of every MIDI input and serial port with its status, last
+    /// activity and Reconnect for a device that dropped out. Reconnect
+    /// reloads the plugins, which open their devices again. The kiosk keeps
+    /// its MIDI and Serial lists.
+    pub(super) fn render_devices_desktop(&mut self, ui: &mut egui::Ui) {
+        use super::desk::{self, State};
+        use crate::app::components::studio;
+        use crate::app::pages::setup::duo;
+        use crate::app::ui_tokens::{studio as tokens, Density, Weight, TARGET_MIN, TEXT};
+        use blaulicht_engine::{hub::HostCommand, state::SerialDeviceState};
+        use egui::{pos2, vec2, Align2, Sense};
+
+        let rows: Vec<DeviceRow> = self.client.with_health(|health| {
+            let midi = &health.midi_health;
+            let mut names: Vec<&String> = midi
+                .available_devices
+                .iter()
+                .chain(midi.devices.keys())
+                .collect();
+            names.sort();
+            names.dedup();
+            let mut rows: Vec<DeviceRow> = names
+                .into_iter()
+                .map(|name| {
+                    let (state, status, detail) = match midi.devices.get(name) {
+                        Some(MidiDeviceState::Open(_)) => (State::Ok, "Connected", None),
+                        Some(MidiDeviceState::Error(err)) => {
+                            let detail = match err {
+                                MidiError::DeviceNotFound => "Device not found".to_string(),
+                                MidiError::Other(e) => e.clone(),
+                            };
+                            (State::Warn, "Disconnected", Some(detail))
+                        }
+                        None => (State::Off, "Available", None),
+                    };
+                    DeviceRow {
+                        name: name.clone(),
+                        kind: "MIDI input",
+                        state,
+                        status,
+                        detail,
+                        last_activity: midi.last_activity.get(name).copied(),
+                    }
+                })
+                .collect();
+            let serial = &health.serial_health;
+            let mut ports: Vec<_> = serial.devices.iter().collect();
+            ports.sort_by_key(|(name, _)| *name);
+            rows.extend(ports.into_iter().map(|(name, state)| {
+                let (state, status, detail) = match state {
+                    SerialDeviceState::Open(_) => (State::Ok, "Connected", None),
+                    SerialDeviceState::Error(err) => {
+                        (State::Warn, "Disconnected", Some(format!("{err:?}")))
+                    }
+                };
+                DeviceRow {
+                    name: name.clone(),
+                    kind: "Serial",
+                    state,
+                    status,
+                    detail,
+                    last_activity: serial.last_activity.get(name).copied(),
+                }
+            }));
+            rows
+        });
+
+        let t = tokens(ui.ctx());
+        let full = desk::page_rect(ui);
+        let mut pane = desk::pane_at(ui, full, t.pane, "devices-pane");
+        studio::pane_header(&mut pane, None, "MIDI & Serial", false, |ui| {
+            let n = rows.len().to_string();
+            let w = studio::text_width(ui, &n, duo::mono_font());
+            let (r, _) = ui.allocate_exact_size(vec2(w, 24.0), Sense::hover());
+            ui.painter().text(
+                pos2(r.left(), r.center().y),
+                Align2::LEFT_CENTER,
+                n,
+                duo::mono_font(),
+                t.strong,
+            );
+        });
+        if rows.is_empty() {
+            // `.body` is the darker list colour (studio.css `--list`).
+            pane.painter()
+                .rect_filled(pane.available_rect_before_wrap(), 0.0, t.list);
+            duo::body(&mut pane, None, |ui| {
+                duo::note(
+                    ui,
+                    "No MIDI inputs or serial ports. Plug a device in, or a plugin opens one.",
+                );
+            });
+            return;
+        }
+
+        let body = Density::of(ui.ctx()).font(Weight::Regular, 13.0);
+        let small = Density::of(ui.ctx()).font(Weight::Regular, TEXT);
+        let width = pane.available_width();
+        let col_x = |inner: egui::Rect, i: usize| inner.left() + DEVICE_COLS[i] * inner.width();
+        // The header row.
+        let (head, _) = pane.allocate_exact_size(vec2(width, 22.0), Sense::hover());
+        let inner = head.shrink2(vec2(8.0, 0.0));
+        for (i, title) in ["Device", "Kind", "Status", "Last activity"]
+            .iter()
+            .enumerate()
+        {
+            pane.painter().text(
+                pos2(col_x(inner, i), head.center().y),
+                Align2::LEFT_CENTER,
+                *title,
+                small.clone(),
+                t.muted,
+            );
+        }
+        // The rows, and the empty area under them, sit on the list colour.
+        pane.painter()
+            .rect_filled(pane.available_rect_before_wrap(), 0.0, t.list);
+        let now = blaulicht_engine::state::unix_millis_now();
+        let mut reconnect = false;
+        for (index, row) in rows.iter().enumerate() {
+            let (rect, _) = pane.allocate_exact_size(vec2(width, TARGET_MIN), Sense::hover());
+            let inner = rect.shrink2(vec2(8.0, 0.0));
+            let cy = rect.center().y;
+            studio::paint_truncated(
+                &pane,
+                pos2(inner.left(), cy),
+                &row.name,
+                body.clone(),
+                t.text,
+                col_x(inner, 1) - inner.left() - 8.0,
+            );
+            pane.painter().text(
+                pos2(col_x(inner, 1), cy),
+                Align2::LEFT_CENTER,
+                row.kind,
+                small.clone(),
+                t.muted,
+            );
+            let status_rect = egui::Rect::from_min_max(
+                pos2(col_x(inner, 2), rect.top()),
+                pos2(col_x(inner, 3) - 8.0, rect.bottom()),
+            );
+            let mut cell = pane.new_child(
+                egui::UiBuilder::new()
+                    .id_salt(("device-status", index))
+                    .max_rect(status_rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            desk::state_label(&mut cell, row.state, row.status);
+            if let Some(detail) = &row.detail {
+                pane.interact(
+                    status_rect,
+                    pane.id().with(("device-tip", index)),
+                    Sense::hover(),
+                )
+                .on_hover_text(detail);
+            }
+            let activity = match row.last_activity {
+                Some(then) => desk::ago(now, then),
+                None => "None".to_string(),
+            };
+            pane.painter().text(
+                pos2(col_x(inner, 3), cy),
+                Align2::LEFT_CENTER,
+                activity,
+                small.clone(),
+                t.muted,
+            );
+            if row.state == State::Warn {
+                let label = "Reconnect";
+                let w = studio::text_width(ui, label, small.clone()) + 16.0;
+                let button = egui::Rect::from_min_size(
+                    pos2(inner.right() - w, rect.top()),
+                    vec2(w, TARGET_MIN),
+                );
+                let mut cell = pane.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt(("device-reconnect", index))
+                        .max_rect(button)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                if duo::chip(&mut cell, label) {
+                    reconnect = true;
+                }
+            }
+        }
+        if reconnect {
+            self.send_command(HostCommand::ReloadPlugins, |_, _| {});
+        }
+    }
+}

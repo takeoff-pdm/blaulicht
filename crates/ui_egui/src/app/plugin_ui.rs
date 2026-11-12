@@ -132,6 +132,15 @@ impl BlaulichtApp {
                 continue;
             }
 
+            // The desktop draws an open plugin UI embedded in System ›
+            // Plugins (086); only a popped-out one gets its own window.
+            if self.layout.is_desktop()
+                && canvas_screen_id == ScreenId::MAIN
+                && !(cfg!(feature = "plugin-popout") && self.view_state.is_popped_out(plugin_id))
+            {
+                continue;
+            }
+
             let title = plugin_ui_title(&self.client, plugin_id);
             let popped_out =
                 cfg!(feature = "plugin-popout") && self.view_state.is_popped_out(plugin_id);

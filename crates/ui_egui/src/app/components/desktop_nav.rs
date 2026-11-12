@@ -345,7 +345,14 @@ fn page_entry(ui: &mut Ui, navbar: &Navbar, page: AppPage, rail: bool) -> Option
     if expanded {
         let top = ui.cursor().top();
         for &subpage in subpages {
-            let selected = current && navbar.subpage(page) == Some(subpage);
+            // MIDI and Serial share one desktop page (086).
+            if subpage == AppSubPage::System_Serial {
+                continue;
+            }
+            let selected = current
+                && (navbar.subpage(page) == Some(subpage)
+                    || (subpage == AppSubPage::System_Midi
+                        && navbar.subpage(page) == Some(AppSubPage::System_Serial)));
             if subpage_row(ui, subpage, selected).clicked() {
                 click = Some(SidebarClick::SubPage(subpage));
             }
@@ -371,7 +378,11 @@ fn subpage_row(ui: &mut Ui, subpage: AppSubPage, selected: bool) -> egui::Respon
     } else {
         RowState::Idle
     };
-    nav_row(ui, id, "", subpage.label(), state, None).response
+    let label = match subpage {
+        AppSubPage::System_Midi => "MIDI & Serial",
+        other => other.label(),
+    };
+    nav_row(ui, id, "", label, state, None).response
 }
 
 /// Rows have fixed ids rather than auto ids, which change between egui's
