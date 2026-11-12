@@ -6,6 +6,7 @@ pub mod artnet;
 pub mod dmx;
 #[cfg(feature = "file-dialog")]
 pub mod file_dialog;
+pub mod general;
 pub mod health;
 pub mod midi;
 pub mod misc;
@@ -36,6 +37,10 @@ pub struct SystemUI {
     artnet_input_error: Option<String>,
     /// `[first, last]` universe numberpads per user-created receiver row.
     artnet_universe_pads: HashMap<SocketAddr, [Numberpad; 2]>,
+    /// When the UI started, for the desktop About pane's uptime.
+    started: std::time::Instant,
+    /// The desktop Screens list's selected screen.
+    selected_screen: usize,
 }
 
 impl Default for SystemUI {
@@ -60,6 +65,8 @@ impl Default for SystemUI {
             new_artnet_port: "6454".to_string(),
             artnet_input_error: None,
             artnet_universe_pads: HashMap::new(),
+            started: std::time::Instant::now(),
+            selected_screen: 0,
         }
     }
 }

@@ -28,6 +28,8 @@ const BLACKOUT_RED_HOVER: Color32 = Color32::from_rgb(0xd4, 0x0f, 0x0f);
 /// Samples kept per sparkline, one every [`SPARK_INTERVAL`].
 const SPARK_SAMPLES: usize = 30;
 const SPARK_INTERVAL: Duration = Duration::from_millis(200);
+/// Samples kept for the System › General graphs (30 s).
+const HISTORY_SAMPLES: usize = 150;
 
 /// Recent engine loop and plugin tick times for the status bar's
 /// sparklines. Stops taking samples while the engine is offline.
@@ -35,6 +37,8 @@ const SPARK_INTERVAL: Duration = Duration::from_millis(200);
 pub struct StatusSparks {
     engine: VecDeque<f32>,
     plugins: VecDeque<f32>,
+    engine_history: VecDeque<f32>,
+    plugins_history: VecDeque<f32>,
     last: Option<Instant>,
 }
 
@@ -54,6 +58,25 @@ impl StatusSparks {
             }
             series.push_back(value);
         }
+        for (series, value) in [
+            (&mut self.engine_history, engine_ms),
+            (&mut self.plugins_history, plugins_ms),
+        ] {
+            if series.len() >= HISTORY_SAMPLES {
+                series.pop_front();
+            }
+            series.push_back(value);
+        }
+    }
+
+    /// Engine loop times (ms) of the last 30 s, oldest first.
+    pub fn engine_history(&self) -> &VecDeque<f32> {
+        &self.engine_history
+    }
+
+    /// Plugin tick times (ms) of the last 30 s, oldest first.
+    pub fn plugins_history(&self) -> &VecDeque<f32> {
+        &self.plugins_history
     }
 }
 
