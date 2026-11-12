@@ -8,8 +8,8 @@
 //! minimum targets, 28px for show controls, 12px text with 11px minimum.
 
 use crate::app::ui_tokens::{
-    studio, Density, Studio, Weight, LIST_ROW_HEIGHT, PAGE_BAR_HEIGHT, PHOSPHOR_FILL_FAMILY,
-    TARGET_MIN, TARGET_SHOW, TEXT, TEXT_MIN,
+    studio, Density, Studio, Weight, LIST_ROW_HEIGHT, PAGE_BAR_HEIGHT, PANE_TITLE_HEIGHT,
+    PHOSPHOR_FILL_FAMILY, TARGET_MIN, TARGET_SHOW, TEXT, TEXT_MIN,
 };
 use egui::text::TextWrapping;
 use egui::{
@@ -321,7 +321,9 @@ pub fn folder_band(
 pub fn mini_button(ui: &mut Ui, label: &str, pressed: bool, height: f32) -> Response {
     let t = studio(ui.ctx());
     let f = font(ui, Weight::Regular, TEXT);
-    let w = text_width(ui, label, f.clone()) + 16.0;
+    // 28px bar buttons get 10px padding, 24px ones 8px (`studio.css`).
+    let pad = if height >= TARGET_SHOW { 10.0 } else { 8.0 };
+    let w = text_width(ui, label, f.clone()) + 2.0 * pad;
     let (rect, response) = ui.allocate_exact_size(vec2(w.max(height), height), Sense::click());
     paint_mini(ui, t, rect, &response, label, f, pressed);
     response
@@ -381,14 +383,31 @@ pub fn blackout_button(ui: &mut Ui, on: bool) -> Response {
     })
 }
 
-/// The one page bar: 30px, title-bar grey, view tabs on the left and page
-/// actions on the right. Both closures lay out left to right.
+/// Paints a title bar: `head` fill, a light line on top and, on a 40px top
+/// bar, the 1px line at the bottom (`studio.css` "Top bars").
+fn paint_title_bar(ui: &Ui, t: &Studio, rect: Rect, top_bar: bool) {
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, t.head);
+    let dark = ui.ctx().global_style().visuals.dark_mode;
+    let lit = Color32::from_white_alpha(if dark { 15 } else { 128 });
+    p.hline(rect.x_range(), rect.top() + 0.5, Stroke::new(1.0_f32, lit));
+    if top_bar {
+        p.hline(
+            rect.x_range(),
+            rect.bottom() - 0.5,
+            Stroke::new(1.0_f32, t.line),
+        );
+    }
+}
+
+/// The one page bar: 40px, title-bar grey, view tabs on the left and page
+/// actions on the right (28px buttons). Both closures lay out left to right.
 pub fn page_bar(ui: &mut Ui, left: impl FnOnce(&mut Ui), right: impl FnOnce(&mut Ui)) {
     let t = studio(ui.ctx());
     let (rect, _) =
         ui.allocate_exact_size(vec2(ui.available_width(), PAGE_BAR_HEIGHT), Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, t.head);
-    let inner = rect.shrink2(vec2(6.0, 0.0));
+    paint_title_bar(ui, t, rect, true);
+    let inner = rect.shrink2(vec2(8.0, 0.0));
     let mut bar = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(inner)
@@ -415,6 +434,309 @@ pub fn page_bar(ui: &mut Ui, left: impl FnOnce(&mut Ui), right: impl FnOnce(&mut
     }
 }
 
+/// A pane title bar. The first row of panes on a master-detail page
+/// (`top`) is 40px like the page bar with 28px buttons; lower panes keep
+/// 26px. `prefix` is a muted label before the name ("Selected group:",
+/// "Fixture:"). `actions` lays out its buttons flush right.
+pub fn pane_header(
+    ui: &mut Ui,
+    prefix: Option<&str>,
+    name: &str,
+    top: bool,
+    actions: impl FnOnce(&mut Ui),
+) -> Rect {
+    let t = studio(ui.ctx());
+    let height = if top {
+        PAGE_BAR_HEIGHT
+    } else {
+        PANE_TITLE_HEIGHT
+    };
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+    paint_title_bar(ui, t, rect, top);
+    let inner = rect.shrink2(vec2(8.0, 0.0));
+    // Actions flush right, measured last frame like the page bar's.
+    let width_id = ui.id().with(("pane_header_actions", name));
+    let width: f32 = ui.data(|d| d.get_temp(width_id)).unwrap_or(0.0);
+    let mut right_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(Rect::from_min_max(
+                pos2(inner.right() - width, inner.top()),
+                inner.max,
+            ))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    right_ui.spacing_mut().item_spacing.x = 6.0;
+    actions(&mut right_ui);
+    let used = if right_ui.min_rect().width() > 0.5 {
+        right_ui.min_rect().width()
+    } else {
+        0.0
+    };
+    if (used - width).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(width_id, used));
+        ui.ctx().request_repaint();
+    }
+    let size = TEXT + 1.0;
+    let cy = rect.center().y;
+    let mut x = inner.left();
+    let right = inner.right() - if used > 0.0 { used + 8.0 } else { 0.0 };
+    if let Some(prefix) = prefix {
+        let f = font(ui, Weight::Regular, size);
+        let w = text_width(ui, prefix, f.clone());
+        ui.painter()
+            .text(pos2(x, cy), Align2::LEFT_CENTER, prefix, f, t.muted);
+        x += w + 6.0;
+    }
+    let cut = paint_truncated(
+        ui,
+        pos2(x, cy),
+        name,
+        font(ui, Weight::Medium, size),
+        t.strong,
+        (right - x).max(0.0),
+    );
+    if cut {
+        ui.interact(rect, width_id.with("tip"), Sense::hover())
+            .on_hover_text(name);
+    }
+    rect
+}
+
+/// The lit on/off button (`.livebtn`): a dot before a fixed label, grey
+/// when off and blinking red when on (steady with reduced motion). The
+/// label never changes, so the button keeps its width when toggled. Used
+/// by Exclusive preview, Identify and Initialize.
+pub fn live_button(ui: &mut Ui, label: &str, on: bool, height: f32) -> Response {
+    let t = studio(ui.ctx());
+    let f = font(ui, Weight::Regular, TEXT);
+    let pad = if height >= TARGET_SHOW { 10.0 } else { 8.0 };
+    let w = live_button_width(ui, label, height);
+    let (rect, response) = ui.allocate_exact_size(vec2(w, height), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let fill = if on {
+            t.blue_dim
+        } else if response.hovered() {
+            t.ctl_hi
+        } else {
+            t.ctl
+        };
+        let p = ui.painter();
+        p.rect_filled(rect, 0.0, fill);
+        if response.has_focus() {
+            p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, t.blue), StrokeKind::Inside);
+        }
+        let cy = rect.center().y;
+        let dot = pos2(rect.left() + pad + 4.0, cy);
+        let color = if on {
+            let reduced = reduced_motion();
+            let time = ui.input(|i| i.time);
+            // 1 s period, dim for the second half (`liveblink`, steps(1)).
+            let dim = !reduced && time.fract() >= 0.5;
+            if !reduced {
+                let wait = if dim {
+                    1.0 - time.fract()
+                } else {
+                    0.5 - time.fract()
+                };
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_secs_f64(wait.max(0.01)));
+            }
+            t.red.gamma_multiply(if dim { 0.2 } else { 1.0 })
+        } else {
+            t.muted.gamma_multiply(0.6)
+        };
+        p.circle_filled(dot, 4.0, color);
+        let text = if on { t.strong } else { t.text };
+        p.text(
+            pos2(rect.left() + pad + 8.0 + 7.0, cy),
+            Align2::LEFT_CENTER,
+            label,
+            f,
+            text,
+        );
+    }
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, label));
+    response
+}
+
+/// Width of a [`live_button`]: padding, dot, gap and label. It does not
+/// depend on the state.
+pub fn live_button_width(ui: &Ui, label: &str, height: f32) -> f32 {
+    let pad = if height >= TARGET_SHOW { 10.0 } else { 8.0 };
+    pad + 8.0 + 7.0 + text_width(ui, label, font(ui, Weight::Regular, TEXT)) + pad
+}
+
+/// Whether the system asks for reduced motion (`BLAULICHT_REDUCED_MOTION`
+/// set to anything but `0`; egui has no platform query for it).
+pub fn reduced_motion() -> bool {
+    static REDUCED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *REDUCED.get_or_init(|| {
+        std::env::var("BLAULICHT_REDUCED_MOTION").is_ok_and(|v| !v.is_empty() && v != "0")
+    })
+}
+
+/// One step of a scrub drag: `start` moved by `step` per 4px of `dx`
+/// (Shift: `step / 10`), rounded to the step and clamped to `range`.
+pub fn scrub_value(start: f64, dx: f32, step: f64, fine: bool, range: &RangeInclusive<f64>) -> f64 {
+    let st = if fine { step / 10.0 } else { step };
+    let v = start + (dx / 4.0).round() as f64 * st;
+    let v = (v / st).round() * st;
+    v.clamp(*range.start(), *range.end())
+}
+
+#[derive(Clone, Copy)]
+struct ScrubState {
+    start: f64,
+    origin_x: f32,
+    on: bool,
+    cancelled: bool,
+}
+
+/// A number field that scrubs (`input.num`): drag sideways to change it by
+/// `step` per 4px, Shift is ten times finer, Esc restores the start value;
+/// the value applies live while dragging. A click without a drag edits the
+/// text: Enter or leaving the field applies, Esc cancels. Returns the
+/// response; `changed()` is set on every applied change.
+pub fn num_field(
+    ui: &mut Ui,
+    value: &mut f64,
+    step: f64,
+    range: RangeInclusive<f64>,
+    decimals: usize,
+    width: f32,
+) -> Response {
+    let t = studio(ui.ctx());
+    let id = ui.next_auto_id();
+    let edit_id = id.with("edit");
+    let text_id = id.with("text");
+    let scrub_id = id.with("scrub");
+    let editing = ui.data(|d| d.get_temp::<bool>(edit_id)).unwrap_or(false);
+    let f = mono(TEXT);
+    if editing {
+        let mut text: String = ui
+            .data(|d| d.get_temp(text_id))
+            .unwrap_or_else(|| format!("{:.*}", decimals, value));
+        let out = egui::TextEdit::singleline(&mut text)
+            .id(id.with("te"))
+            .font(f)
+            .desired_width(width - 12.0)
+            .min_size(vec2(width, TARGET_MIN))
+            .vertical_align(egui::Align::Center)
+            .show(ui);
+        let mut response = out.response.response;
+        if !response.has_focus() && ui.data(|d| d.get_temp::<bool>(id.with("focused")).is_none()) {
+            response.request_focus();
+            ui.data_mut(|d| d.insert_temp(id.with("focused"), true));
+        }
+        let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        let done = response.lost_focus() || esc;
+        if done {
+            if !esc {
+                if let Ok(v) = text.trim().replace(',', ".").parse::<f64>() {
+                    let v = v.clamp(*range.start(), *range.end());
+                    if v != *value {
+                        *value = v;
+                        response.mark_changed();
+                    }
+                }
+            }
+            ui.data_mut(|d| {
+                d.remove::<bool>(edit_id);
+                d.remove::<String>(text_id);
+                d.remove::<bool>(id.with("focused"));
+            });
+        } else {
+            ui.data_mut(|d| d.insert_temp(text_id, text));
+        }
+        return response;
+    }
+
+    let (rect, mut response) =
+        ui.allocate_exact_size(vec2(width, TARGET_MIN), Sense::click_and_drag());
+    let mut scrub: Option<ScrubState> = ui.data(|d| d.get_temp(scrub_id));
+    if response.drag_started() {
+        let x = ui.input(|i| i.pointer.press_origin().map_or(0.0, |p| p.x));
+        scrub = Some(ScrubState {
+            start: *value,
+            origin_x: x,
+            on: false,
+            cancelled: false,
+        });
+    }
+    if let Some(s) = scrub.as_mut() {
+        // egui aborts the drag itself on Esc, so `dragged()` is already false
+        // in that frame: check Esc for any running scrub.
+        let esc_now = !s.cancelled && ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if esc_now {
+            s.cancelled = true;
+            if *value != s.start {
+                *value = s.start;
+                response.mark_changed();
+            }
+        } else if response.dragged() && !s.cancelled {
+            let (x, shift, esc) = ui.input(|i| {
+                (
+                    i.pointer.latest_pos().map_or(s.origin_x, |p| p.x),
+                    i.modifiers.shift,
+                    i.key_pressed(egui::Key::Escape),
+                )
+            });
+            let dx = x - s.origin_x;
+            if !s.on && dx.abs() >= 3.0 {
+                s.on = true;
+            }
+            if esc {
+                s.cancelled = true;
+                if *value != s.start {
+                    *value = s.start;
+                    response.mark_changed();
+                }
+            } else if s.on {
+                let v = scrub_value(s.start, dx, step, shift, &range);
+                if v != *value {
+                    *value = v;
+                    response.mark_changed();
+                }
+            }
+        }
+        if response.drag_stopped() || !response.is_pointer_button_down_on() {
+            scrub = None;
+        }
+    }
+    let scrubbing = scrub.is_some_and(|s| s.on && !s.cancelled);
+    match scrub {
+        Some(s) => ui.data_mut(|d| {
+            d.insert_temp(scrub_id, s);
+        }),
+        None => ui.data_mut(|d| d.remove::<ScrubState>(scrub_id)),
+    }
+    if response.clicked() {
+        ui.data_mut(|d| d.insert_temp(edit_id, true));
+        ui.ctx().request_repaint();
+    }
+    if response.hovered() || scrubbing {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        p.rect_filled(rect, 0.0, t.well);
+        let edge = if scrubbing || response.has_focus() {
+            t.blue
+        } else {
+            t.line
+        };
+        p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, edge), StrokeKind::Inside);
+        p.text(
+            pos2(rect.left() + 6.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            format!("{:.*}", decimals, value),
+            f,
+            t.strong,
+        );
+    }
+    response
+}
+
 /// View tabs for the left of the page bar (Map / Plan): a segmented control.
 pub fn view_tabs(ui: &mut Ui, selected: &mut usize, tabs: &[&str]) -> Response {
     segmented(ui, selected, tabs, TARGET_MIN)
@@ -430,7 +752,9 @@ pub fn segmented(ui: &mut Ui, selected: &mut usize, options: &[&str], height: f3
             ui.spacing_mut().item_spacing.x = 2.0;
             let mut out: Option<Response> = None;
             for (i, label) in options.iter().enumerate() {
-                let w = text_width(ui, label, f.clone()) + 16.0;
+                // 28px bar buttons get 10px padding, 24px ones 8px (`studio.css`).
+                let pad = if height >= TARGET_SHOW { 10.0 } else { 8.0 };
+                let w = text_width(ui, label, f.clone()) + 2.0 * pad;
                 let (rect, r) = ui.allocate_exact_size(vec2(w.max(height), height), Sense::click());
                 if r.clicked() {
                     *selected = i;
@@ -1034,6 +1358,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn scrub_steps_per_4px_finer_with_shift_and_clamps() {
+        let r = 0.0..=10.0;
+        assert_eq!(scrub_value(5.0, 8.0, 1.0, false, &r), 7.0);
+        assert_eq!(scrub_value(5.0, 1.0, 1.0, false, &r), 5.0);
+        assert!((scrub_value(5.0, 8.0, 1.0, true, &r) - 5.2).abs() < 1e-9);
+        assert_eq!(scrub_value(5.0, -400.0, 1.0, false, &r), 0.0);
+        assert_eq!(scrub_value(5.0, 400.0, 1.0, false, &r), 10.0);
+    }
+
+    #[test]
     fn only_one_modal_opens() {
         let ctx = egui::Context::default();
         let a = Id::new("a");
@@ -1047,5 +1381,5 @@ mod tests {
 
     // The rules' minimum targets and text size, checked at compile time.
     const _: () = assert!(TARGET_MIN >= 24.0 && TARGET_SHOW >= 28.0);
-    const _: () = assert!(TEXT_MIN >= 11.0 && PAGE_BAR_HEIGHT == 30.0);
+    const _: () = assert!(TEXT_MIN >= 11.0 && PAGE_BAR_HEIGHT == 40.0 && PANE_TITLE_HEIGHT == 26.0);
 }

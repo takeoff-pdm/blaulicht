@@ -142,7 +142,7 @@ Tickets in [`TICKETS/ui/`](TICKETS/ui/README.md). They supersede 036, 037 and 03
 
 | # | Ticket | Status | Depends on |
 |---|---|---|---|
-| 069 | [Studio tokens, 40px bars, folder bands and lit buttons](TICKETS/ui/069-ui-tokens-bars-livebutton.planned.md) | planned | 058 |
+| 069 | [Studio tokens, 40px bars, folder bands and lit buttons](TICKETS/ui/069-ui-tokens-bars-livebutton.done.md) | done | 058 |
 | 070 | [Stacked notifications](TICKETS/ui/070-ui-notifications.planned.md) | planned | 058 |
 | 071 | [One dropdown component](TICKETS/ui/071-ui-dropdown.planned.md) | planned | 058, 069 |
 | 072 | [Typing values in place and keyboard control of faders and knobs](TICKETS/ui/072-ui-value-entry-keyboard.planned.md) | planned | 058 |

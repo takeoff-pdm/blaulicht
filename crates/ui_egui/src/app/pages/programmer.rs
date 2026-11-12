@@ -55,6 +55,35 @@ impl BlaulichtApp {
         let owned = dmx_engine.live_owner() == Some(self.client.session());
         let any = dmx_engine.0.live_mode;
 
+        // Desktop: the lit button (`.livebtn`), its dot blinking while this
+        // session previews. The kiosk keeps its LIVE button below.
+        if Density::of(ui.ctx()).is_compact() {
+            // In the page bar beside Blackout, at the show height.
+            let _ = size;
+            let response = components::studio::live_button(
+                ui,
+                "Exclusive preview",
+                owned,
+                crate::app::ui_tokens::TARGET_SHOW,
+            );
+            if response.clicked() {
+                self.client.send(ControlEventMessage::new(
+                    EventOriginator::Web,
+                    ControlEvent::ToggleLiveMode,
+                ));
+            }
+            response.on_hover_text(match (owned, any) {
+                (true, _) => "Only the selected scene renders. Click to return to the live rig.",
+                (false, true) => {
+                    "Another operator is previewing their scene; overlays are suppressed. Click to preview yours instead."
+                }
+                (false, false) => {
+                    "Edits go to the selected scene without affecting output. Click to preview it live."
+                }
+            });
+            return;
+        }
+
         // Scoped so the painter below can anchor the dot to the button's rect.
         let scope = ui.scope(|ui| components::button(ui, owned, "LIVE", size));
 
@@ -136,11 +165,34 @@ impl BlaulichtApp {
         if Density::of(ctx).is_compact() {
             let black = self.client.grand_master_percent() == 0;
             let mut toggle = false;
+            // Flush with the content area like Setup's page bar: the page
+            // frame's 8px margin is drawn over, and the content below
+            // starts under the bar.
+            let top = ui.cursor().top();
+            let full = ui.max_rect().expand(8.0).intersect(ui.clip_rect());
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(full.left(), top - 8.0),
+                egui::vec2(full.width(), crate::app::ui_tokens::PAGE_BAR_HEIGHT),
+            );
+            ui.allocate_exact_size(
+                egui::vec2(
+                    ui.available_width(),
+                    crate::app::ui_tokens::PAGE_BAR_HEIGHT - 8.0,
+                ),
+                egui::Sense::hover(),
+            );
+            let mut bar_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(bar_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            bar_ui.set_clip_rect(bar_rect);
             components::studio::page_bar(
-                ui,
+                &mut bar_ui,
                 |_| {},
                 |ui| {
                     toggle = components::studio::blackout_button(ui, black).clicked();
+                    self.live_mode_toggle(ui, &dmx_engine, ButtonSize::Medium);
                 },
             );
             if toggle {
@@ -303,6 +355,8 @@ impl BlaulichtApp {
                             // Pushed to the far right of the toolbar. The height
                             // is pinned to one button: a bare `with_layout` would
                             // claim the whole panel and centre the toggle in it.
+                            // The desktop has it in the page bar instead.
+                            if !Density::of(ui.ctx()).is_compact() {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(
                                     ui.available_width(),
@@ -313,6 +367,7 @@ impl BlaulichtApp {
                                     self.live_mode_toggle(ui, &dmx_engine, button_size);
                                 },
                             );
+                            }
                         });
 
                         ui.separator();

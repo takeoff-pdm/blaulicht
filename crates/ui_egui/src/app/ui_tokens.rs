@@ -286,8 +286,12 @@ pub const TARGET_SHOW: f32 = 28.0;
 pub const TEXT_MIN: f32 = 11.0;
 /// Standard desktop text size.
 pub const TEXT: f32 = 12.0;
-/// Height of the one page bar.
-pub const PAGE_BAR_HEIGHT: f32 = 30.0;
+/// Height of the one page bar and of the first row of pane headers on
+/// master-detail pages (`studio.css` "Top bars"); their buttons are
+/// [`TARGET_SHOW`] high.
+pub const PAGE_BAR_HEIGHT: f32 = 40.0;
+/// Height of a lower pane title.
+pub const PANE_TITLE_HEIGHT: f32 = 26.0;
 /// Height of a list or tree row and of a folder band.
 pub const LIST_ROW_HEIGHT: f32 = 24.0;
 
