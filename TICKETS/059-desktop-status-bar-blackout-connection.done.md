@@ -77,7 +77,8 @@ Mockup: any page with `?state=disconnected`, `?state=restarting` or `?remote`, a
 
 ### Review fixes (2026-11-11, desktop only)
 - Programmer page-bar Blackout now matches `.okblack`: always filled #b80f0f (hover #d40f0f), white
-  text, 28px, plus a white 2px inset ring while Grand Master is 0.
+  text, 28px. It reads "Restore" while Grand Master is 0 and "Blackout" otherwise (as `blk()` in the
+  mockup); no ring, since the mockup never sets `.okblack.on` there.
 - Messages: new `components/notes.rs`, a minimal desktop notification stack (bottom right above the
   status bar, max 4, info 5 s paused on hover, errors stay with a close button, repeats count "x2").
   Blackout shows "Blackout on" (error) and "Grand Master restored to N%" (info) from Ctrl+B, the status
@@ -104,3 +105,11 @@ Mockup: any page with `?state=disconnected`, `?state=restarting` or `?remote`, a
 
 ### Still open
 - The routing pending count has no source until 062.
+
+### Second review fix (2026-11-12)
+- Programmer page-bar button reads "Restore" at Grand Master 0, "Blackout" otherwise; the white inset
+  ring is gone (commit 4d7da48). Checked in blenv desktop screenshots (both states). Kiosk Programmer
+  is unchanged: the page bar is drawn only on the desktop density. rustfmt on the changed file, clippy
+  and tests for blaulicht-ui-egui (0 errors, 130 passed) inside blenv.
+- Bookkeeping: 4d7da48 had put this note in a stray TICKETS/ui/059-...done.md; that file is removed and
+  the note lives here.
