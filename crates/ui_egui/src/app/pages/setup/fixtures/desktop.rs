@@ -1,10 +1,11 @@
 //! Setup › Fixtures on the desktop (`setup.html`): a Groups pane with the
 //! folder tree, the centre pane with the page bar ("Selected group:", count,
 //! Add fixture / Overrides / Simulate) and the fixture table, and the Fixture
-//! pane with the editor. Desktop only ([`Density::Compact`]); the kiosk keeps
+//! pane with the editor. Desktop only ([`Density::Desktop`]); the kiosk keeps
 //! [`BlaulichtApp::setup_fixtures_ui`]'s touch layout.
 
 use super::super::duo::type_label;
+use crate::app::components::position_view::{position_view, PlanDot, PlanSize};
 use crate::app::components::studio::{self, ListRow, ListRowState};
 use crate::app::components::{self, tree_id, TreeState, SETUP_GROUP_TREE};
 use crate::app::ui_tokens::{studio as studio_tokens, Density, Weight, TARGET_MIN, TARGET_SHOW};
@@ -215,6 +216,22 @@ fn confirm_button(ui: &mut Ui, label: &str) -> egui::Response {
     p.text(rect.center(), Align2::CENTER_CENTER, label, f, t.red_text);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
     response
+}
+
+/// `.frm h4`: 6px margin, a line, 8px padding, the label in medium --muted.
+fn form_heading(ui: &mut Ui, text: &str) {
+    let t = studio_tokens(ui.ctx());
+    let w = ui.available_width();
+    let (r, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
+    ui.painter()
+        .hline(r.x_range(), r.top() + 8.5, Stroke::new(1.0_f32, t.line));
+    ui.painter().text(
+        pos2(r.left(), r.bottom()),
+        Align2::LEFT_BOTTOM,
+        text,
+        Density::of(ui.ctx()).font(Weight::Medium, 12.0),
+        t.muted,
+    );
 }
 
 /// The group folders of the desktop tree under `parent`, in `(order, id)`
@@ -1218,56 +1235,7 @@ impl BlaulichtApp {
         self.new_fixture_uni = uni.round() as usize;
         // Identify and Initialize, their own row under the patch fields.
         self.desktop_identify_row(ui, dmx_engine, gid, &[fid]);
-        for (label, value, step, decimals, range) in [
-            (
-                "Position X",
-                &mut self.new_fixture_pos_x,
-                0.1,
-                1,
-                -1000.0..=1000.0,
-            ),
-            (
-                "Position Y",
-                &mut self.new_fixture_pos_y,
-                0.1,
-                1,
-                -1000.0..=1000.0,
-            ),
-            (
-                "Position Z",
-                &mut self.new_fixture_pos_z,
-                0.1,
-                1,
-                -1000.0..=1000.0,
-            ),
-            (
-                "Rotation X",
-                &mut self.new_fixture_rot_x,
-                1.0,
-                0,
-                -360.0..=360.0,
-            ),
-            (
-                "Rotation Y",
-                &mut self.new_fixture_rot_y,
-                1.0,
-                0,
-                -360.0..=360.0,
-            ),
-            (
-                "Rotation Z",
-                &mut self.new_fixture_rot_z,
-                1.0,
-                0,
-                -360.0..=360.0,
-            ),
-        ] {
-            let mut v = *value as f64;
-            row(ui, label, &mut |ui| {
-                studio::num_field(ui, &mut v, step, range.clone(), decimals, field_w);
-            });
-            *value = v as f32;
-        }
+        self.desktop_position_section(ui, ctx, dmx_engine, gid, fid, &fix);
 
         ui.add_space(8.0);
         let group = &dmx_engine.groups()[&gid];
@@ -1519,21 +1487,7 @@ impl BlaulichtApp {
             );
             resp.on_hover_text(format!("{what}, only for a single fixture"));
         };
-        let heading = |ui: &mut Ui, text: &str| {
-            let w = ui.available_width();
-            // `.frm h4`: 6px margin, a line, 8px padding, the label.
-            let (r, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
-            ui.painter()
-                .hline(r.x_range(), r.top() + 8.5, Stroke::new(1.0_f32, t.line));
-            ui.painter().text(
-                pos2(r.left(), r.bottom()),
-                Align2::LEFT_BOTTOM,
-                text,
-                // `.frm h4` is font-weight 500 in --muted.
-                density.font(Weight::Medium, 12.0),
-                t.muted,
-            );
-        };
+        let heading = form_heading;
 
         let types: BTreeSet<String> = fixtures
             .iter()
@@ -1589,6 +1543,259 @@ impl BlaulichtApp {
                     frozen(ui, w, name);
                 }
             });
+        }
+    }
+}
+
+fn position_dialog_id() -> Id {
+    Id::new("setup_fixture_position_dialog")
+}
+
+const POS_CAPTIONS: [&str; 3] = ["Across (X), m", "Height (Y), m", "Depth (Z), m"];
+const ROT_CAPTIONS: [&str; 3] = ["X", "Y", "Z"];
+
+/// A form row of three number fields, each with its caption under it
+/// (`.xyz` / `.xyzc`). Returns whether any changed.
+fn xyz_row(
+    ui: &mut Ui,
+    label: &str,
+    values: [&mut f32; 3],
+    captions: [&str; 3],
+    step: f64,
+    decimals: usize,
+    range: std::ops::RangeInclusive<f64>,
+) -> bool {
+    let t = studio_tokens(ui.ctx());
+    let density = Density::of(ui.ctx());
+    let mut changed = false;
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+        let (r, _) = ui.allocate_exact_size(vec2(FORM_LABEL_W, TARGET_MIN), Sense::hover());
+        ui.painter().text(
+            pos2(r.left(), r.center().y),
+            Align2::LEFT_CENTER,
+            label,
+            density.font(Weight::Regular, 12.0),
+            t.muted,
+        );
+        ui.add_space(4.0);
+        let w = ((ui.available_width() - 4.0) / 3.0).floor();
+        for (value, caption) in values.into_iter().zip(captions) {
+            ui.vertical(|ui| {
+                ui.set_width(w);
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let mut v = *value as f64;
+                let resp = studio::num_field(ui, &mut v, step, range.clone(), decimals, w);
+                if resp.changed() {
+                    *value = v as f32;
+                    changed = true;
+                }
+                ui.label(
+                    RichText::new(caption)
+                        .font(density.font(Weight::Regular, 11.0))
+                        .color(t.muted),
+                );
+            });
+        }
+    });
+    changed
+}
+
+impl BlaulichtApp {
+    /// Every fixture as a dot for the position view, the selected one
+    /// (`gid`, `fid`) first-class: returns the dots and its index.
+    fn plan_dots(dmx_engine: &EngineState, gid: u8, fid: u8) -> (Vec<PlanDot>, usize) {
+        let mut dots = Vec::new();
+        let mut selected = 0;
+        for (g, group) in dmx_engine.groups() {
+            for (f, fix) in &group.fixtures {
+                if *g == gid && *f == fid {
+                    selected = dots.len();
+                }
+                dots.push(PlanDot {
+                    group: *g,
+                    fixture: *f,
+                    name: fix.name.to_string(),
+                    group_name: group.name.clone(),
+                    pos: [fix.pos.x, fix.pos.y, fix.pos.z],
+                    same_group: *g == gid,
+                });
+            }
+        }
+        (dots, selected)
+    }
+
+    /// Draws the position view for the fixture in the editor and applies
+    /// what the user did: select another fixture, move this one (the
+    /// fields follow live), save the position when a move ends.
+    fn desktop_position_view(
+        &mut self,
+        ui: &mut Ui,
+        ctx: &Context,
+        dmx_engine: &EngineState,
+        gid: u8,
+        fid: u8,
+        size: PlanSize,
+    ) {
+        let (dots, selected) = Self::plan_dots(dmx_engine, gid, fid);
+        let mut pos = [
+            self.new_fixture_pos_x,
+            self.new_fixture_pos_y,
+            self.new_fixture_pos_z,
+        ];
+        let out = position_view(ui, &dots, selected, &mut pos, size);
+        [
+            self.new_fixture_pos_x,
+            self.new_fixture_pos_y,
+            self.new_fixture_pos_z,
+        ] = pos;
+        if out.move_done {
+            self.save_fixture_position(dmx_engine, gid, fid);
+        }
+        if out.open_large && studio::open_modal(ctx, position_dialog_id()) {
+            ctx.request_repaint();
+        }
+        if let Some((g, f)) = out.select {
+            self.select_setup_fixture(dmx_engine, g, f);
+            Self::store_fixture_selection(ctx, g, BTreeSet::from([f]));
+        }
+    }
+
+    /// Sends the editor's position for fixture `fid` of group `gid`,
+    /// keeping everything else as the engine has it.
+    fn save_fixture_position(&mut self, dmx_engine: &EngineState, gid: u8, fid: u8) {
+        let Some(fix) = dmx_engine
+            .groups()
+            .get(&gid)
+            .and_then(|g| g.fixtures.get(&fid))
+        else {
+            return;
+        };
+        let mut updated = fix.clone();
+        updated.pos.x = self.new_fixture_pos_x;
+        updated.pos.y = self.new_fixture_pos_y;
+        updated.pos.z = self.new_fixture_pos_z;
+        self.send_setup_command(
+            HostCommand::UpdateFixture {
+                group: gid,
+                fixture: fid,
+                value: updated,
+            },
+            |_, _| {},
+        );
+    }
+
+    /// The Position heading, the small view, and the captioned position and
+    /// rotation fields.
+    fn desktop_position_section(
+        &mut self,
+        ui: &mut Ui,
+        ctx: &Context,
+        dmx_engine: &EngineState,
+        gid: u8,
+        fid: u8,
+        _fix: &blaulicht_shared::fixture::state::Fixture,
+    ) {
+        form_heading(ui, "Position");
+        ui.add_space(2.0);
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            self.desktop_position_view(ui, ctx, dmx_engine, gid, fid, PlanSize::Small);
+        });
+        ui.add_space(4.0);
+        xyz_row(
+            ui,
+            "Position",
+            [
+                &mut self.new_fixture_pos_x,
+                &mut self.new_fixture_pos_y,
+                &mut self.new_fixture_pos_z,
+            ],
+            POS_CAPTIONS,
+            0.05,
+            2,
+            -1000.0..=1000.0,
+        );
+        xyz_row(
+            ui,
+            "Rotation",
+            [
+                &mut self.new_fixture_rot_x,
+                &mut self.new_fixture_rot_y,
+                &mut self.new_fixture_rot_z,
+            ],
+            ROT_CAPTIONS,
+            1.0,
+            0,
+            -360.0..=360.0,
+        );
+        self.desktop_position_dialog(ctx, dmx_engine);
+    }
+
+    /// The large view in a 900px dialog with the position fields and Done
+    /// (`openBig` in `fxplan.js`). Clicking another dot switches the
+    /// fixture; Esc, a click outside or Done close it.
+    fn desktop_position_dialog(&mut self, ctx: &Context, dmx_engine: &EngineState) {
+        let id = position_dialog_id();
+        if studio::open_modal_of(ctx) != Some(id) {
+            return;
+        }
+        let Some(gid) = self.add_fixture_group else {
+            studio::close_modal(ctx, id);
+            return;
+        };
+        let t = studio_tokens(ctx);
+        let mut done = false;
+        let shown = egui::Modal::new(id)
+            .backdrop_color(egui::Color32::from_black_alpha(140))
+            .frame(
+                egui::Frame::new()
+                    .fill(t.pane)
+                    .stroke(Stroke::new(1.0_f32, t.line)),
+            )
+            .show(ctx, |ui| {
+                let w = 900.0;
+                ui.set_width(w);
+                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                let fid = self.setup_fixture_id;
+                let name = self.new_fixture_name.clone();
+                let (bar, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
+                ui.painter().rect_filled(bar, 0.0, t.head);
+                ui.painter().text(
+                    pos2(bar.left() + 10.0, bar.center().y),
+                    Align2::LEFT_CENTER,
+                    format!("Position: {name}"),
+                    Density::of(ctx).font(Weight::Medium, 13.0),
+                    t.strong,
+                );
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(10, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(w - 20.0);
+                        ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                        self.desktop_position_view(ui, ctx, dmx_engine, gid, fid, PlanSize::Large);
+                        ui.add_space(2.0);
+                        xyz_row(
+                            ui,
+                            "Position",
+                            [
+                                &mut self.new_fixture_pos_x,
+                                &mut self.new_fixture_pos_y,
+                                &mut self.new_fixture_pos_z,
+                            ],
+                            POS_CAPTIONS,
+                            0.05,
+                            2,
+                            -1000.0..=1000.0,
+                        );
+                        ui.add_space(6.0);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            done = studio::mini_button(ui, "Done", true, TARGET_SHOW).clicked();
+                        });
+                    });
+            });
+        if done || shown.should_close() {
+            studio::close_modal(ctx, id);
         }
     }
 }

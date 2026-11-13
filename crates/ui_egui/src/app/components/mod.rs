@@ -19,6 +19,7 @@ mod navbar;
 mod notifications;
 mod numberpad;
 mod pagination;
+pub mod position_view;
 mod progress;
 mod selection_dialog;
 mod spectrogram;
