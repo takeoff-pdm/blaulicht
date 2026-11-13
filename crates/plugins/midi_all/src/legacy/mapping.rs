@@ -23,6 +23,8 @@ use crate::korg::{FADER_BYTES, SELECT_BUTTON_STARTER};
 use crate::legacy::view_loop::ViewLoopConfig;
 use crate::legacy::LegacyState;
 
+pub(crate) mod wizard;
+
 // ---------------------------------------------------------------------------
 // Widget ids (see the id table in mod.rs: 0 fans, 40 canvas, 41..44 tabs).
 // ---------------------------------------------------------------------------

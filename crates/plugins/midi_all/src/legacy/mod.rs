@@ -29,6 +29,7 @@ const UI_TAB_TRIGGERS: u8 = 43;
 const UI_TAB_MISC: u8 = 44;
 const UI_TAB_KORG: u8 = 38;
 const UI_TAB_VIEW_LOOP: u8 = 39;
+const UI_TAB_WIZARD: u8 = 58;
 const UI_FANS_SWITCH_ID: u8 = 0;
 const UI_VERBOSE_SWITCH_ID: u8 = 1;
 const UI_MOCK_HARDWARE_SWITCH_ID: u8 = 2;
@@ -87,6 +88,8 @@ pub struct LegacyState {
     pub(crate) mix_lit_colors: BTreeMap<u8, u8>,
     /// Auto mode: cycles through a list of views (see view_loop.rs).
     pub(crate) view_loop: ViewLoop,
+    /// Mapping Wizard tab (see mapping/wizard.rs).
+    pub(crate) wizard: crate::legacy::mapping::wizard::WizardState,
 }
 
 // static mut STATE: MaybeUninit<LegacyState> = MaybeUninit::uninit();
@@ -196,6 +199,10 @@ impl LegacyState {
 
             ui::begin_tab(UI_TABS_ID, UI_TAB_TRIGGERS, "Mappings");
             self.render_mappings_ui(&input.events.events, input.id);
+            ui::end_tab();
+
+            ui::begin_tab(UI_TABS_ID, UI_TAB_WIZARD, "Mapping Wizard");
+            self.render_mapping_wizard_ui(&input.events.events, input.id);
             ui::end_tab();
 
             ui::begin_tab(UI_TABS_ID, UI_TAB_VIEW_LOOP, "View Loop");

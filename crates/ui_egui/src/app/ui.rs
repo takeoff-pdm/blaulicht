@@ -43,12 +43,12 @@ impl BlaulichtApp {
     ) -> Self {
         let mut app = Self::new_default(client, layout, showfile_home, config_dir);
 
-        // The desk's layout is made for its 800x480 touchscreen at 1:1. In a
-        // browser the page keeps the device's pixel ratio and zooms the
-        // layout to the window instead (`fit_web_zoom`).
-        if !cfg!(target_arch = "wasm32") {
-            cc.egui_ctx.set_pixels_per_point(1.0);
-        } else {
+        // Native: keep the screen's own scale (eframe's default). The desk's
+        // 800x480 touchscreen reports 1.0, so it stays 1:1; a HiDPI screen
+        // (Retina, 2.0) draws the layout at its intended size instead of half
+        // size. In a browser the page keeps the device's pixel ratio and zooms
+        // the layout to the window instead (`fit_web_zoom`).
+        if cfg!(target_arch = "wasm32") {
             // A browser would pass on its light or dark preference; start
             // dark like the desk (System > General switches).
             cc.egui_ctx.set_theme(egui::ThemePreference::Dark);

@@ -89,6 +89,13 @@ def remote_status(sid: str) -> dict | None:
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
 
 
+def remote_dead(job: dict) -> str | None:
+    """None while the job's remote_song.py runs; else the end of its log. Its status file can say "running"
+    forever when the process died before it could record that (a missing venv, for example)."""
+    r = ssh(f"pgrep -af 'remote_song[.]py' | grep -qF -- {shlex.quote(job['listed'])} || tail -c 600 {REMOTE}/logs/songs/{job['id']}.log")
+    return r.stdout.strip() or None if r.returncode == 0 and r.stdout.strip() else None
+
+
 def resolve_job(query: str) -> dict:
     q = query.lower()
     jobs = [json.loads(p.read_text()) for p in sorted(lib.JOBS.glob("*.json"))] if lib.JOBS.exists() else []
@@ -170,6 +177,9 @@ def wait(job: dict) -> bool:
             write_job(job, step=st.get("step"), steps_done=sum(v["state"] == "done" for v in st["steps"].values()), steps_total=st.get("total"), analyzers_failed=st.get("failed") or [])
             if st["state"] in ("done", "failed"):
                 return st["state"] == "done"
+            if (dead := remote_dead(job)):
+                print(f"The job died on ae-charlie without recording it:\n{dead}")
+                return False
         time.sleep(15)
 
 

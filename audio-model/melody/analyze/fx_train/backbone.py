@@ -20,6 +20,7 @@ N_FFT, HOP, N_MELS = 2048, 1280, 64
 SEG, STEP = PIECE * B_SR, PIECE * B_SR // 2
 FRAMES = PIECE * FPS  # 250 per piece
 DIM = 768
+DEV = common.device()  # MELODY_DEVICE (cuda on ae-charlie, mps on the Mac)
 
 
 def to_32k(x):

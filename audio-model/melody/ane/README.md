@@ -99,3 +99,22 @@ All four in one process: 154.5 s plus 13.5 s load. RoFormer on the NE is rejecte
 
 
 All five slow steps at once (stems + drum parts + GAME in one process, vocals in a second, lyrics on the NE in a third): **153 s wall time including model loading** for the 252 s song, measured 2026-11-11 (lyrics load 57 s + 27.7 s). The fast analyzers (about 90 s, measured 2026-11-09) were not part of this run: their environments are gone.
+
+
+## The whole song on the Mac (measured 2026-11-13, Stereo Love, 252 s)
+
+Every per-song step, including model loading and process starts (`~/work/ane-lyrics/scripts`):
+- one process at a time (`safe_song.sh`): 379 s;
+- two lanes after stems (`two_lanes.sh`; vocals -> lyrics next to drum parts + GAME -> the fast analyzers): **218 s** (+2.5 s for tags, re-run after a path fix), 87% of the song. Memory never fell under 69% free.
+
+| Step | Time | Unit |
+|---|---|---|
+| stems | 52 s | Core ML GPU |
+| vocals | 91 s (76 s alone) | Core ML GPU |
+| lyrics | 27 s + 5 s load | Neural Engine |
+| drum parts | 30 s | Neural Engine |
+| GAME | 55 s (30 s alone) | Core ML GPU + CPU |
+| allinone | 24-30 s | CPU |
+| the other 13 analyzers | 45 s together | CPU / MPS |
+
+Fast analyzers on the Mac need `MELODY_DEVICE=mps` (analyze/common.py `device()`).

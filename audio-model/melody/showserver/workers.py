@@ -84,7 +84,7 @@ class CharlieWorker(Worker):
         if not (st and st["state"] in ("queued", "running", "done")):  # else: still running there, follow it
             progress(step="uploading")
             quiet(song.start, pjob, False, self.concurrency)
-        seen = None
+        seen, checks = None, 0
         while True:
             try:
                 st = song.remote_status(sid)
@@ -100,6 +100,13 @@ class CharlieWorker(Worker):
                     raise RuntimeError(f"failed on ae-charlie at {st.get('step')}: {', '.join(st.get('failed') or [])}")
                 if st["state"] == "done":
                     break
+                if (checks := checks + 1) % 6 == 0:  # about once a minute: is the job still alive there?
+                    try:
+                        dead = song.remote_dead(pjob)
+                    except song.GatewayClosed:
+                        raise Retry("ae-charlie gateway closed while analysing (the job keeps running there)") from None
+                    if dead:
+                        raise RuntimeError(f"died on ae-charlie at {st.get('step')}: {dead.splitlines()[-1][-300:]}")
             time.sleep(10)
         progress(state="compiling", step="fetch + compile")
         with COMPILE_LOCK:

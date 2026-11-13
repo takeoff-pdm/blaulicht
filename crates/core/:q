@@ -1,0 +1,66 @@
+port = 1234
+dmx_out_devices = [
+    "/dev/ttyUSB0",
+    "/dev/dmx_out_0",
+]
+default_audio_device = "BlackHole 2ch"
+run_setup_on_reload = false
+spectrogram_window_seconds = 10
+spectrogram_refresh_hz = 60
+beat_detection = "model"
+last_open_showfile = "/home/mik/work/private/blaulicht/SPARTACUS_DRAFT.json"
+
+[stream]
+channel_count = 2
+fft_resolution = 4096
+refresh_rate = 60
+gravity = 100.0
+
+[stream.processor]
+sampling_rate = 48000
+frequency_bounds = [
+    40,
+    20000,
+]
+volume = 1.0
+volume_normalisation = "Mixture"
+position_normalisation = "Harmonic"
+interpolation = "Cubic"
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/433mhz_antenna.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/led_tubes.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/chaos_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/audio_reactor_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/midi_all.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/pioneer_pro_dj_link.wasm"
+enabled = true
+enable_watcher = true
+
+[[plugins]]
+file_path = "../plugins/bundle_debug/julia_animation_plugin.wasm"
+enabled = true
+enable_watcher = true
+
+[plugin_state]
+plugin_5 = '{"version":1,"user":"{\"log_beats\":true,\"ip\":\"\",\"mac\":\"\",\"auto_join\":false}","animation_instances":{}}'
